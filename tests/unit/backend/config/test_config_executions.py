@@ -1,13 +1,13 @@
-"""Tests for MissionsSchema config loading."""
+"""Tests for ExecutionsSchema config loading."""
 
 import pytest
 
-from modules.backend.core.config_schema import MissionsSchema
+from modules.backend.core.config_schema import ExecutionsSchema
 
 
-class TestMissionsConfig:
+class TestExecutionsConfig:
     def test_defaults(self):
-        config = MissionsSchema()
+        config = ExecutionsSchema()
         assert config.retention_days == 0
         assert config.default_page_size == 20
         assert config.max_page_size == 100
@@ -18,10 +18,10 @@ class TestMissionsConfig:
 
     def test_strict_rejects_unknown(self):
         with pytest.raises(Exception):
-            MissionsSchema(unknown_field="oops")
+            ExecutionsSchema(unknown_field="oops")
 
     def test_custom_values(self):
-        config = MissionsSchema(
+        config = ExecutionsSchema(
             retention_days=90,
             default_page_size=50,
             persist_thinking_trace=False,

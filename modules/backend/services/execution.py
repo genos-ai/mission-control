@@ -1,9 +1,9 @@
 """
-Mission Service.
+Execution Service.
 
-Orchestrates mission lifecycle: creates missions from workflow steps,
+Orchestrates execution lifecycle: creates executions from workflow steps,
 instantiates Mission Control with the appropriate roster, tracks
-MissionOutcome results, and manages inter-mission data flow.
+ExecutionOutcome results, and manages inter-execution data flow.
 """
 
 from collections.abc import AsyncGenerator
@@ -16,47 +16,47 @@ from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import ApplicationError, NotFoundError, ValidationError
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
 from modules.backend.core.logging import get_logger
-from modules.backend.core.protocols import MissionDispatchProtocol
+from modules.backend.core.protocols import ExecutionDispatchProtocol
 from modules.backend.core.utils import utc_now
-from modules.backend.models.mission import (
-    Mission,
-    MissionState,
-    VALID_MISSION_TRANSITIONS,
+from modules.backend.models.execution import (
+    Execution,
+    ExecutionState,
+    VALID_EXECUTION_TRANSITIONS,
 )
-from modules.backend.repositories.mission import MissionRepository
+from modules.backend.repositories.execution import ExecutionRepository
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
 
 
-class MissionService(BaseService):
-    """Mission lifecycle management."""
+class ExecutionService(BaseService):
+    """Execution lifecycle management."""
 
     def __init__(
         self,
         session: AsyncSession,
-        mission_control_dispatch: MissionDispatchProtocol | None = None,
+        mission_control_dispatch: ExecutionDispatchProtocol | None = None,
         session_service: Any | None = None,
         event_bus: EventBusProtocol = NoOpEventBus(),
     ) -> None:
         super().__init__(session)
-        self._mission_repo = MissionRepository(session)
+        self._execution_repo = ExecutionRepository(session)
         self._mission_control_dispatch = mission_control_dispatch
         self._session_service = session_service
         self._event_bus = event_bus
 
     @staticmethod
     @asynccontextmanager
-    async def factory() -> AsyncGenerator["MissionService", None]:
-        """Create a MissionService with its own DB session.
+    async def factory() -> AsyncGenerator["ExecutionService", None]:
+        """Create an ExecutionService with its own DB session.
 
         Each call gets an independent session, adapter, and service —
         safe for concurrent use in parallel workflow waves.
 
         Usage:
-            async with MissionService.factory() as svc:
-                await svc.create_mission_from_step(...)
-                await svc.execute_mission(mission_id)
+            async with ExecutionService.factory() as svc:
+                await svc.create_execution_from_step(...)
+                await svc.run_execution(execution_id)
         """
         from modules.backend.agents.mission_control.dispatch_adapter import (
             MissionControlDispatchAdapter,
@@ -70,7 +70,7 @@ class MissionService(BaseService):
                 session_service=session_service,
                 db_session=db,
             )
-            yield MissionService(
+            yield ExecutionService(
                 session=db,
                 mission_control_dispatch=adapter,
                 session_service=session_service,
@@ -83,13 +83,13 @@ class MissionService(BaseService):
             await self._event_bus.publish(event)
         except (OSError, RuntimeError):
             logger.warning(
-                "Failed to publish mission event",
+                "Failed to publish execution event",
                 extra={"event_type": getattr(event, "event_type", "unknown")},
             )
 
-    # ---- Mission creation ----
+    # ---- Execution creation ----
 
-    async def create_mission_from_step(
+    async def create_execution_from_step(
         self,
         playbook_run_id: str,
         step_id: str,
@@ -101,28 +101,28 @@ class MissionService(BaseService):
         session_id: str,
         environment: str = "local",
         project_id: str | None = None,
-    ) -> Mission:
-        """Create a mission from a workflow step."""
+    ) -> Execution:
+        """Create an execution from a workflow step."""
 
-        async def _create() -> Mission:
+        async def _create() -> Execution:
             app_config = get_app_config()
-            active_count = await self._mission_repo.count_active()
+            active_count = await self._execution_repo.count_active()
             if active_count >= app_config.workflows.max_concurrent_missions:
                 raise ValidationError(
                     message=(
-                        f"Maximum concurrent missions "
+                        f"Maximum concurrent executions "
                         f"({app_config.workflows.max_concurrent_missions}) "
                         f"reached. {active_count} currently active."
                     ),
                 )
 
-            mission = Mission(
+            execution = Execution(
                 playbook_run_id=playbook_run_id,
                 playbook_step_id=step_id,
                 objective=objective,
                 roster_ref=roster_ref,
                 complexity_tier=complexity_tier,
-                status=MissionState.PENDING,
+                status=ExecutionState.PENDING,
                 session_id=session_id,
                 trigger_type="workflow",
                 triggered_by=f"workflow_run:{playbook_run_id}",
@@ -132,14 +132,14 @@ class MissionService(BaseService):
                 cost_ceiling_usd=cost_ceiling_usd,
                 project_id=project_id,
             )
-            self._session.add(mission)
+            self._session.add(execution)
             await self._session.flush()
-            await self._session.refresh(mission)
+            await self._session.refresh(execution)
 
             logger.info(
-                "Mission created from workflow step",
+                "Execution created from workflow step",
                 extra={
-                    "mission_id": mission.id,
+                    "execution_id": execution.id,
                     "playbook_run_id": playbook_run_id,
                     "step_id": step_id,
                     "roster_ref": roster_ref,
@@ -147,13 +147,13 @@ class MissionService(BaseService):
                     "cost_ceiling_usd": cost_ceiling_usd,
                 },
             )
-            return mission
+            return execution
 
         return await self._execute_db_operation(
-            "create_mission_from_step", _create(),
+            "create_execution_from_step", _create(),
         )
 
-    async def create_adhoc_mission(
+    async def create_adhoc_execution(
         self,
         objective: str,
         triggered_by: str,
@@ -162,27 +162,27 @@ class MissionService(BaseService):
         complexity_tier: str = "simple",
         cost_ceiling_usd: float | None = None,
         upstream_context: dict | None = None,
-    ) -> Mission:
-        """Create an ad-hoc mission (not from a workflow)."""
+    ) -> Execution:
+        """Create an ad-hoc execution (not from a workflow)."""
 
-        async def _create() -> Mission:
+        async def _create() -> Execution:
             app_config = get_app_config()
 
-            active_count = await self._mission_repo.count_active()
+            active_count = await self._execution_repo.count_active()
             if active_count >= app_config.workflows.max_concurrent_missions:
                 raise ValidationError(
                     message=(
-                        f"Maximum concurrent missions "
+                        f"Maximum concurrent executions "
                         f"({app_config.workflows.max_concurrent_missions}) "
                         f"reached. {active_count} currently active."
                     ),
                 )
 
-            mission = Mission(
+            execution = Execution(
                 objective=objective,
                 roster_ref=roster_ref,
                 complexity_tier=complexity_tier,
-                status=MissionState.PENDING,
+                status=ExecutionState.PENDING,
                 session_id=session_id,
                 trigger_type="on_demand",
                 triggered_by=triggered_by,
@@ -194,80 +194,80 @@ class MissionService(BaseService):
                     or app_config.workflows.default_budget_usd
                 ),
             )
-            self._session.add(mission)
+            self._session.add(execution)
             await self._session.flush()
-            await self._session.refresh(mission)
+            await self._session.refresh(execution)
 
             logger.info(
-                "Ad-hoc mission created",
+                "Ad-hoc execution created",
                 extra={
-                    "mission_id": mission.id,
+                    "execution_id": execution.id,
                     "session_id": session_id,
                     "roster_ref": roster_ref,
                 },
             )
-            return mission
+            return execution
 
         return await self._execute_db_operation(
-            "create_adhoc_mission", _create(),
+            "create_adhoc_execution", _create(),
         )
 
-    # ---- Mission execution ----
+    # ---- Execution dispatch ----
 
-    async def execute_mission(self, mission_id: str, gate: object | None = None) -> Mission:
-        """Execute a mission by dispatching to Mission Control."""
-        mission = await self._get_mission(mission_id)
-        self._validate_transition(mission, MissionState.RUNNING)
+    async def run_execution(self, execution_id: str, gate: object | None = None) -> Execution:
+        """Execute by dispatching to Mission Control."""
+        execution = await self._get_execution(execution_id)
+        self._validate_transition(execution, ExecutionState.RUNNING)
 
-        mission.status = MissionState.RUNNING
-        mission.started_at = utc_now().isoformat()
+        execution.status = ExecutionState.RUNNING
+        execution.started_at = utc_now().isoformat()
         await self._session.flush()
 
         if self._mission_control_dispatch is None:
             logger.warning(
                 "Mission Control dispatch not available, "
-                "mission stays in RUNNING",
-                extra={"mission_id": mission_id},
+                "execution stays in RUNNING",
+                extra={"execution_id": execution_id},
             )
-            return mission
+            return execution
 
         try:
             outcome = await self._mission_control_dispatch.execute(
-                mission_brief=mission.objective,
-                roster_ref=mission.roster_ref,
-                complexity_tier=mission.complexity_tier,
-                upstream_context=mission.upstream_context,
-                cost_ceiling_usd=mission.cost_ceiling_usd,
-                session_id=mission.session_id,
-                project_id=mission.project_id,
+                mission_brief=execution.objective,
+                roster_ref=execution.roster_ref,
+                complexity_tier=execution.complexity_tier,
+                upstream_context=execution.upstream_context,
+                cost_ceiling_usd=execution.cost_ceiling_usd,
+                session_id=execution.session_id,
+                project_id=execution.project_id,
                 gate=gate,
             )
 
-            mission.mission_outcome = (
+            execution.mission_outcome = (
                 outcome if isinstance(outcome, dict)
                 else outcome.model_dump()
             )
-            mission.total_cost_usd = (
+            execution.total_cost_usd = (
                 outcome.get("total_cost_usd", 0.0)
                 if isinstance(outcome, dict)
                 else getattr(outcome, "total_cost_usd", 0.0)
             )
-            mission.result_summary = (
+            execution.result_summary = (
                 outcome.get("summary", None)
                 if isinstance(outcome, dict)
                 else getattr(outcome, "summary", None)
             )
 
             if (
-                mission.cost_ceiling_usd
-                and mission.total_cost_usd > mission.cost_ceiling_usd
+                execution.cost_ceiling_usd
+                and execution.total_cost_usd > execution.cost_ceiling_usd
             ):
                 logger.warning(
-                    "Mission exceeded cost ceiling",
+                    "Execution exceeded cost ceiling",
                     extra={
-                        "mission_id": mission_id,
-                        "cost": mission.total_cost_usd,
-                        "ceiling": mission.cost_ceiling_usd,
+                        "execution_id": execution_id,
+                        "cost": execution.total_cost_usd,
+                        "ceiling": execution.cost_ceiling_usd,
                     },
                 )
 
@@ -277,73 +277,73 @@ class MissionService(BaseService):
                 else getattr(outcome, "success", False)
             )
             if success:
-                mission.status = MissionState.COMPLETED
+                execution.status = ExecutionState.COMPLETED
             else:
-                mission.status = MissionState.FAILED
-                mission.error_data = {
+                execution.status = ExecutionState.FAILED
+                execution.error_data = {
                     "message": "Mission Control dispatch returned failure",
                 }
 
-            mission.completed_at = utc_now().isoformat()
+            execution.completed_at = utc_now().isoformat()
             await self._session.flush()
 
         except (ApplicationError, OSError, RuntimeError, ValueError) as e:
-            mission.status = MissionState.FAILED
-            mission.completed_at = utc_now().isoformat()
-            mission.error_data = {
+            execution.status = ExecutionState.FAILED
+            execution.completed_at = utc_now().isoformat()
+            execution.error_data = {
                 "message": str(e), "type": type(e).__name__,
             }
             await self._session.flush()
             logger.error(
-                "Mission execution failed",
-                extra={"mission_id": mission_id, "error": str(e)},
+                "Execution failed",
+                extra={"execution_id": execution_id, "error": str(e)},
             )
 
-        return mission
+        return execution
 
-    # ---- Mission lifecycle ----
+    # ---- Execution lifecycle ----
 
-    async def complete_mission(self, mission_id: str) -> Mission:
-        """Mark mission as completed."""
-        mission = await self._get_mission(mission_id)
-        self._validate_transition(mission, MissionState.COMPLETED)
+    async def complete_execution(self, execution_id: str) -> Execution:
+        """Mark execution as completed."""
+        execution = await self._get_execution(execution_id)
+        self._validate_transition(execution, ExecutionState.COMPLETED)
 
-        mission.status = MissionState.COMPLETED
-        mission.completed_at = utc_now().isoformat()
+        execution.status = ExecutionState.COMPLETED
+        execution.completed_at = utc_now().isoformat()
         await self._session.flush()
-        return mission
+        return execution
 
-    async def fail_mission(
-        self, mission_id: str, error: str,
+    async def fail_execution(
+        self, execution_id: str, error: str,
         error_data: dict | None = None,
-    ) -> Mission:
-        """Mark mission as failed."""
-        mission = await self._get_mission(mission_id)
-        self._validate_transition(mission, MissionState.FAILED)
+    ) -> Execution:
+        """Mark execution as failed."""
+        execution = await self._get_execution(execution_id)
+        self._validate_transition(execution, ExecutionState.FAILED)
 
-        mission.status = MissionState.FAILED
-        mission.completed_at = utc_now().isoformat()
-        mission.error_data = error_data or {"message": error}
+        execution.status = ExecutionState.FAILED
+        execution.completed_at = utc_now().isoformat()
+        execution.error_data = error_data or {"message": error}
         await self._session.flush()
-        return mission
+        return execution
 
-    async def cancel_mission(self, mission_id: str, reason: str) -> Mission:
-        """Cancel a mission."""
-        mission = await self._get_mission(mission_id)
-        self._validate_transition(mission, MissionState.CANCELLED)
+    async def cancel_execution(self, execution_id: str, reason: str) -> Execution:
+        """Cancel an execution."""
+        execution = await self._get_execution(execution_id)
+        self._validate_transition(execution, ExecutionState.CANCELLED)
 
-        mission.status = MissionState.CANCELLED
-        mission.completed_at = utc_now().isoformat()
-        mission.error_data = {"cancelled_reason": reason}
+        execution.status = ExecutionState.CANCELLED
+        execution.completed_at = utc_now().isoformat()
+        execution.error_data = {"cancelled_reason": reason}
         await self._session.flush()
-        return mission
+        return execution
 
     # ---- Output extraction (anti-corruption layer) ----
 
     def extract_outputs(
-        self, mission: Mission, output_mapping: dict | None,
+        self, execution: Execution, output_mapping: dict | None,
     ) -> dict[str, Any]:
-        """Extract outputs from a completed mission's MissionOutcome
+        """Extract outputs from a completed execution's ExecutionOutcome
         according to the workflow step's output_mapping.
 
         task_results in the outcome is a list of TaskResult dicts.
@@ -355,29 +355,28 @@ class MissionService(BaseService):
         if not output_mapping:
             self._log_debug(
                 "No output_mapping configured",
-                mission_id=mission.id,
+                execution_id=execution.id,
             )
             return {}
-        if not mission.mission_outcome:
+        if not execution.mission_outcome:
             logger.warning(
-                "Mission has no outcome for output extraction",
-                extra={"mission_id": mission.id},
+                "Execution has no outcome for output extraction",
+                extra={"execution_id": execution.id},
             )
             return {}
 
         extracted: dict[str, Any] = {}
-        outcome = mission.mission_outcome
+        outcome = execution.mission_outcome
 
         summary_key = output_mapping.get("summary_key")
         if summary_key:
             extracted[summary_key] = (
-                outcome.get("summary") or mission.result_summary
+                outcome.get("summary") or execution.result_summary
             )
 
         field_mappings = output_mapping.get("field_mappings", [])
         raw_results = outcome.get("task_results", [])
 
-        # Build lookup indices: by task_id and by agent_name (list for duplicates)
         by_task_id: dict[str, dict] = {}
         by_agent: dict[str, list[dict]] = {}
         if isinstance(raw_results, list):
@@ -391,7 +390,6 @@ class MissionService(BaseService):
                         tr.get("output_reference", {}),
                     )
         elif isinstance(raw_results, dict):
-            # Legacy: already a dict keyed by task name
             by_task_id = raw_results
 
         for mapping in field_mappings:
@@ -399,9 +397,7 @@ class MissionService(BaseService):
             source_field = mapping["source_field"]
             target_key = mapping["target_key"]
 
-            # Try exact task_id match first
             task_output = by_task_id.get(source_task)
-            # Then try agent_name match (search all entries for that agent)
             if task_output is None:
                 agent_outputs = by_agent.get(source_task, [])
                 for candidate in agent_outputs:
@@ -418,7 +414,7 @@ class MissionService(BaseService):
                     logger.warning(
                         "Output mapping source field not found",
                         extra={
-                            "mission_id": mission.id,
+                            "execution_id": execution.id,
                             "source_task": source_task,
                             "source_field": source_field,
                             "available_fields": (
@@ -431,7 +427,7 @@ class MissionService(BaseService):
                 logger.warning(
                     "Output mapping source task not found",
                     extra={
-                        "mission_id": mission.id,
+                        "execution_id": execution.id,
                         "source_task": source_task,
                         "available_task_ids": list(by_task_id.keys()),
                         "available_agents": list(by_agent.keys()),
@@ -442,21 +438,21 @@ class MissionService(BaseService):
 
     # ---- Status and queries ----
 
-    async def get_mission(self, mission_id: str) -> Mission:
-        """Get a mission by ID."""
-        return await self._get_mission(mission_id)
+    async def get_execution(self, execution_id: str) -> Execution:
+        """Get an execution by ID."""
+        return await self._get_execution(execution_id)
 
-    async def list_missions(
+    async def list_executions(
         self,
         status: str | None = None,
         playbook_run_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> tuple[list[Mission], int]:
-        """List missions with optional filters."""
-        mission_status = MissionState(status) if status else None
-        return await self._mission_repo.list_missions(
-            status=mission_status,
+    ) -> tuple[list[Execution], int]:
+        """List executions with optional filters."""
+        execution_status = ExecutionState(status) if status else None
+        return await self._execution_repo.list_executions(
+            status=execution_status,
             playbook_run_id=playbook_run_id,
             limit=limit,
             offset=offset,
@@ -464,25 +460,25 @@ class MissionService(BaseService):
 
     # ---- Internal helpers ----
 
-    async def _get_mission(self, mission_id: str) -> Mission:
-        """Get mission or raise NotFoundError."""
-        mission = await self._mission_repo.get_by_id_or_none(mission_id)
-        if not mission:
+    async def _get_execution(self, execution_id: str) -> Execution:
+        """Get execution or raise NotFoundError."""
+        execution = await self._execution_repo.get_by_id_or_none(execution_id)
+        if not execution:
             raise NotFoundError(
-                message=f"Mission '{mission_id}' not found",
+                message=f"Execution '{execution_id}' not found",
             )
-        return mission
+        return execution
 
     def _validate_transition(
-        self, mission: Mission, new_status: MissionState,
+        self, execution: Execution, new_status: ExecutionState,
     ) -> None:
-        """Validate mission status transition."""
-        current = MissionState(mission.status)
-        allowed = VALID_MISSION_TRANSITIONS.get(current, set())
+        """Validate execution status transition."""
+        current = ExecutionState(execution.status)
+        allowed = VALID_EXECUTION_TRANSITIONS.get(current, set())
         if new_status not in allowed:
             raise ValidationError(
                 message=(
-                    f"Cannot transition mission from '{current.value}' "
+                    f"Cannot transition execution from '{current.value}' "
                     f"to '{new_status.value}'. "
                     f"Allowed: {[s.value for s in allowed]}"
                 ),

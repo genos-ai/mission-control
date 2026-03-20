@@ -496,7 +496,7 @@ class TestGateDispatchIntegration:
     async def test_abort_at_pre_dispatch(self):
         """Aborting at pre_dispatch should return empty failed outcome."""
         from modules.backend.agents.mission_control.dispatch import dispatch
-        from modules.backend.agents.mission_control.outcome import MissionStatus
+        from modules.backend.agents.mission_control.outcome import ExecutionStatus
 
         roster = Roster(agents=[_entry("test.agent")])
 
@@ -511,7 +511,7 @@ class TestGateDispatchIntegration:
             gate=AlwaysAbortGate(),
         )
 
-        assert outcome.status == MissionStatus.FAILED
+        assert outcome.status == ExecutionStatus.FAILED
         assert len(outcome.task_results) == 0
 
     @pytest.mark.asyncio
@@ -544,7 +544,7 @@ class TestGateDispatchIntegration:
     async def test_no_gate_works_unchanged(self):
         """Default dispatch (gate=None) should work exactly as before."""
         from modules.backend.agents.mission_control.dispatch import dispatch
-        from modules.backend.agents.mission_control.outcome import MissionStatus
+        from modules.backend.agents.mission_control.outcome import ExecutionStatus
 
         roster = Roster(agents=[_entry("test.agent")])
 
@@ -558,7 +558,7 @@ class TestGateDispatchIntegration:
             mission_budget_usd=10.0,
         )
 
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert len(outcome.task_results) == 1
 
     @pytest.mark.asyncio
@@ -586,9 +586,9 @@ class TestGateDispatchIntegration:
 
     @pytest.mark.asyncio
     async def test_abort_preserves_reason(self):
-        """abort_reason should be stored in MissionOutcome."""
+        """abort_reason should be stored in ExecutionOutcome."""
         from modules.backend.agents.mission_control.dispatch import dispatch
-        from modules.backend.agents.mission_control.outcome import MissionStatus
+        from modules.backend.agents.mission_control.outcome import ExecutionStatus
 
         roster = Roster(agents=[_entry("test.agent")])
 
@@ -603,14 +603,14 @@ class TestGateDispatchIntegration:
             gate=AlwaysAbortGate(),
         )
 
-        assert outcome.status == MissionStatus.FAILED
+        assert outcome.status == ExecutionStatus.FAILED
         assert outcome.abort_reason == "test abort"
 
     @pytest.mark.asyncio
     async def test_abort_after_success_still_failed(self):
         """Aborting at post_layer after tasks succeed must still be FAILED."""
         from modules.backend.agents.mission_control.dispatch import dispatch
-        from modules.backend.agents.mission_control.outcome import MissionStatus, TaskStatus
+        from modules.backend.agents.mission_control.outcome import ExecutionStatus, TaskStatus
 
         class PostLayerAbortGate:
             """Gate that lets tasks run but aborts at post_layer."""
@@ -638,7 +638,7 @@ class TestGateDispatchIntegration:
         )
 
         # Even though the single task succeeded, abort means FAILED
-        assert outcome.status == MissionStatus.FAILED
+        assert outcome.status == ExecutionStatus.FAILED
         assert outcome.abort_reason == "stop after layer"
         # The task itself should still show SUCCESS
         assert len(outcome.task_results) == 1

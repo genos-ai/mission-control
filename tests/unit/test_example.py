@@ -127,9 +127,9 @@ class TestSubcommandHelp:
         assert "--objective" not in result.output
         assert "--table" not in result.output
 
-    def test_mission_help_shows_subcommands(self, runner):
-        """Mission help should list subcommands."""
-        result = runner.invoke(cli, ["mission", "--help"])
+    def test_execution_help_shows_subcommands(self, runner):
+        """Execution help should list subcommands."""
+        result = runner.invoke(cli, ["execution", "--help"])
 
         assert result.exit_code == 0
         assert "run" in result.output
@@ -138,9 +138,9 @@ class TestSubcommandHelp:
         assert "detail" in result.output
         assert "cost" in result.output
 
-    def test_mission_run_help_shows_options(self, runner):
-        """Mission run help should show objective and budget options."""
-        result = runner.invoke(cli, ["mission", "run", "--help"])
+    def test_execution_run_help_shows_options(self, runner):
+        """Execution run help should show objective and budget options."""
+        result = runner.invoke(cli, ["execution", "run", "--help"])
 
         assert result.exit_code == 0
         assert "OBJECTIVE" in result.output

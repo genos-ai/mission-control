@@ -7,10 +7,10 @@ with transaction rollback for isolation.
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.mission_record import (
+from modules.backend.models.execution_record import (
     FailureTier,
-    MissionRecord,
-    MissionRecordStatus,
+    ExecutionRecord,
+    ExecutionRecordStatus,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,
@@ -27,12 +27,12 @@ def history_service(db_session: AsyncSession) -> HistoryQueryService:
 async def _create_mission(
     db: AsyncSession,
     project_id: str = "proj-1",
-    status: MissionRecordStatus = MissionRecordStatus.COMPLETED,
+    status: ExecutionRecordStatus = ExecutionRecordStatus.COMPLETED,
     objective: str = "Test mission",
     cost: float = 0.5,
-) -> MissionRecord:
-    """Helper to create a MissionRecord."""
-    record = MissionRecord(
+) -> ExecutionRecord:
+    """Helper to create an ExecutionRecord."""
+    record = ExecutionRecord(
         session_id="sess-1",
         project_id=project_id,
         status=status,
@@ -223,7 +223,7 @@ class TestGetMissionSummaries:
         )
         await _create_mission(
             db_session, project_id="proj-sum", objective="Fix auth",
-            status=MissionRecordStatus.FAILED,
+            status=ExecutionRecordStatus.FAILED,
         )
 
         summaries = await history_service.get_mission_summaries("proj-sum")

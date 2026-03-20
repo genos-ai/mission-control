@@ -54,8 +54,8 @@ class ContextViewer(Widget):
             with TabPane("Tasks", id="context-tasks-tab"):
                 yield RichLog(id="context-tasks", wrap=True, markup=True)
 
-    def load_mission_detail(self, detail: dict) -> None:
-        """Load a mission detail dict into the viewer."""
+    def load_execution_detail(self, detail: dict) -> None:
+        """Load an execution detail dict into the viewer."""
         self._load_overview_tab(detail)
         self._load_json_tab(detail.get("task_plan_json"))
         self._load_tasks_tab(detail.get("task_executions", []))

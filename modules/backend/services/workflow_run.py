@@ -2,14 +2,14 @@
 WorkflowRun Service (Orchestrator).
 
 Executes a workflow end-to-end: creates a WorkflowRun record, resolves
-steps into missions, dispatches them in dependency order, chains outputs
+steps into executions, dispatches them in dependency order, chains outputs
 between steps, and tracks aggregate cost.
 
 Steps within the same wave (no mutual dependencies) execute in parallel,
 each with its own DB session to avoid SQLAlchemy async flush conflicts.
 
 This is the bridge between the stateless WorkflowService (YAML loading)
-and the stateful MissionService (mission lifecycle).
+and the stateful ExecutionService (execution lifecycle).
 """
 
 import asyncio
@@ -22,16 +22,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-from modules.backend.models.mission import WorkflowRun, WorkflowRunState
+from modules.backend.models.execution import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
 from modules.backend.schemas.workflow import WorkflowSchema, WorkflowStepSchema
 from modules.backend.services.base import BaseService
-from modules.backend.services.mission import MissionService
+from modules.backend.services.execution import ExecutionService
 from modules.backend.services.workflow import WorkflowService
 
-# Factory that returns an async context manager yielding a MissionService.
-# Default implementation: MissionService.factory
-MissionServiceFactory = Callable[[], AbstractAsyncContextManager[MissionService]]
+# Factory that returns an async context manager yielding an ExecutionService.
+# Default implementation: ExecutionService.factory
+ExecutionServiceFactory = Callable[[], AbstractAsyncContextManager[ExecutionService]]
 
 logger = get_logger(__name__)
 
@@ -42,12 +42,12 @@ class WorkflowRunService(BaseService):
     def __init__(
         self,
         session: AsyncSession,
-        mission_service_factory: MissionServiceFactory | None = None,
+        execution_service_factory: ExecutionServiceFactory | None = None,
         workflow_service: WorkflowService | None = None,
     ) -> None:
         super().__init__(session)
         self._run_repo = WorkflowRunRepository(session)
-        self._mission_service_factory = mission_service_factory
+        self._execution_service_factory = execution_service_factory
         self._workflow_service = workflow_service or WorkflowService()
 
     async def run_workflow(
@@ -228,7 +228,7 @@ class WorkflowRunService(BaseService):
 
         Steps within a wave have no mutual dependencies and run in
         parallel via asyncio.gather. Each step gets its own DB session
-        (via mission_service_factory) to avoid SQLAlchemy flush conflicts.
+        (via execution_service_factory) to avoid SQLAlchemy flush conflicts.
         Falls back to sequential execution when no factory is provided.
         """
         waves = self._compute_waves(workflow.steps)
@@ -276,15 +276,15 @@ class WorkflowRunService(BaseService):
             )
 
             # Collect results sequentially (cost, outcomes, events)
-            for step, (mission, extracted_outputs) in zip(wave_steps, results):
+            for step, (execution, extracted_outputs) in zip(wave_steps, results):
                 completed_outcomes[step.id] = extracted_outputs
-                run.total_cost_usd += mission.total_cost_usd
-                status_str = mission.status if isinstance(mission.status, str) else mission.status.value
+                run.total_cost_usd += execution.total_cost_usd
+                status_str = execution.status if isinstance(execution.status, str) else execution.status.value
                 _emit({
                     "type": "step_done",
                     "step_id": step.id,
                     "status": status_str,
-                    "cost_usd": mission.total_cost_usd,
+                    "cost_usd": execution.total_cost_usd,
                     "completed_steps": len(completed_outcomes),
                     "total_steps": total_steps,
                 })
@@ -302,16 +302,16 @@ class WorkflowRunService(BaseService):
         Each step gets its own DB session via the factory to avoid
         SQLAlchemy async flush conflicts.
         """
-        if self._mission_service_factory is None:
+        if self._execution_service_factory is None:
             raise RuntimeError(
-                "mission_service_factory is required to execute workflows"
+                "execution_service_factory is required to execute workflows"
             )
 
         async def _run_step(step: WorkflowStepSchema) -> tuple[Any, dict]:
-            async with self._mission_service_factory() as mission_service:
+            async with self._execution_service_factory() as execution_service:
                 return await self._execute_step(
                     run, step, session_id, completed_outcomes,
-                    mission_service, gate=gate,
+                    execution_service, gate=gate,
                 )
 
         results = await asyncio.gather(
@@ -325,10 +325,10 @@ class WorkflowRunService(BaseService):
         step: WorkflowStepSchema,
         session_id: str,
         completed_outcomes: dict[str, dict],
-        mission_service: MissionService,
+        execution_service: ExecutionService,
         gate: object | None = None,
     ) -> tuple[Any, dict]:
-        """Execute a single workflow step as a mission."""
+        """Execute a single workflow step as an execution."""
         # Resolve upstream context from dependencies
         upstream = self._workflow_service.resolve_upstream_context(
             step, completed_outcomes, run.context,
@@ -344,8 +344,7 @@ class WorkflowRunService(BaseService):
             or app_config.workflows.default_budget_usd
         )
 
-        # Create mission from workflow step
-        mission = await mission_service.create_mission_from_step(
+        execution = await execution_service.create_execution_from_step(
             playbook_run_id=run.id,
             step_id=step.id,
             objective=objective,
@@ -358,47 +357,45 @@ class WorkflowRunService(BaseService):
         )
 
         logger.info(
-            "Step mission created",
+            "Step execution created",
             extra={
                 "run_id": run.id,
                 "step_id": step.id,
-                "mission_id": mission.id,
+                "execution_id": execution.id,
                 "agent": f"{step.capability}.agent",
             },
         )
 
-        # Execute the mission
-        mission = await mission_service.execute_mission(mission.id, gate=gate)
+        execution = await execution_service.run_execution(execution.id, gate=gate)
 
-        # Extract outputs for downstream steps
         output_mapping = (
             step.output_mapping.model_dump()
             if step.output_mapping
             else None
         )
-        extracted = mission_service.extract_outputs(
-            mission, output_mapping,
+        extracted = execution_service.extract_outputs(
+            execution, output_mapping,
         )
 
-        status_str = mission.status if isinstance(mission.status, str) else mission.status.value
+        status_str = execution.status if isinstance(execution.status, str) else execution.status.value
         logger.info(
             "Step completed",
             extra={
                 "run_id": run.id,
                 "step_id": step.id,
-                "mission_id": mission.id,
+                "execution_id": execution.id,
                 "status": status_str,
-                "cost": mission.total_cost_usd,
+                "cost": execution.total_cost_usd,
             },
         )
 
         if status_str == "failed":
             raise RuntimeError(
-                f"Step '{step.id}' mission failed: "
-                f"{mission.error_data}"
+                f"Step '{step.id}' execution failed: "
+                f"{execution.error_data}"
             )
 
-        return mission, extracted
+        return execution, extracted
 
     def _build_step_objective(
         self,

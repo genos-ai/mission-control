@@ -56,7 +56,7 @@ def run_db(
         "tables": _action_tables,
         "query": _action_query,
         "clear": _action_clear,
-        "clear-missions": _action_clear_missions,
+        "clear-executions": _action_clear_executions,
         "clear-sessions": _action_clear_sessions,
     }
 
@@ -217,7 +217,7 @@ async def _action_clear(cli_logger, *, table, limit, confirm, include_projects=F
             ))
         else:
             click.echo(click.style(
-                "This will DELETE run data (missions, sessions, workflow runs).",
+                "This will DELETE run data (executions, sessions, workflow runs).",
                 fg="red", bold=True,
             ))
             click.echo("Projects and PCD are preserved. Use --include-projects for full reset.")
@@ -240,9 +240,9 @@ async def _action_clear(cli_logger, *, table, limit, confirm, include_projects=F
     click.echo(click.style(f"{scope} cleared.", fg="green"))
 
 
-async def _action_clear_missions(cli_logger, *, table, limit, confirm, **_):
-    """Clear mission-related data only (missions, records, executions, decisions)."""
-    mission_tables = [
+async def _action_clear_executions(cli_logger, *, table, limit, confirm, **_):
+    """Clear execution-related data only (missions, records, executions, decisions)."""
+    execution_tables = [
         "mission_decisions",
         "task_attempts",
         "task_executions",
@@ -252,8 +252,8 @@ async def _action_clear_missions(cli_logger, *, table, limit, confirm, **_):
     ]
 
     if not confirm:
-        click.echo(click.style("This will DELETE all mission data.", fg="red", bold=True))
-        click.echo(f"Tables: {', '.join(mission_tables)}")
+        click.echo(click.style("This will DELETE all execution data.", fg="red", bold=True))
+        click.echo(f"Tables: {', '.join(execution_tables)}")
         click.echo()
         if not click.confirm("Are you sure?"):
             click.echo("Aborted.")
@@ -264,11 +264,11 @@ async def _action_clear_missions(cli_logger, *, table, limit, confirm, **_):
     from modules.backend.core.database import get_async_session
 
     async with get_async_session() as db:
-        for tbl in mission_tables:
+        for tbl in execution_tables:
             await db.execute(text(f"TRUNCATE TABLE {tbl} CASCADE"))  # noqa: S608
         await db.commit()
 
-    click.echo(click.style("Mission data cleared.", fg="green"))
+    click.echo(click.style("Execution data cleared.", fg="green"))
 
 
 async def _action_clear_sessions(cli_logger, *, table, limit, confirm, **_):

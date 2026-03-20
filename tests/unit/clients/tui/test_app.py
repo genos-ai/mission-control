@@ -25,7 +25,7 @@ def _mock_bridge():
     bridge = MagicMock()
     bridge.list_projects = AsyncMock(return_value=[])
     bridge.create_project = AsyncMock(return_value={"id": "p-new", "name": "Test"})
-    bridge.run_mission = AsyncMock()
+    bridge.run_execution = AsyncMock()
     bridge.load_roster = MagicMock()
     bridge.load_roster.return_value = MagicMock(agents=[])
     return bridge
@@ -118,7 +118,7 @@ class TestMissionGuards:
             await pilot.pause()
             # No project selected, mission should NOT start
             assert app.state.mission_status == "idle"
-            app.bridge.run_mission.assert_not_called()
+            app.bridge.run_execution.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_mission_blocks_duplicate(self):
@@ -131,7 +131,7 @@ class TestMissionGuards:
             app.state.mission_status = "running"
             app.post_message(MissionStartRequested(brief="Second mission"))
             await pilot.pause()
-            app.bridge.run_mission.assert_not_called()
+            app.bridge.run_execution.assert_not_called()
 
 
 # ── Event routing ─────────────────────────────────────────────────────

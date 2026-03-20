@@ -81,7 +81,7 @@ class CliGateReviewer:
 
         return self._prompt(ctx, actions="c/a/i", help_text={
             "c": "continue \u2014 execute all tasks",
-            "a": "abort \u2014 cancel mission",
+            "a": "abort \u2014 cancel execution",
             "i": "inspect \u2014 show task details (JSON)",
         })
 
@@ -113,7 +113,7 @@ class CliGateReviewer:
         return self._prompt(ctx, actions="c/s/a/i", help_text={
             "c": "continue \u2014 execute this layer",
             "s": "skip \u2014 skip all tasks in this layer",
-            "a": "abort \u2014 cancel mission",
+            "a": "abort \u2014 cancel execution",
             "i": "inspect \u2014 show full task details",
         })
 
@@ -160,7 +160,7 @@ class CliGateReviewer:
             "c": "continue \u2014 accept and proceed",
             "r": "retry \u2014 re-run this task",
             "s": "skip \u2014 discard result, skip task",
-            "a": "abort \u2014 cancel mission",
+            "a": "abort \u2014 cancel execution",
             "o": "output \u2014 show full output (JSON)",
             "v": "verification \u2014 show verification details",
         })
@@ -194,7 +194,7 @@ class CliGateReviewer:
             "r": "retry \u2014 retry with feedback (default)",
             "m": "modify \u2014 accept output despite failure",
             "s": "skip \u2014 skip this task",
-            "a": "abort \u2014 cancel mission",
+            "a": "abort \u2014 cancel execution",
             "v": "verification \u2014 show full details",
         })
 

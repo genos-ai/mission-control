@@ -285,8 +285,8 @@ class SessionsSchema(_StrictBase):
 # =============================================================================
 
 
-class MissionsSchema(_StrictBase):
-    """Mission persistence and audit trail configuration."""
+class ExecutionsSchema(_StrictBase):
+    """Execution persistence and audit trail configuration."""
 
     max_thinking_trace_length: int = 50000
     max_task_output_size_bytes: int = 1_048_576  # 1MB

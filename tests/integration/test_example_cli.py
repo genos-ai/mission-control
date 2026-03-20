@@ -122,7 +122,7 @@ class TestExampleCLI:
     def test_subcommand_help(self):
         """Should show focused help for subcommand groups."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "mission", "--help"],
+            [sys.executable, "cli.py", "execution", "--help"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,

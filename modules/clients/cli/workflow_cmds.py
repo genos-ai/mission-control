@@ -185,10 +185,10 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
     from modules.backend.core.database import get_async_session
     from modules.clients.cli.report import (
         get_console, build_table, styled_status, status_panel,
-        info_panel, render_mission_outcomes,
+        info_panel, render_execution_outcomes,
         workflow_run_to_dict, generate_narrative, colorize_narrative,
     )
-    from modules.backend.services.mission import MissionService
+    from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
 
     from rich.live import Live
@@ -246,7 +246,7 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
     async with get_async_session() as db:
         run_service = WorkflowRunService(
             session=db,
-            mission_service_factory=MissionService.factory,
+            mission_service_factory=ExecutionService.factory,
         )
 
         with live:
@@ -258,8 +258,8 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
                 gate=gate,
             )
 
-        mission_service = MissionService(session=db)
-        missions, _ = await mission_service.list_missions(
+        execution_service = ExecutionService(session=db)
+        executions, _ = await execution_service.list_executions(
             playbook_run_id=run.id,
         )
         await db.commit()
@@ -276,12 +276,12 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
     console.print()
     console.print(status_panel(content=header, status=run.status))
 
-    narrative = await generate_narrative(workflow_run_to_dict(run, missions))
+    narrative = await generate_narrative(workflow_run_to_dict(run, executions))
     narrative = colorize_narrative(narrative)
     console.print(info_panel(content=narrative.strip(), title="Summary"))
 
     console.print()
-    render_mission_outcomes(console, missions)
+    render_execution_outcomes(console, executions)
 
 
 async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
@@ -335,9 +335,9 @@ async def _action_run_detail(cli_logger, *, workflow_name, run_id, triggered_by,
         click.echo(click.style("Error: --run-id is required for run-detail.", fg="red"), err=True)
         sys.exit(1)
 
-    run, missions = await _load_run_with_missions(run_id)
+    run, executions = await _load_run_with_executions(run_id)
     from modules.clients.cli.report import render_workflow_run
-    await render_workflow_run(run, missions, "human")
+    await render_workflow_run(run, executions, "human")
 
 
 async def _action_report(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
@@ -346,9 +346,9 @@ async def _action_report(cli_logger, *, workflow_name, run_id, triggered_by, out
         click.echo(click.style("Error: --run-id is required for report.", fg="red"), err=True)
         sys.exit(1)
 
-    run, missions = await _load_run_with_missions(run_id)
+    run, executions = await _load_run_with_executions(run_id)
     from modules.clients.cli.report import render_workflow_run
-    await render_workflow_run(run, missions, output_format)
+    await render_workflow_run(run, executions, output_format)
 
 
 # =============================================================================
@@ -385,22 +385,22 @@ async def _preflight_gate(workflow_name: str) -> None:
     click.echo()
 
 
-async def _load_run_with_missions(run_id: str):
-    """Load a workflow run and its missions from the database."""
+async def _load_run_with_executions(run_id: str):
+    """Load a workflow run and its executions from the database."""
     from modules.backend.core.database import get_async_session
-    from modules.backend.services.mission import MissionService
+    from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
 
     async with get_async_session() as db:
-        mission_service = MissionService(session=db)
+        execution_service = ExecutionService(session=db)
         run_service = WorkflowRunService(session=db)
         run = await run_service.get_run(run_id)
         if not run:
             click.echo(click.style(f"Workflow run '{run_id}' not found.", fg="red"), err=True)
             sys.exit(1)
 
-        missions, _ = await mission_service.list_missions(
+        executions, _ = await execution_service.list_executions(
             playbook_run_id=run.id,
         )
 
-    return run, missions
+    return run, executions

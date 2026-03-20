@@ -1,7 +1,7 @@
 """
-Mission Record API schemas.
+Execution Record API schemas.
 
-Request/response models for querying mission execution history,
+Request/response models for querying execution history,
 task results, decisions, and cost breakdowns.
 """
 
@@ -50,7 +50,7 @@ class TaskExecutionDetailResponse(TaskExecutionResponse):
     attempts: list[TaskAttemptResponse] = Field(default_factory=list)
 
 
-class MissionDecisionResponse(BaseModel):
+class ExecutionDecisionResponse(BaseModel):
     """API response for a Mission Control decision."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -62,8 +62,8 @@ class MissionDecisionResponse(BaseModel):
     created_at: str
 
 
-class MissionRecordResponse(BaseModel):
-    """API response for a mission record (list view)."""
+class ExecutionRecordResponse(BaseModel):
+    """API response for an execution record (list view)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,8 +79,8 @@ class MissionRecordResponse(BaseModel):
     updated_at: str
 
 
-class MissionRecordDetailResponse(MissionRecordResponse):
-    """Detailed mission record with full execution data."""
+class ExecutionRecordDetailResponse(ExecutionRecordResponse):
+    """Detailed execution record with full execution data."""
 
     objective_statement: str | None = None
     objective_category: str | None = None
@@ -88,13 +88,13 @@ class MissionRecordDetailResponse(MissionRecordResponse):
     mission_outcome_json: dict | None = None
     planning_thinking_trace: str | None = None
     task_executions: list[TaskExecutionResponse] = Field(default_factory=list)
-    decisions: list[MissionDecisionResponse] = Field(default_factory=list)
+    decisions: list[ExecutionDecisionResponse] = Field(default_factory=list)
 
 
-class MissionCostBreakdown(BaseModel):
-    """Cost breakdown for a mission."""
+class ExecutionCostBreakdown(BaseModel):
+    """Cost breakdown for an execution."""
 
-    mission_id: str
+    execution_id: str
     total_cost_usd: float
     task_costs: list[dict] = Field(
         default_factory=list,
@@ -109,10 +109,10 @@ class MissionCostBreakdown(BaseModel):
     total_output_tokens: int = 0
 
 
-class MissionListResponse(BaseModel):
-    """Paginated mission list."""
+class ExecutionListResponse(BaseModel):
+    """Paginated execution list."""
 
-    missions: list[MissionRecordResponse]
+    executions: list[ExecutionRecordResponse]
     total: int
     page_size: int
     offset: int

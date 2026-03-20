@@ -5,8 +5,8 @@ Validates workflow structure, step definitions, trigger configuration,
 budget limits, output mapping, and context declarations. Used by
 WorkflowService at load time to reject invalid workflows early (P5: Fail Fast).
 
-Each step becomes a Mission at runtime. The output_mapping on each step
-defines the anti-corruption layer for inter-mission data flow.
+Each step becomes an Execution at runtime. The output_mapping on each step
+defines the anti-corruption layer for inter-execution data flow.
 """
 
 from typing import Any
@@ -15,13 +15,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class WorkflowOutputFieldMapping(BaseModel):
-    """Maps a field from a MissionOutcome task result to a named context key."""
+    """Maps a field from an ExecutionOutcome task result to a named context key."""
 
     model_config = ConfigDict(extra="forbid")
 
     source_task: str = Field(
         ...,
-        description="Task ID within the MissionOutcome whose output to extract from",
+        description="Task ID within the ExecutionOutcome whose output to extract from",
     )
     source_field: str = Field(
         ...,
@@ -37,10 +37,10 @@ class WorkflowOutputFieldMapping(BaseModel):
 class WorkflowStepOutputMapping(BaseModel):
     """Output mapping for a workflow step.
 
-    Defines which fields from the step's MissionOutcome are extracted
+    Defines which fields from the step's ExecutionOutcome are extracted
     and made available to downstream steps. This is the anti-corruption
-    layer — downstream missions only see curated context, never raw
-    MissionOutcome internals.
+    layer — downstream executions only see curated context, never raw
+    ExecutionOutcome internals.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -48,18 +48,18 @@ class WorkflowStepOutputMapping(BaseModel):
     summary_key: str | None = Field(
         None,
         pattern=r"^[a-z][a-z0-9_]*$",
-        description="Store MissionOutcome.result_summary under this context key",
+        description="Store ExecutionOutcome.result_summary under this context key",
     )
     field_mappings: list[WorkflowOutputFieldMapping] = Field(
         default_factory=list,
-        description="Extract specific fields from MissionOutcome task results",
+        description="Extract specific fields from ExecutionOutcome task results",
     )
 
 
 class WorkflowStepSchema(BaseModel):
     """A single step in a workflow.
 
-    Each step becomes a Mission with its own Mission Control instance.
+    Each step becomes an Execution with its own Mission Control instance.
     """
 
     model_config = ConfigDict(extra="forbid")

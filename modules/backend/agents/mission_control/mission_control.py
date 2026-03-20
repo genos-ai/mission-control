@@ -40,7 +40,7 @@ from modules.backend.agents.mission_control.history import (
 from modules.backend.agents.mission_control.middleware import check_guardrails
 from modules.backend.agents.mission_control.models import CollectResult, EventBusProtocol, NoOpEventBus
 from modules.backend.core.protocols import SessionServiceProtocol
-from modules.backend.agents.mission_control.outcome import MissionOutcome, MissionStatus
+from modules.backend.agents.mission_control.outcome import ExecutionOutcome, ExecutionStatus
 from modules.backend.agents.mission_control.plan_validator import validate_plan
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.agents.mission_control.roster import load_roster
@@ -365,14 +365,14 @@ async def handle_mission(
     project_id: str | None = None,
     db_session: Any | None = None,
     gate: GateReviewer | None = None,
-) -> MissionOutcome:
+) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
     1. Load roster
     2. Call Planning Agent for task decomposition
     3. Validate TaskPlan against all 11 rules
     4. Execute dispatch loop
-    5. Return MissionOutcome
+    5. Return ExecutionOutcome
 
     Simple requests continue through handle() from Plan 12.
     Complex requests (explicit mission_brief or matched workflow)
@@ -479,9 +479,9 @@ async def handle_mission(
             )
 
     if plan is None:
-        return MissionOutcome(
+        return ExecutionOutcome(
             mission_id=mission_id,
-            status=MissionStatus.FAILED,
+            status=ExecutionStatus.FAILED,
             planning_trace_reference=thinking_trace,
         )
 

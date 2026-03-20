@@ -192,7 +192,7 @@ class MissionControlApp(App):
             self.state.mission_status = "running"
             self._update_mission_summary()
 
-            outcome = await self.bridge.run_mission(
+            outcome = await self.bridge.run_execution(
                 brief=brief,
                 project_id=self.state.current_project_id,
                 session_id=self.state.current_session_id,
@@ -646,13 +646,13 @@ class MissionControlApp(App):
     async def _show_history(self) -> None:
         self._set_loading(True)
         try:
-            missions = await self.bridge.list_missions(limit=50)
+            executions = await self.bridge.list_executions(limit=50)
         except Exception:
             logger.warning("Could not load mission history", exc_info=True)
-            missions = []
+            executions = []
         finally:
             self._set_loading(False)
-        self.push_screen(MissionHistoryScreen(missions))
+        self.push_screen(MissionHistoryScreen(executions))
 
     def _set_loading(self, loading: bool) -> None:
         """Toggle .loading class on center panel for visual feedback."""

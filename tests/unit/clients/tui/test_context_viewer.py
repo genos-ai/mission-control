@@ -55,7 +55,7 @@ class TestContextViewer:
             assert viewer.query_one("#context-tasks", RichLog)
 
     @pytest.mark.asyncio
-    async def test_load_mission_detail(self):
+    async def test_load_execution_detail(self):
         from textual.app import App, ComposeResult
 
         class TestApp(App):
@@ -64,7 +64,7 @@ class TestContextViewer:
 
         async with TestApp().run_test() as pilot:
             viewer = pilot.app.query_one("#cv", ContextViewer)
-            viewer.load_mission_detail(_make_detail())
+            viewer.load_execution_detail(_make_detail())
             await pilot.pause()
             # Should not crash and data should be loaded
 
@@ -92,7 +92,7 @@ class TestContextViewer:
 
         async with TestApp().run_test() as pilot:
             viewer = pilot.app.query_one("#cv", ContextViewer)
-            viewer.load_mission_detail(_make_detail())
+            viewer.load_execution_detail(_make_detail())
             viewer.clear()
             await pilot.pause()
             # Should not crash

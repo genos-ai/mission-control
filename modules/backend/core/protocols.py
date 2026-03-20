@@ -5,7 +5,7 @@ Both layers import from core — neither imports from the other.
 
 SessionServiceProtocol: agents layer depends on this instead of
     the concrete SessionService.
-MissionDispatchProtocol: services layer depends on this instead of
+ExecutionDispatchProtocol: services layer depends on this instead of
     the concrete MissionControlDispatchAdapter.
 """
 
@@ -43,8 +43,8 @@ class SessionServiceProtocol(Protocol):
     async def add_message(self, session_id: str, data: Any) -> None: ...
 
 
-class MissionDispatchProtocol(Protocol):
-    """Interface for mission dispatch used by MissionService.
+class ExecutionDispatchProtocol(Protocol):
+    """Interface for execution dispatch used by ExecutionService.
 
     The services layer codes against this protocol. The concrete
     MissionControlDispatchAdapter in the agents layer satisfies it

@@ -98,14 +98,14 @@ async def persist_mission_outcome(
     project_id: str | None = None,
 ) -> bool:
     """Persist mission results to PostgreSQL. Best-effort."""
-    from modules.backend.agents.mission_control.outcome import MissionOutcome
+    from modules.backend.agents.mission_control.outcome import ExecutionOutcome
     from modules.backend.agents.mission_control.persistence_bridge import (
         persist_mission_results,
     )
     from modules.backend.core.database import get_async_session
 
     try:
-        outcome = MissionOutcome.model_validate(outcome_json)
+        outcome = ExecutionOutcome.model_validate(outcome_json)
         async with get_async_session() as db:
             await persist_mission_results(
                 outcome,

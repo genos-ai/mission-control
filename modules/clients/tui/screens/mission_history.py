@@ -170,4 +170,4 @@ class MissionHistoryScreen(ModalScreen[None]):
             viewer = self.query_one("#history-context-viewer", ContextViewer)
         except NoMatches:
             return
-        viewer.load_mission_detail(mission)
+        viewer.load_execution_detail(mission)

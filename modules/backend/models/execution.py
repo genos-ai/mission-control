@@ -1,12 +1,12 @@
 """
-Mission Model.
+Execution Model.
 
-A mission is a discrete objective with bounded scope. When created by a
-Workflow, each mission has its own roster, complexity tier, and upstream
-context. The Mission instantiates Mission Control with these parameters.
+An execution is a discrete objective with bounded scope. When created by a
+Workflow, each execution has its own roster, complexity tier, and upstream
+context. The Execution instantiates Mission Control with these parameters.
 
-Missions created by Workflows have a playbook_run_id linking them to
-their parent WorkflowRun. Ad-hoc missions (from direct API calls) have
+Executions created by Workflows have a playbook_run_id linking them to
+their parent WorkflowRun. Ad-hoc executions (from direct API calls) have
 no playbook_run_id.
 """
 
@@ -19,8 +19,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
-class MissionState(str, enum.Enum):
-    """Mission lifecycle status.
+class ExecutionState(str, enum.Enum):
+    """Execution lifecycle status.
 
     Transitions:
         pending -> running (execution started)
@@ -37,16 +37,16 @@ class MissionState(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
-VALID_MISSION_TRANSITIONS: dict[MissionState, set[MissionState]] = {
-    MissionState.PENDING: {MissionState.RUNNING, MissionState.CANCELLED},
-    MissionState.RUNNING: {
-        MissionState.COMPLETED,
-        MissionState.FAILED,
-        MissionState.CANCELLED,
+VALID_EXECUTION_TRANSITIONS: dict[ExecutionState, set[ExecutionState]] = {
+    ExecutionState.PENDING: {ExecutionState.RUNNING, ExecutionState.CANCELLED},
+    ExecutionState.RUNNING: {
+        ExecutionState.COMPLETED,
+        ExecutionState.FAILED,
+        ExecutionState.CANCELLED,
     },
-    MissionState.COMPLETED: set(),
-    MissionState.FAILED: set(),
-    MissionState.CANCELLED: set(),
+    ExecutionState.COMPLETED: set(),
+    ExecutionState.FAILED: set(),
+    ExecutionState.CANCELLED: set(),
 }
 
 
@@ -121,8 +121,8 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         )
 
 
-class Mission(UUIDMixin, TimestampMixin, Base):
-    """A runtime mission — a discrete objective with bounded scope."""
+class Execution(UUIDMixin, TimestampMixin, Base):
+    """A runtime execution — a discrete objective with bounded scope."""
 
     __tablename__ = "missions"
 
@@ -148,8 +148,8 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         String(20), default="simple", nullable=False,
     )
     status: Mapped[str] = mapped_column(
-        Enum(MissionState, native_enum=False),
-        default=MissionState.PENDING,
+        Enum(ExecutionState, native_enum=False),
+        default=ExecutionState.PENDING,
         nullable=False,
         index=True,
     )
@@ -192,6 +192,6 @@ class Mission(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<Mission(id={self.id}, objective={self.objective[:50]!r}, "
+            f"<Execution(id={self.id}, objective={self.objective[:50]!r}, "
             f"status={self.status}, roster={self.roster_ref})>"
         )

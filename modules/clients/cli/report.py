@@ -99,20 +99,24 @@ def render_task_outputs(
             console.print(renderable)
 
 
-def render_mission_outcomes(console: Console, missions: list[Any]) -> None:
-    """Render per-mission task outputs."""
-    if not missions:
+def render_execution_outcomes(console: Console, executions: list[Any]) -> None:
+    """Render per-execution task outputs."""
+    if not executions:
         return
 
-    for m in missions:
-        prefix = getattr(m, "workflow_step_id", None) or getattr(m, "playbook_step_id", None) or str(m.id)[:12]
-        outcome = m.mission_outcome if hasattr(m, "mission_outcome") else None
+    for e in executions:
+        prefix = getattr(e, "workflow_step_id", None) or getattr(e, "playbook_step_id", None) or str(e.id)[:12]
+        outcome = e.mission_outcome if hasattr(e, "mission_outcome") else None
         if not outcome or not isinstance(outcome, dict):
             continue
         tasks = outcome.get("task_results") or outcome.get("task_outcomes") or []
         if not tasks:
             continue
         render_task_outputs(console, tasks, title_prefix=prefix)
+
+
+# Keep backwards-compatible alias
+render_mission_outcomes = render_execution_outcomes
 
 
 def render_human(
@@ -331,30 +335,34 @@ def _build_scalars_table(scalars: list[tuple[str, str]]) -> Table:
 # =============================================================================
 
 
-async def render_mission(mission: Any, output_format: str = "human") -> None:
-    """Render a single mission result."""
+async def render_execution(execution: Any, output_format: str = "human") -> None:
+    """Render a single execution result."""
     if output_format == "jsonl":
-        _emit_json(_mission_to_dict(mission))
+        _emit_json(_execution_to_dict(execution))
     elif output_format == "human":
-        _render_mission_detail(mission)
+        _render_execution_detail(execution)
     else:
         await _render_summary(
-            title="Mission Summary",
-            status_line=f"  Status: {_styled_status(mission.status)}    Cost: ${mission.total_cost_usd:.4f}",
-            data=_mission_to_dict(mission),
+            title="Execution Summary",
+            status_line=f"  Status: {_styled_status(execution.status)}    Cost: ${execution.total_cost_usd:.4f}",
+            data=_execution_to_dict(execution),
         )
+
+
+# Keep backwards-compatible alias
+render_mission = render_execution
 
 
 async def render_workflow_run(
     run: Any,
-    missions: list[Any],
+    executions: list[Any],
     output_format: str = "human",
 ) -> None:
     """Render a workflow run result."""
     if output_format == "jsonl":
-        _emit_json(workflow_run_to_dict(run, missions))
+        _emit_json(workflow_run_to_dict(run, executions))
     elif output_format == "human":
-        _render_workflow_detail(run, missions)
+        _render_workflow_detail(run, executions)
     else:
         await _render_summary(
             title="Workflow Run Summary",
@@ -363,7 +371,7 @@ async def render_workflow_run(
                 f"Status: {_styled_status(run.status)}    "
                 f"Cost: ${run.total_cost_usd:.4f}"
             ),
-            data=workflow_run_to_dict(run, missions),
+            data=workflow_run_to_dict(run, executions),
         )
 
 
@@ -406,7 +414,7 @@ def _fallback_narrative(data: dict) -> str:
             completed = sum(1 for s in steps if s.get("status") == "completed")
             lines.append(f"  {completed}/{len(steps)} steps completed.")
     else:
-        lines.append(f"  Mission {data.get('status', 'unknown')}.")
+        lines.append(f"  Execution {data.get('status', 'unknown')}.")
 
     lines.append(f"  Total cost: ${data.get('total_cost_usd', 0):.4f}.")
 
@@ -464,31 +472,31 @@ def _emit_json(data: dict) -> None:
 # =============================================================================
 
 
-def _render_mission_detail(mission: Any) -> None:
-    """Deterministic detailed view of a mission."""
+def _render_execution_detail(execution: Any) -> None:
+    """Deterministic detailed view of an execution."""
     console = get_console()
 
     info_lines = [
-        f"[bold]ID:[/bold]        {mission.id}",
-        f"[bold]Status:[/bold]    {styled_status(mission.status)}",
-        f"[bold]Objective:[/bold] {mission.objective[:120]}",
-        f"[bold]Cost:[/bold]      ${mission.total_cost_usd:.4f}"
-        + (f"  (ceiling: ${mission.cost_ceiling_usd:.2f})" if mission.cost_ceiling_usd else ""),
-        f"[bold]Started:[/bold]   {mission.started_at or '—'}",
-        f"[bold]Completed:[/bold] {mission.completed_at or '—'}",
+        f"[bold]ID:[/bold]        {execution.id}",
+        f"[bold]Status:[/bold]    {styled_status(execution.status)}",
+        f"[bold]Objective:[/bold] {execution.objective[:120]}",
+        f"[bold]Cost:[/bold]      ${execution.total_cost_usd:.4f}"
+        + (f"  (ceiling: ${execution.cost_ceiling_usd:.2f})" if execution.cost_ceiling_usd else ""),
+        f"[bold]Started:[/bold]   {execution.started_at or '—'}",
+        f"[bold]Completed:[/bold] {execution.completed_at or '—'}",
     ]
-    console.print(primary_panel(content="\n".join(info_lines), title="Mission Report"))
+    console.print(primary_panel(content="\n".join(info_lines), title="Execution Report"))
 
-    outcome = mission.mission_outcome
+    outcome = execution.mission_outcome
     if outcome and isinstance(outcome, dict):
         tasks = outcome.get("task_results") or outcome.get("task_outcomes") or []
         if tasks:
             render_task_outputs(console, tasks)
 
-    _render_errors(mission.error_data)
+    _render_errors(execution.error_data)
 
 
-def _render_workflow_detail(run: Any, missions: list[Any]) -> None:
+def _render_workflow_detail(run: Any, executions: list[Any]) -> None:
     """Deterministic detailed view of a workflow run."""
     console = get_console()
 
@@ -504,7 +512,7 @@ def _render_workflow_detail(run: Any, missions: list[Any]) -> None:
     ]
     console.print(primary_panel(content="\n".join(info_lines), title="Workflow Run Report"))
 
-    render_mission_outcomes(console, missions)
+    render_execution_outcomes(console, executions)
     _render_errors(run.error_data)
 
 
@@ -533,33 +541,33 @@ def _styled_status(status: Any, pad: int = 0) -> str:
 # =============================================================================
 
 
-def _mission_to_dict(mission: Any) -> dict:
-    """Convert a Mission ORM object to a report-friendly dict."""
+def _execution_to_dict(execution: Any) -> dict:
+    """Convert an Execution ORM object to a report-friendly dict."""
     data: dict[str, Any] = {
-        "type": "mission",
-        "id": mission.id,
-        "objective": mission.objective,
-        "status": _status_str(mission.status),
-        "total_cost_usd": mission.total_cost_usd,
-        "cost_ceiling_usd": mission.cost_ceiling_usd,
-        "started_at": mission.started_at,
-        "completed_at": mission.completed_at,
-        "roster_ref": getattr(mission, "roster_ref", None),
+        "type": "execution",
+        "id": execution.id,
+        "objective": execution.objective,
+        "status": _status_str(execution.status),
+        "total_cost_usd": execution.total_cost_usd,
+        "cost_ceiling_usd": execution.cost_ceiling_usd,
+        "started_at": execution.started_at,
+        "completed_at": execution.completed_at,
+        "roster_ref": getattr(execution, "roster_ref", None),
     }
 
-    if mission.mission_outcome:
-        outcome = mission.mission_outcome
+    if execution.mission_outcome:
+        outcome = execution.mission_outcome
         data["task_results"] = _extract_task_summaries(outcome)
         data["total_tokens"] = outcome.get("total_tokens", {})
 
-    if mission.error_data:
-        data["errors"] = mission.error_data
+    if execution.error_data:
+        data["errors"] = execution.error_data
 
     return data
 
 
-def workflow_run_to_dict(run: Any, missions: list[Any]) -> dict:
-    """Convert a WorkflowRun + its missions to a report-friendly dict."""
+def workflow_run_to_dict(run: Any, executions: list[Any]) -> dict:
+    """Convert a WorkflowRun + its executions to a report-friendly dict."""
     data: dict[str, Any] = {
         "type": "workflow_run",
         "id": run.id,
@@ -572,8 +580,8 @@ def workflow_run_to_dict(run: Any, missions: list[Any]) -> dict:
         "completed_at": run.completed_at,
         "triggered_by": run.triggered_by,
         "steps": [
-            {**_mission_to_dict(m), "step_id": getattr(m, "workflow_step_id", None) or m.playbook_step_id}
-            for m in missions
+            {**_execution_to_dict(e), "step_id": getattr(e, "workflow_step_id", None) or e.playbook_step_id}
+            for e in executions
         ],
     }
 

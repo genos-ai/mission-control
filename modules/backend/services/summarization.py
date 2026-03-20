@@ -18,9 +18,9 @@ from sqlalchemy.orm import selectinload
 
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-from modules.backend.models.mission_record import (
-    MissionRecord,
-    MissionRecordStatus,
+from modules.backend.models.execution_record import (
+    ExecutionRecord,
+    ExecutionRecordStatus,
     TaskExecution,
 )
 from modules.backend.models.project_history import DecisionStatus
@@ -203,20 +203,20 @@ class SummarizationService(BaseService):
         ).isoformat()
 
         result = await self.session.execute(
-            select(MissionRecord)
-            .options(selectinload(MissionRecord.task_executions))
+            select(ExecutionRecord)
+            .options(selectinload(ExecutionRecord.task_executions))
             .where(
                 and_(
-                    MissionRecord.project_id == project_id,
-                    MissionRecord.summarized == False,  # noqa: E712
-                    MissionRecord.status.in_([
-                        MissionRecordStatus.COMPLETED,
-                        MissionRecordStatus.FAILED,
+                    ExecutionRecord.project_id == project_id,
+                    ExecutionRecord.summarized == False,  # noqa: E712
+                    ExecutionRecord.status.in_([
+                        ExecutionRecordStatus.COMPLETED,
+                        ExecutionRecordStatus.FAILED,
                     ]),
-                    MissionRecord.completed_at < cutoff,
+                    ExecutionRecord.completed_at < cutoff,
                 )
             )
-            .order_by(desc(MissionRecord.completed_at))
+            .order_by(desc(ExecutionRecord.completed_at))
             .limit(batch_size * 5)
         )
         records = list(result.scalars().all())
@@ -252,10 +252,10 @@ class SummarizationService(BaseService):
 
             # Build deterministic summary (no LLM needed for structured data)
             completed_count = sum(
-                1 for s in statuses if s == MissionRecordStatus.COMPLETED
+                1 for s in statuses if s == ExecutionRecordStatus.COMPLETED
             )
             failed_count = sum(
-                1 for s in statuses if s == MissionRecordStatus.FAILED
+                1 for s in statuses if s == ExecutionRecordStatus.FAILED
             )
             total_cost = sum(r.total_cost_usd for r in batch)
 
@@ -284,10 +284,9 @@ class SummarizationService(BaseService):
                 period_end=period_end,
             )
 
-            # Mark missions as summarized
             await self.session.execute(
-                update(MissionRecord)
-                .where(MissionRecord.id.in_(mission_ids))
+                update(ExecutionRecord)
+                .where(ExecutionRecord.id.in_(mission_ids))
                 .values(summarized=True)
             )
 

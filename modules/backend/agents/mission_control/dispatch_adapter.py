@@ -1,6 +1,6 @@
-"""Adapter between MissionService and Mission Control dispatch.
+"""Adapter between ExecutionService and Mission Control dispatch.
 
-MissionService.execute_mission() expects a dispatch object with an
+ExecutionService.run_execution() expects a dispatch object with an
 execute() method. This adapter wraps handle_mission() to provide
 that interface for direct (non-Temporal) execution.
 """
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 
 class MissionControlDispatchAdapter:
-    """Wraps handle_mission() for use by MissionService."""
+    """Wraps handle_mission() for use by ExecutionService."""
 
     def __init__(
         self,

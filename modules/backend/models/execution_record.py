@@ -1,5 +1,5 @@
 """
-Mission Record Models.
+Execution Record Models.
 
 Persistence layer for Mission Control execution artifacts.
 Stores TaskPlans, execution results, verification outcomes,
@@ -19,8 +19,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
-class MissionRecordStatus(str, enum.Enum):
-    """Terminal status of a completed mission record."""
+class ExecutionRecordStatus(str, enum.Enum):
+    """Terminal status of a completed execution record."""
 
     COMPLETED = "completed"
     FAILED = "failed"
@@ -64,11 +64,11 @@ class FailureTier(str, enum.Enum):
     TIMEOUT = "timeout"
 
 
-class MissionRecord(UUIDMixin, TimestampMixin, Base):
+class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     """A persisted record of a Mission Control execution.
 
     Stores the complete execution history: what was planned (TaskPlan JSON),
-    what happened (MissionOutcome JSON), why the plan was shaped that way
+    what happened (ExecutionOutcome JSON), why the plan was shaped that way
     (thinking trace), and how much it cost.
     """
 
@@ -78,7 +78,7 @@ class MissionRecord(UUIDMixin, TimestampMixin, Base):
         String(36),
         nullable=False,
         index=True,
-        comment="Session that triggered this mission",
+        comment="Session that triggered this execution",
     )
 
     project_id: Mapped[str | None] = mapped_column(
@@ -98,7 +98,7 @@ class MissionRecord(UUIDMixin, TimestampMixin, Base):
     objective_statement: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="Business outcome from Workflow Objective (null for ad-hoc missions)",
+        comment="Business outcome from Workflow Objective (null for ad-hoc executions)",
     )
     objective_category: Mapped[str | None] = mapped_column(
         String(100),
@@ -108,7 +108,7 @@ class MissionRecord(UUIDMixin, TimestampMixin, Base):
     )
 
     status: Mapped[str] = mapped_column(
-        Enum(MissionRecordStatus, native_enum=False),
+        Enum(ExecutionRecordStatus, native_enum=False),
         nullable=False,
         index=True,
     )
@@ -122,7 +122,7 @@ class MissionRecord(UUIDMixin, TimestampMixin, Base):
     mission_outcome_json: Mapped[dict | None] = mapped_column(
         JSON,
         nullable=True,
-        comment="MissionOutcome dataclass serialized to JSON. Full execution result.",
+        comment="ExecutionOutcome dataclass serialized to JSON. Full execution result.",
     )
 
     planning_thinking_trace: Mapped[str | None] = mapped_column(
@@ -159,7 +159,7 @@ class MissionRecord(UUIDMixin, TimestampMixin, Base):
         ForeignKey("mission_records.id"),
         nullable=True,
         index=True,
-        comment="If this mission was a re-plan, link to the original",
+        comment="If this execution was a re-plan, link to the original",
     )
 
     task_executions: Mapped[list["TaskExecution"]] = relationship(
@@ -167,21 +167,21 @@ class MissionRecord(UUIDMixin, TimestampMixin, Base):
         back_populates="mission_record",
         cascade="all, delete-orphan",
     )
-    decisions: Mapped[list["MissionDecision"]] = relationship(
-        "MissionDecision",
+    decisions: Mapped[list["ExecutionDecision"]] = relationship(
+        "ExecutionDecision",
         back_populates="mission_record",
         cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
         return (
-            f"<MissionRecord(id={self.id}, roster={self.roster_name!r}, "
+            f"<ExecutionRecord(id={self.id}, roster={self.roster_name!r}, "
             f"status={self.status}, cost=${self.total_cost_usd:.4f})>"
         )
 
 
 class TaskExecution(UUIDMixin, TimestampMixin, Base):
-    """A single task execution within a mission.
+    """A single task execution within an execution.
 
     Records the agent assignment, output, verification outcome,
     token usage, cost, and duration. One row per task in the TaskPlan.
@@ -264,8 +264,8 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
         comment="Domain tags for structured history queries",
     )
 
-    mission_record: Mapped["MissionRecord"] = relationship(
-        "MissionRecord",
+    mission_record: Mapped["ExecutionRecord"] = relationship(
+        "ExecutionRecord",
         back_populates="task_executions",
     )
     attempts: Mapped[list["TaskAttempt"]] = relationship(
@@ -355,7 +355,7 @@ class TaskAttempt(UUIDMixin, TimestampMixin, Base):
         )
 
 
-class MissionDecision(UUIDMixin, TimestampMixin, Base):
+class ExecutionDecision(UUIDMixin, TimestampMixin, Base):
     """A decision made by Mission Control during execution.
 
     Every decision -- retry, fail, pass, re-plan, skip, escalate --
@@ -391,13 +391,13 @@ class MissionDecision(UUIDMixin, TimestampMixin, Base):
         comment="Why Mission Control made this decision",
     )
 
-    mission_record: Mapped["MissionRecord"] = relationship(
-        "MissionRecord",
+    mission_record: Mapped["ExecutionRecord"] = relationship(
+        "ExecutionRecord",
         back_populates="decisions",
     )
 
     def __repr__(self) -> str:
         return (
-            f"<MissionDecision(id={self.id}, type={self.decision_type!r}, "
+            f"<ExecutionDecision(id={self.id}, type={self.decision_type!r}, "
             f"task={self.task_id!r})>"
         )

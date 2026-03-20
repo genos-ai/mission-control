@@ -1,7 +1,7 @@
 """Bridge between Mission Control dispatch and the persistence layer.
 
-Converts MissionOutcome (in-memory) to persisted MissionRecord (database).
-Best-effort — persistence failure does not crash the mission.
+Converts ExecutionOutcome (in-memory) to persisted ExecutionRecord (database).
+Best-effort — persistence failure does not crash the execution.
 """
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from modules.backend.agents.mission_control.outcome import (
-    MissionOutcome,
-    MissionStatus,
+    ExecutionOutcome,
+    ExecutionStatus,
     TaskStatus,
 )
 from modules.backend.core.logging import get_logger
-from modules.backend.services.mission_persistence import MissionPersistenceService
+from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 
 async def persist_mission_results(
-    outcome: MissionOutcome,
+    outcome: ExecutionOutcome,
     *,
     session_id: str,
     roster_name: str | None = None,
@@ -32,18 +32,18 @@ async def persist_mission_results(
     project_id: str | None = None,
     db_session: AsyncSession,
 ) -> None:
-    """Persist mission execution results. Best-effort — does not raise."""
+    """Persist execution results. Best-effort — does not raise."""
     try:
-        service = MissionPersistenceService(db_session)
+        service = ExecutionPersistenceService(db_session)
 
         status_map = {
-            MissionStatus.SUCCESS: "completed",
-            MissionStatus.PARTIAL: "completed",
-            MissionStatus.FAILED: "failed",
+            ExecutionStatus.SUCCESS: "completed",
+            ExecutionStatus.PARTIAL: "completed",
+            ExecutionStatus.FAILED: "failed",
         }
         record_status = status_map.get(outcome.status, "failed")
 
-        record = await service.save_mission(
+        record = await service.save_execution(
             session_id=session_id,
             status=record_status,
             roster_name=roster_name,
@@ -117,15 +117,15 @@ async def persist_mission_results(
         await db_session.commit()
 
         logger.info(
-            "Mission results persisted",
+            "Execution results persisted",
             extra={
-                "mission_record_id": record.id,
+                "execution_record_id": record.id,
                 "task_count": len(outcome.task_results),
             },
         )
 
     except (OSError, ValueError, RuntimeError) as e:
         logger.error(
-            "Failed to persist mission results",
+            "Failed to persist execution results",
             extra={"session_id": session_id, "error": str(e)},
         )

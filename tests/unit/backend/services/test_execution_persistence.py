@@ -1,4 +1,4 @@
-"""Tests for MissionPersistenceService.
+"""Tests for ExecutionPersistenceService.
 
 Per P12: tests run against the live platform. Uses real db_session fixture
 with transaction rollback for isolation. Only mocks: get_app_config()
@@ -10,39 +10,39 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.config_schema import MissionsSchema
+from modules.backend.core.config_schema import ExecutionsSchema
 from modules.backend.core.exceptions import NotFoundError
-from modules.backend.models.mission_record import (
-    MissionRecordStatus,
+from modules.backend.models.execution_record import (
+    ExecutionRecordStatus,
     TaskExecutionStatus,
 )
-from modules.backend.services.mission_persistence import MissionPersistenceService
+from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
 
 def _mock_app_config(**overrides) -> MagicMock:
-    """Create a mock AppConfig with a real MissionsSchema."""
+    """Create a mock AppConfig with a real ExecutionsSchema."""
     config = MagicMock()
-    config.missions = MissionsSchema(**overrides)
+    config.executions = ExecutionsSchema(**overrides)
     return config
 
 
 @pytest.fixture
-def service(db_session: AsyncSession) -> MissionPersistenceService:
-    return MissionPersistenceService(db_session)
+def service(db_session: AsyncSession) -> ExecutionPersistenceService:
+    return ExecutionPersistenceService(db_session)
 
 
 @pytest.fixture(autouse=True)
 def _patch_config():
     """Patch get_app_config — config loading is not infra we operate."""
     with patch(
-        "modules.backend.services.mission_persistence.get_app_config",
+        "modules.backend.services.execution_persistence.get_app_config",
         return_value=_mock_app_config(),
     ):
         yield
 
 
-async def _create_mission(service, **overrides):
-    """Helper to create a mission record via the service."""
+async def _create_execution(service, **overrides):
+    """Helper to create an execution record via the service."""
     defaults = {
         "session_id": "sess-123",
         "status": "completed",
@@ -50,23 +50,23 @@ async def _create_mission(service, **overrides):
         "total_cost_usd": 0.05,
     }
     defaults.update(overrides)
-    return await service.save_mission(**defaults)
+    return await service.save_execution(**defaults)
 
 
-class TestSaveMission:
+class TestSaveExecution:
     @pytest.mark.asyncio
     async def test_creates_record_in_db(self, service):
-        record = await _create_mission(service)
+        record = await _create_execution(service)
 
         assert record.id is not None
         assert record.session_id == "sess-123"
         assert record.roster_name == "code_review"
-        assert record.status == MissionRecordStatus.COMPLETED
+        assert record.status == ExecutionRecordStatus.COMPLETED
         assert record.total_cost_usd == 0.05
 
     @pytest.mark.asyncio
     async def test_with_objective(self, service):
-        record = await _create_mission(
+        record = await _create_execution(
             service,
             objective_statement="Improve coverage",
             objective_category="engineering",
@@ -78,7 +78,7 @@ class TestSaveMission:
     @pytest.mark.asyncio
     async def test_thinking_trace_truncation(self, service):
         long_trace = "x" * 60000
-        record = await _create_mission(
+        record = await _create_execution(
             service,
             planning_thinking_trace=long_trace,
         )
@@ -89,10 +89,10 @@ class TestSaveMission:
     @pytest.mark.asyncio
     async def test_thinking_trace_not_persisted_when_disabled(self, service):
         with patch(
-            "modules.backend.services.mission_persistence.get_app_config",
+            "modules.backend.services.execution_persistence.get_app_config",
             return_value=_mock_app_config(persist_thinking_trace=False),
         ):
-            record = await _create_mission(
+            record = await _create_execution(
                 service,
                 planning_thinking_trace="some trace",
             )
@@ -102,23 +102,23 @@ class TestSaveMission:
     @pytest.mark.asyncio
     async def test_task_plan_json_persisted(self, service):
         plan = {"version": "1.0", "tasks": [{"id": "t1"}]}
-        record = await _create_mission(service, task_plan_json=plan)
+        record = await _create_execution(service, task_plan_json=plan)
         assert record.task_plan_json == plan
 
     @pytest.mark.asyncio
-    async def test_parent_mission_link(self, service):
-        parent = await _create_mission(service)
-        child = await _create_mission(service, parent_mission_id=parent.id)
+    async def test_parent_execution_link(self, service):
+        parent = await _create_execution(service)
+        child = await _create_execution(service, parent_mission_id=parent.id)
         assert child.parent_mission_id == parent.id
 
 
 class TestSaveTaskExecution:
     @pytest.mark.asyncio
     async def test_creates_execution(self, service):
-        mission = await _create_mission(service)
+        execution_record = await _create_execution(service)
 
         execution = await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="analyze_code",
             agent_name="code.quality.agent",
             status="completed",
@@ -132,11 +132,11 @@ class TestSaveTaskExecution:
 
     @pytest.mark.asyncio
     async def test_output_truncation(self, service):
-        mission = await _create_mission(service)
+        execution_record = await _create_execution(service)
         large_output = {"data": "x" * 2_000_000}
 
         execution = await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="task-1",
             agent_name="agent-1",
             status="completed",
@@ -148,11 +148,11 @@ class TestSaveTaskExecution:
 
     @pytest.mark.asyncio
     async def test_verification_outcome_persisted(self, service):
-        mission = await _create_mission(service)
+        execution_record = await _create_execution(service)
         verification = {"passed": True, "tier": "tier_1", "details": {"checks": 5}}
 
         execution = await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="task-1",
             agent_name="agent-1",
             status="completed",
@@ -164,15 +164,15 @@ class TestSaveTaskExecution:
 
     @pytest.mark.asyncio
     async def test_verification_stripped_when_disabled(self, service):
-        mission = await _create_mission(service)
+        execution_record = await _create_execution(service)
         verification = {"passed": True, "tier": "tier_1", "details": {"checks": 5}}
 
         with patch(
-            "modules.backend.services.mission_persistence.get_app_config",
+            "modules.backend.services.execution_persistence.get_app_config",
             return_value=_mock_app_config(persist_verification_details=False),
         ):
             execution = await service.save_task_execution(
-                mission_record_id=mission.id,
+                mission_record_id=execution_record.id,
                 task_id="task-1",
                 agent_name="agent-1",
                 status="completed",
@@ -186,9 +186,9 @@ class TestSaveTaskExecution:
 class TestSaveAttempt:
     @pytest.mark.asyncio
     async def test_creates_attempt(self, service):
-        mission = await _create_mission(service)
+        execution_record = await _create_execution(service)
         execution = await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="task-1",
             agent_name="agent-1",
             status="failed",
@@ -212,10 +212,10 @@ class TestSaveAttempt:
 class TestSaveDecision:
     @pytest.mark.asyncio
     async def test_creates_decision(self, service):
-        mission = await _create_mission(service)
+        execution_record = await _create_execution(service)
 
         decision = await service.save_decision(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             decision_type="retry",
             reasoning="Tier 1 failed, retrying with feedback",
             task_id="task-1",
@@ -226,57 +226,57 @@ class TestSaveDecision:
         assert decision.reasoning == "Tier 1 failed, retrying with feedback"
 
 
-class TestListMissions:
+class TestListExecutions:
     @pytest.mark.asyncio
-    async def test_list_returns_created_missions(self, service):
-        await _create_mission(service, roster_name="roster_a")
-        await _create_mission(service, roster_name="roster_b")
+    async def test_list_returns_created_executions(self, service):
+        await _create_execution(service, roster_name="roster_a")
+        await _create_execution(service, roster_name="roster_b")
 
-        missions, total = await service.list_missions()
+        executions, total = await service.list_executions()
         assert total >= 2
-        roster_names = {m.roster_name for m in missions}
+        roster_names = {m.roster_name for m in executions}
         assert "roster_a" in roster_names
         assert "roster_b" in roster_names
 
     @pytest.mark.asyncio
     async def test_list_filters_by_status(self, service):
-        await _create_mission(service, status="completed")
-        await _create_mission(service, status="failed")
+        await _create_execution(service, status="completed")
+        await _create_execution(service, status="failed")
 
-        missions, total = await service.list_missions(status="completed")
-        assert all(m.status == MissionRecordStatus.COMPLETED for m in missions)
+        executions, total = await service.list_executions(status="completed")
+        assert all(m.status == ExecutionRecordStatus.COMPLETED for m in executions)
 
     @pytest.mark.asyncio
     async def test_list_caps_page_size(self, service):
-        missions, _ = await service.list_missions(limit=500)
-        assert isinstance(missions, list)
+        executions, _ = await service.list_executions(limit=500)
+        assert isinstance(executions, list)
 
 
-class TestGetMissionStatus:
+class TestGetExecutionStatus:
     @pytest.mark.asyncio
     async def test_not_found_raises(self, service):
         with pytest.raises(NotFoundError, match="not found"):
-            await service.get_mission_status("nonexistent-id")
+            await service.get_execution_status("nonexistent-id")
 
     @pytest.mark.asyncio
     async def test_status_with_executions(self, service):
-        mission = await _create_mission(service, total_cost_usd=0.15)
+        execution_record = await _create_execution(service, total_cost_usd=0.15)
 
         await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="t1", agent_name="a1", status="completed",
         )
         await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="t2", agent_name="a2", status="failed",
         )
         await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="t3", agent_name="a3", status="skipped",
         )
 
-        status = await service.get_mission_status(mission.id)
-        assert status["mission_id"] == mission.id
+        status = await service.get_execution_status(execution_record.id)
+        assert status["execution_id"] == execution_record.id
         assert status["total_tasks"] == 3
         assert status["completed_tasks"] == 1
         assert status["failed_tasks"] == 1
@@ -286,9 +286,9 @@ class TestGetMissionStatus:
 
     @pytest.mark.asyncio
     async def test_status_no_executions(self, service):
-        mission = await _create_mission(service)
+        execution_record = await _create_execution(service)
 
-        status = await service.get_mission_status(mission.id)
+        status = await service.get_execution_status(execution_record.id)
         assert status["total_tasks"] == 0
         assert status["progress_pct"] == 0.0
 
@@ -301,10 +301,10 @@ class TestGetCostBreakdown:
 
     @pytest.mark.asyncio
     async def test_aggregates_costs(self, service):
-        mission = await _create_mission(service, total_cost_usd=0.10)
+        execution_record = await _create_execution(service, total_cost_usd=0.10)
 
         await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="t1",
             agent_name="agent_a",
             status="completed",
@@ -313,7 +313,7 @@ class TestGetCostBreakdown:
             token_usage={"input_tokens": 100, "output_tokens": 50, "model": "test"},
         )
 
-        breakdown = await service.get_cost_breakdown(mission.id)
+        breakdown = await service.get_cost_breakdown(execution_record.id)
         assert breakdown.total_cost_usd == 0.10
         assert len(breakdown.task_costs) == 1
         assert breakdown.total_input_tokens == 100
@@ -327,14 +327,14 @@ class TestExecutionId:
     @pytest.mark.asyncio
     async def test_execution_id_persisted(self, service):
         """execution_id flows from save_task_execution to TaskExecution row."""
-        mission = await service.save_mission(
+        execution_record = await service.save_execution(
             session_id="sess-eid",
             status="completed",
             total_cost_usd=0.01,
         )
 
         execution = await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="t1",
             agent_name="agent_a",
             status="completed",
@@ -346,14 +346,14 @@ class TestExecutionId:
     @pytest.mark.asyncio
     async def test_execution_id_defaults_none(self, service):
         """execution_id is None when not provided."""
-        mission = await service.save_mission(
+        execution_record = await service.save_execution(
             session_id="sess-eid2",
             status="completed",
             total_cost_usd=0.01,
         )
 
         execution = await service.save_task_execution(
-            mission_record_id=mission.id,
+            mission_record_id=execution_record.id,
             task_id="t1",
             agent_name="agent_a",
             status="completed",

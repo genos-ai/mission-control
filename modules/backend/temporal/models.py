@@ -28,7 +28,7 @@ class MissionWorkflowInput:
 class MissionExecutionResult:
     """Output from the execute_mission Activity.
 
-    Carries the serialized MissionOutcome from dispatch.
+    Carries the serialized ExecutionOutcome from dispatch.
     """
 
     mission_id: str

@@ -1,9 +1,9 @@
 """
-Mission Record API endpoints.
+Execution Record API endpoints.
 
-Read endpoints for querying mission execution history,
+Read endpoints for querying execution history,
 decisions, and cost breakdowns. Write operations happen via
-the MissionPersistenceService called from the dispatch loop.
+the ExecutionPersistenceService called from the dispatch loop.
 
 Temporal endpoints (execute, approve, status) are gated by
 the temporal.enabled feature flag.
@@ -14,20 +14,20 @@ from fastapi import APIRouter
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.mission_record import (
-    MissionCostBreakdown,
-    MissionDecisionResponse,
-    MissionListResponse,
-    MissionRecordDetailResponse,
-    MissionRecordResponse,
+from modules.backend.schemas.execution_record import (
+    ExecutionCostBreakdown,
+    ExecutionDecisionResponse,
+    ExecutionListResponse,
+    ExecutionRecordDetailResponse,
+    ExecutionRecordResponse,
 )
-from modules.backend.services.mission_persistence import MissionPersistenceService
+from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
 router = APIRouter()
 
 
-@router.get("", response_model=ApiResponse, summary="List mission records")
-async def list_missions(
+@router.get("", response_model=ApiResponse, summary="List execution records")
+async def list_executions(
     db: DbSession,
     request_id: RequestId,
     status: str | None = None,
@@ -36,9 +36,9 @@ async def list_missions(
     limit: int = 20,
     offset: int = 0,
 ) -> ApiResponse:
-    """List mission execution records with optional filters."""
-    service = MissionPersistenceService(db)
-    missions, total = await service.list_missions(
+    """List execution records with optional filters."""
+    service = ExecutionPersistenceService(db)
+    executions, total = await service.list_executions(
         status=status,
         roster_name=roster_name,
         objective_category=objective_category,
@@ -48,8 +48,8 @@ async def list_missions(
 
     return ApiResponse(
         success=True,
-        data=MissionListResponse(
-            missions=[MissionRecordResponse.model_validate(m) for m in missions],
+        data=ExecutionListResponse(
+            executions=[ExecutionRecordResponse.model_validate(e) for e in executions],
             total=total,
             page_size=limit,
             offset=offset,
@@ -59,23 +59,23 @@ async def list_missions(
 
 
 @router.get(
-    "/{mission_id}",
+    "/{execution_id}",
     response_model=ApiResponse,
-    summary="Get mission record detail",
+    summary="Get execution record detail",
 )
-async def get_mission(
-    mission_id: str,
+async def get_execution(
+    execution_id: str,
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get a mission record with full execution details."""
-    service = MissionPersistenceService(db)
-    mission = await service.get_mission(mission_id)
+    """Get an execution record with full details."""
+    service = ExecutionPersistenceService(db)
+    execution = await service.get_execution(execution_id)
 
-    if not mission:
-        raise NotFoundError(f"Mission '{mission_id}' not found")
+    if not execution:
+        raise NotFoundError(f"Execution '{execution_id}' not found")
 
-    response = MissionRecordDetailResponse.model_validate(mission)
+    response = ExecutionRecordDetailResponse.model_validate(execution)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -84,25 +84,25 @@ async def get_mission(
 
 
 @router.get(
-    "/{mission_id}/decisions",
+    "/{execution_id}/decisions",
     response_model=ApiResponse,
-    summary="Get mission decision audit trail",
+    summary="Get execution decision audit trail",
 )
-async def get_mission_decisions(
-    mission_id: str,
+async def get_execution_decisions(
+    execution_id: str,
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get the decision audit trail for a mission."""
-    service = MissionPersistenceService(db)
+    """Get the decision audit trail for an execution."""
+    service = ExecutionPersistenceService(db)
 
-    mission = await service.get_mission(mission_id)
-    if not mission:
-        raise NotFoundError(f"Mission '{mission_id}' not found")
+    execution = await service.get_execution(execution_id)
+    if not execution:
+        raise NotFoundError(f"Execution '{execution_id}' not found")
 
-    decisions = await service.get_decisions(mission_id)
+    decisions = await service.get_decisions(execution_id)
     items = [
-        MissionDecisionResponse.model_validate(d).model_dump()
+        ExecutionDecisionResponse.model_validate(d).model_dump()
         for d in decisions
     ]
 
@@ -114,18 +114,18 @@ async def get_mission_decisions(
 
 
 @router.get(
-    "/{mission_id}/cost",
+    "/{execution_id}/cost",
     response_model=ApiResponse,
-    summary="Get mission cost breakdown",
+    summary="Get execution cost breakdown",
 )
-async def get_mission_cost(
-    mission_id: str,
+async def get_execution_cost(
+    execution_id: str,
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get detailed cost breakdown for a mission."""
-    service = MissionPersistenceService(db)
-    breakdown = await service.get_cost_breakdown(mission_id)
+    """Get detailed cost breakdown for an execution."""
+    service = ExecutionPersistenceService(db)
+    breakdown = await service.get_cost_breakdown(execution_id)
 
     return ApiResponse(
         success=True,
@@ -135,41 +135,41 @@ async def get_mission_cost(
 
 
 # =============================================================================
-# Mission execution
+# Execution dispatch
 # =============================================================================
 
 
 @router.post(
-    "/{mission_id}/execute",
+    "/{execution_id}/execute",
     response_model=ApiResponse,
-    summary="Execute a mission",
+    summary="Execute an execution",
 )
-async def execute_mission(
-    mission_id: str,
+async def execute_execution(
+    execution_id: str,
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Execute a mission. Uses Temporal when enabled, direct dispatch otherwise."""
+    """Execute a dispatch. Uses Temporal when enabled, direct dispatch otherwise."""
     from modules.backend.core.config import get_app_config
 
     config = get_app_config()
 
     if config.temporal.enabled:
-        return await _execute_via_temporal(mission_id, db, request_id, config)
+        return await _execute_via_temporal(execution_id, db, request_id, config)
 
-    return await _execute_direct(mission_id, db, request_id)
+    return await _execute_direct(execution_id, db, request_id)
 
 
 async def _execute_direct(
-    mission_id: str,
+    execution_id: str,
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Direct mission execution via handle_mission()."""
+    """Direct execution via handle_mission()."""
     from modules.backend.agents.mission_control.dispatch_adapter import (
         MissionControlDispatchAdapter,
     )
-    from modules.backend.services.mission import MissionService
+    from modules.backend.services.execution import ExecutionService
     from modules.backend.services.session import SessionService
 
     session_service = SessionService(db)
@@ -177,16 +177,16 @@ async def _execute_direct(
         session_service=session_service,
         db_session=db,
     )
-    service = MissionService(
+    service = ExecutionService(
         session=db,
         mission_control_dispatch=adapter,
         session_service=session_service,
     )
 
-    mission = await service.execute_mission(mission_id)
+    execution = await service.run_execution(execution_id)
 
-    from modules.backend.schemas.mission import MissionResponse
-    response = MissionResponse.model_validate(mission)
+    from modules.backend.schemas.execution import ExecutionResponse
+    response = ExecutionResponse.model_validate(execution)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -195,42 +195,41 @@ async def _execute_direct(
 
 
 async def _execute_via_temporal(
-    mission_id: str,
+    execution_id: str,
     db: DbSession,
     request_id: RequestId,
     config,
 ) -> ApiResponse:
-    """Temporal-based mission execution."""
+    """Temporal-based execution."""
     from modules.backend.temporal.client import get_temporal_client
     from modules.backend.temporal.models import MissionWorkflowInput
     from modules.backend.temporal.workflow import AgentMissionWorkflow
 
-    # Need the mission record for brief and roster
-    service = MissionPersistenceService(db)
-    mission_record = await service.get_mission(mission_id)
+    service = ExecutionPersistenceService(db)
+    record = await service.get_execution(execution_id)
     brief = ""
     roster = "default"
     budget = 10.0
-    if mission_record:
-        brief = mission_record.objective_statement or ""
-        roster = mission_record.roster_name or "default"
-        budget = mission_record.total_cost_usd or 10.0
+    if record:
+        brief = record.objective_statement or ""
+        roster = record.roster_name or "default"
+        budget = record.total_cost_usd or 10.0
 
     client = await get_temporal_client()
     handle = await client.start_workflow(
         AgentMissionWorkflow.run,
         MissionWorkflowInput(
-            mission_id=mission_id,
-            session_id=mission_id,
+            mission_id=execution_id,
+            session_id=execution_id,
             mission_brief=brief,
             roster_name=roster,
             mission_budget_usd=budget,
-            project_id=mission_record.project_id if mission_record else None,
+            project_id=record.project_id if record else None,
             approval_timeout_seconds=config.temporal.approval_timeout_seconds,
             escalation_timeout_seconds=config.temporal.escalation_timeout_seconds,
             notification_timeout_seconds=config.temporal.notification_timeout_seconds,
         ),
-        id=f"mission-{mission_id}",
+        id=f"execution-{execution_id}",
         task_queue=config.temporal.task_queue,
     )
 
@@ -238,7 +237,7 @@ async def _execute_via_temporal(
         success=True,
         data={
             "workflow_id": handle.id,
-            "mission_id": mission_id,
+            "execution_id": execution_id,
             "status": "started",
         },
         metadata={"request_id": request_id},
@@ -246,12 +245,12 @@ async def _execute_via_temporal(
 
 
 @router.post(
-    "/{mission_id}/approve",
+    "/{execution_id}/approve",
     response_model=ApiResponse,
-    summary="Submit approval for a mission",
+    summary="Submit approval for an execution",
 )
 async def submit_approval(
-    mission_id: str,
+    execution_id: str,
     decision: str,
     responder_id: str,
     request_id: RequestId,
@@ -276,7 +275,7 @@ async def submit_approval(
     from modules.backend.temporal.workflow import AgentMissionWorkflow
 
     client = await get_temporal_client()
-    handle = client.get_workflow_handle(f"mission-{mission_id}")
+    handle = client.get_workflow_handle(f"execution-{execution_id}")
 
     await handle.signal(
         AgentMissionWorkflow.submit_approval,
@@ -291,7 +290,7 @@ async def submit_approval(
     return ApiResponse(
         success=True,
         data={
-            "mission_id": mission_id,
+            "execution_id": execution_id,
             "decision": decision,
             "status": "signal_sent",
         },
@@ -300,16 +299,16 @@ async def submit_approval(
 
 
 @router.get(
-    "/{mission_id}/status",
+    "/{execution_id}/status",
     response_model=ApiResponse,
-    summary="Get mission execution status",
+    summary="Get execution status",
 )
-async def get_mission_status(
-    mission_id: str,
+async def get_execution_status(
+    execution_id: str,
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get mission status — Temporal Query or DB fallback."""
+    """Get execution status — Temporal Query or DB fallback."""
     from modules.backend.core.config import get_app_config
 
     config = get_app_config()
@@ -320,15 +319,15 @@ async def get_mission_status(
             from modules.backend.temporal.workflow import AgentMissionWorkflow
 
             client = await get_temporal_client()
-            handle = client.get_workflow_handle(f"mission-{mission_id}")
+            handle = client.get_workflow_handle(f"execution-{execution_id}")
             status = await handle.query(AgentMissionWorkflow.get_status)
             return ApiResponse(
                 success=True,
                 data={
                     "source": "temporal",
-                    "mission_id": status.mission_id,
+                    "execution_id": status.mission_id,
                     "workflow_status": status.workflow_status,
-                    "mission_status": status.mission_status,
+                    "execution_status": status.mission_status,
                     "total_cost_usd": status.total_cost_usd,
                     "waiting_for_approval": status.waiting_for_approval,
                     "error": status.error,
@@ -338,14 +337,13 @@ async def get_mission_status(
         except Exception:
             pass  # Fall through to DB query
 
-    # Fallback: direct DB query
-    service = MissionPersistenceService(db)
+    service = ExecutionPersistenceService(db)
     try:
-        status_dict = await service.get_mission_status(mission_id)
+        status_dict = await service.get_execution_status(execution_id)
         return ApiResponse(
             success=True,
             data={"source": "database", **status_dict},
             metadata={"request_id": request_id},
         )
     except Exception:
-        raise NotFoundError(f"Mission '{mission_id}' not found")
+        raise NotFoundError(f"Execution '{execution_id}' not found")

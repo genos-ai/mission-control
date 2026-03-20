@@ -1,9 +1,9 @@
 """
-Tests for project_id threading through the workflow → mission → dispatch chain.
+Tests for project_id threading through the workflow → execution → dispatch chain.
 
 Verifies that project_id flows from WorkflowRunService.run_workflow() (resolved
-from --project name) through MissionService.create_mission_from_step() and
-execute_mission() down to the DispatchAdapter and handle_mission().
+from --project name) through ExecutionService.create_execution_from_step() and
+run_execution() down to the DispatchAdapter and handle_mission().
 
 Uses real db_session with transaction rollback (P12).
 Only mocks dispatch execution (external agent calls — not infra we operate).
@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config_schema import WorkflowsSchema
-from modules.backend.models.mission import MissionState
-from modules.backend.services.mission import MissionService
+from modules.backend.models.execution import ExecutionState
+from modules.backend.services.execution import ExecutionService
 
 
 def _mock_app_config(**overrides):
@@ -26,22 +26,22 @@ def _mock_app_config(**overrides):
 
 
 # =============================================================================
-# MissionService: project_id on create_mission_from_step
+# ExecutionService: project_id on create_execution_from_step
 # =============================================================================
 
 
-class TestMissionServiceProjectId:
+class TestExecutionServiceProjectId:
     @pytest.mark.asyncio
-    async def test_create_mission_from_step_sets_project_id(
+    async def test_create_execution_from_step_sets_project_id(
         self, db_session: AsyncSession,
     ):
-        """project_id is persisted on the Mission record."""
+        """project_id is persisted on the Execution record."""
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_mission_from_step(
+            service = ExecutionService(session=db_session)
+            mission = await service.create_execution_from_step(
                 playbook_run_id="run-123",
                 step_id="step-1",
                 objective="Test objective",
@@ -56,16 +56,16 @@ class TestMissionServiceProjectId:
         assert mission.project_id == "proj-abc"
 
     @pytest.mark.asyncio
-    async def test_create_mission_from_step_project_id_defaults_none(
+    async def test_create_execution_from_step_project_id_defaults_none(
         self, db_session: AsyncSession,
     ):
         """project_id defaults to None when not provided."""
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_mission_from_step(
+            service = ExecutionService(session=db_session)
+            mission = await service.create_execution_from_step(
                 playbook_run_id="run-456",
                 step_id="step-1",
                 objective="No project",
@@ -79,10 +79,10 @@ class TestMissionServiceProjectId:
         assert mission.project_id is None
 
     @pytest.mark.asyncio
-    async def test_execute_mission_passes_project_id_to_dispatch(
+    async def test_run_execution_passes_project_id_to_dispatch(
         self, db_session: AsyncSession,
     ):
-        """execute_mission() forwards mission.project_id to the dispatch adapter."""
+        """run_execution() forwards execution.project_id to the dispatch adapter."""
         mock_dispatch = AsyncMock()
         mock_dispatch.execute = AsyncMock(return_value={
             "status": "success",
@@ -93,14 +93,14 @@ class TestMissionServiceProjectId:
         })
 
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(
+            service = ExecutionService(
                 session=db_session,
                 mission_control_dispatch=mock_dispatch,
             )
-            mission = await service.create_mission_from_step(
+            mission = await service.create_execution_from_step(
                 playbook_run_id="run-789",
                 step_id="step-1",
                 objective="With project",
@@ -112,7 +112,7 @@ class TestMissionServiceProjectId:
                 project_id="proj-xyz",
             )
 
-            await service.execute_mission(mission.id)
+            await service.run_execution(mission.id)
 
         # Verify project_id was forwarded to the adapter
         mock_dispatch.execute.assert_called_once()
@@ -120,10 +120,10 @@ class TestMissionServiceProjectId:
         assert call_kwargs["project_id"] == "proj-xyz"
 
     @pytest.mark.asyncio
-    async def test_execute_mission_passes_none_project_id(
+    async def test_run_execution_passes_none_project_id(
         self, db_session: AsyncSession,
     ):
-        """execute_mission() passes None project_id when mission has no project."""
+        """run_execution() passes None project_id when execution has no project."""
         mock_dispatch = AsyncMock()
         mock_dispatch.execute = AsyncMock(return_value={
             "status": "success",
@@ -134,14 +134,14 @@ class TestMissionServiceProjectId:
         })
 
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(
+            service = ExecutionService(
                 session=db_session,
                 mission_control_dispatch=mock_dispatch,
             )
-            mission = await service.create_mission_from_step(
+            mission = await service.create_execution_from_step(
                 playbook_run_id="run-000",
                 step_id="step-1",
                 objective="No project",
@@ -152,7 +152,7 @@ class TestMissionServiceProjectId:
                 session_id="sess-4",
             )
 
-            await service.execute_mission(mission.id)
+            await service.run_execution(mission.id)
 
         call_kwargs = mock_dispatch.execute.call_args.kwargs
         assert call_kwargs["project_id"] is None

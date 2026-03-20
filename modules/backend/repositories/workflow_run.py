@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
-from modules.backend.models.mission import WorkflowRun, WorkflowRunState
+from modules.backend.models.execution import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.base import BaseRepository
 
 logger = get_logger(__name__)

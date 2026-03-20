@@ -1,11 +1,11 @@
-"""Tests for mission record models."""
+"""Tests for execution record models."""
 
-from modules.backend.models.mission_record import (
+from modules.backend.models.execution_record import (
     DecisionType,
     FailureTier,
-    MissionDecision,
-    MissionRecord,
-    MissionRecordStatus,
+    ExecutionDecision,
+    ExecutionRecord,
+    ExecutionRecordStatus,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,
@@ -13,32 +13,32 @@ from modules.backend.models.mission_record import (
 )
 
 
-class TestMissionRecordModel:
-    def test_create_mission_record(self):
-        record = MissionRecord(
+class TestExecutionRecordModel:
+    def test_create_execution_record(self):
+        record = ExecutionRecord(
             session_id="test-session",
-            status=MissionRecordStatus.COMPLETED,
+            status=ExecutionRecordStatus.COMPLETED,
             roster_name="code_review",
             total_cost_usd=0.0123,
         )
-        assert record.status == MissionRecordStatus.COMPLETED
+        assert record.status == ExecutionRecordStatus.COMPLETED
         assert record.roster_name == "code_review"
 
-    def test_mission_record_repr(self):
-        record = MissionRecord(
+    def test_execution_record_repr(self):
+        record = ExecutionRecord(
             id="abc-123",
             session_id="test-session",
-            status=MissionRecordStatus.FAILED,
+            status=ExecutionRecordStatus.FAILED,
             roster_name="research",
             total_cost_usd=1.50,
         )
         assert "research" in repr(record)
         assert "abc-123" in repr(record)
 
-    def test_mission_record_with_objective(self):
-        record = MissionRecord(
+    def test_execution_record_with_objective(self):
+        record = ExecutionRecord(
             session_id="test-session",
-            status=MissionRecordStatus.COMPLETED,
+            status=ExecutionRecordStatus.COMPLETED,
             objective_statement="Improve code quality",
             objective_category="engineering",
             total_cost_usd=0.0,
@@ -50,7 +50,7 @@ class TestMissionRecordModel:
 class TestTaskExecutionModel:
     def test_create_task_execution(self):
         execution = TaskExecution(
-            mission_record_id="mission-123",
+            mission_record_id="execution-123",
             task_id="analyze_code",
             agent_name="code.quality.agent",
             status=TaskExecutionStatus.COMPLETED,
@@ -60,7 +60,7 @@ class TestTaskExecutionModel:
 
     def test_task_execution_with_verification(self):
         execution = TaskExecution(
-            mission_record_id="mission-123",
+            mission_record_id="execution-123",
             task_id="summarize",
             agent_name="content.summarizer.agent",
             status=TaskExecutionStatus.COMPLETED,
@@ -88,10 +88,10 @@ class TestTaskAttemptModel:
         assert attempt.failure_tier == FailureTier.TIER_1_STRUCTURAL
 
 
-class TestMissionDecisionModel:
+class TestExecutionDecisionModel:
     def test_create_decision(self):
-        decision = MissionDecision(
-            mission_record_id="mission-123",
+        decision = ExecutionDecision(
+            mission_record_id="execution-123",
             decision_type=DecisionType.RETRY,
             task_id="task_1",
             reasoning="Tier 1 validation failed, retrying with feedback",
@@ -110,9 +110,9 @@ class TestEnums:
         assert FailureTier.TIER_1_STRUCTURAL.value == "tier_1_structural"
         assert FailureTier.AGENT_ERROR.value == "agent_error"
 
-    def test_mission_record_status(self):
-        assert MissionRecordStatus.COMPLETED.value == "completed"
-        assert MissionRecordStatus.TIMED_OUT.value == "timed_out"
+    def test_execution_record_status(self):
+        assert ExecutionRecordStatus.COMPLETED.value == "completed"
+        assert ExecutionRecordStatus.TIMED_OUT.value == "timed_out"
 
     def test_task_execution_status(self):
         assert TaskExecutionStatus.COMPLETED.value == "completed"

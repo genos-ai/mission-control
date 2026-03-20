@@ -11,7 +11,7 @@ from modules.backend.agents.mission_control.dispatch import (
     topological_sort,
     verify_task,
 )
-from modules.backend.agents.mission_control.outcome import MissionStatus, TaskStatus
+from modules.backend.agents.mission_control.outcome import ExecutionStatus, TaskStatus
 from modules.backend.agents.mission_control.roster import (
     Roster,
     RosterAgentEntry,
@@ -184,7 +184,7 @@ class TestDispatch:
             }}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert len(outcome.task_results) == 1
         assert outcome.task_results[0].status == TaskStatus.SUCCESS
 
@@ -199,7 +199,7 @@ class TestDispatch:
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert len(outcome.task_results) == 2
 
     @pytest.mark.asyncio
@@ -224,7 +224,7 @@ class TestDispatch:
             return {"result": "from_a", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
 
     @pytest.mark.asyncio
     async def test_tier1_failure_triggers_retry(self):
@@ -241,7 +241,7 @@ class TestDispatch:
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert outcome.task_results[0].retry_count == 1
 
     @pytest.mark.asyncio
@@ -281,11 +281,11 @@ class TestDispatch:
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.PARTIAL
+        assert outcome.status == ExecutionStatus.PARTIAL
 
     @pytest.mark.asyncio
-    async def test_mission_failure_on_critical_path_failure(self):
-        """Mission fails when critical path task fails."""
+    async def test_execution_failure_on_critical_path_failure(self):
+        """Execution fails when critical path task fails."""
         tasks = [
             {**_task("a"), "instructions": "task_a"},
             {**_task("b"), "instructions": "task_b"},
@@ -304,7 +304,7 @@ class TestDispatch:
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.FAILED
+        assert outcome.status == ExecutionStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_cost_aggregation(self):
@@ -412,7 +412,7 @@ class TestDispatch:
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.FAILED
+        assert outcome.status == ExecutionStatus.FAILED
         assert outcome.task_results[0].status == TaskStatus.FAILED
 
     @pytest.mark.asyncio
@@ -441,7 +441,7 @@ class TestDispatch:
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.FAILED
+        assert outcome.status == ExecutionStatus.FAILED
         # Both tasks should fail — a from error, b from missing upstream
         assert all(r.status == TaskStatus.FAILED for r in outcome.task_results)
 
@@ -491,7 +491,7 @@ class TestDispatch:
             }
 
         outcome = await dispatch(plan, roster, mock_execute, mission_budget_usd=0.05)
-        assert outcome.status == MissionStatus.FAILED
+        assert outcome.status == ExecutionStatus.FAILED
         # Only first task should execute — budget exceeded after layer 1
         assert call_count == 1
         assert outcome.total_cost_usd == pytest.approx(0.06, abs=0.001)
@@ -509,7 +509,7 @@ class TestDispatch:
             }
 
         outcome = await dispatch(plan, roster, mock_execute, mission_budget_usd=0)
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert len(outcome.task_results) == 2
 
     @pytest.mark.asyncio
@@ -585,7 +585,7 @@ class TestDispatch:
             }
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert len(outcome.task_results[0].context_updates) == 1
         assert outcome.task_results[0].context_updates[0]["op"] == "add"
 
@@ -638,7 +638,7 @@ class TestDispatch:
             project_id="proj-1",
             context_curator=mock_curator,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         mock_curator.apply_task_updates.assert_called_once()
         call_args = mock_curator.apply_task_updates.call_args
         assert call_args[0][0] == "proj-1"
@@ -664,7 +664,7 @@ class TestDispatch:
             plan, roster, mock_execute, 10.0,
             context_curator=mock_curator,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         mock_curator.apply_task_updates.assert_not_called()
 
     @pytest.mark.asyncio
@@ -691,7 +691,7 @@ class TestDispatch:
             project_id="proj-1",
             context_curator=mock_curator,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
 
     @pytest.mark.asyncio
     async def test_project_context_injected_into_inputs(self):
@@ -714,7 +714,7 @@ class TestDispatch:
             project_id="proj-1",
             context_curator=mock_curator,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert "project_context" in received_inputs[0]
         assert received_inputs[0]["project_context"]["identity"]["name"] == "test-project"
 
@@ -730,7 +730,7 @@ class TestDispatch:
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
         outcome = await dispatch(plan, roster, mock_execute, 10.0)
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         assert "project_context" not in received_inputs[0]
 
     # ---- Sub-Phase 4 tests: Context Assembly ----
@@ -759,7 +759,7 @@ class TestDispatch:
             project_id="proj-1",
             context_assembler=mock_assembler,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         # Assembler output replaces simple PCD injection
         assert "project_context" in received_inputs[0]
         assert "project_history" in received_inputs[0]
@@ -808,7 +808,7 @@ class TestDispatch:
             context_curator=mock_curator,
             context_assembler=mock_assembler,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         # Should fall back to raw PCD
         assert received_inputs[0]["project_context"]["identity"]["name"] == "fallback-project"
 
@@ -828,7 +828,7 @@ class TestDispatch:
             plan, roster, mock_execute, 10.0,
             context_assembler=mock_assembler,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
         mock_assembler.build.assert_not_called()
 
     @pytest.mark.asyncio
@@ -848,7 +848,7 @@ class TestDispatch:
             project_id="proj-1",
             context_assembler=mock_assembler,
         )
-        assert outcome.status == MissionStatus.SUCCESS
+        assert outcome.status == ExecutionStatus.SUCCESS
 
     @pytest.mark.asyncio
     async def test_domain_tags_empty_passed_as_none(self):

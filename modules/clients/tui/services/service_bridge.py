@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING, Any
 from modules.backend.agents.mission_control.gate import GateReviewer
 from modules.backend.agents.mission_control.mission_control import handle_mission
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
-from modules.backend.agents.mission_control.outcome import MissionOutcome
+from modules.backend.agents.mission_control.outcome import ExecutionOutcome
 from modules.backend.agents.mission_control.roster import load_roster, Roster
 from modules.backend.core.database import get_async_session
 from modules.backend.core.logging import get_logger
-from modules.backend.services.mission_persistence import MissionPersistenceService
+from modules.backend.services.execution_persistence import ExecutionPersistenceService
 from modules.backend.services.project import ProjectService
 from modules.backend.services.session import SessionService
 
@@ -82,9 +82,9 @@ class ServiceBridge:
         """Load agent roster from YAML config."""
         return load_roster(roster_name)
 
-    # ── Mission execution ────────────────────────────────────────────
+    # ── Execution dispatch ──────────────────────────────────────────
 
-    async def run_mission(
+    async def run_execution(
         self,
         *,
         brief: str,
@@ -93,8 +93,8 @@ class ServiceBridge:
         roster_name: str = "default",
         budget_usd: float = 10.0,
         gate: GateReviewer | None = None,
-    ) -> MissionOutcome:
-        """Execute a mission in-process with full event streaming.
+    ) -> ExecutionOutcome:
+        """Execute a dispatch in-process with full event streaming.
 
         This is the TUI's primary execution path. It calls handle_mission()
         directly, wiring the TuiGateReviewer and TuiEventBus.
@@ -119,25 +119,25 @@ class ServiceBridge:
             await db.commit()
             return outcome
 
-    # ── Mission history ───────────────────────────────────────────────
+    # ── Execution history ─────────────────────────────────────────────
 
-    async def list_missions(
+    async def list_executions(
         self,
         *,
         status: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Return mission records as dicts for the history screen."""
+        """Return execution records as dicts for the history screen."""
         async with get_async_session() as db:
-            svc = MissionPersistenceService(db)
-            records = await svc.list_missions(
+            svc = ExecutionPersistenceService(db)
+            records = await svc.list_executions(
                 status=status, limit=limit, offset=offset,
             )
             return [
                 {
                     "id": str(r.id),
-                    "mission_id": r.mission_id if hasattr(r, "mission_id") else str(r.id),
+                    "execution_id": r.execution_id if hasattr(r, "execution_id") else str(r.id),
                     "objective": getattr(r, "objective", "") or "",
                     "status": getattr(r, "status", "unknown"),
                     "total_cost_usd": getattr(r, "total_cost_usd", 0.0) or 0.0,
@@ -147,14 +147,14 @@ class ServiceBridge:
                 for r in records
             ]
 
-    async def get_mission_detail(self, mission_id: str) -> dict[str, Any] | None:
-        """Return a single mission record with execution details."""
+    async def get_execution_detail(self, execution_id: str) -> dict[str, Any] | None:
+        """Return a single execution record with task details."""
         async with get_async_session() as db:
-            svc = MissionPersistenceService(db)
-            record = await svc.get_mission(mission_id)
+            svc = ExecutionPersistenceService(db)
+            record = await svc.get_execution(execution_id)
             if not record:
                 return None
-            task_executions = await svc.get_task_executions(mission_id)
+            task_executions = await svc.get_task_executions(execution_id)
             return {
                 "id": str(record.id),
                 "objective": getattr(record, "objective", ""),
@@ -177,10 +177,10 @@ class ServiceBridge:
                 ],
             }
 
-    async def get_mission_cost_breakdown(
-        self, mission_id: str,
+    async def get_execution_cost_breakdown(
+        self, execution_id: str,
     ) -> dict[str, Any] | None:
-        """Return cost breakdown for a mission."""
+        """Return cost breakdown for an execution."""
         async with get_async_session() as db:
-            svc = MissionPersistenceService(db)
-            return await svc.get_cost_breakdown(mission_id)
+            svc = ExecutionPersistenceService(db)
+            return await svc.get_cost_breakdown(execution_id)

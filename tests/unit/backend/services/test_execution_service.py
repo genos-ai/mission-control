@@ -1,5 +1,5 @@
 """
-Tests for MissionService.
+Tests for ExecutionService.
 
 Uses real db_session with transaction rollback (P12).
 Only mocks get_app_config (config loading — not infra we operate).
@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config_schema import WorkflowsSchema
-from modules.backend.models.mission import Mission, MissionState
-from modules.backend.repositories.mission import MissionRepository
-from modules.backend.services.mission import MissionService
+from modules.backend.models.execution import Execution, ExecutionState
+from modules.backend.repositories.execution import ExecutionRepository
+from modules.backend.services.execution import ExecutionService
 
 
 def _mock_app_config(**overrides):
@@ -23,45 +23,45 @@ def _mock_app_config(**overrides):
 
 
 @pytest.fixture
-def mission_service(db_session: AsyncSession) -> MissionService:
+def execution_service(db_session: AsyncSession) -> ExecutionService:
     with patch(
-        "modules.backend.services.mission.get_app_config",
+        "modules.backend.services.execution.get_app_config",
         return_value=_mock_app_config(),
     ):
-        return MissionService(session=db_session)
+        return ExecutionService(session=db_session)
 
 
-class TestCreateAdhocMission:
+class TestCreateAdhocExecution:
     @pytest.mark.asyncio
-    async def test_creates_mission(self, db_session: AsyncSession):
+    async def test_creates_execution(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Test objective",
                 triggered_by="user:test",
                 session_id="test-session-id",
             )
 
-        assert mission.id is not None
-        assert mission.objective == "Test objective"
-        assert mission.status == MissionState.PENDING
-        assert mission.roster_ref == "default"
-        assert mission.complexity_tier == "simple"
-        assert mission.triggered_by == "user:test"
-        assert mission.trigger_type == "on_demand"
-        assert mission.total_cost_usd == 0.0
+        assert execution.id is not None
+        assert execution.objective == "Test objective"
+        assert execution.status == ExecutionState.PENDING
+        assert execution.roster_ref == "default"
+        assert execution.complexity_tier == "simple"
+        assert execution.triggered_by == "user:test"
+        assert execution.trigger_type == "on_demand"
+        assert execution.total_cost_usd == 0.0
 
     @pytest.mark.asyncio
     async def test_custom_roster_and_tier(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Complex task",
                 triggered_by="user:test",
                 session_id="test-session-id",
@@ -70,20 +70,20 @@ class TestCreateAdhocMission:
                 cost_ceiling_usd=25.0,
             )
 
-        assert mission.roster_ref == "research_team"
-        assert mission.complexity_tier == "complex"
-        assert mission.cost_ceiling_usd == 25.0
+        assert execution.roster_ref == "research_team"
+        assert execution.complexity_tier == "complex"
+        assert execution.cost_ceiling_usd == 25.0
 
     @pytest.mark.asyncio
     async def test_concurrency_limit(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(max_concurrent_missions=1),
         ):
-            service = MissionService(session=db_session)
+            service = ExecutionService(session=db_session)
 
-            # Create first mission (should succeed)
-            await service.create_adhoc_mission(
+            # Create first execution (should succeed)
+            await service.create_adhoc_execution(
                 objective="First",
                 triggered_by="user:test",
                 session_id="sess-1",
@@ -92,22 +92,22 @@ class TestCreateAdhocMission:
             # Second should fail due to concurrency limit
             from modules.backend.core.exceptions import ValidationError
             with pytest.raises(ValidationError, match="Maximum concurrent"):
-                await service.create_adhoc_mission(
+                await service.create_adhoc_execution(
                     objective="Second",
                     triggered_by="user:test",
                     session_id="sess-2",
                 )
 
 
-class TestCreateMissionFromStep:
+class TestCreateExecutionFromStep:
     @pytest.mark.asyncio
     async def test_creates_from_step(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_mission_from_step(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_execution_from_step(
                 playbook_run_id="run-123",
                 step_id="scrape",
                 objective="Fetch articles",
@@ -118,99 +118,99 @@ class TestCreateMissionFromStep:
                 session_id="test-session-id",
             )
 
-        assert mission.playbook_run_id == "run-123"
-        assert mission.playbook_step_id == "scrape"
-        assert mission.roster_ref == "research_team"
-        assert mission.upstream_context == {"sources": ["url1"]}
-        assert mission.trigger_type == "workflow"
+        assert execution.playbook_run_id == "run-123"
+        assert execution.playbook_step_id == "scrape"
+        assert execution.roster_ref == "research_team"
+        assert execution.upstream_context == {"sources": ["url1"]}
+        assert execution.trigger_type == "workflow"
 
 
-class TestMissionStateTransitions:
+class TestExecutionStateTransitions:
     @pytest.mark.asyncio
     async def test_pending_to_cancelled(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Cancellable",
                 triggered_by="user:test",
                 session_id="sess-1",
             )
 
-            cancelled = await service.cancel_mission(
-                mission.id, reason="Changed mind",
+            cancelled = await service.cancel_execution(
+                execution.id, reason="Changed mind",
             )
 
-        assert cancelled.status == MissionState.CANCELLED
+        assert cancelled.status == ExecutionState.CANCELLED
         assert cancelled.error_data == {"cancelled_reason": "Changed mind"}
         assert cancelled.completed_at is not None
 
     @pytest.mark.asyncio
     async def test_invalid_transition_rejected(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Test",
                 triggered_by="user:test",
                 session_id="sess-1",
             )
-            await service.cancel_mission(mission.id, reason="done")
+            await service.cancel_execution(execution.id, reason="done")
 
             from modules.backend.core.exceptions import ValidationError
             with pytest.raises(ValidationError, match="Cannot transition"):
-                await service.complete_mission(mission.id)
+                await service.complete_execution(execution.id)
 
     @pytest.mark.asyncio
-    async def test_complete_mission(self, db_session: AsyncSession):
+    async def test_complete_execution(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Complete me",
                 triggered_by="user:test",
                 session_id="sess-1",
             )
 
             # Transition to running first
-            m = await service._get_mission(mission.id)
-            m.status = MissionState.RUNNING
+            m = await service._get_execution(execution.id)
+            m.status = ExecutionState.RUNNING
             m.started_at = "2026-01-01T00:00:00"
             await db_session.flush()
 
-            completed = await service.complete_mission(mission.id)
+            completed = await service.complete_execution(execution.id)
 
-        assert completed.status == MissionState.COMPLETED
+        assert completed.status == ExecutionState.COMPLETED
         assert completed.completed_at is not None
 
     @pytest.mark.asyncio
-    async def test_fail_mission(self, db_session: AsyncSession):
+    async def test_fail_execution(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Fail me",
                 triggered_by="user:test",
                 session_id="sess-1",
             )
 
-            m = await service._get_mission(mission.id)
-            m.status = MissionState.RUNNING
+            m = await service._get_execution(execution.id)
+            m.status = ExecutionState.RUNNING
             await db_session.flush()
 
-            failed = await service.fail_mission(
-                mission.id, error="Something went wrong",
+            failed = await service.fail_execution(
+                execution.id, error="Something went wrong",
             )
 
-        assert failed.status == MissionState.FAILED
+        assert failed.status == ExecutionState.FAILED
         assert failed.error_data == {"message": "Something went wrong"}
 
 
@@ -218,35 +218,35 @@ class TestOutputExtraction:
     @pytest.mark.asyncio
     async def test_extract_summary_key(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Extract test",
                 triggered_by="user:test",
                 session_id="sess-1",
             )
-            mission.mission_outcome = {"summary": "All done"}
+            execution.mission_outcome = {"summary": "All done"}
             await db_session.flush()
 
         output_mapping = {"summary_key": "result"}
-        extracted = service.extract_outputs(mission, output_mapping)
+        extracted = service.extract_outputs(execution, output_mapping)
         assert extracted == {"result": "All done"}
 
     @pytest.mark.asyncio
     async def test_extract_field_mappings(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = await service.create_adhoc_mission(
+            service = ExecutionService(session=db_session)
+            execution = await service.create_adhoc_execution(
                 objective="Extract fields",
                 triggered_by="user:test",
                 session_id="sess-1",
             )
-            mission.mission_outcome = {
+            execution.mission_outcome = {
                 "task_results": {
                     "scrape_articles": {"articles": ["a1", "a2"]},
                 },
@@ -262,95 +262,95 @@ class TestOutputExtraction:
                 },
             ],
         }
-        extracted = service.extract_outputs(mission, output_mapping)
+        extracted = service.extract_outputs(execution, output_mapping)
         assert extracted == {"raw_articles": ["a1", "a2"]}
 
     def test_extract_no_mapping(self, db_session: AsyncSession):
-        service = MissionService(session=db_session)
-        mission = MagicMock()
-        mission.mission_outcome = {"summary": "test"}
-        assert service.extract_outputs(mission, None) == {}
+        service = ExecutionService(session=db_session)
+        execution = MagicMock()
+        execution.mission_outcome = {"summary": "test"}
+        assert service.extract_outputs(execution, None) == {}
 
     def test_extract_no_outcome(self, db_session: AsyncSession):
-        service = MissionService(session=db_session)
-        mission = MagicMock()
-        mission.mission_outcome = None
-        assert service.extract_outputs(mission, {"summary_key": "r"}) == {}
+        service = ExecutionService(session=db_session)
+        execution = MagicMock()
+        execution.mission_outcome = None
+        assert service.extract_outputs(execution, {"summary_key": "r"}) == {}
 
 
-class TestListAndGetMissions:
+class TestListAndGetExecutions:
     @pytest.mark.asyncio
-    async def test_list_missions(self, db_session: AsyncSession):
+    async def test_list_executions(self, db_session: AsyncSession):
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            await service.create_adhoc_mission(
-                objective="Mission 1",
+            service = ExecutionService(session=db_session)
+            await service.create_adhoc_execution(
+                objective="Execution 1",
                 triggered_by="user:test",
                 session_id="sess-1",
             )
-            await service.create_adhoc_mission(
-                objective="Mission 2",
+            await service.create_adhoc_execution(
+                objective="Execution 2",
                 triggered_by="user:test",
                 session_id="sess-2",
             )
 
-            missions, total = await service.list_missions()
+            executions, total = await service.list_executions()
 
         assert total == 2
-        assert len(missions) == 2
+        assert len(executions) == 2
 
     @pytest.mark.asyncio
-    async def test_get_mission_not_found(self, db_session: AsyncSession):
-        service = MissionService(session=db_session)
+    async def test_get_execution_not_found(self, db_session: AsyncSession):
+        service = ExecutionService(session=db_session)
 
         from modules.backend.core.exceptions import NotFoundError
         with pytest.raises(NotFoundError):
-            await service.get_mission("nonexistent-id")
+            await service.get_execution("nonexistent-id")
 
 
 class TestExtractOutputs:
     """P0.5: extract_outputs reliability fixes."""
 
-    def _make_mission(self, outcome=None):
-        mission = MagicMock()
-        mission.id = "test-mission"
-        mission.mission_outcome = outcome
-        mission.result_summary = "Test summary"
-        return mission
+    def _make_execution(self, outcome=None):
+        execution = MagicMock()
+        execution.id = "test-execution"
+        execution.mission_outcome = outcome
+        execution.result_summary = "Test summary"
+        return execution
 
     def test_no_output_mapping_returns_empty(self, db_session: AsyncSession):
         """Returns {} and logs debug when output_mapping is None."""
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = self._make_mission(outcome={"task_results": []})
-            result = service.extract_outputs(mission, None)
+            service = ExecutionService(session=db_session)
+            execution = self._make_execution(outcome={"task_results": []})
+            result = service.extract_outputs(execution, None)
             assert result == {}
 
     def test_no_outcome_returns_empty(self, db_session: AsyncSession):
-        """Returns {} and logs warning when mission has no outcome."""
+        """Returns {} and logs warning when execution has no outcome."""
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = self._make_mission(outcome=None)
-            result = service.extract_outputs(mission, {"field_mappings": []})
+            service = ExecutionService(session=db_session)
+            execution = self._make_execution(outcome=None)
+            result = service.extract_outputs(execution, {"field_mappings": []})
             assert result == {}
 
     def test_duplicate_agents_both_accessible(self, db_session: AsyncSession):
         """Multiple tasks with same agent_name are all searchable."""
         with patch(
-            "modules.backend.services.mission.get_app_config",
+            "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
-            service = MissionService(session=db_session)
-            mission = self._make_mission(outcome={
+            service = ExecutionService(session=db_session)
+            execution = self._make_execution(outcome={
                 "task_results": [
                     {
                         "task_id": "task-001",
@@ -373,6 +373,6 @@ class TestExtractOutputs:
                     },
                 ],
             }
-            result = service.extract_outputs(mission, mapping)
+            result = service.extract_outputs(execution, mapping)
             # Should find 'analysis' from the second entry, not be overwritten
             assert result["qa_analysis"] == "second analysis"

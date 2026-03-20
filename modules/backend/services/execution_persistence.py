@@ -1,10 +1,10 @@
 """
-Mission Persistence Service.
+Execution Persistence Service.
 
 Saves Mission Control execution artifacts to PostgreSQL for audit,
 compliance, cost analytics, and historical queries.
 
-Called by the dispatch loop (Plan 13) during and after mission execution.
+Called by the dispatch loop (Plan 13) during and after execution.
 This service is write-heavy during execution and read-heavy afterward.
 """
 
@@ -16,26 +16,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-from modules.backend.models.mission_record import (
+from modules.backend.models.execution_record import (
     DecisionType,
     FailureTier,
-    MissionDecision,
-    MissionRecord,
-    MissionRecordStatus,
+    ExecutionDecision,
+    ExecutionRecord,
+    ExecutionRecordStatus,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,
     TaskExecutionStatus,
 )
-from modules.backend.repositories.mission_record import MissionRecordRepository
-from modules.backend.schemas.mission_record import MissionCostBreakdown
+from modules.backend.repositories.execution_record import ExecutionRecordRepository
+from modules.backend.schemas.execution_record import ExecutionCostBreakdown
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
 
 
-class MissionPersistenceService(BaseService):
-    """Persist and query mission execution records.
+class ExecutionPersistenceService(BaseService):
+    """Persist and query execution records.
 
     Write methods are called during/after dispatch loop execution.
     Read methods serve the REST API and analytics.
@@ -43,11 +43,11 @@ class MissionPersistenceService(BaseService):
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
-        self._repo = MissionRecordRepository(session)
+        self._repo = ExecutionRecordRepository(session)
 
     # ---- Write operations (called by dispatch loop) ----
 
-    async def save_mission(
+    async def save_execution(
         self,
         session_id: str,
         status: str,
@@ -63,12 +63,12 @@ class MissionPersistenceService(BaseService):
         objective_statement: str | None = None,
         objective_category: str | None = None,
         project_id: str | None = None,
-    ) -> MissionRecord:
-        """Persist a complete mission record.
+    ) -> ExecutionRecord:
+        """Persist a complete execution record.
 
         Called after the dispatch loop completes (or fails/times out).
         """
-        config = get_app_config().missions
+        config = get_app_config().executions
 
         if planning_thinking_trace and config.persist_thinking_trace:
             if len(planning_thinking_trace) > config.max_thinking_trace_length:
@@ -79,10 +79,10 @@ class MissionPersistenceService(BaseService):
         elif not config.persist_thinking_trace:
             planning_thinking_trace = None
 
-        record = MissionRecord(
+        record = ExecutionRecord(
             session_id=session_id,
             roster_name=roster_name,
-            status=MissionRecordStatus(status),
+            status=ExecutionRecordStatus(status),
             task_plan_json=task_plan_json,
             mission_outcome_json=mission_outcome_json,
             planning_thinking_trace=planning_thinking_trace,
@@ -100,9 +100,9 @@ class MissionPersistenceService(BaseService):
         await self._session.refresh(record)
 
         logger.info(
-            "Mission record saved",
+            "Execution record saved",
             extra={
-                "mission_id": record.id,
+                "execution_id": record.id,
                 "session_id": session_id,
                 "roster": roster_name,
                 "status": status,
@@ -130,7 +130,7 @@ class MissionPersistenceService(BaseService):
         domain_tags: list[str] | None = None,
     ) -> TaskExecution:
         """Persist a single task execution result."""
-        config = get_app_config().missions
+        config = get_app_config().executions
 
         if output_data:
             output_size = len(json.dumps(output_data).encode("utf-8"))
@@ -171,7 +171,7 @@ class MissionPersistenceService(BaseService):
             "Task execution saved",
             extra={
                 "execution_id": execution.id,
-                "mission_id": mission_record_id,
+                "record_id": mission_record_id,
                 "task_id": task_id,
                 "agent": agent_name,
                 "status": status,
@@ -220,9 +220,9 @@ class MissionPersistenceService(BaseService):
         reasoning: str,
         *,
         task_id: str | None = None,
-    ) -> MissionDecision:
+    ) -> ExecutionDecision:
         """Log a Mission Control decision."""
-        decision = MissionDecision(
+        decision = ExecutionDecision(
             mission_record_id=mission_record_id,
             decision_type=DecisionType(decision_type),
             task_id=task_id,
@@ -237,7 +237,7 @@ class MissionPersistenceService(BaseService):
             "Decision logged",
             extra={
                 "decision_id": decision.id,
-                "mission_id": mission_record_id,
+                "record_id": mission_record_id,
                 "type": decision_type,
                 "task_id": task_id,
             },
@@ -247,50 +247,50 @@ class MissionPersistenceService(BaseService):
 
     # ---- Read operations (serve REST API) ----
 
-    async def get_mission(self, mission_id: str) -> MissionRecord | None:
-        """Get a mission record with all details loaded."""
-        return await self._repo.get_with_details(mission_id)
+    async def get_execution(self, execution_id: str) -> ExecutionRecord | None:
+        """Get an execution record with all details loaded."""
+        return await self._repo.get_with_details(execution_id)
 
-    async def get_task_executions(self, mission_id: str) -> list:
-        """Get task executions for a mission."""
-        return await self._repo.get_task_executions(mission_id)
+    async def get_task_executions(self, execution_id: str) -> list:
+        """Get task executions for an execution."""
+        return await self._repo.get_task_executions(execution_id)
 
-    async def list_missions(
+    async def list_executions(
         self,
         status: str | None = None,
         roster_name: str | None = None,
         objective_category: str | None = None,
         limit: int | None = None,
         offset: int = 0,
-    ) -> tuple[list[MissionRecord], int]:
-        """List mission records with optional filters."""
-        config = get_app_config().missions
+    ) -> tuple[list[ExecutionRecord], int]:
+        """List execution records with optional filters."""
+        config = get_app_config().executions
         if limit is None:
             limit = config.default_page_size
         limit = min(limit, config.max_page_size)
 
-        mission_status = MissionRecordStatus(status) if status else None
-        return await self._repo.list_missions(
-            status=mission_status,
+        record_status = ExecutionRecordStatus(status) if status else None
+        return await self._repo.list_executions(
+            status=record_status,
             roster_name=roster_name,
             objective_category=objective_category,
             limit=limit,
             offset=offset,
         )
 
-    async def get_decisions(self, mission_id: str) -> list[MissionDecision]:
-        """Get the decision audit trail for a mission."""
-        return await self._repo.get_decisions(mission_id)
+    async def get_decisions(self, execution_id: str) -> list[ExecutionDecision]:
+        """Get the decision audit trail for an execution."""
+        return await self._repo.get_decisions(execution_id)
 
-    async def get_cost_breakdown(self, mission_id: str) -> MissionCostBreakdown:
-        """Get detailed cost breakdown for a mission."""
-        mission = await self._repo.get_by_id_or_none(mission_id)
-        if not mission:
+    async def get_cost_breakdown(self, execution_id: str) -> ExecutionCostBreakdown:
+        """Get detailed cost breakdown for an execution."""
+        record = await self._repo.get_by_id_or_none(execution_id)
+        if not record:
             from modules.backend.core.exceptions import NotFoundError
-            raise NotFoundError(f"Mission '{mission_id}' not found")
+            raise NotFoundError(f"Execution '{execution_id}' not found")
 
-        executions = await self._repo.get_task_executions(mission_id)
-        model_costs = await self._repo.get_cost_by_model(mission_id)
+        executions = await self._repo.get_task_executions(execution_id)
+        model_costs = await self._repo.get_cost_by_model(execution_id)
 
         task_costs: list[dict[str, Any]] = []
         total_input_tokens = 0
@@ -318,9 +318,9 @@ class MissionPersistenceService(BaseService):
             total_attempts += len(execution.attempts)
             task_costs.append(task_cost)
 
-        return MissionCostBreakdown(
-            mission_id=mission_id,
-            total_cost_usd=mission.total_cost_usd,
+        return ExecutionCostBreakdown(
+            execution_id=execution_id,
+            total_cost_usd=record.total_cost_usd,
             task_costs=task_costs,
             model_costs=model_costs,
             attempt_count=total_attempts,
@@ -328,19 +328,19 @@ class MissionPersistenceService(BaseService):
             total_output_tokens=total_output_tokens,
         )
 
-    async def get_mission_status(self, mission_id: str) -> dict:
-        """Get mission progress summary as a dict.
+    async def get_execution_status(self, execution_id: str) -> dict:
+        """Get execution progress summary as a dict.
 
-        Returns a dict with mission_id, status, objective, task counts,
+        Returns a dict with execution_id, status, objective, task counts,
         and progress percentage. Used by Temporal Queries and the
         /missions/{id}/status API endpoint.
         """
-        mission = await self._repo.get_by_id_or_none(mission_id)
-        if not mission:
+        record = await self._repo.get_by_id_or_none(execution_id)
+        if not record:
             from modules.backend.core.exceptions import NotFoundError
-            raise NotFoundError(f"Mission '{mission_id}' not found")
+            raise NotFoundError(f"Execution '{execution_id}' not found")
 
-        executions = await self._repo.get_task_executions(mission_id)
+        executions = await self._repo.get_task_executions(execution_id)
 
         total = len(executions)
         completed = sum(
@@ -359,24 +359,24 @@ class MissionPersistenceService(BaseService):
         progress_pct = (completed / total * 100.0) if total > 0 else 0.0
 
         return {
-            "mission_id": mission_id,
-            "status": mission.status.value if hasattr(mission.status, "value") else str(mission.status),
-            "objective": mission.objective_statement,
-            "roster_name": mission.roster_name,
+            "execution_id": execution_id,
+            "status": record.status.value if hasattr(record.status, "value") else str(record.status),
+            "objective": record.objective_statement,
+            "roster_name": record.roster_name,
             "total_tasks": total,
             "completed_tasks": completed,
             "failed_tasks": failed,
             "skipped_tasks": skipped,
             "progress_pct": round(progress_pct, 1),
-            "total_cost_usd": mission.total_cost_usd,
+            "total_cost_usd": record.total_cost_usd,
         }
 
-    async def get_missions_by_session(
+    async def get_executions_by_session(
         self, session_id: str,
-    ) -> list[MissionRecord]:
-        """Get all mission records for a session."""
+    ) -> list[ExecutionRecord]:
+        """Get all execution records for a session."""
         return await self._repo.get_by_session(session_id)
 
-    async def get_replan_chain(self, mission_id: str) -> list[MissionRecord]:
-        """Get the full re-plan lineage for a mission."""
-        return await self._repo.get_replan_chain(mission_id)
+    async def get_replan_chain(self, execution_id: str) -> list[ExecutionRecord]:
+        """Get the full re-plan lineage for an execution."""
+        return await self._repo.get_replan_chain(execution_id)

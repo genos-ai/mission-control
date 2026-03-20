@@ -10,16 +10,16 @@ from fastapi import APIRouter
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.mission import (
-    MissionCreate,
-    MissionDetailResponse,
-    MissionResponse,
+from modules.backend.schemas.execution import (
+    ExecutionCreate,
+    ExecutionDetailResponse,
+    ExecutionResponse,
 )
 from modules.backend.schemas.workflow import (
     WorkflowDetailResponse,
     WorkflowListResponse,
 )
-from modules.backend.services.mission import MissionService
+from modules.backend.services.execution import ExecutionService
 from modules.backend.services.workflow import WorkflowService
 
 router = APIRouter()
@@ -29,8 +29,8 @@ def _get_workflow_service() -> WorkflowService:
     return WorkflowService()
 
 
-def _get_mission_service(db: DbSession) -> MissionService:
-    return MissionService(session=db)
+def _get_execution_service(db: DbSession) -> ExecutionService:
+    return ExecutionService(session=db)
 
 
 # ---- Workflow endpoints ----
@@ -113,18 +113,18 @@ async def get_workflow(
     response_model=ApiResponse,
     summary="Create ad-hoc mission",
 )
-async def create_mission(
-    data: MissionCreate,
+async def create_execution(
+    data: ExecutionCreate,
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Create and start an ad-hoc mission."""
+    """Create and start an ad-hoc execution."""
     from uuid import uuid4
 
-    service = _get_mission_service(db)
+    service = _get_execution_service(db)
     session_id = str(uuid4())
 
-    mission = await service.create_adhoc_mission(
+    execution = await service.create_adhoc_execution(
         objective=data.objective,
         triggered_by=data.triggered_by,
         session_id=session_id,
@@ -134,7 +134,7 @@ async def create_mission(
         upstream_context=data.upstream_context,
     )
 
-    response = MissionResponse.model_validate(mission)
+    response = ExecutionResponse.model_validate(execution)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -156,18 +156,18 @@ async def list_missions(
     offset: int = 0,
 ) -> ApiResponse:
     """List missions with optional filters."""
-    service = _get_mission_service(db)
-    missions, total = await service.list_missions(
+    service = _get_execution_service(db)
+    executions, total = await service.list_executions(
         status=status,
         playbook_run_id=workflow_run_id,
         limit=limit,
         offset=offset,
     )
 
-    items = [MissionResponse.model_validate(m).model_dump() for m in missions]
+    items = [ExecutionResponse.model_validate(m).model_dump() for m in executions]
     return ApiResponse(
         success=True,
-        data={"missions": items, "total": total},
+        data={"executions": items, "total": total},
         metadata={"request_id": request_id},
     )
 
@@ -183,10 +183,10 @@ async def get_mission(
     request_id: RequestId,
 ) -> ApiResponse:
     """Get detailed mission info including context and results."""
-    service = _get_mission_service(db)
-    mission = await service.get_mission(mission_id)
+    service = _get_execution_service(db)
+    execution = await service.get_execution(mission_id)
 
-    response = MissionDetailResponse.model_validate(mission)
+    response = ExecutionDetailResponse.model_validate(execution)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -206,10 +206,10 @@ async def cancel_mission(
     reason: str = "User cancelled",
 ) -> ApiResponse:
     """Cancel a running or pending mission."""
-    service = _get_mission_service(db)
-    mission = await service.cancel_mission(mission_id, reason=reason)
+    service = _get_execution_service(db)
+    execution = await service.cancel_execution(mission_id, reason=reason)
 
-    response = MissionResponse.model_validate(mission)
+    response = ExecutionResponse.model_validate(execution)
     return ApiResponse(
         success=True,
         data=response.model_dump(),

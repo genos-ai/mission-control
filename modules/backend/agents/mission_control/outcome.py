@@ -1,6 +1,6 @@
-"""MissionOutcome — structured result from Mission Control dispatch.
+"""ExecutionOutcome — structured result from Mission Control dispatch.
 
-Returned to the Mission layer (or caller) with per-task results,
+Returned to the Execution layer (or caller) with per-task results,
 cost breakdown, and references to planning artifacts.
 """
 
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
     from modules.backend.agents.mission_control.verification import VerificationResult
 
 
-class MissionStatus(StrEnum):
-    """Mission completion status."""
+class ExecutionStatus(StrEnum):
+    """Execution completion status."""
 
     SUCCESS = "success"
     PARTIAL = "partial"
@@ -84,7 +84,7 @@ class Tier3Outcome(BaseModel):
 
 
 class VerificationOutcome(BaseModel):
-    """Complete verification outcome per task in MissionOutcome."""
+    """Complete verification outcome per task in ExecutionOutcome."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -132,16 +132,16 @@ class TaskResult(BaseModel):
     skip_reason: str | None = None
 
 
-class MissionOutcome(BaseModel):
+class ExecutionOutcome(BaseModel):
     """Complete result of a Mission Control dispatch.
 
-    Returned to the Mission layer with per-task results and cost breakdown.
+    Returned to the Execution layer with per-task results and cost breakdown.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     mission_id: str
-    status: MissionStatus
+    status: ExecutionStatus
     task_results: list[TaskResult] = Field(default_factory=list)
     total_cost_usd: float = 0.0
     total_duration_seconds: float = 0.0

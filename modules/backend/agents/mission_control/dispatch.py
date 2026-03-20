@@ -3,7 +3,7 @@
 Takes a validated TaskPlan, executes agents in topological order,
 enforces timeouts and cost ceilings, resolves from_upstream references,
 runs the 3-tier verification pipeline, and aggregates results into
-a MissionOutcome.
+an ExecutionOutcome.
 
 This is deterministic code. No LLM calls happen here — agents are
 invoked through the standard agent execution path.
@@ -34,8 +34,8 @@ from modules.backend.agents.mission_control.models import (
     NoOpEventBus,
 )
 from modules.backend.agents.mission_control.outcome import (
-    MissionOutcome,
-    MissionStatus,
+    ExecutionOutcome,
+    ExecutionStatus,
     RetryHistoryEntry,
     TaskResult,
     TaskStatus,
@@ -196,7 +196,7 @@ async def dispatch(
     context_assembler: ContextAssemblerProtocol | None = None,
     event_bus: EventBusProtocol | None = None,
     session_id: str | None = None,
-) -> MissionOutcome:
+) -> ExecutionOutcome:
     """Execute the dispatch loop for a validated TaskPlan.
 
     1. Topological sort into execution layers
@@ -204,7 +204,7 @@ async def dispatch(
     3. Resolve from_upstream at dispatch time
     4. 3-tier verification after each task
     5. Retry with feedback on verification failure
-    6. Aggregate results into MissionOutcome
+    6. Aggregate results into ExecutionOutcome
 
     When gate is provided, pauses at key decision points for review.
     """
@@ -452,22 +452,22 @@ async def dispatch(
     ) if critical_path_ids else True
 
     if aborted:
-        status = MissionStatus.FAILED
+        status = ExecutionStatus.FAILED
     elif budget_exceeded:
-        status = MissionStatus.FAILED
+        status = ExecutionStatus.FAILED
     elif successful_tasks == total_tasks:
-        status = MissionStatus.SUCCESS
+        status = ExecutionStatus.SUCCESS
     elif (
         success_ratio >= plan.execution_hints.min_success_threshold
         and critical_path_success
     ):
-        status = MissionStatus.PARTIAL
+        status = ExecutionStatus.PARTIAL
     else:
-        status = MissionStatus.FAILED
+        status = ExecutionStatus.FAILED
 
     total_duration = time.monotonic() - start_time
 
-    return MissionOutcome(
+    return ExecutionOutcome(
         mission_id=plan.mission_id,
         status=status,
         task_results=task_results,
@@ -790,11 +790,11 @@ def _aborted_outcome(
     reason: str | None,
     start_time: float,
     task_results: list[TaskResult] | None = None,
-) -> MissionOutcome:
-    """Build a MissionOutcome for an aborted mission."""
-    return MissionOutcome(
+) -> ExecutionOutcome:
+    """Build an ExecutionOutcome for an aborted execution."""
+    return ExecutionOutcome(
         mission_id=plan.mission_id,
-        status=MissionStatus.FAILED,
+        status=ExecutionStatus.FAILED,
         task_results=task_results or [],
         total_cost_usd=0.0,
         total_duration_seconds=round(time.monotonic() - start_time, 2),

@@ -1,17 +1,17 @@
 """
-Mission API schemas.
+Execution API schemas.
 
-Request/response models for mission CRUD, status reporting,
-and workflow-to-mission conversion.
+Request/response models for execution CRUD, status reporting,
+and workflow-to-execution conversion.
 """
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class MissionCreate(BaseModel):
-    """Create an ad-hoc mission (not from a workflow)."""
+class ExecutionCreate(BaseModel):
+    """Create an ad-hoc execution (not from a workflow)."""
 
-    objective: str = Field(..., description="Mission objective")
+    objective: str = Field(..., description="Execution objective")
     roster_ref: str = Field(default="default")
     complexity_tier: str = Field(default="simple")
     triggered_by: str = Field(default="user:anonymous")
@@ -19,8 +19,8 @@ class MissionCreate(BaseModel):
     upstream_context: dict | None = None
 
 
-class MissionResponse(BaseModel):
-    """API response for a mission."""
+class ExecutionResponse(BaseModel):
+    """API response for an execution."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,8 +40,8 @@ class MissionResponse(BaseModel):
     completed_at: str | None
 
 
-class MissionDetailResponse(BaseModel):
-    """Detailed mission response with context and results."""
+class ExecutionDetailResponse(BaseModel):
+    """Detailed execution response with context and results."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -65,10 +65,10 @@ class MissionDetailResponse(BaseModel):
     error_data: dict | None
 
 
-class MissionStateSummary(BaseModel):
-    """Mission progress summary."""
+class ExecutionStateSummary(BaseModel):
+    """Execution progress summary."""
 
-    mission_id: str
+    execution_id: str
     objective: str
     status: str
     roster_ref: str

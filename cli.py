@@ -9,9 +9,9 @@ Usage:
     python cli.py health
     python cli.py test unit --coverage
     python cli.py agent "run a health check"
-    python cli.py mission run "audit the platform"
-    python cli.py mission list
-    python cli.py mission cost <id>
+    python cli.py execution run "audit the platform"
+    python cli.py execution list
+    python cli.py execution cost <id>
     python cli.py db stats
     python cli.py db query missions --limit 5
     python cli.py db clear --yes
@@ -87,7 +87,7 @@ def cli(ctx, verbose: bool, debug: bool, output_format: str):
     Infrastructure:  server, worker, scheduler, telegram, event-worker
     Diagnostics:     health, config, info, credits, context
     Development:     test, migrate, db
-    Agents:          agent, mission, workflow
+    Agents:          agent, execution, workflow
     Projects:        project
     """
     ctx.ensure_object(dict)
@@ -368,107 +368,107 @@ def autogenerate(ctx, message: str):
 
 
 # =============================================================================
-# Mission group
+# Execution group
 # =============================================================================
 
 
 @cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
-def mission(ctx):
-    """Create, execute, and inspect missions.
+def execution(ctx):
+    """Create, execute, and inspect executions.
 
     \b
     Examples:
-        python cli.py mission run "audit the platform" --budget 2.00
-        python cli.py mission list
-        python cli.py mission detail <id>
-        python cli.py mission cost <id>
+        python cli.py execution run "audit the platform" --budget 2.00
+        python cli.py execution list
+        python cli.py execution detail <id>
+        python cli.py execution cost <id>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
 
-@mission.command("run")
+@execution.command("run")
 @click.argument("objective")
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
 @click.option("--triggered-by", default="user:cli", help="Trigger origin.")
 @click.pass_obj
-def mission_run(ctx, objective, roster, budget, triggered_by):
-    """Create and execute a mission in one step."""
-    from modules.clients.cli.mission import run_mission
-    run_mission(ctx.logger, action="run", objective=objective, mission_id=None,
-                roster=roster, budget=budget, triggered_by=triggered_by,
-                output_format=ctx.output_format)
+def execution_run(ctx, objective, roster, budget, triggered_by):
+    """Create and execute in one step."""
+    from modules.clients.cli.execution_cmds import run_execution
+    run_execution(ctx.logger, action="run", objective=objective, execution_id=None,
+                  roster=roster, budget=budget, triggered_by=triggered_by,
+                  output_format=ctx.output_format)
 
 
-@mission.command("create")
+@execution.command("create")
 @click.argument("objective")
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
 @click.option("--triggered-by", default="user:cli", help="Trigger origin.")
 @click.pass_obj
-def mission_create(ctx, objective, roster, budget, triggered_by):
-    """Create a mission (PENDING state, not yet executed)."""
-    from modules.clients.cli.mission import run_mission
-    run_mission(ctx.logger, action="create", objective=objective, mission_id=None,
-                roster=roster, budget=budget, triggered_by=triggered_by,
-                output_format=ctx.output_format)
+def execution_create(ctx, objective, roster, budget, triggered_by):
+    """Create an execution (PENDING state, not yet executed)."""
+    from modules.clients.cli.execution_cmds import run_execution
+    run_execution(ctx.logger, action="create", objective=objective, execution_id=None,
+                  roster=roster, budget=budget, triggered_by=triggered_by,
+                  output_format=ctx.output_format)
 
 
-@mission.command("execute")
-@click.argument("mission_id")
+@execution.command("execute")
+@click.argument("execution_id")
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.pass_obj
-def mission_execute(ctx, mission_id, roster):
-    """Execute an existing PENDING mission."""
-    from modules.clients.cli.mission import run_mission
-    run_mission(ctx.logger, action="execute", objective=None, mission_id=mission_id,
-                roster=roster, budget=None, triggered_by="user:cli",
-                output_format=ctx.output_format)
+def execution_execute(ctx, execution_id, roster):
+    """Execute an existing PENDING execution."""
+    from modules.clients.cli.execution_cmds import run_execution
+    run_execution(ctx.logger, action="execute", objective=None, execution_id=execution_id,
+                  roster=roster, budget=None, triggered_by="user:cli",
+                  output_format=ctx.output_format)
 
 
-@mission.command("list")
+@execution.command("list")
 @click.pass_obj
-def mission_list(ctx):
-    """List recent missions."""
-    from modules.clients.cli.mission import run_mission
-    run_mission(ctx.logger, action="list", objective=None, mission_id=None,
-                roster="default", budget=None, triggered_by="user:cli",
-                output_format=ctx.output_format)
+def execution_list(ctx):
+    """List recent executions."""
+    from modules.clients.cli.execution_cmds import run_execution
+    run_execution(ctx.logger, action="list", objective=None, execution_id=None,
+                  roster="default", budget=None, triggered_by="user:cli",
+                  output_format=ctx.output_format)
 
 
-@mission.command("detail")
-@click.argument("mission_id")
+@execution.command("detail")
+@click.argument("execution_id")
 @click.pass_obj
-def mission_detail(ctx, mission_id):
-    """Show mission detail with task executions."""
-    from modules.clients.cli.mission import run_mission
-    run_mission(ctx.logger, action="detail", objective=None, mission_id=mission_id,
-                roster="default", budget=None, triggered_by="user:cli",
-                output_format=ctx.output_format)
+def execution_detail(ctx, execution_id):
+    """Show execution detail with task results."""
+    from modules.clients.cli.execution_cmds import run_execution
+    run_execution(ctx.logger, action="detail", objective=None, execution_id=execution_id,
+                  roster="default", budget=None, triggered_by="user:cli",
+                  output_format=ctx.output_format)
 
 
-@mission.command("plan")
-@click.argument("mission_id")
+@execution.command("plan")
+@click.argument("execution_id")
 @click.pass_obj
-def mission_plan(ctx, mission_id):
-    """Show the TaskPlan DAG for a mission."""
-    from modules.clients.cli.mission import run_mission
-    run_mission(ctx.logger, action="plan", objective=None, mission_id=mission_id,
-                roster="default", budget=None, triggered_by="user:cli",
-                output_format=ctx.output_format)
+def execution_plan(ctx, execution_id):
+    """Show the TaskPlan DAG for an execution."""
+    from modules.clients.cli.execution_cmds import run_execution
+    run_execution(ctx.logger, action="plan", objective=None, execution_id=execution_id,
+                  roster="default", budget=None, triggered_by="user:cli",
+                  output_format=ctx.output_format)
 
 
-@mission.command("cost")
-@click.argument("mission_id")
+@execution.command("cost")
+@click.argument("execution_id")
 @click.pass_obj
-def mission_cost(ctx, mission_id):
-    """Show mission cost breakdown."""
-    from modules.clients.cli.mission import run_mission
-    run_mission(ctx.logger, action="cost", objective=None, mission_id=mission_id,
-                roster="default", budget=None, triggered_by="user:cli",
-                output_format=ctx.output_format)
+def execution_cost(ctx, execution_id):
+    """Show execution cost breakdown."""
+    from modules.clients.cli.execution_cmds import run_execution
+    run_execution(ctx.logger, action="cost", objective=None, execution_id=execution_id,
+                  roster="default", budget=None, triggered_by="user:cli",
+                  output_format=ctx.output_format)
 
 
 # =============================================================================
@@ -811,13 +811,13 @@ def db_clear(ctx, yes, include_projects):
            include_projects=include_projects)
 
 
-@db.command("clear-missions")
+@db.command("clear-executions")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @click.pass_obj
-def db_clear_missions(ctx, yes):
-    """Clear mission data only."""
+def db_clear_executions(ctx, yes):
+    """Clear execution data only."""
     from modules.clients.cli.db import run_db
-    run_db(ctx.logger, action="clear-missions", table=None, limit=10, confirm=yes)
+    run_db(ctx.logger, action="clear-executions", table=None, limit=10, confirm=yes)
 
 
 @db.command("clear-sessions")

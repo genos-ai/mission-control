@@ -15,7 +15,7 @@ from typing import Any, Protocol, TypedDict, runtime_checkable
 
 from pydantic_ai import UsageLimits
 
-from modules.backend.core.protocols import MissionDispatchProtocol, SessionServiceProtocol
+from modules.backend.core.protocols import ExecutionDispatchProtocol, SessionServiceProtocol
 from modules.backend.events.types import SessionEvent
 
 # Re-export protocols so existing imports from models.py continue to work
@@ -26,7 +26,7 @@ __all__ = [
     "ExecuteAgentFn",
     "NoOpEventBus",
     "SessionServiceProtocol",
-    "MissionDispatchProtocol",
+    "ExecutionDispatchProtocol",
     "ContextCuratorProtocol",
     "ContextAssemblerProtocol",
     "CollectResult",

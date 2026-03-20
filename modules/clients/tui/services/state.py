@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from modules.backend.agents.mission_control.gate import GateContext
 from modules.backend.agents.mission_control.outcome import (
-    MissionOutcome,
+    ExecutionOutcome,
     TaskResult,
 )
 from modules.backend.agents.mission_control.roster import RosterAgentEntry
@@ -39,7 +39,7 @@ class TuiState:
     task_layers: list[list[str]] = field(default_factory=list)
     task_results: dict[str, TaskResult] = field(default_factory=dict)
     current_layer: int = 0
-    mission_outcome: MissionOutcome | None = None
+    mission_outcome: ExecutionOutcome | None = None
 
     # ── Agent tracking (keyed by task_id) ────────────────────────────
     active_agents: set[str] = field(default_factory=set)
