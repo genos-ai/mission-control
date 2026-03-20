@@ -71,7 +71,7 @@ class TestCreateContext:
             mission_name="test-mission",
             description="A test mission",
         )
-        assert ctx.project_id == "mission-1"
+        assert ctx.mission_id == "mission-1"
         assert ctx.version == 1
         assert ctx.size_characters > 0
         assert ctx.context_data["identity"]["name"] == "test-mission"

@@ -25,15 +25,15 @@ class WorkflowRunRepository(BaseRepository[WorkflowRun]):
 
     async def list_runs(
         self,
-        playbook_name: str | None = None,
+        workflow_name: str | None = None,
         status: WorkflowRunState | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[WorkflowRun], int]:
         """List workflow runs with optional filters."""
         conditions = []
-        if playbook_name:
-            conditions.append(WorkflowRun.playbook_name == playbook_name)
+        if workflow_name:
+            conditions.append(WorkflowRun.workflow_name == workflow_name)
         if status:
             conditions.append(WorkflowRun.status == status)
 

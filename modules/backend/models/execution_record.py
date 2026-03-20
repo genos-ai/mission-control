@@ -72,7 +72,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     (thinking trace), and how much it cost.
     """
 
-    __tablename__ = "mission_records"
+    __tablename__ = "execution_records"
 
     session_id: Mapped[str] = mapped_column(
         String(36),
@@ -81,9 +81,9 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         comment="Session that triggered this execution",
     )
 
-    project_id: Mapped[str | None] = mapped_column(
+    mission_id: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("projects.id", ondelete="SET NULL"),
+        ForeignKey("missions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -119,7 +119,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         comment="TaskPlan dataclass serialized to JSON. Immutable after creation.",
     )
 
-    mission_outcome_json: Mapped[dict | None] = mapped_column(
+    execution_outcome_json: Mapped[dict | None] = mapped_column(
         JSON,
         nullable=True,
         comment="ExecutionOutcome dataclass serialized to JSON. Full execution result.",
@@ -156,7 +156,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
 
     parent_mission_id: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("mission_records.id"),
+        ForeignKey("execution_records.id"),
         nullable=True,
         index=True,
         comment="If this execution was a re-plan, link to the original",
@@ -164,12 +164,12 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
 
     task_executions: Mapped[list["TaskExecution"]] = relationship(
         "TaskExecution",
-        back_populates="mission_record",
+        back_populates="execution_record",
         cascade="all, delete-orphan",
     )
     decisions: Mapped[list["ExecutionDecision"]] = relationship(
         "ExecutionDecision",
-        back_populates="mission_record",
+        back_populates="execution_record",
         cascade="all, delete-orphan",
     )
 
@@ -189,9 +189,9 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "task_executions"
 
-    mission_record_id: Mapped[str] = mapped_column(
+    execution_record_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("mission_records.id"),
+        ForeignKey("execution_records.id"),
         nullable=False,
         index=True,
     )
@@ -264,7 +264,7 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
         comment="Domain tags for structured history queries",
     )
 
-    mission_record: Mapped["ExecutionRecord"] = relationship(
+    execution_record: Mapped["ExecutionRecord"] = relationship(
         "ExecutionRecord",
         back_populates="task_executions",
     )
@@ -363,11 +363,11 @@ class ExecutionDecision(UUIDMixin, TimestampMixin, Base):
     This is the compliance and audit layer.
     """
 
-    __tablename__ = "mission_decisions"
+    __tablename__ = "execution_decisions"
 
-    mission_record_id: Mapped[str] = mapped_column(
+    execution_record_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("mission_records.id"),
+        ForeignKey("execution_records.id"),
         nullable=False,
         index=True,
     )
@@ -391,7 +391,7 @@ class ExecutionDecision(UUIDMixin, TimestampMixin, Base):
         comment="Why Mission Control made this decision",
     )
 
-    mission_record: Mapped["ExecutionRecord"] = relationship(
+    execution_record: Mapped["ExecutionRecord"] = relationship(
         "ExecutionRecord",
         back_populates="decisions",
     )

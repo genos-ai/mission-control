@@ -105,8 +105,8 @@ def render_execution_outcomes(console: Console, executions: list[Any]) -> None:
         return
 
     for e in executions:
-        prefix = getattr(e, "workflow_step_id", None) or getattr(e, "playbook_step_id", None) or str(e.id)[:12]
-        outcome = e.mission_outcome if hasattr(e, "mission_outcome") else None
+        prefix = getattr(e, "workflow_step_id", None) or str(e.id)[:12]
+        outcome = e.execution_outcome if hasattr(e, "execution_outcome") else None
         if not outcome or not isinstance(outcome, dict):
             continue
         tasks = outcome.get("task_results") or outcome.get("task_outcomes") or []
@@ -487,7 +487,7 @@ def _render_execution_detail(execution: Any) -> None:
     ]
     console.print(primary_panel(content="\n".join(info_lines), title="Execution Report"))
 
-    outcome = execution.mission_outcome
+    outcome = execution.execution_outcome
     if outcome and isinstance(outcome, dict):
         tasks = outcome.get("task_results") or outcome.get("task_outcomes") or []
         if tasks:
@@ -555,8 +555,8 @@ def _execution_to_dict(execution: Any) -> dict:
         "roster_ref": getattr(execution, "roster_ref", None),
     }
 
-    if execution.mission_outcome:
-        outcome = execution.mission_outcome
+    if execution.execution_outcome:
+        outcome = execution.execution_outcome
         data["task_results"] = _extract_task_summaries(outcome)
         data["total_tokens"] = outcome.get("total_tokens", {})
 
@@ -580,7 +580,7 @@ def workflow_run_to_dict(run: Any, executions: list[Any]) -> dict:
         "completed_at": run.completed_at,
         "triggered_by": run.triggered_by,
         "steps": [
-            {**_execution_to_dict(e), "step_id": getattr(e, "workflow_step_id", None) or e.playbook_step_id}
+            {**_execution_to_dict(e), "step_id": getattr(e, "workflow_step_id", None)}
             for e in executions
         ],
     }

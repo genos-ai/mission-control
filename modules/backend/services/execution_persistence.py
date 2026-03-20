@@ -54,7 +54,7 @@ class ExecutionPersistenceService(BaseService):
         *,
         roster_name: str | None = None,
         task_plan_json: dict | None = None,
-        mission_outcome_json: dict | None = None,
+        execution_outcome_json: dict | None = None,
         planning_thinking_trace: str | None = None,
         total_cost_usd: float = 0.0,
         started_at: str | None = None,
@@ -62,7 +62,7 @@ class ExecutionPersistenceService(BaseService):
         parent_mission_id: str | None = None,
         objective_statement: str | None = None,
         objective_category: str | None = None,
-        project_id: str | None = None,
+        mission_id: str | None = None,
     ) -> ExecutionRecord:
         """Persist a complete execution record.
 
@@ -84,7 +84,7 @@ class ExecutionPersistenceService(BaseService):
             roster_name=roster_name,
             status=ExecutionRecordStatus(status),
             task_plan_json=task_plan_json,
-            mission_outcome_json=mission_outcome_json,
+            execution_outcome_json=execution_outcome_json,
             planning_thinking_trace=planning_thinking_trace,
             total_cost_usd=total_cost_usd,
             started_at=started_at or utc_now().isoformat(),
@@ -92,7 +92,7 @@ class ExecutionPersistenceService(BaseService):
             parent_mission_id=parent_mission_id,
             objective_statement=objective_statement,
             objective_category=objective_category,
-            project_id=project_id,
+            mission_id=mission_id,
         )
 
         self._session.add(record)
@@ -114,7 +114,7 @@ class ExecutionPersistenceService(BaseService):
 
     async def save_task_execution(
         self,
-        mission_record_id: str,
+        execution_record_id: str,
         task_id: str,
         agent_name: str,
         status: str,
@@ -148,7 +148,7 @@ class ExecutionPersistenceService(BaseService):
             }
 
         execution = TaskExecution(
-            mission_record_id=mission_record_id,
+            execution_record_id=execution_record_id,
             task_id=task_id,
             agent_name=agent_name,
             status=TaskExecutionStatus(status),
@@ -171,7 +171,7 @@ class ExecutionPersistenceService(BaseService):
             "Task execution saved",
             extra={
                 "execution_id": execution.id,
-                "record_id": mission_record_id,
+                "record_id": execution_record_id,
                 "task_id": task_id,
                 "agent": agent_name,
                 "status": status,
@@ -215,7 +215,7 @@ class ExecutionPersistenceService(BaseService):
 
     async def save_decision(
         self,
-        mission_record_id: str,
+        execution_record_id: str,
         decision_type: str,
         reasoning: str,
         *,
@@ -223,7 +223,7 @@ class ExecutionPersistenceService(BaseService):
     ) -> ExecutionDecision:
         """Log a Mission Control decision."""
         decision = ExecutionDecision(
-            mission_record_id=mission_record_id,
+            execution_record_id=execution_record_id,
             decision_type=DecisionType(decision_type),
             task_id=task_id,
             reasoning=reasoning,
@@ -237,7 +237,7 @@ class ExecutionPersistenceService(BaseService):
             "Decision logged",
             extra={
                 "decision_id": decision.id,
-                "record_id": mission_record_id,
+                "record_id": execution_record_id,
                 "type": decision_type,
                 "task_id": task_id,
             },

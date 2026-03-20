@@ -267,7 +267,7 @@ async def _action_detail(cli_logger, *, objective, execution_id, roster, budget,
     if execution.result_summary:
         console.print(status_panel(content=execution.result_summary, status="completed", title="Result Summary"))
 
-    outcome = execution.mission_outcome
+    outcome = execution.execution_outcome
     if outcome and isinstance(outcome, dict):
         tasks = outcome.get("task_results") or outcome.get("task_outcomes") or []
         if tasks:
@@ -299,7 +299,7 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
             click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
             raise _AbortExecution("execution not found")
 
-    outcome = execution.mission_outcome
+    outcome = execution.execution_outcome
     if not outcome or not isinstance(outcome, dict):
         click.echo(click.style("No plan data — execution may not have been run.", fg="yellow"))
         return

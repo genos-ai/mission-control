@@ -14,26 +14,26 @@ from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Infrastructure tables — preserved by default (projects + PCD)
+# Infrastructure tables — preserved by default (missions + PCD)
 PROJECT_TABLES = [
     "milestone_summaries",
-    "project_decisions",
+    "mission_decisions",
     "context_changes",
-    "project_contexts",
-    "project_members",
-    "projects",
+    "mission_contexts",
+    "mission_members",
+    "missions",
 ]
 
 # Run data tables — cleared by db clear
 RUN_TABLES = [
-    "mission_decisions",
+    "execution_decisions",
     "task_attempts",
     "task_executions",
-    "mission_records",
+    "execution_records",
     "session_messages",
     "session_channels",
-    "missions",
-    "playbook_runs",
+    "executions",
+    "workflow_runs",
     "sessions",
     "notes",
 ]
@@ -243,12 +243,12 @@ async def _action_clear(cli_logger, *, table, limit, confirm, include_missions=F
 async def _action_clear_executions(cli_logger, *, table, limit, confirm, **_):
     """Clear execution-related data only (missions, records, executions, decisions)."""
     execution_tables = [
-        "mission_decisions",
+        "execution_decisions",
         "task_attempts",
         "task_executions",
-        "mission_records",
-        "missions",
-        "playbook_runs",
+        "execution_records",
+        "executions",
+        "workflow_runs",
     ]
 
     if not confirm:

@@ -86,7 +86,7 @@ class MissionMemberResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    project_id: str
+    mission_id: str
     user_id: str
     role: str
     created_at: str

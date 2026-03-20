@@ -33,13 +33,13 @@ class ExecutionRepository(BaseRepository[Execution]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_playbook_run(
-        self, playbook_run_id: str,
+    async def get_by_workflow_run(
+        self, workflow_run_id: str,
     ) -> list[Execution]:
         """Get all executions for a specific workflow run."""
         stmt = (
             select(Execution)
-            .where(Execution.playbook_run_id == playbook_run_id)
+            .where(Execution.workflow_run_id == workflow_run_id)
             .order_by(Execution.created_at)
         )
         result = await self.session.execute(stmt)
@@ -63,7 +63,7 @@ class ExecutionRepository(BaseRepository[Execution]):
     async def list_executions(
         self,
         status: ExecutionState | None = None,
-        playbook_run_id: str | None = None,
+        workflow_run_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Execution], int]:
@@ -75,8 +75,8 @@ class ExecutionRepository(BaseRepository[Execution]):
         conditions = []
         if status:
             conditions.append(Execution.status == status)
-        if playbook_run_id:
-            conditions.append(Execution.playbook_run_id == playbook_run_id)
+        if workflow_run_id:
+            conditions.append(Execution.workflow_run_id == workflow_run_id)
 
         count_stmt = select(func.count()).select_from(Execution)
         if conditions:

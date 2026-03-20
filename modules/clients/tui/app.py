@@ -194,13 +194,13 @@ class MissionControlApp(App):
 
             outcome = await self.bridge.run_execution(
                 brief=brief,
-                project_id=self.state.current_project_id,
+                mission_id=self.state.current_project_id,
                 session_id=self.state.current_session_id,
                 budget_usd=self.state.budget_usd or 10.0,
                 gate=self._gate_reviewer,
             )
 
-            self.state.mission_outcome = outcome
+            self.state.execution_outcome = outcome
             self.state.mission_status = outcome.status.value
             self.state.total_cost_usd = outcome.total_cost_usd
             self._update_mission_summary()

@@ -1,7 +1,7 @@
 """
-Tests for project_id threading through the workflow → execution → dispatch chain.
+Tests for mission_id (container) threading through workflow → execution → dispatch.
 
-Verifies that project_id flows from WorkflowRunService.run_workflow() (resolved
+Verifies that mission_id flows from WorkflowRunService.run_workflow() (resolved
 from --project name) through ExecutionService.create_execution_from_step() and
 run_execution() down to the DispatchAdapter and handle_mission().
 
@@ -26,7 +26,7 @@ def _mock_app_config(**overrides):
 
 
 # =============================================================================
-# ExecutionService: project_id on create_execution_from_step
+# ExecutionService: mission_id on create_execution_from_step
 # =============================================================================
 
 
@@ -35,14 +35,14 @@ class TestExecutionServiceProjectId:
     async def test_create_execution_from_step_sets_project_id(
         self, db_session: AsyncSession,
     ):
-        """project_id is persisted on the Execution record."""
+        """mission_id is persisted on the Execution record."""
         with patch(
             "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
             service = ExecutionService(session=db_session)
             mission = await service.create_execution_from_step(
-                playbook_run_id="run-123",
+                workflow_run_id="run-123",
                 step_id="step-1",
                 objective="Test objective",
                 roster_ref="default",
@@ -50,23 +50,23 @@ class TestExecutionServiceProjectId:
                 cost_ceiling_usd=1.0,
                 upstream_context={},
                 session_id="sess-1",
-                project_id="proj-abc",
+                mission_id="proj-abc",
             )
 
-        assert mission.project_id == "proj-abc"
+        assert mission.mission_id == "proj-abc"
 
     @pytest.mark.asyncio
     async def test_create_execution_from_step_project_id_defaults_none(
         self, db_session: AsyncSession,
     ):
-        """project_id defaults to None when not provided."""
+        """mission_id defaults to None when not provided."""
         with patch(
             "modules.backend.services.execution.get_app_config",
             return_value=_mock_app_config(),
         ):
             service = ExecutionService(session=db_session)
             mission = await service.create_execution_from_step(
-                playbook_run_id="run-456",
+                workflow_run_id="run-456",
                 step_id="step-1",
                 objective="No project",
                 roster_ref="default",
@@ -76,13 +76,13 @@ class TestExecutionServiceProjectId:
                 session_id="sess-2",
             )
 
-        assert mission.project_id is None
+        assert mission.mission_id is None
 
     @pytest.mark.asyncio
     async def test_run_execution_passes_project_id_to_dispatch(
         self, db_session: AsyncSession,
     ):
-        """run_execution() forwards execution.project_id to the dispatch adapter."""
+        """run_execution() forwards execution.mission_id to the dispatch adapter."""
         mock_dispatch = AsyncMock()
         mock_dispatch.execute = AsyncMock(return_value={
             "status": "success",
@@ -101,7 +101,7 @@ class TestExecutionServiceProjectId:
                 mission_control_dispatch=mock_dispatch,
             )
             mission = await service.create_execution_from_step(
-                playbook_run_id="run-789",
+                workflow_run_id="run-789",
                 step_id="step-1",
                 objective="With project",
                 roster_ref="default",
@@ -109,21 +109,21 @@ class TestExecutionServiceProjectId:
                 cost_ceiling_usd=1.0,
                 upstream_context={},
                 session_id="sess-3",
-                project_id="proj-xyz",
+                mission_id="proj-xyz",
             )
 
             await service.run_execution(mission.id)
 
-        # Verify project_id was forwarded to the adapter
+        # Verify mission_id was forwarded to the adapter
         mock_dispatch.execute.assert_called_once()
         call_kwargs = mock_dispatch.execute.call_args.kwargs
-        assert call_kwargs["project_id"] == "proj-xyz"
+        assert call_kwargs["mission_id"] == "proj-xyz"
 
     @pytest.mark.asyncio
     async def test_run_execution_passes_none_project_id(
         self, db_session: AsyncSession,
     ):
-        """run_execution() passes None project_id when execution has no project."""
+        """run_execution() passes None mission_id when execution has no mission container."""
         mock_dispatch = AsyncMock()
         mock_dispatch.execute = AsyncMock(return_value={
             "status": "success",
@@ -142,7 +142,7 @@ class TestExecutionServiceProjectId:
                 mission_control_dispatch=mock_dispatch,
             )
             mission = await service.create_execution_from_step(
-                playbook_run_id="run-000",
+                workflow_run_id="run-000",
                 step_id="step-1",
                 objective="No project",
                 roster_ref="default",
@@ -155,18 +155,18 @@ class TestExecutionServiceProjectId:
             await service.run_execution(mission.id)
 
         call_kwargs = mock_dispatch.execute.call_args.kwargs
-        assert call_kwargs["project_id"] is None
+        assert call_kwargs["mission_id"] is None
 
 
 # =============================================================================
-# DispatchAdapter: project_id forwarded to handle_mission
+# DispatchAdapter: mission_id forwarded to handle_mission
 # =============================================================================
 
 
 class TestDispatchAdapterProjectId:
     @pytest.mark.asyncio
     async def test_execute_forwards_project_id(self, db_session: AsyncSession):
-        """DispatchAdapter.execute() passes project_id and db_session to handle_mission()."""
+        """DispatchAdapter.execute() passes mission_id and db_session to handle_mission()."""
         from modules.backend.agents.mission_control.dispatch_adapter import (
             MissionControlDispatchAdapter,
         )
@@ -194,17 +194,17 @@ class TestDispatchAdapterProjectId:
         ) as mock_handle:
             result = await adapter.execute(
                 mission_brief="Test brief",
-                project_id="proj-test-123",
+                mission_id="proj-test-123",
             )
 
         mock_handle.assert_called_once()
         call_kwargs = mock_handle.call_args.kwargs
-        assert call_kwargs["project_id"] == "proj-test-123"
+        assert call_kwargs["mission_id"] == "proj-test-123"
         assert call_kwargs["db_session"] is db_session
 
     @pytest.mark.asyncio
     async def test_execute_without_project_id(self, db_session: AsyncSession):
-        """DispatchAdapter.execute() passes None project_id when not provided."""
+        """DispatchAdapter.execute() passes None mission_id when not provided."""
         from modules.backend.agents.mission_control.dispatch_adapter import (
             MissionControlDispatchAdapter,
         )
@@ -233,7 +233,7 @@ class TestDispatchAdapterProjectId:
             await adapter.execute(mission_brief="Test brief")
 
         call_kwargs = mock_handle.call_args.kwargs
-        assert call_kwargs["project_id"] is None
+        assert call_kwargs["mission_id"] is None
 
 
 # =============================================================================
@@ -295,7 +295,7 @@ class TestWorkflowRunProjectName:
                 project_name="my-app",
             )
 
-        assert run.project_id == "resolved-uuid-123"
+        assert run.mission_id == "resolved-uuid-123"
 
     @pytest.mark.asyncio
     async def test_run_workflow_creates_project_when_new(
@@ -338,7 +338,7 @@ class TestWorkflowRunProjectName:
                 project_name="brand-new-app",
             )
 
-        assert run.project_id == "new-uuid-456"
+        assert run.mission_id == "new-uuid-456"
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["name"] == "brand-new-app"

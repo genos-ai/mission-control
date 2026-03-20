@@ -260,7 +260,7 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
 
         execution_service = ExecutionService(session=db)
         executions, _ = await execution_service.list_executions(
-            playbook_run_id=run.id,
+            workflow_run_id=run.id,
         )
         await db.commit()
 
@@ -400,7 +400,7 @@ async def _load_run_with_executions(run_id: str):
             sys.exit(1)
 
         executions, _ = await execution_service.list_executions(
-            playbook_run_id=run.id,
+            workflow_run_id=run.id,
         )
 
     return run, executions

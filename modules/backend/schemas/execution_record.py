@@ -85,7 +85,7 @@ class ExecutionRecordDetailResponse(ExecutionRecordResponse):
     objective_statement: str | None = None
     objective_category: str | None = None
     task_plan_json: dict | None = None
-    mission_outcome_json: dict | None = None
+    execution_outcome_json: dict | None = None
     planning_thinking_trace: str | None = None
     task_executions: list[TaskExecutionResponse] = Field(default_factory=list)
     decisions: list[ExecutionDecisionResponse] = Field(default_factory=list)

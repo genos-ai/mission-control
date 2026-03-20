@@ -23,7 +23,7 @@ class MissionContextRepository(BaseRepository[MissionContext]):
         """Get MCD by mission ID."""
         result = await self.session.execute(
             select(MissionContext)
-            .where(MissionContext.project_id == mission_id)
+            .where(MissionContext.mission_id == mission_id)
         )
         return result.scalar_one_or_none()
 
@@ -41,7 +41,7 @@ class MissionContextRepository(BaseRepository[MissionContext]):
         """
         result = await self.session.execute(
             update(MissionContext)
-            .where(MissionContext.project_id == mission_id)
+            .where(MissionContext.mission_id == mission_id)
             .where(MissionContext.version == new_version - 1)
             .values(
                 context_data=context_data,

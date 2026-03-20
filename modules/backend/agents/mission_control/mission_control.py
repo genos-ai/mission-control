@@ -107,7 +107,7 @@ async def handle(
     if mission_brief is not None:
         try:
             outcome = await handle_mission(
-                mission_id=f"mission-{session_id}",
+                mission_run_id=f"mission-{session_id}",
                 mission_brief=mission_brief,
                 session_service=session_service,
                 event_bus=event_bus,
@@ -353,7 +353,7 @@ async def collect(session_id: str, message: str, **kwargs: Any) -> CollectResult
 
 
 async def handle_mission(
-    mission_id: str,
+    mission_run_id: str,
     mission_brief: str,
     *,
     session_service: SessionServiceProtocol,
@@ -362,7 +362,7 @@ async def handle_mission(
     mission_budget_usd: float = 10.0,
     upstream_context: dict | None = None,
     session_id: str | None = None,
-    project_id: str | None = None,
+    mission_id: str | None = None,
     db_session: Any | None = None,
     gate: GateReviewer | None = None,
 ) -> ExecutionOutcome:
@@ -387,7 +387,7 @@ async def handle_mission(
     project_context = None
     recent_failures = None
 
-    if project_id and db_session:
+    if mission_id and db_session:
         pcd_manager = MissionContextManager(db_session)
         context_curator = ContextCurator(pcd_manager)
         history_service = HistoryQueryService(db_session)
@@ -404,30 +404,30 @@ async def handle_mission(
 
         # Load project context for the planner (non-fatal)
         try:
-            project_context = await context_curator.get_mission_context(project_id)
+            project_context = await context_curator.get_mission_context(mission_id)
         except (OSError, ValueError, RuntimeError):
             logger.warning(
                 "Failed to load PCD for planning (non-fatal)",
-                extra={"project_id": project_id},
+                extra={"mission_id": mission_id},
                 exc_info=True,
             )
 
         # Load recent failures so the planner can avoid repeating them
         try:
             recent_failures = await history_service.get_recent_failures(
-                project_id, limit=5,
+                mission_id, limit=5,
             )
         except (OSError, ValueError, RuntimeError):
             logger.warning(
                 "Failed to load failure history for planning (non-fatal)",
-                extra={"project_id": project_id},
+                extra={"mission_id": mission_id},
                 exc_info=True,
             )
 
     # Build planning prompt WITH project context
     planning_prompt = _build_planning_prompt(
         mission_brief=mission_brief,
-        mission_id=mission_id,
+        mission_id=mission_run_id,
         roster_description=roster_description,
         upstream_context=upstream_context,
         project_context=project_context,
@@ -457,7 +457,7 @@ async def handle_mission(
                 extra={
                     "attempt": attempt + 1,
                     "errors": validation.errors,
-                    "mission_id": mission_id,
+                    "mission_id": mission_run_id,
                 },
             )
             planning_prompt = _append_validation_feedback(
@@ -471,7 +471,7 @@ async def handle_mission(
                 extra={
                     "attempt": attempt + 1,
                     "error": str(e),
-                    "mission_id": mission_id,
+                    "mission_id": mission_run_id,
                 },
             )
             planning_prompt = _append_validation_feedback(
@@ -480,7 +480,7 @@ async def handle_mission(
 
     if plan is None:
         return ExecutionOutcome(
-            mission_id=mission_id,
+            mission_id=mission_run_id,
             status=ExecutionStatus.FAILED,
             planning_trace_reference=thinking_trace,
         )
@@ -491,16 +491,16 @@ async def handle_mission(
         roster=roster,
         execute_agent_fn=_make_agent_executor(
             event_bus,
-            session_id=session_id or mission_id,
-            mission_id=mission_id,
+            session_id=session_id or mission_run_id,
+            mission_id=mission_run_id,
         ),
         mission_budget_usd=mission_budget_usd,
         gate=gate,
-        project_id=project_id,
+        mission_id=mission_id,
         context_curator=context_curator,
         context_assembler=context_assembler,
         event_bus=event_bus,
-        session_id=session_id or mission_id,
+        session_id=session_id or mission_run_id,
     )
 
     outcome.planning_trace_reference = thinking_trace
@@ -510,11 +510,11 @@ async def handle_mission(
     if db_session is not None:
         await persist_mission_results(
             outcome,
-            session_id=session_id or mission_id,
+            session_id=session_id or mission_run_id,
             roster_name=roster_name,
             task_plan_json=plan.model_dump(),
             thinking_trace=thinking_trace,
-            project_id=project_id,
+            mission_id=mission_id,
             db_session=db_session,
         )
 

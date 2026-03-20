@@ -77,7 +77,7 @@ class MissionService(BaseService):
 
         # Auto-create owner membership
         await self._member_repo.create(
-            project_id=mission.id,
+            mission_id=mission.id,
             user_id=owner_id,
             role=MissionMemberRole.OWNER,
         )

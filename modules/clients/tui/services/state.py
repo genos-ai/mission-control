@@ -39,7 +39,7 @@ class TuiState:
     task_layers: list[list[str]] = field(default_factory=list)
     task_results: dict[str, TaskResult] = field(default_factory=dict)
     current_layer: int = 0
-    mission_outcome: ExecutionOutcome | None = None
+    execution_outcome: ExecutionOutcome | None = None
 
     # ── Agent tracking (keyed by task_id) ────────────────────────────
     active_agents: set[str] = field(default_factory=set)
@@ -80,7 +80,7 @@ class TuiState:
         self.task_layers = []
         self.task_results = {}
         self.current_layer = 0
-        self.mission_outcome = None
+        self.execution_outcome = None
         self.active_agents = set()
         self.agent_thinking = {}
         self.agent_output = {}

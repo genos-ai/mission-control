@@ -32,11 +32,11 @@ class MissionDecision(UUIDMixin, TimestampMixin, Base):
     context assembly.
     """
 
-    __tablename__ = "project_decisions"
+    __tablename__ = "mission_decisions"
 
-    project_id: Mapped[str] = mapped_column(
+    mission_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -55,7 +55,7 @@ class MissionDecision(UUIDMixin, TimestampMixin, Base):
     made_by: Mapped[str] = mapped_column(
         String(200), nullable=False,
     )
-    mission_id: Mapped[str | None] = mapped_column(
+    execution_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True,
     )
     status: Mapped[str] = mapped_column(
@@ -84,9 +84,9 @@ class MilestoneSummary(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "milestone_summaries"
 
-    project_id: Mapped[str] = mapped_column(
+    mission_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

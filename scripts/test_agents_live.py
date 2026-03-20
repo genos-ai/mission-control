@@ -450,7 +450,7 @@ async def run_mission() -> dict:
     mission_id = "live-test-self-audit"
 
     outcome = await handle_mission(
-        mission_id=mission_id,
+        mission_run_id=mission_id,
         mission_brief=SELF_AUDIT_MISSION_BRIEF,
         session_service=None,
         roster_name="default",

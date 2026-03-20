@@ -38,7 +38,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     activity.logger.info(
         "Starting mission execution",
         extra={
-            "mission_id": input.mission_id,
+            "mission_run_id": input.mission_run_id,
             "roster": input.roster_name,
             "budget": input.mission_budget_usd,
         },
@@ -49,12 +49,12 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
 
         try:
             outcome = await handle_mission(
-                mission_id=input.mission_id,
+                mission_run_id=input.mission_run_id,
                 mission_brief=input.mission_brief,
                 session_service=session_service,
                 roster_name=input.roster_name,
                 mission_budget_usd=input.mission_budget_usd,
-                project_id=input.project_id,
+                mission_id=input.mission_id,
             )
 
             outcome_dict = outcome.model_dump()
@@ -67,7 +67,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             )
 
             return MissionExecutionResult(
-                mission_id=input.mission_id,
+                mission_id=input.mission_run_id,
                 status=outcome.status.value,
                 total_cost_usd=outcome.total_cost_usd,
                 total_duration_seconds=outcome.total_duration_seconds,
@@ -80,10 +80,10 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
         except Exception as e:
             activity.logger.error(
                 "Mission execution failed",
-                extra={"mission_id": input.mission_id, "error": str(e)},
+                extra={"mission_run_id": input.mission_run_id, "error": str(e)},
             )
             return MissionExecutionResult(
-                mission_id=input.mission_id,
+                mission_id=input.mission_run_id,
                 status="failed",
                 outcome_json={"error": str(e)},
             )
@@ -91,11 +91,11 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
 
 @activity.defn
 async def persist_mission_outcome(
-    mission_id: str,
+    mission_run_id: str,
     session_id: str,
     roster_name: str,
     outcome_json: dict,
-    project_id: str | None = None,
+    mission_id: str | None = None,
 ) -> bool:
     """Persist mission results to PostgreSQL. Best-effort."""
     from modules.backend.agents.mission_control.outcome import ExecutionOutcome
@@ -113,7 +113,7 @@ async def persist_mission_outcome(
                 roster_name=roster_name,
                 task_plan_json=outcome_json.get("task_plan_reference"),
                 thinking_trace=outcome_json.get("planning_trace_reference"),
-                project_id=project_id,
+                mission_id=mission_id,
                 db_session=db,
             )
             await db.commit()
@@ -121,7 +121,7 @@ async def persist_mission_outcome(
     except (OSError, ValueError, RuntimeError) as e:
         activity.logger.error(
             "Failed to persist mission results",
-            extra={"mission_id": mission_id, "error": str(e)},
+            extra={"mission_run_id": mission_run_id, "error": str(e)},
         )
         return False
 

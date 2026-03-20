@@ -159,7 +159,7 @@ async def list_missions(
     service = _get_execution_service(db)
     executions, total = await service.list_executions(
         status=status,
-        playbook_run_id=workflow_run_id,
+        workflow_run_id=workflow_run_id,
         limit=limit,
         offset=offset,
     )

@@ -14,7 +14,7 @@ def _make_detail() -> dict:
         "roster_name": "default",
         "created_at": "2026-03-18T12:00:00",
         "task_plan_json": '{"version":"1.0","tasks":[]}',
-        "mission_outcome_json": None,
+        "execution_outcome_json": None,
         "task_executions": [
             {
                 "task_id": "task-1",

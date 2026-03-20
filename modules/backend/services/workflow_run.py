@@ -88,7 +88,7 @@ class WorkflowRunService(BaseService):
                 "the target mission."
             )
 
-        project_id = await self._resolve_mission(project_name, workflow)
+        mission_id = await self._resolve_mission(project_name, workflow)
 
         # Create session for the workflow run
         from modules.backend.services.session import SessionService
@@ -104,8 +104,8 @@ class WorkflowRunService(BaseService):
 
         # Create WorkflowRun record
         run = WorkflowRun(
-            playbook_name=workflow.workflow_name,
-            playbook_version=workflow.version,
+            workflow_name=workflow.workflow_name,
+            workflow_version=workflow.version,
             status=WorkflowRunState.RUNNING,
             session_id=session.id,
             trigger_type=workflow.trigger.type,
@@ -114,7 +114,7 @@ class WorkflowRunService(BaseService):
             total_cost_usd=0.0,
             budget_usd=workflow.budget.max_cost_usd,
             started_at=utc_now().isoformat(),
-            project_id=project_id,
+            mission_id=mission_id,
         )
         if context_overrides:
             run.context.update(context_overrides)
@@ -199,12 +199,12 @@ class WorkflowRunService(BaseService):
 
     async def list_runs(
         self,
-        playbook_name: str | None = None,
+        workflow_name: str | None = None,
         limit: int = 20,
     ) -> tuple[list[WorkflowRun], int]:
         """List workflow runs."""
         return await self._run_repo.list_runs(
-            playbook_name=playbook_name,
+            workflow_name=workflow_name,
             limit=limit,
         )
 
@@ -343,7 +343,7 @@ class WorkflowRunService(BaseService):
         )
 
         execution = await execution_service.create_execution_from_step(
-            playbook_run_id=run.id,
+            workflow_run_id=run.id,
             step_id=step.id,
             objective=objective,
             roster_ref=step.roster,
@@ -351,7 +351,7 @@ class WorkflowRunService(BaseService):
             cost_ceiling_usd=cost_ceiling,
             upstream_context=upstream,
             session_id=session_id,
-            project_id=run.project_id,
+            mission_id=run.mission_id,
         )
 
         logger.info(

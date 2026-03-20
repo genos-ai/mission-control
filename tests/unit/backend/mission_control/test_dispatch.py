@@ -635,7 +635,7 @@ class TestDispatch:
 
         outcome = await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_curator=mock_curator,
         )
         assert outcome.status == ExecutionStatus.SUCCESS
@@ -646,7 +646,7 @@ class TestDispatch:
 
     @pytest.mark.asyncio
     async def test_context_curator_not_called_without_project_id(self):
-        """3.3: No curator calls when project_id is None."""
+        """3.3: No curator calls when mission_id is None."""
         plan = _plan([_task("t1")])
         roster = Roster(agents=[_entry("agent_a")])
         mock_curator = _mock_curator()
@@ -688,7 +688,7 @@ class TestDispatch:
 
         outcome = await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_curator=mock_curator,
         )
         assert outcome.status == ExecutionStatus.SUCCESS
@@ -711,7 +711,7 @@ class TestDispatch:
 
         outcome = await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_curator=mock_curator,
         )
         assert outcome.status == ExecutionStatus.SUCCESS
@@ -756,7 +756,7 @@ class TestDispatch:
 
         outcome = await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_assembler=mock_assembler,
         )
         assert outcome.status == ExecutionStatus.SUCCESS
@@ -779,7 +779,7 @@ class TestDispatch:
 
         await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_assembler=mock_assembler,
         )
         call_kwargs = mock_assembler.build.call_args
@@ -804,7 +804,7 @@ class TestDispatch:
 
         outcome = await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_curator=mock_curator,
             context_assembler=mock_assembler,
         )
@@ -814,7 +814,7 @@ class TestDispatch:
 
     @pytest.mark.asyncio
     async def test_assembler_not_called_without_project_id(self):
-        """4.4: Assembler is not called when project_id is None."""
+        """4.4: Assembler is not called when mission_id is None."""
         plan = _plan([_task("t1")])
         roster = Roster(agents=[_entry("agent_a")])
 
@@ -845,7 +845,7 @@ class TestDispatch:
 
         outcome = await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_assembler=mock_assembler,
         )
         assert outcome.status == ExecutionStatus.SUCCESS
@@ -864,7 +864,7 @@ class TestDispatch:
 
         await dispatch(
             plan, roster, mock_execute, 10.0,
-            project_id="proj-1",
+            mission_id="proj-1",
             context_assembler=mock_assembler,
         )
         call_kwargs = mock_assembler.build.call_args

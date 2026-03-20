@@ -34,7 +34,7 @@ class MissionMemberRole(str, enum.Enum):
 class Mission(UUIDMixin, TimestampMixin, Base):
     """A long-lived mission that groups executions, context, and history."""
 
-    __tablename__ = "projects"
+    __tablename__ = "missions"
 
     name: Mapped[str] = mapped_column(
         String(200), nullable=False, unique=True,
@@ -84,14 +84,14 @@ class Mission(UUIDMixin, TimestampMixin, Base):
 class MissionMember(UUIDMixin, TimestampMixin, Base):
     """Human membership in a mission with role-based permissions."""
 
-    __tablename__ = "project_members"
+    __tablename__ = "mission_members"
     __table_args__ = (
-        UniqueConstraint("project_id", "user_id", name="uq_project_members_project_user"),
+        UniqueConstraint("mission_id", "user_id", name="uq_mission_members_mission_user"),
     )
 
-    project_id: Mapped[str] = mapped_column(
+    mission_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -112,6 +112,6 @@ class MissionMember(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<MissionMember(mission={self.project_id}, "
+            f"<MissionMember(mission={self.mission_id}, "
             f"user={self.user_id}, role={self.role})>"
         )

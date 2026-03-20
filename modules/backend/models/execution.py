@@ -5,9 +5,9 @@ An execution is a discrete objective with bounded scope. When created by a
 Workflow, each execution has its own roster, complexity tier, and upstream
 context. The Execution instantiates Mission Control with these parameters.
 
-Executions created by Workflows have a playbook_run_id linking them to
+Executions created by Workflows have a workflow_run_id linking them to
 their parent WorkflowRun. Ad-hoc executions (from direct API calls) have
-no playbook_run_id.
+no workflow_run_id.
 """
 
 import enum
@@ -63,17 +63,17 @@ class WorkflowRunState(str, enum.Enum):
 class WorkflowRun(UUIDMixin, TimestampMixin, Base):
     """A single execution of a workflow."""
 
-    __tablename__ = "playbook_runs"
+    __tablename__ = "workflow_runs"
 
-    playbook_name: Mapped[str] = mapped_column(
+    workflow_name: Mapped[str] = mapped_column(
         String(200), nullable=False, index=True,
     )
-    playbook_version: Mapped[int] = mapped_column(
+    workflow_version: Mapped[int] = mapped_column(
         Integer, nullable=False,
     )
-    project_id: Mapped[str | None] = mapped_column(
+    mission_id: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("projects.id", ondelete="SET NULL"),
+        ForeignKey("missions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -116,7 +116,7 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<WorkflowRun(id={self.id}, workflow={self.playbook_name!r}, "
+            f"<WorkflowRun(id={self.id}, workflow={self.workflow_name!r}, "
             f"status={self.status})>"
         )
 
@@ -124,17 +124,17 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
 class Execution(UUIDMixin, TimestampMixin, Base):
     """A runtime execution — a discrete objective with bounded scope."""
 
-    __tablename__ = "missions"
+    __tablename__ = "executions"
 
-    playbook_run_id: Mapped[str | None] = mapped_column(
+    workflow_run_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True, index=True,
     )
-    playbook_step_id: Mapped[str | None] = mapped_column(
+    workflow_step_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True,
     )
-    project_id: Mapped[str | None] = mapped_column(
+    mission_id: Mapped[str | None] = mapped_column(
         String(36),
-        ForeignKey("projects.id", ondelete="SET NULL"),
+        ForeignKey("missions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -183,7 +183,7 @@ class Execution(UUIDMixin, TimestampMixin, Base):
     error_data: Mapped[dict | None] = mapped_column(
         JSON, nullable=True,
     )
-    mission_outcome: Mapped[dict | None] = mapped_column(
+    execution_outcome: Mapped[dict | None] = mapped_column(
         JSON, nullable=True,
     )
     result_summary: Mapped[str | None] = mapped_column(

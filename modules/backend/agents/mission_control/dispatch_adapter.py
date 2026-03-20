@@ -43,11 +43,11 @@ class MissionControlDispatchAdapter:
         upstream_context: dict | None = None,
         cost_ceiling_usd: float | None = None,
         session_id: str | None = None,
-        project_id: str | None = None,
+        mission_id: str | None = None,
         gate: object | None = None,
     ) -> dict:
         """Execute a mission via handle_mission() and return result dict."""
-        mission_id = f"mission-{session_id}" if session_id else "mission-adhoc"
+        mission_run_id = f"mission-{session_id}" if session_id else "mission-adhoc"
         budget = cost_ceiling_usd or 10.0
 
         # Select roster based on complexity_tier if a tier-specific roster exists
@@ -69,7 +69,7 @@ class MissionControlDispatchAdapter:
                 )
 
         outcome = await handle_mission(
-            mission_id=mission_id,
+            mission_run_id=mission_run_id,
             mission_brief=mission_brief,
             session_service=self._session_service,
             event_bus=self._event_bus,
@@ -77,7 +77,7 @@ class MissionControlDispatchAdapter:
             mission_budget_usd=budget,
             upstream_context=upstream_context,
             session_id=session_id,
-            project_id=project_id,
+            mission_id=mission_id,
             db_session=self._db_session,
             gate=gate,
         )

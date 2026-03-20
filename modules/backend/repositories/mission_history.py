@@ -29,7 +29,7 @@ class MissionDecisionRepository(BaseRepository[MissionDecision]):
         """Get active decisions for a domain, most recent first."""
         result = await self.session.execute(
             select(MissionDecision)
-            .where(MissionDecision.project_id == mission_id)
+            .where(MissionDecision.mission_id == mission_id)
             .where(MissionDecision.domain == domain)
             .where(MissionDecision.status == DecisionStatus.ACTIVE)
             .order_by(desc(MissionDecision.created_at))
@@ -45,7 +45,7 @@ class MissionDecisionRepository(BaseRepository[MissionDecision]):
         """Get all active decisions for a mission."""
         result = await self.session.execute(
             select(MissionDecision)
-            .where(MissionDecision.project_id == mission_id)
+            .where(MissionDecision.mission_id == mission_id)
             .where(MissionDecision.status == DecisionStatus.ACTIVE)
             .order_by(desc(MissionDecision.created_at))
             .limit(limit)
@@ -66,7 +66,7 @@ class MilestoneSummaryRepository(BaseRepository[MilestoneSummary]):
         """Get milestones for a mission, most recent first."""
         result = await self.session.execute(
             select(MilestoneSummary)
-            .where(MilestoneSummary.project_id == mission_id)
+            .where(MilestoneSummary.mission_id == mission_id)
             .order_by(desc(MilestoneSummary.period_end))
             .limit(limit)
         )

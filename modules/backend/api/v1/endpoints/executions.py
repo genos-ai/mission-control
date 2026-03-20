@@ -219,12 +219,12 @@ async def _execute_via_temporal(
     handle = await client.start_workflow(
         AgentMissionWorkflow.run,
         MissionWorkflowInput(
-            mission_id=execution_id,
+            mission_run_id=execution_id,
             session_id=execution_id,
             mission_brief=brief,
             roster_name=roster,
             mission_budget_usd=budget,
-            project_id=record.project_id if record else None,
+            mission_id=record.mission_id if record else None,
             approval_timeout_seconds=config.temporal.approval_timeout_seconds,
             escalation_timeout_seconds=config.temporal.escalation_timeout_seconds,
             notification_timeout_seconds=config.temporal.notification_timeout_seconds,

@@ -84,7 +84,7 @@ class TestExecuteMission:
 
             result = await execute_mission(
                 MissionWorkflowInput(
-                    mission_id="test-1",
+                    mission_run_id="test-1",
                     session_id="sess-1",
                     mission_brief="Test mission",
                 ),
@@ -135,7 +135,7 @@ class TestExecuteMission:
 
             result = await execute_mission(
                 MissionWorkflowInput(
-                    mission_id="test-2",
+                    mission_run_id="test-2",
                     session_id="sess-2",
                     mission_brief="Partial mission",
                 ),
@@ -173,7 +173,7 @@ class TestExecuteMission:
 
             result = await execute_mission(
                 MissionWorkflowInput(
-                    mission_id="test-3",
+                    mission_run_id="test-3",
                     session_id="sess-3",
                     mission_brief="Failing mission",
                 ),

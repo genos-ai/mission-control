@@ -193,7 +193,7 @@ async def _assembled_async(console, project_id, domain_tags, output_format):
 
             try:
                 packet = await assembler.build(
-                    project_id=project_id,
+                    mission_id=project_id,
                     task_definition=task_stub,
                     resolved_inputs={},
                     domain_tags=tags,
@@ -202,7 +202,7 @@ async def _assembled_async(console, project_id, domain_tags, output_format):
                 # History query may fail if DB schema is behind — degrade gracefully
                 console.print(f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n")
                 packet = await assembler.build(
-                    project_id=project_id,
+                    mission_id=project_id,
                     task_definition=task_stub,
                     resolved_inputs={},
                     domain_tags=[],  # empty tags skip history

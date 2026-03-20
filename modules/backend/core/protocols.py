@@ -59,6 +59,6 @@ class ExecutionDispatchProtocol(Protocol):
         upstream_context: dict | None = ...,
         cost_ceiling_usd: float | None = ...,
         session_id: str | None = ...,
-        project_id: str | None = ...,
+        mission_id: str | None = ...,
         gate: object | None = ...,
     ) -> dict: ...

@@ -245,7 +245,7 @@ class TestRunFullPipeline:
 
 async def _create_old_mission(
     db: AsyncSession,
-    project_id: str,
+    mission_id: str,
     objective: str = "Test mission",
     cost: float = 0.5,
     completed_at: str = "2020-01-01T00:00:00Z",
@@ -254,7 +254,7 @@ async def _create_old_mission(
     """Helper to create an old ExecutionRecord for summarization tests."""
     record = ExecutionRecord(
         session_id="sess-1",
-        project_id=project_id,
+        mission_id=mission_id,
         status=status,
         objective_statement=objective,
         total_cost_usd=cost,
@@ -362,7 +362,7 @@ class TestSummarizeMissionRecords:
         """Domain tags from task executions are included in milestone."""
         m = await _create_old_mission(db_session, "proj-tags-m")
         te = TaskExecution(
-            mission_record_id=m.id,
+            execution_record_id=m.id,
             task_id="t1",
             agent_name="analyzer",
             status=TaskExecutionStatus.COMPLETED,
@@ -388,7 +388,7 @@ class TestMissionDecisionRepository:
         """Filters decisions by domain."""
         for domain in ["api", "api", "auth"]:
             await decision_repo.create(
-                project_id="proj-repo",
+                mission_id="proj-repo",
                 decision_id=f"d-{domain}",
                 domain=domain,
                 decision="test",
@@ -409,7 +409,7 @@ class TestMissionDecisionRepository:
     ):
         """Only active decisions are returned."""
         await decision_repo.create(
-            project_id="proj-sup",
+            mission_id="proj-sup",
             decision_id="d-active",
             domain="api",
             decision="active",
@@ -418,7 +418,7 @@ class TestMissionDecisionRepository:
             status=DecisionStatus.ACTIVE,
         )
         await decision_repo.create(
-            project_id="proj-sup",
+            mission_id="proj-sup",
             decision_id="d-old",
             domain="api",
             decision="superseded",
@@ -437,7 +437,7 @@ class TestMilestoneSummaryRepository:
     async def test_list_by_mission(self, milestone_repo, db_session):
         """Returns milestones for a specific project."""
         await milestone_repo.create(
-            project_id="proj-ms",
+            mission_id="proj-ms",
             title="Phase 1",
             summary="Completed auth",
             mission_ids=["m1"],
@@ -446,7 +446,7 @@ class TestMilestoneSummaryRepository:
             period_end="2025-01-01",
         )
         await milestone_repo.create(
-            project_id="proj-ms",
+            mission_id="proj-ms",
             title="Phase 2",
             summary="Completed API",
             mission_ids=["m2"],
@@ -455,7 +455,7 @@ class TestMilestoneSummaryRepository:
             period_end="2025-02-01",
         )
         await milestone_repo.create(
-            project_id="proj-other",
+            mission_id="proj-other",
             title="Other",
             summary="Other project",
             mission_ids=[],
@@ -473,7 +473,7 @@ class TestMilestoneSummaryRepository:
     async def test_respects_limit(self, milestone_repo, db_session):
         for i in range(5):
             await milestone_repo.create(
-                project_id="proj-lim",
+                mission_id="proj-lim",
                 title=f"Phase {i}",
                 summary=f"Summary {i}",
                 mission_ids=[],

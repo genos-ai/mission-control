@@ -33,11 +33,11 @@ class MissionContext(UUIDMixin, TimestampMixin, Base):
     Versioned with monotonically increasing integer for optimistic concurrency.
     """
 
-    __tablename__ = "project_contexts"
+    __tablename__ = "mission_contexts"
 
-    project_id: Mapped[str] = mapped_column(
+    mission_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
@@ -64,7 +64,7 @@ class MissionContext(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<MissionContext(mission={self.project_id}, "
+            f"<MissionContext(mission={self.mission_id}, "
             f"version={self.version}, size={self.size_characters})>"
         )
 
@@ -76,7 +76,7 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
 
     context_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("project_contexts.id", ondelete="CASCADE"),
+        ForeignKey("mission_contexts.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

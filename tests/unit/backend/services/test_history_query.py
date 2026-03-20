@@ -26,7 +26,7 @@ def history_service(db_session: AsyncSession) -> HistoryQueryService:
 
 async def _create_mission(
     db: AsyncSession,
-    project_id: str = "proj-1",
+    mission_id: str = "proj-1",
     status: ExecutionRecordStatus = ExecutionRecordStatus.COMPLETED,
     objective: str = "Test mission",
     cost: float = 0.5,
@@ -34,7 +34,7 @@ async def _create_mission(
     """Helper to create an ExecutionRecord."""
     record = ExecutionRecord(
         session_id="sess-1",
-        project_id=project_id,
+        mission_id=mission_id,
         status=status,
         objective_statement=objective,
         total_cost_usd=cost,
@@ -49,7 +49,7 @@ async def _create_mission(
 
 async def _create_execution(
     db: AsyncSession,
-    mission_record_id: str,
+    execution_record_id: str,
     task_id: str = "task-1",
     agent_name: str = "analyzer",
     status: TaskExecutionStatus = TaskExecutionStatus.COMPLETED,
@@ -59,7 +59,7 @@ async def _create_execution(
 ) -> TaskExecution:
     """Helper to create a TaskExecution."""
     execution = TaskExecution(
-        mission_record_id=mission_record_id,
+        execution_record_id=execution_record_id,
         task_id=task_id,
         agent_name=agent_name,
         status=status,
@@ -100,7 +100,7 @@ class TestGetRecentTaskExecutions:
     async def test_returns_executions_for_project(
         self, history_service, db_session,
     ):
-        mission = await _create_mission(db_session, project_id="proj-exec")
+        mission = await _create_mission(db_session, mission_id="proj-exec")
         await _create_execution(
             db_session, mission.id, task_id="t1", domain_tags=["api"],
         )
@@ -114,7 +114,7 @@ class TestGetRecentTaskExecutions:
 
     @pytest.mark.asyncio
     async def test_filters_by_domain_tags(self, history_service, db_session):
-        mission = await _create_mission(db_session, project_id="proj-tags")
+        mission = await _create_mission(db_session, mission_id="proj-tags")
         await _create_execution(
             db_session, mission.id, task_id="t1", domain_tags=["api", "auth"],
         )
@@ -130,7 +130,7 @@ class TestGetRecentTaskExecutions:
 
     @pytest.mark.asyncio
     async def test_respects_limit(self, history_service, db_session):
-        mission = await _create_mission(db_session, project_id="proj-limit")
+        mission = await _create_mission(db_session, mission_id="proj-limit")
         for i in range(5):
             await _create_execution(
                 db_session, mission.id, task_id=f"t{i}",
@@ -148,8 +148,8 @@ class TestGetRecentTaskExecutions:
 
     @pytest.mark.asyncio
     async def test_excludes_other_projects(self, history_service, db_session):
-        m1 = await _create_mission(db_session, project_id="proj-a")
-        m2 = await _create_mission(db_session, project_id="proj-b")
+        m1 = await _create_mission(db_session, mission_id="proj-a")
+        m2 = await _create_mission(db_session, mission_id="proj-b")
         await _create_execution(db_session, m1.id, task_id="a-task")
         await _create_execution(db_session, m2.id, task_id="b-task")
 
@@ -161,7 +161,7 @@ class TestGetRecentTaskExecutions:
 class TestGetRecentFailures:
     @pytest.mark.asyncio
     async def test_returns_failed_attempts(self, history_service, db_session):
-        mission = await _create_mission(db_session, project_id="proj-fail")
+        mission = await _create_mission(db_session, mission_id="proj-fail")
         execution = await _create_execution(
             db_session, mission.id, domain_tags=["api"],
         )
@@ -176,7 +176,7 @@ class TestGetRecentFailures:
 
     @pytest.mark.asyncio
     async def test_filters_by_domain_tags(self, history_service, db_session):
-        mission = await _create_mission(db_session, project_id="proj-fail-tag")
+        mission = await _create_mission(db_session, mission_id="proj-fail-tag")
         exec_api = await _create_execution(
             db_session, mission.id, task_id="api-task", domain_tags=["api"],
         )
@@ -194,7 +194,7 @@ class TestGetRecentFailures:
 
     @pytest.mark.asyncio
     async def test_respects_limit(self, history_service, db_session):
-        mission = await _create_mission(db_session, project_id="proj-fail-lim")
+        mission = await _create_mission(db_session, mission_id="proj-fail-lim")
         execution = await _create_execution(db_session, mission.id)
         for i in range(5):
             await _create_failed_attempt(
@@ -208,7 +208,7 @@ class TestGetRecentFailures:
 
     @pytest.mark.asyncio
     async def test_empty_when_no_failures(self, history_service, db_session):
-        mission = await _create_mission(db_session, project_id="proj-ok")
+        mission = await _create_mission(db_session, mission_id="proj-ok")
         await _create_execution(db_session, mission.id)
 
         failures = await history_service.get_recent_failures("proj-ok")
@@ -219,10 +219,10 @@ class TestGetMissionSummaries:
     @pytest.mark.asyncio
     async def test_returns_summaries(self, history_service, db_session):
         await _create_mission(
-            db_session, project_id="proj-sum", objective="Build API",
+            db_session, mission_id="proj-sum", objective="Build API",
         )
         await _create_mission(
-            db_session, project_id="proj-sum", objective="Fix auth",
+            db_session, mission_id="proj-sum", objective="Fix auth",
             status=ExecutionRecordStatus.FAILED,
         )
 
@@ -235,7 +235,7 @@ class TestGetMissionSummaries:
     async def test_respects_limit(self, history_service, db_session):
         for i in range(5):
             await _create_mission(
-                db_session, project_id="proj-sum-lim", objective=f"Mission {i}",
+                db_session, mission_id="proj-sum-lim", objective=f"Mission {i}",
             )
 
         summaries = await history_service.get_mission_summaries(
@@ -256,8 +256,8 @@ class TestSummarizedFiltering:
     async def test_executions_exclude_summarized_by_default(
         self, history_service, db_session,
     ):
-        m1 = await _create_mission(db_session, project_id="proj-sf")
-        m2 = await _create_mission(db_session, project_id="proj-sf")
+        m1 = await _create_mission(db_session, mission_id="proj-sf")
+        m2 = await _create_mission(db_session, mission_id="proj-sf")
         m2.summarized = True
         await db_session.flush()
 
@@ -272,8 +272,8 @@ class TestSummarizedFiltering:
     async def test_executions_include_summarized_when_requested(
         self, history_service, db_session,
     ):
-        m1 = await _create_mission(db_session, project_id="proj-sf2")
-        m2 = await _create_mission(db_session, project_id="proj-sf2")
+        m1 = await _create_mission(db_session, mission_id="proj-sf2")
+        m2 = await _create_mission(db_session, mission_id="proj-sf2")
         m2.summarized = True
         await db_session.flush()
 
@@ -289,8 +289,8 @@ class TestSummarizedFiltering:
     async def test_failures_exclude_summarized_by_default(
         self, history_service, db_session,
     ):
-        m1 = await _create_mission(db_session, project_id="proj-sf3")
-        m2 = await _create_mission(db_session, project_id="proj-sf3")
+        m1 = await _create_mission(db_session, mission_id="proj-sf3")
+        m2 = await _create_mission(db_session, mission_id="proj-sf3")
         m2.summarized = True
         await db_session.flush()
 
@@ -308,10 +308,10 @@ class TestSummarizedFiltering:
         self, history_service, db_session,
     ):
         m1 = await _create_mission(
-            db_session, project_id="proj-sf4", objective="Active",
+            db_session, mission_id="proj-sf4", objective="Active",
         )
         m2 = await _create_mission(
-            db_session, project_id="proj-sf4", objective="Old",
+            db_session, mission_id="proj-sf4", objective="Old",
         )
         m2.summarized = True
         await db_session.flush()
@@ -325,10 +325,10 @@ class TestSummarizedFiltering:
         self, history_service, db_session,
     ):
         m1 = await _create_mission(
-            db_session, project_id="proj-sf5", objective="Active",
+            db_session, mission_id="proj-sf5", objective="Active",
         )
         m2 = await _create_mission(
-            db_session, project_id="proj-sf5", objective="Old",
+            db_session, mission_id="proj-sf5", objective="Old",
         )
         m2.summarized = True
         await db_session.flush()

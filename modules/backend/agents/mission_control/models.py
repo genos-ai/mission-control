@@ -129,7 +129,7 @@ class ContextAssemblerProtocol(Protocol):
 
     async def build(
         self,
-        project_id: str,
+        mission_id: str,
         task_definition: dict,
         resolved_inputs: dict,
         *,

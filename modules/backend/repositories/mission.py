@@ -70,7 +70,7 @@ class MissionMemberRepository(BaseRepository[MissionMember]):
         """Get all members of a mission."""
         result = await self.session.execute(
             select(MissionMember)
-            .where(MissionMember.project_id == mission_id)
+            .where(MissionMember.mission_id == mission_id)
             .order_by(MissionMember.created_at)
         )
         return list(result.scalars().all())
@@ -83,7 +83,7 @@ class MissionMemberRepository(BaseRepository[MissionMember]):
         """Get a specific user's membership in a mission."""
         result = await self.session.execute(
             select(MissionMember)
-            .where(MissionMember.project_id == mission_id)
+            .where(MissionMember.mission_id == mission_id)
             .where(MissionMember.user_id == user_id)
         )
         return result.scalar_one_or_none()

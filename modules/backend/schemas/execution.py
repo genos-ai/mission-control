@@ -25,8 +25,8 @@ class ExecutionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    playbook_run_id: str | None
-    playbook_step_id: str | None
+    workflow_run_id: str | None
+    workflow_step_id: str | None
     objective: str
     roster_ref: str
     complexity_tier: str
@@ -46,8 +46,8 @@ class ExecutionDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    playbook_run_id: str | None
-    playbook_step_id: str | None
+    workflow_run_id: str | None
+    workflow_step_id: str | None
     objective: str
     roster_ref: str
     complexity_tier: str

@@ -91,7 +91,7 @@ class ExecutionService(BaseService):
 
     async def create_execution_from_step(
         self,
-        playbook_run_id: str,
+        workflow_run_id: str,
         step_id: str,
         objective: str,
         roster_ref: str,
@@ -100,7 +100,7 @@ class ExecutionService(BaseService):
         upstream_context: dict,
         session_id: str,
         environment: str = "local",
-        project_id: str | None = None,
+        mission_id: str | None = None,
     ) -> Execution:
         """Create an execution from a workflow step."""
 
@@ -117,20 +117,20 @@ class ExecutionService(BaseService):
                 )
 
             execution = Execution(
-                playbook_run_id=playbook_run_id,
-                playbook_step_id=step_id,
+                workflow_run_id=workflow_run_id,
+                workflow_step_id=step_id,
                 objective=objective,
                 roster_ref=roster_ref,
                 complexity_tier=complexity_tier,
                 status=ExecutionState.PENDING,
                 session_id=session_id,
                 trigger_type="workflow",
-                triggered_by=f"workflow_run:{playbook_run_id}",
+                triggered_by=f"workflow_run:{workflow_run_id}",
                 upstream_context=upstream_context,
                 context={},
                 total_cost_usd=0.0,
                 cost_ceiling_usd=cost_ceiling_usd,
-                project_id=project_id,
+                mission_id=mission_id,
             )
             self._session.add(execution)
             await self._session.flush()
@@ -140,7 +140,7 @@ class ExecutionService(BaseService):
                 "Execution created from workflow step",
                 extra={
                     "execution_id": execution.id,
-                    "playbook_run_id": playbook_run_id,
+                    "workflow_run_id": workflow_run_id,
                     "step_id": step_id,
                     "roster_ref": roster_ref,
                     "complexity_tier": complexity_tier,
@@ -239,11 +239,11 @@ class ExecutionService(BaseService):
                 upstream_context=execution.upstream_context,
                 cost_ceiling_usd=execution.cost_ceiling_usd,
                 session_id=execution.session_id,
-                project_id=execution.project_id,
+                mission_id=execution.mission_id,
                 gate=gate,
             )
 
-            execution.mission_outcome = (
+            execution.execution_outcome = (
                 outcome if isinstance(outcome, dict)
                 else outcome.model_dump()
             )
@@ -358,7 +358,7 @@ class ExecutionService(BaseService):
                 execution_id=execution.id,
             )
             return {}
-        if not execution.mission_outcome:
+        if not execution.execution_outcome:
             logger.warning(
                 "Execution has no outcome for output extraction",
                 extra={"execution_id": execution.id},
@@ -366,7 +366,7 @@ class ExecutionService(BaseService):
             return {}
 
         extracted: dict[str, Any] = {}
-        outcome = execution.mission_outcome
+        outcome = execution.execution_outcome
 
         summary_key = output_mapping.get("summary_key")
         if summary_key:
@@ -445,7 +445,7 @@ class ExecutionService(BaseService):
     async def list_executions(
         self,
         status: str | None = None,
-        playbook_run_id: str | None = None,
+        workflow_run_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Execution], int]:
@@ -453,7 +453,7 @@ class ExecutionService(BaseService):
         execution_status = ExecutionState(status) if status else None
         return await self._execution_repo.list_executions(
             status=execution_status,
-            playbook_run_id=playbook_run_id,
+            workflow_run_id=workflow_run_id,
             limit=limit,
             offset=offset,
         )

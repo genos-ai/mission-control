@@ -40,7 +40,7 @@ class HistoryQueryService(BaseService):
 
     async def get_recent_task_executions(
         self,
-        project_id: str,
+        mission_id: str,
         *,
         domain_tags: list[str] | None = None,
         include_summarized: bool = False,
@@ -59,8 +59,8 @@ class HistoryQueryService(BaseService):
         fetch_limit = limit * 5 if domain_tags else limit
         query = (
             select(TaskExecution)
-            .join(ExecutionRecord, TaskExecution.mission_record_id == ExecutionRecord.id)
-            .where(ExecutionRecord.project_id == project_id)
+            .join(ExecutionRecord, TaskExecution.execution_record_id == ExecutionRecord.id)
+            .where(ExecutionRecord.mission_id == mission_id)
         )
         if not include_summarized:
             query = query.where(ExecutionRecord.summarized == False)  # noqa: E712
@@ -90,7 +90,7 @@ class HistoryQueryService(BaseService):
 
     async def get_recent_failures(
         self,
-        project_id: str,
+        mission_id: str,
         *,
         domain_tags: list[str] | None = None,
         include_summarized: bool = False,
@@ -107,8 +107,8 @@ class HistoryQueryService(BaseService):
         query = (
             select(TaskAttempt, TaskExecution)
             .join(TaskExecution, TaskAttempt.task_execution_id == TaskExecution.id)
-            .join(ExecutionRecord, TaskExecution.mission_record_id == ExecutionRecord.id)
-            .where(ExecutionRecord.project_id == project_id)
+            .join(ExecutionRecord, TaskExecution.execution_record_id == ExecutionRecord.id)
+            .where(ExecutionRecord.mission_id == mission_id)
             .where(TaskAttempt.status == TaskAttemptStatus.FAILED)
         )
         if not include_summarized:
@@ -135,7 +135,7 @@ class HistoryQueryService(BaseService):
 
     async def get_mission_summaries(
         self,
-        project_id: str,
+        mission_id: str,
         *,
         include_summarized: bool = False,
         limit: int = 10,
@@ -147,7 +147,7 @@ class HistoryQueryService(BaseService):
         """
         query = (
             select(ExecutionRecord)
-            .where(ExecutionRecord.project_id == project_id)
+            .where(ExecutionRecord.mission_id == mission_id)
         )
         if not include_summarized:
             query = query.where(ExecutionRecord.summarized == False)  # noqa: E712

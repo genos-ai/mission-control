@@ -48,7 +48,7 @@ class MCDResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    project_id: str
+    mission_id: str
     version: int
     size_characters: int
     size_tokens: int

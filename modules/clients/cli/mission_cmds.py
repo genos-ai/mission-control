@@ -160,7 +160,7 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
         pass
     mapped = [
         wf for wf in workflow_svc.list_workflows(enabled_only=False)
-        if wf.project_id == mission.id
+        if wf.mission_id == mission.id
     ]
     if mapped:
         console.print(f"\n  [bold]Workflows ({len(mapped)}):[/bold]")

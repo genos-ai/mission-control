@@ -161,7 +161,7 @@ class MissionContextManager(BaseService):
         seed = self._build_seed_mcd(mission_name, description)
         serialized = _json.dumps(seed, ensure_ascii=False)
         ctx = await self._context_repo.create(
-            project_id=mission_id,
+            mission_id=mission_id,
             context_data=seed,
             version=1,
             size_characters=len(serialized),

@@ -90,13 +90,13 @@ class SummarizationService(BaseService):
         # Archive to project_decisions table
         for d in to_archive:
             await self._decision_repo.create(
-                project_id=mission_id,
+                mission_id=mission_id,
                 decision_id=d.get("id", ""),
                 domain=d.get("domain", "general"),
                 decision=d.get("decision", ""),
                 rationale=d.get("rationale", ""),
                 made_by=d.get("made_by", "unknown"),
-                mission_id=d.get("mission_id"),
+                execution_id=d.get("execution_id"),
                 status=DecisionStatus.ACTIVE,
             )
 
@@ -151,7 +151,7 @@ class SummarizationService(BaseService):
 
         # Create milestone summary for archived items
         await self._milestone_repo.create(
-            project_id=mission_id,
+            mission_id=mission_id,
             title=f"Milestones batch ({len(to_archive)} items)",
             summary="; ".join(
                 m if isinstance(m, str) else str(m) for m in to_archive
@@ -207,7 +207,7 @@ class SummarizationService(BaseService):
             .options(selectinload(ExecutionRecord.task_executions))
             .where(
                 and_(
-                    ExecutionRecord.project_id == mission_id,
+                    ExecutionRecord.mission_id == mission_id,
                     ExecutionRecord.summarized == False,  # noqa: E712
                     ExecutionRecord.status.in_([
                         ExecutionRecordStatus.COMPLETED,
@@ -269,7 +269,7 @@ class SummarizationService(BaseService):
                 summary_parts.append(f"  ... and {len(objectives) - 5} more")
 
             await self._milestone_repo.create(
-                project_id=mission_id,
+                mission_id=mission_id,
                 title=f"Executions batch ({len(batch)} executions)",
                 summary="\n".join(summary_parts),
                 mission_ids=mission_ids,

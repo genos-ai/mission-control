@@ -50,7 +50,7 @@ class TestExecutionRecordModel:
 class TestTaskExecutionModel:
     def test_create_task_execution(self):
         execution = TaskExecution(
-            mission_record_id="execution-123",
+            execution_record_id="execution-123",
             task_id="analyze_code",
             agent_name="code.quality.agent",
             status=TaskExecutionStatus.COMPLETED,
@@ -60,7 +60,7 @@ class TestTaskExecutionModel:
 
     def test_task_execution_with_verification(self):
         execution = TaskExecution(
-            mission_record_id="execution-123",
+            execution_record_id="execution-123",
             task_id="summarize",
             agent_name="content.summarizer.agent",
             status=TaskExecutionStatus.COMPLETED,
@@ -91,7 +91,7 @@ class TestTaskAttemptModel:
 class TestExecutionDecisionModel:
     def test_create_decision(self):
         decision = ExecutionDecision(
-            mission_record_id="execution-123",
+            execution_record_id="execution-123",
             decision_type=DecisionType.RETRY,
             task_id="task_1",
             reasoning="Tier 1 validation failed, retrying with feedback",

@@ -98,7 +98,7 @@ class TestGetExecution:
         mock_execution.objective_statement = None
         mock_execution.objective_category = None
         mock_execution.task_plan_json = {}
-        mock_execution.mission_outcome_json = {}
+        mock_execution.execution_outcome_json = {}
         mock_execution.planning_thinking_trace = None
         mock_execution.task_executions = []
         mock_execution.decisions = []

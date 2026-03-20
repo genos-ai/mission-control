@@ -18,20 +18,21 @@ from modules.backend.temporal.models import (
 class TestMissionWorkflowInput:
     def test_required_fields(self):
         inp = MissionWorkflowInput(
-            mission_id="abc",
+            mission_run_id="abc",
             session_id="def",
             mission_brief="Do stuff",
         )
-        assert inp.mission_id == "abc"
+        assert inp.mission_run_id == "abc"
         assert inp.session_id == "def"
         assert inp.mission_brief == "Do stuff"
 
     def test_defaults(self):
         inp = MissionWorkflowInput(
-            mission_id="abc", session_id="def", mission_brief="x",
+            mission_run_id="abc", session_id="def", mission_brief="x",
         )
         assert inp.roster_name == "default"
         assert inp.mission_budget_usd == 10.0
+        assert inp.mission_id is None
 
     def test_is_dataclass(self):
         assert dataclasses.is_dataclass(MissionWorkflowInput)

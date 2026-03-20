@@ -88,7 +88,7 @@ class ServiceBridge:
         self,
         *,
         brief: str,
-        project_id: str,
+        mission_id: str,
         session_id: str,
         roster_name: str = "default",
         budget_usd: float = 10.0,
@@ -101,17 +101,17 @@ class ServiceBridge:
         """
         async with get_async_session() as db:
             session_service = SessionService(db)
-            mission_id = f"tui-{session_id}"
+            mission_run_id = f"tui-{session_id}"
 
             outcome = await handle_mission(
-                mission_id=mission_id,
+                mission_run_id=mission_run_id,
                 mission_brief=brief,
                 session_service=session_service,
                 event_bus=self._event_bus,
                 roster_name=roster_name,
                 mission_budget_usd=budget_usd,
                 session_id=session_id,
-                project_id=project_id,
+                mission_id=mission_id,
                 db_session=db,
                 gate=gate,
             )
@@ -163,7 +163,7 @@ class ServiceBridge:
                 "roster_name": getattr(record, "roster_name", ""),
                 "created_at": str(getattr(record, "created_at", "")),
                 "task_plan_json": getattr(record, "task_plan_json", None),
-                "mission_outcome_json": getattr(record, "mission_outcome_json", None),
+                "execution_outcome_json": getattr(record, "execution_outcome_json", None),
                 "task_executions": [
                     {
                         "task_id": getattr(t, "task_id", ""),

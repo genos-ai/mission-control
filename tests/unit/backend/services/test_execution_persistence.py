@@ -118,7 +118,7 @@ class TestSaveTaskExecution:
         execution_record = await _create_execution(service)
 
         execution = await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="analyze_code",
             agent_name="code.quality.agent",
             status="completed",
@@ -136,7 +136,7 @@ class TestSaveTaskExecution:
         large_output = {"data": "x" * 2_000_000}
 
         execution = await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="task-1",
             agent_name="agent-1",
             status="completed",
@@ -152,7 +152,7 @@ class TestSaveTaskExecution:
         verification = {"passed": True, "tier": "tier_1", "details": {"checks": 5}}
 
         execution = await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="task-1",
             agent_name="agent-1",
             status="completed",
@@ -172,7 +172,7 @@ class TestSaveTaskExecution:
             return_value=_mock_app_config(persist_verification_details=False),
         ):
             execution = await service.save_task_execution(
-                mission_record_id=execution_record.id,
+                execution_record_id=execution_record.id,
                 task_id="task-1",
                 agent_name="agent-1",
                 status="completed",
@@ -188,7 +188,7 @@ class TestSaveAttempt:
     async def test_creates_attempt(self, service):
         execution_record = await _create_execution(service)
         execution = await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="task-1",
             agent_name="agent-1",
             status="failed",
@@ -215,7 +215,7 @@ class TestSaveDecision:
         execution_record = await _create_execution(service)
 
         decision = await service.save_decision(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             decision_type="retry",
             reasoning="Tier 1 failed, retrying with feedback",
             task_id="task-1",
@@ -263,15 +263,15 @@ class TestGetExecutionStatus:
         execution_record = await _create_execution(service, total_cost_usd=0.15)
 
         await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="t1", agent_name="a1", status="completed",
         )
         await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="t2", agent_name="a2", status="failed",
         )
         await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="t3", agent_name="a3", status="skipped",
         )
 
@@ -304,7 +304,7 @@ class TestGetCostBreakdown:
         execution_record = await _create_execution(service, total_cost_usd=0.10)
 
         await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="t1",
             agent_name="agent_a",
             status="completed",
@@ -334,7 +334,7 @@ class TestExecutionId:
         )
 
         execution = await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="t1",
             agent_name="agent_a",
             status="completed",
@@ -353,7 +353,7 @@ class TestExecutionId:
         )
 
         execution = await service.save_task_execution(
-            mission_record_id=execution_record.id,
+            execution_record_id=execution_record.id,
             task_id="t1",
             agent_name="agent_a",
             status="completed",

@@ -62,7 +62,7 @@ class AgentMissionWorkflow:
     @workflow.run
     async def run(self, input: MissionWorkflowInput) -> WorkflowStatus:
         """Execute a mission with durable execution guarantees."""
-        self._status.mission_id = input.mission_id
+        self._status.mission_id = input.mission_run_id
         self._status.workflow_status = "running"
 
         temporal_config = get_app_config().temporal
@@ -101,11 +101,11 @@ class AgentMissionWorkflow:
         await workflow.execute_activity(
             activities.persist_mission_outcome,
             args=[
-                input.mission_id,
+                input.mission_run_id,
                 input.session_id,
                 input.roster_name,
                 result.outcome_json,
-                input.project_id,
+                input.mission_id,
             ],
             start_to_close_timeout=timedelta(
                 seconds=temporal_config.persistence_timeout_seconds,
@@ -126,13 +126,13 @@ class AgentMissionWorkflow:
                 NotificationPayload(
                     channel="webhook",
                     recipient="admin",
-                    title=f"Mission failed: {input.mission_id[:8]}",
+                    title=f"Execution failed: {input.mission_run_id[:8]}",
                     body=(
-                        f"Mission '{input.mission_brief[:100]}' failed. "
+                        f"Execution '{input.mission_brief[:100]}' failed. "
                         f"{result.failed_count}/{result.task_count} tasks failed. "
                         f"Cost: ${result.total_cost_usd:.2f}"
                     ),
-                    action_url=f"/api/v1/missions/{input.mission_id}",
+                    action_url=f"/api/v1/missions/{input.mission_run_id}",
                     urgency="high",
                 ),
                 start_to_close_timeout=notification_timeout,
@@ -143,7 +143,7 @@ class AgentMissionWorkflow:
                 input, notification_timeout,
             )
 
-            # If approved, retry the mission
+            # If approved, retry the execution
             if self._approval and self._approval.decision == "approved":
                 self._status.workflow_status = "running"
                 self._approval = None
@@ -162,11 +162,11 @@ class AgentMissionWorkflow:
                 await workflow.execute_activity(
                     activities.persist_mission_outcome,
                     args=[
-                        input.mission_id,
+                        input.mission_run_id,
                         input.session_id,
                         input.roster_name,
                         retry_result.outcome_json,
-                        input.project_id,
+                        input.mission_id,
                     ],
                     start_to_close_timeout=timedelta(
                         seconds=temporal_config.persistence_timeout_seconds,
@@ -222,13 +222,13 @@ class AgentMissionWorkflow:
             NotificationPayload(
                 channel="webhook",
                 recipient="admin",
-                title=f"ESCALATION: Mission {input.mission_id[:8]}",
+                title=f"ESCALATION: Mission {input.mission_run_id[:8]}",
                 body=(
                     f"Approval pending for "
                     f"{input.approval_timeout_seconds // 3600} hours. "
                     f"Escalating."
                 ),
-                action_url=f"/api/v1/missions/{input.mission_id}",
+                action_url=f"/api/v1/missions/{input.mission_run_id}",
                 urgency="critical",
             ),
             start_to_close_timeout=notification_timeout,

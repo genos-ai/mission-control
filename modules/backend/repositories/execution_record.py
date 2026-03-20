@@ -91,7 +91,7 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
         """Get all decisions for an execution, ordered chronologically."""
         stmt = (
             select(ExecutionDecision)
-            .where(ExecutionDecision.mission_record_id == execution_id)
+            .where(ExecutionDecision.execution_record_id == execution_id)
             .order_by(ExecutionDecision.created_at)
         )
         result = await self.session.execute(stmt)
@@ -103,7 +103,7 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
         """Get all task executions for an execution with attempts loaded."""
         stmt = (
             select(TaskExecution)
-            .where(TaskExecution.mission_record_id == execution_id)
+            .where(TaskExecution.execution_record_id == execution_id)
             .options(selectinload(TaskExecution.attempts))
             .order_by(TaskExecution.created_at)
         )

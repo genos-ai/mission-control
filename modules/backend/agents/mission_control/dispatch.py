@@ -191,7 +191,7 @@ async def dispatch(
     mission_budget_usd: float,
     *,
     gate: GateReviewer | None = None,
-    project_id: str | None = None,
+    mission_id: str | None = None,
     context_curator: ContextCuratorProtocol | None = None,
     context_assembler: ContextAssemblerProtocol | None = None,
     event_bus: EventBusProtocol | None = None,
@@ -241,16 +241,16 @@ async def dispatch(
         metadata={"task_plan_json": plan.model_dump_json()},
     )
 
-    # Load PCD for agent context (if project is set)
+    # Load PCD for agent context (if mission container is set)
     project_context: dict | None = None
-    if project_id and context_curator:
+    if mission_id and context_curator:
         try:
-            pcd = await context_curator.get_mission_context(project_id)
+            pcd = await context_curator.get_mission_context(mission_id)
             project_context = pcd or None
         except (OSError, ValueError, RuntimeError):
             logger.warning(
                 "Failed to load PCD for dispatch (non-fatal)",
-                extra={"project_id": project_id},
+                extra={"mission_id": mission_id},
                 exc_info=True,
             )
 
@@ -288,10 +288,10 @@ async def dispatch(
             resolved_inputs = dict(resolved_inputs)
 
             # Inject context: full assembled packet (preferred) or raw PCD
-            if context_assembler and project_id:
+            if context_assembler and mission_id:
                 try:
                     assembled = await context_assembler.build(
-                        project_id=project_id,
+                        mission_id=mission_id,
                         task_definition=task.model_dump(),
                         resolved_inputs=dict(resolved_inputs),
                         domain_tags=task.domain_tags or None,
@@ -310,7 +310,7 @@ async def dispatch(
                 except (OSError, ValueError, RuntimeError):
                     logger.warning(
                         "Context assembly failed, falling back to PCD",
-                        extra={"task_id": task.task_id, "project_id": project_id},
+                        extra={"task_id": task.task_id, "mission_id": mission_id},
                         exc_info=True,
                     )
                     if project_context:
@@ -386,10 +386,10 @@ async def dispatch(
                 completed_outputs[task.task_id] = task_result.output_reference
 
                 # Apply context_updates to MCD (non-fatal)
-                if context_curator and project_id and task_result.context_updates:
+                if context_curator and mission_id and task_result.context_updates:
                     try:
                         await context_curator.apply_task_updates(
-                            project_id,
+                            mission_id,
                             task_result.context_updates,
                             agent_id=task_result.agent_name,
                             mission_id_ref=plan.mission_id,

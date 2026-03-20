@@ -108,7 +108,7 @@ class TestCreateExecutionFromStep:
         ):
             service = ExecutionService(session=db_session)
             execution = await service.create_execution_from_step(
-                playbook_run_id="run-123",
+                workflow_run_id="run-123",
                 step_id="scrape",
                 objective="Fetch articles",
                 roster_ref="research_team",
@@ -118,8 +118,8 @@ class TestCreateExecutionFromStep:
                 session_id="test-session-id",
             )
 
-        assert execution.playbook_run_id == "run-123"
-        assert execution.playbook_step_id == "scrape"
+        assert execution.workflow_run_id == "run-123"
+        assert execution.workflow_step_id == "scrape"
         assert execution.roster_ref == "research_team"
         assert execution.upstream_context == {"sources": ["url1"]}
         assert execution.trigger_type == "workflow"
@@ -227,7 +227,7 @@ class TestOutputExtraction:
                 triggered_by="user:test",
                 session_id="sess-1",
             )
-            execution.mission_outcome = {"summary": "All done"}
+            execution.execution_outcome = {"summary": "All done"}
             await db_session.flush()
 
         output_mapping = {"summary_key": "result"}
@@ -246,7 +246,7 @@ class TestOutputExtraction:
                 triggered_by="user:test",
                 session_id="sess-1",
             )
-            execution.mission_outcome = {
+            execution.execution_outcome = {
                 "task_results": {
                     "scrape_articles": {"articles": ["a1", "a2"]},
                 },
@@ -268,13 +268,13 @@ class TestOutputExtraction:
     def test_extract_no_mapping(self, db_session: AsyncSession):
         service = ExecutionService(session=db_session)
         execution = MagicMock()
-        execution.mission_outcome = {"summary": "test"}
+        execution.execution_outcome = {"summary": "test"}
         assert service.extract_outputs(execution, None) == {}
 
     def test_extract_no_outcome(self, db_session: AsyncSession):
         service = ExecutionService(session=db_session)
         execution = MagicMock()
-        execution.mission_outcome = None
+        execution.execution_outcome = None
         assert service.extract_outputs(execution, {"summary_key": "r"}) == {}
 
 
@@ -317,7 +317,7 @@ class TestExtractOutputs:
     def _make_execution(self, outcome=None):
         execution = MagicMock()
         execution.id = "test-execution"
-        execution.mission_outcome = outcome
+        execution.execution_outcome = outcome
         execution.result_summary = "Test summary"
         return execution
 
