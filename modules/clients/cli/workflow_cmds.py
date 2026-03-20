@@ -22,7 +22,7 @@ def run_workflow_cli(
     run_id: str | None,
     triggered_by: str,
     output_format: str = "human",
-    project_name: str | None = None,
+    mission_name: str | None = None,
     gate: object | None = None,
 ) -> None:
     """Dispatch workflow CLI actions."""
@@ -54,7 +54,7 @@ def run_workflow_cli(
             run_id=run_id,
             triggered_by=triggered_by,
             output_format=output_format,
-            project_name=project_name,
+            mission_name=mission_name,
             gate=gate,
         ))
     except Exception as e:
@@ -174,7 +174,7 @@ async def _action_detail(cli_logger, *, workflow_name, run_id, triggered_by, out
     console.print(table)
 
 
-async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output_format, project_name=None, gate=None, **_):
+async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output_format, mission_name=None, gate=None, **_):
     """Execute a workflow."""
     if not workflow_name:
         click.echo(click.style("Error: --workflow-name is required for run.", fg="red"), err=True)
@@ -254,7 +254,7 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
                 workflow_name=workflow_name,
                 triggered_by=triggered_by,
                 on_progress=on_progress,
-                project_name=project_name,
+                mission_name=mission_name,
                 gate=gate,
             )
 

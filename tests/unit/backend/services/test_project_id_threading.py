@@ -2,7 +2,7 @@
 Tests for mission_id (container) threading through workflow → execution → dispatch.
 
 Verifies that mission_id flows from WorkflowRunService.run_workflow() (resolved
-from --project name) through ExecutionService.create_execution_from_step() and
+from --mission name) through ExecutionService.create_execution_from_step() and
 run_execution() down to the DispatchAdapter and handle_mission().
 
 Uses real db_session with transaction rollback (P12).
@@ -30,9 +30,9 @@ def _mock_app_config(**overrides):
 # =============================================================================
 
 
-class TestExecutionServiceProjectId:
+class TestExecutionServiceMissionId:
     @pytest.mark.asyncio
-    async def test_create_execution_from_step_sets_project_id(
+    async def test_create_execution_from_step_sets_mission_id(
         self, db_session: AsyncSession,
     ):
         """mission_id is persisted on the Execution record."""
@@ -56,7 +56,7 @@ class TestExecutionServiceProjectId:
         assert mission.mission_id == "proj-abc"
 
     @pytest.mark.asyncio
-    async def test_create_execution_from_step_project_id_defaults_none(
+    async def test_create_execution_from_step_mission_id_defaults_none(
         self, db_session: AsyncSession,
     ):
         """mission_id defaults to None when not provided."""
@@ -79,7 +79,7 @@ class TestExecutionServiceProjectId:
         assert mission.mission_id is None
 
     @pytest.mark.asyncio
-    async def test_run_execution_passes_project_id_to_dispatch(
+    async def test_run_execution_passes_mission_id_to_dispatch(
         self, db_session: AsyncSession,
     ):
         """run_execution() forwards execution.mission_id to the dispatch adapter."""
@@ -120,7 +120,7 @@ class TestExecutionServiceProjectId:
         assert call_kwargs["mission_id"] == "proj-xyz"
 
     @pytest.mark.asyncio
-    async def test_run_execution_passes_none_project_id(
+    async def test_run_execution_passes_none_mission_id(
         self, db_session: AsyncSession,
     ):
         """run_execution() passes None mission_id when execution has no mission container."""
@@ -163,9 +163,9 @@ class TestExecutionServiceProjectId:
 # =============================================================================
 
 
-class TestDispatchAdapterProjectId:
+class TestDispatchAdapterMissionId:
     @pytest.mark.asyncio
-    async def test_execute_forwards_project_id(self, db_session: AsyncSession):
+    async def test_execute_forwards_mission_id(self, db_session: AsyncSession):
         """DispatchAdapter.execute() passes mission_id and db_session to handle_mission()."""
         from modules.backend.agents.mission_control.dispatch_adapter import (
             MissionControlDispatchAdapter,
@@ -203,7 +203,7 @@ class TestDispatchAdapterProjectId:
         assert call_kwargs["db_session"] is db_session
 
     @pytest.mark.asyncio
-    async def test_execute_without_project_id(self, db_session: AsyncSession):
+    async def test_execute_without_mission_id(self, db_session: AsyncSession):
         """DispatchAdapter.execute() passes None mission_id when not provided."""
         from modules.backend.agents.mission_control.dispatch_adapter import (
             MissionControlDispatchAdapter,
@@ -237,12 +237,12 @@ class TestDispatchAdapterProjectId:
 
 
 # =============================================================================
-# WorkflowRunService: name-based project resolution and threading
+# WorkflowRunService: name-based mission resolution and threading
 # =============================================================================
 
 
-class TestWorkflowRunProjectName:
-    """Tests for name-based project resolution in WorkflowRunService."""
+class TestWorkflowRunMissionName:
+    """Tests for name-based mission resolution in WorkflowRunService."""
 
     def _mock_workflow_service(self):
         mock_workflow_service = MagicMock()
@@ -260,10 +260,10 @@ class TestWorkflowRunProjectName:
         return mock_workflow_service, mock_workflow
 
     @pytest.mark.asyncio
-    async def test_run_workflow_resolves_project_by_name(
+    async def test_run_workflow_resolves_mission_by_name(
         self, db_session: AsyncSession,
     ):
-        """--project my-app resolves to a project UUID via _resolve_project."""
+        """--mission my-app resolves to a mission UUID via _resolve_mission."""
         from modules.backend.services.workflow_run import WorkflowRunService
 
         mock_ws, _ = self._mock_workflow_service()
@@ -292,16 +292,16 @@ class TestWorkflowRunProjectName:
             )
             run = await service.run_workflow(
                 workflow_name="test-workflow",
-                project_name="my-app",
+                mission_name="my-app",
             )
 
         assert run.mission_id == "resolved-uuid-123"
 
     @pytest.mark.asyncio
-    async def test_run_workflow_creates_project_when_new(
+    async def test_run_workflow_creates_mission_when_new(
         self, db_session: AsyncSession,
     ):
-        """A new project is auto-created when the name doesn't exist yet."""
+        """A new mission is auto-created when the name doesn't exist yet."""
         from modules.backend.services.workflow_run import WorkflowRunService
 
         mock_ws, _ = self._mock_workflow_service()
@@ -335,7 +335,7 @@ class TestWorkflowRunProjectName:
             )
             run = await service.run_workflow(
                 workflow_name="test-workflow",
-                project_name="brand-new-app",
+                mission_name="brand-new-app",
             )
 
         assert run.mission_id == "new-uuid-456"
@@ -345,10 +345,10 @@ class TestWorkflowRunProjectName:
         assert call_kwargs["owner_id"] == "system:workflow"
 
     @pytest.mark.asyncio
-    async def test_run_workflow_requires_project_name(
+    async def test_run_workflow_requires_mission_name(
         self, db_session: AsyncSession,
     ):
-        """Omitting --project raises ValueError."""
+        """Omitting --mission raises ValueError."""
         from modules.backend.services.workflow_run import WorkflowRunService
 
         mock_ws, _ = self._mock_workflow_service()

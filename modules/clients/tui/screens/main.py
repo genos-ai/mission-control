@@ -1,4 +1,4 @@
-"""Main screen — three-column layout with project header.
+"""Main screen — three-column layout with mission header.
 
 Left: AgentSidebar (roster + mission summary)
 Center: Mission/agent view + chat input
@@ -25,8 +25,8 @@ class MainScreen(Screen):
 
     def compose(self) -> ComposeResult:
         # ── Top bar ──────────────────────────────────────────────
-        with Horizontal(id="project-header"):
-            yield Label("[bold]No Project[/bold]", id="project-name", markup=True)
+        with Horizontal(id="mission-header"):
+            yield Label("[bold]No Mission[/bold]", id="mission-name", markup=True)
             yield Label("Mission Control", id="app-title")
 
         # ── Three columns ────────────────────────────────────────
@@ -37,7 +37,7 @@ class MainScreen(Screen):
                 yield VerticalScroll(
                     Static(
                         "Press [bold]Ctrl+M[/bold] to start a mission\n"
-                        "Press [bold]Ctrl+P[/bold] to switch project",
+                        "Press [bold]Ctrl+P[/bold] to switch mission",
                         classes="placeholder-panel",
                     ),
                     id="center-content",

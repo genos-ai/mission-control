@@ -148,9 +148,9 @@ class WorkflowSchema(BaseModel):
     objective: WorkflowObjectiveSchema
     version: int = Field(default=1, ge=1)
     enabled: bool = True
-    project_name: str | None = Field(
+    mission_name: str | None = Field(
         None,
-        description="Human-readable project name (display only, not used for resolution).",
+        description="Human-readable mission name (display only, not used for resolution).",
     )
     trigger: WorkflowTriggerSchema = Field(default_factory=WorkflowTriggerSchema)
     budget: WorkflowBudgetSchema = Field(default_factory=WorkflowBudgetSchema)

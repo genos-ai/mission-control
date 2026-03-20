@@ -1,8 +1,8 @@
 """Mission Control TUI — main Textual application.
 
 Lifecycle:
-    1. on_mount: load projects → show picker if no project selected
-    2. User picks project → load roster → populate sidebar
+    1. on_mount: load missions → show picker if no mission selected
+    2. User picks mission → load roster → populate sidebar
     3. User enters mission brief (Ctrl+M or chat input) → run_mission worker
     4. Events stream in via TuiEventBus → routed to widgets
 
@@ -34,7 +34,7 @@ from modules.clients.tui.messages import (
     SessionEventReceived,
 )
 from modules.clients.tui.screens.main import MainScreen
-from modules.clients.tui.screens.project_picker import ProjectPickerScreen
+from modules.clients.tui.screens.mission_picker import MissionPickerScreen
 from modules.clients.tui.services.event_listener import TuiEventBus
 from modules.clients.tui.services.service_bridge import ServiceBridge
 from modules.clients.tui.services.state import TuiState
@@ -64,7 +64,7 @@ class MissionControlApp(App):
     CSS_PATH = str(CSS_PATH)
 
     BINDINGS = [
-        Binding("ctrl+p", "switch_project", "Switch Project"),
+        Binding("ctrl+p", "switch_mission", "Switch Mission"),
         Binding("ctrl+m", "new_mission", "New Mission"),
         Binding("ctrl+k", "cancel_mission", "Cancel Mission"),
         Binding("ctrl+q", "quit", "Quit"),
@@ -89,53 +89,52 @@ class MissionControlApp(App):
         self._budget_warned_90 = False
 
     async def on_mount(self) -> None:
-        """Install the main screen and show project picker on startup."""
+        """Install the main screen and show mission picker on startup."""
         self.push_screen(MainScreen())
         self.run_worker(self._startup(), thread=False)
 
     async def _startup(self) -> None:
-        """Load projects and prompt for selection."""
+        """Load missions and prompt for selection."""
         try:
-            projects = await self.bridge.list_missions()
+            missions = await self.bridge.list_missions()
         except Exception:
-            logger.warning("Could not load projects (DB may be unavailable)", exc_info=True)
-            projects = []
+            logger.warning("Could not load missions (DB may be unavailable)", exc_info=True)
+            missions = []
 
-        if projects:
-            self.push_screen(ProjectPickerScreen(projects))
+        if missions:
+            self.push_screen(MissionPickerScreen(missions))
         else:
-            # No projects yet — show picker with empty list for creation
-            self.push_screen(ProjectPickerScreen([]))
+            self.push_screen(MissionPickerScreen([]))
 
-    # ── Project handling ─────────────────────────────────────────────
+    # ── Mission handling ─────────────────────────────────────────────
 
     async def on_mission_selected(self, event: MissionSelected) -> None:
-        """User selected an existing project."""
-        self.state.current_project_id = event.mission_id
-        self.state.current_project_name = event.mission_name
-        self._update_project_header()
+        """User selected an existing mission."""
+        self.state.current_mission_id = event.mission_id
+        self.state.current_mission_name = event.mission_name
+        self._update_mission_header()
         self._load_roster()
 
     async def on_mission_created(self, event: MissionCreated) -> None:
-        """User created a new project — create via bridge then select."""
+        """User created a new mission — create via bridge then select."""
         try:
             result = await self.bridge.create_mission(
                 name=event.mission_name,
                 description=event.description or "Created from TUI",
             )
-            self.state.current_project_id = result["id"]
-            self.state.current_project_name = result["name"]
-            self._update_project_header()
+            self.state.current_mission_id = result["id"]
+            self.state.current_mission_name = result["name"]
+            self._update_mission_header()
             self._load_roster()
         except Exception as exc:
-            logger.error("Failed to create project", exc_info=True)
-            self.notify(f"Failed to create project: {exc}", severity="error")
+            logger.error("Failed to create mission", exc_info=True)
+            self.notify(f"Failed to create mission: {exc}", severity="error")
 
-    def _update_project_header(self) -> None:
-        """Update the project name in the header bar."""
+    def _update_mission_header(self) -> None:
+        """Update the mission name in the header bar."""
         try:
-            label = self.screen.query_one("#project-name", Label)
-            name = self.state.current_project_name or "No Project"
+            label = self.screen.query_one("#mission-name", Label)
+            name = self.state.current_mission_name or "No Mission"
             label.update(f"[bold]{name}[/bold]")
         except NoMatches:
             pass
@@ -164,8 +163,8 @@ class MissionControlApp(App):
         self, event: MissionStartRequested
     ) -> None:
         """Start a mission from the chat input."""
-        if not self.state.current_project_id:
-            self.notify("Select a project first (Ctrl+P)", severity="warning")
+        if not self.state.current_mission_id:
+            self.notify("Select a mission first (Ctrl+P)", severity="warning")
             return
 
         if self.state.mission_status == "running":
@@ -194,7 +193,7 @@ class MissionControlApp(App):
 
             outcome = await self.bridge.run_execution(
                 brief=brief,
-                mission_id=self.state.current_project_id,
+                mission_id=self.state.current_mission_id,
                 session_id=self.state.current_session_id,
                 budget_usd=self.state.budget_usd or 10.0,
                 gate=self._gate_reviewer,
@@ -620,24 +619,24 @@ class MissionControlApp(App):
             container.mount(
                 Static(
                     "Press [bold]Ctrl+M[/bold] to start a mission\n"
-                    "Press [bold]Ctrl+P[/bold] to switch project",
+                    "Press [bold]Ctrl+P[/bold] to switch mission",
                     classes="placeholder-panel",
                 )
             )
 
     # ── Navigation ───────────────────────────────────────────────────
 
-    def action_switch_project(self) -> None:
-        """Show project picker (Ctrl+P)."""
-        self.run_worker(self._show_project_picker(), thread=False)
+    def action_switch_mission(self) -> None:
+        """Show mission picker (Ctrl+P)."""
+        self.run_worker(self._show_mission_picker(), thread=False)
 
-    async def _show_project_picker(self) -> None:
+    async def _show_mission_picker(self) -> None:
         try:
-            projects = await self.bridge.list_missions()
+            missions = await self.bridge.list_missions()
         except Exception:
-            logger.warning("Could not load projects for picker", exc_info=True)
-            projects = []
-        self.push_screen(ProjectPickerScreen(projects))
+            logger.warning("Could not load missions for picker", exc_info=True)
+            missions = []
+        self.push_screen(MissionPickerScreen(missions))
 
     def action_show_history(self) -> None:
         """Show mission history screen (F2)."""

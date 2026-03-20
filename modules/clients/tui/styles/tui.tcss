@@ -58,9 +58,9 @@ Screen {
     padding: 0;
 }
 
-/* ── Project header ────────────────────────────────────────────── */
+/* ── Mission header ────────────────────────────────────────────── */
 
-#project-header {
+#mission-header {
     dock: top;
     height: 3;
     background: $primary-background;
@@ -69,12 +69,12 @@ Screen {
     content-align: center middle;
 }
 
-#project-header Label {
+#mission-header Label {
     height: 3;
     content-align: center middle;
 }
 
-#project-name {
+#mission-name {
     width: auto;
     text-style: bold;
 }

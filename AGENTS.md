@@ -12,7 +12,7 @@ For full details, see `docs/99-reference-architecture/`.
 - **The mission is the domain primitive. The session is the transport primitive.** Missions outlive any session, run, or execution — they carry the brief, team, workflows, and accumulated context over months or years. Sessions outlive any request, connection, or server restart — they carry real-time events, multi-channel bindings, and conversation history for a single execution.
 - **Write code that never needs editing.** Black box modules, testable interfaces, replacement readiness.
 
-## Project Overview
+## Platform Overview
 
 AI-first autonomous agent platform. FastAPI backend, PydanticAI agents, PostgreSQL, Redis, FastStream, Temporal.
 
@@ -48,7 +48,7 @@ Model Layer (modules/backend/models/)     → SQLAlchemy entities
 
 ### Entry Points
 
-- `cli.py` — Click-based CLI with groups and subcommands (e.g., `cli.py server start`, `cli.py mission run "..."`, `cli.py tree`)
+- `cli.py` — Click-based CLI with groups and subcommands (e.g., `cli.py server start`, `cli.py execution run "..."`, `cli.py tree`)
 - `modules/backend/main.py` — FastAPI application (for uvicorn)
 
 ### Key Modules

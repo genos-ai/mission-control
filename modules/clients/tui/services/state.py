@@ -22,9 +22,9 @@ from modules.backend.schemas.task_plan import TaskPlan
 class TuiState:
     """Plain dataclass held by the App. Widgets read from it."""
 
-    # ── Project ──────────────────────────────────────────────────────
-    current_project_id: str | None = None
-    current_project_name: str | None = None
+    # ── Mission ──────────────────────────────────────────────────────
+    current_mission_id: str | None = None
+    current_mission_name: str | None = None
 
     # ── Session ──────────────────────────────────────────────────────
     current_session_id: str | None = None

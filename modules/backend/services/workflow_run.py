@@ -56,7 +56,7 @@ class WorkflowRunService(BaseService):
         triggered_by: str = "user:cli",
         context_overrides: dict[str, Any] | None = None,
         on_progress: Any | None = None,
-        project_name: str | None = None,
+        mission_name: str | None = None,
         gate: object | None = None,
     ) -> WorkflowRun:
         """Execute a workflow end-to-end.
@@ -82,13 +82,13 @@ class WorkflowRunService(BaseService):
                 f"Workflow capability errors: {'; '.join(errors)}"
             )
 
-        if not project_name:
+        if not mission_name:
             raise ValueError(
-                "Mission name is required. Use --project <name> to specify "
+                "Mission name is required. Use --mission <name> to specify "
                 "the target mission."
             )
 
-        mission_id = await self._resolve_mission(project_name, workflow)
+        mission_id = await self._resolve_mission(mission_name, workflow)
 
         # Create session for the workflow run
         from modules.backend.services.session import SessionService

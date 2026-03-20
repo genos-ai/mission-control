@@ -5,8 +5,8 @@ Shows what agents actually see: Code Map, PQI scores, dependency analysis,
 and the assembled context layers.
 
 Two modes:
-  - Global (no --project): reads Code Map / PQI from disk. No DB needed.
-  - Per-project (--project <id>): builds the full assembled context packet
+  - Global (no --mission): reads Code Map / PQI from disk. No DB needed.
+  - Per-mission (--mission <id>): builds the full assembled context packet
     (PCD + Code Map + history) via ContextAssembler. Requires DB.
 """
 
@@ -42,18 +42,17 @@ def run_context(cli_logger, action: str, *, output_format: str = "human", **kwar
 # ---------------------------------------------------------------------------
 
 
-def _action_show(cli_logger, *, output_format, project_id=None, **_):
+def _action_show(cli_logger, *, output_format, mission_id=None, **_):
     """Show all context layers and their token costs.
 
-    Without --project: global (disk-only, no DB).
-    With --project: includes PCD and history from DB.
+    Without --mission: global (disk-only, no DB).
+    With --mission: includes PCD and history from DB.
     """
     console = get_console()
     project_root = find_project_root()
 
-    # If project_id given, delegate to assembled view
-    if project_id:
-        _action_assembled(cli_logger, output_format=output_format, project_id=project_id)
+    if mission_id:
+        _action_assembled(cli_logger, output_format=output_format, mission_id=mission_id)
         return
 
     from modules.backend.services.code_map.loader import CodeMapLoader
@@ -144,26 +143,26 @@ def _action_show(cli_logger, *, output_format, project_id=None, **_):
 
 
 # ---------------------------------------------------------------------------
-# context assembled — full per-project context packet (requires DB)
+# context assembled — full per-mission context packet (requires DB)
 # ---------------------------------------------------------------------------
 
 
-def _action_assembled(cli_logger, *, output_format, project_id=None, domain_tags=None, **_):
-    """Build and display the full assembled context packet for a project.
+def _action_assembled(cli_logger, *, output_format, mission_id=None, domain_tags=None, **_):
+    """Build and display the full assembled context packet for a mission.
 
     This is exactly what an agent receives before task execution:
     PCD (Layer 0), task stub (Layer 1), Code Map (Layer 3), history (Layer 2).
     """
     console = get_console()
 
-    if not project_id:
-        console.print("[red]--project is required for assembled context[/red]")
+    if not mission_id:
+        console.print("[red]--mission is required for assembled context[/red]")
         sys.exit(1)
 
-    asyncio.run(_assembled_async(console, project_id, domain_tags, output_format))
+    asyncio.run(_assembled_async(console, mission_id, domain_tags, output_format))
 
 
-async def _assembled_async(console, project_id, domain_tags, output_format):
+async def _assembled_async(console, mission_id, domain_tags, output_format):
     """Async implementation — builds the real context packet."""
     from modules.backend.services.code_map.loader import CodeMapLoader
     from modules.backend.services.context_assembler import ContextAssembler
@@ -193,7 +192,7 @@ async def _assembled_async(console, project_id, domain_tags, output_format):
 
             try:
                 packet = await assembler.build(
-                    mission_id=project_id,
+                    mission_id=mission_id,
                     task_definition=task_stub,
                     resolved_inputs={},
                     domain_tags=tags,
@@ -202,7 +201,7 @@ async def _assembled_async(console, project_id, domain_tags, output_format):
                 # History query may fail if DB schema is behind — degrade gracefully
                 console.print(f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n")
                 packet = await assembler.build(
-                    mission_id=project_id,
+                    mission_id=mission_id,
                     task_definition=task_stub,
                     resolved_inputs={},
                     domain_tags=[],  # empty tags skip history
@@ -212,7 +211,7 @@ async def _assembled_async(console, project_id, domain_tags, output_format):
         console.print_json(_json.dumps(packet, indent=2, default=str))
         return
 
-    console.print(f"[bold]Assembled Context for project [cyan]{project_id}[/cyan][/bold]")
+    console.print(f"[bold]Assembled Context for mission [cyan]{mission_id}[/cyan][/bold]")
     console.print(f"  Domain tags: {tags}\n")
 
     # Layer 0: PCD
@@ -231,7 +230,7 @@ async def _assembled_async(console, project_id, domain_tags, output_format):
                 console.print(f"  {key}: {val}")
         console.print()
     else:
-        console.print("[bold cyan]Layer 0: PCD[/bold cyan] [dim](empty — no PCD for this project)[/dim]\n")
+        console.print("[bold cyan]Layer 0: PCD[/bold cyan] [dim](empty — no PCD for this mission)[/dim]\n")
 
     # Layer 1: Task
     task = packet.get("task")

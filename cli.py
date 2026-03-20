@@ -16,7 +16,7 @@ Usage:
     python cli.py db query missions --limit 5
     python cli.py db clear --yes
     python cli.py workflow list
-    python cli.py workflow run ops.platform-audit
+    python cli.py workflow run ops.platform-audit --mission my-app
     python cli.py credits
 """
 
@@ -484,7 +484,7 @@ def workflow(ctx):
     \b
     Examples:
         python cli.py workflow list
-        python cli.py workflow run ops.platform-audit
+        python cli.py workflow run ops.platform-audit --mission my-app
         python cli.py workflow detail ops.platform-audit
     """
     if ctx.invoked_subcommand is None:
@@ -513,7 +513,7 @@ def workflow_detail(ctx, name):
 @workflow.command("run")
 @click.argument("name")
 @click.option("--triggered-by", default="user:cli", help="Trigger origin.")
-@click.option("--project", required=True, help="Project name to run against (created if new).")
+@click.option("--mission", required=True, help="Mission name to run against (created if new).")
 @click.option(
     "--gate",
     type=click.Choice(["off", "interactive", "ai_assisted", "autonomous"], case_sensitive=False),
@@ -522,7 +522,7 @@ def workflow_detail(ctx, name):
 )
 @click.option("--step", is_flag=True, help="Alias for --gate interactive.")
 @click.pass_obj
-def workflow_run(ctx, name, triggered_by, project, gate, step):
+def workflow_run(ctx, name, triggered_by, mission, gate, step):
     """Execute a workflow."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
 
@@ -536,7 +536,7 @@ def workflow_run(ctx, name, triggered_by, project, gate, step):
 
     run_workflow_cli(ctx.logger, action="run", workflow_name=name, run_id=None,
                      triggered_by=triggered_by, output_format=ctx.output_format,
-                     project_name=project, gate=gate_obj)
+                     mission_name=mission, gate=gate_obj)
 
 
 @workflow.command("runs")
@@ -684,8 +684,8 @@ def context(ctx):
     \b
     Examples:
         python cli.py context show
-        python cli.py context show --project <id>
-        python cli.py context assembled --project <id>
+        python cli.py context show --mission <id>
+        python cli.py context assembled --mission <id>
         python cli.py context codemap
         python cli.py context codemap --generate
         python cli.py context pqi
@@ -697,24 +697,24 @@ def context(ctx):
 
 
 @context.command("show")
-@click.option("--project", "project_id", default=None, help="Project ID for full assembled context.")
+@click.option("--mission", "mission_id", default=None, help="Mission ID for full assembled context.")
 @click.pass_obj
-def context_show(ctx, project_id):
+def context_show(ctx, mission_id):
     """Show all context layers and token costs.
 
-    Without --project: global view (disk-only, no DB).
-    With --project: full assembled context packet from DB + disk.
+    Without --mission: global view (disk-only, no DB).
+    With --mission: full assembled context packet from DB + disk.
     """
     from modules.clients.cli.context import run_context
-    run_context(ctx.logger, "show", output_format=ctx.output_format, project_id=project_id)
+    run_context(ctx.logger, "show", output_format=ctx.output_format, mission_id=mission_id)
 
 
 @context.command("assembled")
-@click.option("--project", "project_id", required=True, help="Project ID.")
+@click.option("--mission", "mission_id", required=True, help="Mission ID.")
 @click.option("--tags", "domain_tags", default=None, help="Comma-separated domain tags (e.g. code,implementation).")
 @click.pass_obj
-def context_assembled(ctx, project_id, domain_tags):
-    """Build the full assembled context packet for a project.
+def context_assembled(ctx, mission_id, domain_tags):
+    """Build the full assembled context packet for a mission.
 
     Shows exactly what an agent receives: PCD + task + Code Map + history.
     Requires a running database.
@@ -722,7 +722,7 @@ def context_assembled(ctx, project_id, domain_tags):
     from modules.clients.cli.context import run_context
     tags = domain_tags.split(",") if domain_tags else None
     run_context(ctx.logger, "assembled", output_format=ctx.output_format,
-                project_id=project_id, domain_tags=tags)
+                mission_id=mission_id, domain_tags=tags)
 
 
 @context.command("codemap")

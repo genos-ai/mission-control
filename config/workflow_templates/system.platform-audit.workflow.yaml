@@ -16,7 +16,7 @@ objective:
   regulatory_reference: null
 version: 2
 enabled: true
-project_name: "system-audit-and-health-check"
+mission_name: "system-audit-and-health-check"
 
 trigger:
   type: on_demand

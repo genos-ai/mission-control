@@ -56,43 +56,43 @@ class TestAppMount:
 
         async with app.run_test():
             assert app.state.mission_status == "idle"
-            assert app.state.current_project_id is None
+            assert app.state.current_mission_id is None
 
 
-# ── Project handling ──────────────────────────────────────────────────
+# ── Mission handling ──────────────────────────────────────────────────
 
-class TestProjectHandling:
+class TestMissionHandling:
     @pytest.mark.asyncio
-    async def test_project_selected_updates_state(self):
+    async def test_mission_selected_updates_state(self):
         app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
             app.post_message(
-                MissionSelected(mission_id="proj-1", mission_name="Alpha")
+                MissionSelected(mission_id="m-1", mission_name="Alpha")
             )
             await pilot.pause()
-            assert app.state.current_project_id == "proj-1"
-            assert app.state.current_project_name == "Alpha"
+            assert app.state.current_mission_id == "m-1"
+            assert app.state.current_mission_name == "Alpha"
 
     @pytest.mark.asyncio
-    async def test_project_created_calls_bridge(self):
+    async def test_mission_created_calls_bridge(self):
         app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
             app.post_message(
-                MissionCreated(mission_name="NewProj", description="My desc")
+                MissionCreated(mission_name="NewMission", description="My desc")
             )
             await pilot.pause()
             app.bridge.create_mission.assert_called_once_with(
-                name="NewProj", description="My desc"
+                name="NewMission", description="My desc"
             )
-            assert app.state.current_project_id == "p-new"
-            assert app.state.current_project_name == "Test"
+            assert app.state.current_mission_id == "p-new"
+            assert app.state.current_mission_name == "Test"
 
     @pytest.mark.asyncio
-    async def test_project_created_uses_fallback_description(self):
+    async def test_mission_created_uses_fallback_description(self):
         app = MissionControlApp()
         app.bridge = _mock_bridge()
 
@@ -108,15 +108,14 @@ class TestProjectHandling:
 
 class TestMissionGuards:
     @pytest.mark.asyncio
-    async def test_mission_requires_project(self):
-        """Starting a mission without a project should show a warning, not crash."""
+    async def test_mission_requires_selected_mission(self):
+        """Starting an execution without a mission should show a warning, not crash."""
         app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
             app.post_message(MissionStartRequested(brief="Do something"))
             await pilot.pause()
-            # No project selected, mission should NOT start
             assert app.state.mission_status == "idle"
             app.bridge.run_execution.assert_not_called()
 
@@ -127,7 +126,7 @@ class TestMissionGuards:
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
-            app.state.current_project_id = "proj-1"
+            app.state.current_mission_id = "m-1"
             app.state.mission_status = "running"
             app.post_message(MissionStartRequested(brief="Second mission"))
             await pilot.pause()

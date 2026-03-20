@@ -14,10 +14,10 @@ class TestTuiStateDefaults:
         state = TuiState()
         assert state.mission_status == "idle"
 
-    def test_initial_project_is_none(self):
+    def test_initial_mission_is_none(self):
         state = TuiState()
-        assert state.current_project_id is None
-        assert state.current_project_name is None
+        assert state.current_mission_id is None
+        assert state.current_mission_name is None
 
     def test_initial_cost_is_zero(self):
         state = TuiState()
@@ -74,16 +74,15 @@ class TestTuiStateResetMission:
         assert state.pending_gate is None
         assert state.gate_history == []
 
-    def test_reset_preserves_project(self):
-        """reset_mission must NOT touch project or roster state."""
+    def test_reset_preserves_mission_selection(self):
+        """reset_mission must NOT touch mission selection or roster state."""
         state = TuiState()
-        state.current_project_id = "proj-1"
-        state.current_project_name = "My Project"
+        state.current_mission_id = "m-1"
+        state.current_mission_name = "My Mission"
         state.current_session_id = "sess-1"
         state.reset_mission()
-        assert state.current_project_id == "proj-1"
-        assert state.current_project_name == "My Project"
-        # session_id is also preserved (belongs to the session, not mission)
+        assert state.current_mission_id == "m-1"
+        assert state.current_mission_name == "My Mission"
         assert state.current_session_id == "sess-1"
 
     def test_reset_preserves_budget(self):
