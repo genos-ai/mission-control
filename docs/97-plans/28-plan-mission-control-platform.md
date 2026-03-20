@@ -51,7 +51,7 @@ All frontend files are untracked — rename before first commit at zero cost.
 | `ProjectStatus` | **`MissionStatus`** | ACTIVE, PAUSED, ARCHIVED |
 | `ProjectContext` | **`MissionContext`** | Living context document (was PCD) |
 | `ContextChange` | **`ContextChange`** | Keep — generic enough |
-| `ProjectDecision` | **`MissionDecision`** | Archived decisions from context pruning |
+| `ProjectDecision` | **`MissionDecision`** | Archived decisions from context pruning (in mission_history.py) |
 | `MilestoneSummary` | **`MilestoneSummary`** | Keep — generic enough |
 | `Playbook` / `PlaybookSchema` | **`Workflow`** / **`WorkflowSchema`** | Recipe — how agents collaborate |
 | `PlaybookStepSchema` | **`WorkflowStepSchema`** | Single step in a workflow |
@@ -64,7 +64,19 @@ All frontend files are untracked — rename before first commit at zero cost.
 | `PlaybookRunState` | **`WorkflowRunState`** | PENDING → RUNNING → COMPLETED/FAILED |
 | `Mission` (current) | **`Execution`** | Single step-level execution within a workflow run |
 | `MissionState` | **`ExecutionState`** | PENDING → RUNNING → COMPLETED/FAILED |
-| `MissionOutcome` | **`ExecutionOutcome`** | Result of a single execution |
+| `MissionOutcome` | **`ExecutionOutcome`** | Result of a Mission Control dispatch |
+| `MissionStatus` (in outcome.py) | **`ExecutionStatus`** | SUCCESS, PARTIAL, FAILED (dispatch outcome) |
+| `MissionRecord` | **`ExecutionRecord`** | Persisted audit record of a dispatch execution |
+| `MissionRecordStatus` | **`ExecutionRecordStatus`** | COMPLETED, FAILED, CANCELLED, TIMED_OUT |
+| `MissionDecision` (in mission_record.py) | **`ExecutionDecision`** | MC decision audit trail (retry, fail, pass, skip) |
+| `TaskExecution` | **`TaskExecution`** | Keep — already correct (child of ExecutionRecord) |
+| `TaskAttempt` | **`TaskAttempt`** | Keep — already correct (child of TaskExecution) |
+
+**Name collision note:** Two different `MissionDecision` classes exist in the current codebase:
+- `mission_record.py` → `MissionDecision` (MC execution audit trail) → renamed to **`ExecutionDecision`** (table: `execution_decisions`)
+- `project_history.py` → `ProjectDecision` (PCD pruning decisions) → renamed to **`MissionDecision`** (table: `mission_decisions`)
+
+These are distinct concepts that must not collide after rename.
 
 ### 3.2  Modules and services
 
@@ -86,10 +98,23 @@ All frontend files are untracked — rename before first commit at zero cost.
 | `modules/backend/services/playbook_run.py` | `services/workflow_run.py` | |
 | `modules/backend/schemas/playbook.py` | `schemas/workflow.py` | |
 | `modules/backend/schemas/project_context.py` | `schemas/mission_context.py` | |
+| `modules/backend/schemas/mission_record.py` | `schemas/execution_record.py` | |
+| `modules/backend/repositories/mission_record.py` | `repositories/execution_record.py` | |
+| `modules/backend/services/mission_persistence.py` | `services/execution_persistence.py` | |
+| `modules/backend/agents/mission_control/outcome.py` | Keep file path | Rename classes: MissionOutcome→ExecutionOutcome, MissionStatus→ExecutionStatus |
+| `modules/backend/agents/mission_control/models.py` | Keep file path | Update protocol param names: project_id→mission_id |
+| `modules/backend/agents/mission_control/persistence_bridge.py` | Keep file path | Update references: MissionOutcome→ExecutionOutcome |
+| `modules/backend/services/summarization.py` | Keep file path | Update references: ProjectHistory→MissionHistory |
+| `modules/backend/services/context_assembler.py` | Keep file path | Update param names: project_id→mission_id |
+| `modules/backend/services/context_curator.py` | Keep file path | Update param names: project_id→mission_id |
+| `modules/backend/services/history_query.py` | Keep file path | Update references: MissionRecord→ExecutionRecord |
 | `modules/backend/api/v1/endpoints/playbooks.py` | `endpoints/workflows.py` | |
+| `modules/backend/api/v1/endpoints/missions.py` | `endpoints/executions.py` | Current missions endpoint → executions |
 | `modules/clients/cli/project.py` | `cli/mission_cmds.py` | Avoid collision with model name |
 | `modules/clients/cli/mission.py` | `cli/execution_cmds.py` | |
 | `modules/clients/cli/playbook.py` | `cli/workflow_cmds.py` | |
+| `config/playbooks/` | `config/workflow_templates/` | Rename directory + files from `.playbook.yaml` to `.workflow.yaml` |
+| `config/settings/playbooks.yaml` | `config/settings/workflows.yaml` | Rename keys: `playbooks_dir` → `workflows_dir` etc. |
 
 ### 3.3  API routes
 
@@ -130,15 +155,48 @@ New routes added later:
 | `cli.py playbook run <name>` | `cli.py workflow run <name>` |
 | `cli.py playbook detail <name>` | `cli.py workflow detail <name>` |
 
-### 3.5  What does NOT rename
+### 3.5  Event types and event classes
+
+Event type strings are part of the SSE protocol and the `EVENT_TYPE_MAP` registry. Both the class names and the string constants must rename.
+
+| Current class | New class | Current event_type string | New event_type string |
+|---|---|---|---|
+| `PlaybookRunStartedEvent` | **`WorkflowRunStartedEvent`** | `playbook.run.started` | `workflow.run.started` |
+| `PlaybookMissionStartedEvent` | **`WorkflowExecutionStartedEvent`** | `playbook.mission.started` | `workflow.execution.started` |
+| `PlaybookMissionCompletedEvent` | **`WorkflowExecutionCompletedEvent`** | `playbook.mission.completed` | `workflow.execution.completed` |
+| `PlaybookRunCompletedEvent` | **`WorkflowRunCompletedEvent`** | `playbook.run.completed` | `workflow.run.completed` |
+| `PlaybookRunFailedEvent` | **`WorkflowRunFailedEvent`** | `playbook.run.failed` | `workflow.run.failed` |
+
+The `EVENT_TYPE_MAP` dictionary in `events/types.py` must be updated with the new string keys. Any frontend or TUI code that matches on these strings must also be updated.
+
+### 3.6  Protocol and parameter renames
+
+Several internal protocols and function signatures use `project_id` as a parameter name. These must become `mission_id` for consistency, even though the module files themselves do not rename.
+
+| Location | Change |
+|---|---|
+| `agents/mission_control/models.py` → `ContextCuratorProtocol` | `project_id` → `mission_id` in method signatures |
+| `agents/mission_control/models.py` → `ContextAssemblerProtocol` | `project_id` → `mission_id` in method signatures |
+| `core/protocols.py` | Audit all protocol methods for `project_id` params |
+| `services/context_assembler.py` | `project_id` → `mission_id` in public methods |
+| `services/context_curator.py` | `project_id` → `mission_id` in public methods |
+| `services/history_query.py` | `project_id` → `mission_id` in public methods |
+| `services/summarization.py` | `project_id` → `mission_id` in public methods |
+| `agents/mission_control/helpers.py` | All `project_id` references in function args |
+| `agents/mission_control/dispatch.py` | All `project_id` references in function args |
+
+### 3.7  What does NOT rename
 
 | Entity | Reason |
 |---|---|
-| `MissionControl` (module) | Still correct — it controls executions within missions |
+| `MissionControl` (module at `agents/mission_control/`) | Still correct — it controls executions within missions |
+| `config/mission_control/` directory | Holds roster YAML files. Directory name matches the module, not the domain entity |
+| `config/agents/` directory | Holds agent YAML configs used for DB seeding. Stays as-is |
 | `TaskPlan` / `TaskDefinition` | Runtime execution plan, not user-facing |
-| `SessionEvent` hierarchy | Transport layer, not domain entity |
+| `SessionEvent` hierarchy (non-playbook events) | Transport layer, not domain entity |
 | `GateReviewer` / `GateContext` | Review mechanism, not domain entity |
 | `Roster` (internal concept) | Derived at runtime from mission team — internal only |
+| `MissionControlRequest` / `MissionControlResponse` | MC infrastructure types, not domain entities |
 
 ---
 
@@ -312,6 +370,7 @@ A new horizontal agent that designs workflows conversationally.
 | `mission_id` | FK → missions | |
 | `agent_catalog_id` | FK → agent_catalog | |
 | `user_prompt` | TEXT | User-editable per-mission prompt |
+| `user_prompt_version` | INTEGER DEFAULT 1 | Current version (incremented on edit, matches prompt_versions) |
 | `enabled` | BOOLEAN | Can be temporarily disabled |
 | `display_order` | INTEGER | UI ordering |
 | `custom_constraints` | JSON | Per-mission overrides (optional) |
@@ -349,6 +408,14 @@ A new horizontal agent that designs workflows conversationally.
 | `updated_at` | TIMESTAMP | |
 
 **Unique constraint**: `(mission_id, name)` — unique workflow names within a mission.
+
+**New fields on `WorkflowStepSchema`** (additions to the existing step schema, per D5 and D6):
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `max_refinement_rounds` | `int` | `1` | Max internal retry/QA cycles per step (D5). Value of 1 = no retry. Gate RETRY mechanism drives the loop. |
+| `termination` | `str` | `completion` | Step termination mode (D6). One of: `completion` (normal DAG finish), `budget_exhausted` (iterate until budget hit), `criteria_met` (iterate until quality criteria pass), `max_iterations` (fixed count). |
+| `max_iterations` | `int \| None` | `None` | For `termination: max_iterations` — how many internal cycles. |
 
 **System workflow templates**: Sysadmin-created workflows stored as YAML in `config/workflow_templates/`. Users can import a template when designing a new workflow (the Architect receives it as a starting point). Templates have `mission_id: NULL` — they're not bound to any mission.
 
@@ -391,6 +458,8 @@ Behaviour:
 3. Run the agent with: system prompt + (override or saved user prompt) + cached inputs
 4. Return the output without persisting as a real workflow run
 5. Stream events via SSE so the frontend can show real-time progress
+
+**First-run constraint**: Workshop requires at least one completed workflow run for the target step's upstream dependencies. If no cached data exists, the endpoint returns 409 Conflict with a message: "No cached inputs available. Run the workflow at least once first." The frontend shows this as a guided prompt to run a test workflow first.
 
 ---
 
@@ -487,7 +556,7 @@ Mission (persistent container)
                           └── Gate → Review point (optional)
 ```
 
-**Ad-hoc executions**: A user can send a message directly to an agent (chat mode) without going through a workflow. This creates an implicit single-step workflow run. The execution pipeline is identical — it always flows through Mission Control.
+**Ad-hoc executions**: A user can send a message directly to an agent (chat mode) without going through a workflow. The `workflow_run_id` on the `executions` table remains nullable (as `playbook_run_id` is today). Ad-hoc executions have `workflow_run_id = NULL` — they are direct Mission Control invocations within a mission, not tied to any workflow. The execution pipeline is identical — it always flows through Mission Control.
 
 **Iteration within a step**: The Execution has `max_refinement_rounds` (from workflow step config). Mission Control's dispatch loop runs the agent, verifies the output, and if verification fails, retries with feedback up to the configured limit. The gate RETRY action provides the feedback loop.
 
@@ -499,31 +568,50 @@ Mission (persistent container)
 
 ### 9.1  Table renames
 
-| Old table | New table |
-|---|---|
-| `projects` | `missions` |
-| `project_members` | `mission_members` |
-| `project_contexts` | `mission_contexts` |
-| `context_changes` | `context_changes` (keep, update FK column name) |
-| `project_decisions` | `mission_decisions` |
-| `milestone_summaries` | `milestone_summaries` (keep, update FK column name) |
-| `missions` (current) | `executions` |
-| `playbook_runs` | `workflow_runs` |
+**Migration ordering is critical.** The `missions` table name is used by both the old execution table and the new container table. The migration must execute in this order:
+
+1. Rename `missions` → `executions` (free the name)
+2. Rename `projects` → `missions` (claim the name)
+3. Rename all other tables (no ordering constraint)
+
+| Order | Old table | New table |
+|---|---|---|
+| 1 | `missions` (current — executions) | `executions` |
+| 2 | `projects` | `missions` |
+| 3 | `project_members` | `mission_members` |
+| 4 | `project_contexts` | `mission_contexts` |
+| 5 | `context_changes` | `context_changes` (keep, update FK column names) |
+| 6 | `project_decisions` | `mission_decisions` |
+| 7 | `milestone_summaries` | `milestone_summaries` (keep, update FK column name) |
+| 8 | `playbook_runs` | `workflow_runs` |
+| 9 | `mission_records` | `execution_records` |
+| 10 | `mission_decisions` (in mission_records, audit trail) | `execution_decisions` |
+| 11 | `task_executions` | `task_executions` (keep, update FK column name) |
+| 12 | `task_attempts` | `task_attempts` (keep, no changes) |
 
 ### 9.2  Column renames within tables
 
-| Table | Old column | New column |
-|---|---|---|
-| `context_changes` | `mission_id` (ref to old mission) | `execution_id` |
-| `milestone_summaries` | `project_id` | `mission_id` |
-| `mission_decisions` | `project_id` | `mission_id` |
-| `mission_decisions` | `mission_id` (ref to old mission) | `execution_id` |
-| `executions` (was missions) | `playbook_run_id` | `workflow_run_id` |
-| `executions` (was missions) | `playbook_step_id` | `workflow_step_id` |
-| `executions` (was missions) | `mission_outcome` | `execution_outcome` |
-| `workflow_runs` (was playbook_runs) | `playbook_name` | `workflow_name` |
-| `workflow_runs` (was playbook_runs) | `playbook_version` | `workflow_version` |
-| `missions` (new, was projects) | `description` | Add `brief` (TEXT) field alongside |
+| Table (new name) | Old column | New column | Notes |
+|---|---|---|---|
+| `executions` (was missions) | `project_id` | `mission_id` | FK to missions (was projects) |
+| `executions` (was missions) | `playbook_run_id` | `workflow_run_id` | |
+| `executions` (was missions) | `playbook_step_id` | `workflow_step_id` | |
+| `executions` (was missions) | `mission_outcome` | `execution_outcome` | |
+| `workflow_runs` (was playbook_runs) | `project_id` | `mission_id` | FK to missions (was projects) |
+| `workflow_runs` (was playbook_runs) | `playbook_name` | `workflow_name` | |
+| `workflow_runs` (was playbook_runs) | `playbook_version` | `workflow_version` | |
+| `execution_records` (was mission_records) | `project_id` | `mission_id` | FK to missions (was projects) |
+| `execution_records` (was mission_records) | `mission_outcome_json` | `execution_outcome_json` | |
+| `execution_records` (was mission_records) | `parent_mission_id` | `parent_execution_record_id` | Self-FK |
+| `execution_decisions` (was mission_decisions in records) | `mission_record_id` | `execution_record_id` | FK to execution_records |
+| `task_executions` | `mission_record_id` | `execution_record_id` | FK to execution_records |
+| `context_changes` | `mission_id` (ref to old mission) | `execution_id` | |
+| `milestone_summaries` | `project_id` | `mission_id` | FK to missions (was projects) |
+| `mission_decisions` (PCD pruning) | `project_id` | `mission_id` | FK to missions (was projects) |
+| `mission_decisions` (PCD pruning) | `mission_id` (ref to old execution) | `execution_id` | |
+| `mission_contexts` (was project_contexts) | `project_id` | `mission_id` | FK to missions (was projects) |
+| `mission_members` (was project_members) | `project_id` | `mission_id` | FK to missions (was projects) |
+| `missions` (new, was projects) | — | Add `brief` (TEXT) | New column alongside `description` |
 
 ### 9.3  New tables
 
