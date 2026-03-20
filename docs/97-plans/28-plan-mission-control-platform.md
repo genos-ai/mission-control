@@ -640,20 +640,22 @@ Mission (persistent container)
 Rename all entities and files. No new features. The codebase compiles, all tests pass, and the vocabulary is consistent. This is a mechanical, high-confidence change.
 
 Steps:
-1. Create DB migration for table/column renames
+1. Create DB migration for table/column renames (see §9 for ordering)
 2. Rename model files and classes
-3. Rename schema files and classes
+3. Rename schema files and classes (including `schemas/playbook.py`, `schemas/mission_record.py`, `schemas/project_context.py`)
 4. Rename repository files and classes
 5. Rename service files and classes
-6. Rename API endpoint files and routes
-7. Rename CLI command groups and handlers
-8. Update all imports across the codebase
-9. Rename frontend files and components (before first commit)
-10. Update TUI references
-11. Update config file names (`playbooks.yaml` → `workflows.yaml`)
-12. Update AGENTS.md, CODEMAP.md, all documentation
-13. Run full test suite, fix all failures
-14. Regenerate code map
+6. Rename `config_schema.py` classes (`PlaybooksSchema`→`WorkflowsSchema`, `MissionsSchema`→`ExecutionsSchema`, `ProjectsSchema`→`MissionsSchema`) and `config.py` properties (same collision pattern as DB — rename `MissionsSchema` first)
+7. Rename API endpoint files and routes
+8. Rename CLI command groups and handlers
+9. Update all imports across the codebase (use `rg` to find every reference)
+10. Rename frontend files and components (before first commit)
+11. Update TUI references
+12. Rename config settings files (`playbooks.yaml`→`workflows.yaml`, `missions.yaml`→`executions.yaml`, `projects.yaml`→`missions.yaml`) and update all keys within
+13. Rename `config/playbooks/` → `config/workflow_templates/` and files within
+14. Update AGENTS.md, CODEMAP.md, all documentation
+15. Run full test suite, fix all failures
+16. Regenerate code map
 
 ### Phase 2 — DB Schema Expansion
 
@@ -666,7 +668,7 @@ Steps:
 4. Create `workflows` table + model + repository + service
 5. Create `prompt_versions` table + model + repository
 6. Create `workflow_schedules` table + model + repository
-7. Migrate `PlaybookService` to load from DB (with YAML template import)
+7. Migrate `WorkflowService` (was `PlaybookService`) to load from DB (with YAML template import)
 8. Update Mission model with `brief` field
 9. Update roster derivation to use mission team + agent catalog
 10. Update `assemble_instructions()` to include user prompt layer
