@@ -1,10 +1,8 @@
-# BFF Python Platform Harness
+# Mission Control
 
-Backend-for-Frontend skeleton template with Python (FastAPI) backend and React (Vite) frontend.
+AI-first autonomous agent platform. FastAPI backend, PydanticAI agents, PostgreSQL, Redis, FastStream, Temporal.
 
 ## Architecture
-
-This project follows the BFF (Backend-for-Frontend) pattern:
 
 - **Backend**: Python 3.12+ with FastAPI
 - **Frontend**: React with Vite, TypeScript, Tailwind CSS

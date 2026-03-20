@@ -27,7 +27,7 @@ class MainScreen(Screen):
         # ── Top bar ──────────────────────────────────────────────
         with Horizontal(id="project-header"):
             yield Label("[bold]No Project[/bold]", id="project-name", markup=True)
-            yield Label("BFA Mission Control", id="app-title")
+            yield Label("Mission Control", id="app-title")
 
         # ── Three columns ────────────────────────────────────────
         with Horizontal(id="main-container"):

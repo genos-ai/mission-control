@@ -1,4 +1,4 @@
-"""Session service — lifecycle management for the platform primitive."""
+"""Session service — lifecycle management for the transport primitive."""
 
 from datetime import timedelta
 

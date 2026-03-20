@@ -11,15 +11,9 @@ import click
 
 def show_info(logger, output_format: str = "human") -> None:
     """Display application information."""
-    click.echo("BFF Python Web Application")
-    click.echo("=" * 40)
-
     try:
         from modules.backend.core.config import get_app_config
         app_config = get_app_config()
-        click.echo(f"Name: {app_config.application.name}")
-        click.echo(f"Version: {app_config.application.version}")
-        click.echo(f"Description: {app_config.application.description}")
     except Exception as e:
         logger.error(
             "Failed to load application configuration",
@@ -33,6 +27,13 @@ def show_info(logger, output_format: str = "human") -> None:
             err=True,
         )
         sys.exit(1)
+
+    title = app_config.application.name
+    click.echo(title)
+    click.echo("=" * len(title))
+    click.echo(f"Name: {title}")
+    click.echo(f"Version: {app_config.application.version}")
+    click.echo(f"Description: {app_config.application.description}")
 
     click.echo()
     click.echo("Commands (run 'python cli.py <command> --help' for details):")

@@ -2,7 +2,8 @@
 # Session Configuration
 # =============================================================================
 #   Controls session lifecycle, TTLs, cost budgets, and cleanup intervals.
-#   Sessions are the platform primitive — they outlive any request or connection.
+#   Sessions are the transport primitive — they outlive any request or connection.
+#   Missions are the domain primitive — they outlive any session, run, or execution.
 
 default_ttl_hours: 24
 max_ttl_hours: 168

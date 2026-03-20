@@ -1,4 +1,4 @@
-"""Tests for BfaTuiApp using Textual's Pilot testing framework.
+"""Tests for MissionControlApp using Textual's Pilot testing framework.
 
 These tests mock the ServiceBridge so no real DB is needed.
 """
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modules.clients.tui.app import BfaTuiApp
+from modules.clients.tui.app import MissionControlApp
 from modules.clients.tui.messages import (
     MissionStartRequested,
     ProjectCreated,
@@ -37,7 +37,7 @@ class TestAppMount:
     @pytest.mark.asyncio
     async def test_app_mounts_main_screen(self):
         """App should mount with all core widgets present."""
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -51,7 +51,7 @@ class TestAppMount:
 
     @pytest.mark.asyncio
     async def test_initial_state_is_idle(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test():
@@ -64,7 +64,7 @@ class TestAppMount:
 class TestProjectHandling:
     @pytest.mark.asyncio
     async def test_project_selected_updates_state(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -77,7 +77,7 @@ class TestProjectHandling:
 
     @pytest.mark.asyncio
     async def test_project_created_calls_bridge(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -93,7 +93,7 @@ class TestProjectHandling:
 
     @pytest.mark.asyncio
     async def test_project_created_uses_fallback_description(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -110,7 +110,7 @@ class TestMissionGuards:
     @pytest.mark.asyncio
     async def test_mission_requires_project(self):
         """Starting a mission without a project should show a warning, not crash."""
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -123,7 +123,7 @@ class TestMissionGuards:
     @pytest.mark.asyncio
     async def test_mission_blocks_duplicate(self):
         """Cannot start a second mission while one is running."""
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -139,7 +139,7 @@ class TestMissionGuards:
 class TestEventRouting:
     @pytest.mark.asyncio
     async def test_agent_thinking_started_adds_to_active(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -152,7 +152,7 @@ class TestEventRouting:
 
     @pytest.mark.asyncio
     async def test_agent_response_complete_removes_from_active(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -173,7 +173,7 @@ class TestEventRouting:
 
     @pytest.mark.asyncio
     async def test_cost_updated_event(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
@@ -186,7 +186,7 @@ class TestEventRouting:
 
     @pytest.mark.asyncio
     async def test_events_appended_to_state(self):
-        app = BfaTuiApp()
+        app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:

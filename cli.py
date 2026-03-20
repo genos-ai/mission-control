@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BFA Platform CLI.
+Mission Control CLI.
 
 Usage:
     python cli.py --help
@@ -81,7 +81,7 @@ class ShowHelpOnMissingArgs(click.Group):
               type=OUTPUT_FORMATS, help="Output format (human, json, jsonl).")
 @click.pass_context
 def cli(ctx, verbose: bool, debug: bool, output_format: str):
-    """BFA Platform CLI.
+    """Mission Control CLI.
 
     \b
     Infrastructure:  server, worker, scheduler, telegram, event-worker

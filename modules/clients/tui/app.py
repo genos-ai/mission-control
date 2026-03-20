@@ -1,4 +1,4 @@
-"""BFA Mission Control TUI — main Textual application.
+"""Mission Control TUI — main Textual application.
 
 Lifecycle:
     1. on_mount: load projects → show picker if no project selected
@@ -57,10 +57,10 @@ logger = get_logger(__name__)
 CSS_PATH = Path(__file__).parent / "styles" / "tui.tcss"
 
 
-class BfaTuiApp(App):
-    """BFA Mission Control — interactive agent dashboard."""
+class MissionControlApp(App):
+    """Mission Control — interactive agent dashboard."""
 
-    TITLE = "BFA Mission Control"
+    TITLE = "Mission Control"
     CSS_PATH = str(CSS_PATH)
 
     BINDINGS = [

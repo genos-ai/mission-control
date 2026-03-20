@@ -29,7 +29,7 @@ from modules.backend.core.logging import bind_context, get_logger, setup_logging
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output (INFO level logging).")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug output (DEBUG level logging).")
 def main(verbose: bool, debug: bool) -> None:
-    """BFA Mission Control — Interactive Agent Dashboard."""
+    """Mission Control — Interactive Agent Dashboard."""
     validate_project_root()
 
     # Disable console logging — Textual owns stdout/stderr.
@@ -46,9 +46,9 @@ def main(verbose: bool, debug: bool) -> None:
     logger = get_logger(__name__)
     logger.debug("Starting Mission Control TUI", extra={"debug": debug, "verbose": verbose})
 
-    from modules.clients.tui import BfaTuiApp
+    from modules.clients.tui import MissionControlApp
 
-    app = BfaTuiApp()
+    app = MissionControlApp()
     app.run()
 
 

@@ -9,7 +9,7 @@ For full details, see `docs/99-reference-architecture/`.
 
 - **AI-first, not human-first.** Agents are the primary consumers of this platform. Humans participate; agents drive.
 - **Tier 4 is the target.** Every decision must support long-running autonomous tasks (hours/days/weeks). No shortcuts that need retrofitting.
-- **The session is the primitive.** Not the request. Sessions outlive any individual request, connection, or server restart.
+- **The mission is the domain primitive. The session is the transport primitive.** Missions outlive any session, run, or execution — they carry the brief, team, workflows, and accumulated context over months or years. Sessions outlive any request, connection, or server restart — they carry real-time events, multi-channel bindings, and conversation history for a single execution.
 - **Write code that never needs editing.** Black box modules, testable interfaces, replacement readiness.
 
 ## Project Overview

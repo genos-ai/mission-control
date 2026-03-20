@@ -1,1 +1,1 @@
-"""BFA client surfaces — CLI, TUI, Telegram."""
+"""Mission Control client surfaces — CLI, TUI, Telegram."""

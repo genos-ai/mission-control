@@ -41,7 +41,7 @@ class TestExampleCLI:
         )
 
         assert result.returncode == 0
-        assert "BFF Python Web Application" in result.stdout
+        assert "Mission Control" in result.stdout
 
     def test_config_action_displays_yaml_settings(self):
         """Should display configuration from YAML files."""
@@ -54,7 +54,7 @@ class TestExampleCLI:
 
         assert result.returncode == 0
         assert "Application Settings" in result.stdout
-        assert "BFF Application" in result.stdout
+        assert "Mission Control" in result.stdout
 
     def test_health_action_checks_components(self):
         """Should run health checks and report results."""

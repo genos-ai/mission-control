@@ -167,7 +167,7 @@ async def run_planning_agent() -> dict:
     roster_prompt = _build_roster_prompt(roster)
 
     mission_brief = (
-        "Audit the BFA reference architecture codebase for compliance violations. "
+        "Audit the Mission Control codebase for compliance violations. "
         "The codebase follows strict rules: no hardcoded values, absolute imports only, "
         "centralized logging via get_logger(), UTC datetimes via utc_now(), "
         "and files must not exceed 1000 lines. "
@@ -427,7 +427,7 @@ def print_health_results(result: dict) -> None:
 # ---------------------------------------------------------------------------
 
 SELF_AUDIT_MISSION_BRIEF = (
-    "Run a full platform self-audit of the BFA reference architecture. "
+    "Run a full platform self-audit of the Mission Control platform. "
     "This is a read-only audit — no files should be modified (P13). "
     "The audit should cover two areas:\n\n"
     "1. **Code compliance**: Scan all Python files under modules/ and config/ "

@@ -12,7 +12,7 @@
 
 ## 1  Objective
 
-Fork the BFA reference architecture into the **Mission Control** platform — an AI-first
+Fork the reference architecture into the **Mission Control** platform — an AI-first
 autonomous agent orchestration platform where users create missions, assemble agent teams,
 design workflows conversationally with an AI Workflow Architect, and run them on schedule
 or on demand.
@@ -36,7 +36,7 @@ All frontend files are untracked — rename before first commit at zero cost.
 | Tagline | AI agent orchestration for technical teams |
 | Primary users | Technical operators (engineers, analysts, security teams) |
 | Admin users | Sysadmins (manage agent catalog, system prompts, tools, permissions) |
-| Design philosophy | AI-first (P1), session-primitive, streaming-default (P5) |
+| Design philosophy | AI-first (P1), mission as domain primitive, session as transport primitive, streaming-default (P5) |
 
 ---
 

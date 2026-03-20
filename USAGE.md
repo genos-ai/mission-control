@@ -1,4 +1,4 @@
-# BFA Platform CLI Usage
+# Mission Control CLI Usage
 
 All platform operations go through a single entry point: `python cli.py`.
 
@@ -427,10 +427,6 @@ python cli.py test unit
 ```
 
 ---
-
-## Production Rename
-
-> **Note:** "BFA Platform" is the reference architecture name. When deploying to production, rename the platform, database, and user to your chosen identity (e.g., "Tachikoma", your product name, etc.). Search for `bfa` in config files, CLI, and tests.
 
 ---
 

@@ -18,7 +18,7 @@ The session model must support Tier 4 from day one: `SUSPENDED` state for approv
 
 ## Context
 
-- Reference architecture: BFF doc 35 (Section 1: Session Model)
+- Reference architecture: Mission Control reference doc 35 (Section 1: Session Model)
 - Local doc: `docs/99-reference-architecture/46-event-session-architecture.md` (Section 1)
 - Axiom A1: The session outlives any individual request, connection, or server restart
 - Anti-pattern: Do NOT store conversation history in the session row — that goes in `session_messages`. The session tracks metadata, cost, and status.

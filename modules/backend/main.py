@@ -1,7 +1,7 @@
 """
 FastAPI Application Entry Point.
 
-This is the main entry point for the BFF backend application.
+This is the main entry point for the Mission Control backend.
 """
 
 from contextlib import asynccontextmanager

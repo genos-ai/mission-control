@@ -21,7 +21,7 @@ Mission control is infrastructure, not intelligence (P6). It routes messages to 
 
 ## Context
 
-- Reference architecture: BFF doc 35 (Section 3: Streaming Coordinator)
+- Reference architecture: Mission Control reference doc 35 (Section 3: Streaming Coordinator)
 - Research doc: `docs/98-research/11-bfa-workflow-architecture-specification.md` — Mission Control execution model, agent contracts, model pinning
 - Local doc: `docs/99-reference-architecture/46-event-session-architecture.md` (Section 3)
 - Project principles: `docs/03-principles/01-project-principles.md` — P6 (Mission Control Is Infrastructure), P3 (Breaking Changes Are Free), P5 (Streaming Is Default)

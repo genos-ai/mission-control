@@ -12,7 +12,7 @@
 
 ## Module Status: Required for AI-First Profile
 
-This module is **required** when adopting the AI-First Platform (BFA) profile. It defines the physical organization, naming conventions, and access control model that all other AI-First documents (40-46) assume. Read this document before building any agent.
+This module is **required** when adopting the AI-First Platform (Mission Control) profile. It defines the physical organization, naming conventions, and access control model that all other AI-First documents (40-46) assume. Read this document before building any agent.
 
 **Dependencies**: 40-agentic-architecture.md (conceptual foundation), 41-agentic-pydanticai.md (PydanticAI patterns), 04-module-structure.md (module boundaries), 08-python-coding-standards.md (Python conventions).
 
@@ -557,7 +557,7 @@ Files in `config/prompts/organization/` apply to every agent in the system. They
 ```markdown
 ## Organization Principles
 
-You are part of the BFA platform. These principles govern all your decisions:
+You are part of the Mission Control platform. These principles govern all your decisions:
 
 1. **Reliability over speed.** Never sacrifice system stability for faster delivery.
 2. **Security by default.** Deny access when uncertain. Escalate when unsure.

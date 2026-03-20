@@ -559,9 +559,9 @@ def _print_model_as_text(model: BaseModel) -> None:
 # cli.py — global option
 @click.group()
 @click.option("--format", "output_format", type=click.Choice(["json", "text"]),
-              default="text", envvar="BFF_OUTPUT_FORMAT",
-              help="Output format. Set BFF_OUTPUT_FORMAT=json for AI agents.")
-@click.option("--non-interactive", is_flag=True, envvar="BFF_NON_INTERACTIVE",
+              default="text", envvar="MC_OUTPUT_FORMAT",
+              help="Output format. Set MC_OUTPUT_FORMAT=json for AI agents.")
+@click.option("--non-interactive", is_flag=True, envvar="MC_NON_INTERACTIVE",
               help="Suppress all prompts. Fail if input required.")
 @click.option("--verbose", is_flag=True, help="Verbose output")
 @click.option("--debug", is_flag=True, help="Debug output")
@@ -607,8 +607,8 @@ AI agents set environment variables instead of passing flags:
 
 ```bash
 # AI agent environment
-export BFF_OUTPUT_FORMAT=json
-export BFF_NON_INTERACTIVE=1
+export MC_OUTPUT_FORMAT=json
+export MC_NON_INTERACTIVE=1
 
 # Now all CLI commands output JSON with no prompts
 python cli.py notes create --title "Meeting notes"
@@ -966,7 +966,7 @@ modules/
 - [ ] Create `modules/cli/output.py` with `output_result` and `output_error`
 - [ ] Add `--format` and `--non-interactive` global options to `cli.py`
 - [ ] Implement deterministic exit codes across all CLI commands
-- [ ] Verify all commands work with `BFF_OUTPUT_FORMAT=json BFF_NON_INTERACTIVE=1`
+- [ ] Verify all commands work with `MC_OUTPUT_FORMAT=json MC_NON_INTERACTIVE=1`
 
 ### Phase 5: Intent and Planning APIs
 
@@ -1021,7 +1021,7 @@ async def test_create_note_parity(adapter, note_data):
 | Term | Definition |
 |------|-----------|
 | **Adapter** | A thin translation layer between a consumer interface (REST, MCP, CLI, etc.) and the service layer. Contains no business logic. |
-| **BFA (Backend for Agents)** | Extension of the BFF pattern where the backend includes adapters specifically designed for AI agent consumption (MCP tools, A2A executors, intent APIs). |
+| **Mission Control** | Extension of the BFF pattern where the backend includes adapters specifically designed for AI agent consumption (MCP tools, A2A executors, intent APIs). |
 | **Intent API** | An endpoint that accepts a declarative description of a desired outcome rather than a specific CRUD operation. |
 | **Planning API** | An endpoint that returns a preview of what an operation would do before executing it, with a separate confirmation step. |
 | **Recovery Hint** | Machine-readable fields on error responses (`suggestions`, `retry_strategy`, `doc_uri`) that tell an AI agent what to try next. |

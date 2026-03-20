@@ -105,7 +105,7 @@ The PCD is the critical piece. It is loaded into every agent's context window fo
   "last_updated_by": "mission:abc123/task:task_005",
 
   "identity": {
-    "name": "BFA Reference Architecture",
+    "name": "Mission Control",
     "purpose": "Production agent orchestration platform",
     "tech_stack": ["Python 3.12", "FastAPI", "SQLAlchemy", "PydanticAI"],
     "repo_structure": {
@@ -795,7 +795,7 @@ Implement `SummarizationService` with the compression pipeline. Add `milestone_s
 
 ## Relationship to Existing Architecture
 
-This architecture extends the existing BFA platform without replacing any current systems.
+This architecture extends the existing Mission Control platform without replacing any current systems.
 
 | Existing System | Relationship to Context Layer |
 |----------------|-------------------------------|

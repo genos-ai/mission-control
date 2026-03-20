@@ -49,7 +49,7 @@ A Python/FastAPI backend with thin clients (web, CLI, Telegram). Stateless CRUD,
 
 **Ignore:** AI-First Platform (40-48) entirely.
 
-### Profile: AI-First Platform (BFA)
+### Profile: AI-First Platform (Mission Control)
 
 An agent-first backend where AI agents are the primary consumers. Sessions, streaming, plans, memory, approval gates, multi-channel delivery.
 
@@ -109,7 +109,7 @@ General-purpose capabilities. Adopt based on project needs. No AI concepts.
 
 ### AI-First Platform (40-49)
 
-Agent architecture, session model, multi-channel delivery, persistent project context, codebase intelligence. Adopt for BFA projects.
+Agent architecture, session model, multi-channel delivery, persistent project context, codebase intelligence. Adopt for Mission Control projects.
 
 | Document | Adopt When |
 |----------|------------|
@@ -135,7 +135,7 @@ Agent architecture, session model, multi-channel delivery, persistent project co
 - Command-line interfaces
 - Data pipelines and analytics
 - General web applications
-- AI-first agent platforms (BFA profile)
+- AI-first agent platforms (Mission Control profile)
 
 ### Out of Scope
 
@@ -432,8 +432,8 @@ If adopting 42-agent-first-infrastructure.md, ensure 03-backend-architecture.md 
 If adopting 44-multi-channel-gateway.md, ensure 03-backend-architecture.md and 25-telegram-bot-integration.md are in place. Doc 44 benefits from 40/41 for agent routing but can operate with any backend handler.
 If adopting 46-event-session-architecture.md, also adopt 03-backend-architecture.md (core, always present), 21-event-architecture.md (event primitives), 40-agentic-architecture.md (agent concepts), and 41-agentic-pydanticai.md (PydanticAI implementation). Doc 46 composes with 44 (channels become event subscribers) and 43 (service factory accepts optional Session context) but does not require them.
 If adopting any AI-First module (40-48), also adopt 47-agent-module-organization.md. Doc 47 defines the directory layout, naming conventions, and access control model that all other AI-First docs assume. Read it before building any agent.
-If adopting 48-agentic-project-context.md, also adopt 40-agentic-architecture.md, 41-agentic-pydanticai.md, and 47-agent-module-organization.md. Doc 48 extends the dispatch loop from 40/41 with context assembly and agent contract hooks. The Summarization Agent follows the horizontal agent layout from 47. Required for all BFA projects running multi-mission workloads.
-If adopting 49-agentic-codebase-intelligence.md, also adopt 48-agentic-project-context.md, 47-agent-module-organization.md, and 40-agentic-architecture.md. Doc 49 extends doc 48's context assembly with Layer 3 (Code Map), extends the PCD schema with exemplar fields, and adds a coding-specific agent contract. Recommended for all BFA projects with coding agents.
+If adopting 48-agentic-project-context.md, also adopt 40-agentic-architecture.md, 41-agentic-pydanticai.md, and 47-agent-module-organization.md. Doc 48 extends the dispatch loop from 40/41 with context assembly and agent contract hooks. The Summarization Agent follows the horizontal agent layout from 47. Required for all Mission Control projects running multi-mission workloads.
+If adopting 49-agentic-codebase-intelligence.md, also adopt 48-agentic-project-context.md, 47-agent-module-organization.md, and 40-agentic-architecture.md. Doc 49 extends doc 48's context assembly with Layer 3 (Code Map), extends the PCD schema with exemplar fields, and adds a coding-specific agent contract. Recommended for all Mission Control projects with coding agents.
 
 ---
 
@@ -467,10 +467,10 @@ Deviations require documented justification and approval. Approved deviations ar
 
 For a new project:
 
-1. Choose your profile: **Traditional Backend** or **AI-First Platform (BFA)**
+1. Choose your profile: **Traditional Backend** or **AI-First Platform (Mission Control)**
 2. Apply all Core standards (01-16)
 3. Review Optional Platform modules (20-28) against project requirements
-4. If BFA profile, adopt AI-First modules (40-48)
+4. If Mission Control profile, adopt AI-First modules (40-48)
 5. Document which modules are adopted in project README
 6. Follow the primitive identification process (02-primitive-identification.md)
 7. Set up project structure per 03-backend-architecture.md

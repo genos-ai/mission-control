@@ -1,4 +1,4 @@
-"""Session models — the platform primitive for persistent interaction context."""
+"""Session models — the transport primitive for persistent interaction context."""
 
 import enum
 from datetime import datetime

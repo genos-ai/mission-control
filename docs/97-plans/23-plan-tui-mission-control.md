@@ -55,7 +55,7 @@ Key implementation details for TUI integration:
 
 ```
 +-----------------------------------------------------------------------+
-| [Project: my-saas ▾]  [Mission | Playbook | History]     BFA Mission  |
+| [Project: my-saas ▾]  [Mission | Playbook | History]     Mission Control  |
 +-----------------------------------------------------------------------+
 | SIDEBAR-LEFT (22ch) |  CENTER (1fr)               | SIDEBAR-RIGHT(30)|
 |                     |                              |                   |
@@ -88,7 +88,7 @@ All files under `modules/clients/tui/`. Every file under 500 lines.
 
 ```
 modules/clients/tui/
-├── __init__.py                    # Re-exports BfaTuiApp
+├── __init__.py                    # Re-exports MissionControlTuiApp
 ├── app.py                         # ~400 lines — App, bindings, lifecycle, event routing
 ├── messages.py                    # ~80 lines  — Custom Textual Message types
 ├── screens/

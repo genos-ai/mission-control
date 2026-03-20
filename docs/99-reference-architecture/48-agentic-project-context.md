@@ -12,7 +12,7 @@
 
 ## Module Status: Required (AI-First Profile)
 
-This module is **required** for all AI-First Platform (BFA) projects. Adopt when your project:
+This module is **required** for all AI-First Platform (Mission Control) projects. Adopt when your project:
 - Runs agentic workloads across multiple missions or playbook runs
 - Requires persistent context that survives beyond a single mission lifecycle
 - Operates over timescales longer than a single session (days, weeks, months, years)
@@ -815,7 +815,7 @@ Implement `SummarizationService`. Add `milestone_summaries` and `project_decisio
 
 ## Compliance
 
-All AI-First Platform (BFA) projects must implement this standard when operating agentic workloads that span multiple missions.
+All AI-First Platform (Mission Control) projects must implement this standard when operating agentic workloads that span multiple missions.
 
 Projects that only run single, ad-hoc missions without playbook orchestration may defer adoption until multi-mission workflows are introduced.
 

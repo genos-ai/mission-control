@@ -20,9 +20,9 @@ All event schemas must include Tier 4 fields from day one: `correlation_id`, `tr
 
 ## Context
 
-- Reference architecture: BFF repo `genos-ai/bff-python-reference-architecture` doc 35 (Section 2: Event Bus)
+- Reference architecture: Mission Control repo `genos-ai/mission-control` doc 35 (Section 2: Event Bus)
 - Local doc: `docs/99-reference-architecture/46-event-session-architecture.md` (Section 2)
-- FastStream implementation pattern: BFF Cursor transcript `48f394cf` (steps 15-20: broker, schemas, middleware, publishers, consumers)
+- FastStream implementation pattern: Mission Control Cursor transcript `48f394cf` (steps 15-20: broker, schemas, middleware, publishers, consumers)
 - Research: `docs/98-research/09-Building autonomous AI agents that run for weeks.md`
 
 ## Key Design Decisions
@@ -260,7 +260,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
 
 Plus a `deserialize_event(data: dict) -> SessionEvent | None` function that looks up the event type in the registry and validates.
 
-**Reference:** BFF doc 35 Section 2 event types, local doc 46 Section 2.
+**Reference:** Mission Control reference doc 35 Section 2 event types, local doc 46 Section 2.
 
 ---
 

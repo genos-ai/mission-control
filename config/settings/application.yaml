@@ -29,9 +29,9 @@
 #     console_width  - Console output width in columns (integer, default: 160)
 # =============================================================================
 
-name: "BFF Application"
+name: "Mission Control"
 version: "0.1.0"
-description: "Backend for Frontend Python Web Application"
+description: "AI-first autonomous agent platform"
 environment: "development"
 debug: true
 

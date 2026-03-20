@@ -1,5 +1,5 @@
 """
-Shared Rich display primitives for all BFA client surfaces.
+Shared Rich display primitives for all Mission Control client surfaces.
 
 Provides console, tables, panels, and formatting helpers used by
 CLI, TUI, and any future client. Extracted from the CLI report module

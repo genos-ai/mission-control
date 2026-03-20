@@ -413,7 +413,7 @@ For projects with both web and data components (e.g., trading platform):
 ```
 trading-platform/
 ├── services/
-│   ├── bff-api/              # uv - web layer
+│   ├── web-api/              # uv - web layer
 │   └── market-data/          # uv - simple ingestion
 ├── analytics/
 │   ├── backtester/           # conda - heavy numerical

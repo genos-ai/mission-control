@@ -1,5 +1,5 @@
-"""BFA Interactive TUI — Mission Control Dashboard."""
+"""Mission Control Interactive TUI Dashboard."""
 
-from modules.clients.tui.app import BfaTuiApp
+from modules.clients.tui.app import MissionControlApp
 
-__all__ = ["BfaTuiApp"]
+__all__ = ["MissionControlApp"]

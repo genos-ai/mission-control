@@ -1,6 +1,6 @@
 # Platform Flow: End-to-End Execution Model
 
-*How work flows through the BFA agentic platform — from project creation to task execution and back.*
+*How work flows through the Mission Control agentic platform — from project creation to task execution and back.*
 
 ---
 

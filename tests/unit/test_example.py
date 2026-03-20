@@ -56,7 +56,7 @@ class TestMainCLI:
         result = runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
-        assert "BFA Platform CLI" in result.output
+        assert "Mission Control CLI" in result.output
         assert "--verbose" in result.output
         assert "--debug" in result.output
         assert "Commands:" in result.output
@@ -66,7 +66,7 @@ class TestMainCLI:
         result = runner.invoke(cli, ["info"])
 
         assert result.exit_code == 0
-        assert "BFF Python Web Application" in result.output
+        assert "Mission Control" in result.output
         assert "Commands" in result.output
 
     def test_verbose_flag_runs_successfully(self, runner):
@@ -74,14 +74,14 @@ class TestMainCLI:
         result = runner.invoke(cli, ["--verbose", "info"])
 
         assert result.exit_code == 0
-        assert "BFF Python Web Application" in result.output
+        assert "Mission Control" in result.output
 
     def test_debug_flag_runs_successfully(self, runner):
         """Should run with --debug without error."""
         result = runner.invoke(cli, ["--debug", "info"])
 
         assert result.exit_code == 0
-        assert "BFF Python Web Application" in result.output
+        assert "Mission Control" in result.output
 
     def test_config_displays_configuration(self, runner):
         """Should display YAML configuration."""
@@ -89,7 +89,7 @@ class TestMainCLI:
 
         assert result.exit_code == 0
         assert "Application Settings" in result.output
-        assert "BFF Application" in result.output
+        assert "Mission Control" in result.output
 
     def test_health_runs_checks(self, runner):
         """Should run health checks."""

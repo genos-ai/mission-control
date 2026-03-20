@@ -1,1 +1,1 @@
-"""CLI command implementations for the BFF application."""
+"""CLI command implementations for Mission Control."""

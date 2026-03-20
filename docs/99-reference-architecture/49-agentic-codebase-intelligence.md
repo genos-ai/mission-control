@@ -12,7 +12,7 @@
 
 ## Module Status: Recommended (AI-First Profile)
 
-This module is **recommended** for AI-First Platform (BFA) projects that include coding agents — agents that read, create, or modify source code as part of their task execution.
+This module is **recommended** for AI-First Platform (Mission Control) projects that include coding agents — agents that read, create, or modify source code as part of their task execution.
 
 Adopt when your project:
 - Uses agents that write or modify code in a repository
@@ -856,6 +856,6 @@ Formalize the coding agent lifecycle. Enforce manifest-scoped modifications in v
 
 ## Compliance
 
-This standard is recommended for all AI-First Platform (BFA) projects that include coding agents. Projects with only non-coding agents (analysis, conversation, orchestration) may defer adoption.
+This standard is recommended for all AI-First Platform (Mission Control) projects that include coding agents. Projects with only non-coding agents (analysis, conversation, orchestration) may defer adoption.
 
 When adopted, all six phases should be implemented in order. Phase 1 (generator) is independently valuable even without agent integration — it provides a CLI-accessible structural overview of the codebase.

@@ -6,7 +6,7 @@ Guiding principles for all architectural decisions, plans, and implementation wo
 
 ## Context
 
-These are **project-specific principles** for the BFA agentic platform. They build on top of the **reference architecture core principles** defined in `docs/99-reference-architecture/01-core-principles.md` (P1–P8: Backend Owns Logic, Stateless Clients, Single Source of Truth, Explicit Over Implicit, Fail Fast, Idempotency, No Hardcoded Values, Secure by Default).
+These are **project-specific principles** for the Mission Control agentic platform. They build on top of the **reference architecture core principles** defined in `docs/99-reference-architecture/01-core-principles.md` (P1–P8: Backend Owns Logic, Stateless Clients, Single Source of Truth, Explicit Over Implicit, Fail Fast, Idempotency, No Hardcoded Values, Secure by Default).
 
 The reference architecture principles are universal software engineering rules. The principles below are specific to how *this project* builds its agentic platform — platform structure, agent behavior, and development process.
 

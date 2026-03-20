@@ -211,7 +211,7 @@ Every A2A-capable service publishes a JSON metadata document at `/.well-known/ag
 
 ```json
 {
-  "name": "BFF Application Agent",
+  "name": "Mission Control Agent",
   "version": "0.1.0",
   "url": "https://your-domain.com/a2a/",
   "capabilities": {
