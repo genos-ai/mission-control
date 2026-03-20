@@ -1,5 +1,5 @@
 """
-Project History Repository.
+Mission History Repository.
 
 Data access for archived decisions and milestone summaries.
 """
@@ -7,47 +7,47 @@ Data access for archived decisions and milestone summaries.
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.project_history import (
+from modules.backend.models.mission_history import (
     DecisionStatus,
     MilestoneSummary,
-    ProjectDecision,
+    MissionDecision,
 )
 from modules.backend.repositories.base import BaseRepository
 
 
-class ProjectDecisionRepository(BaseRepository[ProjectDecision]):
-    """Repository for project decisions."""
+class MissionDecisionRepository(BaseRepository[MissionDecision]):
+    """Repository for mission decisions."""
 
-    model = ProjectDecision
+    model = MissionDecision
 
     async def list_by_domain(
         self,
-        project_id: str,
+        mission_id: str,
         domain: str,
         limit: int = 20,
-    ) -> list[ProjectDecision]:
+    ) -> list[MissionDecision]:
         """Get active decisions for a domain, most recent first."""
         result = await self.session.execute(
-            select(ProjectDecision)
-            .where(ProjectDecision.project_id == project_id)
-            .where(ProjectDecision.domain == domain)
-            .where(ProjectDecision.status == DecisionStatus.ACTIVE)
-            .order_by(desc(ProjectDecision.created_at))
+            select(MissionDecision)
+            .where(MissionDecision.project_id == mission_id)
+            .where(MissionDecision.domain == domain)
+            .where(MissionDecision.status == DecisionStatus.ACTIVE)
+            .order_by(desc(MissionDecision.created_at))
             .limit(limit)
         )
         return list(result.scalars().all())
 
     async def list_active(
         self,
-        project_id: str,
+        mission_id: str,
         limit: int = 50,
-    ) -> list[ProjectDecision]:
-        """Get all active decisions for a project."""
+    ) -> list[MissionDecision]:
+        """Get all active decisions for a mission."""
         result = await self.session.execute(
-            select(ProjectDecision)
-            .where(ProjectDecision.project_id == project_id)
-            .where(ProjectDecision.status == DecisionStatus.ACTIVE)
-            .order_by(desc(ProjectDecision.created_at))
+            select(MissionDecision)
+            .where(MissionDecision.project_id == mission_id)
+            .where(MissionDecision.status == DecisionStatus.ACTIVE)
+            .order_by(desc(MissionDecision.created_at))
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -58,15 +58,15 @@ class MilestoneSummaryRepository(BaseRepository[MilestoneSummary]):
 
     model = MilestoneSummary
 
-    async def list_by_project(
+    async def list_by_mission(
         self,
-        project_id: str,
+        mission_id: str,
         limit: int = 20,
     ) -> list[MilestoneSummary]:
-        """Get milestones for a project, most recent first."""
+        """Get milestones for a mission, most recent first."""
         result = await self.session.execute(
             select(MilestoneSummary)
-            .where(MilestoneSummary.project_id == project_id)
+            .where(MilestoneSummary.project_id == mission_id)
             .order_by(desc(MilestoneSummary.period_end))
             .limit(limit)
         )

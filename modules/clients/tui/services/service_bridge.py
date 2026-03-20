@@ -17,11 +17,11 @@ from modules.backend.agents.mission_control.roster import load_roster, Roster
 from modules.backend.core.database import get_async_session
 from modules.backend.core.logging import get_logger
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
-from modules.backend.services.project import ProjectService
+from modules.backend.services.mission import MissionService
 from modules.backend.services.session import SessionService
 
 if TYPE_CHECKING:
-    from modules.backend.models.project import Project
+    from modules.backend.models.mission import Mission
 
 logger = get_logger(__name__)
 
@@ -40,41 +40,41 @@ class ServiceBridge:
     ) -> None:
         self._event_bus = event_bus
 
-    # ── Project operations ───────────────────────────────────────────
+    # ── Mission operations ────────────────────────────────────────────
 
-    async def list_projects(self) -> list[dict[str, Any]]:
-        """Return all active projects as dicts."""
+    async def list_missions(self) -> list[dict[str, Any]]:
+        """Return all active missions as dicts."""
         async with get_async_session() as db:
-            svc = ProjectService(db)
-            projects = await svc.list_projects()
+            svc = MissionService(db)
+            missions = await svc.list_missions()
             return [
                 {
-                    "id": str(p.id),
-                    "name": p.name,
-                    "description": p.description,
-                    "status": p.status,
+                    "id": str(m.id),
+                    "name": m.name,
+                    "description": m.description,
+                    "status": m.status,
                 }
-                for p in projects
+                for m in missions
             ]
 
-    async def create_project(
+    async def create_mission(
         self,
         *,
         name: str,
         description: str,
     ) -> dict[str, str]:
-        """Create a project and return its id and name."""
+        """Create a mission and return its id and name."""
         async with get_async_session() as db:
-            svc = ProjectService(db)
-            project = await svc.create_project(name=name, description=description)
+            svc = MissionService(db)
+            mission = await svc.create_mission(name=name, description=description)
             await db.commit()
-            return {"id": str(project.id), "name": project.name}
+            return {"id": str(mission.id), "name": mission.name}
 
-    async def get_project(self, project_id: str) -> Project | None:
-        """Fetch a single project by ID."""
+    async def get_mission(self, mission_id: str) -> Mission | None:
+        """Fetch a single mission by ID."""
         async with get_async_session() as db:
-            svc = ProjectService(db)
-            return await svc.get_project(project_id)
+            svc = MissionService(db)
+            return await svc.get_mission(mission_id)
 
     # ── Roster ───────────────────────────────────────────────────────
 

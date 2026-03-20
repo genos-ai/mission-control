@@ -13,25 +13,25 @@ from modules.backend.models.execution_record import (
     TaskExecution,
     TaskExecutionStatus,
 )
-from modules.backend.models.project_history import (
+from modules.backend.models.mission_history import (
     DecisionStatus,
-    ProjectDecision,
+    MissionDecision,
     MilestoneSummary,
 )
-from modules.backend.repositories.project_history import (
-    ProjectDecisionRepository,
+from modules.backend.repositories.mission_history import (
+    MissionDecisionRepository,
     MilestoneSummaryRepository,
 )
-from modules.backend.services.project_context import (
-    ProjectContextManager,
+from modules.backend.services.mission_context import (
+    MissionContextManager,
     _cache,
 )
 from modules.backend.services.summarization import SummarizationService
 
 
 @pytest.fixture
-def manager(db_session: AsyncSession) -> ProjectContextManager:
-    return ProjectContextManager(db_session)
+def manager(db_session: AsyncSession) -> MissionContextManager:
+    return MissionContextManager(db_session)
 
 
 @pytest.fixture
@@ -40,8 +40,8 @@ def summarization_service(db_session: AsyncSession) -> SummarizationService:
 
 
 @pytest.fixture
-def decision_repo(db_session: AsyncSession) -> ProjectDecisionRepository:
-    return ProjectDecisionRepository(db_session)
+def decision_repo(db_session: AsyncSession) -> MissionDecisionRepository:
+    return MissionDecisionRepository(db_session)
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ class TestPrunePcdDecisions:
     @pytest.mark.asyncio
     async def test_no_pcd_returns_zero(self, summarization_service):
         """Returns 0 when project has no PCD."""
-        result = await summarization_service.prune_pcd_decisions("nonexistent")
+        result = await summarization_service.prune_mcd_decisions("nonexistent")
         assert result == 0
 
     @pytest.mark.asyncio
@@ -70,7 +70,7 @@ class TestPrunePcdDecisions:
     ):
         """Returns 0 when PCD has no decisions section."""
         await manager.create_context("proj-no-dec", "test", "desc")
-        result = await summarization_service.prune_pcd_decisions("proj-no-dec")
+        result = await summarization_service.prune_mcd_decisions("proj-no-dec")
         assert result == 0
 
     @pytest.mark.asyncio
@@ -105,7 +105,7 @@ class TestPrunePcdDecisions:
             agent_id="test",
         )
 
-        result = await summarization_service.prune_pcd_decisions(
+        result = await summarization_service.prune_mcd_decisions(
             "proj-prune", max_age_days=90,
         )
         assert result == 2  # d1 and d2 archived
@@ -142,7 +142,7 @@ class TestPrunePcdDecisions:
             agent_id="test",
         )
 
-        result = await summarization_service.prune_pcd_decisions("proj-recent")
+        result = await summarization_service.prune_mcd_decisions("proj-recent")
         assert result == 0
 
 
@@ -194,7 +194,7 @@ class TestPruneCompletedWorkstreams:
         assert result == 3  # 8 - 5 = 3 archived
 
         # Verify milestone summary created
-        summaries = await milestone_repo.list_by_project("proj-mile")
+        summaries = await milestone_repo.list_by_mission("proj-mile")
         assert len(summaries) == 1
         assert "3 items" in summaries[0].title
         assert len(summaries[0].key_outcomes["milestones"]) == 3
@@ -271,7 +271,7 @@ class TestSummarizeMissionRecords:
     @pytest.mark.asyncio
     async def test_no_missions_returns_zero(self, summarization_service):
         """Returns 0 when no old missions exist."""
-        result = await summarization_service.summarize_mission_records(
+        result = await summarization_service.summarize_execution_records(
             "nonexistent",
         )
         assert result == 0
@@ -290,15 +290,15 @@ class TestSummarizeMissionRecords:
             cost=0.5, completed_at="2020-02-01T00:00:00Z",
         )
 
-        result = await summarization_service.summarize_mission_records(
+        result = await summarization_service.summarize_execution_records(
             "proj-smr", max_age_days=30,
         )
         assert result == 2
 
         # Verify milestone summary created
-        milestones = await milestone_repo.list_by_project("proj-smr")
+        milestones = await milestone_repo.list_by_mission("proj-smr")
         assert len(milestones) == 1
-        assert "2 missions" in milestones[0].title
+        assert "2 executions" in milestones[0].title
         assert milestones[0].key_outcomes["completed"] == 2
 
         # Verify missions marked as summarized
@@ -318,7 +318,7 @@ class TestSummarizeMissionRecords:
             completed_at="2099-01-01T00:00:00Z",
         )
 
-        result = await summarization_service.summarize_mission_records(
+        result = await summarization_service.summarize_execution_records(
             "proj-recent-m",
         )
         assert result == 0
@@ -332,7 +332,7 @@ class TestSummarizeMissionRecords:
         m.summarized = True
         await db_session.flush()
 
-        result = await summarization_service.summarize_mission_records(
+        result = await summarization_service.summarize_execution_records(
             "proj-already",
         )
         assert result == 0
@@ -347,12 +347,12 @@ class TestSummarizeMissionRecords:
             status=ExecutionRecordStatus.FAILED,
         )
 
-        result = await summarization_service.summarize_mission_records(
+        result = await summarization_service.summarize_execution_records(
             "proj-failed-m",
         )
         assert result == 1
 
-        milestones = await milestone_repo.list_by_project("proj-failed-m")
+        milestones = await milestone_repo.list_by_mission("proj-failed-m")
         assert milestones[0].key_outcomes["failed"] == 1
 
     @pytest.mark.asyncio
@@ -372,17 +372,17 @@ class TestSummarizeMissionRecords:
         db_session.add(te)
         await db_session.flush()
 
-        result = await summarization_service.summarize_mission_records(
+        result = await summarization_service.summarize_execution_records(
             "proj-tags-m",
         )
         assert result == 1
 
-        milestones = await milestone_repo.list_by_project("proj-tags-m")
+        milestones = await milestone_repo.list_by_mission("proj-tags-m")
         assert "api" in milestones[0].domain_tags
         assert "auth" in milestones[0].domain_tags
 
 
-class TestProjectDecisionRepository:
+class TestMissionDecisionRepository:
     @pytest.mark.asyncio
     async def test_list_by_domain(self, decision_repo, db_session):
         """Filters decisions by domain."""
@@ -434,7 +434,7 @@ class TestProjectDecisionRepository:
 
 class TestMilestoneSummaryRepository:
     @pytest.mark.asyncio
-    async def test_list_by_project(self, milestone_repo, db_session):
+    async def test_list_by_mission(self, milestone_repo, db_session):
         """Returns milestones for a specific project."""
         await milestone_repo.create(
             project_id="proj-ms",
@@ -464,7 +464,7 @@ class TestMilestoneSummaryRepository:
             period_end="2025-03-01",
         )
 
-        results = await milestone_repo.list_by_project("proj-ms")
+        results = await milestone_repo.list_by_mission("proj-ms")
         assert len(results) == 2
         titles = {m.title for m in results}
         assert titles == {"Phase 1", "Phase 2"}
@@ -482,5 +482,5 @@ class TestMilestoneSummaryRepository:
                 period_end=f"2025-0{i+1}-01",
             )
 
-        results = await milestone_repo.list_by_project("proj-lim", limit=2)
+        results = await milestone_repo.list_by_mission("proj-lim", limit=2)
         assert len(results) == 2

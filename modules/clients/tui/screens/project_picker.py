@@ -11,7 +11,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
 
-from modules.clients.tui.messages import ProjectCreated, ProjectSelected
+from modules.clients.tui.messages import MissionCreated, MissionSelected
 
 
 class ProjectItem(Static):
@@ -43,9 +43,9 @@ class ProjectItem(Static):
 
     def on_click(self) -> None:
         self.post_message(
-            ProjectSelected(
-                project_id=self.project_id,
-                project_name=self.project_name,
+            MissionSelected(
+                mission_id=self.project_id,
+                mission_name=self.project_name,
             )
         )
 
@@ -120,9 +120,9 @@ class ProjectPickerScreen(ModalScreen[None]):
             name = name_input.value.strip()
             desc = desc_input.value.strip()
             if name:
-                self.post_message(ProjectCreated(project_name=name, description=desc))
+                self.post_message(MissionCreated(mission_name=name, description=desc))
                 self.dismiss()
 
-    def on_project_selected(self, event: ProjectSelected) -> None:
+    def on_mission_selected(self, event: MissionSelected) -> None:
         """Bubble up and dismiss."""
         self.dismiss()

@@ -55,19 +55,19 @@ class MissionCancelRequested(Message):
     """User pressed Ctrl+K to cancel the active mission."""
 
 
-class ProjectSelected(Message):
-    """User picked a project in the project picker."""
+class MissionSelected(Message):
+    """User picked a mission in the mission picker."""
 
-    def __init__(self, project_id: str, project_name: str) -> None:
+    def __init__(self, mission_id: str, mission_name: str) -> None:
         super().__init__()
-        self.project_id = project_id
-        self.project_name = project_name
+        self.mission_id = mission_id
+        self.mission_name = mission_name
 
 
-class ProjectCreated(Message):
-    """User wants to create a new project (pre-persistence)."""
+class MissionCreated(Message):
+    """User wants to create a new mission (pre-persistence)."""
 
-    def __init__(self, project_name: str, description: str = "") -> None:
+    def __init__(self, mission_name: str, description: str = "") -> None:
         super().__init__()
-        self.project_name = project_name
+        self.mission_name = mission_name
         self.description = description

@@ -48,7 +48,7 @@ def run_db(
     table: str | None,
     limit: int,
     confirm: bool,
-    include_projects: bool = False,
+    include_missions: bool = False,
 ) -> None:
     """Dispatch db CLI actions."""
     actions = {
@@ -78,7 +78,7 @@ def run_db(
             table=table,
             limit=limit,
             confirm=confirm,
-            include_projects=include_projects,
+            include_missions=include_missions,
         ))
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
@@ -205,12 +205,12 @@ async def _action_query(cli_logger, *, table, limit, confirm, **_):
         console.print(row_table)
 
 
-async def _action_clear(cli_logger, *, table, limit, confirm, include_projects=False, **_):
+async def _action_clear(cli_logger, *, table, limit, confirm, include_missions=False, **_):
     """Clear run data. Use --include-projects for full reset."""
-    tables = ALL_TABLES if include_projects else RUN_TABLES
+    tables = ALL_TABLES if include_missions else RUN_TABLES
 
     if not confirm:
-        if include_projects:
+        if include_missions:
             click.echo(click.style(
                 "This will DELETE ALL DATA including projects and context.",
                 fg="red", bold=True,
@@ -236,7 +236,7 @@ async def _action_clear(cli_logger, *, table, limit, confirm, include_projects=F
             await db.execute(text(f"TRUNCATE TABLE {tbl} CASCADE"))  # noqa: S608
         await db.commit()
 
-    scope = "All application data" if include_projects else "Run data"
+    scope = "All application data" if include_missions else "Run data"
     click.echo(click.style(f"{scope} cleared.", fg="green"))
 
 

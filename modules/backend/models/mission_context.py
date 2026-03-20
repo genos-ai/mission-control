@@ -1,10 +1,10 @@
 """
-Project Context Model.
+Mission Context Model.
 
-The ProjectContext stores the Project Context Document (PCD) — a living,
+The MissionContext stores the Mission Context Document (MCD) — a living,
 curated JSON document that captures everything an agent needs to orient
-itself within a project. The ContextChange table is the audit trail of
-every PCD mutation.
+itself within a mission. The ContextChange table is the audit trail of
+every MCD mutation.
 """
 
 import enum
@@ -17,7 +17,7 @@ from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class ChangeType(str, enum.Enum):
-    """Type of PCD mutation."""
+    """Type of MCD mutation."""
 
     ADD = "add"
     REPLACE = "replace"
@@ -26,10 +26,10 @@ class ChangeType(str, enum.Enum):
     ARCHIVE = "archive"
 
 
-class ProjectContext(UUIDMixin, TimestampMixin, Base):
-    """The Project Context Document (PCD) for a single project.
+class MissionContext(UUIDMixin, TimestampMixin, Base):
+    """The Mission Context Document (MCD) for a single mission.
 
-    One row per project. Contains the entire PCD as a JSON blob.
+    One row per mission. Contains the entire MCD as a JSON blob.
     Versioned with monotonically increasing integer for optimistic concurrency.
     """
 
@@ -64,13 +64,13 @@ class ProjectContext(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<ProjectContext(project={self.project_id}, "
+            f"<MissionContext(mission={self.project_id}, "
             f"version={self.version}, size={self.size_characters})>"
         )
 
 
 class ContextChange(UUIDMixin, TimestampMixin, Base):
-    """Audit trail entry for a single PCD mutation."""
+    """Audit trail entry for a single MCD mutation."""
 
     __tablename__ = "context_changes"
 
@@ -112,8 +112,8 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
     )
 
     # Relationships
-    context: Mapped["ProjectContext"] = relationship(
-        "ProjectContext",
+    context: Mapped["MissionContext"] = relationship(
+        "MissionContext",
         back_populates="changes",
     )
 

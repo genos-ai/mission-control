@@ -88,7 +88,7 @@ def cli(ctx, verbose: bool, debug: bool, output_format: str):
     Diagnostics:     health, config, info, credits, context
     Development:     test, migrate, db
     Agents:          agent, execution, workflow
-    Projects:        project
+    Missions:        mission
     """
     ctx.ensure_object(dict)
     ctx.obj = CliContext(verbose, debug, output_format)
@@ -570,104 +570,104 @@ def workflow_report(ctx, run_id):
 
 
 # =============================================================================
-# Project group
+# Mission group
 # =============================================================================
 
 
-@cli.group("project", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@cli.group("mission", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
-def project(ctx):
-    """Create, list, and manage projects.
+def mission(ctx):
+    """Create, list, and manage missions.
 
     \b
     Examples:
-        python cli.py project create --name my-project --description "My project"
-        python cli.py project list
-        python cli.py project detail <id>
-        python cli.py project archive <id>
+        python cli.py mission create --name my-mission --description "My mission"
+        python cli.py mission list
+        python cli.py mission detail <id>
+        python cli.py mission archive <id>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
 
-@project.command("create")
-@click.option("--name", required=True, help="Unique project name.")
-@click.option("--description", required=True, help="Project purpose.")
+@mission.command("create")
+@click.option("--name", required=True, help="Unique mission name.")
+@click.option("--description", required=True, help="Mission purpose.")
 @click.option("--roster", default="default", help="Default agent roster.")
 @click.option("--budget", type=float, default=None, help="Budget ceiling (USD).")
 @click.option("--repo-url", default=None, help="Repository URL.")
 @click.option("--repo-root", default=None, help="Local repo root path.")
 @click.pass_obj
-def project_create(ctx, name, description, roster, budget, repo_url, repo_root):
-    """Create a new project."""
-    from modules.clients.cli.project import run_project
-    run_project(ctx.logger, "create", name=name, description=description,
+def mission_create(ctx, name, description, roster, budget, repo_url, repo_root):
+    """Create a new mission."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "create", name=name, description=description,
                 roster=roster, budget=budget, repo_url=repo_url,
                 repo_root=repo_root, output_format=ctx.output_format)
 
 
-@project.command("list")
+@mission.command("list")
 @click.pass_obj
-def project_list(ctx):
-    """List all active projects."""
-    from modules.clients.cli.project import run_project
-    run_project(ctx.logger, "list", output_format=ctx.output_format)
+def mission_list(ctx):
+    """List all active missions."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "list", output_format=ctx.output_format)
 
 
-@project.command("detail")
-@click.argument("project_id", required=False)
-@click.option("--name", default=None, help="Look up by project name.")
+@mission.command("detail")
+@click.argument("mission_id", required=False)
+@click.option("--name", default=None, help="Look up by mission name.")
 @click.pass_obj
-def project_detail(ctx, project_id, name):
-    """Show project details."""
-    from modules.clients.cli.project import run_project
-    run_project(ctx.logger, "detail", project_id=project_id, name=name,
+def mission_detail(ctx, mission_id, name):
+    """Show mission details."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "detail", mission_id=mission_id, name=name,
                 output_format=ctx.output_format)
 
 
-@project.command("archive")
-@click.argument("project_id")
+@mission.command("archive")
+@click.argument("mission_id")
 @click.pass_obj
-def project_archive(ctx, project_id):
-    """Archive a project."""
-    from modules.clients.cli.project import run_project
-    run_project(ctx.logger, "archive", project_id=project_id,
+def mission_archive(ctx, mission_id):
+    """Archive a mission."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "archive", mission_id=mission_id,
                 output_format=ctx.output_format)
 
 
-@project.group("context", cls=ShowHelpOnMissingArgs)
-def project_context():
-    """View and manage the Project Context Document (PCD)."""
+@mission.group("context", cls=ShowHelpOnMissingArgs)
+def mission_context():
+    """View and manage the Mission Context Document (MCD)."""
     pass
 
 
-@project_context.command("show")
-@click.argument("project_id")
+@mission_context.command("show")
+@click.argument("mission_id")
 @click.pass_obj
-def project_context_show(ctx, project_id):
-    """Show the PCD for a project."""
-    from modules.clients.cli.project import run_project
-    run_project(ctx.logger, "context-show", project_id=project_id,
+def mission_context_show(ctx, mission_id):
+    """Show the MCD for a mission."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "context-show", mission_id=mission_id,
                 output_format=ctx.output_format)
 
 
-@project_context.command("history")
-@click.argument("project_id")
+@mission_context.command("history")
+@click.argument("mission_id")
 @click.pass_obj
-def project_context_history(ctx, project_id):
-    """Show PCD change audit trail."""
-    from modules.clients.cli.project import run_project
-    run_project(ctx.logger, "context-history", project_id=project_id,
+def mission_context_history(ctx, mission_id):
+    """Show MCD change audit trail."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "context-history", mission_id=mission_id,
                 output_format=ctx.output_format)
 
 
-@project.command("summarize")
-@click.argument("project_id")
+@mission.command("summarize")
+@click.argument("mission_id")
 @click.pass_obj
-def project_summarize(ctx, project_id):
-    """Run the summarization pipeline for a project."""
-    from modules.clients.cli.project import run_project
-    run_project(ctx.logger, "summarize", project_id=project_id,
+def mission_summarize(ctx, mission_id):
+    """Run the summarization pipeline for a mission."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "summarize", mission_id=mission_id,
                 output_format=ctx.output_format)
 
 
@@ -801,14 +801,14 @@ def db_query(ctx, table, limit):
 
 @db.command("clear")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
-@click.option("--include-projects", is_flag=True, default=False,
-              help="Also clear projects and PCD (full nuclear reset).")
+@click.option("--include-missions", is_flag=True, default=False,
+              help="Also clear missions and MCD (full nuclear reset).")
 @click.pass_obj
-def db_clear(ctx, yes, include_projects):
-    """Clear run data. Projects and PCD are preserved by default."""
+def db_clear(ctx, yes, include_missions):
+    """Clear run data. Missions and MCD are preserved by default."""
     from modules.clients.cli.db import run_db
     run_db(ctx.logger, action="clear", table=None, limit=10, confirm=yes,
-           include_projects=include_projects)
+           include_missions=include_missions)
 
 
 @db.command("clear-executions")

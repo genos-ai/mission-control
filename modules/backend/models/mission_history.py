@@ -1,10 +1,10 @@
 """
-Project History Models.
+Mission History Models.
 
 Archived decisions and milestone summaries for Layer 2 history queries.
-Decisions are pruned from the PCD after a configurable age threshold
+Decisions are pruned from the MCD after a configurable age threshold
 and stored here for structured querying. Milestone summaries compress
-completed mission batches into concise records.
+completed execution batches into concise records.
 """
 
 import enum
@@ -24,11 +24,11 @@ class DecisionStatus(str, enum.Enum):
     REVERSED = "reversed"
 
 
-class ProjectDecision(UUIDMixin, TimestampMixin, Base):
-    """Archived decision from PCD pruning, queryable by domain.
+class MissionDecision(UUIDMixin, TimestampMixin, Base):
+    """Archived decision from MCD pruning, queryable by domain.
 
-    When the PCD decisions section grows too large, older decisions are
-    moved here. They remain queryable by domain and project for Layer 2
+    When the MCD decisions section grows too large, older decisions are
+    moved here. They remain queryable by domain and mission for Layer 2
     context assembly.
     """
 
@@ -69,16 +69,16 @@ class ProjectDecision(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<ProjectDecision(id={self.decision_id}, "
+            f"<MissionDecision(id={self.decision_id}, "
             f"domain={self.domain!r}, status={self.status})>"
         )
 
 
 class MilestoneSummary(UUIDMixin, TimestampMixin, Base):
-    """Compressed summary of a completed project phase.
+    """Compressed summary of a completed mission phase.
 
     Created by the summarization pipeline when milestones are pruned
-    from the PCD current_state section. Groups related missions and
+    from the MCD current_state section. Groups related executions and
     captures key outcomes for future context assembly.
     """
 

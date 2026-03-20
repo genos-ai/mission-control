@@ -357,11 +357,11 @@ class WorkflowsSchema(_StrictBase):
 # =============================================================================
 
 
-class ProjectsSchema(_StrictBase):
-    """Project system configuration."""
+class MissionsSchema(_StrictBase):
+    """Mission system configuration."""
 
     default_budget_ceiling_usd: float | None = None
-    max_projects_per_owner: int = 50
+    max_missions_per_owner: int = 50
     pcd_max_size_bytes: int = 20_480  # 20KB
     pcd_target_size_bytes: int = 15_360  # 15KB
     pcd_prune_threshold_pct: int = 80

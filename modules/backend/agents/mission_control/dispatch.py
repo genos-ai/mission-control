@@ -245,7 +245,7 @@ async def dispatch(
     project_context: dict | None = None
     if project_id and context_curator:
         try:
-            pcd = await context_curator.get_project_context(project_id)
+            pcd = await context_curator.get_mission_context(project_id)
             project_context = pcd or None
         except (OSError, ValueError, RuntimeError):
             logger.warning(
@@ -385,14 +385,14 @@ async def dispatch(
             if task_result.status == TaskStatus.SUCCESS:
                 completed_outputs[task.task_id] = task_result.output_reference
 
-                # Apply context_updates to PCD (non-fatal)
+                # Apply context_updates to MCD (non-fatal)
                 if context_curator and project_id and task_result.context_updates:
                     try:
                         await context_curator.apply_task_updates(
                             project_id,
                             task_result.context_updates,
                             agent_id=task_result.agent_name,
-                            mission_id=plan.mission_id,
+                            mission_id_ref=plan.mission_id,
                             task_id=task_result.task_id,
                         )
                     except (OSError, ValueError, RuntimeError):

@@ -1,48 +1,48 @@
 """
-Project Context Repository.
+Mission Context Repository.
 
-Data access for PCD and context change audit trail.
+Data access for MCD and context change audit trail.
 """
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.project_context import (
+from modules.backend.models.mission_context import (
     ContextChange,
-    ProjectContext,
+    MissionContext,
 )
 from modules.backend.repositories.base import BaseRepository
 
 
-class ProjectContextRepository(BaseRepository[ProjectContext]):
-    """Repository for ProjectContext CRUD."""
+class MissionContextRepository(BaseRepository[MissionContext]):
+    """Repository for MissionContext CRUD."""
 
-    model = ProjectContext
+    model = MissionContext
 
-    async def get_by_project_id(self, project_id: str) -> ProjectContext | None:
-        """Get PCD by project ID."""
+    async def get_by_mission_id(self, mission_id: str) -> MissionContext | None:
+        """Get MCD by mission ID."""
         result = await self.session.execute(
-            select(ProjectContext)
-            .where(ProjectContext.project_id == project_id)
+            select(MissionContext)
+            .where(MissionContext.project_id == mission_id)
         )
         return result.scalar_one_or_none()
 
     async def update_context(
         self,
-        project_id: str,
+        mission_id: str,
         context_data: dict,
         new_version: int,
         size_characters: int,
         size_tokens: int,
     ) -> int:
-        """Atomically update PCD with optimistic concurrency.
+        """Atomically update MCD with optimistic concurrency.
 
         Returns number of rows updated (0 if version conflict).
         """
         result = await self.session.execute(
-            update(ProjectContext)
-            .where(ProjectContext.project_id == project_id)
-            .where(ProjectContext.version == new_version - 1)
+            update(MissionContext)
+            .where(MissionContext.project_id == mission_id)
+            .where(MissionContext.version == new_version - 1)
             .values(
                 context_data=context_data,
                 version=new_version,
@@ -63,7 +63,7 @@ class ContextChangeRepository(BaseRepository[ContextChange]):
         context_id: str,
         limit: int = 50,
     ) -> list[ContextChange]:
-        """List recent changes for a PCD."""
+        """List recent changes for a MCD."""
         result = await self.session.execute(
             select(ContextChange)
             .where(ContextChange.context_id == context_id)

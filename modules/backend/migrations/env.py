@@ -27,9 +27,9 @@ from modules.backend.models.execution_record import (  # noqa: F401
     TaskExecution,
 )
 from modules.backend.models.note import Note  # noqa: F401
-from modules.backend.models.project import Project, ProjectMember  # noqa: F401
-from modules.backend.models.project_context import ProjectContext, ContextChange  # noqa: F401
-from modules.backend.models.project_history import ProjectDecision, MilestoneSummary  # noqa: F401
+from modules.backend.models.mission import Mission, MissionMember  # noqa: F401
+from modules.backend.models.mission_context import MissionContext, ContextChange  # noqa: F401
+from modules.backend.models.mission_history import MissionDecision, MilestoneSummary  # noqa: F401
 from modules.backend.models.session import Session, SessionChannel, SessionMessage  # noqa: F401
 
 # Alembic Config object

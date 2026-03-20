@@ -29,8 +29,8 @@ from modules.clients.tui.messages import (
     GateReviewCompleted,
     GateReviewRequested,
     MissionStartRequested,
-    ProjectCreated,
-    ProjectSelected,
+    MissionCreated,
+    MissionSelected,
     SessionEventReceived,
 )
 from modules.clients.tui.screens.main import MainScreen
@@ -96,7 +96,7 @@ class MissionControlApp(App):
     async def _startup(self) -> None:
         """Load projects and prompt for selection."""
         try:
-            projects = await self.bridge.list_projects()
+            projects = await self.bridge.list_missions()
         except Exception:
             logger.warning("Could not load projects (DB may be unavailable)", exc_info=True)
             projects = []
@@ -109,18 +109,18 @@ class MissionControlApp(App):
 
     # ── Project handling ─────────────────────────────────────────────
 
-    async def on_project_selected(self, event: ProjectSelected) -> None:
+    async def on_mission_selected(self, event: MissionSelected) -> None:
         """User selected an existing project."""
-        self.state.current_project_id = event.project_id
-        self.state.current_project_name = event.project_name
+        self.state.current_project_id = event.mission_id
+        self.state.current_project_name = event.mission_name
         self._update_project_header()
         self._load_roster()
 
-    async def on_project_created(self, event: ProjectCreated) -> None:
+    async def on_mission_created(self, event: MissionCreated) -> None:
         """User created a new project — create via bridge then select."""
         try:
-            result = await self.bridge.create_project(
-                name=event.project_name,
+            result = await self.bridge.create_mission(
+                name=event.mission_name,
                 description=event.description or "Created from TUI",
             )
             self.state.current_project_id = result["id"]
@@ -633,7 +633,7 @@ class MissionControlApp(App):
 
     async def _show_project_picker(self) -> None:
         try:
-            projects = await self.bridge.list_projects()
+            projects = await self.bridge.list_missions()
         except Exception:
             logger.warning("Could not load projects for picker", exc_info=True)
             projects = []

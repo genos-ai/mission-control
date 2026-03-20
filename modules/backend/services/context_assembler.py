@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import estimate_tokens
 from modules.backend.services.history_query import HistoryQueryService
-from modules.backend.services.project_context import ProjectContextManager
+from modules.backend.services.mission_context import MissionContextManager
 
 if TYPE_CHECKING:
     from modules.backend.services.code_map.loader import CodeMapLoader
@@ -61,7 +61,7 @@ class ContextAssembler:
 
     def __init__(
         self,
-        context_manager: ProjectContextManager,
+        context_manager: MissionContextManager,
         history_service: HistoryQueryService,
         *,
         code_map_loader: CodeMapLoader | None = None,
@@ -72,7 +72,7 @@ class ContextAssembler:
 
     async def build(
         self,
-        project_id: str,
+        mission_id: str,
         task_definition: dict,
         resolved_inputs: dict,
         *,
@@ -94,7 +94,7 @@ class ContextAssembler:
         remaining_budget = token_budget if token_budget != DEFAULT_TOKEN_BUDGET else config_budget
 
         # Layer 0: PCD (always, never trimmed)
-        pcd = await self._context_manager.get_context(project_id)
+        pcd = await self._context_manager.get_context(mission_id)
         pcd_tokens = estimate_tokens(pcd)
         packet["project_context"] = pcd
         remaining_budget -= pcd_tokens
@@ -135,7 +135,7 @@ class ContextAssembler:
         # Layer 2: History (optional, trimmed first)
         if remaining_budget > 500 and domain_tags:
             history = await self._assemble_history(
-                project_id, domain_tags, remaining_budget,
+                mission_id, domain_tags, remaining_budget,
             )
             if history:
                 packet["history"] = history
@@ -143,7 +143,7 @@ class ContextAssembler:
         logger.debug(
             "Context assembled",
             extra={
-                "project_id": project_id,
+                "mission_id": mission_id,
                 "budget": token_budget,
                 "used": token_budget - remaining_budget,
                 "layers": list(packet.keys()),
@@ -181,7 +181,7 @@ class ContextAssembler:
 
     async def _assemble_history(
         self,
-        project_id: str,
+        mission_id: str,
         domain_tags: list[str],
         remaining_budget: int,
     ) -> dict[str, Any]:
@@ -190,7 +190,7 @@ class ContextAssembler:
 
         # Recent failures first — agents must not repeat mistakes
         failures = await self._history_service.get_recent_failures(
-            project_id, domain_tags=domain_tags, limit=3,
+            mission_id, domain_tags=domain_tags, limit=3,
         )
         if failures:
             failure_tokens = estimate_tokens(failures)
@@ -201,7 +201,7 @@ class ContextAssembler:
         # Recent executions in same domain
         if remaining_budget > 200:
             executions = await self._history_service.get_recent_task_executions(
-                project_id, domain_tags=domain_tags, limit=5,
+                mission_id, domain_tags=domain_tags, limit=5,
             )
             if executions:
                 exec_tokens = estimate_tokens(executions)

@@ -1,7 +1,7 @@
 """
-Project Context schemas.
+Mission Context schemas.
 
-Pydantic models for PCD operations, context updates, and API responses.
+Pydantic models for MCD operations, context updates, and API responses.
 """
 
 from typing import Any
@@ -20,7 +20,7 @@ class ContextUpdateOp(BaseModel):
     )
     path: str = Field(
         ..., min_length=1, max_length=500,
-        description="Dot-notation path in PCD (e.g. 'architecture.components.auth')",
+        description="Dot-notation path in MCD (e.g. 'architecture.components.auth')",
     )
     value: Any = Field(
         None,
@@ -43,8 +43,8 @@ class ContextUpdateRequest(BaseModel):
     )
 
 
-class PCDResponse(BaseModel):
-    """PCD content with metadata."""
+class MCDResponse(BaseModel):
+    """MCD content with metadata."""
 
     model_config = ConfigDict(from_attributes=True)
 

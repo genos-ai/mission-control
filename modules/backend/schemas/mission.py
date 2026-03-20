@@ -1,25 +1,25 @@
 """
-Project API schemas.
+Mission API schemas.
 
-Pydantic models for project creation, update, and response serialization.
+Pydantic models for mission creation, update, and response serialization.
 """
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ProjectCreate(BaseModel):
-    """Schema for creating a new project."""
+class MissionCreate(BaseModel):
+    """Schema for creating a new mission."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(
         ..., min_length=1, max_length=200,
         pattern=r"^[a-z][a-z0-9_-]*$",
-        description="Unique project name (lowercase, hyphens, underscores)",
+        description="Unique mission name (lowercase, hyphens, underscores)",
     )
     description: str = Field(
         ..., min_length=1, max_length=2000,
-        description="Project purpose and scope",
+        description="Mission purpose and scope",
     )
     owner_id: str = Field(
         ..., min_length=1, max_length=200,
@@ -32,11 +32,11 @@ class ProjectCreate(BaseModel):
     default_roster: str = Field(
         default="default",
         pattern=r"^[a-z][a-z0-9_-]*$",
-        description="Default agent roster for this project",
+        description="Default agent roster for this mission",
     )
     budget_ceiling_usd: float | None = Field(
         None, ge=0.01,
-        description="Project-level spend cap",
+        description="Mission-level spend cap",
     )
     repo_url: str | None = Field(
         None, max_length=2000,
@@ -48,8 +48,8 @@ class ProjectCreate(BaseModel):
     )
 
 
-class ProjectUpdate(BaseModel):
-    """Schema for updating a project."""
+class MissionUpdate(BaseModel):
+    """Schema for updating a mission."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -61,8 +61,8 @@ class ProjectUpdate(BaseModel):
     repo_root: str | None = None
 
 
-class ProjectResponse(BaseModel):
-    """Schema for project API responses."""
+class MissionResponse(BaseModel):
+    """Schema for mission API responses."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,8 +80,8 @@ class ProjectResponse(BaseModel):
     updated_at: str
 
 
-class ProjectMemberResponse(BaseModel):
-    """Schema for project member API responses."""
+class MissionMemberResponse(BaseModel):
+    """Schema for mission member API responses."""
 
     model_config = ConfigDict(from_attributes=True)
 

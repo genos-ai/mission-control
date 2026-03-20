@@ -82,14 +82,13 @@ class WorkflowRunService(BaseService):
                 f"Workflow capability errors: {'; '.join(errors)}"
             )
 
-        # Resolve project by name (get-or-create)
         if not project_name:
             raise ValueError(
-                "Project name is required. Use --project <name> to specify "
-                "the target project."
+                "Mission name is required. Use --project <name> to specify "
+                "the target mission."
             )
 
-        project_id = await self._resolve_project(project_name, workflow)
+        project_id = await self._resolve_mission(project_name, workflow)
 
         # Create session for the workflow run
         from modules.backend.services.session import SessionService
@@ -168,36 +167,35 @@ class WorkflowRunService(BaseService):
 
         return run
 
-    async def _resolve_project(
+    async def _resolve_mission(
         self,
-        project_name: str,
+        mission_name: str,
         workflow: WorkflowSchema,
     ) -> str:
-        """Resolve a project name to a UUID, creating the project if needed.
+        """Resolve a mission name to a UUID, creating the mission if needed.
 
-        Returns the project UUID.
+        Returns the mission UUID.
         """
-        from modules.backend.services.project import ProjectService
+        from modules.backend.services.mission import MissionService
 
-        project_service = ProjectService(self._session)
-        project = await project_service.get_project_by_name(project_name)
+        mission_service = MissionService(self._session)
+        mission = await mission_service.get_mission_by_name(mission_name)
 
-        if project:
-            return project.id
+        if mission:
+            return mission.id
 
-        # Auto-create project from name
-        project = await project_service.create_project(
-            name=project_name,
+        mission = await mission_service.create_mission(
+            name=mission_name,
             description=f"Auto-created for workflow: {workflow.description[:200]}",
             owner_id="system:workflow",
         )
-        # Commit so parallel step sessions can see the project
+        # Commit so parallel step sessions can see the mission
         await self._session.commit()
         logger.info(
-            "Auto-created project",
-            extra={"project_name": project_name, "project_id": project.id},
+            "Auto-created mission",
+            extra={"mission_name": mission_name, "mission_id": mission.id},
         )
-        return project.id
+        return mission.id
 
     async def list_runs(
         self,

@@ -1,11 +1,11 @@
 # =============================================================================
-# Project System Configuration
+# Mission System Configuration
 # =============================================================================
 # Available options:
-#   default_budget_ceiling_usd  - Default project budget ceiling (float, nullable)
-#   max_projects_per_owner      - Maximum projects per owner (integer)
-#   pcd_max_size_bytes          - PCD hard size cap in bytes (integer, 20480 = 20KB)
-#   pcd_target_size_bytes       - PCD target size in bytes (integer, 15360 = 15KB)
+#   default_budget_ceiling_usd  - Default mission budget ceiling (float, nullable)
+#   max_missions_per_owner      - Maximum missions per owner (integer)
+#   pcd_max_size_bytes          - Mission Context Document hard size cap in bytes (integer, 20480 = 20KB)
+#   pcd_target_size_bytes       - MCD target size in bytes (integer, 15360 = 15KB)
 #   pcd_prune_threshold_pct     - Trigger pruning at this % of max (integer, 80)
 #   pcd_alert_threshold_pct     - Alert owner at this % of max (integer, 90)
 #   history_summarize_after_days - Summarize task executions older than N days (integer)
@@ -13,7 +13,7 @@
 # =============================================================================
 
 default_budget_ceiling_usd: null
-max_projects_per_owner: 50
+max_missions_per_owner: 50
 pcd_max_size_bytes: 20480
 pcd_target_size_bytes: 15360
 pcd_prune_threshold_pct: 80

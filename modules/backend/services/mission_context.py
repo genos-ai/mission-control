@@ -1,8 +1,8 @@
 """
-Project Context Manager.
+Mission Context Manager.
 
-Reads, writes, and versions the Project Context Document (PCD).
-Includes in-memory cache, size tracking, and seed PCD creation.
+Reads, writes, and versions the Mission Context Document (MCD).
+Includes in-memory cache, size tracking, and seed MCD creation.
 """
 
 import copy
@@ -16,24 +16,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import estimate_tokens, utc_now
-from modules.backend.models.project_context import (
+from modules.backend.models.mission_context import (
     ChangeType,
     ContextChange,
-    ProjectContext,
+    MissionContext,
 )
-from modules.backend.repositories.project_context import (
+from modules.backend.repositories.mission_context import (
     ContextChangeRepository,
-    ProjectContextRepository,
+    MissionContextRepository,
 )
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
 
-# PCD size limits (bytes)
-_PCD_MAX_SIZE = 20_480  # 20KB hard cap
-_PCD_TARGET_SIZE = 15_360  # 15KB target
+# MCD size limits (bytes)
+_MCD_MAX_SIZE = 20_480  # 20KB hard cap
+_MCD_TARGET_SIZE = 15_360  # 15KB target
 
-# In-memory cache: project_id -> (context_data, version, timestamp)
+# In-memory cache: mission_id -> (context_data, version, timestamp)
 _cache: dict[str, tuple[dict, int, float]] = {}
 _CACHE_TTL_SECONDS = 30.0
 
@@ -106,32 +106,32 @@ def _delete_nested(data: dict, path: str) -> Any:
     return None
 
 
-class ProjectContextManager(BaseService):
-    """Service for PCD read/write with versioning, caching, and size tracking."""
+class MissionContextManager(BaseService):
+    """Service for MCD read/write with versioning, caching, and size tracking."""
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
-        self._context_repo = ProjectContextRepository(session)
+        self._context_repo = MissionContextRepository(session)
         self._change_repo = ContextChangeRepository(session)
 
     @staticmethod
     @asynccontextmanager
-    async def factory() -> AsyncGenerator["ProjectContextManager", None]:
-        """Create a ProjectContextManager with its own DB session."""
+    async def factory() -> AsyncGenerator["MissionContextManager", None]:
+        """Create a MissionContextManager with its own DB session."""
         from modules.backend.core.database import get_async_session
 
         async with get_async_session() as db:
-            yield ProjectContextManager(db)
+            yield MissionContextManager(db)
             await db.commit()
 
-    def _build_seed_pcd(self, project_name: str, description: str) -> dict:
-        """Build the initial seed PCD for a new project."""
+    def _build_seed_mcd(self, mission_name: str, description: str) -> dict:
+        """Build the initial seed MCD for a new mission."""
         return {
             "version": 1,
             "last_updated": "",
-            "last_updated_by": "system:project_creation",
+            "last_updated_by": "system:mission_creation",
             "identity": {
-                "name": project_name,
+                "name": mission_name,
                 "purpose": description,
                 "tech_stack": [],
                 "repo_structure": {},
@@ -153,56 +153,56 @@ class ProjectContextManager(BaseService):
 
     async def create_context(
         self,
-        project_id: str,
-        project_name: str,
+        mission_id: str,
+        mission_name: str,
         description: str,
-    ) -> ProjectContext:
-        """Create a seed PCD for a new project."""
-        seed = self._build_seed_pcd(project_name, description)
+    ) -> MissionContext:
+        """Create a seed MCD for a new mission."""
+        seed = self._build_seed_mcd(mission_name, description)
         serialized = _json.dumps(seed, ensure_ascii=False)
         ctx = await self._context_repo.create(
-            project_id=project_id,
+            project_id=mission_id,
             context_data=seed,
             version=1,
             size_characters=len(serialized),
             size_tokens=estimate_tokens(serialized),
         )
-        _cache[project_id] = (seed, 1, time.monotonic())
+        _cache[mission_id] = (seed, 1, time.monotonic())
         return ctx
 
-    async def get_context(self, project_id: str) -> dict:
-        """Get the PCD for a project. Uses in-memory cache with TTL.
+    async def get_context(self, mission_id: str) -> dict:
+        """Get the MCD for a mission. Uses in-memory cache with TTL.
 
         Always returns a deep copy so callers cannot corrupt
         the cache or the SQLAlchemy-tracked object.
         """
-        cached = _cache.get(project_id)
+        cached = _cache.get(mission_id)
         if cached:
             data, version, ts = cached
             if time.monotonic() - ts < _CACHE_TTL_SECONDS:
                 return copy.deepcopy(data)
 
-        ctx = await self._context_repo.get_by_project_id(project_id)
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
         if ctx is None:
             return {}
 
         data = copy.deepcopy(ctx.context_data)
-        _cache[project_id] = (data, ctx.version, time.monotonic())
+        _cache[mission_id] = (data, ctx.version, time.monotonic())
         return copy.deepcopy(data)
 
     async def get_context_with_version(
         self,
-        project_id: str,
+        mission_id: str,
     ) -> tuple[dict, int]:
-        """Get PCD content and version (for optimistic concurrency)."""
-        ctx = await self._context_repo.get_by_project_id(project_id)
+        """Get MCD content and version (for optimistic concurrency)."""
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
         if ctx is None:
             return {}, 0
         return ctx.context_data, ctx.version
 
-    async def get_context_size(self, project_id: str) -> dict:
-        """Get PCD size metrics."""
-        ctx = await self._context_repo.get_by_project_id(project_id)
+    async def get_context_size(self, mission_id: str) -> dict:
+        """Get MCD size metrics."""
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
         if ctx is None:
             return {"size_characters": 0, "size_tokens": 0, "version": 0,
                     "pct_of_max": 0.0}
@@ -210,34 +210,32 @@ class ProjectContextManager(BaseService):
             "size_characters": ctx.size_characters,
             "size_tokens": ctx.size_tokens,
             "version": ctx.version,
-            "pct_of_max": (ctx.size_characters / _PCD_MAX_SIZE) * 100,
+            "pct_of_max": (ctx.size_characters / _MCD_MAX_SIZE) * 100,
         }
 
     async def apply_updates(
         self,
-        project_id: str,
+        mission_id: str,
         updates: list[dict],
         *,
         agent_id: str | None = None,
-        mission_id: str | None = None,
+        mission_id_ref: str | None = None,
         task_id: str | None = None,
     ) -> tuple[int, list[str]]:
-        """Apply context updates to the PCD.
+        """Apply context updates to the MCD.
 
         Returns (new_version, list_of_errors).
         Errors are logged and skipped — they do not fail the operation.
         Uses optimistic concurrency on the version field.
         """
-        ctx = await self._context_repo.get_by_project_id(project_id)
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
         if ctx is None:
-            return 0, ["ProjectContext not found for project"]
+            return 0, ["MissionContext not found for mission"]
 
         current_version = ctx.version
         errors: list[str] = []
         data = copy.deepcopy(ctx.context_data)
 
-        # Phase 1: Apply mutations to in-memory copy and collect valid changes.
-        # Audit records are NOT written yet — we must check size first.
         applied_changes: list[dict] = []
 
         for update in updates:
@@ -246,13 +244,11 @@ class ProjectContextManager(BaseService):
             value = update.get("value")
             reason = update.get("reason", "no reason provided")
 
-            # Validate restricted paths
             root_key = path.split(".")[0] if path else ""
             if root_key in _RESTRICTED_PATHS:
                 errors.append(f"Restricted path: {path}")
                 continue
 
-            # Validate guardrails are append-only for agents
             if op == "remove" and path.startswith("guardrails") and agent_id:
                 errors.append(f"Agents cannot remove guardrails: {path}")
                 continue
@@ -297,21 +293,18 @@ class ProjectContextManager(BaseService):
                 "reason": reason,
             })
 
-        # Update system fields
         data["version"] = current_version + 1
         data["last_updated"] = utc_now().isoformat()
-        data["last_updated_by"] = agent_id or mission_id or "system"
+        data["last_updated_by"] = agent_id or mission_id_ref or "system"
 
-        # Phase 2: Check size BEFORE writing any audit records.
         serialized = _json.dumps(data, ensure_ascii=False)
         new_size = len(serialized)
-        if new_size > _PCD_MAX_SIZE:
+        if new_size > _MCD_MAX_SIZE:
             return current_version, [
-                f"PCD would exceed size cap: {new_size} > {_PCD_MAX_SIZE} bytes. "
+                f"MCD would exceed size cap: {new_size} > {_MCD_MAX_SIZE} bytes. "
                 "Prune before applying more updates."
             ]
 
-        # Phase 3: Size check passed — write audit records.
         new_version = current_version + 1
         for change in applied_changes:
             await self._change_repo.create(
@@ -322,14 +315,13 @@ class ProjectContextManager(BaseService):
                 old_value=change["old_value"],
                 new_value=change["new_value"],
                 agent_id=agent_id,
-                mission_id=mission_id,
+                mission_id=mission_id_ref,
                 task_id=task_id,
                 reason=change["reason"],
             )
 
-        # Phase 4: Optimistic concurrency write.
         rows_updated = await self._context_repo.update_context(
-            project_id=project_id,
+            mission_id=mission_id,
             context_data=data,
             new_version=new_version,
             size_characters=new_size,
@@ -337,14 +329,13 @@ class ProjectContextManager(BaseService):
         )
 
         if rows_updated == 0:
-            return current_version, ["Version conflict — PCD was updated concurrently"]
+            return current_version, ["Version conflict — MCD was updated concurrently"]
 
-        # Invalidate cache
-        _cache.pop(project_id, None)
+        _cache.pop(mission_id, None)
 
         self._log_operation(
-            "PCD updated",
-            project_id=project_id,
+            "MCD updated",
+            mission_id=mission_id,
             new_version=new_version,
             size_characters=new_size,
             updates_applied=len(applied_changes),
@@ -355,11 +346,11 @@ class ProjectContextManager(BaseService):
 
     async def get_history(
         self,
-        project_id: str,
+        mission_id: str,
         limit: int = 50,
     ) -> list[ContextChange]:
-        """Get recent PCD change history."""
-        ctx = await self._context_repo.get_by_project_id(project_id)
+        """Get recent MCD change history."""
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
         if ctx is None:
             return []
         return await self._change_repo.list_by_context(ctx.id, limit=limit)

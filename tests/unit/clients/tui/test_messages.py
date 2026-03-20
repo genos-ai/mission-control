@@ -8,8 +8,8 @@ from modules.clients.tui.messages import (
     GateReviewRequested,
     MissionCancelRequested,
     MissionStartRequested,
-    ProjectCreated,
-    ProjectSelected,
+    MissionCreated,
+    MissionSelected,
     SessionEventReceived,
 )
 
@@ -35,21 +35,21 @@ class TestMissionCancelRequested:
         assert isinstance(msg, MissionCancelRequested)
 
 
-class TestProjectSelected:
+class TestMissionSelected:
     def test_stores_id_and_name(self):
-        msg = ProjectSelected(project_id="p-1", project_name="Alpha")
-        assert msg.project_id == "p-1"
-        assert msg.project_name == "Alpha"
+        msg = MissionSelected(mission_id="p-1", mission_name="Alpha")
+        assert msg.mission_id == "p-1"
+        assert msg.mission_name == "Alpha"
 
 
-class TestProjectCreated:
+class TestMissionCreated:
     def test_stores_name_and_description(self):
-        msg = ProjectCreated(project_name="Beta", description="A new project")
-        assert msg.project_name == "Beta"
-        assert msg.description == "A new project"
+        msg = MissionCreated(mission_name="Beta", description="A new mission")
+        assert msg.mission_name == "Beta"
+        assert msg.description == "A new mission"
 
     def test_description_defaults_to_empty(self):
-        msg = ProjectCreated(project_name="Gamma")
+        msg = MissionCreated(mission_name="Gamma")
         assert msg.description == ""
 
 

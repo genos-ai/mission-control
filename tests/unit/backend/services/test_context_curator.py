@@ -8,19 +8,19 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.services.context_curator import ContextCurator
-from modules.backend.services.project_context import (
-    ProjectContextManager,
+from modules.backend.services.mission_context import (
+    MissionContextManager,
     _cache,
 )
 
 
 @pytest.fixture
-def manager(db_session: AsyncSession) -> ProjectContextManager:
-    return ProjectContextManager(db_session)
+def manager(db_session: AsyncSession) -> MissionContextManager:
+    return MissionContextManager(db_session)
 
 
 @pytest.fixture
-def curator(manager: ProjectContextManager) -> ContextCurator:
+def curator(manager: MissionContextManager) -> ContextCurator:
     return ContextCurator(manager)
 
 
@@ -44,7 +44,7 @@ class TestApplyTaskUpdates:
 
     @pytest.mark.asyncio
     async def test_applies_updates_to_pcd(self, curator, manager):
-        """Valid updates are delegated to ProjectContextManager."""
+        """Valid updates are delegated to MissionContextManager."""
         await manager.create_context("proj-curator", "curator-test", "desc")
 
         version, errors = await curator.apply_task_updates(
@@ -52,7 +52,7 @@ class TestApplyTaskUpdates:
             [{"op": "add", "path": "identity.tech_stack",
               "value": ["python"], "reason": "agent discovered stack"}],
             agent_id="code.analyzer",
-            mission_id="mission-1",
+            mission_id_ref="mission-1",
             task_id="task-1",
         )
         assert version == 2
@@ -130,7 +130,7 @@ class TestApplyTaskUpdates:
             [{"op": "add", "path": "architecture.components.api",
               "value": {"type": "fastapi"}, "reason": "discovered API"}],
             agent_id="code.analyzer",
-            mission_id="mission-1",
+            mission_id_ref="mission-1",
             task_id="task-1",
         )
 

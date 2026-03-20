@@ -1,29 +1,29 @@
-"""Tests for Project schemas."""
+"""Tests for Mission schemas."""
 
 import pytest
 from pydantic import ValidationError
 
-from modules.backend.schemas.project import (
-    ProjectCreate,
-    ProjectResponse,
-    ProjectUpdate,
+from modules.backend.schemas.mission import (
+    MissionCreate,
+    MissionResponse,
+    MissionUpdate,
 )
 
 
-class TestProjectCreate:
+class TestMissionCreate:
     def test_valid_minimal(self):
-        schema = ProjectCreate(
-            name="my-project",
-            description="A test project",
+        schema = MissionCreate(
+            name="my-mission",
+            description="A test mission",
             owner_id="user:test",
         )
-        assert schema.name == "my-project"
+        assert schema.name == "my-mission"
         assert schema.default_roster == "default"
 
     def test_valid_full(self):
-        schema = ProjectCreate(
-            name="full-project",
-            description="Full project",
+        schema = MissionCreate(
+            name="full-mission",
+            description="Full mission",
             owner_id="user:test",
             team_id="team-alpha",
             default_roster="research",
@@ -35,23 +35,23 @@ class TestProjectCreate:
 
     def test_invalid_name_uppercase(self):
         with pytest.raises(ValidationError):
-            ProjectCreate(
-                name="MyProject",
+            MissionCreate(
+                name="MyMission",
                 description="Bad name",
                 owner_id="user:test",
             )
 
     def test_invalid_name_starts_with_number(self):
         with pytest.raises(ValidationError):
-            ProjectCreate(
-                name="1project",
+            MissionCreate(
+                name="1mission",
                 description="Bad name",
                 owner_id="user:test",
             )
 
     def test_empty_name_rejected(self):
         with pytest.raises(ValidationError):
-            ProjectCreate(
+            MissionCreate(
                 name="",
                 description="No name",
                 owner_id="user:test",
@@ -59,8 +59,8 @@ class TestProjectCreate:
 
     def test_budget_must_be_positive(self):
         with pytest.raises(ValidationError):
-            ProjectCreate(
-                name="cheap-project",
+            MissionCreate(
+                name="cheap-mission",
                 description="Negative budget",
                 owner_id="user:test",
                 budget_ceiling_usd=0.0,
@@ -68,34 +68,34 @@ class TestProjectCreate:
 
     def test_extra_fields_rejected(self):
         with pytest.raises(ValidationError):
-            ProjectCreate(
-                name="strict-project",
+            MissionCreate(
+                name="strict-mission",
                 description="No extras",
                 owner_id="user:test",
                 unknown_field="bad",
             )
 
 
-class TestProjectUpdate:
+class TestMissionUpdate:
     def test_all_none(self):
-        schema = ProjectUpdate()
+        schema = MissionUpdate()
         assert schema.description is None
         assert schema.status is None
 
     def test_valid_status(self):
-        schema = ProjectUpdate(status="paused")
+        schema = MissionUpdate(status="paused")
         assert schema.status == "paused"
 
     def test_invalid_status(self):
         with pytest.raises(ValidationError):
-            ProjectUpdate(status="deleted")
+            MissionUpdate(status="deleted")
 
 
-class TestProjectResponse:
+class TestMissionResponse:
     def test_from_dict(self):
-        resp = ProjectResponse(
+        resp = MissionResponse(
             id="abc-123",
-            name="resp-project",
+            name="resp-mission",
             description="Response test",
             status="active",
             owner_id="user:test",
@@ -108,4 +108,4 @@ class TestProjectResponse:
             updated_at="2025-01-01T00:00:00",
         )
         assert resp.id == "abc-123"
-        assert resp.name == "resp-project"
+        assert resp.name == "resp-mission"

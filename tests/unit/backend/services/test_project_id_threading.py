@@ -276,7 +276,7 @@ class TestWorkflowRunProjectName:
                 "modules.backend.services.session.SessionService",
             ) as mock_ss_cls,
             patch(
-                "modules.backend.services.project.ProjectService.get_project_by_name",
+                "modules.backend.services.mission.MissionService.get_mission_by_name",
                 new_callable=AsyncMock,
                 return_value=mock_project,
             ),
@@ -314,12 +314,12 @@ class TestWorkflowRunProjectName:
                 "modules.backend.services.session.SessionService",
             ) as mock_ss_cls,
             patch(
-                "modules.backend.services.project.ProjectService.get_project_by_name",
+                "modules.backend.services.mission.MissionService.get_mission_by_name",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
             patch(
-                "modules.backend.services.project.ProjectService.create_project",
+                "modules.backend.services.mission.MissionService.create_mission",
                 new_callable=AsyncMock,
                 return_value=created_project,
             ) as mock_create,
@@ -356,5 +356,5 @@ class TestWorkflowRunProjectName:
         service = WorkflowRunService(
             session=db_session, workflow_service=mock_ws,
         )
-        with pytest.raises(ValueError, match="Project name is required"):
+        with pytest.raises(ValueError, match="Mission name is required"):
             await service.run_workflow(workflow_name="test-workflow")

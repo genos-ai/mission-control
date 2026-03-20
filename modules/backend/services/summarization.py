@@ -23,13 +23,13 @@ from modules.backend.models.execution_record import (
     ExecutionRecordStatus,
     TaskExecution,
 )
-from modules.backend.models.project_history import DecisionStatus
-from modules.backend.repositories.project_history import (
+from modules.backend.models.mission_history import DecisionStatus
+from modules.backend.repositories.mission_history import (
     MilestoneSummaryRepository,
-    ProjectDecisionRepository,
+    MissionDecisionRepository,
 )
 from modules.backend.services.base import BaseService
-from modules.backend.services.project_context import ProjectContextManager
+from modules.backend.services.mission_context import MissionContextManager
 
 logger = get_logger(__name__)
 
@@ -39,9 +39,9 @@ class SummarizationService(BaseService):
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
-        self._decision_repo = ProjectDecisionRepository(session)
+        self._decision_repo = MissionDecisionRepository(session)
         self._milestone_repo = MilestoneSummaryRepository(session)
-        self._context_manager = ProjectContextManager(session)
+        self._context_manager = MissionContextManager(session)
 
     @staticmethod
     @asynccontextmanager
@@ -53,17 +53,17 @@ class SummarizationService(BaseService):
             yield SummarizationService(db)
             await db.commit()
 
-    async def prune_pcd_decisions(
+    async def prune_mcd_decisions(
         self,
-        project_id: str,
+        mission_id: str,
         max_age_days: int = 90,
     ) -> int:
-        """Archive decisions older than max_age_days from PCD to project_decisions table.
+        """Archive decisions older than max_age_days from MCD to project_decisions table.
 
         Returns count of decisions archived.
         """
         data, version = await self._context_manager.get_context_with_version(
-            project_id,
+            mission_id,
         )
         if not data:
             return 0
@@ -90,7 +90,7 @@ class SummarizationService(BaseService):
         # Archive to project_decisions table
         for d in to_archive:
             await self._decision_repo.create(
-                project_id=project_id,
+                project_id=mission_id,
                 decision_id=d.get("id", ""),
                 domain=d.get("domain", "general"),
                 decision=d.get("decision", ""),
@@ -100,9 +100,9 @@ class SummarizationService(BaseService):
                 status=DecisionStatus.ACTIVE,
             )
 
-        # Update PCD with pruned decisions list
+        # Update MCD with pruned decisions list
         await self._context_manager.apply_updates(
-            project_id,
+            mission_id,
             [{
                 "op": "replace",
                 "path": "decisions",
@@ -116,8 +116,8 @@ class SummarizationService(BaseService):
         )
 
         self._log_operation(
-            "PCD decisions pruned",
-            project_id=project_id,
+            "MCD decisions pruned",
+            mission_id=mission_id,
             archived=len(to_archive),
             remaining=len(to_keep),
         )
@@ -126,16 +126,16 @@ class SummarizationService(BaseService):
 
     async def prune_completed_workstreams(
         self,
-        project_id: str,
+        mission_id: str,
         keep_recent: int = 5,
     ) -> int:
         """Move old milestones from current_state to milestone_summaries table.
 
-        Keeps the most recent `keep_recent` milestones in the PCD.
+        Keeps the most recent `keep_recent` milestones in the MCD.
         Returns count of milestones archived.
         """
         data, version = await self._context_manager.get_context_with_version(
-            project_id,
+            mission_id,
         )
         if not data:
             return 0
@@ -151,7 +151,7 @@ class SummarizationService(BaseService):
 
         # Create milestone summary for archived items
         await self._milestone_repo.create(
-            project_id=project_id,
+            project_id=mission_id,
             title=f"Milestones batch ({len(to_archive)} items)",
             summary="; ".join(
                 m if isinstance(m, str) else str(m) for m in to_archive
@@ -162,9 +162,9 @@ class SummarizationService(BaseService):
             period_end=utc_now().isoformat(),
         )
 
-        # Update PCD with pruned milestones list
+        # Update MCD with pruned milestones list
         await self._context_manager.apply_updates(
-            project_id,
+            mission_id,
             [{
                 "op": "replace",
                 "path": "current_state.recent_milestones",
@@ -176,16 +176,16 @@ class SummarizationService(BaseService):
 
         self._log_operation(
             "Milestones pruned",
-            project_id=project_id,
+            mission_id=mission_id,
             archived=len(to_archive),
             remaining=len(to_keep),
         )
 
         return len(to_archive)
 
-    async def summarize_mission_records(
+    async def summarize_execution_records(
         self,
-        project_id: str,
+        mission_id: str,
         max_age_days: int = 30,
         batch_size: int = 10,
     ) -> int:
@@ -207,7 +207,7 @@ class SummarizationService(BaseService):
             .options(selectinload(ExecutionRecord.task_executions))
             .where(
                 and_(
-                    ExecutionRecord.project_id == project_id,
+                    ExecutionRecord.project_id == mission_id,
                     ExecutionRecord.summarized == False,  # noqa: E712
                     ExecutionRecord.status.in_([
                         ExecutionRecordStatus.COMPLETED,
@@ -269,8 +269,8 @@ class SummarizationService(BaseService):
                 summary_parts.append(f"  ... and {len(objectives) - 5} more")
 
             await self._milestone_repo.create(
-                project_id=project_id,
-                title=f"Missions batch ({len(batch)} missions)",
+                project_id=mission_id,
+                title=f"Executions batch ({len(batch)} executions)",
                 summary="\n".join(summary_parts),
                 mission_ids=mission_ids,
                 key_outcomes={
@@ -293,8 +293,8 @@ class SummarizationService(BaseService):
             total_summarized += len(batch)
 
         self._log_operation(
-            "Mission records summarized",
-            project_id=project_id,
+            "Execution records summarized",
+            mission_id=mission_id,
             missions_summarized=total_summarized,
         )
 
@@ -302,7 +302,7 @@ class SummarizationService(BaseService):
 
     async def run_full_pipeline(
         self,
-        project_id: str,
+        mission_id: str,
     ) -> dict:
         """Run the full summarization pipeline for a project.
 
@@ -314,19 +314,19 @@ class SummarizationService(BaseService):
             "milestones_archived": 0,
         }
 
-        results["decisions_archived"] = await self.prune_pcd_decisions(
-            project_id,
+        results["decisions_archived"] = await self.prune_mcd_decisions(
+            mission_id,
         )
-        results["missions_summarized"] = await self.summarize_mission_records(
-            project_id,
+        results["missions_summarized"] = await self.summarize_execution_records(
+            mission_id,
         )
         results["milestones_archived"] = await self.prune_completed_workstreams(
-            project_id,
+            mission_id,
         )
 
         self._log_operation(
             "Summarization pipeline complete",
-            project_id=project_id,
+            mission_id=mission_id,
             **results,
         )
 

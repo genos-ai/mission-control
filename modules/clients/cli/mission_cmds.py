@@ -1,7 +1,7 @@
 """
-CLI handler for project commands.
+CLI handler for mission commands.
 
-Thin renderer over ProjectService. Handles create, list, detail, archive.
+Thin renderer over MissionService. Handles create, list, detail, archive.
 """
 
 import asyncio
@@ -10,12 +10,12 @@ import sys
 from modules.clients.cli.report import get_console, build_table, DOTTED_ROWS, styled_status
 
 
-def run_project(
+def run_mission(
     cli_logger,
     action: str,
     *,
     name: str | None = None,
-    project_id: str | None = None,
+    mission_id: str | None = None,
     description: str | None = None,
     owner_id: str = "user:cli",
     roster: str = "default",
@@ -24,7 +24,7 @@ def run_project(
     repo_root: str | None = None,
     output_format: str = "human",
 ) -> None:
-    """Dispatch project CLI actions."""
+    """Dispatch mission CLI actions."""
     actions = {
         "create": _action_create,
         "list": _action_list,
@@ -42,7 +42,7 @@ def run_project(
     asyncio.run(fn(
         cli_logger,
         name=name,
-        project_id=project_id,
+        mission_id=mission_id,
         description=description,
         owner_id=owner_id,
         roster=roster,
@@ -54,8 +54,8 @@ def run_project(
 
 
 async def _action_create(cli_logger, *, name, description, owner_id, roster, budget, repo_url, repo_root, **_):
-    """Create a new project."""
-    from modules.backend.services.project import ProjectService
+    """Create a new mission."""
+    from modules.backend.services.mission import MissionService
 
     console = get_console()
     if not name:
@@ -65,8 +65,8 @@ async def _action_create(cli_logger, *, name, description, owner_id, roster, bud
         console.print("[red]--description is required[/red]")
         sys.exit(1)
 
-    async with ProjectService.factory() as svc:
-        project = await svc.create_project(
+    async with MissionService.factory() as svc:
+        mission = await svc.create_mission(
             name=name,
             description=description,
             owner_id=owner_id,
@@ -75,71 +75,70 @@ async def _action_create(cli_logger, *, name, description, owner_id, roster, bud
             repo_url=repo_url,
             repo_root=repo_root,
         )
-    console.print(f"[green]Project created:[/green] {project.id}")
-    console.print(f"  Name: {project.name}")
-    console.print(f"  Owner: {project.owner_id}")
+    console.print(f"[green]Mission created:[/green] {mission.id}")
+    console.print(f"  Name: {mission.name}")
+    console.print(f"  Owner: {mission.owner_id}")
 
 
 async def _action_list(cli_logger, *, output_format, **_):
-    """List all active projects."""
-    from modules.backend.services.project import ProjectService
+    """List all active missions."""
+    from modules.backend.services.mission import MissionService
 
     console = get_console()
-    async with ProjectService.factory() as svc:
-        projects = await svc.list_projects()
+    async with MissionService.factory() as svc:
+        missions = await svc.list_missions()
 
-    if not projects:
-        console.print("[dim]No projects found.[/dim]")
+    if not missions:
+        console.print("[dim]No missions found.[/dim]")
         return
 
-    table = build_table("Projects", columns=[
+    table = build_table("Missions", columns=[
         ("Status", {"width": 10}),
         ("Name", {"style": "cyan", "width": 30}),
         ("ID", {"width": 38}),
         ("Roster", {"width": 15}),
         ("Description", {"ratio": 1}),
     ], show_lines=True, table_box=DOTTED_ROWS)
-    for p in projects:
-        desc = p.description[:60] + "..." if len(p.description or "") > 60 else (p.description or "")
-        table.add_row(styled_status(p.status), p.name, p.id, p.default_roster, desc)
+    for m in missions:
+        desc = m.description[:60] + "..." if len(m.description or "") > 60 else (m.description or "")
+        table.add_row(styled_status(m.status), m.name, m.id, m.default_roster, desc)
 
     console.print(table)
 
 
-async def _action_detail(cli_logger, *, project_id, name, output_format, **_):
-    """Show project details."""
-    from modules.backend.services.project import ProjectService
+async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
+    """Show mission details."""
+    from modules.backend.services.mission import MissionService
 
     console = get_console()
-    if not project_id and not name:
-        console.print("[red]--project or --name is required[/red]")
+    if not mission_id and not name:
+        console.print("[red]--mission or --name is required[/red]")
         sys.exit(1)
 
-    async with ProjectService.factory() as svc:
-        if project_id:
-            project = await svc.get_project(project_id)
+    async with MissionService.factory() as svc:
+        if mission_id:
+            mission = await svc.get_mission(mission_id)
         else:
-            project = await svc.get_project_by_name(name)
-            if not project:
-                console.print(f"[red]Project not found: {name}[/red]")
+            mission = await svc.get_mission_by_name(name)
+            if not mission:
+                console.print(f"[red]Mission not found: {name}[/red]")
                 sys.exit(1)
 
-    console.print(f"[bold]{project.name}[/bold]  ({project.status})")
-    console.print(f"  ID:          {project.id}")
-    console.print(f"  Description: {project.description}")
-    console.print(f"  Owner:       {project.owner_id}")
-    console.print(f"  Roster:      {project.default_roster}")
-    if project.budget_ceiling_usd:
-        console.print(f"  Budget:      ${project.budget_ceiling_usd:.2f}")
-    if project.repo_url:
-        console.print(f"  Repo:        {project.repo_url}")
+    console.print(f"[bold]{mission.name}[/bold]  ({mission.status})")
+    console.print(f"  ID:          {mission.id}")
+    console.print(f"  Description: {mission.description}")
+    console.print(f"  Owner:       {mission.owner_id}")
+    console.print(f"  Roster:      {mission.default_roster}")
+    if mission.budget_ceiling_usd:
+        console.print(f"  Budget:      ${mission.budget_ceiling_usd:.2f}")
+    if mission.repo_url:
+        console.print(f"  Repo:        {mission.repo_url}")
 
     # Show roster and agents
     from modules.backend.agents.mission_control.roster import load_roster
     try:
-        roster = load_roster(project.default_roster or "default")
-        roster_name = project.default_roster or "default"
-        # Filter out auto-included horizontal agents for cleaner display
+        roster = load_roster(mission.default_roster or "default")
+        roster_name = mission.default_roster or "default"
         vertical_agents = [
             a for a in roster.agents if not a.agent_name.startswith("horizontal.")
         ]
@@ -151,7 +150,7 @@ async def _action_detail(cli_logger, *, project_id, name, output_format, **_):
             console.print(f"    [cyan]{agent.agent_name}[/cyan]  v{agent.agent_version}")
             console.print(f"      {desc}")
     except FileNotFoundError:
-        console.print(f"\n  [dim]Roster '{project.default_roster}' not found.[/dim]")
+        console.print(f"\n  [dim]Roster '{mission.default_roster}' not found.[/dim]")
 
     from modules.backend.services.workflow import WorkflowService
     workflow_svc = WorkflowService()
@@ -161,7 +160,7 @@ async def _action_detail(cli_logger, *, project_id, name, output_format, **_):
         pass
     mapped = [
         wf for wf in workflow_svc.list_workflows(enabled_only=False)
-        if wf.project_id == project.id
+        if wf.project_id == mission.id
     ]
     if mapped:
         console.print(f"\n  [bold]Workflows ({len(mapped)}):[/bold]")
@@ -169,65 +168,65 @@ async def _action_detail(cli_logger, *, project_id, name, output_format, **_):
             status = "[green]enabled[/green]" if wf.enabled else "[dim]disabled[/dim]"
             console.print(f"    {wf.workflow_name}  {status}")
     else:
-        console.print(f"\n  [dim]No workflows mapped to this project.[/dim]")
+        console.print(f"\n  [dim]No workflows mapped to this mission.[/dim]")
 
 
-async def _action_archive(cli_logger, *, project_id, **_):
-    """Archive a project."""
-    from modules.backend.services.project import ProjectService
+async def _action_archive(cli_logger, *, mission_id, **_):
+    """Archive a mission."""
+    from modules.backend.services.mission import MissionService
 
     console = get_console()
-    if not project_id:
-        console.print("[red]PROJECT_ID is required[/red]")
+    if not mission_id:
+        console.print("[red]MISSION_ID is required[/red]")
         sys.exit(1)
 
-    async with ProjectService.factory() as svc:
-        project = await svc.archive_project(project_id)
+    async with MissionService.factory() as svc:
+        mission = await svc.archive_mission(mission_id)
 
-    console.print(f"[yellow]Project archived:[/yellow] {project.name} ({project.id})")
+    console.print(f"[yellow]Mission archived:[/yellow] {mission.name} ({mission.id})")
 
 
-async def _action_context_show(cli_logger, *, project_id, output_format, **_):
-    """Show the PCD for a project."""
+async def _action_context_show(cli_logger, *, mission_id, output_format, **_):
+    """Show the MCD for a mission."""
     import json as _json
-    from modules.backend.services.project_context import ProjectContextManager
+    from modules.backend.services.mission_context import MissionContextManager
 
     console = get_console()
-    if not project_id:
-        console.print("[red]PROJECT_ID is required[/red]")
+    if not mission_id:
+        console.print("[red]MISSION_ID is required[/red]")
         sys.exit(1)
 
-    async with ProjectContextManager.factory() as mgr:
-        data = await mgr.get_context(project_id)
-        size = await mgr.get_context_size(project_id)
+    async with MissionContextManager.factory() as mgr:
+        data = await mgr.get_context(mission_id)
+        size = await mgr.get_context_size(mission_id)
 
     if not data:
-        console.print("[dim]No PCD found for this project.[/dim]")
+        console.print("[dim]No MCD found for this mission.[/dim]")
         return
 
-    console.print(f"[bold]Project Context Document[/bold]  (v{size['version']}, "
+    console.print(f"[bold]Mission Context Document[/bold]  (v{size['version']}, "
                   f"{size['size_characters']} chars, {size['pct_of_max']:.0f}% of cap)")
     console.print()
     console.print(_json.dumps(data, indent=2, ensure_ascii=False))
 
 
-async def _action_context_history(cli_logger, *, project_id, output_format, **_):
-    """Show PCD change history."""
-    from modules.backend.services.project_context import ProjectContextManager
+async def _action_context_history(cli_logger, *, mission_id, output_format, **_):
+    """Show MCD change history."""
+    from modules.backend.services.mission_context import MissionContextManager
 
     console = get_console()
-    if not project_id:
-        console.print("[red]PROJECT_ID is required[/red]")
+    if not mission_id:
+        console.print("[red]MISSION_ID is required[/red]")
         sys.exit(1)
 
-    async with ProjectContextManager.factory() as mgr:
-        changes = await mgr.get_history(project_id, limit=20)
+    async with MissionContextManager.factory() as mgr:
+        changes = await mgr.get_history(mission_id, limit=20)
 
     if not changes:
         console.print("[dim]No changes recorded.[/dim]")
         return
 
-    table = build_table("PCD Changes", columns=[
+    table = build_table("MCD Changes", columns=[
         ("Version", {"width": 8}),
         ("Type", {"width": 10}),
         ("Path", {"style": "cyan", "width": 40}),
@@ -241,19 +240,19 @@ async def _action_context_history(cli_logger, *, project_id, output_format, **_)
     console.print(table)
 
 
-async def _action_summarize(cli_logger, *, project_id, **_):
+async def _action_summarize(cli_logger, *, mission_id, **_):
     """Run the summarization pipeline."""
     from modules.backend.services.summarization import SummarizationService
 
     console = get_console()
-    if not project_id:
-        console.print("[red]PROJECT_ID is required[/red]")
+    if not mission_id:
+        console.print("[red]MISSION_ID is required[/red]")
         sys.exit(1)
 
     async with SummarizationService.factory() as svc:
-        results = await svc.run_full_pipeline(project_id)
+        results = await svc.run_full_pipeline(mission_id)
 
     console.print("[bold]Summarization complete[/bold]")
     console.print(f"  Decisions archived:    {results['decisions_archived']}")
-    console.print(f"  Missions summarized:   {results['missions_summarized']}")
+    console.print(f"  Executions summarized: {results['missions_summarized']}")
     console.print(f"  Milestones archived:   {results['milestones_archived']}")

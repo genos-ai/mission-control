@@ -1,6 +1,6 @@
 """Tests for ContextAssembler.
 
-Tests use mocked dependencies (ProjectContextManager, HistoryQueryService)
+Tests use mocked dependencies (MissionContextManager, HistoryQueryService)
 since the assembler is pure orchestration over those services.
 """
 
@@ -56,7 +56,7 @@ class TestBuild:
     async def test_includes_pcd_and_task(self, assembler, mock_context_manager):
         """Layer 0 (PCD) and Layer 1 (task) are always present."""
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1", "agent": "analyzer"},
             resolved_inputs={"query": "test"},
         )
@@ -70,7 +70,7 @@ class TestBuild:
     async def test_no_history_without_domain_tags(self, assembler, mock_history_service):
         """Layer 2 (history) is skipped when no domain_tags provided."""
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
         )
@@ -86,7 +86,7 @@ class TestBuild:
             {"task_id": "old-t1", "failure_reason": "timeout"},
         ])
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
             domain_tags=["auth"],
@@ -106,7 +106,7 @@ class TestBuild:
             ],
         )
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
             domain_tags=["api"],
@@ -120,7 +120,7 @@ class TestBuild:
         # Use a list (non-scalar) so the summarizer replaces it with a placeholder
         large_inputs = {"data": list(range(10_000))}
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs=large_inputs,
             token_budget=500,  # very tight budget
@@ -132,7 +132,7 @@ class TestBuild:
     async def test_custom_token_budget(self, assembler):
         """Token budget is respected."""
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
             token_budget=100,
@@ -153,7 +153,7 @@ class TestBuild:
         """History is skipped when remaining budget is too low."""
         # Use a very tight budget that PCD+task will consume
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1", "extra": "x" * 2000},
             resolved_inputs={},
             domain_tags=["api"],
@@ -197,7 +197,7 @@ class TestCodeMapLayer:
         """No code_map in packet when no loader is injected."""
         assembler = ContextAssembler(mock_context_manager, mock_history_service)
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
             domain_tags=["code"],
@@ -217,7 +217,7 @@ class TestCodeMapLayer:
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
             domain_tags=["code"],
@@ -239,7 +239,7 @@ class TestCodeMapLayer:
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
             domain_tags=["analysis"],
@@ -260,7 +260,7 @@ class TestCodeMapLayer:
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
         )
@@ -279,7 +279,7 @@ class TestCodeMapLayer:
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(
-            project_id="proj-1",
+            mission_id="proj-1",
             task_definition={"task_id": "t1"},
             resolved_inputs={},
             domain_tags=["code"],

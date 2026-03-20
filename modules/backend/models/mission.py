@@ -1,10 +1,10 @@
 """
-Project Model.
+Mission Model.
 
-A Project is the top-level organizational boundary. It groups all missions,
+A Mission is the top-level organizational boundary. It groups all executions,
 workflow runs, context, and history for a single codebase or initiative.
-Projects are long-lived (months to years), owned by humans, and scoped —
-agents operate within a single project at a time.
+Missions are long-lived (months to years), owned by humans, and scoped —
+agents operate within a single mission at a time.
 """
 
 import enum
@@ -15,24 +15,24 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
-class ProjectStatus(str, enum.Enum):
-    """Project lifecycle status."""
+class MissionStatus(str, enum.Enum):
+    """Mission lifecycle status."""
 
     ACTIVE = "active"
     PAUSED = "paused"
     ARCHIVED = "archived"
 
 
-class ProjectMemberRole(str, enum.Enum):
-    """Project membership role."""
+class MissionMemberRole(str, enum.Enum):
+    """Mission membership role."""
 
     OWNER = "owner"
     MAINTAINER = "maintainer"
     VIEWER = "viewer"
 
 
-class Project(UUIDMixin, TimestampMixin, Base):
-    """A long-lived project that groups missions, context, and history."""
+class Mission(UUIDMixin, TimestampMixin, Base):
+    """A long-lived mission that groups executions, context, and history."""
 
     __tablename__ = "projects"
 
@@ -43,8 +43,8 @@ class Project(UUIDMixin, TimestampMixin, Base):
         Text, nullable=False,
     )
     status: Mapped[str] = mapped_column(
-        Enum(ProjectStatus, native_enum=False),
-        default=ProjectStatus.ACTIVE,
+        Enum(MissionStatus, native_enum=False),
+        default=MissionStatus.ACTIVE,
         nullable=False,
         index=True,
     )
@@ -68,21 +68,21 @@ class Project(UUIDMixin, TimestampMixin, Base):
     )
 
     # Relationships
-    members: Mapped[list["ProjectMember"]] = relationship(
-        "ProjectMember",
-        back_populates="project",
+    members: Mapped[list["MissionMember"]] = relationship(
+        "MissionMember",
+        back_populates="mission",
         cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
         return (
-            f"<Project(id={self.id}, name={self.name!r}, "
+            f"<Mission(id={self.id}, name={self.name!r}, "
             f"status={self.status})>"
         )
 
 
-class ProjectMember(UUIDMixin, TimestampMixin, Base):
-    """Human membership in a project with role-based permissions."""
+class MissionMember(UUIDMixin, TimestampMixin, Base):
+    """Human membership in a mission with role-based permissions."""
 
     __tablename__ = "project_members"
     __table_args__ = (
@@ -99,19 +99,19 @@ class ProjectMember(UUIDMixin, TimestampMixin, Base):
         String(200), nullable=False, index=True,
     )
     role: Mapped[str] = mapped_column(
-        Enum(ProjectMemberRole, native_enum=False),
-        default=ProjectMemberRole.VIEWER,
+        Enum(MissionMemberRole, native_enum=False),
+        default=MissionMemberRole.VIEWER,
         nullable=False,
     )
 
     # Relationships
-    project: Mapped["Project"] = relationship(
-        "Project",
+    mission: Mapped["Mission"] = relationship(
+        "Mission",
         back_populates="members",
     )
 
     def __repr__(self) -> str:
         return (
-            f"<ProjectMember(project={self.project_id}, "
+            f"<MissionMember(mission={self.project_id}, "
             f"user={self.user_id}, role={self.role})>"
         )

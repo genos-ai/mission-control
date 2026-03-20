@@ -10,8 +10,8 @@ import pytest
 from modules.clients.tui.app import MissionControlApp
 from modules.clients.tui.messages import (
     MissionStartRequested,
-    ProjectCreated,
-    ProjectSelected,
+    MissionCreated,
+    MissionSelected,
     SessionEventReceived,
 )
 from modules.clients.tui.widgets.agent_sidebar import AgentSidebar, MissionSummary
@@ -23,8 +23,8 @@ from modules.clients.tui.widgets.cost_bar import CostBar
 def _mock_bridge():
     """Create a mock ServiceBridge with sensible defaults."""
     bridge = MagicMock()
-    bridge.list_projects = AsyncMock(return_value=[])
-    bridge.create_project = AsyncMock(return_value={"id": "p-new", "name": "Test"})
+    bridge.list_missions = AsyncMock(return_value=[])
+    bridge.create_mission = AsyncMock(return_value={"id": "p-new", "name": "Test"})
     bridge.run_execution = AsyncMock()
     bridge.load_roster = MagicMock()
     bridge.load_roster.return_value = MagicMock(agents=[])
@@ -69,7 +69,7 @@ class TestProjectHandling:
 
         async with app.run_test() as pilot:
             app.post_message(
-                ProjectSelected(project_id="proj-1", project_name="Alpha")
+                MissionSelected(mission_id="proj-1", mission_name="Alpha")
             )
             await pilot.pause()
             assert app.state.current_project_id == "proj-1"
@@ -82,10 +82,10 @@ class TestProjectHandling:
 
         async with app.run_test() as pilot:
             app.post_message(
-                ProjectCreated(project_name="NewProj", description="My desc")
+                MissionCreated(mission_name="NewProj", description="My desc")
             )
             await pilot.pause()
-            app.bridge.create_project.assert_called_once_with(
+            app.bridge.create_mission.assert_called_once_with(
                 name="NewProj", description="My desc"
             )
             assert app.state.current_project_id == "p-new"
@@ -97,9 +97,9 @@ class TestProjectHandling:
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
-            app.post_message(ProjectCreated(project_name="Bare"))
+            app.post_message(MissionCreated(mission_name="Bare"))
             await pilot.pause()
-            app.bridge.create_project.assert_called_once_with(
+            app.bridge.create_mission.assert_called_once_with(
                 name="Bare", description="Created from TUI"
             )
 

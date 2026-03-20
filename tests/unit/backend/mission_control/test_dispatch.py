@@ -55,7 +55,7 @@ def _plan(tasks: list[dict], **kw) -> TaskPlan:
 def _mock_curator(project_context: dict | None = None) -> MagicMock:
     """Build a mock ContextCurator satisfying ContextCuratorProtocol."""
     curator = MagicMock()
-    curator.get_project_context = AsyncMock(return_value=project_context or {})
+    curator.get_mission_context = AsyncMock(return_value=project_context or {})
     curator.apply_task_updates = AsyncMock(return_value=(2, []))
     return curator
 

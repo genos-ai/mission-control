@@ -34,7 +34,7 @@ from modules.backend.core.config_schema import (
     LoggingSchema,
     ExecutionsSchema,
     WorkflowsSchema,
-    ProjectsSchema,
+    MissionsSchema,
     SecuritySchema,
     SessionsSchema,
     TemporalSchema,
@@ -136,7 +136,7 @@ class AppConfig:
         self._executions = _load_validated_optional(ExecutionsSchema, "executions.yaml")
         self._temporal = _load_validated_optional(TemporalSchema, "temporal.yaml")
         self._workflows = _load_validated_optional(WorkflowsSchema, "workflows.yaml")
-        self._projects = _load_validated_optional(ProjectsSchema, "projects.yaml")
+        self._missions = _load_validated_optional(MissionsSchema, "missions.yaml")
         self._gate = _load_validated_optional(GateSchema, "gate.yaml")
 
     @property
@@ -195,9 +195,9 @@ class AppConfig:
         return self._workflows
 
     @property
-    def projects(self) -> ProjectsSchema:
-        """Project system settings."""
-        return self._projects
+    def missions(self) -> MissionsSchema:
+        """Mission system settings."""
+        return self._missions
 
     @property
     def gate(self) -> GateSchema:

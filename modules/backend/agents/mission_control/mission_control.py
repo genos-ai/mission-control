@@ -58,7 +58,7 @@ from modules.backend.schemas.task_plan import TaskPlan
 from modules.backend.services.context_assembler import ContextAssembler
 from modules.backend.services.context_curator import ContextCurator
 from modules.backend.services.history_query import HistoryQueryService
-from modules.backend.services.project_context import ProjectContextManager
+from modules.backend.services.mission_context import MissionContextManager
 
 logger = get_logger(__name__)
 
@@ -388,7 +388,7 @@ async def handle_mission(
     recent_failures = None
 
     if project_id and db_session:
-        pcd_manager = ProjectContextManager(db_session)
+        pcd_manager = MissionContextManager(db_session)
         context_curator = ContextCurator(pcd_manager)
         history_service = HistoryQueryService(db_session)
 
@@ -404,7 +404,7 @@ async def handle_mission(
 
         # Load project context for the planner (non-fatal)
         try:
-            project_context = await context_curator.get_project_context(project_id)
+            project_context = await context_curator.get_mission_context(project_id)
         except (OSError, ValueError, RuntimeError):
             logger.warning(
                 "Failed to load PCD for planning (non-fatal)",

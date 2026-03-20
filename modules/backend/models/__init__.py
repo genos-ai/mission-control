@@ -8,9 +8,9 @@ from modules.backend.models.execution_record import (
     TaskExecution,
 )
 from modules.backend.models.note import Note
-from modules.backend.models.project import Project, ProjectMember
-from modules.backend.models.project_context import ContextChange, ProjectContext
-from modules.backend.models.project_history import MilestoneSummary, ProjectDecision
+from modules.backend.models.mission import Mission, MissionMember
+from modules.backend.models.mission_context import ContextChange, MissionContext
+from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
 from modules.backend.models.session import Session, SessionChannel, SessionMessage
 
 __all__ = [
@@ -20,15 +20,15 @@ __all__ = [
     "ExecutionDecision",
     "ExecutionRecord",
     "MilestoneSummary",
+    "Mission",
+    "MissionContext",
+    "MissionDecision",
+    "MissionMember",
     "Note",
-    "WorkflowRun",
-    "Project",
-    "ProjectContext",
-    "ProjectDecision",
-    "ProjectMember",
     "Session",
     "SessionChannel",
     "SessionMessage",
     "TaskAttempt",
     "TaskExecution",
+    "WorkflowRun",
 ]

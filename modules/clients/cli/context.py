@@ -168,11 +168,11 @@ async def _assembled_async(console, project_id, domain_tags, output_format):
     from modules.backend.services.code_map.loader import CodeMapLoader
     from modules.backend.services.context_assembler import ContextAssembler
     from modules.backend.services.history_query import HistoryQueryService
-    from modules.backend.services.project_context import ProjectContextManager
+    from modules.backend.services.mission_context import MissionContextManager
 
     project_root = find_project_root()
 
-    async with ProjectContextManager.factory() as pcd_manager:
+    async with MissionContextManager.factory() as pcd_manager:
         async with HistoryQueryService.factory() as history_service:
             code_map_loader = CodeMapLoader(project_root)
 

@@ -105,18 +105,18 @@ class ExecuteAgentFn(Protocol):
 class ContextCuratorProtocol(Protocol):
     """Interface for context curator used by dispatch.
 
-    Keeps the dispatch loop decoupled from PCD service internals.
+    Keeps the dispatch loop decoupled from MCD service internals.
     """
 
-    async def get_project_context(self, project_id: str) -> dict: ...
+    async def get_mission_context(self, mission_id: str) -> dict: ...
 
     async def apply_task_updates(
         self,
-        project_id: str,
+        mission_id: str,
         task_result_context_updates: list[dict],
         *,
         agent_id: str | None = ...,
-        mission_id: str | None = ...,
+        mission_id_ref: str | None = ...,
         task_id: str | None = ...,
     ) -> tuple[int, list[str]]: ...
 
