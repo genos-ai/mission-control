@@ -2,14 +2,14 @@
 Mission API schemas.
 
 Request/response models for mission CRUD, status reporting,
-and playbook-to-mission conversion.
+and workflow-to-mission conversion.
 """
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class MissionCreate(BaseModel):
-    """Create an ad-hoc mission (not from a playbook)."""
+    """Create an ad-hoc mission (not from a workflow)."""
 
     objective: str = Field(..., description="Mission objective")
     roster_ref: str = Field(default="default")

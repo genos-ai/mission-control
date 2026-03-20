@@ -1,14 +1,14 @@
 """
-PlaybookRun Service (Orchestrator).
+WorkflowRun Service (Orchestrator).
 
-Executes a playbook end-to-end: creates a PlaybookRun record, resolves
+Executes a workflow end-to-end: creates a WorkflowRun record, resolves
 steps into missions, dispatches them in dependency order, chains outputs
 between steps, and tracks aggregate cost.
 
 Steps within the same wave (no mutual dependencies) execute in parallel,
 each with its own DB session to avoid SQLAlchemy async flush conflicts.
 
-This is the bridge between the stateless PlaybookService (YAML loading)
+This is the bridge between the stateless WorkflowService (YAML loading)
 and the stateful MissionService (mission lifecycle).
 """
 
@@ -22,12 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-from modules.backend.models.mission import PlaybookRun, PlaybookRunState
-from modules.backend.repositories.playbook_run import PlaybookRunRepository
-from modules.backend.schemas.playbook import PlaybookSchema, PlaybookStepSchema
+from modules.backend.models.mission import WorkflowRun, WorkflowRunState
+from modules.backend.repositories.workflow_run import WorkflowRunRepository
+from modules.backend.schemas.workflow import WorkflowSchema, WorkflowStepSchema
 from modules.backend.services.base import BaseService
 from modules.backend.services.mission import MissionService
-from modules.backend.services.playbook import PlaybookService
+from modules.backend.services.workflow import WorkflowService
 
 # Factory that returns an async context manager yielding a MissionService.
 # Default implementation: MissionService.factory
@@ -36,50 +36,50 @@ MissionServiceFactory = Callable[[], AbstractAsyncContextManager[MissionService]
 logger = get_logger(__name__)
 
 
-class PlaybookRunService(BaseService):
-    """Orchestrates playbook execution."""
+class WorkflowRunService(BaseService):
+    """Orchestrates workflow execution."""
 
     def __init__(
         self,
         session: AsyncSession,
         mission_service_factory: MissionServiceFactory | None = None,
-        playbook_service: PlaybookService | None = None,
+        workflow_service: WorkflowService | None = None,
     ) -> None:
         super().__init__(session)
-        self._run_repo = PlaybookRunRepository(session)
+        self._run_repo = WorkflowRunRepository(session)
         self._mission_service_factory = mission_service_factory
-        self._playbook_service = playbook_service or PlaybookService()
+        self._workflow_service = workflow_service or WorkflowService()
 
-    async def run_playbook(
+    async def run_workflow(
         self,
-        playbook_name: str,
+        workflow_name: str,
         triggered_by: str = "user:cli",
         context_overrides: dict[str, Any] | None = None,
         on_progress: Any | None = None,
         project_name: str | None = None,
         gate: object | None = None,
-    ) -> PlaybookRun:
-        """Execute a playbook end-to-end.
+    ) -> WorkflowRun:
+        """Execute a workflow end-to-end.
 
-        1. Load and validate the playbook YAML
-        2. Create a PlaybookRun record (PENDING → RUNNING)
+        1. Load and validate the workflow YAML
+        2. Create a WorkflowRun record (PENDING -> RUNNING)
         3. Topologically sort steps by dependencies
         4. Execute steps in waves (parallel within each wave)
         5. Chain outputs between steps via output_mapping
-        6. Update PlaybookRun with final status and cost
+        6. Update WorkflowRun with final status and cost
         """
-        # Load playbook
-        playbook = self._playbook_service.get_playbook(playbook_name)
-        if not playbook:
-            raise ValueError(f"Playbook '{playbook_name}' not found")
-        if not playbook.enabled:
-            raise ValueError(f"Playbook '{playbook_name}' is disabled")
+        # Load workflow
+        workflow = self._workflow_service.get_workflow(workflow_name)
+        if not workflow:
+            raise ValueError(f"Workflow '{workflow_name}' not found")
+        if not workflow.enabled:
+            raise ValueError(f"Workflow '{workflow_name}' is disabled")
 
         # Validate capabilities resolve to real agents
-        errors = self._playbook_service.validate_playbook_capabilities(playbook)
+        errors = self._workflow_service.validate_workflow_capabilities(workflow)
         if errors:
             raise ValueError(
-                f"Playbook capability errors: {'; '.join(errors)}"
+                f"Workflow capability errors: {'; '.join(errors)}"
             )
 
         # Resolve project by name (get-or-create)
@@ -89,9 +89,9 @@ class PlaybookRunService(BaseService):
                 "the target project."
             )
 
-        project_id = await self._resolve_project(project_name, playbook)
+        project_id = await self._resolve_project(project_name, workflow)
 
-        # Create session for the playbook run
+        # Create session for the workflow run
         from modules.backend.services.session import SessionService
         from modules.backend.schemas.session import SessionCreate
 
@@ -99,21 +99,21 @@ class PlaybookRunService(BaseService):
         session = await session_service.create_session(
             SessionCreate(
                 agent_id=None,
-                goal=f"Playbook: {playbook.description[:200]}",
+                goal=f"Workflow: {workflow.description[:200]}",
             ),
         )
 
-        # Create PlaybookRun record
-        run = PlaybookRun(
-            playbook_name=playbook.playbook_name,
-            playbook_version=playbook.version,
-            status=PlaybookRunState.RUNNING,
+        # Create WorkflowRun record
+        run = WorkflowRun(
+            playbook_name=workflow.workflow_name,
+            playbook_version=workflow.version,
+            status=WorkflowRunState.RUNNING,
             session_id=session.id,
-            trigger_type=playbook.trigger.type,
+            trigger_type=workflow.trigger.type,
             triggered_by=triggered_by,
-            context=dict(playbook.context),
+            context=dict(workflow.context),
             total_cost_usd=0.0,
-            budget_usd=playbook.budget.max_cost_usd,
+            budget_usd=workflow.budget.max_cost_usd,
             started_at=utc_now().isoformat(),
             project_id=project_id,
         )
@@ -125,40 +125,40 @@ class PlaybookRunService(BaseService):
         await self._session.refresh(run)
 
         logger.info(
-            "Playbook run started",
+            "Workflow run started",
             extra={
                 "run_id": run.id,
-                "playbook": playbook_name,
-                "version": playbook.version,
-                "steps": len(playbook.steps),
+                "workflow": workflow_name,
+                "version": workflow.version,
+                "steps": len(workflow.steps),
                 "budget_usd": run.budget_usd,
             },
         )
 
         try:
-            await self._execute_steps(run, playbook, session.id, on_progress, gate=gate)
+            await self._execute_steps(run, workflow, session.id, on_progress, gate=gate)
 
-            run.status = PlaybookRunState.COMPLETED
+            run.status = WorkflowRunState.COMPLETED
             run.completed_at = utc_now().isoformat()
             run.result_summary = (
-                f"Playbook completed: {len(playbook.steps)} steps, "
+                f"Workflow completed: {len(workflow.steps)} steps, "
                 f"${run.total_cost_usd:.4f}"
             )
 
         except (RuntimeError, ValueError, OSError) as e:
-            run.status = PlaybookRunState.FAILED
+            run.status = WorkflowRunState.FAILED
             run.completed_at = utc_now().isoformat()
             run.error_data = {"message": str(e), "type": type(e).__name__}
-            run.result_summary = f"Playbook failed: {e}"
+            run.result_summary = f"Workflow failed: {e}"
             logger.error(
-                "Playbook run failed",
+                "Workflow run failed",
                 extra={"run_id": run.id, "error": str(e)},
             )
 
         await self._session.flush()
 
         logger.info(
-            "Playbook run finished",
+            "Workflow run finished",
             extra={
                 "run_id": run.id,
                 "status": run.status,
@@ -171,7 +171,7 @@ class PlaybookRunService(BaseService):
     async def _resolve_project(
         self,
         project_name: str,
-        playbook: PlaybookSchema,
+        workflow: WorkflowSchema,
     ) -> str:
         """Resolve a project name to a UUID, creating the project if needed.
 
@@ -188,8 +188,8 @@ class PlaybookRunService(BaseService):
         # Auto-create project from name
         project = await project_service.create_project(
             name=project_name,
-            description=f"Auto-created for playbook: {playbook.description[:200]}",
-            owner_id="system:playbook",
+            description=f"Auto-created for workflow: {workflow.description[:200]}",
+            owner_id="system:workflow",
         )
         # Commit so parallel step sessions can see the project
         await self._session.commit()
@@ -203,23 +203,23 @@ class PlaybookRunService(BaseService):
         self,
         playbook_name: str | None = None,
         limit: int = 20,
-    ) -> tuple[list[PlaybookRun], int]:
-        """List playbook runs."""
+    ) -> tuple[list[WorkflowRun], int]:
+        """List workflow runs."""
         return await self._run_repo.list_runs(
             playbook_name=playbook_name,
             limit=limit,
         )
 
-    async def get_run(self, run_id: str) -> PlaybookRun | None:
-        """Get a playbook run by ID."""
+    async def get_run(self, run_id: str) -> WorkflowRun | None:
+        """Get a workflow run by ID."""
         return await self._run_repo.get_by_id_or_none(run_id)
 
     # ---- Internal orchestration ----
 
     async def _execute_steps(
         self,
-        run: PlaybookRun,
-        playbook: PlaybookSchema,
+        run: WorkflowRun,
+        workflow: WorkflowSchema,
         session_id: str,
         on_progress: Any | None = None,
         gate: object | None = None,
@@ -231,16 +231,16 @@ class PlaybookRunService(BaseService):
         (via mission_service_factory) to avoid SQLAlchemy flush conflicts.
         Falls back to sequential execution when no factory is provided.
         """
-        waves = self._compute_waves(playbook.steps)
+        waves = self._compute_waves(workflow.steps)
         completed_outcomes: dict[str, dict] = {}
-        step_map = {step.id: step for step in playbook.steps}
-        total_steps = len(playbook.steps)
+        step_map = {step.id: step for step in workflow.steps}
+        total_steps = len(workflow.steps)
 
         def _emit(event: dict) -> None:
             if on_progress:
                 on_progress(event)
 
-        _emit({"type": "playbook_start", "playbook": playbook.playbook_name, "total_steps": total_steps})
+        _emit({"type": "workflow_start", "workflow": workflow.workflow_name, "total_steps": total_steps})
 
         for wave_num, wave_step_ids in enumerate(waves):
             logger.info(
@@ -291,8 +291,8 @@ class PlaybookRunService(BaseService):
 
     async def _execute_wave(
         self,
-        run: PlaybookRun,
-        steps: list[PlaybookStepSchema],
+        run: WorkflowRun,
+        steps: list[WorkflowStepSchema],
         session_id: str,
         completed_outcomes: dict[str, dict],
         gate: object | None = None,
@@ -304,10 +304,10 @@ class PlaybookRunService(BaseService):
         """
         if self._mission_service_factory is None:
             raise RuntimeError(
-                "mission_service_factory is required to execute playbooks"
+                "mission_service_factory is required to execute workflows"
             )
 
-        async def _run_step(step: PlaybookStepSchema) -> tuple[Any, dict]:
+        async def _run_step(step: WorkflowStepSchema) -> tuple[Any, dict]:
             async with self._mission_service_factory() as mission_service:
                 return await self._execute_step(
                     run, step, session_id, completed_outcomes,
@@ -321,16 +321,16 @@ class PlaybookRunService(BaseService):
 
     async def _execute_step(
         self,
-        run: PlaybookRun,
-        step: PlaybookStepSchema,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
         session_id: str,
         completed_outcomes: dict[str, dict],
         mission_service: MissionService,
         gate: object | None = None,
     ) -> tuple[Any, dict]:
-        """Execute a single playbook step as a mission."""
+        """Execute a single workflow step as a mission."""
         # Resolve upstream context from dependencies
-        upstream = self._playbook_service.resolve_upstream_context(
+        upstream = self._workflow_service.resolve_upstream_context(
             step, completed_outcomes, run.context,
         )
 
@@ -341,10 +341,10 @@ class PlaybookRunService(BaseService):
         app_config = get_app_config()
         cost_ceiling = (
             step.cost_ceiling_usd
-            or app_config.playbooks.default_budget_usd
+            or app_config.workflows.default_budget_usd
         )
 
-        # Create mission from playbook step
+        # Create mission from workflow step
         mission = await mission_service.create_mission_from_step(
             playbook_run_id=run.id,
             step_id=step.id,
@@ -402,7 +402,7 @@ class PlaybookRunService(BaseService):
 
     def _build_step_objective(
         self,
-        step: PlaybookStepSchema,
+        step: WorkflowStepSchema,
         step_input: dict[str, Any],
     ) -> str:
         """Build an objective string from the step definition and resolved input."""
@@ -422,7 +422,7 @@ class PlaybookRunService(BaseService):
 
     @staticmethod
     def _compute_waves(
-        steps: list[PlaybookStepSchema],
+        steps: list[WorkflowStepSchema],
     ) -> list[list[str]]:
         """Topologically sort steps into execution waves.
 
@@ -449,7 +449,7 @@ class PlaybookRunService(BaseService):
             ]
 
             if not wave:
-                raise RuntimeError("Dependency cycle detected in playbook steps")
+                raise RuntimeError("Dependency cycle detected in workflow steps")
 
             waves.append(sorted(wave))
 

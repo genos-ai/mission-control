@@ -1,7 +1,7 @@
 """
 Mission Service.
 
-Orchestrates mission lifecycle: creates missions from playbook steps,
+Orchestrates mission lifecycle: creates missions from workflow steps,
 instantiates Mission Control with the appropriate roster, tracks
 MissionOutcome results, and manages inter-mission data flow.
 """
@@ -51,7 +51,7 @@ class MissionService(BaseService):
         """Create a MissionService with its own DB session.
 
         Each call gets an independent session, adapter, and service —
-        safe for concurrent use in parallel playbook waves.
+        safe for concurrent use in parallel workflow waves.
 
         Usage:
             async with MissionService.factory() as svc:
@@ -102,16 +102,16 @@ class MissionService(BaseService):
         environment: str = "local",
         project_id: str | None = None,
     ) -> Mission:
-        """Create a mission from a playbook step."""
+        """Create a mission from a workflow step."""
 
         async def _create() -> Mission:
             app_config = get_app_config()
             active_count = await self._mission_repo.count_active()
-            if active_count >= app_config.playbooks.max_concurrent_missions:
+            if active_count >= app_config.workflows.max_concurrent_missions:
                 raise ValidationError(
                     message=(
                         f"Maximum concurrent missions "
-                        f"({app_config.playbooks.max_concurrent_missions}) "
+                        f"({app_config.workflows.max_concurrent_missions}) "
                         f"reached. {active_count} currently active."
                     ),
                 )
@@ -124,8 +124,8 @@ class MissionService(BaseService):
                 complexity_tier=complexity_tier,
                 status=MissionState.PENDING,
                 session_id=session_id,
-                trigger_type="playbook",
-                triggered_by=f"playbook_run:{playbook_run_id}",
+                trigger_type="workflow",
+                triggered_by=f"workflow_run:{playbook_run_id}",
                 upstream_context=upstream_context,
                 context={},
                 total_cost_usd=0.0,
@@ -137,7 +137,7 @@ class MissionService(BaseService):
             await self._session.refresh(mission)
 
             logger.info(
-                "Mission created from playbook step",
+                "Mission created from workflow step",
                 extra={
                     "mission_id": mission.id,
                     "playbook_run_id": playbook_run_id,
@@ -163,17 +163,17 @@ class MissionService(BaseService):
         cost_ceiling_usd: float | None = None,
         upstream_context: dict | None = None,
     ) -> Mission:
-        """Create an ad-hoc mission (not from a playbook)."""
+        """Create an ad-hoc mission (not from a workflow)."""
 
         async def _create() -> Mission:
             app_config = get_app_config()
 
             active_count = await self._mission_repo.count_active()
-            if active_count >= app_config.playbooks.max_concurrent_missions:
+            if active_count >= app_config.workflows.max_concurrent_missions:
                 raise ValidationError(
                     message=(
                         f"Maximum concurrent missions "
-                        f"({app_config.playbooks.max_concurrent_missions}) "
+                        f"({app_config.workflows.max_concurrent_missions}) "
                         f"reached. {active_count} currently active."
                     ),
                 )
@@ -191,7 +191,7 @@ class MissionService(BaseService):
                 total_cost_usd=0.0,
                 cost_ceiling_usd=(
                     cost_ceiling_usd
-                    or app_config.playbooks.default_budget_usd
+                    or app_config.workflows.default_budget_usd
                 ),
             )
             self._session.add(mission)
@@ -344,13 +344,13 @@ class MissionService(BaseService):
         self, mission: Mission, output_mapping: dict | None,
     ) -> dict[str, Any]:
         """Extract outputs from a completed mission's MissionOutcome
-        according to the playbook step's output_mapping.
+        according to the workflow step's output_mapping.
 
         task_results in the outcome is a list of TaskResult dicts.
         We index them by task_id for direct lookup, but also support
         matching source_task against agent_name (since the Planning
         Agent assigns dynamic task IDs like 'task-001' that won't
-        match playbook-defined source_task names).
+        match workflow-defined source_task names).
         """
         if not output_mapping:
             self._log_debug(

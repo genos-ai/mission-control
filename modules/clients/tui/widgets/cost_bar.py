@@ -48,15 +48,15 @@ class CostBar(Widget):
     total_layers: reactive[int] = reactive(0)
     pending_gates: reactive[int] = reactive(0)
     connected: reactive[bool] = reactive(True)
-    playbook_name: reactive[str] = reactive("")
-    playbook_step: reactive[int] = reactive(0)
-    playbook_total_steps: reactive[int] = reactive(0)
+    workflow_name: reactive[str] = reactive("")
+    workflow_step: reactive[int] = reactive(0)
+    workflow_total_steps: reactive[int] = reactive(0)
 
     def compose(self) -> ComposeResult:
         yield Label("$0.0000", id="cost-label")
         yield Label("0 in / 0 out", id="token-label")
         yield Label("Layer 0/0", id="layer-label")
-        yield Label("", id="playbook-label")
+        yield Label("", id="workflow-label")
         yield Label("", id="gate-label")
         yield Label("ready", id="status-label")
 
@@ -101,22 +101,22 @@ class CostBar(Widget):
         except NoMatches:
             pass
 
-    def watch_playbook_name(self, name: str) -> None:
-        self._update_playbook_label()
+    def watch_workflow_name(self, name: str) -> None:
+        self._update_workflow_label()
 
-    def watch_playbook_step(self, step: int) -> None:
-        self._update_playbook_label()
+    def watch_workflow_step(self, step: int) -> None:
+        self._update_workflow_label()
 
-    def watch_playbook_total_steps(self, total: int) -> None:
-        self._update_playbook_label()
+    def watch_workflow_total_steps(self, total: int) -> None:
+        self._update_workflow_label()
 
-    def _update_playbook_label(self) -> None:
+    def _update_workflow_label(self) -> None:
         try:
-            label = self.query_one("#playbook-label", Label)
-            if self.playbook_name:
+            label = self.query_one("#workflow-label", Label)
+            if self.workflow_name:
                 label.update(
-                    f"[blue]{self.playbook_name}[/blue] "
-                    f"{self.playbook_step}/{self.playbook_total_steps}"
+                    f"[blue]{self.workflow_name}[/blue] "
+                    f"{self.workflow_step}/{self.workflow_total_steps}"
                 )
             else:
                 label.update("")

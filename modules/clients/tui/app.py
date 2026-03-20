@@ -49,7 +49,7 @@ from modules.clients.tui.services.gate_reviewer import TuiGateReviewer
 from modules.clients.tui.widgets.gate_modal import GateReviewModal
 from modules.clients.tui.widgets.mission_panel import MissionPanel
 from modules.clients.tui.widgets.notification import NotificationStack
-from modules.clients.tui.widgets.playbook_progress import PlaybookProgressWidget
+from modules.clients.tui.widgets.workflow_progress import WorkflowProgressWidget
 from modules.clients.tui.screens.mission_history import MissionHistoryScreen
 
 logger = get_logger(__name__)
@@ -84,7 +84,7 @@ class MissionControlApp(App):
         self._mission_worker: Worker | None = None
         self._agent_detail: AgentDetailWidget | None = None
         self._mission_panel: MissionPanel | None = None
-        self._playbook_panel: PlaybookProgressWidget | None = None
+        self._workflow_panel: WorkflowProgressWidget | None = None
         self._budget_warned_75 = False
         self._budget_warned_90 = False
 
@@ -176,7 +176,7 @@ class MissionControlApp(App):
         self.state.mission_status = "planning"
         self.state.current_session_id = str(uuid.uuid4())
         self._mission_panel = None
-        self._playbook_panel = None
+        self._workflow_panel = None
         self._budget_warned_75 = False
         self._budget_warned_90 = False
         self._update_mission_summary()
@@ -342,41 +342,41 @@ class MissionControlApp(App):
             if self._mission_panel:
                 self._mission_panel.update_task_status(step_id, result=result)
 
-        elif event_type == "playbook.run.started":
-            pb_name = getattr(event, "playbook_name", "")
+        elif event_type == "workflow.run.started":
+            wf_name = getattr(event, "workflow_name", "")
             step_count = getattr(event, "step_count", 0)
-            self.state.playbook_name = pb_name
-            self._notify("info", f"Playbook started: {pb_name} ({step_count} steps)")
+            self.state.workflow_name = wf_name
+            self._notify("info", f"Workflow started: {wf_name} ({step_count} steps)")
 
-        elif event_type == "playbook.mission.started":
+        elif event_type == "workflow.mission.started":
             step_id = getattr(event, "step_id", "")
             roster = getattr(event, "roster_ref", "")
-            self.state.playbook_progress[step_id] = {"status": "running", "roster": roster}
-            self._update_playbook_panel(step_id, status="running", roster=roster)
+            self.state.workflow_progress[step_id] = {"status": "running", "roster": roster}
+            self._update_workflow_panel(step_id, status="running", roster=roster)
 
-        elif event_type == "playbook.mission.completed":
+        elif event_type == "workflow.mission.completed":
             step_id = getattr(event, "step_id", "")
             success = getattr(event, "success", True)
             cost = getattr(event, "cost_usd", 0.0)
             status = "success" if success else "failed"
-            self.state.playbook_progress[step_id] = {"status": status, "cost": cost}
-            self._update_playbook_panel(step_id, status=status, cost=cost)
+            self.state.workflow_progress[step_id] = {"status": status, "cost": cost}
+            self._update_workflow_panel(step_id, status=status, cost=cost)
             if not success:
-                self._notify("warning", f"Playbook step failed: {step_id}")
+                self._notify("warning", f"Workflow step failed: {step_id}")
 
-        elif event_type == "playbook.run.completed":
+        elif event_type == "workflow.run.completed":
             total_cost = getattr(event, "total_cost_usd", 0.0)
             summary = getattr(event, "result_summary", "") or ""
-            self._notify("success", f"Playbook complete: ${total_cost:.3f}")
-            if self._playbook_panel:
-                self._playbook_panel.set_completed(total_cost, summary)
+            self._notify("success", f"Workflow complete: ${total_cost:.3f}")
+            if self._workflow_panel:
+                self._workflow_panel.set_completed(total_cost, summary)
 
-        elif event_type == "playbook.run.failed":
+        elif event_type == "workflow.run.failed":
             error = getattr(event, "error", "")
             failed_step = getattr(event, "failed_step", None)
-            self._notify("error", f"Playbook failed: {error[:60]}")
-            if self._playbook_panel:
-                self._playbook_panel.set_failed(error, failed_step)
+            self._notify("error", f"Workflow failed: {error[:60]}")
+            if self._workflow_panel:
+                self._workflow_panel.set_failed(error, failed_step)
 
         self._update_cost_bar()
         self._update_mission_summary()
@@ -461,13 +461,13 @@ class MissionControlApp(App):
             bar.current_layer = self.state.current_layer
             bar.total_layers = len(self.state.task_layers) if self.state.task_layers else 0
             bar.pending_gates = 1 if self.state.pending_gate else 0
-            bar.playbook_name = self.state.playbook_name or ""
+            bar.workflow_name = self.state.workflow_name or ""
             done_steps = sum(
-                1 for p in self.state.playbook_progress.values()
+                1 for p in self.state.workflow_progress.values()
                 if p.get("status") in ("success", "failed", "skipped")
             )
-            bar.playbook_step = done_steps
-            bar.playbook_total_steps = len(self.state.playbook_progress) if self.state.playbook_progress else 0
+            bar.workflow_step = done_steps
+            bar.workflow_total_steps = len(self.state.workflow_progress) if self.state.workflow_progress else 0
         except NoMatches:
             pass
 
@@ -480,15 +480,15 @@ class MissionControlApp(App):
         except NoMatches:
             pass
 
-    def _update_playbook_panel(
+    def _update_workflow_panel(
         self, step_id: str, *,
         status: str | None = None,
         cost: float | None = None,
         roster: str | None = None,
     ) -> None:
-        """Forward step update to the PlaybookProgressWidget if mounted."""
-        if self._playbook_panel:
-            self._playbook_panel.update_step(
+        """Forward step update to the WorkflowProgressWidget if mounted."""
+        if self._workflow_panel:
+            self._workflow_panel.update_step(
                 step_id, status=status, cost=cost, roster=roster,
             )
 

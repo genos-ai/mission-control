@@ -105,7 +105,7 @@ def render_mission_outcomes(console: Console, missions: list[Any]) -> None:
         return
 
     for m in missions:
-        prefix = getattr(m, "playbook_step_id", None) or str(m.id)[:12]
+        prefix = getattr(m, "workflow_step_id", None) or getattr(m, "playbook_step_id", None) or str(m.id)[:12]
         outcome = m.mission_outcome if hasattr(m, "mission_outcome") else None
         if not outcome or not isinstance(outcome, dict):
             continue
@@ -345,25 +345,25 @@ async def render_mission(mission: Any, output_format: str = "human") -> None:
         )
 
 
-async def render_playbook_run(
+async def render_workflow_run(
     run: Any,
     missions: list[Any],
     output_format: str = "human",
 ) -> None:
-    """Render a playbook run result."""
+    """Render a workflow run result."""
     if output_format == "jsonl":
-        _emit_json(playbook_run_to_dict(run, missions))
+        _emit_json(workflow_run_to_dict(run, missions))
     elif output_format == "human":
-        _render_playbook_detail(run, missions)
+        _render_workflow_detail(run, missions)
     else:
         await _render_summary(
-            title="Playbook Run Summary",
+            title="Workflow Run Summary",
             status_line=(
-                f"  {run.playbook_name} v{run.playbook_version}    "
+                f"  {run.workflow_name} v{run.workflow_version}    "
                 f"Status: {_styled_status(run.status)}    "
                 f"Cost: ${run.total_cost_usd:.4f}"
             ),
-            data=playbook_run_to_dict(run, missions),
+            data=workflow_run_to_dict(run, missions),
         )
 
 
@@ -399,8 +399,8 @@ def _fallback_narrative(data: dict) -> str:
     """Deterministic fallback when the synthesis agent is unavailable."""
     lines = []
 
-    if "playbook_name" in data:
-        lines.append(f"  Playbook '{data['playbook_name']}' {data.get('status', 'unknown')}.")
+    if "workflow_name" in data:
+        lines.append(f"  Workflow '{data['workflow_name']}' {data.get('status', 'unknown')}.")
         steps = data.get("steps", [])
         if steps:
             completed = sum(1 for s in steps if s.get("status") == "completed")
@@ -488,12 +488,12 @@ def _render_mission_detail(mission: Any) -> None:
     _render_errors(mission.error_data)
 
 
-def _render_playbook_detail(run: Any, missions: list[Any]) -> None:
-    """Deterministic detailed view of a playbook run."""
+def _render_workflow_detail(run: Any, missions: list[Any]) -> None:
+    """Deterministic detailed view of a workflow run."""
     console = get_console()
 
     info_lines = [
-        f"[bold]Playbook:[/bold]  {run.playbook_name} v{run.playbook_version}",
+        f"[bold]Workflow:[/bold]  {run.workflow_name} v{run.workflow_version}",
         f"[bold]Run ID:[/bold]    {run.id}",
         f"[bold]Status:[/bold]    {styled_status(run.status)}",
         f"[bold]Cost:[/bold]      ${run.total_cost_usd:.4f}"
@@ -502,7 +502,7 @@ def _render_playbook_detail(run: Any, missions: list[Any]) -> None:
         f"[bold]Completed:[/bold] {run.completed_at or '—'}",
         f"[bold]Triggered:[/bold] {run.triggered_by}",
     ]
-    console.print(primary_panel(content="\n".join(info_lines), title="Playbook Run Report"))
+    console.print(primary_panel(content="\n".join(info_lines), title="Workflow Run Report"))
 
     render_mission_outcomes(console, missions)
     _render_errors(run.error_data)
@@ -558,13 +558,13 @@ def _mission_to_dict(mission: Any) -> dict:
     return data
 
 
-def playbook_run_to_dict(run: Any, missions: list[Any]) -> dict:
-    """Convert a PlaybookRun + its missions to a report-friendly dict."""
+def workflow_run_to_dict(run: Any, missions: list[Any]) -> dict:
+    """Convert a WorkflowRun + its missions to a report-friendly dict."""
     data: dict[str, Any] = {
-        "type": "playbook_run",
+        "type": "workflow_run",
         "id": run.id,
-        "playbook_name": run.playbook_name,
-        "playbook_version": run.playbook_version,
+        "workflow_name": run.workflow_name,
+        "workflow_version": run.workflow_version,
         "status": _status_str(run.status),
         "total_cost_usd": run.total_cost_usd,
         "budget_usd": run.budget_usd,
@@ -572,7 +572,7 @@ def playbook_run_to_dict(run: Any, missions: list[Any]) -> dict:
         "completed_at": run.completed_at,
         "triggered_by": run.triggered_by,
         "steps": [
-            {**_mission_to_dict(m), "step_id": m.playbook_step_id}
+            {**_mission_to_dict(m), "step_id": getattr(m, "workflow_step_id", None) or m.playbook_step_id}
             for m in missions
         ],
     }

@@ -1,8 +1,8 @@
-"""Playbook progress widget — wave-based step visualization.
+"""Workflow progress widget — wave-based step visualization.
 
-Shows playbook execution as a series of waves, with each step
+Shows workflow execution as a series of waves, with each step
 displaying its mission status, cost, and agent assignment.
-Mounted in the center panel when a playbook is running.
+Mounted in the center panel when a workflow is running.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from modules.clients.common.gate_helpers import STATUS_ICONS, cost_color, safe_c
 
 
 class StepNode(Static):
-    """A single playbook step in the wave display."""
+    """A single workflow step in the wave display."""
 
     DEFAULT_CSS = """
     StepNode {
@@ -52,19 +52,19 @@ class StepNode(Static):
         )
 
 
-class PlaybookProgressWidget(Widget):
-    """Wave-based visualization for playbook execution."""
+class WorkflowProgressWidget(Widget):
+    """Wave-based visualization for workflow execution."""
 
     DEFAULT_CSS = """
-    PlaybookProgressWidget {
+    WorkflowProgressWidget {
         height: 1fr;
     }
-    #playbook-header {
+    #workflow-header {
         height: 3;
         padding: 0 1;
         background: $surface-lighten-1;
     }
-    #playbook-header Label {
+    #workflow-header Label {
         height: 3;
         content-align: left middle;
     }
@@ -82,7 +82,7 @@ class PlaybookProgressWidget(Widget):
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._playbook_name: str = ""
+        self._workflow_name: str = ""
         self._waves: list[list[str]] = []
         self._step_status: dict[str, str] = {}
         self._step_cost: dict[str, float] = {}
@@ -91,22 +91,22 @@ class PlaybookProgressWidget(Widget):
         self._budget: float = 0.0
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="playbook-header"):
+        with Vertical(id="workflow-header"):
             yield Label(
-                "[bold]Playbook[/bold]  [dim]No playbook running[/dim]",
+                "[bold]Workflow[/bold]  [dim]No workflow running[/dim]",
                 markup=True,
-                id="playbook-title",
+                id="workflow-title",
             )
         yield VerticalScroll(id="wave-scroll")
 
-    def load_playbook(
+    def load_workflow(
         self,
         name: str,
         waves: list[list[str]],
         budget: float = 0.0,
     ) -> None:
-        """Load a playbook and render the wave layout."""
-        self._playbook_name = name
+        """Load a workflow and render the wave layout."""
+        self._workflow_name = name
         self._waves = waves
         self._step_status = {s: "pending" for wave in waves for s in wave}
         self._step_cost = {}
@@ -135,12 +135,12 @@ class PlaybookProgressWidget(Widget):
         self._update_header()
 
     def set_completed(self, total_cost: float = 0.0, summary: str = "") -> None:
-        """Mark the playbook as completed."""
+        """Mark the workflow as completed."""
         self._total_cost = total_cost
         self._update_header(status="complete", summary=summary)
 
     def set_failed(self, error: str = "", failed_step: str | None = None) -> None:
-        """Mark the playbook as failed."""
+        """Mark the workflow as failed."""
         if failed_step and failed_step in self._step_status:
             self._step_status[failed_step] = "failed"
             self._refresh_step_node(failed_step)
@@ -161,7 +161,7 @@ class PlaybookProgressWidget(Widget):
             status_str = "  [red]✗ Failed[/red]"
 
         title_text = (
-            f"[bold]Playbook: {self._playbook_name}[/bold]  "
+            f"[bold]Workflow: {self._workflow_name}[/bold]  "
             f"[dim]{done}/{total} steps  [{cc}]${self._total_cost:.3f}[/{cc}][/dim]"
             f"{status_str}"
         )
@@ -169,7 +169,7 @@ class PlaybookProgressWidget(Widget):
             title_text += f"  [dim]{summary[:40]}[/dim]"
 
         try:
-            title = self.query_one("#playbook-title", Label)
+            title = self.query_one("#workflow-title", Label)
             title.update(title_text)
         except NoMatches:
             pass

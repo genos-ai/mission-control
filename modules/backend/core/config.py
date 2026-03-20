@@ -33,7 +33,7 @@ from modules.backend.core.config_schema import (
     GatewaySchema,
     LoggingSchema,
     MissionsSchema,
-    PlaybooksSchema,
+    WorkflowsSchema,
     ProjectsSchema,
     SecuritySchema,
     SessionsSchema,
@@ -135,7 +135,7 @@ class AppConfig:
         self._sessions = _load_validated_optional(SessionsSchema, "sessions.yaml")
         self._missions = _load_validated_optional(MissionsSchema, "missions.yaml")
         self._temporal = _load_validated_optional(TemporalSchema, "temporal.yaml")
-        self._playbooks = _load_validated_optional(PlaybooksSchema, "playbooks.yaml")
+        self._workflows = _load_validated_optional(WorkflowsSchema, "workflows.yaml")
         self._projects = _load_validated_optional(ProjectsSchema, "projects.yaml")
         self._gate = _load_validated_optional(GateSchema, "gate.yaml")
 
@@ -190,9 +190,9 @@ class AppConfig:
         return self._temporal
 
     @property
-    def playbooks(self) -> PlaybooksSchema:
-        """Playbook and mission settings."""
-        return self._playbooks
+    def workflows(self) -> WorkflowsSchema:
+        """Workflow system settings."""
+        return self._workflows
 
     @property
     def projects(self) -> ProjectsSchema:

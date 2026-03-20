@@ -375,7 +375,7 @@ async def handle_mission(
     5. Return MissionOutcome
 
     Simple requests continue through handle() from Plan 12.
-    Complex requests (explicit mission_brief or matched playbook)
+    Complex requests (explicit mission_brief or matched workflow)
     route here.
     """
     roster = load_roster(roster_name)

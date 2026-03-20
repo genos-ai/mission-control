@@ -53,7 +53,7 @@ async def _check_credits_async(logger, roster: str) -> None:
     console.print(table)
 
     if result.ok:
-        console.print("[green]All models OK — ready to run missions and playbooks.[/green]")
+        console.print("[green]All models OK — ready to run missions and workflows.[/green]")
     else:
         failed = ", ".join(c.model_name for c in result.failed)
         console.print(f"[red]Preflight failed for: {failed}[/red]")

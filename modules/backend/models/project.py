@@ -2,7 +2,7 @@
 Project Model.
 
 A Project is the top-level organizational boundary. It groups all missions,
-playbook runs, context, and history for a single codebase or initiative.
+workflow runs, context, and history for a single codebase or initiative.
 Projects are long-lived (months to years), owned by humans, and scoped —
 agents operate within a single project at a time.
 """

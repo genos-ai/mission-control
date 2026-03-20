@@ -1,7 +1,7 @@
 """
-Playbook and Mission API endpoints.
+Workflow and Mission API endpoints.
 
-Provides endpoints for listing playbooks, creating missions,
+Provides endpoints for listing workflows, creating missions,
 and monitoring mission status.
 """
 
@@ -15,87 +15,87 @@ from modules.backend.schemas.mission import (
     MissionDetailResponse,
     MissionResponse,
 )
-from modules.backend.schemas.playbook import (
-    PlaybookDetailResponse,
-    PlaybookListResponse,
+from modules.backend.schemas.workflow import (
+    WorkflowDetailResponse,
+    WorkflowListResponse,
 )
 from modules.backend.services.mission import MissionService
-from modules.backend.services.playbook import PlaybookService
+from modules.backend.services.workflow import WorkflowService
 
 router = APIRouter()
 
 
-def _get_playbook_service() -> PlaybookService:
-    return PlaybookService()
+def _get_workflow_service() -> WorkflowService:
+    return WorkflowService()
 
 
 def _get_mission_service(db: DbSession) -> MissionService:
     return MissionService(session=db)
 
 
-# ---- Playbook endpoints ----
+# ---- Workflow endpoints ----
 
 
-@router.get("", response_model=ApiResponse, summary="List playbooks")
-async def list_playbooks(
+@router.get("", response_model=ApiResponse, summary="List workflows")
+async def list_workflows(
     request_id: RequestId,
     enabled_only: bool = True,
 ) -> ApiResponse:
-    """List available playbooks."""
-    service = _get_playbook_service()
-    playbooks = service.list_playbooks(enabled_only=enabled_only)
+    """List available workflows."""
+    service = _get_workflow_service()
+    workflows = service.list_workflows(enabled_only=enabled_only)
 
     items = [
-        PlaybookListResponse(
-            playbook_name=p.playbook_name,
-            description=p.description,
-            version=p.version,
-            enabled=p.enabled,
-            trigger_type=p.trigger.type,
-            step_count=len(p.steps),
-            budget_usd=p.budget.max_cost_usd,
-            objective_category=p.objective.category,
-            objective_priority=p.objective.priority,
-            objective_owner=p.objective.owner,
+        WorkflowListResponse(
+            workflow_name=w.workflow_name,
+            description=w.description,
+            version=w.version,
+            enabled=w.enabled,
+            trigger_type=w.trigger.type,
+            step_count=len(w.steps),
+            budget_usd=w.budget.max_cost_usd,
+            objective_category=w.objective.category,
+            objective_priority=w.objective.priority,
+            objective_owner=w.objective.owner,
         )
-        for p in playbooks
+        for w in workflows
     ]
 
     return ApiResponse(
         success=True,
-        data={"playbooks": [item.model_dump() for item in items]},
+        data={"workflows": [item.model_dump() for item in items]},
         metadata={"request_id": request_id, "count": len(items)},
     )
 
 
 @router.get(
-    "/{playbook_name}",
+    "/{workflow_name}",
     response_model=ApiResponse,
-    summary="Get playbook detail",
+    summary="Get workflow detail",
 )
-async def get_playbook(
-    playbook_name: str,
+async def get_workflow(
+    workflow_name: str,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get a specific playbook with full details."""
-    service = _get_playbook_service()
-    playbook = service.get_playbook(playbook_name)
+    """Get a specific workflow with full details."""
+    service = _get_workflow_service()
+    workflow = service.get_workflow(workflow_name)
 
-    if not playbook:
+    if not workflow:
         raise NotFoundError(
-            message=f"Playbook '{playbook_name}' not found",
+            message=f"Workflow '{workflow_name}' not found",
         )
 
-    detail = PlaybookDetailResponse(
-        playbook_name=playbook.playbook_name,
-        description=playbook.description,
-        objective=playbook.objective,
-        version=playbook.version,
-        enabled=playbook.enabled,
-        trigger=playbook.trigger,
-        budget=playbook.budget,
-        context_keys=list(playbook.context.keys()),
-        steps=playbook.steps,
+    detail = WorkflowDetailResponse(
+        workflow_name=workflow.workflow_name,
+        description=workflow.description,
+        objective=workflow.objective,
+        version=workflow.version,
+        enabled=workflow.enabled,
+        trigger=workflow.trigger,
+        budget=workflow.budget,
+        context_keys=list(workflow.context.keys()),
+        steps=workflow.steps,
     )
 
     return ApiResponse(
@@ -151,7 +151,7 @@ async def list_missions(
     db: DbSession,
     request_id: RequestId,
     status: str | None = None,
-    playbook_run_id: str | None = None,
+    workflow_run_id: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> ApiResponse:
@@ -159,7 +159,7 @@ async def list_missions(
     service = _get_mission_service(db)
     missions, total = await service.list_missions(
         status=status,
-        playbook_run_id=playbook_run_id,
+        playbook_run_id=workflow_run_id,
         limit=limit,
         offset=offset,
     )

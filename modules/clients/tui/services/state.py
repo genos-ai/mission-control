@@ -65,10 +65,10 @@ class TuiState:
     # ── Notifications ────────────────────────────────────────────────
     notifications: deque = field(default_factory=lambda: deque(maxlen=50))
 
-    # ── Playbook ─────────────────────────────────────────────────────
-    playbook_name: str | None = None
-    playbook_progress: dict[str, dict] = field(default_factory=dict)
-    playbook_waves: list[list[str]] = field(default_factory=list)
+    # ── Workflow ─────────────────────────────────────────────────────
+    workflow_name: str | None = None
+    workflow_progress: dict[str, dict] = field(default_factory=dict)
+    workflow_waves: list[list[str]] = field(default_factory=list)
 
     # ── Helpers ──────────────────────────────────────────────────────
 

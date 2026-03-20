@@ -1,7 +1,7 @@
 """
 Synthesis Agent — human-readable narrative from structured outcome data.
 
-Presentation-layer agent. Reads verified, structured mission/playbook
+Presentation-layer agent. Reads verified, structured mission/workflow
 results and produces a concise narrative summary. Uses Haiku for cost
 efficiency — the input is already structured, no complex reasoning needed.
 

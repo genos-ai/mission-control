@@ -214,52 +214,52 @@ class CostUpdateEvent(SessionEvent):
 
 
 # =============================================================================
-# Playbook Events
+# Workflow Events
 # =============================================================================
 
 
-class PlaybookRunStartedEvent(SessionEvent):
-    event_type: str = "playbook.run.started"
-    playbook_run_id: str
-    playbook_name: str
-    playbook_version: int
+class WorkflowRunStartedEvent(SessionEvent):
+    event_type: str = "workflow.run.started"
+    workflow_run_id: str
+    workflow_name: str
+    workflow_version: int
     step_count: int
     trigger_type: str
     triggered_by: str
 
 
-class PlaybookMissionStartedEvent(SessionEvent):
-    event_type: str = "playbook.mission.started"
-    playbook_run_id: str
+class WorkflowExecutionStartedEvent(SessionEvent):
+    event_type: str = "workflow.execution.started"
+    workflow_run_id: str
     mission_id: str
     step_id: str
     roster_ref: str
     complexity_tier: str
 
 
-class PlaybookMissionCompletedEvent(SessionEvent):
-    event_type: str = "playbook.mission.completed"
-    playbook_run_id: str
+class WorkflowExecutionCompletedEvent(SessionEvent):
+    event_type: str = "workflow.execution.completed"
+    workflow_run_id: str
     mission_id: str
     step_id: str
     success: bool
     cost_usd: float = 0.0
 
 
-class PlaybookRunCompletedEvent(SessionEvent):
-    event_type: str = "playbook.run.completed"
-    playbook_run_id: str
-    playbook_name: str
+class WorkflowRunCompletedEvent(SessionEvent):
+    event_type: str = "workflow.run.completed"
+    workflow_run_id: str
+    workflow_name: str
     total_cost_usd: float
     mission_count: int
     elapsed_seconds: float | None = None
     result_summary: str | None = None
 
 
-class PlaybookRunFailedEvent(SessionEvent):
-    event_type: str = "playbook.run.failed"
-    playbook_run_id: str
-    playbook_name: str
+class WorkflowRunFailedEvent(SessionEvent):
+    event_type: str = "workflow.run.failed"
+    workflow_run_id: str
+    workflow_name: str
     error: str
     failed_step: str | None = None
     total_cost_usd: float = 0.0
@@ -285,11 +285,11 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "plan.step.completed": PlanStepCompletedEvent,
     "plan.revised": PlanRevisedEvent,
     "session.cost.updated": CostUpdateEvent,
-    "playbook.run.started": PlaybookRunStartedEvent,
-    "playbook.mission.started": PlaybookMissionStartedEvent,
-    "playbook.mission.completed": PlaybookMissionCompletedEvent,
-    "playbook.run.completed": PlaybookRunCompletedEvent,
-    "playbook.run.failed": PlaybookRunFailedEvent,
+    "workflow.run.started": WorkflowRunStartedEvent,
+    "workflow.execution.started": WorkflowExecutionStartedEvent,
+    "workflow.execution.completed": WorkflowExecutionCompletedEvent,
+    "workflow.run.completed": WorkflowRunCompletedEvent,
+    "workflow.run.failed": WorkflowRunFailedEvent,
 }
 
 

@@ -29,11 +29,11 @@ _EVENT_STYLES: dict[str, tuple[str, str]] = {
     "plan.revised": ("↻", "magenta"),
     "agent.approval.requested": ("⏸", "bold yellow"),
     "approval.response.received": ("▶", "bold green"),
-    "playbook.run.started": ("🎬", "bold blue"),
-    "playbook.mission.started": ("▶", "blue"),
-    "playbook.mission.completed": ("■", "blue"),
-    "playbook.run.completed": ("✓", "bold green"),
-    "playbook.run.failed": ("✗", "bold red"),
+    "workflow.run.started": ("🎬", "bold blue"),
+    "workflow.mission.started": ("▶", "blue"),
+    "workflow.mission.completed": ("■", "blue"),
+    "workflow.run.completed": ("✓", "bold green"),
+    "workflow.run.failed": ("✗", "bold red"),
     "user.message.sent": ("💬", "white"),
     "user.approval.granted": ("👍", "green"),
 }
@@ -83,8 +83,8 @@ def _summarize_event(event: SessionEvent) -> str:
     if etype == "agent.approval.requested":
         return f"gate: {getattr(event, 'action', '?')}"
 
-    if etype in ("playbook.run.started", "playbook.run.completed", "playbook.run.failed"):
-        return getattr(event, "playbook_name", "?")
+    if etype in ("workflow.run.started", "workflow.run.completed", "workflow.run.failed"):
+        return getattr(event, "workflow_name", "?")
 
     # Fallback: use last segment of event_type
     return etype.rsplit(".", 1)[-1]

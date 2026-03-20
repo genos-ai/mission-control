@@ -6,7 +6,7 @@ Aggregates all v1 endpoint routers.
 
 from fastapi import APIRouter
 
-from modules.backend.api.v1.endpoints import agents, missions, notes, playbooks, sessions
+from modules.backend.api.v1.endpoints import agents, missions, notes, sessions, workflows
 
 router = APIRouter()
 
@@ -22,5 +22,5 @@ router.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 # Mission record endpoints (audit, history, cost)
 router.include_router(missions.router, prefix="/missions", tags=["missions"])
 
-# Playbook and mission endpoints
-router.include_router(playbooks.router, prefix="/playbooks", tags=["playbooks"])
+# Workflow and mission endpoints
+router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])

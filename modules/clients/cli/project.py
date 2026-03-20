@@ -153,24 +153,23 @@ async def _action_detail(cli_logger, *, project_id, name, output_format, **_):
     except FileNotFoundError:
         console.print(f"\n  [dim]Roster '{project.default_roster}' not found.[/dim]")
 
-    # Show playbooks mapped to this project
-    from modules.backend.services.playbook import PlaybookService
-    playbook_svc = PlaybookService()
+    from modules.backend.services.workflow import WorkflowService
+    workflow_svc = WorkflowService()
     try:
-        playbook_svc.load_playbooks()
+        workflow_svc.load_workflows()
     except Exception:
-        pass  # Playbook loading may fail if agents not registered
+        pass
     mapped = [
-        pb for pb in playbook_svc.list_playbooks(enabled_only=False)
-        if pb.project_id == project.id
+        wf for wf in workflow_svc.list_workflows(enabled_only=False)
+        if wf.project_id == project.id
     ]
     if mapped:
-        console.print(f"\n  [bold]Playbooks ({len(mapped)}):[/bold]")
-        for pb in mapped:
-            status = "[green]enabled[/green]" if pb.enabled else "[dim]disabled[/dim]"
-            console.print(f"    {pb.playbook_name}  {status}")
+        console.print(f"\n  [bold]Workflows ({len(mapped)}):[/bold]")
+        for wf in mapped:
+            status = "[green]enabled[/green]" if wf.enabled else "[dim]disabled[/dim]"
+            console.print(f"    {wf.workflow_name}  {status}")
     else:
-        console.print(f"\n  [dim]No playbooks mapped to this project.[/dim]")
+        console.print(f"\n  [dim]No workflows mapped to this project.[/dim]")
 
 
 async def _action_archive(cli_logger, *, project_id, **_):

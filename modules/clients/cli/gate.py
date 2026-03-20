@@ -9,8 +9,8 @@ In ai_assisted mode, the AI recommendation is displayed above the prompt
 so the human can see what the AI suggests before making their decision.
 
 Usage:
-    python cli.py playbook run ops.platform-audit --project my-proj --gate interactive
-    python cli.py playbook run ops.platform-audit --project my-proj --gate ai_assisted
+    python cli.py workflow run ops.platform-audit --project my-proj --gate interactive
+    python cli.py workflow run ops.platform-audit --project my-proj --gate ai_assisted
 """
 
 import json

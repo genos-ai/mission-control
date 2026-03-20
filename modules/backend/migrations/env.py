@@ -19,7 +19,7 @@ from modules.backend.models.base import Base
 
 # Import all models here so Alembic can detect them
 # Add new model imports as you create them
-from modules.backend.models.mission import Mission, PlaybookRun  # noqa: F401
+from modules.backend.models.mission import Mission, WorkflowRun  # noqa: F401
 from modules.backend.models.mission_record import (  # noqa: F401
     MissionDecision,
     MissionRecord,

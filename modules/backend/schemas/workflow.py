@@ -1,9 +1,9 @@
 """
-Playbook YAML validation schemas.
+Workflow YAML validation schemas.
 
-Validates playbook structure, step definitions, trigger configuration,
+Validates workflow structure, step definitions, trigger configuration,
 budget limits, output mapping, and context declarations. Used by
-PlaybookService at load time to reject invalid playbooks early (P5: Fail Fast).
+WorkflowService at load time to reject invalid workflows early (P5: Fail Fast).
 
 Each step becomes a Mission at runtime. The output_mapping on each step
 defines the anti-corruption layer for inter-mission data flow.
@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class PlaybookOutputFieldMapping(BaseModel):
+class WorkflowOutputFieldMapping(BaseModel):
     """Maps a field from a MissionOutcome task result to a named context key."""
 
     model_config = ConfigDict(extra="forbid")
@@ -34,8 +34,8 @@ class PlaybookOutputFieldMapping(BaseModel):
     )
 
 
-class PlaybookStepOutputMapping(BaseModel):
-    """Output mapping for a playbook step.
+class WorkflowStepOutputMapping(BaseModel):
+    """Output mapping for a workflow step.
 
     Defines which fields from the step's MissionOutcome are extracted
     and made available to downstream steps. This is the anti-corruption
@@ -50,14 +50,14 @@ class PlaybookStepOutputMapping(BaseModel):
         pattern=r"^[a-z][a-z0-9_]*$",
         description="Store MissionOutcome.result_summary under this context key",
     )
-    field_mappings: list[PlaybookOutputFieldMapping] = Field(
+    field_mappings: list[WorkflowOutputFieldMapping] = Field(
         default_factory=list,
         description="Extract specific fields from MissionOutcome task results",
     )
 
 
-class PlaybookStepSchema(BaseModel):
-    """A single step in a playbook workflow.
+class WorkflowStepSchema(BaseModel):
+    """A single step in a workflow.
 
     Each step becomes a Mission with its own Mission Control instance.
     """
@@ -89,13 +89,13 @@ class PlaybookStepSchema(BaseModel):
         pattern=r"^(local|container|sandbox)$",
     )
     input: dict[str, Any] = Field(default_factory=dict)
-    output_mapping: PlaybookStepOutputMapping | None = None
+    output_mapping: WorkflowStepOutputMapping | None = None
     depends_on: list[str] = Field(default_factory=list)
     timeout_seconds: int | None = Field(None, ge=10, le=86400)
 
 
-class PlaybookTriggerSchema(BaseModel):
-    """How and when the playbook is triggered."""
+class WorkflowTriggerSchema(BaseModel):
+    """How and when the workflow is triggered."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -108,8 +108,8 @@ class PlaybookTriggerSchema(BaseModel):
     match_patterns: list[str] = Field(default_factory=list)
 
 
-class PlaybookBudgetSchema(BaseModel):
-    """Cost constraints for playbook execution."""
+class WorkflowBudgetSchema(BaseModel):
+    """Cost constraints for workflow execution."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -117,8 +117,8 @@ class PlaybookBudgetSchema(BaseModel):
     max_tokens: int | None = Field(None, ge=1000)
 
 
-class PlaybookObjectiveSchema(BaseModel):
-    """Strategic business outcome for the playbook."""
+class WorkflowObjectiveSchema(BaseModel):
+    """Strategic business outcome for the workflow."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -134,34 +134,34 @@ class PlaybookObjectiveSchema(BaseModel):
     regulatory_reference: str | None = Field(None, max_length=500)
 
 
-class PlaybookSchema(BaseModel):
-    """Root schema for a playbook YAML file."""
+class WorkflowSchema(BaseModel):
+    """Root schema for a workflow YAML file."""
 
     model_config = ConfigDict(extra="forbid")
 
-    playbook_name: str = Field(
+    workflow_name: str = Field(
         ...,
-        pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_-]*)*\.playbook$",
-        description="Unique playbook identifier. Convention: {domain}.{name}.playbook",
+        pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_-]*)*\.workflow$",
+        description="Unique workflow identifier. Convention: {domain}.{name}.workflow",
     )
     description: str = Field(..., min_length=1, max_length=1000)
-    objective: PlaybookObjectiveSchema
+    objective: WorkflowObjectiveSchema
     version: int = Field(default=1, ge=1)
     enabled: bool = True
     project_name: str | None = Field(
         None,
         description="Human-readable project name (display only, not used for resolution).",
     )
-    trigger: PlaybookTriggerSchema = Field(default_factory=PlaybookTriggerSchema)
-    budget: PlaybookBudgetSchema = Field(default_factory=PlaybookBudgetSchema)
+    trigger: WorkflowTriggerSchema = Field(default_factory=WorkflowTriggerSchema)
+    budget: WorkflowBudgetSchema = Field(default_factory=WorkflowBudgetSchema)
     context: dict[str, Any] = Field(default_factory=dict)
-    steps: list[PlaybookStepSchema] = Field(..., min_length=1)
+    steps: list[WorkflowStepSchema] = Field(..., min_length=1)
 
     @field_validator("steps")
     @classmethod
     def validate_steps(
-        cls, steps: list[PlaybookStepSchema],
-    ) -> list[PlaybookStepSchema]:
+        cls, steps: list[WorkflowStepSchema],
+    ) -> list[WorkflowStepSchema]:
         """Validate step IDs are unique, deps exist, no cycles."""
         step_ids = {step.id for step in steps}
 
@@ -208,7 +208,7 @@ class PlaybookSchema(BaseModel):
                     queue.append(neighbor)
 
         if sorted_count != len(steps):
-            raise ValueError("Playbook steps contain a dependency cycle")
+            raise ValueError("Workflow steps contain a dependency cycle")
 
         # Output mapping target key uniqueness
         target_keys: list[str] = []
@@ -220,7 +220,7 @@ class PlaybookSchema(BaseModel):
                     target_keys.append(fm.target_key)
         if len(target_keys) != len(set(target_keys)):
             raise ValueError(
-                "Duplicate output mapping target keys in playbook steps"
+                "Duplicate output mapping target keys in workflow steps"
             )
 
         return steps
@@ -231,10 +231,10 @@ class PlaybookSchema(BaseModel):
 # =============================================================================
 
 
-class PlaybookListResponse(BaseModel):
-    """API response for listing available playbooks."""
+class WorkflowListResponse(BaseModel):
+    """API response for listing available workflows."""
 
-    playbook_name: str
+    workflow_name: str
     description: str
     version: int
     enabled: bool
@@ -246,15 +246,15 @@ class PlaybookListResponse(BaseModel):
     objective_owner: str
 
 
-class PlaybookDetailResponse(BaseModel):
-    """API response for a single playbook with full details."""
+class WorkflowDetailResponse(BaseModel):
+    """API response for a single workflow with full details."""
 
-    playbook_name: str
+    workflow_name: str
     description: str
-    objective: PlaybookObjectiveSchema
+    objective: WorkflowObjectiveSchema
     version: int
     enabled: bool
-    trigger: PlaybookTriggerSchema
-    budget: PlaybookBudgetSchema
+    trigger: WorkflowTriggerSchema
+    budget: WorkflowBudgetSchema
     context_keys: list[str]
-    steps: list[PlaybookStepSchema]
+    steps: list[WorkflowStepSchema]

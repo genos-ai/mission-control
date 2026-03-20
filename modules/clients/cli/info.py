@@ -49,7 +49,7 @@ def show_info(logger, output_format: str = "human") -> None:
     click.echo("  migrate         Database migrations")
     click.echo("  agent           Send a message to an agent")
     click.echo("  mission         Create, execute, and inspect missions")
-    click.echo("  playbook        List, run, and inspect playbooks")
+    click.echo("  workflow        List, run, and inspect workflows")
     click.echo("  project         Create, list, and manage projects")
     click.echo("  db              Database inspection and management")
     click.echo()
@@ -59,7 +59,7 @@ def show_info(logger, output_format: str = "human") -> None:
     click.echo("  python cli.py test unit --coverage")
     click.echo("  python cli.py agent \"run a health check\"")
     click.echo("  python cli.py mission run \"audit the platform\" --budget 2.00")
-    click.echo("  python cli.py playbook run ops.platform-audit")
+    click.echo("  python cli.py workflow run ops.platform-audit")
     click.echo("  python cli.py db stats")
     click.echo("  python cli.py credits")
 

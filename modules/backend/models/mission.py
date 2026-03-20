@@ -2,11 +2,11 @@
 Mission Model.
 
 A mission is a discrete objective with bounded scope. When created by a
-Playbook, each mission has its own roster, complexity tier, and upstream
+Workflow, each mission has its own roster, complexity tier, and upstream
 context. The Mission instantiates Mission Control with these parameters.
 
-Missions created by Playbooks have a playbook_run_id linking them to
-their parent PlaybookRun. Ad-hoc missions (from direct API calls) have
+Missions created by Workflows have a playbook_run_id linking them to
+their parent WorkflowRun. Ad-hoc missions (from direct API calls) have
 no playbook_run_id.
 """
 
@@ -50,8 +50,8 @@ VALID_MISSION_TRANSITIONS: dict[MissionState, set[MissionState]] = {
 }
 
 
-class PlaybookRunState(str, enum.Enum):
-    """Playbook run lifecycle status."""
+class WorkflowRunState(str, enum.Enum):
+    """Workflow run lifecycle status."""
 
     PENDING = "pending"
     RUNNING = "running"
@@ -60,8 +60,8 @@ class PlaybookRunState(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
-class PlaybookRun(UUIDMixin, TimestampMixin, Base):
-    """A single execution of a playbook."""
+class WorkflowRun(UUIDMixin, TimestampMixin, Base):
+    """A single execution of a workflow."""
 
     __tablename__ = "playbook_runs"
 
@@ -78,8 +78,8 @@ class PlaybookRun(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     status: Mapped[str] = mapped_column(
-        Enum(PlaybookRunState, native_enum=False),
-        default=PlaybookRunState.PENDING,
+        Enum(WorkflowRunState, native_enum=False),
+        default=WorkflowRunState.PENDING,
         nullable=False,
         index=True,
     )
@@ -116,7 +116,7 @@ class PlaybookRun(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<PlaybookRun(id={self.id}, playbook={self.playbook_name!r}, "
+            f"<WorkflowRun(id={self.id}, workflow={self.playbook_name!r}, "
             f"status={self.status})>"
         )
 

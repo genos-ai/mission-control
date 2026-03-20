@@ -1,7 +1,7 @@
 """
-Tests for project_id threading through the playbook → mission → dispatch chain.
+Tests for project_id threading through the workflow → mission → dispatch chain.
 
-Verifies that project_id flows from PlaybookRunService.run_playbook() (resolved
+Verifies that project_id flows from WorkflowRunService.run_workflow() (resolved
 from --project name) through MissionService.create_mission_from_step() and
 execute_mission() down to the DispatchAdapter and handle_mission().
 
@@ -14,14 +14,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.config_schema import PlaybooksSchema
+from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.mission import MissionState
 from modules.backend.services.mission import MissionService
 
 
 def _mock_app_config(**overrides):
     config = MagicMock()
-    config.playbooks = PlaybooksSchema(**overrides)
+    config.workflows = WorkflowsSchema(**overrides)
     return config
 
 
@@ -237,36 +237,36 @@ class TestDispatchAdapterProjectId:
 
 
 # =============================================================================
-# PlaybookRunService: name-based project resolution and threading
+# WorkflowRunService: name-based project resolution and threading
 # =============================================================================
 
 
-class TestPlaybookRunProjectName:
-    """Tests for name-based project resolution in PlaybookRunService."""
+class TestWorkflowRunProjectName:
+    """Tests for name-based project resolution in WorkflowRunService."""
 
-    def _mock_playbook_service(self):
-        mock_playbook_service = MagicMock()
-        mock_playbook = MagicMock()
-        mock_playbook.playbook_name = "test-playbook"
-        mock_playbook.version = "1.0"
-        mock_playbook.enabled = True
-        mock_playbook.trigger.type = "manual"
-        mock_playbook.context = {}
-        mock_playbook.budget.max_cost_usd = 10.0
-        mock_playbook.description = "Test playbook"
-        mock_playbook.steps = []
-        mock_playbook_service.get_playbook.return_value = mock_playbook
-        mock_playbook_service.validate_playbook_capabilities.return_value = []
-        return mock_playbook_service, mock_playbook
+    def _mock_workflow_service(self):
+        mock_workflow_service = MagicMock()
+        mock_workflow = MagicMock()
+        mock_workflow.workflow_name = "test-workflow"
+        mock_workflow.version = "1.0"
+        mock_workflow.enabled = True
+        mock_workflow.trigger.type = "manual"
+        mock_workflow.context = {}
+        mock_workflow.budget.max_cost_usd = 10.0
+        mock_workflow.description = "Test workflow"
+        mock_workflow.steps = []
+        mock_workflow_service.get_workflow.return_value = mock_workflow
+        mock_workflow_service.validate_workflow_capabilities.return_value = []
+        return mock_workflow_service, mock_workflow
 
     @pytest.mark.asyncio
-    async def test_run_playbook_resolves_project_by_name(
+    async def test_run_workflow_resolves_project_by_name(
         self, db_session: AsyncSession,
     ):
         """--project my-app resolves to a project UUID via _resolve_project."""
-        from modules.backend.services.playbook_run import PlaybookRunService
+        from modules.backend.services.workflow_run import WorkflowRunService
 
-        mock_ps, _ = self._mock_playbook_service()
+        mock_ws, _ = self._mock_workflow_service()
 
         mock_project = MagicMock()
         mock_project.id = "resolved-uuid-123"
@@ -283,28 +283,28 @@ class TestPlaybookRunProjectName:
         ):
             mock_ss = AsyncMock()
             mock_session = MagicMock()
-            mock_session.id = "sess-playbook"
+            mock_session.id = "sess-workflow"
             mock_ss.create_session = AsyncMock(return_value=mock_session)
             mock_ss_cls.return_value = mock_ss
 
-            service = PlaybookRunService(
-                session=db_session, playbook_service=mock_ps,
+            service = WorkflowRunService(
+                session=db_session, workflow_service=mock_ws,
             )
-            run = await service.run_playbook(
-                playbook_name="test-playbook",
+            run = await service.run_workflow(
+                workflow_name="test-workflow",
                 project_name="my-app",
             )
 
         assert run.project_id == "resolved-uuid-123"
 
     @pytest.mark.asyncio
-    async def test_run_playbook_creates_project_when_new(
+    async def test_run_workflow_creates_project_when_new(
         self, db_session: AsyncSession,
     ):
         """A new project is auto-created when the name doesn't exist yet."""
-        from modules.backend.services.playbook_run import PlaybookRunService
+        from modules.backend.services.workflow_run import WorkflowRunService
 
-        mock_ps, _ = self._mock_playbook_service()
+        mock_ws, _ = self._mock_workflow_service()
 
         created_project = MagicMock()
         created_project.id = "new-uuid-456"
@@ -326,15 +326,15 @@ class TestPlaybookRunProjectName:
         ):
             mock_ss = AsyncMock()
             mock_session = MagicMock()
-            mock_session.id = "sess-playbook"
+            mock_session.id = "sess-workflow"
             mock_ss.create_session = AsyncMock(return_value=mock_session)
             mock_ss_cls.return_value = mock_ss
 
-            service = PlaybookRunService(
-                session=db_session, playbook_service=mock_ps,
+            service = WorkflowRunService(
+                session=db_session, workflow_service=mock_ws,
             )
-            run = await service.run_playbook(
-                playbook_name="test-playbook",
+            run = await service.run_workflow(
+                workflow_name="test-workflow",
                 project_name="brand-new-app",
             )
 
@@ -342,19 +342,19 @@ class TestPlaybookRunProjectName:
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["name"] == "brand-new-app"
-        assert call_kwargs["owner_id"] == "system:playbook"
+        assert call_kwargs["owner_id"] == "system:workflow"
 
     @pytest.mark.asyncio
-    async def test_run_playbook_requires_project_name(
+    async def test_run_workflow_requires_project_name(
         self, db_session: AsyncSession,
     ):
         """Omitting --project raises ValueError."""
-        from modules.backend.services.playbook_run import PlaybookRunService
+        from modules.backend.services.workflow_run import WorkflowRunService
 
-        mock_ps, _ = self._mock_playbook_service()
+        mock_ws, _ = self._mock_workflow_service()
 
-        service = PlaybookRunService(
-            session=db_session, playbook_service=mock_ps,
+        service = WorkflowRunService(
+            session=db_session, workflow_service=mock_ws,
         )
         with pytest.raises(ValueError, match="Project name is required"):
-            await service.run_playbook(playbook_name="test-playbook")
+            await service.run_workflow(workflow_name="test-workflow")

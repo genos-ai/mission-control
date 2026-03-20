@@ -1,6 +1,6 @@
 # Database models package
 from modules.backend.models.base import Base
-from modules.backend.models.mission import Mission, PlaybookRun
+from modules.backend.models.mission import Mission, WorkflowRun
 from modules.backend.models.mission_record import (
     MissionDecision,
     MissionRecord,
@@ -21,7 +21,7 @@ __all__ = [
     "MissionDecision",
     "MissionRecord",
     "Note",
-    "PlaybookRun",
+    "WorkflowRun",
     "Project",
     "ProjectContext",
     "ProjectDecision",

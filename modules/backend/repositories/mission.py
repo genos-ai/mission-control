@@ -1,7 +1,7 @@
 """
 Mission Repository.
 
-Standard CRUD plus mission-specific queries: lookup by playbook run,
+Standard CRUD plus mission-specific queries: lookup by workflow run,
 active mission count, and status filtering.
 """
 
@@ -36,7 +36,7 @@ class MissionRepository(BaseRepository[Mission]):
     async def get_by_playbook_run(
         self, playbook_run_id: str,
     ) -> list[Mission]:
-        """Get all missions for a specific playbook run."""
+        """Get all missions for a specific workflow run."""
         stmt = (
             select(Mission)
             .where(Mission.playbook_run_id == playbook_run_id)

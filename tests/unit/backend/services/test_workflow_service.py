@@ -1,8 +1,8 @@
 """
-Tests for PlaybookService.
+Tests for WorkflowService.
 
-Tests playbook loading, validation, capability resolution,
-mission brief generation, output mapping, and playbook matching.
+Tests workflow loading, validation, capability resolution,
+mission brief generation, output mapping, and workflow matching.
 """
 
 import pytest
@@ -11,15 +11,15 @@ from unittest.mock import patch
 
 import yaml
 
-from modules.backend.schemas.playbook import PlaybookSchema
-from modules.backend.services.playbook import PlaybookService
+from modules.backend.schemas.workflow import WorkflowSchema
+from modules.backend.services.workflow import WorkflowService
 
 
-def _make_playbook(**overrides) -> PlaybookSchema:
-    """Build a valid PlaybookSchema for testing."""
+def _make_workflow(**overrides) -> WorkflowSchema:
+    """Build a valid WorkflowSchema for testing."""
     base = {
-        "playbook_name": "test.example.playbook",
-        "description": "Test playbook",
+        "workflow_name": "test.example.workflow",
+        "description": "Test workflow",
         "objective": {
             "statement": "Test objective",
             "category": "testing",
@@ -31,7 +31,7 @@ def _make_playbook(**overrides) -> PlaybookSchema:
         ],
     }
     base.update(overrides)
-    return PlaybookSchema(**base)
+    return WorkflowSchema(**base)
 
 
 class TestCapabilityResolution:
@@ -42,12 +42,12 @@ class TestCapabilityResolution:
                 "enabled": True,
             },
         }
-        service = PlaybookService(agent_registry=registry)
+        service = WorkflowService(agent_registry=registry)
         result = service.resolve_capability("content.summarizer")
         assert result == "content.summarizer.agent"
 
     def test_resolve_missing_raises(self):
-        service = PlaybookService(agent_registry={})
+        service = WorkflowService(agent_registry={})
         with pytest.raises(ValueError, match="No agent found"):
             service.resolve_capability("nonexistent.agent")
 
@@ -58,23 +58,23 @@ class TestCapabilityResolution:
                 "enabled": False,
             },
         }
-        service = PlaybookService(agent_registry=registry)
+        service = WorkflowService(agent_registry=registry)
         with pytest.raises(ValueError, match="disabled"):
             service.resolve_capability("test.disabled")
 
-    def test_validate_playbook_capabilities(self):
+    def test_validate_workflow_capabilities(self):
         registry = {
             "test.agent.agent": {"agent_name": "test.agent.agent", "enabled": True},
         }
-        service = PlaybookService(agent_registry=registry)
-        playbook = _make_playbook()
-        errors = service.validate_playbook_capabilities(playbook)
+        service = WorkflowService(agent_registry=registry)
+        workflow = _make_workflow()
+        errors = service.validate_workflow_capabilities(workflow)
         assert errors == []
 
     def test_validate_capabilities_with_errors(self):
-        service = PlaybookService(agent_registry={})
-        playbook = _make_playbook()
-        errors = service.validate_playbook_capabilities(playbook)
+        service = WorkflowService(agent_registry={})
+        workflow = _make_workflow()
+        errors = service.validate_workflow_capabilities(workflow)
         assert len(errors) == 1
         assert "Step 'step-one'" in errors[0]
 
@@ -85,10 +85,10 @@ class TestMissionBriefGeneration:
             "test.step_one.agent": {"agent_name": "test.step_one.agent", "enabled": True},
             "test.step_two.agent": {"agent_name": "test.step_two.agent", "enabled": True},
         }
-        service = PlaybookService(agent_registry=registry)
+        service = WorkflowService(agent_registry=registry)
 
-        playbook = PlaybookSchema(
-            playbook_name="test.pipeline.playbook",
+        workflow = WorkflowSchema(
+            workflow_name="test.pipeline.workflow",
             description="Test pipeline",
             objective={
                 "statement": "Test", "category": "test",
@@ -114,7 +114,7 @@ class TestMissionBriefGeneration:
             ],
         )
 
-        briefs = service.generate_mission_briefs(playbook)
+        briefs = service.generate_mission_briefs(workflow)
 
         assert len(briefs) == 2
         assert briefs[0]["step_id"] == "step-one"
@@ -131,63 +131,63 @@ class TestMissionBriefGeneration:
         assert briefs[1]["dependencies"][0]["depends_on_step"] == "step-one"
 
 
-class TestPlaybookMatching:
+class TestWorkflowMatching:
     def test_match_by_pattern(self):
-        service = PlaybookService(agent_registry={})
-        playbook = _make_playbook(
-            playbook_name="test.digest.playbook",
+        service = WorkflowService(agent_registry={})
+        workflow = _make_workflow(
+            workflow_name="test.digest.workflow",
             trigger={
                 "type": "on_demand",
                 "match_patterns": ["ai news", "ai digest"],
             },
         )
-        service._playbooks = {"test.digest.playbook": playbook}
+        service._workflows = {"test.digest.workflow": workflow}
 
-        result = service.match_playbook("Show me the latest ai news")
+        result = service.match_workflow("Show me the latest ai news")
         assert result is not None
-        assert result.playbook_name == "test.digest.playbook"
+        assert result.workflow_name == "test.digest.workflow"
 
     def test_no_match(self):
-        service = PlaybookService(agent_registry={})
-        service._playbooks = {}
+        service = WorkflowService(agent_registry={})
+        service._workflows = {}
 
-        result = service.match_playbook("Tell me about the weather")
+        result = service.match_workflow("Tell me about the weather")
         assert result is None
 
-    def test_disabled_playbook_not_matched(self):
-        service = PlaybookService(agent_registry={})
-        playbook = _make_playbook(
-            playbook_name="test.disabled.playbook",
+    def test_disabled_workflow_not_matched(self):
+        service = WorkflowService(agent_registry={})
+        workflow = _make_workflow(
+            workflow_name="test.disabled.workflow",
             enabled=False,
             trigger={
                 "type": "on_demand",
                 "match_patterns": ["test"],
             },
         )
-        service._playbooks = {"test.disabled.playbook": playbook}
+        service._workflows = {"test.disabled.workflow": workflow}
 
-        result = service.match_playbook("test something")
+        result = service.match_workflow("test something")
         assert result is None
 
     def test_case_insensitive_matching(self):
-        service = PlaybookService(agent_registry={})
-        playbook = _make_playbook(
+        service = WorkflowService(agent_registry={})
+        workflow = _make_workflow(
             trigger={
                 "type": "on_demand",
                 "match_patterns": ["AI News"],
             },
         )
-        service._playbooks = {"test.example.playbook": playbook}
+        service._workflows = {"test.example.workflow": workflow}
 
-        result = service.match_playbook("give me ai news please")
+        result = service.match_workflow("give me ai news please")
         assert result is not None
 
 
 class TestUpstreamContextResolution:
     def test_resolve_context_references(self):
-        service = PlaybookService(agent_registry={})
-        step = PlaybookSchema(
-            playbook_name="test.ctx.playbook",
+        service = WorkflowService(agent_registry={})
+        step = WorkflowSchema(
+            workflow_name="test.ctx.workflow",
             description="Test context",
             objective={
                 "statement": "T", "category": "t",
@@ -221,9 +221,9 @@ class TestUpstreamContextResolution:
 
     def test_unresolved_reference_raises(self):
         """Unresolved @context.* references raise ValueError (P0.3)."""
-        service = PlaybookService(agent_registry={})
-        step = PlaybookSchema(
-            playbook_name="test.unresolved.playbook",
+        service = WorkflowService(agent_registry={})
+        step = WorkflowSchema(
+            workflow_name="test.unresolved.workflow",
             description="Test",
             objective={
                 "statement": "T", "category": "t",
@@ -241,14 +241,14 @@ class TestUpstreamContextResolution:
             service.resolve_upstream_context(step, {}, {})
 
 
-class TestPlaybookLoading:
+class TestWorkflowLoading:
     def test_load_from_directory(self, tmp_path):
-        """Load playbooks from a tmp directory via config override."""
-        playbooks_dir = tmp_path / "playbooks"
-        playbooks_dir.mkdir()
+        """Load workflows from a tmp directory via config override."""
+        workflows_dir = tmp_path / "workflow_templates"
+        workflows_dir.mkdir()
 
-        playbook_data = {
-            "playbook_name": "test.loaded.playbook",
+        workflow_data = {
+            "workflow_name": "test.loaded.workflow",
             "description": "Loaded from disk",
                 "objective": {
                 "statement": "Test loading",
@@ -260,68 +260,67 @@ class TestPlaybookLoading:
                 {"id": "step-one", "capability": "test.agent"},
             ],
         }
-        (playbooks_dir / "test.yaml").write_text(yaml.dump(playbook_data))
+        (workflows_dir / "test.yaml").write_text(yaml.dump(workflow_data))
 
-        service = PlaybookService(agent_registry={})
-        # Override the project root and config for this test
+        service = WorkflowService(agent_registry={})
         service._project_root = tmp_path
 
         from unittest.mock import MagicMock
         mock_config = MagicMock()
-        mock_config.playbooks.playbooks_dir = "playbooks"
-        mock_config.playbooks.max_steps_per_playbook = 20
-        mock_config.playbooks.max_budget_usd = 100.0
+        mock_config.workflows.workflows_dir = "workflow_templates"
+        mock_config.workflows.max_steps_per_workflow = 20
+        mock_config.workflows.max_budget_usd = 100.0
 
         with patch(
-            "modules.backend.services.playbook.get_app_config",
+            "modules.backend.services.workflow.get_app_config",
             return_value=mock_config,
         ):
-            loaded = service.load_playbooks()
+            loaded = service.load_workflows()
 
-        assert "test.loaded.playbook" in loaded
-        assert loaded["test.loaded.playbook"].description == "Loaded from disk"
+        assert "test.loaded.workflow" in loaded
+        assert loaded["test.loaded.workflow"].description == "Loaded from disk"
 
-    def test_list_playbooks_enabled_only(self):
-        service = PlaybookService(agent_registry={})
-        service._playbooks = {
-            "enabled": _make_playbook(
-                playbook_name="test.enabled.playbook", enabled=True,
+    def test_list_workflows_enabled_only(self):
+        service = WorkflowService(agent_registry={})
+        service._workflows = {
+            "enabled": _make_workflow(
+                workflow_name="test.enabled.workflow", enabled=True,
             ),
-            "disabled": _make_playbook(
-                playbook_name="test.disabled.playbook", enabled=False,
+            "disabled": _make_workflow(
+                workflow_name="test.disabled.workflow", enabled=False,
             ),
         }
 
-        enabled = service.list_playbooks(enabled_only=True)
+        enabled = service.list_workflows(enabled_only=True)
         assert len(enabled) == 1
-        assert enabled[0].playbook_name == "test.enabled.playbook"
+        assert enabled[0].workflow_name == "test.enabled.workflow"
 
-    def test_list_playbooks_all(self):
-        service = PlaybookService(agent_registry={})
-        service._playbooks = {
-            "enabled": _make_playbook(
-                playbook_name="test.enabled.playbook", enabled=True,
+    def test_list_workflows_all(self):
+        service = WorkflowService(agent_registry={})
+        service._workflows = {
+            "enabled": _make_workflow(
+                workflow_name="test.enabled.workflow", enabled=True,
             ),
-            "disabled": _make_playbook(
-                playbook_name="test.disabled.playbook", enabled=False,
+            "disabled": _make_workflow(
+                workflow_name="test.disabled.workflow", enabled=False,
             ),
         }
 
-        all_playbooks = service.list_playbooks(enabled_only=False)
-        assert len(all_playbooks) == 2
+        all_workflows = service.list_workflows(enabled_only=False)
+        assert len(all_workflows) == 2
 
-    def test_get_playbook(self):
-        service = PlaybookService(agent_registry={})
-        playbook = _make_playbook()
-        service._playbooks = {"test.example.playbook": playbook}
+    def test_get_workflow(self):
+        service = WorkflowService(agent_registry={})
+        workflow = _make_workflow()
+        service._workflows = {"test.example.workflow": workflow}
 
-        result = service.get_playbook("test.example.playbook")
+        result = service.get_workflow("test.example.workflow")
         assert result is not None
-        assert result.playbook_name == "test.example.playbook"
+        assert result.workflow_name == "test.example.workflow"
 
-    def test_get_playbook_not_found(self):
-        service = PlaybookService(agent_registry={})
-        service._playbooks = {}
+    def test_get_workflow_not_found(self):
+        service = WorkflowService(agent_registry={})
+        service._workflows = {}
 
-        result = service.get_playbook("nonexistent")
+        result = service.get_workflow("nonexistent")
         assert result is None

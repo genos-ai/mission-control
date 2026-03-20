@@ -217,7 +217,7 @@ async def _action_clear(cli_logger, *, table, limit, confirm, include_projects=F
             ))
         else:
             click.echo(click.style(
-                "This will DELETE run data (missions, sessions, playbook runs).",
+                "This will DELETE run data (missions, sessions, workflow runs).",
                 fg="red", bold=True,
             ))
             click.echo("Projects and PCD are preserved. Use --include-projects for full reset.")

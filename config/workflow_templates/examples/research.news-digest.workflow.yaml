@@ -1,16 +1,16 @@
 # =============================================================================
-# Example Playbook: AI News Digest
+# Example Workflow: AI News Digest
 # =============================================================================
 # Curates, summarizes, and delivers AI news from thought leaders.
-# This playbook demonstrates: multi-mission workflow, per-step rosters,
-# complexity tiers, output mapping, and inter-mission data flow.
+# This workflow demonstrates: multi-step execution, per-step rosters,
+# complexity tiers, output mapping, and inter-step data flow.
 #
-# NOTE: This playbook is disabled by default. The referenced agent
+# NOTE: This workflow is disabled by default. The referenced agent
 # capabilities (research.scraper, content.summarizer, etc.) do not
 # exist yet. Enable once the agents are built.
 # =============================================================================
 
-playbook_name: research.news-digest.playbook
+workflow_name: research.news-digest.workflow
 description: "Curate, summarize, and deliver AI news from thought leaders"
 objective:
   statement: "Keep engineering team informed of AI developments that may affect platform architecture decisions"

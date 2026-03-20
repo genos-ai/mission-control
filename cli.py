@@ -15,8 +15,8 @@ Usage:
     python cli.py db stats
     python cli.py db query missions --limit 5
     python cli.py db clear --yes
-    python cli.py playbook list
-    python cli.py playbook run ops.platform-audit
+    python cli.py workflow list
+    python cli.py workflow run ops.platform-audit
     python cli.py credits
 """
 
@@ -87,7 +87,7 @@ def cli(ctx, verbose: bool, debug: bool, output_format: str):
     Infrastructure:  server, worker, scheduler, telegram, event-worker
     Diagnostics:     health, config, info, credits, context
     Development:     test, migrate, db
-    Agents:          agent, mission, playbook
+    Agents:          agent, mission, workflow
     Projects:        project
     """
     ctx.ensure_object(dict)
@@ -472,45 +472,45 @@ def mission_cost(ctx, mission_id):
 
 
 # =============================================================================
-# Playbook group
+# Workflow group
 # =============================================================================
 
 
 @cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
-def playbook(ctx):
-    """List, run, and inspect playbooks.
+def workflow(ctx):
+    """List, run, and inspect workflows.
 
     \b
     Examples:
-        python cli.py playbook list
-        python cli.py playbook run ops.platform-audit
-        python cli.py playbook detail ops.platform-audit
+        python cli.py workflow list
+        python cli.py workflow run ops.platform-audit
+        python cli.py workflow detail ops.platform-audit
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
 
-@playbook.command("list")
+@workflow.command("list")
 @click.pass_obj
-def playbook_list(ctx):
-    """List available playbooks."""
-    from modules.clients.cli.playbook import run_playbook_cli
-    run_playbook_cli(ctx.logger, action="list", playbook_name=None, run_id=None,
+def workflow_list(ctx):
+    """List available workflows."""
+    from modules.clients.cli.workflow_cmds import run_workflow_cli
+    run_workflow_cli(ctx.logger, action="list", workflow_name=None, run_id=None,
                      triggered_by="user:cli", output_format=ctx.output_format)
 
 
-@playbook.command("detail")
+@workflow.command("detail")
 @click.argument("name")
 @click.pass_obj
-def playbook_detail(ctx, name):
-    """Show playbook configuration and steps."""
-    from modules.clients.cli.playbook import run_playbook_cli
-    run_playbook_cli(ctx.logger, action="detail", playbook_name=name, run_id=None,
+def workflow_detail(ctx, name):
+    """Show workflow configuration and steps."""
+    from modules.clients.cli.workflow_cmds import run_workflow_cli
+    run_workflow_cli(ctx.logger, action="detail", workflow_name=name, run_id=None,
                      triggered_by="user:cli", output_format=ctx.output_format)
 
 
-@playbook.command("run")
+@workflow.command("run")
 @click.argument("name")
 @click.option("--triggered-by", default="user:cli", help="Trigger origin.")
 @click.option("--project", required=True, help="Project name to run against (created if new).")
@@ -522,11 +522,10 @@ def playbook_detail(ctx, name):
 )
 @click.option("--step", is_flag=True, help="Alias for --gate interactive.")
 @click.pass_obj
-def playbook_run(ctx, name, triggered_by, project, gate, step):
-    """Execute a playbook."""
-    from modules.clients.cli.playbook import run_playbook_cli
+def workflow_run(ctx, name, triggered_by, project, gate, step):
+    """Execute a workflow."""
+    from modules.clients.cli.workflow_cmds import run_workflow_cli
 
-    # --step is a convenience alias for --gate interactive
     if step and gate is None:
         gate = "interactive"
 
@@ -535,38 +534,38 @@ def playbook_run(ctx, name, triggered_by, project, gate, step):
         from modules.backend.agents.mission_control.gate import create_gate
         gate_obj = create_gate(mode_override=gate)
 
-    run_playbook_cli(ctx.logger, action="run", playbook_name=name, run_id=None,
+    run_workflow_cli(ctx.logger, action="run", workflow_name=name, run_id=None,
                      triggered_by=triggered_by, output_format=ctx.output_format,
                      project_name=project, gate=gate_obj)
 
 
-@playbook.command("runs")
-@click.option("--name", default=None, help="Filter by playbook name.")
+@workflow.command("runs")
+@click.option("--name", default=None, help="Filter by workflow name.")
 @click.pass_obj
-def playbook_runs(ctx, name):
-    """List playbook runs."""
-    from modules.clients.cli.playbook import run_playbook_cli
-    run_playbook_cli(ctx.logger, action="runs", playbook_name=name, run_id=None,
+def workflow_runs(ctx, name):
+    """List workflow runs."""
+    from modules.clients.cli.workflow_cmds import run_workflow_cli
+    run_workflow_cli(ctx.logger, action="runs", workflow_name=name, run_id=None,
                      triggered_by="user:cli", output_format=ctx.output_format)
 
 
-@playbook.command("run-detail")
+@workflow.command("run-detail")
 @click.argument("run_id")
 @click.pass_obj
-def playbook_run_detail(ctx, run_id):
-    """Show details for a specific playbook run."""
-    from modules.clients.cli.playbook import run_playbook_cli
-    run_playbook_cli(ctx.logger, action="run-detail", playbook_name=None,
+def workflow_run_detail(ctx, run_id):
+    """Show details for a specific workflow run."""
+    from modules.clients.cli.workflow_cmds import run_workflow_cli
+    run_workflow_cli(ctx.logger, action="run-detail", workflow_name=None,
                      run_id=run_id, triggered_by="user:cli", output_format=ctx.output_format)
 
 
-@playbook.command("report")
+@workflow.command("report")
 @click.argument("run_id")
 @click.pass_obj
-def playbook_report(ctx, run_id):
-    """Render a report for a past playbook run."""
-    from modules.clients.cli.playbook import run_playbook_cli
-    run_playbook_cli(ctx.logger, action="report", playbook_name=None,
+def workflow_report(ctx, run_id):
+    """Render a report for a past workflow run."""
+    from modules.clients.cli.workflow_cmds import run_workflow_cli
+    run_workflow_cli(ctx.logger, action="report", workflow_name=None,
                      run_id=run_id, triggered_by="user:cli", output_format=ctx.output_format)
 
 

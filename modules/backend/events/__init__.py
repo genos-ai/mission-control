@@ -20,6 +20,11 @@ from modules.backend.events.types import (
     SessionEvent,
     UserApprovalEvent,
     UserMessageEvent,
+    WorkflowExecutionCompletedEvent,
+    WorkflowExecutionStartedEvent,
+    WorkflowRunCompletedEvent,
+    WorkflowRunFailedEvent,
+    WorkflowRunStartedEvent,
     deserialize_event,
 )
 
@@ -42,6 +47,11 @@ __all__ = [
     "PlanStepStartedEvent",
     "PlanStepCompletedEvent",
     "PlanRevisedEvent",
+    "WorkflowRunStartedEvent",
+    "WorkflowExecutionStartedEvent",
+    "WorkflowExecutionCompletedEvent",
+    "WorkflowRunCompletedEvent",
+    "WorkflowRunFailedEvent",
     "EVENT_TYPE_MAP",
     "deserialize_event",
 ]

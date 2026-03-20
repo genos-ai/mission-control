@@ -335,21 +335,21 @@ class TemporalSchema(_StrictBase):
 
 
 # =============================================================================
-# playbooks.yaml
+# workflows.yaml
 # =============================================================================
 
 
-class PlaybooksSchema(_StrictBase):
-    """Playbook and mission system configuration."""
+class WorkflowsSchema(_StrictBase):
+    """Workflow system configuration."""
 
-    playbooks_dir: str = "config/playbooks"
-    max_steps_per_playbook: int = 20
+    workflows_dir: str = "config/workflow_templates"
+    max_steps_per_workflow: int = 20
     max_context_size_bytes: int = 1_048_576  # 1MB
     default_step_timeout_seconds: int = 600
     default_budget_usd: float = 10.00
     max_budget_usd: float = 100.00
     max_concurrent_missions: int = 10
-    enable_playbook_matching: bool = True
+    enable_workflow_matching: bool = True
 
 
 # =============================================================================

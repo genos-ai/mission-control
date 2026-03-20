@@ -1,7 +1,7 @@
 """
-CLI handler for playbook commands.
+CLI handler for workflow commands.
 
-List available playbooks, execute playbook runs, inspect results,
+List available workflows, execute workflow runs, inspect results,
 and render reports in multiple output formats.
 """
 
@@ -15,17 +15,17 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-def run_playbook_cli(
+def run_workflow_cli(
     cli_logger,
     action: str,
-    playbook_name: str | None,
+    workflow_name: str | None,
     run_id: str | None,
     triggered_by: str,
     output_format: str = "human",
     project_name: str | None = None,
     gate: object | None = None,
 ) -> None:
-    """Dispatch playbook CLI actions."""
+    """Dispatch workflow CLI actions."""
     actions = {
         "list": _action_list,
         "detail": _action_detail,
@@ -39,7 +39,7 @@ def run_playbook_cli(
     if not handler:
         click.echo(
             click.style(
-                f"Unknown playbook action: {action}. "
+                f"Unknown workflow action: {action}. "
                 f"Valid: {', '.join(actions.keys())}",
                 fg="red",
             ),
@@ -50,7 +50,7 @@ def run_playbook_cli(
     try:
         asyncio.run(handler(
             cli_logger,
-            playbook_name=playbook_name,
+            workflow_name=workflow_name,
             run_id=run_id,
             triggered_by=triggered_by,
             output_format=output_format,
@@ -60,7 +60,7 @@ def run_playbook_cli(
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
         cli_logger.error(
-            "Playbook action failed",
+            "Workflow action failed",
             extra={"action": action, "error": str(e)},
         )
         sys.exit(1)
@@ -71,20 +71,20 @@ def run_playbook_cli(
 # =============================================================================
 
 
-async def _action_list(cli_logger, *, playbook_name, run_id, triggered_by, output_format, **_):
-    """List available playbooks."""
+async def _action_list(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
+    """List available workflows."""
     from modules.clients.cli.report import get_console, build_table
-    from modules.backend.services.playbook import PlaybookService
+    from modules.backend.services.workflow import WorkflowService
 
-    service = PlaybookService()
-    playbooks = service.list_playbooks(enabled_only=False)
+    service = WorkflowService()
+    workflows = service.list_workflows(enabled_only=False)
 
-    if not playbooks:
-        click.echo("No playbooks found.")
+    if not workflows:
+        click.echo("No workflows found.")
         return
 
     console = get_console()
-    table = build_table(f"Playbooks ({len(playbooks)} available)", columns=[
+    table = build_table(f"Workflows ({len(workflows)} available)", columns=[
         ("Name",        {"style": "cyan", "width": 36}),
         ("Ver",         {"justify": "right", "width": 4}),
         ("Enabled",     {"width": 8}),
@@ -93,67 +93,63 @@ async def _action_list(cli_logger, *, playbook_name, run_id, triggered_by, outpu
         ("Description", {"ratio": 1}),
     ])
 
-    for p in playbooks:
-        enabled = "[green]yes[/green]" if p.enabled else "[red]no[/red]"
+    for w in workflows:
+        enabled = "[green]yes[/green]" if w.enabled else "[red]no[/red]"
         table.add_row(
-            p.playbook_name,
-            str(p.version),
+            w.workflow_name,
+            str(w.version),
             enabled,
-            f"${p.budget.max_cost_usd:.2f}",
-            str(len(p.steps)),
-            p.description[:80],
+            f"${w.budget.max_cost_usd:.2f}",
+            str(len(w.steps)),
+            w.description[:80],
         )
 
     console.print(table)
 
 
-async def _action_detail(cli_logger, *, playbook_name, run_id, triggered_by, output_format, **_):
-    """Show playbook detail."""
-    if not playbook_name:
-        click.echo(click.style("Error: playbook name is required for detail.", fg="red"), err=True)
+async def _action_detail(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
+    """Show workflow detail."""
+    if not workflow_name:
+        click.echo(click.style("Error: workflow name is required for detail.", fg="red"), err=True)
         sys.exit(1)
 
     from modules.clients.cli.report import get_console, build_table, primary_panel, info_panel
-    from modules.backend.services.playbook import PlaybookService
+    from modules.backend.services.workflow import WorkflowService
 
-    service = PlaybookService()
-    playbook = service.get_playbook(playbook_name)
+    service = WorkflowService()
+    workflow = service.get_workflow(workflow_name)
 
-    if not playbook:
-        click.echo(click.style(f"Playbook '{playbook_name}' not found.", fg="red"), err=True)
+    if not workflow:
+        click.echo(click.style(f"Workflow '{workflow_name}' not found.", fg="red"), err=True)
         sys.exit(1)
 
     console = get_console()
 
-    # Header panel
-    enabled_str = "[green]yes[/green]" if playbook.enabled else "[red]no[/red]"
+    enabled_str = "[green]yes[/green]" if workflow.enabled else "[red]no[/red]"
     info_lines = [
-        f"[bold]Name:[/bold]        {playbook.playbook_name}",
-        f"[bold]Description:[/bold] {playbook.description}",
-        f"[bold]Version:[/bold]     {playbook.version}",
+        f"[bold]Name:[/bold]        {workflow.workflow_name}",
+        f"[bold]Description:[/bold] {workflow.description}",
+        f"[bold]Version:[/bold]     {workflow.version}",
         f"[bold]Enabled:[/bold]     {enabled_str}",
-        f"[bold]Trigger:[/bold]     {playbook.trigger.type}",
-        f"[bold]Budget:[/bold]      ${playbook.budget.max_cost_usd:.2f}",
+        f"[bold]Trigger:[/bold]     {workflow.trigger.type}",
+        f"[bold]Budget:[/bold]      ${workflow.budget.max_cost_usd:.2f}",
     ]
-    console.print(primary_panel(content="\n".join(info_lines), title="Playbook Detail"))
+    console.print(primary_panel(content="\n".join(info_lines), title="Workflow Detail"))
 
-    # Objective panel
     obj_lines = [
-        f"[bold]Statement:[/bold] {playbook.objective.statement}",
-        f"[bold]Category:[/bold]  {playbook.objective.category}",
-        f"[bold]Owner:[/bold]     {playbook.objective.owner}",
-        f"[bold]Priority:[/bold]  {playbook.objective.priority}",
+        f"[bold]Statement:[/bold] {workflow.objective.statement}",
+        f"[bold]Category:[/bold]  {workflow.objective.category}",
+        f"[bold]Owner:[/bold]     {workflow.objective.owner}",
+        f"[bold]Priority:[/bold]  {workflow.objective.priority}",
     ]
-    if playbook.trigger.match_patterns:
-        obj_lines.append(f"[bold]Triggers:[/bold]  {', '.join(playbook.trigger.match_patterns)}")
+    if workflow.trigger.match_patterns:
+        obj_lines.append(f"[bold]Triggers:[/bold]  {', '.join(workflow.trigger.match_patterns)}")
     console.print(info_panel(content="\n".join(obj_lines), title="Objective"))
 
-    # Context panel
-    if playbook.context:
-        ctx_lines = [f"[bold]{k}:[/bold] {v}" for k, v in playbook.context.items()]
+    if workflow.context:
+        ctx_lines = [f"[bold]{k}:[/bold] {v}" for k, v in workflow.context.items()]
         console.print(info_panel(content="\n".join(ctx_lines), title="Context"))
 
-    # Steps table
     table = build_table("Steps", columns=[
         ("ID",          {"style": "cyan", "width": 20}),
         ("Capability",  {"width": 28}),
@@ -163,7 +159,7 @@ async def _action_detail(cli_logger, *, playbook_name, run_id, triggered_by, out
         ("Description", {"ratio": 1}),
     ], show_lines=True)
 
-    for step in playbook.steps:
+    for step in workflow.steps:
         ceiling = f"${step.cost_ceiling_usd:.2f}" if step.cost_ceiling_usd else "default"
         deps = ", ".join(step.depends_on) if step.depends_on else ""
         table.add_row(
@@ -178,30 +174,29 @@ async def _action_detail(cli_logger, *, playbook_name, run_id, triggered_by, out
     console.print(table)
 
 
-async def _action_run(cli_logger, *, playbook_name, run_id, triggered_by, output_format, project_name=None, gate=None, **_):
-    """Execute a playbook."""
-    if not playbook_name:
-        click.echo(click.style("Error: --playbook-name is required for run.", fg="red"), err=True)
+async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output_format, project_name=None, gate=None, **_):
+    """Execute a workflow."""
+    if not workflow_name:
+        click.echo(click.style("Error: --workflow-name is required for run.", fg="red"), err=True)
         sys.exit(1)
 
-    await _preflight_gate(playbook_name)
+    await _preflight_gate(workflow_name)
 
     from modules.backend.core.database import get_async_session
     from modules.clients.cli.report import (
         get_console, build_table, styled_status, status_panel,
         info_panel, render_mission_outcomes,
-        playbook_run_to_dict, generate_narrative, colorize_narrative,
+        workflow_run_to_dict, generate_narrative, colorize_narrative,
     )
     from modules.backend.services.mission import MissionService
-    from modules.backend.services.playbook_run import PlaybookRunService
+    from modules.backend.services.workflow_run import WorkflowRunService
 
     from rich.live import Live
 
     console = get_console()
-    console.print(f"[bold]Running playbook:[/bold] {playbook_name}\n")
+    console.print(f"[bold]Running workflow:[/bold] {workflow_name}\n")
 
-    # Progress state for the live display
-    progress_state: dict = {"steps": {}, "total": 0, "playbook": playbook_name}
+    progress_state: dict = {"steps": {}, "total": 0, "workflow": workflow_name}
 
     def _build_progress_table():
         table = build_table(columns=[
@@ -232,7 +227,7 @@ async def _action_run(cli_logger, *, playbook_name, run_id, triggered_by, output
 
     def on_progress(event: dict) -> None:
         etype = event.get("type", "")
-        if etype == "playbook_start":
+        if etype == "workflow_start":
             progress_state["total"] = event.get("total_steps", 0)
         elif etype == "step_start":
             progress_state["steps"][event["step_id"]] = {
@@ -249,30 +244,28 @@ async def _action_run(cli_logger, *, playbook_name, run_id, triggered_by, output
             live.update(_build_progress_table())
 
     async with get_async_session() as db:
-        run_service = PlaybookRunService(
+        run_service = WorkflowRunService(
             session=db,
             mission_service_factory=MissionService.factory,
         )
 
         with live:
-            run = await run_service.run_playbook(
-                playbook_name=playbook_name,
+            run = await run_service.run_workflow(
+                workflow_name=workflow_name,
                 triggered_by=triggered_by,
                 on_progress=on_progress,
                 project_name=project_name,
                 gate=gate,
             )
 
-        # Fetch missions for report rendering
         mission_service = MissionService(session=db)
         missions, _ = await mission_service.list_missions(
             playbook_run_id=run.id,
         )
         await db.commit()
 
-    # Render summary below the progress table
     header = (
-        f"[bold]{run.playbook_name}[/bold] v{run.playbook_version}    "
+        f"[bold]{run.workflow_name}[/bold] v{run.workflow_version}    "
         f"Status: {styled_status(run.status)}    "
         f"Cost: ${run.total_cost_usd:.4f}"
     )
@@ -283,38 +276,36 @@ async def _action_run(cli_logger, *, playbook_name, run_id, triggered_by, output
     console.print()
     console.print(status_panel(content=header, status=run.status))
 
-    # Generate AI narrative summary
-    narrative = await generate_narrative(playbook_run_to_dict(run, missions))
+    narrative = await generate_narrative(workflow_run_to_dict(run, missions))
     narrative = colorize_narrative(narrative)
     console.print(info_panel(content=narrative.strip(), title="Summary"))
 
-    # Per-step task detail with findings
     console.print()
     render_mission_outcomes(console, missions)
 
 
-async def _action_runs(cli_logger, *, playbook_name, run_id, triggered_by, output_format, **_):
-    """List playbook runs."""
+async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
+    """List workflow runs."""
     from modules.clients.cli.report import get_console, build_table, styled_status, DOTTED_ROWS
     from modules.backend.core.database import get_async_session
-    from modules.backend.services.playbook_run import PlaybookRunService
+    from modules.backend.services.workflow_run import WorkflowRunService
 
     async with get_async_session() as db:
-        run_service = PlaybookRunService(session=db)
+        run_service = WorkflowRunService(session=db)
         runs, total = await run_service.list_runs(
-            playbook_name=playbook_name,
+            workflow_name=workflow_name,
             limit=20,
         )
 
     if not runs:
-        click.echo("No playbook runs found.")
+        click.echo("No workflow runs found.")
         return
 
     console = get_console()
-    table = build_table(f"Playbook Runs ({total} total)", columns=[
+    table = build_table(f"Workflow Runs ({total} total)", columns=[
         ("Date/Time", {"style": "dim", "width": 16}),
         ("ID",        {"style": "cyan", "width": 36}),
-        ("Playbook",  {"width": 24}),
+        ("Workflow",  {"width": 24}),
         ("Status",    {"width": 10}),
         ("Cost",      {"justify": "right", "width": 8}),
         ("Trigger",   {"style": "dim", "width": 10}),
@@ -328,7 +319,7 @@ async def _action_runs(cli_logger, *, playbook_name, run_id, triggered_by, outpu
         table.add_row(
             dt_str,
             str(r.id),
-            r.playbook_name,
+            r.workflow_name,
             styled_status(r.status),
             f"${r.total_cost_usd:.4f}",
             r.triggered_by,
@@ -338,26 +329,26 @@ async def _action_runs(cli_logger, *, playbook_name, run_id, triggered_by, outpu
     console.print(table)
 
 
-async def _action_run_detail(cli_logger, *, playbook_name, run_id, triggered_by, output_format, **_):
-    """Show playbook run detail with missions — uses the report renderer."""
+async def _action_run_detail(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
+    """Show workflow run detail with missions — uses the report renderer."""
     if not run_id:
         click.echo(click.style("Error: --run-id is required for run-detail.", fg="red"), err=True)
         sys.exit(1)
 
     run, missions = await _load_run_with_missions(run_id)
-    from modules.clients.cli.report import render_playbook_run
-    await render_playbook_run(run, missions, "human")
+    from modules.clients.cli.report import render_workflow_run
+    await render_workflow_run(run, missions, "human")
 
 
-async def _action_report(cli_logger, *, playbook_name, run_id, triggered_by, output_format, **_):
-    """Render a report for a past playbook run in the requested format."""
+async def _action_report(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
+    """Render a report for a past workflow run in the requested format."""
     if not run_id:
         click.echo(click.style("Error: --run-id is required for report.", fg="red"), err=True)
         sys.exit(1)
 
     run, missions = await _load_run_with_missions(run_id)
-    from modules.clients.cli.report import render_playbook_run
-    await render_playbook_run(run, missions, output_format)
+    from modules.clients.cli.report import render_workflow_run
+    await render_workflow_run(run, missions, output_format)
 
 
 # =============================================================================
@@ -365,18 +356,17 @@ async def _action_report(cli_logger, *, playbook_name, run_id, triggered_by, out
 # =============================================================================
 
 
-async def _preflight_gate(playbook_name: str) -> None:
-    """Run preflight credit check using rosters referenced by the playbook."""
+async def _preflight_gate(workflow_name: str) -> None:
+    """Run preflight credit check using rosters referenced by the workflow."""
     from modules.backend.agents.preflight import preflight_check
-    from modules.backend.services.playbook import PlaybookService
+    from modules.backend.services.workflow import WorkflowService
 
-    service = PlaybookService()
-    playbook = service.get_playbook(playbook_name)
-    if not playbook:
-        return  # let the run action handle the missing playbook error
+    service = WorkflowService()
+    workflow = service.get_workflow(workflow_name)
+    if not workflow:
+        return
 
-    # Collect unique rosters from playbook steps
-    rosters = {step.roster for step in playbook.steps if step.roster}
+    rosters = {step.roster for step in workflow.steps if step.roster}
     if not rosters:
         rosters = {"default"}
 
@@ -396,17 +386,17 @@ async def _preflight_gate(playbook_name: str) -> None:
 
 
 async def _load_run_with_missions(run_id: str):
-    """Load a playbook run and its missions from the database."""
+    """Load a workflow run and its missions from the database."""
     from modules.backend.core.database import get_async_session
     from modules.backend.services.mission import MissionService
-    from modules.backend.services.playbook_run import PlaybookRunService
+    from modules.backend.services.workflow_run import WorkflowRunService
 
     async with get_async_session() as db:
         mission_service = MissionService(session=db)
-        run_service = PlaybookRunService(session=db)
+        run_service = WorkflowRunService(session=db)
         run = await run_service.get_run(run_id)
         if not run:
-            click.echo(click.style(f"Playbook run '{run_id}' not found.", fg="red"), err=True)
+            click.echo(click.style(f"Workflow run '{run_id}' not found.", fg="red"), err=True)
             sys.exit(1)
 
         missions, _ = await mission_service.list_missions(

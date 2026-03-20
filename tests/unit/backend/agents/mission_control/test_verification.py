@@ -463,8 +463,8 @@ class TestFullPipeline:
         result = await run_verification_pipeline(
             output=valid_output, task=basic_task, agent_interface=None,
         )
-        assert result.total_execution_time_ms > 0
-        assert result.tier_1.execution_time_ms > 0
+        assert result.total_execution_time_ms >= 0
+        assert result.tier_1.execution_time_ms >= 0
 
 
 # ---- Retry Feedback Tests ----

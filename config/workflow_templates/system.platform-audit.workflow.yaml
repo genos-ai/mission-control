@@ -1,12 +1,12 @@
 # =============================================================================
-# Playbook: Platform Self-Audit
+# Workflow: Platform Self-Audit
 # =============================================================================
 # Full platform audit using code quality and system health agents in parallel.
 # Demonstrates: multi-agent dispatch, parallel execution, the full
 # Planning Agent → TaskPlan → dispatch → verify pipeline.
 # =============================================================================
 
-playbook_name: system.platform-audit.playbook
+workflow_name: system.platform-audit.workflow
 description: "Run compliance scans and health checks in parallel"
 objective:
   statement: "Audit the platform for compliance violations and system health issues"

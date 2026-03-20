@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.config_schema import PlaybooksSchema
+from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.mission import Mission, MissionState
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.services.mission import MissionService
@@ -18,7 +18,7 @@ from modules.backend.services.mission import MissionService
 
 def _mock_app_config(**overrides):
     config = MagicMock()
-    config.playbooks = PlaybooksSchema(**overrides)
+    config.workflows = WorkflowsSchema(**overrides)
     return config
 
 
@@ -122,7 +122,7 @@ class TestCreateMissionFromStep:
         assert mission.playbook_step_id == "scrape"
         assert mission.roster_ref == "research_team"
         assert mission.upstream_context == {"sources": ["url1"]}
-        assert mission.trigger_type == "playbook"
+        assert mission.trigger_type == "workflow"
 
 
 class TestMissionStateTransitions:

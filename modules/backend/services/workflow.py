@@ -1,9 +1,9 @@
 """
-Playbook Service.
+Workflow Service.
 
-Loads playbook YAML files from config/playbooks/, validates against
-PlaybookSchema, resolves capability references to agent names, and
-generates Mission briefs from playbook steps.
+Loads workflow YAML files from config/workflow_templates/, validates against
+WorkflowSchema, resolves capability references to agent names, and
+generates Mission briefs from workflow steps.
 
 This service is stateless — it reads from the filesystem and agent
 registry. It does not touch the database.
@@ -16,120 +16,120 @@ import yaml
 
 from modules.backend.core.config import find_project_root, get_app_config
 from modules.backend.core.logging import get_logger
-from modules.backend.schemas.playbook import PlaybookSchema, PlaybookStepSchema
+from modules.backend.schemas.workflow import WorkflowSchema, WorkflowStepSchema
 
 logger = get_logger(__name__)
 
 
-class PlaybookService:
-    """Load, validate, and resolve playbooks from config/playbooks/."""
+class WorkflowService:
+    """Load, validate, and resolve workflows from config/workflow_templates/."""
 
     def __init__(self, agent_registry: dict[str, Any] | None = None) -> None:
         self._project_root = find_project_root()
         self._agent_registry = agent_registry
-        self._playbooks: dict[str, PlaybookSchema] = {}
+        self._workflows: dict[str, WorkflowSchema] = {}
 
-    def load_playbooks(self) -> dict[str, PlaybookSchema]:
-        """Load all playbook YAML files from the configured directory.
+    def load_workflows(self) -> dict[str, WorkflowSchema]:
+        """Load all workflow YAML files from the configured directory.
 
         Scans recursively for *.yaml files, validates each against
-        PlaybookSchema, and returns a dict keyed by playbook_name.
-        Invalid playbooks are logged and skipped (not fatal).
+        WorkflowSchema, and returns a dict keyed by workflow_name.
+        Invalid workflows are logged and skipped (not fatal).
         """
         app_config = get_app_config()
-        playbooks_dir = self._project_root / app_config.playbooks.playbooks_dir
+        workflows_dir = self._project_root / app_config.workflows.workflows_dir
 
-        if not playbooks_dir.exists():
+        if not workflows_dir.exists():
             logger.warning(
-                "Playbooks directory not found",
-                extra={"path": str(playbooks_dir)},
+                "Workflows directory not found",
+                extra={"path": str(workflows_dir)},
             )
             return {}
 
-        loaded: dict[str, PlaybookSchema] = {}
+        loaded: dict[str, WorkflowSchema] = {}
 
-        for yaml_path in sorted(playbooks_dir.rglob("*.yaml")):
+        for yaml_path in sorted(workflows_dir.rglob("*.yaml")):
             try:
                 raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
                 if not raw or not isinstance(raw, dict):
                     continue
 
-                playbook = PlaybookSchema(**raw)
+                workflow = WorkflowSchema(**raw)
 
-                if playbook.playbook_name in loaded:
+                if workflow.workflow_name in loaded:
                     logger.warning(
-                        "Duplicate playbook name, skipping",
+                        "Duplicate workflow name, skipping",
                         extra={
-                            "playbook_name": playbook.playbook_name,
+                            "workflow_name": workflow.workflow_name,
                             "path": str(yaml_path),
                         },
                     )
                     continue
 
-                max_steps = app_config.playbooks.max_steps_per_playbook
-                if len(playbook.steps) > max_steps:
+                max_steps = app_config.workflows.max_steps_per_workflow
+                if len(workflow.steps) > max_steps:
                     logger.warning(
-                        "Playbook exceeds max steps, skipping",
+                        "Workflow exceeds max steps, skipping",
                         extra={
-                            "playbook_name": playbook.playbook_name,
-                            "step_count": len(playbook.steps),
+                            "workflow_name": workflow.workflow_name,
+                            "step_count": len(workflow.steps),
                             "max_steps": max_steps,
                         },
                     )
                     continue
 
-                max_budget = app_config.playbooks.max_budget_usd
-                if playbook.budget.max_cost_usd > max_budget:
+                max_budget = app_config.workflows.max_budget_usd
+                if workflow.budget.max_cost_usd > max_budget:
                     logger.warning(
-                        "Playbook budget exceeds system cap, capping",
+                        "Workflow budget exceeds system cap, capping",
                         extra={
-                            "playbook_name": playbook.playbook_name,
-                            "requested": playbook.budget.max_cost_usd,
+                            "workflow_name": workflow.workflow_name,
+                            "requested": workflow.budget.max_cost_usd,
                             "capped_to": max_budget,
                         },
                     )
-                    playbook.budget.max_cost_usd = max_budget
+                    workflow.budget.max_cost_usd = max_budget
 
-                loaded[playbook.playbook_name] = playbook
+                loaded[workflow.workflow_name] = workflow
                 logger.debug(
-                    "Playbook loaded",
+                    "Workflow loaded",
                     extra={
-                        "playbook_name": playbook.playbook_name,
-                        "version": playbook.version,
-                        "steps": len(playbook.steps),
-                        "enabled": playbook.enabled,
+                        "workflow_name": workflow.workflow_name,
+                        "version": workflow.version,
+                        "steps": len(workflow.steps),
+                        "enabled": workflow.enabled,
                     },
                 )
 
             except Exception as e:
                 logger.warning(
-                    "Failed to load playbook",
+                    "Failed to load workflow",
                     extra={"path": str(yaml_path), "error": str(e)},
                 )
                 continue
 
-        self._playbooks = loaded
+        self._workflows = loaded
         logger.info(
-            "Playbooks loaded",
+            "Workflows loaded",
             extra={"count": len(loaded), "names": list(loaded.keys())},
         )
         return loaded
 
-    def list_playbooks(self, enabled_only: bool = True) -> list[PlaybookSchema]:
-        """List available playbooks."""
-        if not self._playbooks:
-            self.load_playbooks()
+    def list_workflows(self, enabled_only: bool = True) -> list[WorkflowSchema]:
+        """List available workflows."""
+        if not self._workflows:
+            self.load_workflows()
 
-        playbooks = list(self._playbooks.values())
+        workflows = list(self._workflows.values())
         if enabled_only:
-            playbooks = [p for p in playbooks if p.enabled]
-        return playbooks
+            workflows = [w for w in workflows if w.enabled]
+        return workflows
 
-    def get_playbook(self, playbook_name: str) -> PlaybookSchema | None:
-        """Get a specific playbook by name."""
-        if not self._playbooks:
-            self.load_playbooks()
-        return self._playbooks.get(playbook_name)
+    def get_workflow(self, workflow_name: str) -> WorkflowSchema | None:
+        """Get a specific workflow by name."""
+        if not self._workflows:
+            self.load_workflows()
+        return self._workflows.get(workflow_name)
 
     def resolve_capability(self, capability: str) -> str:
         """Resolve a capability string to an agent name.
@@ -182,15 +182,15 @@ class PlaybookService:
             f"(expected agent '{agent_name}')"
         )
 
-    def validate_playbook_capabilities(
-        self, playbook: PlaybookSchema,
+    def validate_workflow_capabilities(
+        self, workflow: WorkflowSchema,
     ) -> list[str]:
-        """Validate that all capabilities in a playbook resolve to agents.
+        """Validate that all capabilities in a workflow resolve to agents.
 
         Returns list of error messages. Empty list means all resolve.
         """
         errors: list[str] = []
-        for step in playbook.steps:
+        for step in workflow.steps:
             try:
                 self.resolve_capability(step.capability)
             except ValueError as e:
@@ -198,17 +198,17 @@ class PlaybookService:
         return errors
 
     def generate_mission_briefs(
-        self, playbook: PlaybookSchema,
+        self, workflow: WorkflowSchema,
     ) -> list[dict[str, Any]]:
-        """Convert playbook steps into Mission brief definitions."""
+        """Convert workflow steps into Mission brief definitions."""
         step_index_map: dict[str, int] = {}
-        for i, step in enumerate(playbook.steps):
+        for i, step in enumerate(workflow.steps):
             step_index_map[step.id] = i
 
         briefs: list[dict[str, Any]] = []
         app_config = get_app_config()
 
-        for i, step in enumerate(playbook.steps):
+        for i, step in enumerate(workflow.steps):
             agent_name = self.resolve_capability(step.capability)
 
             brief: dict[str, Any] = {
@@ -220,7 +220,7 @@ class PlaybookService:
                 "complexity_tier": step.complexity_tier,
                 "cost_ceiling_usd": (
                     step.cost_ceiling_usd
-                    or app_config.playbooks.default_budget_usd
+                    or app_config.workflows.default_budget_usd
                 ),
                 "environment": step.environment,
                 "input_context": dict(step.input),
@@ -231,7 +231,7 @@ class PlaybookService:
                 ),
                 "timeout_seconds": (
                     step.timeout_seconds
-                    or app_config.playbooks.default_step_timeout_seconds
+                    or app_config.workflows.default_step_timeout_seconds
                 ),
                 "dependencies": [
                     {
@@ -246,48 +246,48 @@ class PlaybookService:
 
         return briefs
 
-    def match_playbook(self, user_input: str) -> PlaybookSchema | None:
-        """Match user input against playbook trigger patterns.
+    def match_workflow(self, user_input: str) -> WorkflowSchema | None:
+        """Match user input against workflow trigger patterns.
 
         Used by Mission Control for deterministic fast-path routing (P2).
         """
-        if not self._playbooks:
-            self.load_playbooks()
+        if not self._workflows:
+            self.load_workflows()
 
         input_lower = user_input.lower()
 
-        for playbook in self._playbooks.values():
-            if not playbook.enabled:
+        for workflow in self._workflows.values():
+            if not workflow.enabled:
                 continue
-            if not playbook.trigger.match_patterns:
+            if not workflow.trigger.match_patterns:
                 continue
 
-            for pattern in playbook.trigger.match_patterns:
+            for pattern in workflow.trigger.match_patterns:
                 if pattern.lower() in input_lower:
                     logger.info(
-                        "Playbook matched by pattern",
+                        "Workflow matched by pattern",
                         extra={
-                            "playbook_name": playbook.playbook_name,
+                            "workflow_name": workflow.workflow_name,
                             "pattern": pattern,
                         },
                     )
-                    return playbook
+                    return workflow
 
         return None
 
     def resolve_upstream_context(
         self,
-        step: PlaybookStepSchema,
+        step: WorkflowStepSchema,
         completed_outcomes: dict[str, dict],
-        playbook_context: dict[str, Any],
+        workflow_context: dict[str, Any],
     ) -> dict[str, Any]:
         """Build upstream_context for a Mission from completed prior missions.
 
-        The Playbook is the anti-corruption layer: it extracts specific
+        The Workflow is the anti-corruption layer: it extracts specific
         fields from prior MissionOutcomes via output_mapping and merges
-        them with the playbook's initial context.
+        them with the workflow's initial context.
         """
-        upstream: dict[str, Any] = dict(playbook_context)
+        upstream: dict[str, Any] = dict(workflow_context)
 
         for dep_id in step.depends_on:
             if dep_id in completed_outcomes:

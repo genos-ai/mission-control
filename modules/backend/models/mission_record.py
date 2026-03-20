@@ -98,13 +98,13 @@ class MissionRecord(UUIDMixin, TimestampMixin, Base):
     objective_statement: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="Business outcome from Playbook Objective (null for ad-hoc missions)",
+        comment="Business outcome from Workflow Objective (null for ad-hoc missions)",
     )
     objective_category: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,
         index=True,
-        comment="Objective category from Playbook (enables filtering by business domain)",
+        comment="Objective category from Workflow (enables filtering by business domain)",
     )
 
     status: Mapped[str] = mapped_column(

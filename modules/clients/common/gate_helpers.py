@@ -45,7 +45,7 @@ def safe_css_id(raw: str) -> str:
     return raw.replace(".", "-").replace("_", "-")
 
 
-# ── Status icons (shared by mission panel, playbook, history) ─────
+# ── Status icons (shared by mission panel, workflow, history) ─────
 
 STATUS_ICONS: dict[str, str] = {
     "pending": "[dim]○[/dim]",

@@ -1,11 +1,11 @@
 # =============================================================================
-# Playbook: Architecture Review
+# Workflow: Architecture Review
 # =============================================================================
 # Deep architectural review against the six engineering principles.
 # Runs the architecture agent with a compliance scan as prerequisite context.
 # =============================================================================
 
-playbook_name: code.architecture-review.playbook
+workflow_name: code.architecture-review.workflow
 description: "Deep architectural review against six engineering principles"
 objective:
   statement: "Review the codebase for architectural principle violations including unnecessary complexity, unsafe concurrency, silent failures, and more"

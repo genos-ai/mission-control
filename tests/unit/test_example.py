@@ -147,9 +147,9 @@ class TestSubcommandHelp:
         assert "--budget" in result.output
         assert "--roster" in result.output
 
-    def test_playbook_help_shows_subcommands(self, runner):
-        """Playbook help should list subcommands."""
-        result = runner.invoke(cli, ["playbook", "--help"])
+    def test_workflow_help_shows_subcommands(self, runner):
+        """Workflow help should list subcommands."""
+        result = runner.invoke(cli, ["workflow", "--help"])
 
         assert result.exit_code == 0
         assert "run" in result.output

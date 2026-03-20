@@ -1,27 +1,27 @@
 """
-Tests for playbook YAML validation schemas.
+Tests for workflow YAML validation schemas.
 
 Pure Pydantic schema tests — no mocks, no infrastructure.
 """
 
 import pytest
 
-from modules.backend.schemas.playbook import (
-    PlaybookBudgetSchema,
-    PlaybookObjectiveSchema,
-    PlaybookOutputFieldMapping,
-    PlaybookSchema,
-    PlaybookStepOutputMapping,
-    PlaybookStepSchema,
-    PlaybookTriggerSchema,
+from modules.backend.schemas.workflow import (
+    WorkflowBudgetSchema,
+    WorkflowObjectiveSchema,
+    WorkflowOutputFieldMapping,
+    WorkflowSchema,
+    WorkflowStepOutputMapping,
+    WorkflowStepSchema,
+    WorkflowTriggerSchema,
 )
 
 
-def _minimal_playbook(**overrides):
-    """Build a minimal valid playbook dict."""
+def _minimal_workflow(**overrides):
+    """Build a minimal valid workflow dict."""
     base = {
-        "playbook_name": "test.example.playbook",
-        "description": "Test playbook",
+        "workflow_name": "test.example.workflow",
+        "description": "Test workflow",
         "objective": {
             "statement": "Test objective",
             "category": "testing",
@@ -36,9 +36,9 @@ def _minimal_playbook(**overrides):
     return base
 
 
-class TestPlaybookStepSchema:
+class TestWorkflowStepSchema:
     def test_minimal_step(self):
-        step = PlaybookStepSchema(id="step-one", capability="test.agent")
+        step = WorkflowStepSchema(id="step-one", capability="test.agent")
         assert step.id == "step-one"
         assert step.roster == "default"
         assert step.complexity_tier == "simple"
@@ -46,7 +46,7 @@ class TestPlaybookStepSchema:
         assert step.cost_ceiling_usd is None
 
     def test_full_step(self):
-        step = PlaybookStepSchema(
+        step = WorkflowStepSchema(
             id="research",
             description="Research step",
             capability="research.scraper",
@@ -65,44 +65,44 @@ class TestPlaybookStepSchema:
 
     def test_invalid_complexity_tier(self):
         with pytest.raises(ValueError):
-            PlaybookStepSchema(
+            WorkflowStepSchema(
                 id="step", capability="test.agent",
                 complexity_tier="medium",
             )
 
     def test_invalid_environment(self):
         with pytest.raises(ValueError):
-            PlaybookStepSchema(
+            WorkflowStepSchema(
                 id="step", capability="test.agent",
                 environment="docker",
             )
 
     def test_invalid_id_pattern(self):
         with pytest.raises(ValueError):
-            PlaybookStepSchema(id="Step-One", capability="test.agent")
+            WorkflowStepSchema(id="Step-One", capability="test.agent")
 
     def test_invalid_capability_pattern(self):
         with pytest.raises(ValueError):
-            PlaybookStepSchema(id="step", capability="singleword")
+            WorkflowStepSchema(id="step", capability="singleword")
 
     def test_cost_ceiling_minimum(self):
         with pytest.raises(ValueError):
-            PlaybookStepSchema(
+            WorkflowStepSchema(
                 id="step", capability="test.agent",
                 cost_ceiling_usd=0.001,
             )
 
 
-class TestPlaybookOutputMapping:
+class TestWorkflowOutputMapping:
     def test_summary_key_only(self):
-        mapping = PlaybookStepOutputMapping(summary_key="result")
+        mapping = WorkflowStepOutputMapping(summary_key="result")
         assert mapping.summary_key == "result"
         assert mapping.field_mappings == []
 
     def test_field_mappings(self):
-        mapping = PlaybookStepOutputMapping(
+        mapping = WorkflowStepOutputMapping(
             field_mappings=[
-                PlaybookOutputFieldMapping(
+                WorkflowOutputFieldMapping(
                     source_task="task_1",
                     source_field="output",
                     target_key="data",
@@ -114,24 +114,24 @@ class TestPlaybookOutputMapping:
 
     def test_invalid_target_key_pattern(self):
         with pytest.raises(ValueError):
-            PlaybookOutputFieldMapping(
+            WorkflowOutputFieldMapping(
                 source_task="t", source_field="f",
                 target_key="Invalid-Key",
             )
 
     def test_extra_fields_rejected(self):
         with pytest.raises(ValueError):
-            PlaybookStepOutputMapping(unknown="field")
+            WorkflowStepOutputMapping(unknown="field")
 
 
-class TestPlaybookTriggerSchema:
+class TestWorkflowTriggerSchema:
     def test_defaults(self):
-        trigger = PlaybookTriggerSchema()
+        trigger = WorkflowTriggerSchema()
         assert trigger.type == "on_demand"
         assert trigger.match_patterns == []
 
     def test_with_patterns(self):
-        trigger = PlaybookTriggerSchema(
+        trigger = WorkflowTriggerSchema(
             type="on_demand",
             match_patterns=["ai news", "digest"],
         )
@@ -139,24 +139,24 @@ class TestPlaybookTriggerSchema:
 
     def test_invalid_type(self):
         with pytest.raises(ValueError):
-            PlaybookTriggerSchema(type="webhook")
+            WorkflowTriggerSchema(type="webhook")
 
 
-class TestPlaybookBudgetSchema:
+class TestWorkflowBudgetSchema:
     def test_defaults(self):
-        budget = PlaybookBudgetSchema()
+        budget = WorkflowBudgetSchema()
         assert budget.max_cost_usd == 10.00
         assert budget.max_tokens is None
 
     def test_custom(self):
-        budget = PlaybookBudgetSchema(max_cost_usd=50.0, max_tokens=100000)
+        budget = WorkflowBudgetSchema(max_cost_usd=50.0, max_tokens=100000)
         assert budget.max_cost_usd == 50.0
         assert budget.max_tokens == 100000
 
 
-class TestPlaybookObjectiveSchema:
+class TestWorkflowObjectiveSchema:
     def test_valid(self):
-        obj = PlaybookObjectiveSchema(
+        obj = WorkflowObjectiveSchema(
             statement="Keep team informed",
             category="research",
             owner="eng-lead",
@@ -166,7 +166,7 @@ class TestPlaybookObjectiveSchema:
         assert obj.regulatory_reference is None
 
     def test_with_regulatory_ref(self):
-        obj = PlaybookObjectiveSchema(
+        obj = WorkflowObjectiveSchema(
             statement="Compliance check",
             category="compliance",
             owner="ciso",
@@ -177,34 +177,34 @@ class TestPlaybookObjectiveSchema:
 
     def test_invalid_priority(self):
         with pytest.raises(ValueError):
-            PlaybookObjectiveSchema(
+            WorkflowObjectiveSchema(
                 statement="X", category="x", owner="x",
                 priority="urgent",
             )
 
     def test_invalid_category_pattern(self):
         with pytest.raises(ValueError):
-            PlaybookObjectiveSchema(
+            WorkflowObjectiveSchema(
                 statement="X", category="Bad Category", owner="x",
                 priority="normal",
             )
 
 
-class TestPlaybookSchema:
+class TestWorkflowSchema:
     def test_minimal_valid(self):
-        playbook = PlaybookSchema(**_minimal_playbook())
-        assert playbook.playbook_name == "test.example.playbook"
-        assert len(playbook.steps) == 1
-        assert playbook.version == 1
-        assert playbook.enabled is True
+        workflow = WorkflowSchema(**_minimal_workflow())
+        assert workflow.workflow_name == "test.example.workflow"
+        assert len(workflow.steps) == 1
+        assert workflow.version == 1
+        assert workflow.enabled is True
 
     def test_extra_fields_rejected(self):
         with pytest.raises(ValueError):
-            PlaybookSchema(**_minimal_playbook(unknown_field="oops"))
+            WorkflowSchema(**_minimal_workflow(unknown_field="oops"))
 
     def test_duplicate_step_ids(self):
         with pytest.raises(ValueError, match="Duplicate step IDs"):
-            PlaybookSchema(**_minimal_playbook(
+            WorkflowSchema(**_minimal_workflow(
                 steps=[
                     {"id": "step-a", "capability": "test.agent"},
                     {"id": "step-a", "capability": "test.other"},
@@ -213,7 +213,7 @@ class TestPlaybookSchema:
 
     def test_missing_dependency(self):
         with pytest.raises(ValueError, match="does not exist"):
-            PlaybookSchema(**_minimal_playbook(
+            WorkflowSchema(**_minimal_workflow(
                 steps=[
                     {"id": "step-a", "capability": "test.agent",
                      "depends_on": ["step-z"]},
@@ -222,7 +222,7 @@ class TestPlaybookSchema:
 
     def test_self_dependency(self):
         with pytest.raises(ValueError, match="depends on itself"):
-            PlaybookSchema(**_minimal_playbook(
+            WorkflowSchema(**_minimal_workflow(
                 steps=[
                     {"id": "step-a", "capability": "test.agent",
                      "depends_on": ["step-a"]},
@@ -231,7 +231,7 @@ class TestPlaybookSchema:
 
     def test_cycle_detection(self):
         with pytest.raises(ValueError, match="dependency cycle"):
-            PlaybookSchema(**_minimal_playbook(
+            WorkflowSchema(**_minimal_workflow(
                 steps=[
                     {"id": "step-a", "capability": "test.agent",
                      "depends_on": ["step-b"]},
@@ -242,7 +242,7 @@ class TestPlaybookSchema:
 
     def test_duplicate_output_mapping_keys(self):
         with pytest.raises(ValueError, match="Duplicate output mapping"):
-            PlaybookSchema(**_minimal_playbook(
+            WorkflowSchema(**_minimal_workflow(
                 steps=[
                     {"id": "step-a", "capability": "test.agent",
                      "output_mapping": {"summary_key": "result"}},
@@ -252,7 +252,7 @@ class TestPlaybookSchema:
             ))
 
     def test_valid_dependency_chain(self):
-        playbook = PlaybookSchema(**_minimal_playbook(
+        workflow = WorkflowSchema(**_minimal_workflow(
             steps=[
                 {"id": "step-a", "capability": "test.agent",
                  "output_mapping": {"summary_key": "a_result"}},
@@ -263,10 +263,10 @@ class TestPlaybookSchema:
                  "depends_on": ["step-a", "step-b"]},
             ],
         ))
-        assert len(playbook.steps) == 3
+        assert len(workflow.steps) == 3
 
     def test_roster_and_complexity_per_step(self):
-        playbook = PlaybookSchema(**_minimal_playbook(
+        workflow = WorkflowSchema(**_minimal_workflow(
             steps=[
                 {"id": "research", "capability": "test.agent",
                  "roster": "research_team", "complexity_tier": "complex"},
@@ -275,14 +275,14 @@ class TestPlaybookSchema:
                  "depends_on": ["research"]},
             ],
         ))
-        assert playbook.steps[0].roster == "research_team"
-        assert playbook.steps[0].complexity_tier == "complex"
-        assert playbook.steps[1].roster == "content_team"
+        assert workflow.steps[0].roster == "research_team"
+        assert workflow.steps[0].complexity_tier == "complex"
+        assert workflow.steps[1].roster == "content_team"
 
-    def test_invalid_playbook_name(self):
+    def test_invalid_workflow_name(self):
         with pytest.raises(ValueError):
-            PlaybookSchema(**_minimal_playbook(playbook_name="BadName"))
+            WorkflowSchema(**_minimal_workflow(workflow_name="BadName"))
 
     def test_empty_steps_rejected(self):
         with pytest.raises(ValueError):
-            PlaybookSchema(**_minimal_playbook(steps=[]))
+            WorkflowSchema(**_minimal_workflow(steps=[]))
