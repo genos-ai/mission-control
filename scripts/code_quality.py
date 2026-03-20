@@ -1785,8 +1785,8 @@ def main() -> None:
     parser.add_argument(
         "--exclude",
         nargs="*",
-        default=None,
-        help="Patterns to exclude",
+        default=["**/migrations/*"],
+        help="Patterns to exclude (default: migrations)",
     )
     parser.add_argument(
         "--profile",

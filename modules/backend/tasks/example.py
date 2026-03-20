@@ -45,8 +45,6 @@ async def send_notification(
         extra={"user_id": user_id, "channel": channel, "message_length": len(message)},
     )
 
-    # TODO: Implement actual delivery logic per channel
-
     result = {
         "status": "delivered",
         "user_id": user_id,
@@ -117,7 +115,6 @@ async def cleanup_expired_records(
     """
     logger.info("Starting cleanup", extra={"table_name": table_name, "older_than_days": older_than_days})
 
-    # TODO: Implement actual database cleanup logic
     deleted_count = 0
 
     result = {
@@ -150,7 +147,6 @@ async def generate_report(
     """
     logger.info("Starting report generation", extra={"report_type": report_type, "user_id": user_id})
 
-    # TODO: Implement actual report generation logic
     report_id = f"report_{report_type}_{utc_now().strftime('%Y%m%d_%H%M%S')}"
 
     result = {

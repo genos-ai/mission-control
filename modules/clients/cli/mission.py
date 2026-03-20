@@ -104,7 +104,7 @@ async def _action_create(cli_logger, *, objective, mission_id, roster, budget, t
     click.echo(f"  Budget:    ${mission.cost_ceiling_usd:.2f}" if mission.cost_ceiling_usd else "  Budget:    default")
     click.echo(f"  Objective: {mission.objective[:100]}")
     click.echo()
-    click.echo(f"Execute with: python cli.py --service mission --mission-action execute --mission-id {mission.id}")
+    click.echo(f"Execute with: python cli.py mission execute {mission.id}")
 
 
 async def _action_execute(cli_logger, *, objective, mission_id, roster, budget, triggered_by, output_format):

@@ -25,11 +25,28 @@ The reference architecture principles are universal software engineering rules. 
 We invest upfront in sessions, event streaming, mission control, plan management, and verification — so that adding a new agent is a YAML file and a thin Python module, not a refactoring project. The cost of retrofitting infrastructure under existing agents is always higher than building it right once.
 
 This means:
-- Plans 10-17 (event bus, sessions, streaming mission control, dispatch + planning, verification pipeline, plan persistence, Temporal, playbooks) are the foundation. They ship before we build more vertical agents.
 - When choosing between "build an agent now and adapt infrastructure later" vs. "build infrastructure now and agents drop in later" — choose infrastructure.
-- A new agent should require: one YAML config, one `agent.py` with `create_agent()` / `run_agent()`, and optionally shared tool wrappers. Nothing else.
+- A new agent follows the 4-file contract defined in the Agent Blueprint (`docs/02-architecture/003-agent-blueprint.md`): YAML config, system prompt, Python module with `create_agent()` / `run_agent()`, and a roster entry. Nothing else.
+- The registry auto-discovers agents. The roster controls dispatch. The verification pipeline, cost tracking, event streaming, and gate reviews apply automatically.
 
 **Test:** Can a developer add a fully functional agent in under an hour without touching mission control, session, or infrastructure code? If not, the platform isn't ready.
+
+---
+
+### P15: The Mission Is the Domain Primitive, the Session Is the Transport Primitive
+
+**Two primitives at different levels. Neither replaces the other.**
+
+The mission is the persistent container that carries the brief, team, workflows, and accumulated context over months or years. It is what users create, name, and reason about. The session is the persistent bidirectional context that carries real-time events, multi-channel bindings, and conversation history for a single execution. It is what the transport layer routes on.
+
+This means:
+- Missions outlive any session, run, or execution. They are the organizational boundary.
+- Sessions outlive any request, connection, or server restart. They are the communication channel.
+- Each workflow run creates a session scoped to that execution, not to the mission.
+- Long-term knowledge accumulates on the mission (via MissionContext). Ephemeral state lives on the session.
+- Cost budgets exist at both levels: mission-level (total ceiling) and session-level (per-run ceiling).
+
+**Test:** If a mission runs daily for a year, does each run have clean session state while the mission retains accumulated context? If not, the scoping is wrong.
 
 ---
 

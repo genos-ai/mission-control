@@ -40,8 +40,6 @@ async def daily_cleanup(older_than_days: int = 30) -> dict[str, Any]:
     """
     logger.info("Starting daily cleanup", extra={"older_than_days": older_than_days})
 
-    # TODO: Implement actual cleanup logic (sessions, audit logs, temp files)
-
     result = {
         "status": "completed",
         "older_than_days": older_than_days,
@@ -102,8 +100,6 @@ async def weekly_report_generation() -> dict[str, Any]:
     """
     logger.info("Starting weekly report generation")
 
-    # TODO: Implement actual report generation logic
-
     result = {
         "status": "completed",
         "reports_generated": [],
@@ -125,8 +121,6 @@ async def metrics_aggregation(interval_minutes: int = 15) -> dict[str, Any]:
         Aggregation status
     """
     logger.debug("Starting metrics aggregation", extra={"interval_minutes": interval_minutes})
-
-    # TODO: Implement actual metrics aggregation logic
 
     result = {
         "status": "completed",

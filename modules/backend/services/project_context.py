@@ -9,13 +9,13 @@ import copy
 import json as _json
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
-from modules.backend.core.utils import estimate_tokens
+from modules.backend.core.utils import estimate_tokens, utc_now
 from modules.backend.models.project_context import (
     ChangeType,
     ContextChange,
@@ -299,7 +299,7 @@ class ProjectContextManager(BaseService):
 
         # Update system fields
         data["version"] = current_version + 1
-        data["last_updated"] = datetime.now(timezone.utc).isoformat()
+        data["last_updated"] = utc_now().isoformat()
         data["last_updated_by"] = agent_id or mission_id or "system"
 
         # Phase 2: Check size BEFORE writing any audit records.

@@ -177,9 +177,32 @@ class SessionRepository(BaseRepository[Session]):
 
     # --- Message queries ---
 
-    async def add_message(self, **kwargs) -> SessionMessage:
+    async def add_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        sender_id: str | None = None,
+        model: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        cost_usd: float | None = None,
+        tool_name: str | None = None,
+        tool_call_id: str | None = None,
+    ) -> SessionMessage:
         """Add a message to a session."""
-        msg = SessionMessage(**kwargs)
+        msg = SessionMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            sender_id=sender_id,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+        )
         self.session.add(msg)
         await self.session.flush()
         await self.session.refresh(msg)

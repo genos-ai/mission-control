@@ -6,12 +6,12 @@ ranked by PageRank importance. Output can be piped to an LLM or saved
 as an artifact.
 
 Usage:
-    python scripts/code_map.py                          # Markdown to stdout
-    python scripts/code_map.py --format json            # JSON to stdout
+    python scripts/code_map.py                          # Markdown to .codemap/map.md
+    python scripts/code_map.py --stdout                 # Markdown to stdout
     python scripts/code_map.py --format json --pretty   # Pretty-printed JSON
     python scripts/code_map.py --max-tokens 2048        # Token-budgeted
-    python scripts/code_map.py --scope modules/         # Specific directory
     python scripts/code_map.py --stats                  # Summary statistics only
+    python scripts/code_map.py --scope modules/ scripts/ --exclude ""  # Custom scope
 """
 
 from __future__ import annotations
@@ -1059,14 +1059,14 @@ def main() -> None:
     parser.add_argument(
         "--scope",
         nargs="*",
-        default=None,
-        help="Directories or files to include (default: entire repo)",
+        default=["modules/"],
+        help="Directories or files to include (default: modules/)",
     )
     parser.add_argument(
         "--exclude",
         nargs="*",
-        default=None,
-        help="Patterns to exclude",
+        default=["tests/", "**/migrations/*"],
+        help="Patterns to exclude (default: tests/ and migrations)",
     )
     parser.add_argument(
         "--stats",

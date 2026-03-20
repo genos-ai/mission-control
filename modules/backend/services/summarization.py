@@ -9,7 +9,7 @@ as summarized and excludes from default queries.
 """
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import AsyncGenerator
 
 from sqlalchemy import select, update, and_, desc
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from modules.backend.core.logging import get_logger
+from modules.backend.core.utils import utc_now
 from modules.backend.models.mission_record import (
     MissionRecord,
     MissionRecordStatus,
@@ -72,7 +73,7 @@ class SummarizationService(BaseService):
             return 0
 
         cutoff = (
-            datetime.now(timezone.utc) - timedelta(days=max_age_days)
+            utc_now() - timedelta(days=max_age_days)
         ).isoformat()[:10]
         to_archive = []
         to_keep = []
@@ -158,7 +159,7 @@ class SummarizationService(BaseService):
             mission_ids=[],
             key_outcomes={"milestones": to_archive},
             domain_tags=[],
-            period_end=datetime.now(timezone.utc).isoformat(),
+            period_end=utc_now().isoformat(),
         )
 
         # Update PCD with pruned milestones list
@@ -198,7 +199,7 @@ class SummarizationService(BaseService):
         Returns count of missions summarized.
         """
         cutoff = (
-            datetime.now(timezone.utc) - timedelta(days=max_age_days)
+            utc_now() - timedelta(days=max_age_days)
         ).isoformat()
 
         result = await self.session.execute(

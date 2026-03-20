@@ -11,7 +11,7 @@ Plus a convenience compositor:
 
 from __future__ import annotations
 
-import datetime
+from modules.backend.core.utils import utc_now
 
 from modules.backend.services.code_map.types import ModuleInfo, SymbolInfo, SymbolKind
 
@@ -91,7 +91,7 @@ def assemble_code_map(
     return {
         "project_id": repo_root_name,
         "commit": commit,
-        "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "generated_at": utc_now().isoformat(),
         "generator_version": "1.0.0",
         "modules": modules_dict,
         "import_graph": import_graph,

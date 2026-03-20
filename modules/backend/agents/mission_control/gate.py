@@ -17,12 +17,13 @@ CLI override: --gate <mode>  (--step is an alias for --gate interactive)
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
-logger = logging.getLogger(__name__)
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # ── Enums and data models ────────────────────────────────────────────────

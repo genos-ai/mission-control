@@ -6,7 +6,7 @@ Uses LabelScheduleSource for static schedules defined in task decorators.
 
 Usage:
     # Start scheduler process
-    python cli.py --service scheduler
+    python cli.py scheduler
 
     # Or directly with taskiq
     taskiq scheduler modules.backend.tasks.scheduler:scheduler
