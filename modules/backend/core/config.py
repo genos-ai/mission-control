@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str
     telegram_webhook_secret: str
     anthropic_api_key: str
+    admin_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

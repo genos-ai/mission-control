@@ -7,6 +7,7 @@ Aggregates all v1 endpoint routers.
 from fastapi import APIRouter
 
 from modules.backend.api.v1.endpoints import (
+    admin,
     agents,
     catalog,
     executions,
@@ -42,3 +43,6 @@ router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
 
 # Workshop (single-agent sandbox) endpoints
 router.include_router(workshop.router, prefix="/workshop", tags=["workshop"])
+
+# Admin endpoints (protected by admin role)
+router.include_router(admin.router, prefix="/admin", tags=["admin"])

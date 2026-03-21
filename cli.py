@@ -922,6 +922,13 @@ def admin(ctx):
     Examples:
         python cli.py admin seed-catalog
         python cli.py admin seed-catalog --force
+        python cli.py admin metrics
+        python cli.py admin costs
+        python cli.py admin config
+        python cli.py admin health
+        python cli.py admin roles
+        python cli.py admin update-prompt --agent <name> --content @path/to/prompt.md
+        python cli.py admin toggle-agent --agent <name>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -934,6 +941,78 @@ def admin_seed_catalog(ctx, force):
     """Seed the agent catalog from config/agents/ YAML files."""
     from modules.clients.cli.catalog_cmds import run_admin
     run_admin(ctx.logger, "seed-catalog", force=force, output_format=ctx.output_format)
+
+
+@admin.command("metrics")
+@click.pass_obj
+def admin_metrics(ctx):
+    """Show platform overview metrics (missions, sessions, costs)."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "metrics", output_format=ctx.output_format)
+
+
+@admin.command("costs")
+@click.pass_obj
+def admin_costs(ctx):
+    """Show cost breakdown by agent and execution status."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "costs", output_format=ctx.output_format)
+
+
+@admin.command("config")
+@click.pass_obj
+def admin_config(ctx):
+    """View platform configuration (non-secret values)."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "config", output_format=ctx.output_format)
+
+
+@admin.command("health")
+@click.pass_obj
+def admin_health(ctx):
+    """Run system health check (database, Redis)."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "health", output_format=ctx.output_format)
+
+
+@admin.command("roles")
+@click.pass_obj
+def admin_roles(ctx):
+    """List configured role hierarchy."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "roles", output_format=ctx.output_format)
+
+
+@admin.command("user-roles")
+@click.pass_obj
+def admin_user_roles(ctx):
+    """List user-to-role assignments."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "user-roles", output_format=ctx.output_format)
+
+
+@admin.command("update-prompt")
+@click.option("--agent", "agent_name", required=True, help="Agent name.")
+@click.option("--content", required=True, help="Prompt text or @filepath to read from file.")
+@click.option("--reason", "change_reason", default=None, help="Reason for the change.")
+@click.pass_obj
+def admin_update_prompt(ctx, agent_name, content, change_reason):
+    """Update an agent's system prompt with version tracking."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(
+        ctx.logger, "update-prompt",
+        agent_name=agent_name, content=content, change_reason=change_reason,
+        output_format=ctx.output_format,
+    )
+
+
+@admin.command("toggle-agent")
+@click.option("--agent", "agent_name", required=True, help="Agent name to enable/disable.")
+@click.pass_obj
+def admin_toggle_agent(ctx, agent_name):
+    """Toggle an agent's enabled/disabled state."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "toggle-agent", agent_name=agent_name, output_format=ctx.output_format)
 
 
 # =============================================================================
