@@ -154,7 +154,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         comment="True when compressed into a milestone summary by the summarization pipeline",
     )
 
-    parent_mission_id: Mapped[str | None] = mapped_column(
+    parent_execution_record_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("execution_records.id"),
         nullable=True,

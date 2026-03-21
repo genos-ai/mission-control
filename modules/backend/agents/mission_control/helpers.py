@@ -84,11 +84,28 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
     raise ValidationError(f"Unsupported model provider in '{model_name}'. Expected 'anthropic:model_name'.")
 
 
-def assemble_instructions(category: str, name: str) -> str:
-    """Compose layered prompt: organization -> category -> agent.
+def assemble_instructions(
+    category: str,
+    name: str,
+    *,
+    mission_brief: str | None = None,
+    user_prompt: str | None = None,
+) -> str:
+    """Compose layered prompt per Plan 28 section 7.
 
-    Reads markdown files from config/prompts/ and concatenates them.
-    Missing layers are silently skipped.
+    Layer order:
+        1. Organization prompts  (config/prompts/organization/*.md)
+        2. Category prompt        (config/prompts/categories/{category}.md)
+        3. Agent system prompt    (config/prompts/agents/{category}/{name}/system.md)
+        4. Mission brief          (from missions.brief — shared across all agents)
+        5. User prompt            (from mission_team_members.user_prompt — per-agent)
+
+    Layers 1-3 come from files on disk. Layers 4-5 are passed in when
+    available (populated from DB at dispatch time). Missing layers are
+    silently skipped.
+
+    Task instructions and mission context (Plan 28 layers 4-5 in the
+    prompt stack) are injected downstream by the dispatch loop, not here.
     """
     project_root = find_project_root()
     prompts_dir = project_root / "config" / "prompts"
@@ -106,6 +123,12 @@ def assemble_instructions(category: str, name: str) -> str:
     agent_file = prompts_dir / "agents" / category / name / "system.md"
     if agent_file.exists():
         layers.append(agent_file.read_text(encoding="utf-8").strip())
+
+    if mission_brief:
+        layers.append(f"## Mission Brief\n\n{mission_brief}")
+
+    if user_prompt:
+        layers.append(f"## Mission-Specific Instructions\n\n{user_prompt}")
 
     return "\n\n".join(layers)
 

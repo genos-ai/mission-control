@@ -350,6 +350,8 @@ class WorkflowsSchema(_StrictBase):
     max_budget_usd: float = 100.00
     max_concurrent_missions: int = 10
     enable_workflow_matching: bool = True
+    max_scheduled_runs_per_day: int = 50
+    schedule_evaluation_interval_seconds: int = 60
 
 
 # =============================================================================

@@ -17,6 +17,7 @@ def run_mission(
     name: str | None = None,
     mission_id: str | None = None,
     description: str | None = None,
+    brief: str | None = None,
     owner_id: str = "user:cli",
     roster: str = "default",
     budget: float | None = None,
@@ -44,6 +45,7 @@ def run_mission(
         name=name,
         mission_id=mission_id,
         description=description,
+        brief=brief,
         owner_id=owner_id,
         roster=roster,
         budget=budget,
@@ -53,7 +55,7 @@ def run_mission(
     ))
 
 
-async def _action_create(cli_logger, *, name, description, owner_id, roster, budget, repo_url, repo_root, **_):
+async def _action_create(cli_logger, *, name, description, brief, owner_id, roster, budget, repo_url, repo_root, **_):
     """Create a new mission."""
     from modules.backend.services.mission import MissionService
 
@@ -69,6 +71,7 @@ async def _action_create(cli_logger, *, name, description, owner_id, roster, bud
         mission = await svc.create_mission(
             name=name,
             description=description,
+            brief=brief,
             owner_id=owner_id,
             default_roster=roster,
             budget_ceiling_usd=budget,
@@ -127,6 +130,8 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
     console.print(f"[bold]{mission.name}[/bold]  ({mission.status})")
     console.print(f"  ID:          {mission.id}")
     console.print(f"  Description: {mission.description}")
+    if mission.brief:
+        console.print(f"  Brief:       {mission.brief}")
     console.print(f"  Owner:       {mission.owner_id}")
     console.print(f"  Roster:      {mission.default_roster}")
     if mission.budget_ceiling_usd:

@@ -97,6 +97,7 @@ class TestMissionResponse:
             id="abc-123",
             name="resp-mission",
             description="Response test",
+            brief=None,
             status="active",
             owner_id="user:test",
             team_id=None,

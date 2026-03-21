@@ -74,7 +74,7 @@ class ExecutionRecordResponse(BaseModel):
     total_cost_usd: float
     started_at: str | None
     completed_at: str | None
-    parent_mission_id: str | None
+    parent_execution_record_id: str | None
     created_at: str
     updated_at: str
 

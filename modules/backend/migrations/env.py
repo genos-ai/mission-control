@@ -32,6 +32,13 @@ from modules.backend.models.mission_context import MissionContext, ContextChange
 from modules.backend.models.mission_history import MissionDecision, MilestoneSummary  # noqa: F401
 from modules.backend.models.session import Session, SessionChannel, SessionMessage  # noqa: F401
 
+# Phase 2: New tables
+from modules.backend.models.agent_catalog import AgentCatalog  # noqa: F401
+from modules.backend.models.mission_team import MissionTeamMember  # noqa: F401
+from modules.backend.models.prompt_version import PromptVersion  # noqa: F401
+from modules.backend.models.workflow_definition import WorkflowDefinition  # noqa: F401
+from modules.backend.models.workflow_schedule import WorkflowSchedule  # noqa: F401
+
 # Alembic Config object
 config = context.config
 

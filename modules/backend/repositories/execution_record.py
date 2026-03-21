@@ -123,7 +123,7 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
     async def get_replan_chain(self, execution_id: str) -> list[ExecutionRecord]:
         """Get the full re-plan lineage for an execution.
 
-        Follows parent_mission_id links to build the chain.
+        Follows parent_execution_record_id links to build the chain.
         Returns oldest-first.
         """
         chain: list[ExecutionRecord] = []
@@ -134,7 +134,7 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
             if not record:
                 break
             chain.append(record)
-            current_id = record.parent_mission_id
+            current_id = record.parent_execution_record_id
 
         chain.reverse()
         return chain

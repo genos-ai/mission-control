@@ -645,7 +645,7 @@ class TestDispatch:
         assert call_args[0][1][0]["op"] == "add"
 
     @pytest.mark.asyncio
-    async def test_context_curator_not_called_without_project_id(self):
+    async def test_context_curator_not_called_without_mission_id(self):
         """3.3: No curator calls when mission_id is None."""
         plan = _plan([_task("t1")])
         roster = Roster(agents=[_entry("agent_a")])
@@ -813,7 +813,7 @@ class TestDispatch:
         assert received_inputs[0]["project_context"]["identity"]["name"] == "fallback-project"
 
     @pytest.mark.asyncio
-    async def test_assembler_not_called_without_project_id(self):
+    async def test_assembler_not_called_without_mission_id(self):
         """4.4: Assembler is not called when mission_id is None."""
         plan = _plan([_task("t1")])
         roster = Roster(agents=[_entry("agent_a")])

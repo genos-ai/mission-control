@@ -593,16 +593,17 @@ def mission(ctx):
 @mission.command("create")
 @click.option("--name", required=True, help="Unique mission name.")
 @click.option("--description", required=True, help="Mission purpose.")
+@click.option("--brief", default=None, help="Strategic directive for agents.")
 @click.option("--roster", default="default", help="Default agent roster.")
 @click.option("--budget", type=float, default=None, help="Budget ceiling (USD).")
 @click.option("--repo-url", default=None, help="Repository URL.")
 @click.option("--repo-root", default=None, help="Local repo root path.")
 @click.pass_obj
-def mission_create(ctx, name, description, roster, budget, repo_url, repo_root):
+def mission_create(ctx, name, description, brief, roster, budget, repo_url, repo_root):
     """Create a new mission."""
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "create", name=name, description=description,
-                roster=roster, budget=budget, repo_url=repo_url,
+                brief=brief, roster=roster, budget=budget, repo_url=repo_url,
                 repo_root=repo_root, output_format=ctx.output_format)
 
 
@@ -869,6 +870,160 @@ def _format_tree(group: click.Group, prefix: str = "", is_last: bool = True) -> 
             lines.extend(_format_tree(cmd, child_prefix, last))
 
     return lines
+
+
+# =============================================================================
+# Agent Catalog commands
+# =============================================================================
+
+
+@cli.group("catalog", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def catalog(ctx):
+    """Browse and manage the agent catalog.
+
+    \b
+    Examples:
+        python cli.py catalog list
+        python cli.py catalog detail vertical.code.quality.agent
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@catalog.command("list")
+@click.pass_obj
+def catalog_list(ctx):
+    """List all agents in the catalog."""
+    from modules.clients.cli.catalog_cmds import run_catalog
+    run_catalog(ctx.logger, "list", output_format=ctx.output_format)
+
+
+@catalog.command("detail")
+@click.argument("agent_name")
+@click.pass_obj
+def catalog_detail(ctx, agent_name):
+    """Show detail for a specific agent."""
+    from modules.clients.cli.catalog_cmds import run_catalog
+    run_catalog(ctx.logger, "detail", agent_name=agent_name, output_format=ctx.output_format)
+
+
+# =============================================================================
+# Admin commands
+# =============================================================================
+
+
+@cli.group("admin", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def admin(ctx):
+    """Administrative operations.
+
+    \b
+    Examples:
+        python cli.py admin seed-catalog
+        python cli.py admin seed-catalog --force
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@admin.command("seed-catalog")
+@click.option("--force", is_flag=True, help="Clear and re-seed the catalog.")
+@click.pass_obj
+def admin_seed_catalog(ctx, force):
+    """Seed the agent catalog from config/agents/ YAML files."""
+    from modules.clients.cli.catalog_cmds import run_admin
+    run_admin(ctx.logger, "seed-catalog", force=force, output_format=ctx.output_format)
+
+
+# =============================================================================
+# Schedule commands
+# =============================================================================
+
+
+@cli.group("schedule", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def schedule(ctx):
+    """Manage cron-based workflow schedules.
+
+    \b
+    Examples:
+        python cli.py schedule list --mission <id>
+        python cli.py schedule create --mission <id> --workflow <id> --cron "0 5 * * *"
+        python cli.py schedule enable <id>
+        python cli.py schedule disable <id>
+        python cli.py schedule delete <id>
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@schedule.command("list")
+@click.option("--mission", "mission_id", required=True, help="Mission ID.")
+@click.pass_obj
+def schedule_list(ctx, mission_id):
+    """List schedules for a mission."""
+    from modules.clients.cli.schedule_cmds import run_schedule
+    run_schedule(ctx.logger, "list", mission_id=mission_id,
+                 output_format=ctx.output_format)
+
+
+@schedule.command("create")
+@click.option("--mission", "mission_id", required=True, help="Mission ID.")
+@click.option("--workflow", "workflow_definition_id", required=True,
+              help="Workflow definition ID.")
+@click.option("--cron", required=True, help='Cron expression, e.g. "0 5 * * *".')
+@click.option("--description", default="", help="Schedule description.")
+@click.option("--budget", type=float, default=None, help="Budget per run (USD).")
+@click.option("--max-iterations", type=int, default=None,
+              help="Max total runs (NULL = unlimited).")
+@click.option("--cooldown", type=int, default=0,
+              help="Min seconds between runs.")
+@click.pass_obj
+def schedule_create(ctx, mission_id, workflow_definition_id, cron, description,
+                    budget, max_iterations, cooldown):
+    """Create a cron-based workflow schedule."""
+    from modules.clients.cli.schedule_cmds import run_schedule
+    run_schedule(ctx.logger, "create", mission_id=mission_id,
+                 workflow_definition_id=workflow_definition_id,
+                 cron=cron, description=description,
+                 budget=budget, max_iterations=max_iterations,
+                 cooldown=cooldown, output_format=ctx.output_format)
+
+
+@schedule.command("enable")
+@click.argument("schedule_id")
+@click.pass_obj
+def schedule_enable(ctx, schedule_id):
+    """Enable a schedule."""
+    from modules.clients.cli.schedule_cmds import run_schedule
+    run_schedule(ctx.logger, "enable", schedule_id=schedule_id,
+                 output_format=ctx.output_format)
+
+
+@schedule.command("disable")
+@click.argument("schedule_id")
+@click.pass_obj
+def schedule_disable(ctx, schedule_id):
+    """Disable a schedule."""
+    from modules.clients.cli.schedule_cmds import run_schedule
+    run_schedule(ctx.logger, "disable", schedule_id=schedule_id,
+                 output_format=ctx.output_format)
+
+
+@schedule.command("delete")
+@click.argument("schedule_id")
+@click.pass_obj
+def schedule_delete(ctx, schedule_id):
+    """Delete a schedule."""
+    from modules.clients.cli.schedule_cmds import run_schedule
+    run_schedule(ctx.logger, "delete", schedule_id=schedule_id,
+                 output_format=ctx.output_format)
+
+
+# =============================================================================
+# Tree command
+# =============================================================================
 
 
 @cli.command("tree")

@@ -92,6 +92,19 @@ class WorkflowStepSchema(BaseModel):
     output_mapping: WorkflowStepOutputMapping | None = None
     depends_on: list[str] = Field(default_factory=list)
     timeout_seconds: int | None = Field(None, ge=10, le=86400)
+    max_refinement_rounds: int = Field(
+        default=1, ge=1,
+        description="Max internal retry/QA cycles per step. 1 = no retry.",
+    )
+    termination: str = Field(
+        default="completion",
+        pattern=r"^(completion|budget_exhausted|criteria_met|max_iterations)$",
+        description="Step termination mode",
+    )
+    max_iterations: int | None = Field(
+        None, ge=1,
+        description="For termination=max_iterations: how many internal cycles",
+    )
 
 
 class WorkflowTriggerSchema(BaseModel):

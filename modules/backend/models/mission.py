@@ -42,6 +42,10 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     description: Mapped[str] = mapped_column(
         Text, nullable=False,
     )
+    brief: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="Strategic directive that agents read to understand their purpose",
+    )
     status: Mapped[str] = mapped_column(
         Enum(MissionStatus, native_enum=False),
         default=MissionStatus.ACTIVE,

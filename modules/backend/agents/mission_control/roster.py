@@ -1,7 +1,11 @@
 """Agent roster loader and validator.
 
 The roster defines which agents are available for Mission Control dispatch.
-Static per Mission Control type, loaded from YAML at startup.
+
+Two loading modes:
+  1. YAML-based (load_roster) — loads from config/mission_control/rosters/*.yaml
+  2. DB-based (derive_roster_from_team) — joins mission_team_members + agent_catalog
+
 Planning Agent and Verification Agent are auto-included in every roster.
 """
 
@@ -129,6 +133,97 @@ def load_roster(roster_name: str = "default") -> Roster:
         extra={
             "roster": roster_name,
             "agent_count": len(roster.agents),
+            "agents": roster.agent_names,
+        },
+    )
+    return roster
+
+
+async def derive_roster_from_team(
+    mission_id: str,
+    session: "AsyncSession",
+) -> Roster:
+    """Build a Roster from the DB-backed mission team + agent catalog.
+
+    Joins mission_team_members (enabled=True) with agent_catalog to
+    construct RosterAgentEntry objects. Falls back to YAML-based
+    load_roster() if no team members are found.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+    from modules.backend.repositories.mission_team import MissionTeamRepository
+
+    team_repo = MissionTeamRepository(session)
+    catalog_repo = AgentCatalogRepository(session)
+
+    members = await team_repo.list_by_mission(mission_id, enabled_only=True)
+
+    if not members:
+        logger.info(
+            "No team members found, falling back to YAML roster",
+            extra={"mission_id": mission_id},
+        )
+        return load_roster()
+
+    entries: list[RosterAgentEntry] = []
+    for member in members:
+        catalog_entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
+        if not catalog_entry or not catalog_entry.enabled:
+            logger.warning(
+                "Skipping disabled or missing catalog entry",
+                extra={
+                    "agent_catalog_id": member.agent_catalog_id,
+                    "mission_id": mission_id,
+                },
+            )
+            continue
+
+        model_cfg = catalog_entry.model_config_json or {}
+        constraints_cfg = catalog_entry.constraints or {}
+
+        if member.custom_constraints:
+            constraints_cfg = {**constraints_cfg, **member.custom_constraints}
+
+        entries.append(RosterAgentEntry(
+            agent_name=catalog_entry.agent_name,
+            agent_version=catalog_entry.version,
+            description=catalog_entry.description,
+            model=RosterModelSchema(
+                name=model_cfg.get("name", "anthropic:claude-haiku-4-5-20251001"),
+                temperature=model_cfg.get("temperature", 0.0),
+                max_tokens=model_cfg.get("max_tokens", 4096),
+            ),
+            tools=catalog_entry.tools or [],
+            interface=RosterInterfaceSchema(
+                input=(catalog_entry.interface or {}).get("input", {}),
+                output=(catalog_entry.interface or {}).get("output", {}),
+            ),
+            constraints=RosterConstraintsSchema(
+                timeout_seconds=constraints_cfg.get("timeout_seconds", 120),
+                cost_ceiling_usd=constraints_cfg.get("cost_ceiling_usd", 1.0),
+                retry_budget=constraints_cfg.get("retry_budget", 2),
+            ),
+        ))
+
+    roster = Roster(agents=entries)
+
+    missing = []
+    if not roster.get_agent_by_name(PLANNING_AGENT_NAME):
+        missing.append(PLANNING_AGENT_NAME)
+    if not roster.get_agent_by_name(VERIFICATION_AGENT_NAME):
+        missing.append(VERIFICATION_AGENT_NAME)
+    if missing:
+        logger.warning(
+            "DB-derived roster missing required agents — they must be on the team",
+            extra={"mission_id": mission_id, "missing": missing},
+        )
+
+    logger.info(
+        "Roster derived from mission team",
+        extra={
+            "mission_id": mission_id,
+            "agent_count": len(entries),
             "agents": roster.agent_names,
         },
     )

@@ -10,6 +10,8 @@
 #   max_budget_usd             - Hard cap on workflow budget (float)
 #   max_concurrent_missions    - Maximum workflow runs simultaneously (integer)
 #   enable_workflow_matching   - Enable Mission Control workflow matching fast-path (boolean)
+#   max_scheduled_runs_per_day - Platform-wide safety cap on scheduled runs per day (integer)
+#   schedule_evaluation_interval_seconds - How often the scheduler checks for due schedules (integer)
 # =============================================================================
 
 workflows_dir: "config/workflow_templates"
@@ -20,3 +22,5 @@ default_budget_usd: 10.00
 max_budget_usd: 100.00
 max_concurrent_missions: 10
 enable_workflow_matching: true
+max_scheduled_runs_per_day: 50
+schedule_evaluation_interval_seconds: 60

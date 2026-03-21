@@ -49,6 +49,7 @@ class MissionService(BaseService):
         name: str,
         description: str,
         owner_id: str,
+        brief: str | None = None,
         team_id: str | None = None,
         default_roster: str = "default",
         budget_ceiling_usd: float | None = None,
@@ -57,7 +58,7 @@ class MissionService(BaseService):
     ) -> Mission:
         """Create a new mission with initial owner membership.
 
-        Creates: projects row, project_members row (owner), seed MCD.
+        Creates: missions row, mission_members row (owner), seed MCD.
         """
         existing = await self._mission_repo.get_by_name(name)
         if existing:
@@ -67,6 +68,7 @@ class MissionService(BaseService):
         mission = await self._mission_repo.create(
             name=name,
             description=description,
+            brief=brief,
             owner_id=owner_id,
             team_id=team_id,
             default_roster=default_roster,

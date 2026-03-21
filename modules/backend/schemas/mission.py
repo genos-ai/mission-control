@@ -21,6 +21,10 @@ class MissionCreate(BaseModel):
         ..., min_length=1, max_length=2000,
         description="Mission purpose and scope",
     )
+    brief: str | None = Field(
+        None, max_length=10000,
+        description="Strategic directive that agents read to understand their purpose",
+    )
     owner_id: str = Field(
         ..., min_length=1, max_length=200,
         description="Primary human owner identifier",
@@ -54,6 +58,7 @@ class MissionUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     description: str | None = Field(None, min_length=1, max_length=2000)
+    brief: str | None = Field(None, max_length=10000)
     status: str | None = Field(None, pattern=r"^(active|paused|archived)$")
     default_roster: str | None = Field(None, pattern=r"^[a-z][a-z0-9_-]*$")
     budget_ceiling_usd: float | None = None
@@ -69,6 +74,7 @@ class MissionResponse(BaseModel):
     id: str
     name: str
     description: str
+    brief: str | None
     status: str
     owner_id: str
     team_id: str | None
