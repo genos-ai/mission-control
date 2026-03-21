@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Backend Complete — frontend implementation tracked by Plan 29 |
 | **Created** | 2026-03-20 |
 | **Depends on** | All prior plans (1-27) as reference architecture foundation |
 | **Blocked by** | Nothing — P3 (Breaking Changes Are Free) applies |
@@ -635,7 +635,7 @@ Mission (persistent container)
 
 ## 10  Phasing
 
-### Phase 1 — Foundation Rename
+### Phase 1 — Foundation Rename ✅
 
 Rename all entities and files. No new features. The codebase compiles, all tests pass, and the vocabulary is consistent. This is a mechanical, high-confidence change.
 
@@ -657,7 +657,7 @@ Steps:
 15. Run full test suite, fix all failures
 16. Regenerate code map
 
-### Phase 2 — DB Schema Expansion
+### Phase 2 — DB Schema Expansion ✅
 
 Add the new tables and seed infrastructure. Agent catalog, mission team, workflow definitions, prompt versioning.
 
@@ -675,45 +675,45 @@ Steps:
 11. Add API endpoints for new entities
 12. Add CLI commands for new operations
 
-### Phase 3 — Workflow Architect
+### Phase 3 — Workflow Architect (Backend ✅ · Frontend → Plan 29)
 
 Build the new horizontal agent that designs workflows conversationally.
 
 Steps:
-1. Create `modules/backend/agents/horizontal/architect/` module
-2. Define system prompt with catalog awareness
-3. Build tools: catalog browser, workflow validator, graph renderer
-4. Implement conversational workflow design flow
-5. Add "Lock In" mechanism (save to `workflows` table)
-6. Frontend: chat panel + live graph rendering during design
-7. Frontend: workflow management UI (list, edit, delete, version)
+1. ✅ Create `modules/backend/agents/horizontal/architect/` module
+2. ✅ Define system prompt with catalog awareness
+3. ✅ Build tools: catalog browser, workflow validator, graph renderer
+4. ✅ Implement conversational workflow design flow
+5. ✅ Add "Lock In" mechanism (save to `workflows` table)
+6. Frontend: chat panel + live graph rendering during design → Plan 29 §5.7
+7. Frontend: workflow management UI (list, edit, delete, version) → Plan 29 §5.7
 
-### Phase 4 — Workshop & Scheduling
+### Phase 4 — Workshop & Scheduling (Backend ✅ · Frontend → Plan 29)
 
 Build the interactive agent-testing mode and the production scheduler.
 
 Steps:
-1. Workshop API endpoint (`/workshop/{agent_id}/test`)
-2. Cached input extraction from previous workflow runs
-3. Single-agent re-execution with temporary prompt override
-4. Frontend: workshop panel with prompt editor + output preview
-5. Scheduler service: cron evaluation, workflow run creation
-6. Schedule management API + UI
-7. Safety limits: max runs per day, cost circuit breakers
-8. Notification system: run completion, failure alerts, budget warnings
+1. ✅ Workshop API endpoint (`/workshop/{agent_id}/test`)
+2. ✅ Cached input extraction from previous workflow runs
+3. ✅ Single-agent re-execution with temporary prompt override
+4. Frontend: workshop panel with prompt editor + output preview → Plan 29 §5.9
+5. ✅ Scheduler service: cron evaluation, workflow run creation
+6. ✅ Schedule management API; UI → Plan 29 §5.7
+7. ✅ Safety limits: max runs per day, cost circuit breakers
+8. ✅ Notification system: run completion, failure alerts, budget warnings
 
-### Phase 5 — Admin Site
+### Phase 5 — Admin Site (Backend ✅ · Frontend → Plan 29)
 
 Build the sysadmin-only interface for platform management.
 
 Steps:
-1. Separate admin routes or separate admin application
-2. Agent catalog CRUD UI with system prompt editor
-3. Tool registry management
-4. Global configuration UI
-5. User management
-6. Platform metrics dashboard
-7. System agent operations (health, code quality, architecture)
+1. ✅ Separate admin routes with role-based auth (AdminRole dependency)
+2. ✅ Agent catalog CRUD API with system prompt editor endpoint; UI → Plan 29 §5.12.1
+3. Tool registry management (deferred — not yet needed)
+4. ✅ Global configuration API; UI → Plan 29 §5.12.3
+5. ✅ User/role management API; UI → Plan 29 §5.12.5
+6. ✅ Platform metrics API; UI → Plan 29 §5.12.2
+7. ✅ System health API; UI → Plan 29 §5.12.4
 
 ---
 
