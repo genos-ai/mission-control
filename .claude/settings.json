@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/herman.young/development/mission-control/modules/backend -name \"*.py\" -type f ! -path \"*/__pycache__/*\" -exec wc -l {} +)",
+      "Bash(find /Users/herman.young/development/mission-control/modules/clients -name \"*.py\" -type f ! -path \"*/__pycache__/*\" -exec wc -l {} +)",
+      "Bash(python -m pytest tests/unit -x -q --tb=line)"
+    ]
+  }
+}
