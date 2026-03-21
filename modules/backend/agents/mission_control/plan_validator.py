@@ -25,7 +25,7 @@ from modules.backend.core.logging import get_logger
 from modules.backend.schemas.task_plan import TaskPlan
 
 # Ensure built-in checks are registered before validation
-from modules.backend.agents.mission_control.checks import builtin  # noqa: F401
+import modules.backend.agents.mission_control.checks.builtin as _builtin  # noqa: F401
 
 logger = get_logger(__name__)
 

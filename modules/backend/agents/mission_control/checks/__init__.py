@@ -4,4 +4,4 @@ Import this package to register all built-in checks in the check registry.
 Domain-specific checks are added in separate submodules.
 """
 
-from modules.backend.agents.mission_control.checks import builtin  # noqa: F401
+import modules.backend.agents.mission_control.checks.builtin as builtin  # noqa: F401
