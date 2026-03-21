@@ -14,7 +14,7 @@ def show_info(logger, output_format: str = "human") -> None:
     try:
         from modules.backend.core.config import get_app_config
         app_config = get_app_config()
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         logger.error(
             "Failed to load application configuration",
             extra={"error": str(e)},

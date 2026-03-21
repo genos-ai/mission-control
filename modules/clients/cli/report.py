@@ -395,7 +395,7 @@ async def generate_narrative(data: dict) -> str:
     try:
         from modules.backend.agents.horizontal.synthesis.agent import synthesize
         return await synthesize(data)
-    except Exception as e:
+    except (ImportError, RuntimeError, OSError, ValueError) as e:
         logger.warning(
             "Synthesis agent unavailable, using fallback",
             extra={"error": str(e)},

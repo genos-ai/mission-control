@@ -80,7 +80,7 @@ def run_db(
             confirm=confirm,
             include_missions=include_missions,
         ))
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
         cli_logger.error("DB action failed", extra={"action": action, "error": str(e)})
         sys.exit(1)

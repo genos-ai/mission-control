@@ -98,7 +98,7 @@ def _mount_channel_adapters(app: FastAPI, app_config) -> None:
             if adapter:
                 logger.info("Telegram channel mounted via gateway adapter")
 
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             logger.error(
                 "Failed to mount Telegram channel",
                 extra={"error": str(e)},

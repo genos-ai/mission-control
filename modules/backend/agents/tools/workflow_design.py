@@ -73,7 +73,7 @@ def validate_workflow_proposal(
         try:
             validated = WorkflowStepSchema(**step_data)
             validated_steps.append(validated)
-        except Exception as e:
+        except (TypeError, ValueError, KeyError) as e:
             errors.append(f"Step {i} (id={step_data.get('id', '?')}): {e}")
 
     if errors:

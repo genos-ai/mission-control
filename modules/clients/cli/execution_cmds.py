@@ -243,7 +243,8 @@ async def _action_detail(cli_logger, *, objective, execution_id, roster, budget,
         service = ExecutionService(session=db)
         try:
             execution = await service.get_execution(execution_id)
-        except Exception:
+        except Exception as e:
+            logger.warning("Execution lookup failed", extra={"execution_id": execution_id, "error": str(e)})
             click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
             raise _AbortExecution("execution not found")
 
@@ -295,7 +296,8 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
         service = ExecutionService(session=db)
         try:
             execution = await service.get_execution(execution_id)
-        except Exception:
+        except Exception as e:
+            logger.warning("Execution lookup failed", extra={"execution_id": execution_id, "error": str(e)})
             click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
             raise _AbortExecution("execution not found")
 

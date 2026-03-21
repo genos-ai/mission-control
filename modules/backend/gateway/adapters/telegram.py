@@ -71,7 +71,7 @@ class TelegramAdapter(ChannelAdapter):
             )
             return True
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(
                 "Failed to deliver Telegram response",
                 extra={

@@ -38,7 +38,7 @@ def show_config(logger, output_format: str = "human") -> None:
 
         logger.info("Configuration displayed successfully")
 
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         logger.error("Failed to load configuration", extra={"error": str(e)})
         click.echo(click.style(f"Error loading configuration: {e}", fg="red"))
         sys.exit(1)

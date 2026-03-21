@@ -35,7 +35,8 @@ def _get_dispatch_config() -> tuple[int, int]:
         )
         cfg = _load_mission_control_config()
         return cfg.dispatch.context_token_budget, cfg.dispatch.history_reserve_tokens
-    except Exception:
+    except Exception as e:
+        logger.debug("Config unavailable for context budget, using defaults", extra={"error": str(e)})
         return 50_000, 1_500
 
 

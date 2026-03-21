@@ -194,7 +194,7 @@ class TestTelegramAdapter:
     @pytest.mark.asyncio
     async def test_deliver_failure_returns_false(self):
         bot = AsyncMock()
-        bot.send_message.side_effect = Exception("network error")
+        bot.send_message.side_effect = OSError("network error")
         adapter = TelegramAdapter(bot=bot)
 
         response = AgentResponse(

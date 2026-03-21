@@ -173,7 +173,7 @@ async def cmd_status(message: Message) -> None:
 
     except httpx.ConnectError:
         await message.answer("🟢 <b>Bot:</b> Online\n🔴 <b>Backend:</b> Unreachable")
-    except Exception as e:
+    except (httpx.HTTPError, OSError, ValueError) as e:
         logger.error("Health check failed", extra={"error": str(e)})
         await message.answer(f"🟢 <b>Bot:</b> Online\n🔴 <b>Backend:</b> Error — {e}")
 

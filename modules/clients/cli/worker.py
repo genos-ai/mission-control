@@ -18,7 +18,7 @@ def run_worker(logger, workers: int) -> None:
         from modules.backend.core.config import get_redis_url
         redis_url = get_redis_url()
         logger.debug("Redis configured", extra={"redis_url": redis_url.split("@")[-1]})
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         logger.error("Failed to load Redis configuration.", extra={"error": str(e)})
         click.echo(
             click.style(f"Error: Redis not configured: {e}", fg="red"),

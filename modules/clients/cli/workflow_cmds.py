@@ -57,7 +57,7 @@ def run_workflow_cli(
             mission_name=mission_name,
             gate=gate,
         ))
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
         cli_logger.error(
             "Workflow action failed",

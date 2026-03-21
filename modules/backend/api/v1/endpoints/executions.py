@@ -13,6 +13,9 @@ from fastapi import APIRouter
 
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.execution_record import (
     ExecutionCostBreakdown,
@@ -334,8 +337,11 @@ async def get_execution_status(
                 },
                 metadata={"request_id": request_id},
             )
-        except Exception:
-            pass  # Fall through to DB query
+        except Exception as e:
+            logger.debug(
+                "Temporal status query failed, falling back to DB",
+                extra={"execution_id": execution_id, "error": str(e)},
+            )
 
     service = ExecutionPersistenceService(db)
     try:
@@ -345,5 +351,9 @@ async def get_execution_status(
             data={"source": "database", **status_dict},
             metadata={"request_id": request_id},
         )
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "Execution status lookup failed",
+            extra={"execution_id": execution_id, "error": str(e)},
+        )
         raise NotFoundError(f"Execution '{execution_id}' not found")

@@ -140,7 +140,7 @@ class CodeMapLoader:
             )
             return code_map
 
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             logger.warning("Failed to regenerate Code Map: %s", exc)
             return None
 

@@ -110,7 +110,7 @@ def _action_show(cli_logger, *, output_format, mission_id=None, **_):
             bar_len = int(dim.score / 5)
             bar = "█" * bar_len + "░" * (20 - bar_len)
             console.print(f"  {name:<16s} {bar} {dim.score:.1f}")
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
         console.print(f"[bold cyan]PQI Score[/bold cyan] [red](unavailable: {exc})[/red]")
 
     # Dependency analysis
@@ -197,8 +197,7 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
                     resolved_inputs={},
                     domain_tags=tags,
                 )
-            except Exception as exc:
-                # History query may fail if DB schema is behind — degrade gracefully
+            except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 console.print(f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n")
                 packet = await assembler.build(
                     mission_id=mission_id,

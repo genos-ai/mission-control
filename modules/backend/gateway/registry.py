@@ -32,7 +32,7 @@ def _register_enabled_adapters() -> None:
             adapter = TelegramAdapter(bot=bot)
             _adapters[adapter.channel_name] = adapter
             logger.info("Channel adapter registered", extra={"channel": "telegram"})
-        except Exception as e:
+        except (ImportError, RuntimeError, OSError) as e:
             logger.error(
                 "Failed to register Telegram adapter",
                 extra={"error": str(e)},

@@ -111,7 +111,7 @@ def decode_cursor(cursor: str) -> str:
     """
     try:
         return base64.urlsafe_b64decode(cursor.encode()).decode()
-    except Exception as exc:
+    except (UnicodeDecodeError, ValueError) as exc:
         raise ValueError(f"Invalid cursor: {cursor}") from exc
 
 

@@ -101,7 +101,7 @@ class WorkflowService:
                     },
                 )
 
-            except Exception as e:
+            except (OSError, ValueError, KeyError, yaml.YAMLError) as e:
                 logger.warning(
                     "Failed to load workflow",
                     extra={"path": str(yaml_path), "error": str(e)},

@@ -16,7 +16,7 @@ def run_server(logger, host: str | None, port: int | None, reload: bool) -> None
     """Start the FastAPI development server."""
     try:
         server_config = get_app_config().application.server
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         logger.error("Failed to load configuration.", extra={"error": str(e)})
         click.echo(
             click.style("Error: Could not load config/settings/application.yaml.", fg="red"),

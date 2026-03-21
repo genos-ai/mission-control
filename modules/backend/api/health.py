@@ -207,7 +207,8 @@ async def detailed_health_check() -> dict[str, Any]:
             "debug": app_settings.debug,
             "version": app_settings.version,
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("App config unavailable for health check", extra={"error": str(e)})
         app_info = {"status": "not_configured"}
 
     # Determine overall status

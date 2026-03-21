@@ -172,5 +172,5 @@ class WorkflowDefinitionService(BaseService):
             from modules.backend.schemas.workflow import WorkflowStepSchema
             for step_data in steps:
                 WorkflowStepSchema(**step_data)
-        except Exception as e:
+        except (TypeError, ValueError, KeyError) as e:
             raise ValidationError(f"Invalid step definition: {e}") from e
