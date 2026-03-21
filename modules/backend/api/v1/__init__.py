@@ -14,6 +14,7 @@ from modules.backend.api.v1.endpoints import (
     notes,
     sessions,
     workflows,
+    workshop,
 )
 
 router = APIRouter()
@@ -38,3 +39,6 @@ router.include_router(missions.router, prefix="/missions", tags=["missions"])
 
 # Workflow template and legacy mission endpoints
 router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
+
+# Workshop (single-agent sandbox) endpoints
+router.include_router(workshop.router, prefix="/workshop", tags=["workshop"])

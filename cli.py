@@ -1035,6 +1035,90 @@ def tree_cmd():
 
 
 # =============================================================================
+# Architect
+# =============================================================================
+
+
+@cli.group("architect", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def architect(ctx):
+    """Design workflows with the Workflow Architect.
+
+    \b
+    Examples:
+        cli.py architect chat --mission <ID> --message "Design a code review workflow"
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@architect.command("chat")
+@click.option("--mission", "mission_id", required=True, help="Mission ID.")
+@click.option("--message", required=True, help="Message to the Workflow Architect.")
+@click.pass_obj
+def architect_chat(ctx, mission_id, message):
+    """Send a message to the Workflow Architect for conversational design."""
+    from modules.clients.cli.architect_cmds import run_architect
+    run_architect(ctx.logger, "chat", mission_id=mission_id, message=message,
+                  output_format=ctx.output_format)
+
+
+# =============================================================================
+# Workshop
+# =============================================================================
+
+
+@cli.group("workshop", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def workshop(ctx):
+    """Run agents in workshop (sandbox) mode for testing and prompt iteration.
+
+    \b
+    Examples:
+        cli.py workshop run code.qa.agent --inputs '{"target": "modules/"}'
+        cli.py workshop cached-inputs code.qa.agent --mission <ID>
+        cli.py workshop history --agent code.qa.agent
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@workshop.command("run")
+@click.argument("agent_name")
+@click.option("--inputs", "inputs_json", default=None, help="JSON string of input data.")
+@click.option("--prompt-override", default=None, help="Temporary system prompt override.")
+@click.pass_obj
+def workshop_run(ctx, agent_name, inputs_json, prompt_override):
+    """Run a single agent in isolation for testing."""
+    from modules.clients.cli.workshop_cmds import run_workshop
+    run_workshop(ctx.logger, "run", agent_name=agent_name, inputs_json=inputs_json,
+                 prompt_override=prompt_override, output_format=ctx.output_format)
+
+
+@workshop.command("cached-inputs")
+@click.argument("agent_name")
+@click.option("--mission", "mission_id", default=None, help="Scope to a specific mission.")
+@click.option("--limit", default=10, help="Max results.")
+@click.pass_obj
+def workshop_cached_inputs(ctx, agent_name, mission_id, limit):
+    """Show cached inputs from previous runs of this agent."""
+    from modules.clients.cli.workshop_cmds import run_workshop
+    run_workshop(ctx.logger, "cached-inputs", agent_name=agent_name,
+                 mission_id=mission_id, limit=limit, output_format=ctx.output_format)
+
+
+@workshop.command("history")
+@click.option("--agent", "agent_name", default=None, help="Filter by agent name.")
+@click.option("--limit", default=20, help="Max results.")
+@click.pass_obj
+def workshop_history(ctx, agent_name, limit):
+    """List workshop run history."""
+    from modules.clients.cli.workshop_cmds import run_workshop
+    run_workshop(ctx.logger, "history", agent_name=agent_name, limit=limit,
+                 output_format=ctx.output_format)
+
+
+# =============================================================================
 # Entry point
 # =============================================================================
 

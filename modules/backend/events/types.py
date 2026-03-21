@@ -266,6 +266,20 @@ class WorkflowRunFailedEvent(SessionEvent):
 
 
 # =============================================================================
+# Workflow Design Events
+# =============================================================================
+
+
+class WorkflowGraphEvent(SessionEvent):
+    """Workflow Architect emitted an updated graph for frontend rendering."""
+
+    event_type: str = "workflow.graph.updated"
+    graph_data: dict = Field(default_factory=dict)
+    workflow_name: str = ""
+    step_count: int = 0
+
+
+# =============================================================================
 # Event Type Registry
 # =============================================================================
 
@@ -290,6 +304,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.execution.completed": WorkflowExecutionCompletedEvent,
     "workflow.run.completed": WorkflowRunCompletedEvent,
     "workflow.run.failed": WorkflowRunFailedEvent,
+    "workflow.graph.updated": WorkflowGraphEvent,
 }
 
 

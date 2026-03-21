@@ -155,6 +155,7 @@ class WorkflowRunService(BaseService):
             )
 
         await self._session.flush()
+        await self._notify_run_outcome(run, len(workflow.steps))
 
         logger.info(
             "Workflow run finished",
@@ -196,6 +197,148 @@ class WorkflowRunService(BaseService):
             extra={"mission_name": mission_name, "mission_id": mission.id},
         )
         return mission.id
+
+    async def run_workflow_from_definition(
+        self,
+        workflow_definition_id: str,
+        mission_id: str,
+        *,
+        triggered_by: str = "scheduler",
+        budget_usd: float | None = None,
+        context_overrides: dict[str, Any] | None = None,
+        on_progress: Any | None = None,
+        gate: object | None = None,
+    ) -> WorkflowRun:
+        """Execute a DB-backed workflow definition.
+
+        Loads the WorkflowDefinition, converts it to a WorkflowSchema,
+        and runs it through the same execution pipeline as YAML workflows.
+        """
+        from modules.backend.repositories.workflow_definition import (
+            WorkflowDefinitionRepository,
+        )
+
+        defn_repo = WorkflowDefinitionRepository(self._session)
+        defn = await defn_repo.get_by_id(workflow_definition_id)
+
+        if not defn.enabled:
+            raise ValueError(
+                f"Workflow definition '{defn.name}' is disabled"
+            )
+
+        workflow = self._definition_to_schema(defn)
+        effective_budget = budget_usd or workflow.budget.max_cost_usd
+
+        errors = self._workflow_service.validate_workflow_capabilities(workflow)
+        if errors:
+            raise ValueError(
+                f"Workflow capability errors: {'; '.join(errors)}"
+            )
+
+        from modules.backend.services.session import SessionService
+        from modules.backend.schemas.session import SessionCreate
+
+        session_service = SessionService(self._session)
+        session = await session_service.create_session(
+            SessionCreate(
+                agent_id=None,
+                goal=f"Workflow: {defn.description[:200]}",
+            ),
+        )
+
+        run = WorkflowRun(
+            workflow_name=defn.name,
+            workflow_version=defn.version,
+            status=WorkflowRunState.RUNNING,
+            session_id=session.id,
+            trigger_type=defn.trigger_config.get("type", "on_demand"),
+            triggered_by=triggered_by,
+            context=dict(defn.context),
+            total_cost_usd=0.0,
+            budget_usd=effective_budget,
+            started_at=utc_now().isoformat(),
+            mission_id=mission_id,
+        )
+        if context_overrides:
+            run.context.update(context_overrides)
+
+        self._session.add(run)
+        await self._session.flush()
+        await self._session.refresh(run)
+
+        logger.info(
+            "DB workflow run started",
+            extra={
+                "run_id": run.id,
+                "workflow_definition_id": workflow_definition_id,
+                "steps": len(workflow.steps),
+                "budget_usd": run.budget_usd,
+            },
+        )
+
+        try:
+            await self._execute_steps(
+                run, workflow, session.id, on_progress, gate=gate,
+            )
+            run.status = WorkflowRunState.COMPLETED
+            run.completed_at = utc_now().isoformat()
+            run.result_summary = (
+                f"Workflow completed: {len(workflow.steps)} steps, "
+                f"${run.total_cost_usd:.4f}"
+            )
+        except (RuntimeError, ValueError, OSError) as e:
+            run.status = WorkflowRunState.FAILED
+            run.completed_at = utc_now().isoformat()
+            run.error_data = {"message": str(e), "type": type(e).__name__}
+            run.result_summary = f"Workflow failed: {e}"
+            logger.error(
+                "DB workflow run failed",
+                extra={"run_id": run.id, "error": str(e)},
+            )
+
+        await self._session.flush()
+        await self._notify_run_outcome(run, len(workflow.steps))
+
+        logger.info(
+            "DB workflow run finished",
+            extra={
+                "run_id": run.id,
+                "status": run.status,
+                "cost": run.total_cost_usd,
+            },
+        )
+
+        return run
+
+    @staticmethod
+    def _definition_to_schema(defn) -> WorkflowSchema:
+        """Convert a WorkflowDefinition model to a WorkflowSchema.
+
+        The WorkflowSchema name pattern requires '.workflow' suffix,
+        so we normalize the definition name.
+        """
+        from modules.backend.schemas.workflow import (
+            WorkflowBudgetSchema,
+            WorkflowObjectiveSchema,
+            WorkflowStepSchema,
+            WorkflowTriggerSchema,
+        )
+
+        name = defn.name
+        if not name.endswith(".workflow"):
+            name = f"db.{name.replace(' ', '_').replace('-', '_').lower()}.workflow"
+
+        return WorkflowSchema(
+            workflow_name=name,
+            description=defn.description or name,
+            objective=WorkflowObjectiveSchema(**defn.objective),
+            version=defn.version,
+            enabled=defn.enabled,
+            trigger=WorkflowTriggerSchema(**defn.trigger_config),
+            budget=WorkflowBudgetSchema(**defn.budget_config),
+            context=defn.context or {},
+            steps=[WorkflowStepSchema(**s) for s in defn.steps],
+        )
 
     async def list_runs(
         self,
@@ -414,6 +557,46 @@ class WorkflowRunService(BaseService):
                 parts.append("Context: " + "; ".join(context_parts))
 
         return ". ".join(parts)
+
+    @staticmethod
+    async def _notify_run_outcome(run: "WorkflowRun", step_count: int) -> None:
+        """Send notifications based on run outcome. Best-effort."""
+        try:
+            from modules.backend.services.run_notifier import RunNotifierService
+
+            status = run.status if isinstance(run.status, str) else run.status.value
+
+            if status == WorkflowRunState.COMPLETED.value:
+                await RunNotifierService.notify_run_completed(
+                    run_id=run.id,
+                    workflow_name=run.workflow_name,
+                    total_cost_usd=run.total_cost_usd,
+                    step_count=step_count,
+                    mission_id=run.mission_id,
+                )
+            elif status == WorkflowRunState.FAILED.value:
+                error_msg = ""
+                if run.error_data and isinstance(run.error_data, dict):
+                    error_msg = run.error_data.get("message", "Unknown error")
+                await RunNotifierService.notify_run_failed(
+                    run_id=run.id,
+                    workflow_name=run.workflow_name,
+                    error=error_msg,
+                    total_cost_usd=run.total_cost_usd,
+                    mission_id=run.mission_id,
+                )
+
+            if run.budget_usd and run.budget_usd > 0:
+                pct = (run.total_cost_usd / run.budget_usd) * 100
+                await RunNotifierService.notify_budget_warning(
+                    run_id=run.id,
+                    workflow_name=run.workflow_name,
+                    cost_usd=run.total_cost_usd,
+                    budget_usd=run.budget_usd,
+                    pct_used=pct,
+                )
+        except Exception:
+            logger.debug("Run notification failed", exc_info=True)
 
     @staticmethod
     def _compute_waves(

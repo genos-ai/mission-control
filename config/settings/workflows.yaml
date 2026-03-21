@@ -24,3 +24,10 @@ max_concurrent_missions: 10
 enable_workflow_matching: true
 max_scheduled_runs_per_day: 50
 schedule_evaluation_interval_seconds: 60
+
+# Workshop (single-agent sandbox) settings
+workshop:
+  max_cached_input_sets: 10
+  default_budget_usd: 2.00
+  max_budget_usd: 20.00
+  cache_stale_days: 7

@@ -339,6 +339,15 @@ class TemporalSchema(_StrictBase):
 # =============================================================================
 
 
+class WorkshopSchema(_StrictBase):
+    """Workshop (single-agent sandbox) configuration."""
+
+    max_cached_input_sets: int = 10
+    default_budget_usd: float = 2.00
+    max_budget_usd: float = 20.00
+    cache_stale_days: int = 7
+
+
 class WorkflowsSchema(_StrictBase):
     """Workflow system configuration."""
 
@@ -352,6 +361,17 @@ class WorkflowsSchema(_StrictBase):
     enable_workflow_matching: bool = True
     max_scheduled_runs_per_day: int = 50
     schedule_evaluation_interval_seconds: int = 60
+    workshop: WorkshopSchema = Field(default_factory=WorkshopSchema)
+
+
+class NotificationsSchema(_StrictBase):
+    """Run notification configuration."""
+
+    enabled: bool = True
+    budget_warning_threshold_pct: float = 80.0
+    notify_on_completion: bool = True
+    notify_on_failure: bool = True
+    notify_channels: list[str] = Field(default_factory=lambda: ["telegram"])
 
 
 # =============================================================================

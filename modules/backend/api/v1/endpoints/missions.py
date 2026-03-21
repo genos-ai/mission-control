@@ -402,3 +402,49 @@ async def delete_mission_schedule(
         data={"deleted": schedule_id},
         metadata={"request_id": request_id},
     )
+
+
+# ---- Workflow Architect ----
+
+
+@router.post(
+    "/{mission_id}/architect/chat",
+    response_model=ApiResponse,
+    summary="Chat with the Workflow Architect",
+)
+async def architect_chat(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    message: str = "",
+    session_id: str | None = None,
+) -> ApiResponse:
+    """Send a message to the Workflow Architect for conversational design.
+
+    The architect browses the agent catalog, proposes workflows,
+    validates them, and saves confirmed designs.
+    """
+    from modules.backend.services.workflow_architect import WorkflowArchitectService
+
+    if not message:
+        return ApiResponse(
+            success=False,
+            data={"error": "message is required"},
+            metadata={"request_id": request_id},
+        )
+
+    service = WorkflowArchitectService(db)
+    result = await service.chat(
+        mission_id=mission_id,
+        message=message,
+        session_id=session_id,
+    )
+
+    return ApiResponse(
+        success=True,
+        data={
+            "response": result.get("response", ""),
+            "usage": str(result.get("usage")) if result.get("usage") else None,
+        },
+        metadata={"request_id": request_id},
+    )

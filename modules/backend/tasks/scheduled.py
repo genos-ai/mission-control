@@ -189,6 +189,14 @@ def register_scheduled_tasks() -> dict[str, Any]:
 
         registered[task_name] = broker.task(**task_kwargs)(config["function"])
 
+    from modules.backend.tasks.workflow_scheduler import evaluate_workflow_schedules
+
+    registered["evaluate_workflow_schedules"] = broker.task(
+        task_name="evaluate_workflow_schedules",
+        schedule=[{"cron": "* * * * *"}],
+        retry_on_error=False,
+    )(evaluate_workflow_schedules)
+
     logger.info(
         "Scheduled tasks registered",
         extra={"task_count": len(registered), "tasks": list(registered.keys())},

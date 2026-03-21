@@ -172,6 +172,9 @@ def _build_agent_deps(
         return HealthAgentDeps(**common, app_config=get_app_config())
     if category == "code":
         return QaAgentDeps(**common)
+    if "workflow_architect" in agent_name:
+        from modules.backend.agents.horizontal.workflow_architect.deps import ArchitectAgentDeps
+        return ArchitectAgentDeps(**common)
 
     return BaseAgentDeps(**common)
 

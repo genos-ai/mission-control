@@ -33,6 +33,7 @@ from modules.backend.core.config_schema import (
     GatewaySchema,
     LoggingSchema,
     ExecutionsSchema,
+    NotificationsSchema,
     WorkflowsSchema,
     MissionsSchema,
     SecuritySchema,
@@ -138,6 +139,7 @@ class AppConfig:
         self._workflows = _load_validated_optional(WorkflowsSchema, "workflows.yaml")
         self._missions = _load_validated_optional(MissionsSchema, "missions.yaml")
         self._gate = _load_validated_optional(GateSchema, "gate.yaml")
+        self._notifications = _load_validated_optional(NotificationsSchema, "notifications.yaml")
 
     @property
     def application(self) -> ApplicationSchema:
@@ -203,6 +205,11 @@ class AppConfig:
     def gate(self) -> GateSchema:
         """Gate reviewer settings."""
         return self._gate
+
+    @property
+    def notifications(self) -> NotificationsSchema:
+        """Run notification settings."""
+        return self._notifications
 
 
 @lru_cache

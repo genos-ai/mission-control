@@ -1,0 +1,19 @@
+# =============================================================================
+# Run Notification Configuration
+# =============================================================================
+# Controls notifications for workflow run completion, failure, and budget alerts.
+#
+# Available options:
+#   enabled                       - Master toggle for run notifications (boolean)
+#   budget_warning_threshold_pct  - Budget usage % that triggers a warning (float)
+#   notify_on_completion          - Send notification when a workflow run completes (boolean)
+#   notify_on_failure             - Send notification when a workflow run fails (boolean)
+#   notify_channels               - Channels to send notifications to (list of strings)
+# =============================================================================
+
+enabled: true
+budget_warning_threshold_pct: 80.0
+notify_on_completion: true
+notify_on_failure: true
+notify_channels:
+  - telegram
