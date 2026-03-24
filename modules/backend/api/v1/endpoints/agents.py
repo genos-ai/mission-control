@@ -69,16 +69,11 @@ async def agent_chat(
     """Send a message to an agent. Auto-creates ephemeral session when no session_id provided."""
     from modules.backend.agents.mission_control.mission_control import collect
     from modules.backend.services.session import SessionService
-    from modules.backend.schemas.session import SessionCreate
 
     service = SessionService(db)
-
-    session_id = data.session_id
-    if not session_id:
-        session = await service.create_session(
-            SessionCreate(agent_id=data.agent, goal=data.message[:200]),
-        )
-        session_id = session.id
+    session_id = await service.ensure_session(
+        data.session_id, agent_id=data.agent, goal=data.message,
+    )
 
     result = await collect(
         session_id,
@@ -107,16 +102,11 @@ async def agent_chat_stream(
     """Stream agent progress events as SSE."""
     from modules.backend.agents.mission_control.mission_control import handle
     from modules.backend.services.session import SessionService
-    from modules.backend.schemas.session import SessionCreate
 
     service = SessionService(db)
-
-    session_id = data.session_id
-    if not session_id:
-        session = await service.create_session(
-            SessionCreate(agent_id=data.agent, goal=data.message[:200]),
-        )
-        session_id = session.id
+    session_id = await service.ensure_session(
+        data.session_id, agent_id=data.agent, goal=data.message,
+    )
 
     async def generate():
         async for event in handle(session_id, data.message, session_service=service):

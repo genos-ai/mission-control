@@ -10,6 +10,8 @@ it's a direct agent invocation for prompt iteration and debugging.
 """
 
 import json
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from pydantic_ai import UsageLimits, UserError
@@ -47,6 +49,16 @@ class WorkshopService(BaseService):
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory() -> AsyncGenerator["WorkshopService", None]:
+        """Create a WorkshopService with its own DB session."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield WorkshopService(db)
+            await db.commit()
 
     async def run_agent(
         self,
@@ -262,6 +274,24 @@ class WorkshopService(BaseService):
 
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_runs_as_dicts(
+        self,
+        agent_name: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """List workshop runs as formatted dicts for API responses."""
+        runs = await self.list_runs(agent_name=agent_name, limit=limit)
+        return [
+            {
+                "id": r.id,
+                "agent_name": r.roster_name,
+                "status": r.status,
+                "cost_usd": r.total_cost_usd,
+                "created_at": r.created_at,
+            }
+            for r in runs
+        ]
 
     async def _persist_workshop_run(
         self,

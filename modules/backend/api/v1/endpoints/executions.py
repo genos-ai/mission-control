@@ -154,26 +154,22 @@ async def execute_execution(
 ) -> ApiResponse:
     """Execute a dispatch. Uses Temporal when enabled, direct dispatch otherwise."""
     from modules.backend.core.config import get_app_config
+    from modules.backend.services.execution import ExecutionService
+    from modules.backend.agents.mission_control.dispatch_adapter import (
+        MissionControlDispatchAdapter,
+    )
+    from modules.backend.services.session import SessionService
 
     config = get_app_config()
 
     if config.temporal.enabled:
-        return await _execute_via_temporal(execution_id, db, request_id, config)
-
-    return await _execute_direct(execution_id, db, request_id)
-
-
-async def _execute_direct(
-    execution_id: str,
-    db: DbSession,
-    request_id: RequestId,
-) -> ApiResponse:
-    """Direct execution via handle_mission()."""
-    from modules.backend.agents.mission_control.dispatch_adapter import (
-        MissionControlDispatchAdapter,
-    )
-    from modules.backend.services.execution import ExecutionService
-    from modules.backend.services.session import SessionService
+        service = ExecutionService(session=db)
+        result = await service.start_temporal_execution(execution_id)
+        return ApiResponse(
+            success=True,
+            data=result,
+            metadata={"request_id": request_id},
+        )
 
     session_service = SessionService(db)
     adapter = MissionControlDispatchAdapter(
@@ -185,7 +181,6 @@ async def _execute_direct(
         mission_control_dispatch=adapter,
         session_service=session_service,
     )
-
     execution = await service.run_execution(execution_id)
 
     from modules.backend.schemas.execution import ExecutionResponse
@@ -193,56 +188,6 @@ async def _execute_direct(
     return ApiResponse(
         success=True,
         data=response.model_dump(),
-        metadata={"request_id": request_id},
-    )
-
-
-async def _execute_via_temporal(
-    execution_id: str,
-    db: DbSession,
-    request_id: RequestId,
-    config,
-) -> ApiResponse:
-    """Temporal-based execution."""
-    from modules.backend.temporal.client import get_temporal_client
-    from modules.backend.temporal.models import MissionWorkflowInput
-    from modules.backend.temporal.workflow import AgentMissionWorkflow
-
-    service = ExecutionPersistenceService(db)
-    record = await service.get_execution(execution_id)
-    brief = ""
-    roster = "default"
-    budget = 10.0
-    if record:
-        brief = record.objective_statement or ""
-        roster = record.roster_name or "default"
-        budget = record.total_cost_usd or 10.0
-
-    client = await get_temporal_client()
-    handle = await client.start_workflow(
-        AgentMissionWorkflow.run,
-        MissionWorkflowInput(
-            mission_run_id=execution_id,
-            session_id=execution_id,
-            mission_brief=brief,
-            roster_name=roster,
-            mission_budget_usd=budget,
-            mission_id=record.mission_id if record else None,
-            approval_timeout_seconds=config.temporal.approval_timeout_seconds,
-            escalation_timeout_seconds=config.temporal.escalation_timeout_seconds,
-            notification_timeout_seconds=config.temporal.notification_timeout_seconds,
-        ),
-        id=f"execution-{execution_id}",
-        task_queue=config.temporal.task_queue,
-    )
-
-    return ApiResponse(
-        success=True,
-        data={
-            "workflow_id": handle.id,
-            "execution_id": execution_id,
-            "status": "started",
-        },
         metadata={"request_id": request_id},
     )
 

@@ -48,6 +48,11 @@ class PromptVersion(UUIDMixin, TimestampMixin, Base):
         Text, nullable=True,
     )
 
+    @property
+    def content_length(self) -> int:
+        """Length of the prompt content."""
+        return len(self.content) if self.content else 0
+
     def __repr__(self) -> str:
         return (
             f"<PromptVersion(entity={self.entity_type}:{self.entity_id}, "

@@ -15,7 +15,6 @@ from modules.backend.core.database import get_db_session
 
 CATALOG_SVC = "modules.backend.services.agent_catalog.AgentCatalogService"
 METRICS_SVC = "modules.backend.services.platform_metrics.PlatformMetricsService"
-PV_REPO = "modules.backend.repositories.prompt_version.PromptVersionRepository"
 SEED_FN = "modules.backend.services.catalog_seeder.seed_catalog"
 APP_CONFIG = "modules.backend.core.config.get_app_config"
 CHECK_DB = "modules.backend.api.health.check_database"
@@ -31,12 +30,18 @@ def mock_db():
 def app(mock_db):
     """Create a FastAPI app with admin routes for testing."""
     from modules.backend.api.v1.endpoints import admin as admin_module
+    from modules.backend.api.v1.endpoints import admin_users as admin_users_module
+
+    from modules.backend.core.exception_handlers import register_exception_handlers
 
     _app = FastAPI()
+    register_exception_handlers(_app)
     _app.include_router(admin_module.router, prefix="/admin")
+    _app.include_router(admin_users_module.router, prefix="/admin/users")
 
     async def _always_admin():
-        return "admin"
+        return MagicMock(id="test-admin", email="admin@test.com", system_role="admin",
+                        has_role=lambda r: True, is_active=True)
 
     async def _mock_db_session():
         return mock_db
@@ -99,19 +104,23 @@ class TestCatalogCRUD:
     @pytest.mark.asyncio
     @patch(CATALOG_SVC)
     async def test_update_no_fields(self, MockCatalog, client):
+        from modules.backend.core.exceptions import ValidationError
+
+        MockCatalog.return_value.update_entry = AsyncMock(
+            side_effect=ValidationError("No fields to update"),
+        )
         resp = await client.patch("/admin/catalog/test.agent", json={})
-        assert resp.status_code == 200
-        assert resp.json()["success"] is False
+        assert resp.status_code == 400
 
     @pytest.mark.asyncio
     @patch(CATALOG_SVC)
     async def test_delete_catalog_entry(self, MockCatalog, client):
-        mock_entry = MagicMock(id="id-1", agent_name="test.agent")
-        MockCatalog.return_value.get_by_name = AsyncMock(return_value=mock_entry)
+        MockCatalog.return_value.delete_entry = AsyncMock()
 
         resp = await client.delete("/admin/catalog/test.agent")
         assert resp.status_code == 200
         assert resp.json()["data"]["deleted"] == "test.agent"
+        MockCatalog.return_value.delete_entry.assert_called_once_with("test.agent")
 
 
 class TestSystemPromptEditor:
@@ -129,16 +138,14 @@ class TestSystemPromptEditor:
         assert resp.json()["data"]["prompt_length"] == len("new prompt here")
 
     @pytest.mark.asyncio
-    @patch(PV_REPO)
     @patch(CATALOG_SVC)
-    async def test_prompt_history(self, MockCatalog, MockPVRepo, client):
-        mock_entry = MagicMock(id="id-1", agent_name="test.agent")
-        MockCatalog.return_value.get_by_name = AsyncMock(return_value=mock_entry)
-        MockPVRepo.return_value.list_versions = AsyncMock(return_value=[])
+    async def test_prompt_history(self, MockCatalog, client):
+        MockCatalog.return_value.get_prompt_history = AsyncMock(return_value=[])
 
         resp = await client.get("/admin/catalog/test.agent/prompt-history")
         assert resp.status_code == 200
         assert resp.json()["data"]["versions"] == []
+        MockCatalog.return_value.get_prompt_history.assert_called_once_with("test.agent")
 
 
 class TestPlatformMetrics:
@@ -260,22 +267,11 @@ class TestRoleManagement:
         }
         mock_config.return_value = cfg
 
-        resp = await client.get("/admin/roles")
+        resp = await client.get("/admin/users/roles")
         assert resp.status_code == 200
         roles = resp.json()["data"]["roles"]
         assert "viewer" in roles
         assert roles["admin"]["level"] == 3
-
-    @pytest.mark.asyncio
-    @patch(APP_CONFIG)
-    async def test_list_user_roles(self, mock_config, client):
-        cfg = MagicMock()
-        cfg.security.user_roles = {"user123": "admin"}
-        mock_config.return_value = cfg
-
-        resp = await client.get("/admin/users/roles")
-        assert resp.status_code == 200
-        assert resp.json()["data"]["user_roles"]["user123"] == "admin"
 
 
 class TestSeedCatalog:

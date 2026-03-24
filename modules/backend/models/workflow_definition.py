@@ -74,6 +74,16 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
         comment="ISO timestamp when the user confirmed the workflow",
     )
 
+    @property
+    def trigger_type(self) -> str:
+        """Extract trigger type from trigger_config JSON."""
+        return (self.trigger_config or {}).get("type", "on_demand")
+
+    @property
+    def step_count(self) -> int:
+        """Number of steps in this workflow."""
+        return len(self.steps or [])
+
     def __repr__(self) -> str:
         return (
             f"<WorkflowDefinition(name={self.name!r}, "

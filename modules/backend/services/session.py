@@ -1,5 +1,7 @@
 """Session service — lifecycle management for the transport primitive."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,16 @@ class SessionService(BaseService):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
         self.repo = SessionRepository(session)
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory() -> AsyncGenerator["SessionService", None]:
+        """Create a SessionService with its own DB session."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield SessionService(db)
+            await db.commit()
 
     # --- Lifecycle ---
 
@@ -72,6 +84,24 @@ class SessionService(BaseService):
 
         await self._publish_session_event("session.created", session)
         return session
+
+    async def ensure_session(
+        self,
+        session_id: str | None,
+        *,
+        agent_id: str | None = None,
+        goal: str | None = None,
+    ) -> str:
+        """Return an existing session_id or create an ephemeral session.
+
+        Used by chat endpoints that auto-create sessions when none is provided.
+        """
+        if session_id:
+            return session_id
+        session = await self.create_session(
+            SessionCreate(agent_id=agent_id, goal=goal[:200] if goal else None),
+        )
+        return session.id
 
     async def get_session(self, session_id: str) -> Session:
         """Get a session by ID. Raises NotFoundError if not found."""

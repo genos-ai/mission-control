@@ -78,6 +78,8 @@ async def admin_catalog_list(
     """List all agent catalog entries, including disabled ones."""
     from modules.backend.services.agent_catalog import AgentCatalogService
 
+    from modules.backend.schemas.agent_catalog import AgentCatalogResponse
+
     service = AgentCatalogService(db)
     entries = await service.list_catalog(enabled_only=enabled_only)
 
@@ -85,17 +87,7 @@ async def admin_catalog_list(
         success=True,
         data={
             "agents": [
-                {
-                    "id": e.id,
-                    "agent_name": e.agent_name,
-                    "agent_type": e.agent_type,
-                    "version": e.version,
-                    "description": e.description,
-                    "enabled": e.enabled,
-                    "visibility": e.visibility,
-                    "tools": e.tools,
-                    "keywords": e.keywords,
-                }
+                AgentCatalogResponse.model_validate(e).model_dump()
                 for e in entries
             ],
             "count": len(entries),
@@ -159,14 +151,6 @@ async def admin_catalog_update(
 
     service = AgentCatalogService(db)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
-
-    if not updates:
-        return ApiResponse(
-            success=False,
-            data={"error": "No fields to update"},
-            metadata={"request_id": request_id},
-        )
-
     entry = await service.update_entry(agent_name, **updates)
 
     return ApiResponse(
@@ -191,9 +175,7 @@ async def admin_catalog_delete(
     from modules.backend.services.agent_catalog import AgentCatalogService
 
     service = AgentCatalogService(db)
-    entry = await service.get_by_name(agent_name)
-    await db.delete(entry)
-    await db.flush()
+    await service.delete_entry(agent_name)
 
     return ApiResponse(
         success=True,
@@ -247,17 +229,10 @@ async def admin_catalog_prompt_history(
     _role: AdminRole,
 ) -> ApiResponse:
     """Get version history for an agent's system prompt."""
-    from modules.backend.repositories.prompt_version import PromptVersionRepository
     from modules.backend.services.agent_catalog import AgentCatalogService
 
-    catalog_svc = AgentCatalogService(db)
-    entry = await catalog_svc.get_by_name(agent_name)
-
-    pv_repo = PromptVersionRepository(db)
-    versions = await pv_repo.list_versions(
-        entity_type="agent_catalog",
-        entity_id=entry.id,
-    )
+    service = AgentCatalogService(db)
+    versions = await service.get_prompt_history(agent_name)
 
     return ApiResponse(
         success=True,
@@ -268,7 +243,7 @@ async def admin_catalog_prompt_history(
                     "version": v.version,
                     "changed_by": v.changed_by,
                     "change_reason": v.change_reason,
-                    "content_length": len(v.content),
+                    "content_length": v.content_length,
                     "created_at": v.created_at,
                 }
                 for v in versions
@@ -415,45 +390,11 @@ async def admin_view_config(
     _role: AdminRole,
 ) -> ApiResponse:
     """View current platform configuration (non-secret values only)."""
-    from modules.backend.core.config import get_app_config
-
-    config = get_app_config()
+    from modules.backend.core.config import get_sanitized_config_view
 
     return ApiResponse(
         success=True,
-        data={
-            "application": {
-                "name": config.application.name,
-                "version": config.application.version,
-                "environment": config.application.environment,
-                "debug": config.application.debug,
-            },
-            "workflows": {
-                "max_steps_per_workflow": config.workflows.max_steps_per_workflow,
-                "default_budget_usd": config.workflows.default_budget_usd,
-                "max_budget_usd": config.workflows.max_budget_usd,
-                "max_concurrent_missions": config.workflows.max_concurrent_missions,
-                "max_scheduled_runs_per_day": config.workflows.max_scheduled_runs_per_day,
-                "schedule_evaluation_interval_seconds": config.workflows.schedule_evaluation_interval_seconds,
-            },
-            "sessions": {
-                "default_ttl_hours": config.sessions.default_ttl_hours,
-                "default_cost_budget_usd": config.sessions.default_cost_budget_usd,
-                "max_cost_budget_usd": config.sessions.max_cost_budget_usd,
-            },
-            "notifications": {
-                "enabled": config.notifications.enabled,
-                "notify_on_completion": config.notifications.notify_on_completion,
-                "notify_on_failure": config.notifications.notify_on_failure,
-                "budget_warning_threshold_pct": config.notifications.budget_warning_threshold_pct,
-            },
-            "features": {
-                "gateway_enabled": config.features.gateway_enabled,
-                "agent_coordinator_enabled": config.features.agent_coordinator_enabled,
-                "mcp_enabled": config.features.mcp_enabled,
-                "events_publish_enabled": config.features.events_publish_enabled,
-            },
-        },
+        data=get_sanitized_config_view(),
         metadata={"request_id": request_id},
     )
 
@@ -468,84 +409,25 @@ async def admin_health_check(
     _role: AdminRole,
 ) -> ApiResponse:
     """Run a comprehensive health check on all platform services."""
-    from modules.backend.api.health import check_database, check_redis
+    from modules.backend.services.health import HealthCheckService
 
-    import asyncio
-
-    db_check, redis_check = await asyncio.gather(
-        check_database(),
-        check_redis(),
-        return_exceptions=True,
-    )
-
-    if isinstance(db_check, Exception):
-        db_check = {"status": "error", "error": str(db_check)}
-    if isinstance(redis_check, Exception):
-        redis_check = {"status": "error", "error": str(redis_check)}
-
-    checks = {"database": db_check, "redis": redis_check}
-    all_healthy = all(
-        c.get("status") in ("healthy", "not_configured")
-        for c in checks.values()
-    )
+    service = HealthCheckService()
+    report = await service.check_readiness()
 
     return ApiResponse(
         success=True,
         data={
-            "status": "healthy" if all_healthy else "degraded",
-            "checks": checks,
+            "status": report.overall_status,
+            "checks": {
+                c.name: {
+                    "status": c.status,
+                    **({"latency_ms": c.latency_ms} if c.latency_ms is not None else {}),
+                    **({"error": c.error} if c.error else {}),
+                }
+                for c in report.components
+            },
         },
         metadata={"request_id": request_id},
     )
 
 
-# ---- User / Role Management ----
-
-
-@router.get(
-    "/roles",
-    response_model=ApiResponse,
-    summary="List configured roles",
-)
-async def admin_list_roles(
-    request_id: RequestId,
-    _role: AdminRole,
-) -> ApiResponse:
-    """List all configured roles and their levels."""
-    from modules.backend.core.config import get_app_config
-
-    config = get_app_config()
-    roles = {
-        name: {"level": role.level, "description": role.description}
-        for name, role in config.security.roles.items()
-    }
-
-    return ApiResponse(
-        success=True,
-        data={"roles": roles},
-        metadata={"request_id": request_id},
-    )
-
-
-@router.get(
-    "/users/roles",
-    response_model=ApiResponse,
-    summary="List user role assignments",
-)
-async def admin_list_user_roles(
-    request_id: RequestId,
-    _role: AdminRole,
-) -> ApiResponse:
-    """List current user-to-role mappings from security config."""
-    from modules.backend.core.config import get_app_config
-
-    config = get_app_config()
-
-    return ApiResponse(
-        success=True,
-        data={
-            "user_roles": config.security.user_roles,
-            "default_role": "viewer",
-        },
-        metadata={"request_id": request_id},
-    )

@@ -51,8 +51,11 @@ class AgentCatalogService(BaseService):
         self,
         enabled_only: bool = True,
         visibility: str | None = None,
+        agent_type: str | None = None,
     ) -> list[AgentCatalog]:
         """List catalog entries with optional filters."""
+        if agent_type:
+            return await self._repo.list_by_type(agent_type, enabled_only=enabled_only)
         if enabled_only:
             return await self._repo.list_enabled(visibility=visibility)
         return await self._repo.get_all(limit=500)
@@ -150,13 +153,42 @@ class AgentCatalogService(BaseService):
         agent_name: str,
         **updates: Any,
     ) -> AgentCatalog:
-        """Update arbitrary fields on a catalog entry."""
+        """Update arbitrary fields on a catalog entry.
+
+        Raises:
+            ValidationError: If no fields are provided.
+        """
+        if not updates:
+            from modules.backend.core.exceptions import ValidationError
+            raise ValidationError("No fields to update")
         entry = await self.get_by_name(agent_name)
         return await self._repo.update(entry.id, **updates)
 
     async def is_catalog_empty(self) -> bool:
         """Check if the catalog needs seeding."""
         return await self._repo.is_empty()
+
+    async def delete_entry(self, agent_name: str) -> None:
+        """Delete an agent catalog entry by name."""
+        entry = await self.get_by_name(agent_name)
+        await self._repo.delete(entry.id)
+        self._log_operation("Agent catalog entry deleted", agent_name=agent_name)
+
+    async def get_prompt_history(
+        self,
+        agent_name: str,
+        limit: int = 50,
+    ) -> list:
+        """Get prompt version history for an agent."""
+        from modules.backend.repositories.prompt_version import PromptVersionRepository
+
+        entry = await self.get_by_name(agent_name)
+        pv_repo = PromptVersionRepository(self._session)
+        return await pv_repo.list_versions(
+            entity_type="agent_catalog",
+            entity_id=entry.id,
+            limit=limit,
+        )
 
     async def search_by_keyword(self, text: str) -> list[AgentCatalog]:
         """Search catalog by keyword match."""

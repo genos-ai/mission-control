@@ -15,10 +15,7 @@ from modules.backend.schemas.execution import (
     ExecutionDetailResponse,
     ExecutionResponse,
 )
-from modules.backend.schemas.workflow import (
-    WorkflowDetailResponse,
-    WorkflowListResponse,
-)
+
 from modules.backend.services.execution import ExecutionService
 from modules.backend.services.workflow import WorkflowService
 
@@ -45,25 +42,11 @@ async def list_workflows(
     service = _get_workflow_service()
     workflows = service.list_workflows(enabled_only=enabled_only)
 
-    items = [
-        WorkflowListResponse(
-            workflow_name=w.workflow_name,
-            description=w.description,
-            version=w.version,
-            enabled=w.enabled,
-            trigger_type=w.trigger.type,
-            step_count=len(w.steps),
-            budget_usd=w.budget.max_cost_usd,
-            objective_category=w.objective.category,
-            objective_priority=w.objective.priority,
-            objective_owner=w.objective.owner,
-        )
-        for w in workflows
-    ]
+    items = [service.to_list_item(w) for w in workflows]
 
     return ApiResponse(
         success=True,
-        data={"workflows": [item.model_dump() for item in items]},
+        data={"workflows": items},
         metadata={"request_id": request_id, "count": len(items)},
     )
 
@@ -86,21 +69,9 @@ async def get_workflow(
             message=f"Workflow '{workflow_name}' not found",
         )
 
-    detail = WorkflowDetailResponse(
-        workflow_name=workflow.workflow_name,
-        description=workflow.description,
-        objective=workflow.objective,
-        version=workflow.version,
-        enabled=workflow.enabled,
-        trigger=workflow.trigger,
-        budget=workflow.budget,
-        context_keys=list(workflow.context.keys()),
-        steps=workflow.steps,
-    )
-
     return ApiResponse(
         success=True,
-        data=detail.model_dump(),
+        data=service.to_detail(workflow),
         metadata={"request_id": request_id},
     )
 
@@ -119,15 +90,11 @@ async def create_execution(
     request_id: RequestId,
 ) -> ApiResponse:
     """Create and start an ad-hoc execution."""
-    from uuid import uuid4
-
     service = _get_execution_service(db)
-    session_id = str(uuid4())
 
     execution = await service.create_adhoc_execution(
         objective=data.objective,
         triggered_by=data.triggered_by,
-        session_id=session_id,
         roster_ref=data.roster_ref,
         complexity_tier=data.complexity_tier,
         cost_ceiling_usd=data.cost_ceiling_usd,

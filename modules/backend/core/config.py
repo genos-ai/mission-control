@@ -254,6 +254,48 @@ def get_redis_url() -> str:
     return f"redis://:{password}@{redis.host}:{redis.port}/{redis.db}"
 
 
+def get_sanitized_config_view() -> dict:
+    """Return non-secret platform configuration as a plain dict.
+
+    Used by the admin config endpoint and any other view that needs
+    to expose configuration without leaking secrets.
+    """
+    config = get_app_config()
+    return {
+        "application": {
+            "name": config.application.name,
+            "version": config.application.version,
+            "environment": config.application.environment,
+            "debug": config.application.debug,
+        },
+        "workflows": {
+            "max_steps_per_workflow": config.workflows.max_steps_per_workflow,
+            "default_budget_usd": config.workflows.default_budget_usd,
+            "max_budget_usd": config.workflows.max_budget_usd,
+            "max_concurrent_missions": config.workflows.max_concurrent_missions,
+            "max_scheduled_runs_per_day": config.workflows.max_scheduled_runs_per_day,
+            "schedule_evaluation_interval_seconds": config.workflows.schedule_evaluation_interval_seconds,
+        },
+        "sessions": {
+            "default_ttl_hours": config.sessions.default_ttl_hours,
+            "default_cost_budget_usd": config.sessions.default_cost_budget_usd,
+            "max_cost_budget_usd": config.sessions.max_cost_budget_usd,
+        },
+        "notifications": {
+            "enabled": config.notifications.enabled,
+            "notify_on_completion": config.notifications.notify_on_completion,
+            "notify_on_failure": config.notifications.notify_on_failure,
+            "budget_warning_threshold_pct": config.notifications.budget_warning_threshold_pct,
+        },
+        "features": {
+            "gateway_enabled": config.features.gateway_enabled,
+            "agent_coordinator_enabled": config.features.agent_coordinator_enabled,
+            "mcp_enabled": config.features.mcp_enabled,
+            "events_publish_enabled": config.features.events_publish_enabled,
+        },
+    }
+
+
 def get_server_base_url() -> tuple[str, float]:
     """
     Get the backend server base URL and timeout from application.yaml.

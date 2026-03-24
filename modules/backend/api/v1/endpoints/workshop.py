@@ -114,22 +114,10 @@ async def workshop_list_runs(
     from modules.backend.services.workshop import WorkshopService
 
     service = WorkshopService(db)
-    runs = await service.list_runs(agent_name=agent_name, limit=limit)
+    runs = await service.list_runs_as_dicts(agent_name=agent_name, limit=limit)
 
     return ApiResponse(
         success=True,
-        data={
-            "runs": [
-                {
-                    "id": r.id,
-                    "agent_name": r.roster_name,
-                    "status": r.status,
-                    "cost_usd": r.total_cost_usd,
-                    "created_at": r.created_at,
-                }
-                for r in runs
-            ],
-            "count": len(runs),
-        },
+        data={"runs": runs, "count": len(runs)},
         metadata={"request_id": request_id},
     )

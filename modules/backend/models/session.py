@@ -96,6 +96,13 @@ class Session(UUIDMixin, TimestampMixin, Base):
         Index("ix_sessions_expires_at", "expires_at"),
     )
 
+    @property
+    def budget_remaining_usd(self) -> float | None:
+        """Remaining budget, or None if no budget is set."""
+        if self.cost_budget_usd is None:
+            return None
+        return max(0.0, self.cost_budget_usd - self.total_cost_usd)
+
     def __repr__(self) -> str:
         return f"<Session(id={self.id}, status={self.status})>"
 

@@ -4,7 +4,6 @@ Unit tests for Telegram bot middlewares.
 Tests authentication, rate limiting, and logging middlewares.
 """
 
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -113,13 +112,16 @@ class TestAuthMiddleware:
         mock_app_config.application.telegram.authorized_users = [123456789, 987654321]
         mock_app_config.security.roles = {
             "viewer": MagicMock(level=1),
-            "trader": MagicMock(level=2),
+            "user": MagicMock(level=2),
             "admin": MagicMock(level=3),
         }
         mock_app_config.security.user_roles = {"123456789": "admin"}
 
         with patch(
             "modules.clients.telegram.middlewares.auth.get_app_config",
+            return_value=mock_app_config,
+        ), patch(
+            "modules.backend.core.security.get_app_config",
             return_value=mock_app_config,
         ):
             await middleware(handler, event, data)
@@ -141,13 +143,16 @@ class TestAuthMiddleware:
         mock_app_config.application.telegram.authorized_users = [123456789, 987654321]
         mock_app_config.security.roles = {
             "viewer": MagicMock(level=1),
-            "trader": MagicMock(level=2),
+            "user": MagicMock(level=2),
             "admin": MagicMock(level=3),
         }
         mock_app_config.security.user_roles = {"123456789": "admin"}
 
         with patch(
             "modules.clients.telegram.middlewares.auth.get_app_config",
+            return_value=mock_app_config,
+        ), patch(
+            "modules.backend.core.security.get_app_config",
             return_value=mock_app_config,
         ):
             await middleware(handler, event, data)
@@ -207,24 +212,29 @@ class TestRateLimitMiddleware:
         """Test that rate limit resets after the time window."""
         from modules.clients.telegram.middlewares.rate_limit import RateLimitMiddleware
 
-        middleware = RateLimitMiddleware(rate_limit=1, rate_window=1)
+        middleware = RateLimitMiddleware(rate_limit=1, rate_window=60)
         handler = AsyncMock(return_value="result")
 
         message = self._create_mock_message(123)
 
-        # First request allowed
-        await middleware(handler, message, {})
+        fake_now = 1000.0
 
-        # Second request blocked
-        result = await middleware(handler, message, {})
-        assert result is None
+        with patch("modules.clients.telegram.middlewares.rate_limit.time") as mock_time:
+            mock_time.time.return_value = fake_now
 
-        # Wait for window to expire
-        time.sleep(1.1)
+            # First request allowed
+            await middleware(handler, message, {})
 
-        # Third request should be allowed
-        result = await middleware(handler, message, {})
-        assert result == "result"
+            # Second request blocked (same window)
+            result = await middleware(handler, message, {})
+            assert result is None
+
+            # Advance past the window
+            mock_time.time.return_value = fake_now + 61.0
+
+            # Third request should be allowed
+            result = await middleware(handler, message, {})
+            assert result == "result"
 
     @pytest.mark.asyncio
     async def test_separate_limits_per_user(self):
@@ -308,8 +318,8 @@ class TestUserRoles:
         from modules.backend.core.config import get_app_config
 
         roles = get_app_config().security.roles
-        assert roles["viewer"].level < roles["trader"].level
-        assert roles["trader"].level < roles["admin"].level
+        assert roles["viewer"].level < roles["user"].level
+        assert roles["user"].level < roles["admin"].level
 
     def test_all_roles_defined_in_config(self):
         """Test that all expected roles exist in security.yaml."""
@@ -317,15 +327,24 @@ class TestUserRoles:
 
         roles = get_app_config().security.roles
         assert "viewer" in roles
-        assert "trader" in roles
+        assert "user" in roles
         assert "admin" in roles
 
-    def test_get_role_hierarchy_helper(self):
-        """Test the _get_role_hierarchy helper returns flat dict."""
-        from modules.clients.telegram.middlewares.auth import _get_role_hierarchy
+    def test_check_role_level(self):
+        """Test check_role_level compares roles using config levels."""
+        from modules.backend.core.security import check_role_level
 
-        hierarchy = _get_role_hierarchy()
-        assert isinstance(hierarchy, dict)
-        assert hierarchy["viewer"] == 1
-        assert hierarchy["trader"] == 2
-        assert hierarchy["admin"] == 3
+        mock_app_config = MagicMock()
+        mock_app_config.security.roles = {
+            "viewer": MagicMock(level=1),
+            "user": MagicMock(level=2),
+            "admin": MagicMock(level=3),
+        }
+
+        with patch(
+            "modules.backend.core.security.get_app_config",
+            return_value=mock_app_config,
+        ):
+            assert check_role_level("admin", "viewer") is True
+            assert check_role_level("user", "user") is True
+            assert check_role_level("viewer", "admin") is False

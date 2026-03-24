@@ -157,13 +157,16 @@ class ExecutionService(BaseService):
         self,
         objective: str,
         triggered_by: str,
-        session_id: str,
+        session_id: str | None = None,
         roster_ref: str = "default",
         complexity_tier: str = "simple",
         cost_ceiling_usd: float | None = None,
         upstream_context: dict | None = None,
     ) -> Execution:
         """Create an ad-hoc execution (not from a workflow)."""
+        if not session_id:
+            from uuid import uuid4
+            session_id = str(uuid4())
 
         async def _create() -> Execution:
             app_config = get_app_config()
@@ -300,6 +303,56 @@ class ExecutionService(BaseService):
             )
 
         return execution
+
+    async def start_temporal_execution(self, execution_id: str) -> dict[str, str]:
+        """Start an execution via Temporal workflow.
+
+        Reads execution data from the persistence layer and submits
+        a Temporal workflow. Returns workflow metadata dict.
+        """
+        from modules.backend.core.config import get_app_config
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
+        from modules.backend.temporal.client import get_temporal_client
+        from modules.backend.temporal.models import MissionWorkflowInput
+        from modules.backend.temporal.workflow import AgentMissionWorkflow
+
+        config = get_app_config()
+        persistence = ExecutionPersistenceService(self._session)
+        record = await persistence.get_execution(execution_id)
+
+        brief = ""
+        roster = "default"
+        budget = 10.0
+        mission_id = None
+        if record:
+            brief = record.objective_statement or ""
+            roster = record.roster_name or "default"
+            budget = record.total_cost_usd or 10.0
+            mission_id = record.mission_id
+
+        client = await get_temporal_client()
+        handle = await client.start_workflow(
+            AgentMissionWorkflow.run,
+            MissionWorkflowInput(
+                mission_run_id=execution_id,
+                session_id=execution_id,
+                mission_brief=brief,
+                roster_name=roster,
+                mission_budget_usd=budget,
+                mission_id=mission_id,
+                approval_timeout_seconds=config.temporal.approval_timeout_seconds,
+                escalation_timeout_seconds=config.temporal.escalation_timeout_seconds,
+                notification_timeout_seconds=config.temporal.notification_timeout_seconds,
+            ),
+            id=f"execution-{execution_id}",
+            task_queue=config.temporal.task_queue,
+        )
+
+        return {
+            "workflow_id": handle.id,
+            "execution_id": execution_id,
+            "status": "started",
+        }
 
     # ---- Execution lifecycle ----
 

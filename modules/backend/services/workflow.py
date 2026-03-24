@@ -310,3 +310,40 @@ class WorkflowService:
 
         upstream["_step_input"] = resolved_input
         return upstream
+
+    # ---- Response builders ----
+
+    @staticmethod
+    def to_list_item(w: WorkflowSchema) -> dict[str, Any]:
+        """Convert a WorkflowSchema to a list-view dict."""
+        from modules.backend.schemas.workflow import WorkflowListResponse
+
+        return WorkflowListResponse(
+            workflow_name=w.workflow_name,
+            description=w.description,
+            version=w.version,
+            enabled=w.enabled,
+            trigger_type=w.trigger.type,
+            step_count=len(w.steps),
+            budget_usd=w.budget.max_cost_usd,
+            objective_category=w.objective.category,
+            objective_priority=w.objective.priority,
+            objective_owner=w.objective.owner,
+        ).model_dump()
+
+    @staticmethod
+    def to_detail(w: WorkflowSchema) -> dict[str, Any]:
+        """Convert a WorkflowSchema to a detail-view dict."""
+        from modules.backend.schemas.workflow import WorkflowDetailResponse
+
+        return WorkflowDetailResponse(
+            workflow_name=w.workflow_name,
+            description=w.description,
+            objective=w.objective,
+            version=w.version,
+            enabled=w.enabled,
+            trigger=w.trigger,
+            budget=w.budget,
+            context_keys=list(w.context.keys()),
+            steps=w.steps,
+        ).model_dump()

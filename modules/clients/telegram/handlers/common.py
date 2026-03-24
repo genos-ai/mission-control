@@ -84,7 +84,7 @@ async def cmd_help(message: Message, user_role: str) -> None:
 
     help_text = base_commands
 
-    if user_role in ("trader", "admin"):
+    if user_role in ("user", "admin"):
         help_text += trader_commands
 
     if user_role == "admin":
@@ -126,54 +126,24 @@ async def cmd_status(message: Message) -> None:
     """
     Handle /status command.
 
-    Pings the backend /health/ready endpoint and reports real status.
+    Checks backend readiness via HealthCheckService and renders status.
     """
-    import httpx
-
-    from modules.backend.core.config import get_server_base_url
+    from modules.backend.services.health import HealthCheckService
 
     try:
-        base_url, timeout = get_server_base_url()
+        service = HealthCheckService()
+        report = await service.check_readiness()
 
-        async with httpx.AsyncClient(
-            base_url=base_url,
-            timeout=timeout,
-            headers={"X-Frontend-ID": "telegram"},
-        ) as client:
-            response = await client.get("/health/ready")
+        lines = ["<b>📊 System Status</b>\n", "🟢 <b>Bot:</b> Online"]
 
-        if response.status_code == 200:
-            data = response.json()
-            checks = data.get("checks", {})
-            lines = ["<b>📊 System Status</b>\n", "🟢 <b>Bot:</b> Online"]
+        for component in report.components:
+            icon = "🟢" if component.status == "healthy" else "🔴" if component.status == "unhealthy" else "🟡"
+            detail = f" ({component.latency_ms}ms)" if component.latency_ms else ""
+            lines.append(f"{icon} <b>{component.name.title()}:</b> {component.status}{detail}")
 
-            for component, check in checks.items():
-                status = check.get("status", "unknown")
-                icon = "🟢" if status == "healthy" else "🔴" if status == "unhealthy" else "🟡"
-                latency = check.get("latency_ms")
-                detail = f" ({latency}ms)" if latency else ""
-                lines.append(f"{icon} <b>{component.title()}:</b> {status}{detail}")
+        await message.answer("\n".join(lines))
 
-            await message.answer("\n".join(lines))
-
-        elif response.status_code == 503:
-            data = response.json()
-            detail = data.get("detail", {})
-            checks = detail.get("checks", {})
-            lines = ["<b>📊 System Status</b>\n", "🟢 <b>Bot:</b> Online"]
-
-            for component, check in checks.items():
-                status = check.get("status", "unknown")
-                icon = "🟢" if status == "healthy" else "🔴" if status == "unhealthy" else "🟡"
-                lines.append(f"{icon} <b>{component.title()}:</b> {status}")
-
-            await message.answer("\n".join(lines))
-        else:
-            await message.answer(f"⚠️ Backend returned status {response.status_code}")
-
-    except httpx.ConnectError:
-        await message.answer("🟢 <b>Bot:</b> Online\n🔴 <b>Backend:</b> Unreachable")
-    except (httpx.HTTPError, OSError, ValueError) as e:
+    except Exception as e:
         logger.error("Health check failed", extra={"error": str(e)})
         await message.answer(f"🟢 <b>Bot:</b> Online\n🔴 <b>Backend:</b> Error — {e}")
 

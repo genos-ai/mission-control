@@ -4,6 +4,9 @@ Authentication Middleware.
 User ID whitelisting and role-based access control for the Telegram bot.
 Roles and user-to-role mappings are read from config/settings/security.yaml.
 Telegram user IDs are immutable integers that cannot be spoofed within the Telegram API.
+
+Authorization logic (role resolution, role comparison) is delegated to
+modules.backend.core.security — this middleware is a thin enforcement layer.
 """
 
 from typing import Any, Awaitable, Callable
@@ -13,36 +16,9 @@ from aiogram.types import TelegramObject, Update
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
+from modules.backend.core.security import check_role_level, resolve_user_role_from_config
 
 logger = get_logger(__name__)
-
-
-def _get_role_hierarchy() -> dict[str, int]:
-    """Build a role-name -> level mapping from security config."""
-    security = get_app_config().security
-    return {name: role.level for name, role in security.roles.items()}
-
-
-def _get_user_roles_mapping() -> dict[int, str]:
-    """Build a user-ID -> role-name mapping from security config.
-
-    YAML stores keys as strings; convert to int for Telegram user IDs.
-    """
-    security = get_app_config().security
-    return {int(uid): role for uid, role in security.user_roles.items()}
-
-
-def _resolve_role(user_id: int, authorized_users: list[int]) -> str:
-    """Determine a user's role from explicit mapping or default rules.
-
-    Priority:
-        1. Explicit mapping in security.yaml user_roles
-        2. Default to 'viewer' for any authorized user without a mapping
-    """
-    explicit = _get_user_roles_mapping()
-    if user_id in explicit:
-        return explicit[user_id]
-    return "viewer"
 
 
 class AuthMiddleware(BaseMiddleware):
@@ -115,7 +91,7 @@ class AuthMiddleware(BaseMiddleware):
             )
             return None
 
-        role = _resolve_role(user_id, authorized_users)
+        role = resolve_user_role_from_config(user_id)
 
         data["user_role"] = role
         data["telegram_user"] = user
@@ -136,25 +112,22 @@ def require_role(min_role: str):
     """
     Decorator to require a minimum role for a handler.
 
-    Reads role hierarchy from config/settings/security.yaml.
+    Role hierarchy is evaluated by the backend security module.
 
     Args:
-        min_role: Minimum required role name (e.g. "viewer", "trader", "admin")
+        min_role: Minimum required role name (e.g. "viewer", "user", "admin")
 
     Usage:
         @router.message(Command("trade"))
-        @require_role("trader")
+        @require_role("user")
         async def trade_handler(message: Message, user_role: str):
             pass
     """
     def decorator(func: Callable) -> Callable:
         async def wrapper(*args, **kwargs):
-            hierarchy = _get_role_hierarchy()
-            min_level = hierarchy.get(min_role, 0)
             user_role = kwargs.get("user_role", "viewer")
-            user_level = hierarchy.get(user_role, 0)
 
-            if user_level < min_level:
+            if not check_role_level(user_role, min_role):
                 message = args[0] if args else kwargs.get("message")
                 if message and hasattr(message, "answer"):
                     await message.answer("⛔ You don't have permission for this action.")

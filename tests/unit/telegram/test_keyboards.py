@@ -33,11 +33,11 @@ class TestMainMenuKeyboard:
         assert "❓ Help" in button_texts
         assert "⚙️ Settings" in button_texts
 
-    def test_trader_role_has_trading_buttons(self):
-        """Test that trader role gets trading buttons."""
+    def test_user_role_has_trading_buttons(self):
+        """Test that user role gets trading buttons."""
         from modules.clients.telegram.keyboards.common import get_main_menu_keyboard
 
-        keyboard = get_main_menu_keyboard(user_role="trader")
+        keyboard = get_main_menu_keyboard(user_role="user")
         button_texts = [btn.text for row in keyboard.keyboard for btn in row]
 
         assert "💰 Balance" in button_texts

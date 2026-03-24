@@ -25,16 +25,6 @@ from modules.backend.services.session import SessionService
 router = APIRouter()
 
 
-def _to_response(session) -> SessionResponse:
-    """Convert Session model to SessionResponse with computed fields."""
-    resp = SessionResponse.model_validate(session)
-    if session.cost_budget_usd is not None:
-        resp.budget_remaining_usd = max(
-            0.0, session.cost_budget_usd - session.total_cost_usd
-        )
-    return resp
-
-
 # --- Session CRUD ---
 
 
@@ -53,7 +43,7 @@ async def create_session(
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.create_session(data, user_id=user_id)
-    return ApiResponse(data=_to_response(session))
+    return ApiResponse(data=SessionResponse.model_validate(session))
 
 
 @router.get(
@@ -69,7 +59,7 @@ async def get_session(
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.get_session(session_id)
-    return ApiResponse(data=_to_response(session))
+    return ApiResponse(data=SessionResponse.model_validate(session))
 
 
 @router.patch(
@@ -86,7 +76,7 @@ async def update_session(
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.update_session(session_id, data)
-    return ApiResponse(data=_to_response(session))
+    return ApiResponse(data=SessionResponse.model_validate(session))
 
 
 @router.get(
@@ -135,7 +125,7 @@ async def suspend_session(
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.suspend_session(session_id, reason)
-    return ApiResponse(data=_to_response(session))
+    return ApiResponse(data=SessionResponse.model_validate(session))
 
 
 @router.post(
@@ -151,7 +141,7 @@ async def resume_session(
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.resume_session(session_id)
-    return ApiResponse(data=_to_response(session))
+    return ApiResponse(data=SessionResponse.model_validate(session))
 
 
 @router.post(
@@ -167,7 +157,7 @@ async def complete_session(
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.complete_session(session_id)
-    return ApiResponse(data=_to_response(session))
+    return ApiResponse(data=SessionResponse.model_validate(session))
 
 
 # --- Channel Binding ---
@@ -222,7 +212,7 @@ async def get_session_by_channel(
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.get_session_by_channel(channel_type, channel_id)
-    return ApiResponse(data=_to_response(session))
+    return ApiResponse(data=SessionResponse.model_validate(session))
 
 
 # --- Messages ---

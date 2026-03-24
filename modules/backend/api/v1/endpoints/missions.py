@@ -4,7 +4,7 @@ Mission management API endpoints.
 CRUD for missions, team management, and mission-scoped workflow listing.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
@@ -244,8 +244,8 @@ async def list_mission_workflows(
             "description": w.description,
             "version": w.version,
             "enabled": w.enabled,
-            "trigger_type": (w.trigger_config or {}).get("type", "on_demand"),
-            "step_count": len(w.steps or []),
+            "trigger_type": w.trigger_type,
+            "step_count": w.step_count,
             "designed_by": w.designed_by,
             "locked_at": w.locked_at,
         }
@@ -416,7 +416,7 @@ async def architect_chat(
     mission_id: str,
     db: DbSession,
     request_id: RequestId,
-    message: str = "",
+    message: str = Query(..., min_length=1, description="Message for the Workflow Architect"),
     session_id: str | None = None,
 ) -> ApiResponse:
     """Send a message to the Workflow Architect for conversational design.
@@ -425,13 +425,6 @@ async def architect_chat(
     validates them, and saves confirmed designs.
     """
     from modules.backend.services.workflow_architect import WorkflowArchitectService
-
-    if not message:
-        return ApiResponse(
-            success=False,
-            data={"error": "message is required"},
-            metadata={"request_id": request_id},
-        )
 
     service = WorkflowArchitectService(db)
     result = await service.chat(
