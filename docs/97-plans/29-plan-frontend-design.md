@@ -4,7 +4,8 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2026-03-21 |
-| **Depends on** | Plan 28 (Mission Control Platform Architecture) |
+| **Updated** | 2026-03-23 — aligned with Plan 30 (User Management & Authentication) |
+| **Depends on** | Plan 28 (Mission Control Platform Architecture), Plan 30 (User Management & Authentication) |
 | **Target** | `modules/frontend/` — React + Vite + Tailwind |
 
 ---
@@ -177,12 +178,13 @@ Only one drawer open at a time. Closing returns full width to main content.
 /missions/:id/workshop     → Workshop tab
 /missions/:id/context      → Context tab
 /catalog                   → Global agent catalog
+/profile                   → Current user profile, security, API keys
 /admin                     → Admin section, default to Catalog tab
 /admin/catalog             → Admin agent catalog CRUD
 /admin/metrics             → Platform metrics
 /admin/config              → Platform configuration
 /admin/health              → System health
-/admin/roles               → Role management
+/admin/users               → User management
 /login                     → Authentication
 ```
 
@@ -192,21 +194,29 @@ Only one drawer open at a time. Closing returns full width to main content.
 
 ### 5.1  Login
 
-Simple API key authentication. Full-screen, no sidebar.
+Email/password authentication with JWT tokens. Full-screen, no sidebar.
 
 **Layout:**
 - Centered card on dark background
 - "MISSION CONTROL" wordmark + tagline
-- Single field: API key input (password-masked)
+- Two fields: email input, password input (masked)
 - "Sign In" button
-- Error state: "Invalid API key" inline
+- Error state: "Invalid email or password" inline (same message for both — no credential enumeration)
 
 **Behaviour:**
-- On success, store key in localStorage, set `X-API-Key` header on all requests
+- On submit, `POST /api/v1/auth/login` with `{ email, password }`
+- On success: store `access_token` in memory only (`useAuthStore`) and `refresh_token` in
+  localStorage. Populate `user: UserResponse` in auth store.
 - Redirect to Dashboard
-- If stored key exists and is valid, skip login
+- On page load / hard refresh: if a `refresh_token` exists in localStorage, attempt a silent
+  re-auth via `POST /api/v1/auth/refresh`. On success, restore auth state and continue.
+  On failure, clear localStorage and show login.
+- If auth state is already valid, skip login and redirect to Dashboard
 
-**API:** `GET /health/ready` with the key header to validate.
+**API:**
+- `POST /api/v1/auth/login` — authenticate, receive JWT pair + `UserResponse`
+- `POST /api/v1/auth/refresh` — silent re-auth on page load using stored refresh token
+- `GET /api/v1/auth/me` — validate existing token and hydrate user state
 
 ---
 
@@ -670,11 +680,11 @@ Global agent catalog. Read-only for regular users. Separate from admin.
 
 ### 5.12  Admin Section
 
-Separate workspace for sysadmins. Own tab set within the main content area.
+Separate workspace for sysadmins (`user.system_role === 'admin'`). Own tab set within the main content area.
 
 **Route:** `/admin/*`
 
-**Tab set:** Catalog | Metrics | Config | Health | Roles
+**Tab set:** Catalog | Metrics | Config | Health | Users
 
 **5.12.1  Admin — Catalog Tab**
 
@@ -733,18 +743,76 @@ System health checks.
 
 **API:** `POST /api/v1/admin/system/health` and `GET /health/detailed`
 
-**5.12.5  Admin — Roles Tab**
+**5.12.5  Admin — Users Tab**
 
-Role definitions and user assignments.
+Full user management. Create, edit, deactivate users. Manage API keys. Reset passwords.
 
-- Role table: role name, level, description
-- User-role mapping table: user identifier, assigned role
+**Layout: table + detail panel**
 
-**API:** `GET /api/v1/admin/roles` and `GET /api/v1/admin/users/roles`
+- Sortable/filterable table: display name, email, system role, active status, last login, created date
+- Status badge: Active (green) / Inactive (red) / Service Account (muted)
+- Click row → inline expand or detail panel with full user info
+
+**User detail actions:**
+- Edit display name, system role (`viewer / user / admin`) via inline form
+- Deactivate user (soft delete with confirmation modal — cannot deactivate self)
+- Reset password (modal with new password field, min 12 chars)
+
+**API keys sub-section** (in expanded row):
+- Table: key name, prefix, expires, last used, status (Active / Revoked / Expired)
+- [+ Create Key] → modal with name field and optional expiry (1–365 days)
+  - On success: display full key in a copy-to-clipboard dialog — **shown once only**
+- [Revoke] button on each active key with confirmation
+
+**Create user** (button at table top):
+- Modal fields: email, display name, password (optional — omit for API-key-only users), system role, service account checkbox
+- On submit: `POST /api/v1/admin/users`
+
+**API:**
+- `GET /api/v1/admin/users` — list users (query: `limit`, `offset`)
+- `POST /api/v1/admin/users` — create user
+- `PATCH /api/v1/admin/users/{id}` — update display name / role / active status
+- `DELETE /api/v1/admin/users/{id}` — deactivate user
+- `POST /api/v1/admin/users/{id}/reset-password` — admin reset password
+- `GET /api/v1/admin/users/{id}/api-keys` — list user's keys
+- `POST /api/v1/admin/users/{id}/api-keys` — create key for user
+- `DELETE /api/v1/admin/users/{id}/api-keys/{keyId}` — revoke key
 
 ---
 
-## 6  Notifications
+### 5.13  Profile Page
+
+Current user's own account management. Accessible via the `👤` icon in the sidebar footer.
+
+**Route:** `/profile`
+
+**Layout sections (vertical stack):**
+
+**A) Profile info:**
+- Display name (editable inline)
+- Email address (read-only)
+- System role badge (read-only — changed by admins only)
+- Last login timestamp
+
+**B) Security:**
+- Change password form: current password, new password (min 12 chars), confirm
+- [Change Password] button → `POST /api/v1/auth/change-password`
+- Hidden if the account has no password set (API-key-only / service account)
+
+**C) API Keys:**
+- Table: key name, prefix (first 8 chars), expires, last used, status
+- [+ Create Key] → modal with name + optional expiry. On success: display and copy full key once.
+- [Revoke] on each active key with confirmation
+- This is the user-facing equivalent of the admin API key management
+
+**API:**
+- `GET /api/v1/auth/me` — load profile (display name, email, role)
+- `POST /api/v1/auth/change-password`
+- `GET /api/v1/auth/api-keys`
+- `POST /api/v1/auth/api-keys`
+- `DELETE /api/v1/auth/api-keys/{keyId}`
+
+---
 
 ### 6.1  Notification types
 
@@ -834,6 +902,35 @@ Click `[Show results]` to expand. Click again to collapse. State is local
 The backend enforces permissions. The frontend reflects them by conditionally
 rendering actions.
 
+### 8.1  Two-tier role system
+
+Two separate, orthogonal role systems are in play:
+
+**System-level roles** (`user.system_role` from `useAuthStore`):
+- `viewer` — read-only platform access
+- `user` — standard platform access (default)
+- `admin` — full platform access; gates the Admin section
+
+**Mission-level roles** (from `MissionMember` for the current mission):
+- `Owner` — full control of the mission
+- `Maintainer` — can operate but not configure
+- `Viewer` — read-only
+
+A user can be a system-level `admin` but a `Viewer` on a specific mission.
+A user can be a system-level `user` but the `Owner` of a mission they created.
+
+### 8.2  Hook design
+
+```typescript
+// System-level: reads user.system_role from useAuthStore
+const { isAdmin } = useAuthStore()
+
+// Mission-level: reads MissionMember role for the current mission
+const { role } = useRole(missionId)  // returns 'Owner' | 'Maintainer' | 'Viewer'
+```
+
+### 8.3  Action visibility matrix
+
 | Element | Owner | Maintainer | Viewer |
 |---|---|---|---|
 | + New Mission | Visible | Hidden | Hidden |
@@ -848,11 +945,12 @@ rendering actions.
 | Workshop (test runs) | Visible | Visible | Hidden |
 | Chat with agents | Visible | Visible | Visible |
 | View all data | Visible | Visible | Visible |
-| Admin section | Sysadmin only | Hidden | Hidden |
+| Admin section | `isAdmin` only | Hidden | Hidden |
 
-Implementation: a `useRole()` hook reads the user's role from auth state.
-Components use it to conditionally render buttons/actions. Read-only views
-are always accessible.
+Implementation: `useRole(missionId)` reads the mission member role from React Query
+cache (loaded with the mission). `useAuthStore` provides `isAdmin` directly from
+`user.system_role`. Components use both to conditionally render buttons/actions.
+Read-only views are always accessible.
 
 ---
 
@@ -912,7 +1010,7 @@ Every screen has a meaningful empty state that guides the user forward.
 
 | Store | Purpose |
 |---|---|
-| `useAuthStore` (Zustand) | API key, user info, role |
+| `useAuthStore` (Zustand) | `access_token` (memory only), `refresh_token` (localStorage), `user: UserResponse \| null`, derived `isAdmin` |
 | `useNotificationStore` (Zustand) | Unread count, notification list |
 | `useDrawerStore` (Zustand) | Drawer open/closed state, content type |
 | React Query | All server state (missions, teams, runs, etc.) |
@@ -924,13 +1022,19 @@ Every screen has a meaningful empty state that guides the user forward.
 A typed fetch wrapper that all hooks use:
 
 ```typescript
-// Injects X-API-Key header, handles errors, unwraps ApiResponse envelope
+// Injects Authorization: Bearer <access_token> header on every request.
+// On 401, attempts a silent token refresh via POST /api/v1/auth/refresh,
+// updates the auth store, and retries the request once.
+// If the refresh also fails, clears auth state and redirects to /login.
 const api = {
   get<T>(path: string): Promise<T>,
   post<T>(path: string, body?: unknown): Promise<T>,
   patch<T>(path: string, body: unknown): Promise<T>,
   put<T>(path: string, body: unknown): Promise<T>,
   delete(path: string): Promise<void>,
+  // SSE: EventSource does not support custom headers natively.
+  // Pass the access token as a query parameter: ?token=<access_token>
+  // The backend validates it identically to the Bearer header.
   sse(path: string, body?: unknown): EventSource,
 }
 ```
@@ -944,6 +1048,7 @@ useMissionTeam(id)      // GET /api/v1/missions/:id/team
 useWorkflows(missionId) // GET /api/v1/missions/:id/workflows
 useExecutions(missionId)// GET /api/v1/executions?mission_id=...
 useCatalog()            // GET /api/v1/catalog/agents
+useCurrentUser()        // GET /api/v1/auth/me
 // ... etc
 ```
 
@@ -983,10 +1088,13 @@ The status bar shows connection state (`● Connected` / `○ Reconnecting...`).
 Establish the shell, routing, API client, and auth.
 
 - AppShell layout (sidebar, main, status bar, drawer)
-- React Router with all routes
-- API client layer with typed fetch wrapper
-- Auth flow (login, key storage, header injection)
-- Zustand stores (auth, notifications, drawer)
+- React Router with all routes (including `/profile` and `/admin/users`)
+- API client layer: typed fetch wrapper with `Authorization: Bearer` header injection,
+  automatic token refresh interceptor on 401, SSE token-as-query-param helper
+- Auth flow: email/password login form, JWT token storage (`access_token` memory only,
+  `refresh_token` localStorage), silent re-auth on page load via `/auth/refresh`
+- Zustand stores: `useAuthStore` (`access_token`, `refresh_token`, `user`, `isAdmin`),
+  `useNotificationStore`, `useDrawerStore`
 - Shared UI primitives (badges, cards, buttons)
 
 ### Phase F2 — Dashboard + Mission CRUD
@@ -1048,14 +1156,16 @@ Agent conversations and prompt iteration.
 - Workshop tab with prompt editor, test runner, cached inputs
 - Output comparison across test runs
 
-### Phase F8 — Admin + Polish
+### Phase F8 — Admin + Profile + Polish
 
 Admin section and cross-cutting refinements.
 
 - Admin catalog CRUD with system prompt editor
 - Admin metrics dashboard
-- Admin config, health, roles pages
-- Role-based UI conditional rendering
+- Admin config and health pages
+- Admin Users tab: user list, create/edit/deactivate, API key management, password reset
+- Profile page: display name, change password, own API key management
+- Role-based UI conditional rendering (both system-level `isAdmin` and mission-level `useRole`)
 - Dark mode toggle
 - Loading states (skeleton loaders)
 - Error boundaries and fallback UI
@@ -1066,6 +1176,11 @@ Admin section and cross-cutting refinements.
 
 | Frontend Feature | Backend Requirement | Status |
 |---|---|---|
+| Login | `POST /api/v1/auth/login` | Exists |
+| Token refresh / silent re-auth | `POST /api/v1/auth/refresh` | Exists |
+| Auth validation / user hydration | `GET /api/v1/auth/me` | Exists |
+| Profile page | `GET /api/v1/auth/me`, `POST /api/v1/auth/change-password` | Exists |
+| Own API key management | `GET/POST/DELETE /api/v1/auth/api-keys` | Exists |
 | Dashboard | `GET /api/v1/missions` | Exists |
 | Mission CRUD | `POST/GET/PATCH /api/v1/missions` | Exists |
 | Team management | `GET/POST/DELETE /api/v1/missions/:id/team` | Exists |
@@ -1080,11 +1195,15 @@ Admin section and cross-cutting refinements.
 | Gate approval | `POST /api/v1/executions/:id/approve` | Exists |
 | Chat (sessions) | `POST /api/v1/sessions/:id/messages` (SSE) | Exists |
 | Workshop | `POST /api/v1/workshop/:agent/run` | Exists |
-| Admin (all) | `/api/v1/admin/*` | Exists |
+| Admin catalog | `/api/v1/admin/catalog/*` | Exists |
+| Admin metrics | `/api/v1/admin/metrics/*` | Exists |
+| Admin config | `GET /api/v1/admin/config` | Exists |
+| Admin health | `GET /health/detailed` | Exists |
+| Admin user management | `GET/POST/PATCH/DELETE /api/v1/admin/users/*` | Exists |
 | Health | `/health/*` | Exists |
-| Notification SSE | User-scoped notification stream | Needs endpoint |
-| Run SSE | Execution event stream | Needs endpoint |
-| Prompt version history | `GET /api/v1/admin/catalog/:name/prompt-history` | Exists (admin); needs user-facing equivalent for user prompts |
+| Notification SSE | User-scoped notification stream | **Needs endpoint** |
+| Run SSE | Execution event stream | **Needs endpoint** |
+| Prompt version history | User-facing `GET /api/v1/missions/:id/team/:id/prompt-history` | **Needs endpoint** (admin equivalent exists) |
 
 ---
 
