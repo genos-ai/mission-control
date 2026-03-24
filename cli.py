@@ -1044,6 +1044,17 @@ def admin_reset_password(ctx, email, password):
     )
 
 
+@admin.command("ensure-system-accounts")
+@click.pass_obj
+def admin_ensure_system_accounts(ctx):
+    """Create system service accounts (workflow runner, CLI, scheduler)."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(
+        ctx.logger, "ensure-system-accounts",
+        output_format=ctx.output_format,
+    )
+
+
 # =============================================================================
 # Schedule commands
 # =============================================================================

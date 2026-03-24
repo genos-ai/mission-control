@@ -67,7 +67,7 @@ class WorkflowRunService(BaseService):
     async def run_workflow(
         self,
         workflow_name: str,
-        triggered_by: str = "user:cli",
+        triggered_by: str = "system:cli",
         context_overrides: dict[str, Any] | None = None,
         on_progress: Any | None = None,
         mission_name: str | None = None,

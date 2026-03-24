@@ -24,6 +24,14 @@ logger = get_logger(__name__)
 class BootstrapService:
     """CLI-only admin operations: initial setup, password resets."""
 
+    # Well-known service accounts used by internal subsystems.
+    # These must exist before any mission can be created.
+    SYSTEM_ACCOUNTS = [
+        {"id": "system:workflow", "display_name": "Workflow Runner", "system_role": "user"},
+        {"id": "system:cli", "display_name": "CLI Runner", "system_role": "user"},
+        {"id": "system:scheduler", "display_name": "Scheduler", "system_role": "user"},
+    ]
+
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._user_repo = UserRepository(session)
@@ -39,6 +47,37 @@ class BootstrapService:
             yield BootstrapService(db)
             await db.commit()
 
+    async def ensure_system_accounts(self) -> list[User]:
+        """Create well-known service accounts if they don't exist.
+
+        These accounts own missions created by automated subsystems
+        (workflow runner, CLI, scheduler) so the mission_members FK
+        constraint is satisfied. Idempotent — safe to call repeatedly.
+
+        Returns:
+            List of newly created users (empty if all already existed).
+        """
+        created = []
+        for acct in self.SYSTEM_ACCOUNTS:
+            existing = await self._user_repo.get_by_id_or_none(acct["id"])
+            if existing:
+                continue
+            user = User(
+                id=acct["id"],
+                email=f"{acct['id'].replace(':', '-')}@system.local",
+                display_name=acct["display_name"],
+                system_role=acct["system_role"],
+                is_active=True,
+                is_service_account=True,
+            )
+            self._session.add(user)
+            created.append(user)
+            logger.info("System account created", extra={"id": acct["id"]})
+
+        if created:
+            await self._session.flush()
+        return created
+
     async def bootstrap_admin(
         self,
         email: str,
@@ -53,6 +92,9 @@ class BootstrapService:
         Raises:
             ConflictError: If an admin user already exists.
         """
+        # Always ensure system service accounts exist
+        await self.ensure_system_accounts()
+
         existing_admins = await self._user_repo.list_all(
             limit=1, offset=0, role_filter="admin",
         )

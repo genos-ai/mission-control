@@ -38,6 +38,7 @@ def run_admin_cmd(
         "toggle-agent": _action_toggle_agent,
         "bootstrap-user": _action_bootstrap_user,
         "reset-password": _action_reset_password,
+        "ensure-system-accounts": _action_ensure_system_accounts,
     }
     fn = actions.get(action)
     if not fn:
@@ -343,3 +344,19 @@ async def _action_reset_password(cli_logger, *, email, password, **_):
         sys.exit(1)
 
     console.print(f"[green]Password reset for {email}[/green]")
+
+
+async def _action_ensure_system_accounts(cli_logger, **_):
+    """Create well-known system service accounts if they don't exist."""
+    from modules.backend.services.bootstrap import BootstrapService
+
+    console = get_console()
+
+    async with BootstrapService.factory() as svc:
+        created = await svc.ensure_system_accounts()
+
+    if created:
+        for user in created:
+            console.print(f"  [green]Created:[/green] {user.id} ({user.display_name})")
+    else:
+        console.print("[dim]All system accounts already exist.[/dim]")

@@ -122,7 +122,7 @@ async def _action_create(
             budget_per_run_usd=budget,
             max_iterations=max_iterations,
             cooldown_seconds=cooldown,
-            created_by="user:cli",
+            created_by="system:cli",
         )
 
     console.print(f"[green]Schedule created:[/green] {schedule.id}")

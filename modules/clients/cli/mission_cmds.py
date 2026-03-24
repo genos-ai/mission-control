@@ -18,7 +18,7 @@ def run_mission(
     mission_id: str | None = None,
     description: str | None = None,
     brief: str | None = None,
-    owner_id: str = "user:cli",
+    owner_id: str = "system:cli",
     roster: str = "default",
     budget: float | None = None,
     repo_url: str | None = None,
