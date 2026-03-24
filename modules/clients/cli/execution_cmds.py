@@ -386,24 +386,43 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
         click.echo(click.style("Error: --execution-id is required for cost.", fg="red"), err=True)
         raise _AbortExecution("execution-id required")
 
-    from modules.backend.services.execution_persistence import ExecutionPersistenceService
+    # Same data source as list/detail/plan — no bridge to execution_records.
+    from modules.backend.services.execution import ExecutionService
 
-    async with ExecutionPersistenceService.factory() as service:
-        breakdown = await service.get_cost_breakdown(execution_id)
+    async with ExecutionService.factory() as service:
+        try:
+            execution = await service.get_execution(execution_id)
+        except Exception as e:
+            logger.warning("Execution lookup failed", extra={"execution_id": execution_id, "error": str(e)})
+            click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
+            raise _AbortExecution("execution not found")
+
+    outcome = execution.execution_outcome
+    if not outcome or not isinstance(outcome, dict):
+        click.echo(click.style("No cost data — execution may not have been run.", fg="yellow"))
+        return
 
     from modules.clients.cli.report import get_console, build_table, primary_panel
 
     console = get_console()
 
+    task_results = outcome.get("task_results") or []
+    total_input = 0
+    total_output = 0
+    for tr in task_results:
+        usage = tr.get("token_usage", {})
+        total_input += usage.get("input", 0)
+        total_output += usage.get("output", 0)
+
     info_lines = [
-        f"[bold]Execution:[/bold]     {breakdown.execution_id}",
-        f"[bold]Total Cost:[/bold]    ${breakdown.total_cost_usd:.4f}",
-        f"[bold]Input Tokens:[/bold]  {breakdown.total_input_tokens:,}",
-        f"[bold]Output Tokens:[/bold] {breakdown.total_output_tokens:,}",
+        f"[bold]Execution:[/bold]     {execution_id}",
+        f"[bold]Total Cost:[/bold]    ${execution.total_cost_usd:.4f}",
+        f"[bold]Input Tokens:[/bold]  {total_input:,}",
+        f"[bold]Output Tokens:[/bold] {total_output:,}",
     ]
     console.print(primary_panel(content="\n".join(info_lines), title="Cost Breakdown"))
 
-    if breakdown.task_costs:
+    if task_results:
         table = build_table("Task Costs", columns=[
             ("Task",     {"style": "cyan", "width": 12}),
             ("Agent",    {"width": 28}),
@@ -411,10 +430,14 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
             ("Tokens",   {"justify": "right", "width": 14}),
             ("Duration", {"justify": "right", "width": 10}),
         ])
-        for tc in breakdown.task_costs:
-            tokens = f"{(tc.get('input_tokens') or 0) + (tc.get('output_tokens') or 0):,}"
-            dur = f"{tc['duration_seconds']:.1f}s" if tc.get('duration_seconds') else "—"
-            table.add_row(tc['task_id'], tc['agent_name'], f"${tc['cost_usd']:.4f}", tokens, dur)
+        for tr in task_results:
+            usage = tr.get("token_usage", {})
+            tokens = f"{usage.get('input', 0) + usage.get('output', 0):,}"
+            dur = f"{tr.get('duration_seconds', 0):.1f}s" if tr.get('duration_seconds') else "—"
+            table.add_row(
+                tr.get("task_id", "—"), tr.get("agent_name", "—"),
+                f"${tr.get('cost_usd', 0):.4f}", tokens, dur,
+            )
         console.print(table)
 
 
