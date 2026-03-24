@@ -28,6 +28,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: code-rules
+        name: code rules (fast)
+        entry: python scripts/code_rules_fast.py
+        language: system
+        types: [python]
+        pass_filenames: false
+
       - id: codemap
         name: regenerate CODEMAP.md
         entry: python scripts/generate_code_map.py --scope modules/ -o CODEMAP.md
