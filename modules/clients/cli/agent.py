@@ -93,13 +93,11 @@ def run_agent(cli_logger, message: str, agent: str | None, output_format: str = 
 
 async def _dispatch(message: str, agent: str | None) -> dict:
     """Run agent dispatch with a real DB session."""
-    from modules.backend.core.database import get_async_session
     from modules.backend.agents.mission_control.mission_control import collect
     from modules.backend.services.session import SessionService
     from modules.backend.schemas.session import SessionCreate
 
-    async with get_async_session() as db:
-        service = SessionService(db)
+    async with SessionService.factory() as service:
         session = await service.create_session(
             SessionCreate(agent_id=agent, goal=message[:200]),
         )
@@ -110,7 +108,6 @@ async def _dispatch(message: str, agent: str | None) -> dict:
             message,
             session_service=service,
         )
-        await db.commit()
 
         # Fetch updated session for cost info
         session = await service.get_session(session_id)

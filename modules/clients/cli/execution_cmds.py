@@ -82,11 +82,9 @@ async def _action_create(cli_logger, *, objective, execution_id, roster, budget,
         click.echo(click.style("Error: --objective is required for create.", fg="red"), err=True)
         raise _AbortExecution("objective required")
 
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.execution import ExecutionService
 
-    async with get_async_session() as db:
-        service = ExecutionService(session=db)
+    async with ExecutionService.factory() as service:
         execution = await service.create_adhoc_execution(
             objective=objective,
             triggered_by=triggered_by,
@@ -94,7 +92,6 @@ async def _action_create(cli_logger, *, objective, execution_id, roster, budget,
             roster_ref=roster,
             cost_ceiling_usd=budget,
         )
-        await db.commit()
 
     click.echo(click.style("Execution created", fg="green", bold=True))
     click.echo(f"  ID:        {execution.id}")
@@ -114,31 +111,14 @@ async def _action_execute(cli_logger, *, objective, execution_id, roster, budget
 
     await _preflight_gate(roster)
 
-    from modules.backend.core.database import get_async_session
-    from modules.backend.agents.mission_control.dispatch_adapter import (
-        MissionControlDispatchAdapter,
-    )
     from modules.clients.cli.report import render_execution
     from modules.backend.services.execution import ExecutionService
-    from modules.backend.services.session import SessionService
 
     click.echo(f"Executing {execution_id}...")
     click.echo()
 
-    async with get_async_session() as db:
-        session_service = SessionService(db)
-        adapter = MissionControlDispatchAdapter(
-            session_service=session_service,
-            db_session=db,
-        )
-        service = ExecutionService(
-            session=db,
-            mission_control_dispatch=adapter,
-            session_service=session_service,
-        )
-
+    async with ExecutionService.factory() as service:
         execution = await service.run_execution(execution_id)
-        await db.commit()
 
     await render_execution(execution, output_format)
 
@@ -151,29 +131,13 @@ async def _action_run(cli_logger, *, objective, execution_id, roster, budget, tr
 
     await _preflight_gate(roster)
 
-    from modules.backend.core.database import get_async_session
-    from modules.backend.agents.mission_control.dispatch_adapter import (
-        MissionControlDispatchAdapter,
-    )
     from modules.clients.cli.report import render_execution
     from modules.backend.services.execution import ExecutionService
-    from modules.backend.services.session import SessionService
 
     click.echo("Creating and executing...")
     click.echo()
 
-    async with get_async_session() as db:
-        session_service = SessionService(db)
-        adapter = MissionControlDispatchAdapter(
-            session_service=session_service,
-            db_session=db,
-        )
-        service = ExecutionService(
-            session=db,
-            mission_control_dispatch=adapter,
-            session_service=session_service,
-        )
-
+    async with ExecutionService.factory() as service:
         execution = await service.create_adhoc_execution(
             objective=objective,
             triggered_by=triggered_by,
@@ -184,7 +148,6 @@ async def _action_run(cli_logger, *, objective, execution_id, roster, budget, tr
         click.echo(f"  Execution ID: {execution.id}")
 
         execution = await service.run_execution(execution.id)
-        await db.commit()
 
     await render_execution(execution, output_format)
 
@@ -192,11 +155,9 @@ async def _action_run(cli_logger, *, objective, execution_id, roster, budget, tr
 async def _action_list(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
     """List executions."""
     from modules.clients.cli.report import get_console, build_table, styled_status
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.execution import ExecutionService
 
-    async with get_async_session() as db:
-        service = ExecutionService(session=db)
+    async with ExecutionService.factory() as service:
         executions, total = await service.list_executions(limit=20)
 
     if not executions:
@@ -235,12 +196,9 @@ async def _action_detail(cli_logger, *, objective, execution_id, roster, budget,
         primary_panel, info_panel, status_panel,
         render_task_outputs,
     )
-
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.execution import ExecutionService
 
-    async with get_async_session() as db:
-        service = ExecutionService(session=db)
+    async with ExecutionService.factory() as service:
         try:
             execution = await service.get_execution(execution_id)
         except Exception as e:
@@ -289,11 +247,9 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
     from modules.clients.cli.report import (
         get_console, build_table, primary_panel, info_panel, styled_status,
     )
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.execution import ExecutionService
 
-    async with get_async_session() as db:
-        service = ExecutionService(session=db)
+    async with ExecutionService.factory() as service:
         try:
             execution = await service.get_execution(execution_id)
         except Exception as e:
@@ -430,11 +386,9 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
         click.echo(click.style("Error: --execution-id is required for cost.", fg="red"), err=True)
         raise _AbortExecution("execution-id required")
 
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    async with get_async_session() as db:
-        service = ExecutionPersistenceService(db)
+    async with ExecutionPersistenceService.factory() as service:
         breakdown = await service.get_cost_breakdown(execution_id)
 
     from modules.clients.cli.report import get_console, build_table, primary_panel

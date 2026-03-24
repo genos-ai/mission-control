@@ -6,6 +6,8 @@ sessions, costs, and agent catalog for the admin dashboard. All queries
 are read-only and designed for periodic polling, not real-time streaming.
 """
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -31,6 +33,15 @@ class PlatformMetricsService(BaseService):
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory() -> AsyncGenerator["PlatformMetricsService", None]:
+        """Create a PlatformMetricsService with its own DB session."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield PlatformMetricsService(db)
 
     async def get_overview(self) -> dict[str, Any]:
         """Get high-level platform overview metrics.

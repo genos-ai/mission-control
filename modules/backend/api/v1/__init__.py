@@ -8,7 +8,9 @@ from fastapi import APIRouter
 
 from modules.backend.api.v1.endpoints import (
     admin,
+    admin_users,
     agents,
+    auth,
     catalog,
     executions,
     missions,
@@ -44,5 +46,11 @@ router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
 # Workshop (single-agent sandbox) endpoints
 router.include_router(workshop.router, prefix="/workshop", tags=["workshop"])
 
+# Auth endpoints (login, token refresh, API key management)
+router.include_router(auth.router, prefix="/auth", tags=["auth"])
+
 # Admin endpoints (protected by admin role)
 router.include_router(admin.router, prefix="/admin", tags=["admin"])
+
+# Admin user management endpoints
+router.include_router(admin_users.router, prefix="/admin/users", tags=["admin"])

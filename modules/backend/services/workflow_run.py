@@ -14,7 +14,8 @@ and the stateful ExecutionService (execution lifecycle).
 
 import asyncio
 from collections import defaultdict
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncGenerator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,19 @@ class WorkflowRunService(BaseService):
         self._run_repo = WorkflowRunRepository(session)
         self._execution_service_factory = execution_service_factory
         self._workflow_service = workflow_service or WorkflowService()
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory() -> AsyncGenerator["WorkflowRunService", None]:
+        """Create a WorkflowRunService with its own DB session."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield WorkflowRunService(
+                session=db,
+                execution_service_factory=ExecutionService.factory,
+            )
+            await db.commit()
 
     async def run_workflow(
         self,

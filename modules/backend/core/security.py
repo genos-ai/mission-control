@@ -129,3 +129,48 @@ def generate_api_key() -> tuple[str, str]:
 def verify_api_key(plain_key: str, hashed_key: str) -> bool:
     """Verify an API key against its hash."""
     return verify_password(plain_key, hashed_key)
+
+
+# ── Role-based authorization ─────────────────────────────────────────
+
+
+def check_role_level(user_role: str, minimum_role: str) -> bool:
+    """Check if a user role meets the minimum required level.
+
+    Reads role definitions from security.yaml config.
+
+    Args:
+        user_role: The user's assigned role name.
+        minimum_role: The minimum required role name.
+
+    Returns:
+        True if user_role level >= minimum_role level.
+
+    Raises:
+        ValueError: If minimum_role is not a recognized role name.
+    """
+    roles = get_app_config().security.roles
+    min_def = roles.get(minimum_role)
+    if not min_def:
+        raise ValueError(f"Unknown role: {minimum_role}")
+
+    actual_def = roles.get(user_role)
+    actual_level = actual_def.level if actual_def else 0
+    return actual_level >= min_def.level
+
+
+def resolve_user_role_from_config(user_id: int) -> str:
+    """Resolve a Telegram/external user ID to a role name from config.
+
+    Reads security.user_roles mapping from security.yaml.
+    Falls back to 'viewer' if no explicit mapping exists.
+
+    Args:
+        user_id: External user identifier (e.g. Telegram user ID).
+
+    Returns:
+        Role name string.
+    """
+    security = get_app_config().security
+    user_roles = {int(uid): role for uid, role in security.user_roles.items()}
+    return user_roles.get(user_id, "viewer")

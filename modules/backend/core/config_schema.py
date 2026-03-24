@@ -144,6 +144,7 @@ class FeaturesSchema(_StrictBase):
     auth_allow_api_key_creation: bool
     auth_rate_limit_enabled: bool
     auth_require_api_authentication: bool
+    auth_allow_self_registration: bool = False
     api_detailed_errors: bool
     api_request_logging: bool
     channel_telegram_enabled: bool
@@ -254,7 +255,7 @@ class GatewaySchema(_StrictBase):
 
 class EventsStreamSchema(_StrictBase):
     maxlen: int = 10000
-    consumer_group: str = "bfa-workers"
+    consumer_group: str = "mc-workers"
 
 
 class EventsSchema(_StrictBase):

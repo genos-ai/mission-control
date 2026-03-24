@@ -18,13 +18,15 @@ AI-first autonomous agent platform. FastAPI backend, PydanticAI agents, PostgreS
 
 ## Critical Rules
 
+- **Clients must be as thin as possible.** All business logic lives in `modules/backend/services/`. Client modules (CLI, Telegram, frontend, TUI) are thin presentation/dispatch layers only — they parse input, call backend services, and render output. They never import repositories, run queries, compute business rules, or implement validation. If two clients need the same logic, it belongs in a shared backend service.
+- **No skipping layers.** API endpoints call services. Services call repositories. Never import repositories or models directly in API endpoints or client code. Each layer only calls the layer directly below it.
 - **No hardcoded values.** All configuration from `config/settings/*.yaml`. All secrets from `config/.env`. No hardcoded fallbacks in code, ever.
 - **Absolute imports only.** Always `from modules.backend.core.config import ...`. Never relative imports.
 - **Centralized logging only.** Always `from modules.backend.core.logging import get_logger`. Never `import logging` directly.
 - **Timezone-naive UTC datetimes.** Use `from modules.backend.core.utils import utc_now`. Never `datetime.utcnow()` (deprecated) or `datetime.now()` (local time).
 - **`.project_root` marker** determines the project root. Use `find_project_root()` from `modules.backend.core.config`.
 - **CLI uses Click groups and subcommands.** Single entry point `cli.py` with `tree` command for full discoverability. Every group shows help when called bare — no default actions. `--verbose` and `--debug` on root group only.
-- **CLI display is centralized in `report.py`.** All Rich tables, panels, formatting, and styling use shared primitives from `modules/backend/cli/report.py`. Never create `Console`, `Table`, or `Panel` directly in handlers — import from `report.py`.
+- **CLI display is centralized in `report.py`.** All Rich tables, panels, formatting, and styling use shared primitives from `modules/clients/cli/report.py`. Never create `Console`, `Table`, or `Panel` directly in handlers — use `get_console()` from `report.py`.
 - **Files must not exceed 1000 lines.** Target ~400-500 lines. Split into focused submodules if larger.
 - **`__init__.py` files must be minimal.** Docstring and necessary exports only. No business logic.
 - **Secure by default (P8).** All external interfaces deny access when unconfigured. Empty allowlists = deny all. Missing secrets = startup failure. New channels/features disabled by default.
@@ -131,6 +133,9 @@ Use these as quick-reference tools when assessing code quality, planning refacto
 
 ## What NOT to Do
 
+- Do not put business logic in client code (CLI handlers, Telegram handlers, frontend components)
+- Do not import repositories or models in API endpoints or client code — go through services
+- Do not instantiate `Console()` directly — use `get_console()` from `report.py`
 - Do not create helper or wrapper scripts (except in `scripts/`)
 - Do not add business logic to `__init__.py` files
 - Do not use `os.getenv()` with fallback defaults

@@ -63,7 +63,7 @@ class TestEventsSchemaFromYaml:
         default_stream = schema.streams["default"]
         assert isinstance(default_stream, EventsStreamSchema)
         assert default_stream.maxlen == 10000
-        assert default_stream.consumer_group == "bfa-workers"
+        assert default_stream.consumer_group == "mc-workers"
 
 
 class TestEventsSchemaStrict:

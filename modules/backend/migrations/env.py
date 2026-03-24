@@ -39,6 +39,10 @@ from modules.backend.models.prompt_version import PromptVersion  # noqa: F401
 from modules.backend.models.workflow_definition import WorkflowDefinition  # noqa: F401
 from modules.backend.models.workflow_schedule import WorkflowSchedule  # noqa: F401
 
+# Phase 3: Users and API keys
+from modules.backend.models.user import User  # noqa: F401
+from modules.backend.models.api_key import ApiKey  # noqa: F401
+
 # Alembic Config object
 config = context.config
 

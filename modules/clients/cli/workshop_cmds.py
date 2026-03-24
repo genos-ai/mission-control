@@ -47,7 +47,6 @@ def run_workshop(
 
 async def _action_run(cli_logger, *, agent_name, inputs_json, prompt_override, **_):
     """Run a single agent in workshop mode."""
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.workshop import WorkshopService
 
     console = get_console()
@@ -63,14 +62,12 @@ async def _action_run(cli_logger, *, agent_name, inputs_json, prompt_override, *
             console.print(f"[red]Invalid JSON for --inputs: {e}[/red]")
             sys.exit(1)
 
-    async with get_async_session() as db:
-        service = WorkshopService(db)
+    async with WorkshopService.factory() as service:
         result = await service.run_agent(
             agent_name,
             inputs=inputs,
             prompt_override=prompt_override,
         )
-        await db.commit()
 
     console.print(f"\n[bold green]Workshop run completed[/bold green]")
     console.print(f"  Agent: {result['agent_name']}")
@@ -89,7 +86,6 @@ async def _action_run(cli_logger, *, agent_name, inputs_json, prompt_override, *
 
 async def _action_cached_inputs(cli_logger, *, agent_name, mission_id, limit, **_):
     """Show cached inputs for an agent."""
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.workshop import WorkshopService
 
     console = get_console()
@@ -97,8 +93,7 @@ async def _action_cached_inputs(cli_logger, *, agent_name, mission_id, limit, **
         console.print("[red]Agent name is required[/red]")
         sys.exit(1)
 
-    async with get_async_session() as db:
-        service = WorkshopService(db)
+    async with WorkshopService.factory() as service:
         cached = await service.get_cached_inputs(
             agent_name, mission_id=mission_id, limit=limit,
         )
@@ -123,13 +118,11 @@ async def _action_cached_inputs(cli_logger, *, agent_name, mission_id, limit, **
 
 async def _action_history(cli_logger, *, agent_name, limit, **_):
     """List workshop run history."""
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.workshop import WorkshopService
 
     console = get_console()
 
-    async with get_async_session() as db:
-        service = WorkshopService(db)
+    async with WorkshopService.factory() as service:
         runs = await service.list_runs(agent_name=agent_name, limit=limit)
 
     if not runs:

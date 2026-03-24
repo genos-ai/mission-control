@@ -1,8 +1,8 @@
 """
 CLI handler for --service db.
 
-Database inspection, cleanup, and management commands for development.
-All operations use real async DB sessions via get_async_session().
+Thin presentation layer over DatabaseAdminService.
+Parses args, calls the service, renders output.
 """
 
 import asyncio
@@ -13,33 +13,6 @@ import click
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-# Infrastructure tables — preserved by default (missions + PCD)
-PROJECT_TABLES = [
-    "milestone_summaries",
-    "mission_decisions",
-    "context_changes",
-    "mission_contexts",
-    "mission_members",
-    "missions",
-]
-
-# Run data tables — cleared by db clear
-RUN_TABLES = [
-    "execution_decisions",
-    "task_attempts",
-    "task_executions",
-    "execution_records",
-    "session_messages",
-    "session_channels",
-    "executions",
-    "workflow_runs",
-    "sessions",
-    "notes",
-]
-
-# All tables in dependency order (children first for safe truncation)
-ALL_TABLES = RUN_TABLES + PROJECT_TABLES
 
 
 def run_db(
@@ -93,53 +66,40 @@ def run_db(
 
 async def _action_stats(cli_logger, *, table, limit, confirm, **_):
     """Show row counts for all tables."""
-    from sqlalchemy import text
-
+    from modules.backend.services.database_admin import DatabaseAdminService
     from modules.clients.cli.report import get_console, build_table
-    from modules.backend.core.database import get_async_session
 
     console = get_console()
 
-    async with get_async_session() as db:
-        tbl_table = build_table("Database Statistics", columns=[
-            ("Table", {"style": "cyan", "width": 28}),
-            ("Rows",  {"justify": "right", "width": 10}),
-        ])
+    async with DatabaseAdminService.factory() as svc:
+        counts = await svc.get_table_row_counts()
 
-        total = 0
-        for tbl in ALL_TABLES:
-            result = await db.execute(text(f"SELECT COUNT(*) FROM {tbl}"))  # noqa: S608
-            count = result.scalar()
-            total += count
-            count_str = f"[green]{count}[/green]" if count else str(count)
-            tbl_table.add_row(tbl, count_str)
+    tbl_table = build_table("Database Statistics", columns=[
+        ("Table", {"style": "cyan", "width": 28}),
+        ("Rows",  {"justify": "right", "width": 10}),
+    ])
 
-        tbl_table.add_row("[bold]TOTAL[/bold]", f"[bold]{total}[/bold]", end_section=True)
+    total = 0
+    for tbl_name, count in counts:
+        total += count
+        count_str = f"[green]{count}[/green]" if count else str(count)
+        tbl_table.add_row(tbl_name, count_str)
+    tbl_table.add_row("[bold]TOTAL[/bold]", f"[bold]{total}[/bold]", end_section=True)
 
     console.print(tbl_table)
 
 
 async def _action_tables(cli_logger, *, table, limit, confirm, **_):
     """List all application tables with column info."""
-    from sqlalchemy import text
-
+    from modules.backend.services.database_admin import ALL_TABLES, DatabaseAdminService
     from modules.clients.cli.report import get_console, build_table
-    from modules.backend.core.database import get_async_session
 
     console = get_console()
 
-    async with get_async_session() as db:
+    async with DatabaseAdminService.factory() as svc:
         for tbl in ALL_TABLES:
-            result = await db.execute(text(
-                "SELECT column_name, data_type, is_nullable "
-                "FROM information_schema.columns "
-                "WHERE table_name = :table "
-                "ORDER BY ordinal_position"
-            ), {"table": tbl})
-            columns = result.fetchall()
-
-            result = await db.execute(text(f"SELECT COUNT(*) FROM {tbl}"))  # noqa: S608
-            count = result.scalar()
+            columns = await svc.get_table_columns(tbl)
+            count = await svc.get_table_row_count(tbl)
 
             col_table = build_table(f"{tbl}  ({count} rows)", columns=[
                 ("Column",   {"style": "cyan", "width": 30}),
@@ -154,6 +114,8 @@ async def _action_tables(cli_logger, *, table, limit, confirm, **_):
 
 async def _action_query(cli_logger, *, table, limit, confirm, **_):
     """Query recent rows from a table."""
+    from modules.backend.services.database_admin import ALL_TABLES, DatabaseAdminService
+
     if not table:
         click.echo(click.style("Error: --table is required for query.", fg="red"), err=True)
         click.echo(f"Available tables: {', '.join(ALL_TABLES)}")
@@ -164,49 +126,37 @@ async def _action_query(cli_logger, *, table, limit, confirm, **_):
         click.echo(f"Available tables: {', '.join(ALL_TABLES)}")
         sys.exit(1)
 
-    from sqlalchemy import text
+    async with DatabaseAdminService.factory() as svc:
+        columns, rows = await svc.query_recent_rows(table, limit=limit)
 
-    from modules.backend.core.database import get_async_session
+    if not rows:
+        click.echo(f"No rows in {table}.")
+        return
 
-    async with get_async_session() as db:
-        # Get column names
-        col_result = await db.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = :table ORDER BY ordinal_position"
-        ), {"table": table})
-        columns = [row[0] for row in col_result.fetchall()]
+    from modules.clients.cli.report import get_console, build_table
 
-        # Determine order column
-        order_col = "created_at" if "created_at" in columns else columns[0]
+    console = get_console()
+    row_table = build_table(f"{table}  ({len(rows)} rows shown)", columns=[
+        ("Column", {"style": "cyan", "width": 30}),
+        ("Value",  {"ratio": 1}),
+    ], show_lines=True)
 
-        result = await db.execute(text(
-            f"SELECT * FROM {table} ORDER BY {order_col} DESC LIMIT :limit"  # noqa: S608
-        ), {"limit": limit})
-        rows = result.fetchall()
+    for i, row in enumerate(rows):
+        row_table.add_row(f"[dim]--- Row {i + 1} ---[/dim]", "", end_section=True)
+        for col, val in zip(columns, row):
+            row_table.add_row(col, _format_value(val))
 
-        if not rows:
-            click.echo(f"No rows in {table}.")
-            return
-
-        from modules.clients.cli.report import get_console, build_table
-
-        console = get_console()
-        row_table = build_table(f"{table}  ({len(rows)} rows shown)", columns=[
-            ("Column", {"style": "cyan", "width": 30}),
-            ("Value",  {"ratio": 1}),
-        ], show_lines=True)
-
-        for i, row in enumerate(rows):
-            row_table.add_row(f"[dim]--- Row {i + 1} ---[/dim]", "", end_section=True)
-            for col, val in zip(columns, row):
-                val_str = _format_value(val)
-                row_table.add_row(col, val_str)
-
-        console.print(row_table)
+    console.print(row_table)
 
 
 async def _action_clear(cli_logger, *, table, limit, confirm, include_missions=False, **_):
     """Clear run data. Use --include-projects for full reset."""
+    from modules.backend.services.database_admin import (
+        ALL_TABLES,
+        RUN_TABLES,
+        DatabaseAdminService,
+    )
+
     tables = ALL_TABLES if include_missions else RUN_TABLES
 
     if not confirm:
@@ -227,74 +177,45 @@ async def _action_clear(cli_logger, *, table, limit, confirm, include_missions=F
             click.echo("Aborted.")
             return
 
-    from sqlalchemy import text
-
-    from modules.backend.core.database import get_async_session
-
-    async with get_async_session() as db:
-        for tbl in tables:
-            await db.execute(text(f"TRUNCATE TABLE {tbl} CASCADE"))  # noqa: S608
-        await db.commit()
+    async with DatabaseAdminService.factory() as svc:
+        await svc.truncate_tables(tables)
 
     scope = "All application data" if include_missions else "Run data"
     click.echo(click.style(f"{scope} cleared.", fg="green"))
 
 
 async def _action_clear_executions(cli_logger, *, table, limit, confirm, **_):
-    """Clear execution-related data only (missions, records, executions, decisions)."""
-    execution_tables = [
-        "execution_decisions",
-        "task_attempts",
-        "task_executions",
-        "execution_records",
-        "executions",
-        "workflow_runs",
-    ]
+    """Clear execution-related data only."""
+    from modules.backend.services.database_admin import EXECUTION_TABLES, DatabaseAdminService
 
     if not confirm:
         click.echo(click.style("This will DELETE all execution data.", fg="red", bold=True))
-        click.echo(f"Tables: {', '.join(execution_tables)}")
+        click.echo(f"Tables: {', '.join(EXECUTION_TABLES)}")
         click.echo()
         if not click.confirm("Are you sure?"):
             click.echo("Aborted.")
             return
 
-    from sqlalchemy import text
-
-    from modules.backend.core.database import get_async_session
-
-    async with get_async_session() as db:
-        for tbl in execution_tables:
-            await db.execute(text(f"TRUNCATE TABLE {tbl} CASCADE"))  # noqa: S608
-        await db.commit()
+    async with DatabaseAdminService.factory() as svc:
+        await svc.truncate_tables(EXECUTION_TABLES)
 
     click.echo(click.style("Execution data cleared.", fg="green"))
 
 
 async def _action_clear_sessions(cli_logger, *, table, limit, confirm, **_):
-    """Clear session-related data only (sessions, channels, messages)."""
-    session_tables = [
-        "session_messages",
-        "session_channels",
-        "sessions",
-    ]
+    """Clear session-related data only."""
+    from modules.backend.services.database_admin import SESSION_TABLES, DatabaseAdminService
 
     if not confirm:
         click.echo(click.style("This will DELETE all session data.", fg="red", bold=True))
-        click.echo(f"Tables: {', '.join(session_tables)}")
+        click.echo(f"Tables: {', '.join(SESSION_TABLES)}")
         click.echo()
         if not click.confirm("Are you sure?"):
             click.echo("Aborted.")
             return
 
-    from sqlalchemy import text
-
-    from modules.backend.core.database import get_async_session
-
-    async with get_async_session() as db:
-        for tbl in session_tables:
-            await db.execute(text(f"TRUNCATE TABLE {tbl} CASCADE"))  # noqa: S608
-        await db.commit()
+    async with DatabaseAdminService.factory() as svc:
+        await svc.truncate_tables(SESSION_TABLES)
 
     click.echo(click.style("Session data cleared.", fg="green"))
 

@@ -182,7 +182,6 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
 
     await _preflight_gate(workflow_name)
 
-    from modules.backend.core.database import get_async_session
     from modules.clients.cli.report import (
         get_console, build_table, styled_status, status_panel,
         info_panel, render_execution_outcomes,
@@ -243,12 +242,7 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
                 progress_state["steps"][sid]["cost_usd"] = event.get("cost_usd", 0)
             live.update(_build_progress_table())
 
-    async with get_async_session() as db:
-        run_service = WorkflowRunService(
-            session=db,
-            mission_service_factory=ExecutionService.factory,
-        )
-
+    async with WorkflowRunService.factory() as run_service:
         with live:
             run = await run_service.run_workflow(
                 workflow_name=workflow_name,
@@ -258,11 +252,10 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
                 gate=gate,
             )
 
-        execution_service = ExecutionService(session=db)
+    async with ExecutionService.factory() as execution_service:
         executions, _ = await execution_service.list_executions(
             workflow_run_id=run.id,
         )
-        await db.commit()
 
     header = (
         f"[bold]{run.workflow_name}[/bold] v{run.workflow_version}    "
@@ -287,11 +280,9 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
 async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
     """List workflow runs."""
     from modules.clients.cli.report import get_console, build_table, styled_status, DOTTED_ROWS
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.workflow_run import WorkflowRunService
 
-    async with get_async_session() as db:
-        run_service = WorkflowRunService(session=db)
+    async with WorkflowRunService.factory() as run_service:
         runs, total = await run_service.list_runs(
             workflow_name=workflow_name,
             limit=20,
@@ -387,18 +378,16 @@ async def _preflight_gate(workflow_name: str) -> None:
 
 async def _load_run_with_executions(run_id: str):
     """Load a workflow run and its executions from the database."""
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
 
-    async with get_async_session() as db:
-        execution_service = ExecutionService(session=db)
-        run_service = WorkflowRunService(session=db)
+    async with WorkflowRunService.factory() as run_service:
         run = await run_service.get_run(run_id)
         if not run:
             click.echo(click.style(f"Workflow run '{run_id}' not found.", fg="red"), err=True)
             sys.exit(1)
 
+    async with ExecutionService.factory() as execution_service:
         executions, _ = await execution_service.list_executions(
             workflow_run_id=run.id,
         )

@@ -6,7 +6,7 @@ Shared dependencies for request handling.
 
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Security
+from fastapi import Depends, Header, Security
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,91 +40,75 @@ async def get_event_bus():
 
 
 # ---------------------------------------------------------------------------
-# Admin role-based access
+# User-based authentication and authorization
 # ---------------------------------------------------------------------------
+
+from modules.backend.core.exceptions import AuthenticationError, AuthorizationError
+from modules.backend.models.user import User
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def _resolve_role(api_key: str | None) -> str:
-    """Resolve an API key or user identifier to a role name.
+async def get_current_user(
+    db: DbSession,
+    authorization: str | None = Header(None),
+    api_key: str | None = Security(_api_key_header),
+) -> User:
+    """Resolve the current user from JWT or API key.
 
     Resolution order:
-        1. If api_key matches a configured admin key → 'admin'
-        2. Otherwise → 'viewer' (default per security.yaml contract)
-
-    The admin API key is stored in .env as ADMIN_API_KEY. When not
-    configured, admin endpoints are inaccessible (secure by default).
+        1. Authorization: Bearer <jwt> → decode JWT → load user by 'sub' claim
+        2. X-API-Key header → prefix lookup + bcrypt verify → load user
+        3. X-API-Key matches legacy ADMIN_API_KEY → load first admin user from DB
+        4. Else → raise AuthenticationError
     """
-    from modules.backend.core.config import get_settings
+    from modules.backend.services.auth import AuthService
 
-    settings = get_settings()
-    admin_key = getattr(settings, "admin_api_key", None)
+    auth_service = AuthService(db)
 
-    if admin_key and api_key and api_key == admin_key:
-        return "admin"
+    # 1. Try JWT Bearer token
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:]
+        return await auth_service.resolve_jwt(token)
 
-    return "viewer"
+    # 2. Try per-user API key
+    if api_key:
+        try:
+            return await auth_service.resolve_api_key(api_key)
+        except AuthenticationError:
+            pass  # Fall through to legacy check
 
+        # 3. Legacy ADMIN_API_KEY fallback
+        user = await auth_service.resolve_legacy_key(api_key)
+        if user:
+            return user
 
-def require_role(minimum_role: str):
-    """FastAPI dependency factory requiring a minimum role level.
-
-    Uses the role hierarchy from security.yaml (higher level = more access).
-    """
-    async def _check_role(
-        api_key: str | None = Security(_api_key_header),
-    ) -> str:
-        from modules.backend.core.config import get_app_config
-
-        role_name = _resolve_role(api_key)
-        roles = get_app_config().security.roles
-
-        required_level = roles.get(minimum_role)
-        actual_level = roles.get(role_name)
-
-        if not required_level:
-            raise HTTPException(status_code=500, detail=f"Unknown role: {minimum_role}")
-
-        actual = actual_level.level if actual_level else 0
-
-        if actual < required_level.level:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Requires '{minimum_role}' role (level {required_level.level}). "
-                       f"Current role: '{role_name}' (level {actual}).",
-            )
-
-        return role_name
-
-    return _check_role
+    raise AuthenticationError("Authentication required")
 
 
-async def require_admin(
+async def get_optional_user(
+    db: DbSession,
+    authorization: str | None = Header(None),
     api_key: str | None = Security(_api_key_header),
-) -> str:
-    """Concrete admin role dependency. Use in Annotated for stable identity."""
-    from modules.backend.core.config import get_app_config
+) -> User | None:
+    """Like get_current_user but returns None instead of raising."""
+    try:
+        return await get_current_user(db, authorization, api_key)
+    except AuthenticationError:
+        return None
 
-    role_name = _resolve_role(api_key)
-    roles = get_app_config().security.roles
 
-    admin_role = roles.get("admin")
-    actual_level = roles.get(role_name)
+CurrentUser = Annotated[User, Depends(get_current_user)]
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 
-    if not admin_role:
-        raise HTTPException(status_code=500, detail="Role 'admin' not configured")
 
-    actual = actual_level.level if actual_level else 0
-
-    if actual < admin_role.level:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Requires 'admin' role (level {admin_role.level}). "
-                   f"Current role: '{role_name}' (level {actual}).",
+async def require_admin(user: CurrentUser) -> User:
+    """Require that the current user has admin role."""
+    if not user.has_role("admin"):
+        raise AuthorizationError(
+            f"Requires 'admin' role. Current role: '{user.system_role}'."
         )
+    return user
 
-    return role_name
 
-
-AdminRole = Annotated[str, Depends(require_admin)]
+AdminRole = Annotated[User, Depends(require_admin)]

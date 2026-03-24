@@ -179,6 +179,28 @@ class BaseService:
                 details={field_name: f"Maximum length is {max_length}"},
             )
 
+    def _require_owner_or_admin(
+        self,
+        target_user_id: str,
+        requesting_user: Any,
+        action: str = "access this resource",
+    ) -> None:
+        """
+        Raise AuthorizationError unless requesting_user owns the target or is admin.
+
+        Args:
+            target_user_id: The user ID that owns the resource.
+            requesting_user: The authenticated user (must have .id and .has_role()).
+            action: Description of the denied action for the error message.
+
+        Raises:
+            AuthorizationError: If the user is neither owner nor admin.
+        """
+        from modules.backend.core.exceptions import AuthorizationError
+
+        if requesting_user.id != target_user_id and not requesting_user.has_role("admin"):
+            raise AuthorizationError(f"Cannot {action} for other users")
+
     def _log_operation(
         self,
         operation: str,

@@ -49,7 +49,7 @@ jwt:
   algorithm: "HS256"
   access_token_expire_minutes: 30
   refresh_token_expire_days: 7
-  audience: "bff-api"
+  audience: "mission-control-api"
 
 # -----------------------------------------------------------------------------
 # Rate Limiting (per user/client, enforced at middleware level)
@@ -97,12 +97,12 @@ roles:
   viewer:
     level: 1
     description: "Read-only: status commands only"
-  trader:
+  user:
     level: 2
-    description: "Trade access: buy/sell within limits"
+    description: "Standard access to own resources"
   admin:
     level: 3
-    description: "Full access: kill switch, deploy, config changes"
+    description: "Full system access"
 
 # -----------------------------------------------------------------------------
 # User Role Mapping (Telegram user ID → role name)
@@ -126,3 +126,4 @@ cors:
     - "Content-Type"
     - "X-Request-ID"
     - "X-Frontend-ID"
+    - "X-API-Key"

@@ -1015,6 +1015,35 @@ def admin_toggle_agent(ctx, agent_name):
     run_admin_cmd(ctx.logger, "toggle-agent", agent_name=agent_name, output_format=ctx.output_format)
 
 
+@admin.command("bootstrap-user")
+@click.option("--email", required=True, help="Admin email address.")
+@click.option("--name", "display_name", default=None, help="Display name (defaults to email prefix).")
+@click.option("--password", default=None, help="Password (prompted if omitted).")
+@click.pass_obj
+def admin_bootstrap_user(ctx, email, display_name, password):
+    """Create the first admin user and generate their API key."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(
+        ctx.logger, "bootstrap-user",
+        email=email, display_name=display_name, password=password,
+        output_format=ctx.output_format,
+    )
+
+
+@admin.command("reset-password")
+@click.option("--email", required=True, help="User email address.")
+@click.option("--password", default=None, help="New password (prompted if omitted).")
+@click.pass_obj
+def admin_reset_password(ctx, email, password):
+    """Reset a user's password from the command line."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(
+        ctx.logger, "reset-password",
+        email=email, password=password,
+        output_format=ctx.output_format,
+    )
+
+
 # =============================================================================
 # Schedule commands
 # =============================================================================

@@ -9,7 +9,7 @@ import asyncio
 import json
 import sys
 
-from modules.clients.cli.report import build_table, get_console, primary_panel
+from modules.clients.cli.report import build_table, get_console
 
 
 def run_admin_cmd(
@@ -21,6 +21,9 @@ def run_admin_cmd(
     change_reason: str | None = None,
     user_id: str | None = None,
     role: str | None = None,
+    email: str | None = None,
+    display_name: str | None = None,
+    password: str | None = None,
     output_format: str = "human",
 ) -> None:
     """Dispatch admin CLI actions."""
@@ -33,6 +36,8 @@ def run_admin_cmd(
         "user-roles": _action_user_roles,
         "update-prompt": _action_update_prompt,
         "toggle-agent": _action_toggle_agent,
+        "bootstrap-user": _action_bootstrap_user,
+        "reset-password": _action_reset_password,
     }
     fn = actions.get(action)
     if not fn:
@@ -46,18 +51,19 @@ def run_admin_cmd(
         change_reason=change_reason,
         user_id=user_id,
         role=role,
+        email=email,
+        display_name=display_name,
+        password=password,
         output_format=output_format,
     ))
 
 
 async def _action_metrics(cli_logger, *, output_format, **_):
     """Show platform overview metrics."""
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.platform_metrics import PlatformMetricsService
 
     console = get_console()
-    async with get_async_session() as db:
-        svc = PlatformMetricsService(db)
+    async with PlatformMetricsService.factory() as svc:
         overview = await svc.get_overview()
 
     if output_format == "json":
@@ -77,12 +83,10 @@ async def _action_metrics(cli_logger, *, output_format, **_):
 
 async def _action_costs(cli_logger, *, output_format, **_):
     """Show cost breakdown by agent and status."""
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.platform_metrics import PlatformMetricsService
 
     console = get_console()
-    async with get_async_session() as db:
-        svc = PlatformMetricsService(db)
+    async with PlatformMetricsService.factory() as svc:
         costs = await svc.get_cost_summary()
 
     if output_format == "json":
@@ -149,35 +153,26 @@ async def _action_config(cli_logger, *, output_format, **_):
 
 async def _action_health(cli_logger, *, output_format, **_):
     """Run system health check."""
-    import asyncio as _asyncio
-
-    from modules.backend.api.health import check_database, check_redis
+    from modules.backend.services.health import HealthCheckService
 
     console = get_console()
-
-    db_check, redis_check = await _asyncio.gather(
-        check_database(),
-        check_redis(),
-        return_exceptions=True,
-    )
-
-    if isinstance(db_check, Exception):
-        db_check = {"status": "error", "error": str(db_check)}
-    if isinstance(redis_check, Exception):
-        redis_check = {"status": "error", "error": str(redis_check)}
-
-    checks = {"database": db_check, "redis": redis_check}
+    svc = HealthCheckService()
+    report = await svc.check_readiness()
 
     if output_format == "json":
+        checks = {
+            c.name: {"status": c.status, "latency_ms": c.latency_ms, "error": c.error}
+            for c in report.components
+        }
         console.print_json(json.dumps(checks, default=str))
         return
 
-    for name, check in checks.items():
-        status = check.get("status", "unknown")
+    for component in report.components:
+        status = component.status
         color = "green" if status == "healthy" else ("yellow" if status == "not_configured" else "red")
-        console.print(f"  [{color}]{name}: {status}[/{color}]")
-        if "latency_ms" in check:
-            console.print(f"    latency: {check['latency_ms']}ms")
+        console.print(f"  [{color}]{component.name}: {status}[/{color}]")
+        if component.latency_ms is not None:
+            console.print(f"    latency: {component.latency_ms}ms")
 
 
 async def _action_roles(cli_logger, *, output_format, **_):
@@ -275,3 +270,76 @@ async def _action_toggle_agent(cli_logger, *, agent_name, **_):
 
     state_str = "[green]enabled[/green]" if new_state else "[red]disabled[/red]"
     console.print(f"Agent {agent_name}: {state_str}")
+
+
+def _prompt_password(console, prompt: str = "Password (min 12 chars): ") -> str:
+    """Prompt for a password with confirmation. Exits on failure."""
+    import getpass
+
+    password = getpass.getpass(prompt)
+    if len(password) < 12:
+        console.print("[red]Password must be at least 12 characters[/red]")
+        sys.exit(1)
+    confirm = getpass.getpass("Confirm password: ")
+    if password != confirm:
+        console.print("[red]Passwords do not match[/red]")
+        sys.exit(1)
+    return password
+
+
+async def _action_bootstrap_user(cli_logger, *, email, display_name, password, **_):
+    """Create the first admin user and generate their API key."""
+    from modules.backend.core.exceptions import ConflictError
+    from modules.backend.services.bootstrap import BootstrapService
+
+    console = get_console()
+
+    if not email:
+        console.print("[red]--email is required[/red]")
+        sys.exit(1)
+    if not display_name:
+        display_name = email.split("@")[0]
+    if not password:
+        password = _prompt_password(console, "Admin password (min 12 chars): ")
+
+    try:
+        async with BootstrapService.factory() as svc:
+            user, api_key = await svc.bootstrap_admin(
+                email=email,
+                display_name=display_name,
+                password=password,
+            )
+    except ConflictError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(1)
+
+    console.print(f"\n[green]Admin user created:[/green]")
+    console.print(f"  Email: {user.email}")
+    console.print(f"  Name:  {user.display_name}")
+    console.print(f"  ID:    {user.id}")
+    console.print(f"\n[yellow]API Key (save this — it will not be shown again):[/yellow]")
+    console.print(f"  {api_key}")
+    console.print()
+
+
+async def _action_reset_password(cli_logger, *, email, password, **_):
+    """Reset a user's password from the CLI."""
+    from modules.backend.core.exceptions import NotFoundError
+    from modules.backend.services.bootstrap import BootstrapService
+
+    console = get_console()
+
+    if not email:
+        console.print("[red]--email is required[/red]")
+        sys.exit(1)
+    if not password:
+        password = _prompt_password(console, "New password (min 12 chars): ")
+
+    try:
+        async with BootstrapService.factory() as svc:
+            await svc.reset_password_by_email(email, password)
+    except NotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(1)
+
+    console.print(f"[green]Password reset for {email}[/green]")

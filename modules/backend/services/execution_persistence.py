@@ -9,6 +9,8 @@ This service is write-heavy during execution and read-heavy afterward.
 """
 
 import json
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +46,16 @@ class ExecutionPersistenceService(BaseService):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
         self._repo = ExecutionRecordRepository(session)
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory() -> "AsyncGenerator[ExecutionPersistenceService, None]":
+        """Create an ExecutionPersistenceService with its own DB session."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield ExecutionPersistenceService(db)
+            await db.commit()
 
     # ---- Write operations (called by dispatch loop) ----
 

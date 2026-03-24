@@ -23,8 +23,8 @@
 
 host: "localhost"
 port: 5432
-name: "bfa"
-user: "bfa"
+name: "mission_control"
+user: "mission_control"
 
 pool_size: 5
 max_overflow: 10
@@ -38,5 +38,5 @@ redis:
   port: 6379
   db: 0
   broker:
-    queue_name: "bff_tasks"
+    queue_name: "mc_tasks"
     result_expiry_seconds: 3600

@@ -100,7 +100,10 @@ class MissionMember(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     user_id: Mapped[str] = mapped_column(
-        String(200), nullable=False, index=True,
+        String(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     role: Mapped[str] = mapped_column(
         Enum(MissionMemberRole, native_enum=False),
@@ -113,6 +116,7 @@ class MissionMember(UUIDMixin, TimestampMixin, Base):
         "Mission",
         back_populates="members",
     )
+    user: Mapped["User"] = relationship("User")
 
     def __repr__(self) -> str:
         return (

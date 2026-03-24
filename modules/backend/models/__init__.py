@@ -16,10 +16,13 @@ from modules.backend.models.mission_history import MilestoneSummary, MissionDeci
 from modules.backend.models.prompt_version import PromptVersion
 from modules.backend.models.session import Session, SessionChannel, SessionMessage
 from modules.backend.models.workflow_definition import WorkflowDefinition
+from modules.backend.models.user import SystemRole, User
+from modules.backend.models.api_key import ApiKey
 from modules.backend.models.workflow_schedule import WorkflowSchedule
 
 __all__ = [
     "AgentCatalog",
+    "ApiKey",
     "Base",
     "ContextChange",
     "Execution",
@@ -36,8 +39,10 @@ __all__ = [
     "Session",
     "SessionChannel",
     "SessionMessage",
+    "SystemRole",
     "TaskAttempt",
     "TaskExecution",
+    "User",
     "WorkflowDefinition",
     "WorkflowRun",
     "WorkflowSchedule",

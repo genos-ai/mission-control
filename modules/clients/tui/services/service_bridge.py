@@ -1,8 +1,8 @@
 """Async service wrappers for the TUI.
 
 Bridges Textual's @work coroutines to backend service factories.
-Each method opens its own DB session, keeping the TUI stateless
-with respect to database connections.
+Each method uses the service's factory() pattern, keeping the TUI
+stateless with respect to database connections and transactions.
 """
 
 from __future__ import annotations
@@ -14,11 +14,7 @@ from modules.backend.agents.mission_control.mission_control import handle_missio
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
 from modules.backend.agents.mission_control.outcome import ExecutionOutcome
 from modules.backend.agents.mission_control.roster import load_roster, Roster
-from modules.backend.core.database import get_async_session
 from modules.backend.core.logging import get_logger
-from modules.backend.services.execution_persistence import ExecutionPersistenceService
-from modules.backend.services.mission import MissionService
-from modules.backend.services.session import SessionService
 
 if TYPE_CHECKING:
     from modules.backend.models.mission import Mission
@@ -29,7 +25,7 @@ logger = get_logger(__name__)
 class ServiceBridge:
     """Facade that wraps backend service factories for TUI consumption.
 
-    Every public method manages its own DB session via async context manager.
+    Every public method delegates to service factory() calls.
     The TUI never sees raw SQLAlchemy sessions.
     """
 
@@ -44,8 +40,9 @@ class ServiceBridge:
 
     async def list_missions(self) -> list[dict[str, Any]]:
         """Return all active missions as dicts."""
-        async with get_async_session() as db:
-            svc = MissionService(db)
+        from modules.backend.services.mission import MissionService
+
+        async with MissionService.factory() as svc:
             missions = await svc.list_missions()
             return [
                 {
@@ -64,16 +61,17 @@ class ServiceBridge:
         description: str,
     ) -> dict[str, str]:
         """Create a mission and return its id and name."""
-        async with get_async_session() as db:
-            svc = MissionService(db)
+        from modules.backend.services.mission import MissionService
+
+        async with MissionService.factory() as svc:
             mission = await svc.create_mission(name=name, description=description)
-            await db.commit()
             return {"id": str(mission.id), "name": mission.name}
 
     async def get_mission(self, mission_id: str) -> Mission | None:
         """Fetch a single mission by ID."""
-        async with get_async_session() as db:
-            svc = MissionService(db)
+        from modules.backend.services.mission import MissionService
+
+        async with MissionService.factory() as svc:
             return await svc.get_mission(mission_id)
 
     # ── Roster ───────────────────────────────────────────────────────
@@ -99,8 +97,9 @@ class ServiceBridge:
         This is the TUI's primary execution path. It calls handle_mission()
         directly, wiring the TuiGateReviewer and TuiEventBus.
         """
-        async with get_async_session() as db:
-            session_service = SessionService(db)
+        from modules.backend.services.session import SessionService
+
+        async with SessionService.factory() as session_service:
             mission_run_id = f"tui-{session_id}"
 
             outcome = await handle_mission(
@@ -112,11 +111,10 @@ class ServiceBridge:
                 mission_budget_usd=budget_usd,
                 session_id=session_id,
                 mission_id=mission_id,
-                db_session=db,
+                db_session=session_service.session,
                 gate=gate,
             )
 
-            await db.commit()
             return outcome
 
     # ── Execution history ─────────────────────────────────────────────
@@ -129,8 +127,9 @@ class ServiceBridge:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Return execution records as dicts for the history screen."""
-        async with get_async_session() as db:
-            svc = ExecutionPersistenceService(db)
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+        async with ExecutionPersistenceService.factory() as svc:
             records = await svc.list_executions(
                 status=status, limit=limit, offset=offset,
             )
@@ -149,8 +148,9 @@ class ServiceBridge:
 
     async def get_execution_detail(self, execution_id: str) -> dict[str, Any] | None:
         """Return a single execution record with task details."""
-        async with get_async_session() as db:
-            svc = ExecutionPersistenceService(db)
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+        async with ExecutionPersistenceService.factory() as svc:
             record = await svc.get_execution(execution_id)
             if not record:
                 return None
@@ -181,6 +181,7 @@ class ServiceBridge:
         self, execution_id: str,
     ) -> dict[str, Any] | None:
         """Return cost breakdown for an execution."""
-        async with get_async_session() as db:
-            svc = ExecutionPersistenceService(db)
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+        async with ExecutionPersistenceService.factory() as svc:
             return await svc.get_cost_breakdown(execution_id)

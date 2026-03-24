@@ -31,7 +31,7 @@ def get_main_menu_keyboard(user_role: str = "viewer") -> ReplyKeyboardMarkup:
     builder.button(text="⚙️ Settings")
 
     # Row 3: Role-specific actions
-    if user_role in ("trader", "admin"):
+    if user_role in ("user", "admin"):
         builder.button(text="💰 Balance")
         builder.button(text="📜 History")
 

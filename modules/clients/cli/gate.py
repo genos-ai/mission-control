@@ -15,7 +15,6 @@ Usage:
 
 import json
 
-from rich.console import Console
 from rich.panel import Panel
 
 from modules.backend.agents.mission_control.gate import (
@@ -23,7 +22,7 @@ from modules.backend.agents.mission_control.gate import (
     GateContext,
     GateDecision,
 )
-from modules.clients.common.display import build_table
+from modules.clients.common.display import build_table, get_console
 from modules.clients.common.gate_helpers import (
     ACTION_COLORS,
     cost_color as _cost_color,
@@ -39,8 +38,8 @@ class CliGateReviewer:
     the user for a decision.
     """
 
-    def __init__(self, console: Console | None = None, verbose: bool = False):
-        self.console = console or Console()
+    def __init__(self, console=None, verbose: bool = False):
+        self.console = console or get_console()
         self.verbose = verbose
 
     async def review(self, context: GateContext) -> GateDecision:
