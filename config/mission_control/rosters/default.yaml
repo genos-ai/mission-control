@@ -15,9 +15,9 @@ agents:
       Returns structured findings with severity ratings and recommendations.
       Read-only — does not modify files (P13).
     model:
-      name: "anthropic:claude-haiku-4-5-20251001"
+      name: "anthropic:claude-sonnet-4-20250514"
       temperature: 0.0
-      max_tokens: 4096
+      max_tokens: 16384
     tools:
       - compliance.load_project_standards
       - filesystem.read_file
@@ -39,7 +39,7 @@ agents:
         scanned_files_count: integer
     constraints:
       timeout_seconds: 120
-      cost_ceiling_usd: 1.00
+      cost_ceiling_usd: 3.50
       retry_budget: 2
       parallelism: safe
 

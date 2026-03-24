@@ -89,7 +89,7 @@ redis_ttl:
 
 dispatch:
   default_request_limit: 50
-  token_cost_factor: 333333  # tokens per dollar of cost ceiling (1M/3)
+  token_cost_factor: 500000  # tokens per dollar of cost ceiling (1M/2)
   context_token_budget: 50000  # assembled context budget (PCD + Code Map + history)
   history_reserve_tokens: 1500  # reserved for Layer 2 history within context budget
 

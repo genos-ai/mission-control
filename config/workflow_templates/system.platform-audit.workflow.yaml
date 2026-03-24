@@ -27,7 +27,7 @@ trigger:
     - "platform check"
 
 budget:
-  max_cost_usd: 2.00
+  max_cost_usd: 5.00
   max_tokens: 200000
 
 context:
@@ -44,7 +44,7 @@ steps:
     capability: code.quality
     roster: default
     complexity_tier: simple
-    cost_ceiling_usd: 0.75
+    cost_ceiling_usd: 3.50
     environment: local
     input:
       target_path: "@context.target_path"
