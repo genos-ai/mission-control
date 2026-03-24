@@ -396,7 +396,7 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
     console = get_console()
 
     info_lines = [
-        f"[bold]Execution:[/bold]     {breakdown.mission_id}",
+        f"[bold]Execution:[/bold]     {breakdown.execution_id}",
         f"[bold]Total Cost:[/bold]    ${breakdown.total_cost_usd:.4f}",
         f"[bold]Input Tokens:[/bold]  {breakdown.total_input_tokens:,}",
         f"[bold]Output Tokens:[/bold] {breakdown.total_output_tokens:,}",

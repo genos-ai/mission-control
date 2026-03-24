@@ -165,7 +165,7 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
         cli_logger.debug("Could not load workflows: %s", e)
     mapped = [
         wf for wf in workflow_svc.list_workflows(enabled_only=False)
-        if wf.mission_id == mission.id
+        if wf.mission_name and wf.mission_name == mission.name
     ]
     if mapped:
         console.print(f"\n  [bold]Workflows ({len(mapped)}):[/bold]")

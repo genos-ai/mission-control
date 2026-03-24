@@ -15,7 +15,7 @@ from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Infrastructure tables — preserved by default (missions + PCD)
+# Infrastructure tables — preserved by default (missions + PCD + users)
 PROJECT_TABLES = [
     "milestone_summaries",
     "mission_decisions",
@@ -23,6 +23,9 @@ PROJECT_TABLES = [
     "mission_contexts",
     "mission_members",
     "missions",
+    "api_keys",
+    "users",
+    "workflow_schedules",
 ]
 
 # Run data tables — cleared by db clear

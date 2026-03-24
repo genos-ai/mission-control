@@ -71,7 +71,3 @@ class User(UUIDMixin, TimestampMixin, Base):
             f"<User(id={self.id}, email={self.email!r}, "
             f"role={self.system_role})>"
         )
-
-
-# Avoid circular import — ApiKey is defined in api_key.py
-from modules.backend.models.api_key import ApiKey  # noqa: E402, F401

@@ -68,7 +68,3 @@ class ApiKey(UUIDMixin, TimestampMixin, Base):
             f"<ApiKey(id={self.id}, name={self.name!r}, "
             f"prefix={self.key_prefix})>"
         )
-
-
-# Avoid circular import
-from modules.backend.models.user import User  # noqa: E402, F401
