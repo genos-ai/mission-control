@@ -322,7 +322,7 @@ async def _execute_layer(
                         mission_id,
                         task_result.context_updates,
                         agent_id=task_result.agent_name,
-                        mission_id_ref=plan.mission_id,
+                        mission_id_ref=mission_id,
                         task_id=task_result.task_id,
                     )
                 except (OSError, ValueError, RuntimeError):

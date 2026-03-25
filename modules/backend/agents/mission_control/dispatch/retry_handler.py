@@ -334,7 +334,8 @@ async def _handle_post_task_gate(
     pqi = output.get("pqi")
     if isinstance(pqi, dict) and pqi.get("composite") is not None:
         context_updates.append({
-            "key": "pqi_score",
+            "op": "add",
+            "path": "current_state.pqi_score",
             "value": {
                 "composite": pqi["composite"],
                 "quality_band": pqi.get("quality_band"),
@@ -345,6 +346,7 @@ async def _handle_post_task_gate(
                 "file_count": pqi.get("file_count"),
                 "line_count": pqi.get("line_count"),
             },
+            "reason": "PQI score from code quality audit",
         })
 
     return TaskResult(
