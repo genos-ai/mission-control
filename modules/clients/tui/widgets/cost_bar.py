@@ -47,6 +47,7 @@ class CostBar(Widget):
     current_layer: reactive[int] = reactive(0)
     total_layers: reactive[int] = reactive(0)
     pending_gates: reactive[int] = reactive(0)
+    notification_count: reactive[int] = reactive(0)
     connected: reactive[bool] = reactive(True)
     workflow_name: reactive[str] = reactive("")
     workflow_step: reactive[int] = reactive(0)
@@ -58,6 +59,7 @@ class CostBar(Widget):
         yield Label("Layer 0/0", id="layer-label")
         yield Label("", id="workflow-label")
         yield Label("", id="gate-label")
+        yield Label("", id="notification-label")
         yield Label("ready", id="status-label")
 
     def watch_cost_usd(self, cost: float) -> None:
@@ -118,6 +120,16 @@ class CostBar(Widget):
                     f"[blue]{self.workflow_name}[/blue] "
                     f"{self.workflow_step}/{self.workflow_total_steps}"
                 )
+            else:
+                label.update("")
+        except NoMatches:
+            pass
+
+    def watch_notification_count(self, count: int) -> None:
+        try:
+            label = self.query_one("#notification-label", Label)
+            if count > 0:
+                label.update(f"[bold yellow]\\N{BELL} {count}[/bold yellow]")
             else:
                 label.update("")
         except NoMatches:

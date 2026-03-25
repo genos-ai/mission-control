@@ -14,8 +14,8 @@ from modules.clients.tui.messages import (
     MissionSelected,
     SessionEventReceived,
 )
-from modules.clients.tui.widgets.agent_sidebar import AgentSidebar, MissionSummary
-from modules.clients.tui.widgets.cost_bar import CostBar
+from modules.clients.tui.screens.dashboard import DashboardScreen
+from modules.clients.tui.screens.workspace import MissionWorkspaceScreen
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -25,7 +25,14 @@ def _mock_bridge():
     bridge = MagicMock()
     bridge.list_missions = AsyncMock(return_value=[])
     bridge.create_mission = AsyncMock(return_value={"id": "p-new", "name": "Test"})
+    bridge.get_current_user = AsyncMock(return_value={
+        "id": "system:cli",
+        "current_mission_id": None,
+        "current_mission_name": None,
+    })
+    bridge.set_current_mission = AsyncMock()
     bridge.run_execution = AsyncMock()
+    bridge.list_executions = AsyncMock(return_value=[])
     bridge.load_roster = MagicMock()
     bridge.load_roster.return_value = MagicMock(agents=[])
     return bridge
@@ -35,19 +42,14 @@ def _mock_bridge():
 
 class TestAppMount:
     @pytest.mark.asyncio
-    async def test_app_mounts_main_screen(self):
-        """App should mount with all core widgets present."""
+    async def test_app_mounts_dashboard_screen(self):
+        """App should show DashboardScreen on launch when no mission is set."""
         app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
-            await pilot.pause()  # wait for on_mount to push MainScreen + picker
-            # Dismiss the project picker that opens on startup
-            await pilot.press("escape")
             await pilot.pause()
-            assert pilot.app.screen.query_one("#agent-sidebar", AgentSidebar)
-            assert pilot.app.screen.query_one("#cost-bar", CostBar)
-            assert pilot.app.screen.query_one("#mission-summary", MissionSummary)
+            assert isinstance(pilot.app.screen, DashboardScreen)
 
     @pytest.mark.asyncio
     async def test_initial_state_is_idle(self):
@@ -57,6 +59,15 @@ class TestAppMount:
         async with app.run_test():
             assert app.state.mission_status == "idle"
             assert app.state.current_mission_id is None
+
+    @pytest.mark.asyncio
+    async def test_initial_active_screen_is_dashboard(self):
+        app = MissionControlApp()
+        app.bridge = _mock_bridge()
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.state.active_screen == "dashboard"
 
 
 # ── Mission handling ──────────────────────────────────────────────────
@@ -68,6 +79,7 @@ class TestMissionHandling:
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
+            await pilot.pause()  # wait for DashboardScreen to mount
             app.post_message(
                 MissionSelected(mission_id="m-1", mission_name="Alpha")
             )
@@ -76,11 +88,27 @@ class TestMissionHandling:
             assert app.state.current_mission_name == "Alpha"
 
     @pytest.mark.asyncio
+    async def test_mission_selected_enters_workspace(self):
+        """Selecting a mission should switch to MissionWorkspaceScreen."""
+        app = MissionControlApp()
+        app.bridge = _mock_bridge()
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.post_message(
+                MissionSelected(mission_id="m-1", mission_name="Alpha")
+            )
+            await pilot.pause()
+            assert app.state.active_screen == "workspace"
+            assert isinstance(pilot.app.screen, MissionWorkspaceScreen)
+
+    @pytest.mark.asyncio
     async def test_mission_created_calls_bridge(self):
         app = MissionControlApp()
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
+            await pilot.pause()  # wait for DashboardScreen to mount
             app.post_message(
                 MissionCreated(mission_name="NewMission", description="My desc")
             )
@@ -97,6 +125,7 @@ class TestMissionHandling:
         app.bridge = _mock_bridge()
 
         async with app.run_test() as pilot:
+            await pilot.pause()  # wait for DashboardScreen to mount
             app.post_message(MissionCreated(mission_name="Bare"))
             await pilot.pause()
             app.bridge.create_mission.assert_called_once_with(
@@ -109,7 +138,7 @@ class TestMissionHandling:
 class TestMissionGuards:
     @pytest.mark.asyncio
     async def test_mission_requires_selected_mission(self):
-        """Starting an execution without a mission should show a warning, not crash."""
+        """Starting an execution without a mission should show a warning."""
         app = MissionControlApp()
         app.bridge = _mock_bridge()
 
@@ -195,3 +224,27 @@ class TestEventRouting:
             await pilot.pause()
             assert len(app.state.events) == 1
             assert app.state.events[0] is event
+
+
+# ── Navigation ────────────────────────────────────────────────────────
+
+class TestNavigation:
+    @pytest.mark.asyncio
+    async def test_goto_dashboard_from_workspace(self):
+        """Ctrl+D should return to DashboardScreen."""
+        app = MissionControlApp()
+        app.bridge = _mock_bridge()
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            # Enter workspace via mission selection
+            app.post_message(
+                MissionSelected(mission_id="m-1", mission_name="Alpha")
+            )
+            await pilot.pause()
+            assert app.state.active_screen == "workspace"
+            # Go back to dashboard
+            await pilot.press("ctrl+d")
+            await pilot.pause()
+            assert app.state.active_screen == "dashboard"
+            assert isinstance(pilot.app.screen, DashboardScreen)

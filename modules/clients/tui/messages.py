@@ -71,3 +71,22 @@ class MissionCreated(Message):
         super().__init__()
         self.mission_name = mission_name
         self.description = description
+
+
+# ── Plan 32 additions ────────────────────────────────────────────────
+
+
+class TabSwitched(Message):
+    """User switched tabs within the workspace."""
+
+    def __init__(self, tab_id: str) -> None:
+        super().__init__()
+        self.tab_id = tab_id
+
+
+class ScreenChanged(Message):
+    """Navigation to a different screen."""
+
+    def __init__(self, screen_name: str) -> None:
+        super().__init__()
+        self.screen_name = screen_name

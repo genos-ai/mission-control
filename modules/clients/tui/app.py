@@ -1,8 +1,8 @@
 """Mission Control TUI — main Textual application.
 
 Lifecycle:
-    1. on_mount: load missions → show picker if no mission selected
-    2. User picks mission → load roster → populate sidebar
+    1. on_mount: show DashboardScreen
+    2. User picks mission → push MissionWorkspaceScreen → load roster
     3. User enters mission brief (Ctrl+M or chat input) → run_mission worker
     4. Events stream in via TuiEventBus → routed to widgets
 
@@ -31,10 +31,17 @@ from modules.clients.tui.messages import (
     MissionStartRequested,
     MissionCreated,
     MissionSelected,
+    ScreenChanged,
     SessionEventReceived,
+    TabSwitched,
 )
-from modules.clients.tui.screens.main import MainScreen
+from modules.clients.tui.screens.admin import AdminScreen
+from modules.clients.tui.screens.catalog import CatalogScreen
+from modules.clients.tui.screens.dashboard import DashboardScreen
+from modules.clients.tui.screens.profile import ProfileScreen
+from modules.clients.tui.screens.workspace import MissionWorkspaceScreen
 from modules.clients.tui.screens.mission_picker import MissionPickerScreen
+from modules.clients.tui.screens.mission_history import MissionHistoryScreen
 from modules.clients.tui.services.event_listener import TuiEventBus
 from modules.clients.tui.services.service_bridge import ServiceBridge
 from modules.clients.tui.services.state import TuiState
@@ -48,9 +55,12 @@ from modules.clients.tui.widgets.event_stream import EventStreamWidget
 from modules.clients.tui.services.gate_reviewer import TuiGateReviewer
 from modules.clients.tui.widgets.gate_modal import GateReviewModal
 from modules.clients.tui.widgets.mission_panel import MissionPanel
-from modules.clients.tui.widgets.notification import NotificationStack
+from modules.clients.tui.widgets.notification import (
+    NotificationListModal,
+    NotificationStack,
+    NotificationStore,
+)
 from modules.clients.tui.widgets.workflow_progress import WorkflowProgressWidget
-from modules.clients.tui.screens.mission_history import MissionHistoryScreen
 
 logger = get_logger(__name__)
 
@@ -64,6 +74,11 @@ class MissionControlApp(App):
     CSS_PATH = str(CSS_PATH)
 
     BINDINGS = [
+        Binding("ctrl+d", "goto_dashboard", "Dashboard"),
+        Binding("ctrl+g", "goto_catalog", "Catalog"),
+        Binding("ctrl+a", "goto_admin", "Admin"),
+        Binding("ctrl+u", "goto_profile", "Profile"),
+        Binding("ctrl+n", "show_notifications", "Notifications"),
         Binding("ctrl+p", "switch_mission", "Switch Mission"),
         Binding("ctrl+m", "new_mission", "New Mission"),
         Binding("ctrl+k", "cancel_mission", "Cancel Mission"),
@@ -87,33 +102,82 @@ class MissionControlApp(App):
         self._workflow_panel: WorkflowProgressWidget | None = None
         self._budget_warned_75 = False
         self._budget_warned_90 = False
+        self._notification_store = NotificationStore()
 
     async def on_mount(self) -> None:
-        """Install the main screen and show mission picker on startup."""
-        self.push_screen(MainScreen())
+        """Show DashboardScreen on startup, auto-enter workspace if mission set."""
+        self.push_screen(DashboardScreen())
+        self.state.active_screen = "dashboard"
         self.run_worker(self._startup(), thread=False)
 
     async def _startup(self) -> None:
-        """Load missions and prompt for selection."""
+        """Load user profile; enter workspace if current mission is set."""
         try:
-            missions = await self.bridge.list_missions()
+            user = await self.bridge.get_current_user()
+            if user.get("current_mission_id"):
+                self.state.current_mission_id = user["current_mission_id"]
+                self.state.current_mission_name = user.get("current_mission_name")
+                self._enter_workspace()
+                return
         except Exception:
-            logger.warning("Could not load missions (DB may be unavailable)", exc_info=True)
-            missions = []
+            logger.warning("Could not load user profile", exc_info=True)
 
-        if missions:
-            self.push_screen(MissionPickerScreen(missions))
-        else:
-            self.push_screen(MissionPickerScreen([]))
+    # ── Navigation ───────────────────────────────────────────────────
+
+    def action_goto_dashboard(self) -> None:
+        """Navigate to DashboardScreen (Ctrl+D)."""
+        if self.state.active_screen == "dashboard":
+            return
+        self.switch_screen(DashboardScreen())
+        self.state.active_screen = "dashboard"
+
+    def action_goto_catalog(self) -> None:
+        """Navigate to CatalogScreen (Ctrl+G)."""
+        if self.state.active_screen == "catalog":
+            return
+        self.switch_screen(CatalogScreen())
+        self.state.active_screen = "catalog"
+
+    def action_goto_admin(self) -> None:
+        """Navigate to AdminScreen (Ctrl+A)."""
+        self.push_screen(AdminScreen())
+
+    def action_goto_profile(self) -> None:
+        """Navigate to ProfileScreen (Ctrl+U)."""
+        self.push_screen(ProfileScreen())
+
+    def action_show_notifications(self) -> None:
+        """Open notification list modal (Ctrl+N)."""
+        self.push_screen(NotificationListModal(self._notification_store))
+
+    def _enter_workspace(self) -> None:
+        """Push the MissionWorkspaceScreen and load roster."""
+        if self.state.active_screen == "workspace":
+            self._update_mission_header()
+            self._load_roster()
+            return
+        self.switch_screen(MissionWorkspaceScreen())
+        self.state.active_screen = "workspace"
+        self.state.active_tab = "overview"
+        # Header and roster load after mount
+        self.set_timer(0.1, self._on_workspace_ready)
+
+    def _on_workspace_ready(self) -> None:
+        """Called after workspace screen is mounted."""
+        self._update_mission_header()
+        self._load_roster()
 
     # ── Mission handling ─────────────────────────────────────────────
 
     async def on_mission_selected(self, event: MissionSelected) -> None:
-        """User selected an existing mission."""
+        """User selected an existing mission — persist to DB."""
         self.state.current_mission_id = event.mission_id
         self.state.current_mission_name = event.mission_name
-        self._update_mission_header()
-        self._load_roster()
+        try:
+            await self.bridge.set_current_mission(event.mission_id)
+        except Exception:
+            logger.warning("Could not persist mission selection", exc_info=True)
+        self._enter_workspace()
 
     async def on_mission_created(self, event: MissionCreated) -> None:
         """User created a new mission — create via bridge then select."""
@@ -124,8 +188,7 @@ class MissionControlApp(App):
             )
             self.state.current_mission_id = result["id"]
             self.state.current_mission_name = result["name"]
-            self._update_mission_header()
-            self._load_roster()
+            self._enter_workspace()
         except Exception as exc:
             logger.error("Failed to create mission", exc_info=True)
             self.notify(f"Failed to create mission: {exc}", severity="error")
@@ -160,7 +223,7 @@ class MissionControlApp(App):
             pass
 
     async def on_mission_start_requested(
-        self, event: MissionStartRequested
+        self, event: MissionStartRequested,
     ) -> None:
         """Start a mission from the chat input."""
         if not self.state.current_mission_id:
@@ -203,19 +266,28 @@ class MissionControlApp(App):
             self.state.mission_status = outcome.status.value
             self.state.total_cost_usd = outcome.total_cost_usd
             self._update_mission_summary()
-            self.notify(
-                f"Mission {outcome.status}: ${outcome.total_cost_usd:.4f}",
-                severity="information",
+            self._notify(
+                "success",
+                f"Run completed: ${outcome.total_cost_usd:.4f}",
+                notification_type="run_completed",
             )
         except asyncio.CancelledError:
             self.state.mission_status = "failed"
             self._update_mission_summary()
-            self.notify("Mission cancelled", severity="warning")
+            self._notify(
+                "warning",
+                "Mission cancelled",
+                notification_type="run_failed",
+            )
         except Exception as exc:
             self.state.mission_status = "failed"
             self._update_mission_summary()
             logger.error("Mission execution failed", exc_info=True)
-            self.notify(f"Mission failed: {exc}", severity="error")
+            self._notify(
+                "error",
+                f"Run failed: {exc}",
+                notification_type="run_failed",
+            )
 
     def action_cancel_mission(self) -> None:
         """Cancel the active mission (Ctrl+K)."""
@@ -234,15 +306,17 @@ class MissionControlApp(App):
         try:
             self._route_event(event)
         except Exception:
-            logger.warning("Error routing event %s", getattr(event, "event_type", "?"), exc_info=True)
+            logger.warning(
+                "Error routing event %s",
+                getattr(event, "event_type", "?"),
+                exc_info=True,
+            )
 
     def _route_event(self, event: object) -> None:
-        """Dispatch event to state updates and widgets. Wrapped in error boundary."""
+        """Dispatch event to state updates and widgets."""
 
-        # Push to event stream widget
         self._push_to_event_stream(event)
 
-        # Update state based on event type
         event_type = event.event_type
 
         if event_type == "agent.thinking.started":
@@ -261,7 +335,6 @@ class MissionControlApp(App):
             self._sidebar_set_status(agent_id, "success", cost)
             self.state.total_input_tokens += input_tokens
             self.state.total_output_tokens += output_tokens
-            # Update agent detail if viewing this agent
             self._push_to_agent_detail_complete(
                 agent_id, cost=cost,
                 input_tokens=input_tokens,
@@ -301,16 +374,25 @@ class MissionControlApp(App):
             )
 
         elif event_type == "session.cost.updated":
-            self.state.total_cost_usd = getattr(event, "cumulative_cost_usd", 0.0)
-            # Budget warnings
+            self.state.total_cost_usd = getattr(
+                event, "cumulative_cost_usd", 0.0,
+            )
             if self.state.budget_usd > 0:
                 ratio = self.state.total_cost_usd / self.state.budget_usd
                 if ratio >= 0.9 and not self._budget_warned_90:
                     self._budget_warned_90 = True
-                    self._notify("warning", f"Budget 90% used: ${self.state.total_cost_usd:.3f} / ${self.state.budget_usd:.2f}")
+                    self._notify(
+                        "warning",
+                        f"Budget 90% used: ${self.state.total_cost_usd:.3f}"
+                        f" / ${self.state.budget_usd:.2f}",
+                    )
                 elif ratio >= 0.75 and not self._budget_warned_75:
                     self._budget_warned_75 = True
-                    self._notify("warning", f"Budget 75% used: ${self.state.total_cost_usd:.3f} / ${self.state.budget_usd:.2f}")
+                    self._notify(
+                        "warning",
+                        f"Budget 75% used: ${self.state.total_cost_usd:.3f}"
+                        f" / ${self.state.budget_usd:.2f}",
+                    )
 
         elif event_type == "plan.created":
             self.state.mission_status = "running"
@@ -331,11 +413,14 @@ class MissionControlApp(App):
             self._sidebar_set_active(agent, False)
             status = getattr(event, "status", "success")
             self._sidebar_set_status(agent, status)
-            # Build a minimal TaskResult for the panel
             result = TaskResult(
                 task_id=step_id,
                 agent_name=agent,
-                status=TaskStatus(status) if status in TaskStatus.__members__.values() else TaskStatus.SUCCESS,
+                status=(
+                    TaskStatus(status)
+                    if status in TaskStatus.__members__.values()
+                    else TaskStatus.SUCCESS
+                ),
             )
             self.state.task_results[step_id] = result
             if self._mission_panel:
@@ -345,20 +430,28 @@ class MissionControlApp(App):
             wf_name = getattr(event, "workflow_name", "")
             step_count = getattr(event, "step_count", 0)
             self.state.workflow_name = wf_name
-            self._notify("info", f"Workflow started: {wf_name} ({step_count} steps)")
+            self._notify(
+                "info", f"Workflow started: {wf_name} ({step_count} steps)",
+            )
 
         elif event_type == "workflow.mission.started":
             step_id = getattr(event, "step_id", "")
             roster = getattr(event, "roster_ref", "")
-            self.state.workflow_progress[step_id] = {"status": "running", "roster": roster}
-            self._update_workflow_panel(step_id, status="running", roster=roster)
+            self.state.workflow_progress[step_id] = {
+                "status": "running", "roster": roster,
+            }
+            self._update_workflow_panel(
+                step_id, status="running", roster=roster,
+            )
 
         elif event_type == "workflow.mission.completed":
             step_id = getattr(event, "step_id", "")
             success = getattr(event, "success", True)
             cost = getattr(event, "cost_usd", 0.0)
             status = "success" if success else "failed"
-            self.state.workflow_progress[step_id] = {"status": status, "cost": cost}
+            self.state.workflow_progress[step_id] = {
+                "status": status, "cost": cost,
+            }
             self._update_workflow_panel(step_id, status=status, cost=cost)
             if not success:
                 self._notify("warning", f"Workflow step failed: {step_id}")
@@ -401,7 +494,9 @@ class MissionControlApp(App):
             detail.set_thinking(agent_id)
             detail.update_header(status="running")
 
-    def _push_to_agent_detail_chunk(self, agent_id: str, content: str) -> None:
+    def _push_to_agent_detail_chunk(
+        self, agent_id: str, content: str,
+    ) -> None:
         if detail := self._active_detail_for(agent_id):
             detail.append_output(content)
 
@@ -434,18 +529,24 @@ class MissionControlApp(App):
                 tool_name=tool_name, status=status, result=result,
             )
 
-    def _sidebar_set_active(self, agent_name: str, active: bool) -> None:
+    def _sidebar_set_active(
+        self, agent_name: str, active: bool,
+    ) -> None:
         try:
-            sidebar = self.screen.query_one("#agent-sidebar", AgentSidebar)
+            sidebar = self.screen.query_one(
+                "#agent-sidebar", AgentSidebar,
+            )
             sidebar.set_active(agent_name, active)
         except NoMatches:
             pass
 
     def _sidebar_set_status(
-        self, agent_name: str, status: str, cost: float = 0.0
+        self, agent_name: str, status: str, cost: float = 0.0,
     ) -> None:
         try:
-            sidebar = self.screen.query_one("#agent-sidebar", AgentSidebar)
+            sidebar = self.screen.query_one(
+                "#agent-sidebar", AgentSidebar,
+            )
             sidebar.set_agent_status(agent_name, status, cost)
         except NoMatches:
             pass
@@ -458,7 +559,11 @@ class MissionControlApp(App):
             bar.input_tokens = self.state.total_input_tokens
             bar.output_tokens = self.state.total_output_tokens
             bar.current_layer = self.state.current_layer
-            bar.total_layers = len(self.state.task_layers) if self.state.task_layers else 0
+            bar.total_layers = (
+                len(self.state.task_layers)
+                if self.state.task_layers
+                else 0
+            )
             bar.pending_gates = 1 if self.state.pending_gate else 0
             bar.workflow_name = self.state.workflow_name or ""
             done_steps = sum(
@@ -466,17 +571,50 @@ class MissionControlApp(App):
                 if p.get("status") in ("success", "failed", "skipped")
             )
             bar.workflow_step = done_steps
-            bar.workflow_total_steps = len(self.state.workflow_progress) if self.state.workflow_progress else 0
+            bar.workflow_total_steps = (
+                len(self.state.workflow_progress)
+                if self.state.workflow_progress
+                else 0
+            )
         except NoMatches:
             pass
 
-    def _notify(self, severity: str, message: str) -> None:
-        """Push a notification to the NotificationStack if mounted."""
-        self.state.notifications.append({"severity": severity, "message": message})
+    def _notify(
+        self,
+        severity: str,
+        message: str,
+        notification_type: str | None = None,
+    ) -> None:
+        """Push a notification to the NotificationStack and store."""
+        self.state.notifications.append({
+            "severity": severity, "message": message,
+        })
+
+        # Store notification for the list modal
+        ntype = notification_type or (
+            "run_failed" if severity == "error" else "budget_warning"
+            if severity == "warning" else "run_completed"
+        )
+        self._notification_store.add(ntype, message)
+
+        # Update CostBar badge
+        self._update_notification_badge()
+
         try:
-            stack = self.screen.query_one("#notification-stack", NotificationStack)
+            stack = self.screen.query_one(
+                "#notification-stack", NotificationStack,
+            )
             stack.add_notification(message, severity=severity)
         except NoMatches:
+            pass
+
+    def _update_notification_badge(self) -> None:
+        """Update the notification count on the CostBar."""
+        count = self._notification_store.unread_count
+        try:
+            cost_bar = self.screen.query_one(CostBar)
+            cost_bar.notification_count = count
+        except (NoMatches, Exception):
             pass
 
     def _update_workflow_panel(
@@ -485,7 +623,7 @@ class MissionControlApp(App):
         cost: float | None = None,
         roster: str | None = None,
     ) -> None:
-        """Forward step update to the WorkflowProgressWidget if mounted."""
+        """Forward step update to the WorkflowProgressWidget."""
         if self._workflow_panel:
             self._workflow_panel.update_step(
                 step_id, status=status, cost=cost, roster=roster,
@@ -493,7 +631,9 @@ class MissionControlApp(App):
 
     def _update_mission_summary(self) -> None:
         try:
-            summary = self.screen.query_one("#mission-summary", MissionSummary)
+            summary = self.screen.query_one(
+                "#mission-summary", MissionSummary,
+            )
             summary.update_from_state(
                 status=self.state.mission_status,
                 budget_usd=self.state.budget_usd,
@@ -509,7 +649,7 @@ class MissionControlApp(App):
     # ── Plan handling ──────────────────────────────────────────────────
 
     def _handle_plan_created(self, event: object) -> None:
-        """Parse the TaskPlan from PlanCreatedEvent metadata and show the DAG."""
+        """Parse TaskPlan from PlanCreatedEvent metadata and show DAG."""
         metadata = getattr(event, "metadata", {}) or {}
         plan_json = metadata.get("task_plan_json")
         if not plan_json:
@@ -521,12 +661,19 @@ class MissionControlApp(App):
             self.state.task_layers = layers
             self._show_mission_panel(plan, layers)
         except Exception:
-            logger.warning("Failed to parse TaskPlan from event metadata", exc_info=True)
+            logger.warning(
+                "Failed to parse TaskPlan from event metadata",
+                exc_info=True,
+            )
 
-    def _show_mission_panel(self, plan: TaskPlan, layers: list[list[str]]) -> None:
-        """Mount the MissionPanel in the center panel with the plan DAG."""
+    def _show_mission_panel(
+        self, plan: TaskPlan, layers: list[list[str]],
+    ) -> None:
+        """Mount the MissionPanel in the center panel."""
         try:
-            container = self.screen.query_one("#center-content", VerticalScroll)
+            container = self.screen.query_one(
+                "#center-content", VerticalScroll,
+            )
         except NoMatches:
             return
         container.remove_children()
@@ -536,7 +683,6 @@ class MissionControlApp(App):
         panel = MissionPanel(id="mission-panel")
         self._mission_panel = panel
         container.mount(panel)
-        # load_plan must be called after mount so widgets exist
         panel.load_plan(plan, layers)
 
     # ── Gate review ────────────────────────────────────────────────────
@@ -544,15 +690,21 @@ class MissionControlApp(App):
     async def on_gate_review_requested(
         self, message: GateReviewRequested,
     ) -> None:
-        """Dispatch is waiting — show the gate modal for human review."""
+        """Dispatch is waiting — show the gate modal."""
         self.state.pending_gate = message.context
         self._update_cost_bar()
+        task_id = message.context.get("task_id", "")
+        self._notify(
+            "warning",
+            f"Gate pending: {task_id}",
+            notification_type="gate_pending",
+        )
         self.push_screen(GateReviewModal(message.context))
 
     async def on_gate_review_completed(
         self, message: GateReviewCompleted,
     ) -> None:
-        """User resolved the gate — forward decision to the gate reviewer."""
+        """User resolved the gate — forward decision."""
         self.state.pending_gate = None
         self._update_cost_bar()
         self._gate_reviewer.resolve(message.decision)
@@ -563,28 +715,29 @@ class MissionControlApp(App):
         """User clicked an agent in the sidebar — swap center panel."""
         self.state.selected_agent = event.agent_name
         try:
-            sidebar = self.screen.query_one("#agent-sidebar", AgentSidebar)
+            sidebar = self.screen.query_one(
+                "#agent-sidebar", AgentSidebar,
+            )
             sidebar.set_selected(event.agent_name)
         except NoMatches:
             pass
         self._show_agent_detail(event.agent_name)
 
     def _show_agent_detail(self, agent_name: str) -> None:
-        """Replace center-content with AgentDetailWidget for the given agent."""
+        """Replace center-content with AgentDetailWidget."""
         try:
-            container = self.screen.query_one("#center-content", VerticalScroll)
+            container = self.screen.query_one(
+                "#center-content", VerticalScroll,
+            )
         except NoMatches:
             return
 
-        # Remove existing children (placeholder or previous detail)
         container.remove_children()
 
-        # Create and mount the agent detail widget
         detail = AgentDetailWidget(agent_name, id="agent-detail")
         self._agent_detail = detail
         container.mount(detail)
 
-        # Backfill any existing state for this agent
         if agent_name in self.state.agent_output:
             detail.set_full_output(self.state.agent_output[agent_name])
         if agent_name in self.state.agent_tool_calls:
@@ -598,9 +751,11 @@ class MissionControlApp(App):
             detail.update_header(status="running")
 
     def action_show_overview(self) -> None:
-        """Switch center panel back to overview — MissionPanel if plan exists, else placeholder (F1)."""
+        """Switch center panel back to overview (F1)."""
         try:
-            container = self.screen.query_one("#center-content", VerticalScroll)
+            container = self.screen.query_one(
+                "#center-content", VerticalScroll,
+            )
         except NoMatches:
             return
         container.remove_children()
@@ -612,7 +767,6 @@ class MissionControlApp(App):
             self._mission_panel = panel
             container.mount(panel)
             panel.load_plan(self.state.task_plan, self.state.task_layers)
-            # Re-apply completed task results
             for task_id, result in self.state.task_results.items():
                 panel.update_task_status(task_id, result=result)
         else:
@@ -621,10 +775,10 @@ class MissionControlApp(App):
                     "Press [bold]Ctrl+M[/bold] to start a mission\n"
                     "Press [bold]Ctrl+P[/bold] to switch mission",
                     classes="placeholder-panel",
-                )
+                ),
             )
 
-    # ── Navigation ───────────────────────────────────────────────────
+    # ── Navigation actions ───────────────────────────────────────────
 
     def action_switch_mission(self) -> None:
         """Show mission picker (Ctrl+P)."""
@@ -634,7 +788,9 @@ class MissionControlApp(App):
         try:
             missions = await self.bridge.list_missions()
         except Exception:
-            logger.warning("Could not load missions for picker", exc_info=True)
+            logger.warning(
+                "Could not load missions for picker", exc_info=True,
+            )
             missions = []
         self.push_screen(MissionPickerScreen(missions))
 
@@ -647,14 +803,16 @@ class MissionControlApp(App):
         try:
             executions = await self.bridge.list_executions(limit=50)
         except Exception:
-            logger.warning("Could not load mission history", exc_info=True)
+            logger.warning(
+                "Could not load mission history", exc_info=True,
+            )
             executions = []
         finally:
             self._set_loading(False)
         self.push_screen(MissionHistoryScreen(executions))
 
     def _set_loading(self, loading: bool) -> None:
-        """Toggle .loading class on center panel for visual feedback."""
+        """Toggle .loading class on center panel."""
         try:
             panel = self.screen.query_one("#center-panel")
             if loading:

@@ -2,16 +2,23 @@
 
 Displays a stack of dismissible notifications at the top of the event stream
 panel. Notifications auto-expire or can be dismissed with a click.
+
+Also provides NotificationListModal for viewing all notifications (Ctrl+N).
 """
 
 from __future__ import annotations
 
+import sys
+from datetime import datetime, timezone
+
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.binding import Binding
+from textual.containers import Vertical, VerticalScroll
 from textual.css.query import NoMatches
+from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import Label, Static
+from textual.widgets import Button, Label, Static
 
 
 # ── Severity levels ──────────────────────────────────────────────────
@@ -143,3 +150,212 @@ class NotificationStack(Widget):
         for timer in self._dismiss_timers.values():
             timer.stop()
         self._dismiss_timers.clear()
+
+
+# ── Notification types ──────────────────────────────────────────────
+
+URGENCY_HIGH = "high"
+URGENCY_NORMAL = "normal"
+
+_TYPE_CONFIG: dict[str, tuple[str, str]] = {
+    "gate_pending": (URGENCY_HIGH, "Gate pending"),
+    "run_failed": (URGENCY_HIGH, "Run failed"),
+    "run_completed": (URGENCY_NORMAL, "Run completed"),
+    "budget_warning": (URGENCY_NORMAL, "Budget warning"),
+}
+
+
+class NotificationRecord:
+    """A stored notification with read/unread state."""
+
+    __slots__ = (
+        "id", "type", "message", "urgency", "read",
+        "created_at",
+    )
+
+    _counter = 0
+
+    def __init__(
+        self,
+        notification_type: str,
+        message: str,
+    ) -> None:
+        NotificationRecord._counter += 1
+        self.id = NotificationRecord._counter
+        self.type = notification_type
+        self.message = message
+        urgency, _ = _TYPE_CONFIG.get(
+            notification_type, (URGENCY_NORMAL, ""),
+        )
+        self.urgency = urgency
+        self.read = False
+        self.created_at = datetime.now(tz=timezone.utc)
+
+    @property
+    def label(self) -> str:
+        _, prefix = _TYPE_CONFIG.get(self.type, (URGENCY_NORMAL, self.type))
+        return prefix
+
+    def mark_read(self) -> None:
+        self.read = True
+
+
+class NotificationStore:
+    """In-memory store for notification records."""
+
+    def __init__(self, max_size: int = 100) -> None:
+        self._records: list[NotificationRecord] = []
+        self._max_size = max_size
+
+    def add(
+        self,
+        notification_type: str,
+        message: str,
+    ) -> NotificationRecord:
+        record = NotificationRecord(notification_type, message)
+        self._records.append(record)
+        # Trim oldest
+        while len(self._records) > self._max_size:
+            self._records.pop(0)
+
+        # Terminal bell for high-urgency
+        if record.urgency == URGENCY_HIGH:
+            sys.stdout.write("\a")
+            sys.stdout.flush()
+
+        return record
+
+    @property
+    def records(self) -> list[NotificationRecord]:
+        return list(reversed(self._records))
+
+    @property
+    def unread_count(self) -> int:
+        return sum(1 for r in self._records if not r.read)
+
+    def mark_all_read(self) -> None:
+        for r in self._records:
+            r.read = True
+
+    def clear(self) -> None:
+        self._records.clear()
+
+
+# ── Notification list modal ─────────────────────────────────────────
+
+
+class _NotificationRow(Static):
+    """Single notification in the list modal."""
+
+    def __init__(self, record: NotificationRecord, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._record = record
+
+    def compose(self) -> ComposeResult:
+        dot = "●" if not self._record.read else "○"
+        color = "yellow" if self._record.urgency == URGENCY_HIGH else "dim"
+        age = self._format_age()
+        yield Static(
+            f"  [{color}]{dot}[/{color}] "
+            f"[bold]{self._record.label}:[/bold] "
+            f"{self._record.message}  "
+            f"[dim]{age}[/dim]",
+            markup=True,
+        )
+
+    def _format_age(self) -> str:
+        delta = datetime.now(tz=timezone.utc) - self._record.created_at
+        secs = int(delta.total_seconds())
+        if secs < 60:
+            return f"{secs}s ago"
+        if secs < 3600:
+            return f"{secs // 60}m ago"
+        if secs < 86400:
+            return f"{secs // 3600}h ago"
+        return f"{secs // 86400}d ago"
+
+    def on_click(self) -> None:
+        self._record.mark_read()
+
+
+class NotificationListModal(ModalScreen):
+    """Full notification list modal, opened via Ctrl+N."""
+
+    DEFAULT_CSS = """
+    NotificationListModal {
+        align: center middle;
+    }
+    #notif-list-dialog {
+        width: 70%;
+        max-width: 90;
+        height: 60%;
+        max-height: 24;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #notif-list-scroll {
+        height: 1fr;
+    }
+    #notif-list-actions {
+        height: 3;
+        dock: bottom;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close"),
+    ]
+
+    def __init__(
+        self, store: NotificationStore, **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._store = store
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="notif-list-dialog"):
+            yield Label(
+                "[bold]NOTIFICATIONS[/bold]",
+                markup=True,
+            )
+            yield VerticalScroll(id="notif-list-scroll")
+            with Vertical(id="notif-list-actions"):
+                yield Button(
+                    "Mark all read",
+                    id="notif-mark-read-btn",
+                    variant="default",
+                )
+
+    async def on_mount(self) -> None:
+        self._render_list()
+
+    def _render_list(self) -> None:
+        try:
+            scroll = self.query_one(
+                "#notif-list-scroll", VerticalScroll,
+            )
+            scroll.remove_children()
+
+            records = self._store.records
+            if not records:
+                scroll.mount(
+                    Static(
+                        "[dim]No notifications[/dim]",
+                        markup=True,
+                    ),
+                )
+                return
+
+            for record in records:
+                scroll.mount(_NotificationRow(record))
+        except Exception:
+            pass
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "notif-mark-read-btn":
+            self._store.mark_all_read()
+            self._render_list()
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss()

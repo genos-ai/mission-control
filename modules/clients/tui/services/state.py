@@ -18,6 +18,46 @@ from modules.backend.agents.mission_control.roster import RosterAgentEntry
 from modules.backend.schemas.task_plan import TaskPlan
 
 
+# ── Tab-specific sub-dataclasses ──────────────────────────────────────
+
+
+@dataclass
+class ChatState:
+    """Chat tab state."""
+
+    sessions: list[dict] = field(default_factory=list)
+    active_session_id: str | None = None
+    messages: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class WorkflowState:
+    """Workflows tab state."""
+
+    workflows: list[dict] = field(default_factory=list)
+    selected_workflow: str | None = None
+    schedules: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class TeamState:
+    """Team tab state."""
+
+    members: list[dict] = field(default_factory=list)
+    selected_member: str | None = None
+
+
+@dataclass
+class ContextState:
+    """Context tab state."""
+
+    document: str = ""
+    history: list[dict] = field(default_factory=list)
+
+
+# ── Main state ────────────────────────────────────────────────────────
+
+
 @dataclass
 class TuiState:
     """Plain dataclass held by the App. Widgets read from it."""
@@ -70,6 +110,20 @@ class TuiState:
     workflow_progress: dict[str, dict] = field(default_factory=dict)
     workflow_waves: list[list[str]] = field(default_factory=list)
 
+    # ── Navigation (Plan 32) ─────────────────────────────────────────
+    active_screen: str = "dashboard"  # dashboard|workspace|catalog|admin|profile
+    active_tab: str = "overview"  # overview|team|chat|workflows|runs|workshop|context
+
+    # ── Auth/Role (Plan 32) ──────────────────────────────────────────
+    system_role: str = "admin"  # viewer|user|admin
+    mission_role: str = "Owner"  # Owner|Maintainer|Viewer
+
+    # ── Tab-specific state (Plan 32 sub-dataclasses) ─────────────────
+    team: TeamState = field(default_factory=TeamState)
+    chat: ChatState = field(default_factory=ChatState)
+    workflow: WorkflowState = field(default_factory=WorkflowState)
+    context: ContextState = field(default_factory=ContextState)
+
     # ── Helpers ──────────────────────────────────────────────────────
 
     def reset_mission(self) -> None:
@@ -107,7 +161,7 @@ class TuiState:
 
     @property
     def budget_fraction(self) -> float:
-        """Cost as a fraction of budget (0.0–1.0). Returns 0 if no budget."""
+        """Cost as a fraction of budget (0.0-1.0). Returns 0 if no budget."""
         if self.budget_usd <= 0:
             return 0.0
         return min(self.total_cost_usd / self.budget_usd, 1.0)
