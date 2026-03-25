@@ -37,11 +37,8 @@ async def _cli_user_session() -> AsyncGenerator[tuple[Any, Any, Any], None]:
 
     async with get_async_session() as db:
         repo = UserRepository(db)
+        # get_by_id raises NotFoundError if user doesn't exist
         requesting_user = await repo.get_by_id(CLI_USER_ID)
-        if requesting_user is None:
-            raise RuntimeError(
-                f"CLI service user '{CLI_USER_ID}' not found in database"
-            )
         yield db, requesting_user, repo
 
 

@@ -90,20 +90,11 @@ async def _action_create(cli_logger, *, name, description, brief, owner_id, rost
 async def _action_list(cli_logger, *, output_format, **_):
     """List all active missions."""
     from modules.backend.services.mission import MissionService
-    from modules.backend.repositories.user import UserRepository
-    from modules.backend.core.database import get_async_session
+    from modules.clients.cli.mission_context import _async_resolve_current_mission_id
 
     console = get_console()
 
-    current_mission_id = None
-    try:
-        async with get_async_session() as db:
-            repo = UserRepository(db)
-            cli_user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
-            if cli_user:
-                current_mission_id = cli_user.current_mission_id
-    except Exception:
-        pass
+    current_mission_id = await _async_resolve_current_mission_id()
 
     async with MissionService.factory() as svc:
         missions = await svc.list_missions()
@@ -219,28 +210,23 @@ async def _action_archive(cli_logger, *, mission_id, **_):
 async def _action_use(cli_logger, *, mission_id, **_):
     """Set the current mission."""
     from modules.backend.services.user import UserService
-    from modules.backend.repositories.user import UserRepository
-    from modules.backend.core.database import get_async_session
 
     console = get_console()
     if not mission_id:
         console.print("[red]MISSION_ID is required[/red]")
         sys.exit(1)
 
-    async with get_async_session() as db:
-        repo = UserRepository(db)
-        cli_user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+    async with UserService.factory() as svc:
+        cli_user = await svc.user_repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
         if cli_user is None:
             console.print("[red]CLI service account not found. Run 'admin bootstrap-user' first.[/red]")
             sys.exit(1)
 
-        svc = UserService(db)
         user = await svc.set_current_mission(
             user_id=CLI_SERVICE_ACCOUNT_ID,
             mission_id=mission_id,
             requesting_user=cli_user,
         )
-        await db.commit()
 
     mission_name = user.current_mission.name if user.current_mission else mission_id
     console.print(f"\U0001f449 Current mission: [bold]{mission_name}[/bold] ({mission_id})")
@@ -249,25 +235,20 @@ async def _action_use(cli_logger, *, mission_id, **_):
 async def _action_clear_mission(cli_logger, **_):
     """Clear the current mission selection."""
     from modules.backend.services.user import UserService
-    from modules.backend.repositories.user import UserRepository
-    from modules.backend.core.database import get_async_session
 
     console = get_console()
 
-    async with get_async_session() as db:
-        repo = UserRepository(db)
-        cli_user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+    async with UserService.factory() as svc:
+        cli_user = await svc.user_repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
         if cli_user is None:
             console.print("[red]CLI service account not found.[/red]")
             sys.exit(1)
 
-        svc = UserService(db)
         await svc.set_current_mission(
             user_id=CLI_SERVICE_ACCOUNT_ID,
             mission_id=None,
             requesting_user=cli_user,
         )
-        await db.commit()
 
     console.print("Current mission cleared.")
 

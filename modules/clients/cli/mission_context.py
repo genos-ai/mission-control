@@ -17,24 +17,41 @@ logger = get_logger(__name__)
 CLI_SERVICE_ACCOUNT_ID = "system:cli"
 
 
+async def _async_resolve_current_mission_id() -> str | None:
+    """Read the CLI service account's current_mission_id from the DB (async)."""
+    from modules.backend.repositories.user import UserRepository
+    from modules.backend.core.database import get_async_session
+
+    async with get_async_session() as db:
+        repo = UserRepository(db)
+        user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+        if user is None:
+            return None
+        return user.current_mission_id
+
+
 def _resolve_current_mission_id() -> str | None:
-    """Read the CLI service account's current_mission_id from the DB."""
-    async def _fetch() -> str | None:
-        from modules.backend.repositories.user import UserRepository
-        from modules.backend.core.database import get_async_session
-
-        async with get_async_session() as db:
-            repo = UserRepository(db)
-            user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
-            if user is None:
-                return None
-            return user.current_mission_id
-
+    """Read the CLI service account's current_mission_id from the DB (sync wrapper)."""
     try:
-        return asyncio.run(_fetch())
+        return asyncio.run(_async_resolve_current_mission_id())
     except Exception:
         logger.debug("Could not resolve current mission from DB", exc_info=True)
         return None
+
+
+def require_mission_id(mission_id: str | None) -> str:
+    """Resolve mission_id from explicit value or DB fallback.
+
+    Returns the resolved mission_id string, or raises click.UsageError
+    if neither an explicit value nor a DB-backed current mission exists.
+    """
+    if not mission_id:
+        mission_id = _resolve_current_mission_id()
+    if not mission_id:
+        raise click.UsageError(
+            "No mission specified. Use 'mission use <id>' to set a default."
+        )
+    return mission_id
 
 
 def with_mission(f):
@@ -53,12 +70,7 @@ def with_mission(f):
     )
     @functools.wraps(f)
     def wrapper(*args, mission_id: str | None = None, **kwargs):
-        if not mission_id:
-            mission_id = _resolve_current_mission_id()
-        if not mission_id:
-            raise click.UsageError(
-                "No mission specified. Use 'mission use <id>' to set a default."
-            )
+        mission_id = require_mission_id(mission_id)
         return f(*args, mission_id=mission_id, **kwargs)
 
     return wrapper

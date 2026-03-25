@@ -625,10 +625,8 @@ def mission_detail(ctx, mission_id, name):
     Uses current mission if MISSION_ID is omitted.
     """
     if not mission_id and not name:
-        from modules.clients.cli.mission_context import _resolve_current_mission_id
-        mission_id = _resolve_current_mission_id()
-        if not mission_id:
-            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
+        from modules.clients.cli.mission_context import require_mission_id
+        mission_id = require_mission_id(mission_id)
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "detail", mission_id=mission_id, name=name,
                 output_format=ctx.output_format)
@@ -642,11 +640,8 @@ def mission_archive(ctx, mission_id):
 
     Uses current mission if MISSION_ID is omitted.
     """
-    if not mission_id:
-        from modules.clients.cli.mission_context import _resolve_current_mission_id
-        mission_id = _resolve_current_mission_id()
-        if not mission_id:
-            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
+    from modules.clients.cli.mission_context import require_mission_id
+    mission_id = require_mission_id(mission_id)
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "archive", mission_id=mission_id,
                 output_format=ctx.output_format)
@@ -684,11 +679,8 @@ def mission_context_show(ctx, mission_id):
 
     Uses current mission if MISSION_ID is omitted.
     """
-    if not mission_id:
-        from modules.clients.cli.mission_context import _resolve_current_mission_id
-        mission_id = _resolve_current_mission_id()
-        if not mission_id:
-            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
+    from modules.clients.cli.mission_context import require_mission_id
+    mission_id = require_mission_id(mission_id)
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "context-show", mission_id=mission_id,
                 output_format=ctx.output_format)
@@ -702,11 +694,8 @@ def mission_context_history(ctx, mission_id):
 
     Uses current mission if MISSION_ID is omitted.
     """
-    if not mission_id:
-        from modules.clients.cli.mission_context import _resolve_current_mission_id
-        mission_id = _resolve_current_mission_id()
-        if not mission_id:
-            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
+    from modules.clients.cli.mission_context import require_mission_id
+    mission_id = require_mission_id(mission_id)
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "context-history", mission_id=mission_id,
                 output_format=ctx.output_format)
@@ -720,11 +709,8 @@ def mission_summarize(ctx, mission_id):
 
     Uses current mission if MISSION_ID is omitted.
     """
-    if not mission_id:
-        from modules.clients.cli.mission_context import _resolve_current_mission_id
-        mission_id = _resolve_current_mission_id()
-        if not mission_id:
-            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
+    from modules.clients.cli.mission_context import require_mission_id
+    mission_id = require_mission_id(mission_id)
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "summarize", mission_id=mission_id,
                 output_format=ctx.output_format)
