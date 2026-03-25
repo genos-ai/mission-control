@@ -620,20 +620,54 @@ def mission_list(ctx):
 @click.option("--name", default=None, help="Look up by mission name.")
 @click.pass_obj
 def mission_detail(ctx, mission_id, name):
-    """Show mission details."""
+    """Show mission details.
+
+    Uses current mission if MISSION_ID is omitted.
+    """
+    if not mission_id and not name:
+        from modules.clients.cli.mission_context import _resolve_current_mission_id
+        mission_id = _resolve_current_mission_id()
+        if not mission_id:
+            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "detail", mission_id=mission_id, name=name,
                 output_format=ctx.output_format)
 
 
 @mission.command("archive")
-@click.argument("mission_id")
+@click.argument("mission_id", required=False)
 @click.pass_obj
 def mission_archive(ctx, mission_id):
-    """Archive a mission."""
+    """Archive a mission.
+
+    Uses current mission if MISSION_ID is omitted.
+    """
+    if not mission_id:
+        from modules.clients.cli.mission_context import _resolve_current_mission_id
+        mission_id = _resolve_current_mission_id()
+        if not mission_id:
+            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "archive", mission_id=mission_id,
                 output_format=ctx.output_format)
+
+
+@mission.command("use")
+@click.argument("mission_id")
+@click.pass_obj
+def mission_use(ctx, mission_id):
+    """Set the current mission (persists across commands)."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "use", mission_id=mission_id,
+                output_format=ctx.output_format)
+
+
+@mission.command("clear")
+@click.pass_obj
+def mission_clear(ctx):
+    """Clear the current mission selection."""
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "clear-mission", output_format=ctx.output_format)
 
 
 @mission.group("context", cls=ShowHelpOnMissingArgs)
@@ -643,30 +677,54 @@ def mission_context():
 
 
 @mission_context.command("show")
-@click.argument("mission_id")
+@click.argument("mission_id", required=False)
 @click.pass_obj
 def mission_context_show(ctx, mission_id):
-    """Show the MCD for a mission."""
+    """Show the MCD for a mission.
+
+    Uses current mission if MISSION_ID is omitted.
+    """
+    if not mission_id:
+        from modules.clients.cli.mission_context import _resolve_current_mission_id
+        mission_id = _resolve_current_mission_id()
+        if not mission_id:
+            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "context-show", mission_id=mission_id,
                 output_format=ctx.output_format)
 
 
 @mission_context.command("history")
-@click.argument("mission_id")
+@click.argument("mission_id", required=False)
 @click.pass_obj
 def mission_context_history(ctx, mission_id):
-    """Show MCD change audit trail."""
+    """Show MCD change audit trail.
+
+    Uses current mission if MISSION_ID is omitted.
+    """
+    if not mission_id:
+        from modules.clients.cli.mission_context import _resolve_current_mission_id
+        mission_id = _resolve_current_mission_id()
+        if not mission_id:
+            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "context-history", mission_id=mission_id,
                 output_format=ctx.output_format)
 
 
 @mission.command("summarize")
-@click.argument("mission_id")
+@click.argument("mission_id", required=False)
 @click.pass_obj
 def mission_summarize(ctx, mission_id):
-    """Run the summarization pipeline for a mission."""
+    """Run the summarization pipeline for a mission.
+
+    Uses current mission if MISSION_ID is omitted.
+    """
+    if not mission_id:
+        from modules.clients.cli.mission_context import _resolve_current_mission_id
+        mission_id = _resolve_current_mission_id()
+        if not mission_id:
+            raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "summarize", mission_id=mission_id,
                 output_format=ctx.output_format)

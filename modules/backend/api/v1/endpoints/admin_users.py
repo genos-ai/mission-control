@@ -42,7 +42,7 @@ async def create_user(
 
     return ApiResponse(
         success=True,
-        data=UserResponse.model_validate(user).model_dump(mode="json"),
+        data=UserResponse.from_user(user).model_dump(mode="json"),
         metadata={"request_id": request_id},
     )
 
@@ -67,7 +67,7 @@ async def list_users(
 
     return ApiResponse(
         success=True,
-        data=[UserResponse.model_validate(u).model_dump(mode="json") for u in users],
+        data=[UserResponse.from_user(u).model_dump(mode="json") for u in users],
         metadata={"request_id": request_id},
     )
 
@@ -108,7 +108,7 @@ async def get_user(
 
     return ApiResponse(
         success=True,
-        data=UserResponse.model_validate(user).model_dump(mode="json"),
+        data=UserResponse.from_user(user).model_dump(mode="json"),
         metadata={"request_id": request_id},
     )
 
@@ -135,7 +135,7 @@ async def update_user(
 
     return ApiResponse(
         success=True,
-        data=UserResponse.model_validate(user).model_dump(mode="json"),
+        data=UserResponse.from_user(user).model_dump(mode="json"),
         metadata={"request_id": request_id},
     )
 

@@ -115,9 +115,9 @@ class TestMissionGroup:
     def test_mission_archive_requires_id(self, runner):
         from cli import cli
         result = runner.invoke(cli, ["mission", "archive"])
-        # ShowHelpOnMissingArgs shows help instead of error
-        assert result.exit_code == 0
-        assert "archive" in result.output.lower() or "MISSION_ID" in result.output
+        # Without a mission ID or current mission set, shows usage error
+        assert result.exit_code != 0
+        assert "mission" in result.output.lower()
 
 
 class TestAdminGroup:

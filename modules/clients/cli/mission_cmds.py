@@ -1,13 +1,15 @@
 """
 CLI handler for mission commands.
 
-Thin renderer over MissionService. Handles create, list, detail, archive.
+Thin renderer over MissionService. Handles create, list, detail, archive, use.
 """
 
 import asyncio
 import sys
 
+from modules.clients.cli.mission_context import CLI_SERVICE_ACCOUNT_ID
 from modules.clients.cli.report import get_console, build_table, DOTTED_ROWS, styled_status
+from modules.clients.common.display import annotate_current_mission
 
 
 def run_mission(
@@ -31,6 +33,8 @@ def run_mission(
         "list": _action_list,
         "detail": _action_detail,
         "archive": _action_archive,
+        "use": _action_use,
+        "clear-mission": _action_clear_mission,
         "context-show": _action_context_show,
         "context-history": _action_context_history,
         "summarize": _action_summarize,
@@ -86,8 +90,21 @@ async def _action_create(cli_logger, *, name, description, brief, owner_id, rost
 async def _action_list(cli_logger, *, output_format, **_):
     """List all active missions."""
     from modules.backend.services.mission import MissionService
+    from modules.backend.repositories.user import UserRepository
+    from modules.backend.core.database import get_async_session
 
     console = get_console()
+
+    current_mission_id = None
+    try:
+        async with get_async_session() as db:
+            repo = UserRepository(db)
+            cli_user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+            if cli_user:
+                current_mission_id = cli_user.current_mission_id
+    except Exception:
+        pass
+
     async with MissionService.factory() as svc:
         missions = await svc.list_missions()
 
@@ -97,16 +114,24 @@ async def _action_list(cli_logger, *, output_format, **_):
 
     table = build_table("Missions", columns=[
         ("Status", {"width": 10}),
-        ("Name", {"style": "cyan", "width": 30}),
+        ("Name", {"style": "cyan", "width": 32}),
         ("ID", {"width": 38}),
         ("Roster", {"width": 15}),
         ("Description", {"ratio": 1}),
     ], show_lines=True, table_box=DOTTED_ROWS)
     for m in missions:
         desc = m.description[:60] + "..." if len(m.description or "") > 60 else (m.description or "")
-        table.add_row(styled_status(m.status), m.name, m.id, m.default_roster, desc)
+        name = annotate_current_mission(m.name, m.id, current_mission_id)
+        table.add_row(styled_status(m.status), name, m.id, m.default_roster, desc)
 
     console.print(table)
+
+    if current_mission_id:
+        current = next((m for m in missions if m.id == current_mission_id), None)
+        if current:
+            console.print(f"\n\U0001f449 Current mission: [bold]{current.name}[/bold] ({current.id})")
+    else:
+        console.print("\n[dim]No current mission set. Use 'mission use <id>' to select one.[/dim]")
 
 
 async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
@@ -189,6 +214,62 @@ async def _action_archive(cli_logger, *, mission_id, **_):
         mission = await svc.archive_mission(mission_id)
 
     console.print(f"[yellow]Mission archived:[/yellow] {mission.name} ({mission.id})")
+
+
+async def _action_use(cli_logger, *, mission_id, **_):
+    """Set the current mission."""
+    from modules.backend.services.user import UserService
+    from modules.backend.repositories.user import UserRepository
+    from modules.backend.core.database import get_async_session
+
+    console = get_console()
+    if not mission_id:
+        console.print("[red]MISSION_ID is required[/red]")
+        sys.exit(1)
+
+    async with get_async_session() as db:
+        repo = UserRepository(db)
+        cli_user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+        if cli_user is None:
+            console.print("[red]CLI service account not found. Run 'admin bootstrap-user' first.[/red]")
+            sys.exit(1)
+
+        svc = UserService(db)
+        user = await svc.set_current_mission(
+            user_id=CLI_SERVICE_ACCOUNT_ID,
+            mission_id=mission_id,
+            requesting_user=cli_user,
+        )
+        await db.commit()
+
+    mission_name = user.current_mission.name if user.current_mission else mission_id
+    console.print(f"\U0001f449 Current mission: [bold]{mission_name}[/bold] ({mission_id})")
+
+
+async def _action_clear_mission(cli_logger, **_):
+    """Clear the current mission selection."""
+    from modules.backend.services.user import UserService
+    from modules.backend.repositories.user import UserRepository
+    from modules.backend.core.database import get_async_session
+
+    console = get_console()
+
+    async with get_async_session() as db:
+        repo = UserRepository(db)
+        cli_user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+        if cli_user is None:
+            console.print("[red]CLI service account not found.[/red]")
+            sys.exit(1)
+
+        svc = UserService(db)
+        await svc.set_current_mission(
+            user_id=CLI_SERVICE_ACCOUNT_ID,
+            mission_id=None,
+            requesting_user=cli_user,
+        )
+        await db.commit()
+
+    console.print("Current mission cleared.")
 
 
 async def _action_context_show(cli_logger, *, mission_id, output_format, **_):

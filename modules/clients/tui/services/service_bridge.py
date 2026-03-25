@@ -45,6 +45,11 @@ async def _cli_user_session() -> AsyncGenerator[tuple[Any, Any, Any], None]:
         yield db, requesting_user, repo
 
 
+def _enum_str(val: Any) -> str:
+    """Convert an enum or string value to its string representation."""
+    return val.value if hasattr(val, "value") else str(val)
+
+
 class ServiceBridge:
     """Facade that wraps backend service factories for TUI consumption.
 
@@ -72,7 +77,7 @@ class ServiceBridge:
                     "id": str(m.id),
                     "name": m.name,
                     "description": m.description,
-                    "status": m.status,
+                    "status": _enum_str(m.status),
                 }
                 for m in missions
             ]
@@ -216,7 +221,7 @@ class ServiceBridge:
             "id": rid,
             "execution_id": r.execution_id if hasattr(r, "execution_id") else rid,
             "objective": getattr(r, "objective_statement", "") or getattr(r, "objective", "") or "",
-            "status": getattr(r, "status", "unknown"),
+            "status": _enum_str(getattr(r, "status", "unknown")),
             "total_cost_usd": getattr(r, "total_cost_usd", 0.0) or 0.0,
             "roster_name": getattr(r, "roster_name", "") or "",
             "created_at": str(getattr(r, "created_at", "")),
@@ -253,7 +258,7 @@ class ServiceBridge:
             return {
                 "id": str(record.id),
                 "objective": getattr(record, "objective", ""),
-                "status": getattr(record, "status", "unknown"),
+                "status": _enum_str(getattr(record, "status", "unknown")),
                 "total_cost_usd": getattr(record, "total_cost_usd", 0.0) or 0.0,
                 "roster_name": getattr(record, "roster_name", ""),
                 "created_at": str(getattr(record, "created_at", "")),
@@ -263,7 +268,7 @@ class ServiceBridge:
                     {
                         "task_id": getattr(t, "task_id", ""),
                         "agent_name": getattr(t, "agent_name", ""),
-                        "status": getattr(t, "status", ""),
+                        "status": _enum_str(getattr(t, "status", "")),
                         "cost_usd": getattr(t, "cost_usd", 0.0) or 0.0,
                         "input_tokens": getattr(t, "input_tokens", 0) or 0,
                         "output_tokens": getattr(t, "output_tokens", 0) or 0,
@@ -601,11 +606,11 @@ class ServiceBridge:
         svc = HealthCheckService()
         report = await svc.check_readiness()
         return {
-            "overall_status": report.overall_status,
+            "overall_status": _enum_str(report.overall_status),
             "components": [
                 {
                     "name": c.name,
-                    "status": c.status,
+                    "status": _enum_str(c.status),
                     "latency_ms": c.latency_ms,
                     "error": c.error,
                 }

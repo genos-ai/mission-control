@@ -73,6 +73,20 @@ def severity_color(severity: str) -> str:
     return _SEVERITY_COLORS.get(severity.lower(), "white")
 
 
+# ── Mission indicator ──────────────────────────────────────────────────
+
+
+def annotate_current_mission(
+    name: str,
+    mission_id: str,
+    current_mission_id: str | None,
+) -> str:
+    """Prefix mission name with indicator if it's the current selection."""
+    if current_mission_id and mission_id == current_mission_id:
+        return f"\U0001f449 {name}"
+    return name
+
+
 # ── Console ────────────────────────────────────────────────────────────
 
 

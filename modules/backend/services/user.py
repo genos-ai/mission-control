@@ -5,6 +5,8 @@ Handles user CRUD, authorization enforcement, and password management.
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,7 @@ from modules.backend.core import security
 from modules.backend.core.exceptions import (
     AuthorizationError,
     ConflictError,
+    NotFoundError,
     ValidationError,
 )
 from modules.backend.models.user import User
@@ -27,6 +30,16 @@ class UserService(BaseService):
         super().__init__(session)
         self.user_repo = UserRepository(session)
         self.api_key_repo = ApiKeyRepository(session)
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory() -> AsyncGenerator["UserService", None]:
+        """Create a UserService with its own DB session."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield UserService(db)
+            await db.commit()
 
     async def create_user(
         self,
@@ -189,3 +202,36 @@ class UserService(BaseService):
             user_id=user_id,
             requesting_user_id=requesting_user.id,
         )
+
+    async def set_current_mission(
+        self,
+        user_id: str,
+        mission_id: str | None,
+        requesting_user: User,
+    ) -> User:
+        """Set or clear the user's current mission.
+
+        Self or admin only. Validates mission exists and is active.
+        Pass mission_id=None to clear.
+        """
+        self._require_owner_or_admin(user_id, requesting_user, "set current mission")
+
+        if mission_id is not None:
+            from modules.backend.repositories.mission import MissionRepository
+
+            mission_repo = MissionRepository(self._session)
+            mission = await mission_repo.get_by_id_or_none(mission_id)
+            if mission is None:
+                raise NotFoundError("Mission not found")
+            if mission.status != "active":
+                raise ValidationError("Cannot select a non-active mission")
+
+        user = await self.user_repo.update(user_id, current_mission_id=mission_id)
+
+        self._log_operation(
+            "current_mission_set",
+            user_id=user_id,
+            mission_id=mission_id,
+        )
+
+        return user

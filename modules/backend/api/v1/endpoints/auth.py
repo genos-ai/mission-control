@@ -19,7 +19,7 @@ from modules.backend.schemas.auth import (
     build_api_key_create_response,
 )
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.user import UserResponse
+from modules.backend.schemas.user import SetCurrentMissionRequest, UserResponse
 
 router = APIRouter()
 
@@ -41,7 +41,7 @@ async def login(
         data=LoginResponse(
             access_token=result["access_token"],
             refresh_token=result["refresh_token"],
-            user=UserResponse.model_validate(result["user"]),
+            user=UserResponse.from_user(result["user"]),
         ).model_dump(mode="json"),
         metadata={"request_id": request_id},
     )
@@ -77,7 +77,31 @@ async def get_me(
     """Return the current authenticated user's info."""
     return ApiResponse(
         success=True,
-        data=UserResponse.model_validate(current_user).model_dump(mode="json"),
+        data=UserResponse.from_user(current_user).model_dump(mode="json"),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.put("/me/current-mission", response_model=ApiResponse, summary="Set current mission")
+async def set_current_mission(
+    body: SetCurrentMissionRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Set or clear the current user's active mission."""
+    from modules.backend.services.user import UserService
+
+    service = UserService(db)
+    user = await service.set_current_mission(
+        user_id=current_user.id,
+        mission_id=body.mission_id,
+        requesting_user=current_user,
+    )
+
+    return ApiResponse(
+        success=True,
+        data=UserResponse.from_user(user).model_dump(mode="json"),
         metadata={"request_id": request_id},
     )
 

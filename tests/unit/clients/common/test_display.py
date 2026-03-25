@@ -218,3 +218,25 @@ def test_cost_line_format():
 def test_cost_line_requires_keyword_args():
     with pytest.raises(TypeError):
         cost_line(1000, 500, 0.0042)  # type: ignore[misc]
+
+
+# ── Mission indicator ─────────────────────────────────────────────────
+
+
+class TestAnnotateCurrentMission:
+    def test_matching_mission(self):
+        from modules.clients.common.display import annotate_current_mission
+        result = annotate_current_mission("Alpha", "abc-123", "abc-123")
+        assert "\U0001f449" in result
+        assert "Alpha" in result
+
+    def test_non_matching_mission(self):
+        from modules.clients.common.display import annotate_current_mission
+        result = annotate_current_mission("Alpha", "abc-123", "def-456")
+        assert "\U0001f449" not in result
+        assert result == "Alpha"
+
+    def test_none_current(self):
+        from modules.clients.common.display import annotate_current_mission
+        result = annotate_current_mission("Alpha", "abc-123", None)
+        assert result == "Alpha"

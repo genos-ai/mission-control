@@ -83,6 +83,7 @@ class MissionControlApp(App):
         Binding("ctrl+m", "new_mission", "New Mission"),
         Binding("ctrl+k", "cancel_mission", "Cancel Mission"),
         Binding("ctrl+q", "quit", "Quit"),
+        Binding("ctrl+s", "screenshot", "Screenshot", show=False),
         Binding("ctrl+slash", "focus_input", "Focus Input"),
         Binding("f1", "show_overview", "Overview"),
         Binding("f2", "show_history", "History"),
@@ -123,6 +124,15 @@ class MissionControlApp(App):
             logger.warning("Could not load user profile", exc_info=True)
 
     # ── Navigation ───────────────────────────────────────────────────
+
+    def action_screenshot(self) -> None:
+        """Save a screenshot to var/tmp/screenshot.svg (Ctrl+S)."""
+        from pathlib import Path
+
+        path = Path("var/tmp/screenshot.svg")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.save_screenshot(str(path))
+        self.notify(f"Screenshot saved to {path}")
 
     def action_goto_dashboard(self) -> None:
         """Navigate to DashboardScreen (Ctrl+D)."""
@@ -721,9 +731,9 @@ class MissionControlApp(App):
             sidebar.set_selected(event.agent_name)
         except NoMatches:
             pass
-        self._show_agent_detail(event.agent_name)
+        await self._show_agent_detail(event.agent_name)
 
-    def _show_agent_detail(self, agent_name: str) -> None:
+    async def _show_agent_detail(self, agent_name: str) -> None:
         """Replace center-content with AgentDetailWidget."""
         try:
             container = self.screen.query_one(
@@ -732,11 +742,11 @@ class MissionControlApp(App):
         except NoMatches:
             return
 
-        container.remove_children()
+        await container.remove_children()
 
         detail = AgentDetailWidget(agent_name, id="agent-detail")
         self._agent_detail = detail
-        container.mount(detail)
+        await container.mount(detail)
 
         if agent_name in self.state.agent_output:
             detail.set_full_output(self.state.agent_output[agent_name])

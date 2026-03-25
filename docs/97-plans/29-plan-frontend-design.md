@@ -4,8 +4,8 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2026-03-21 |
-| **Updated** | 2026-03-23 — aligned with Plan 30 (User Management & Authentication) |
-| **Depends on** | Plan 28 (Mission Control Platform Architecture), Plan 30 (User Management & Authentication) |
+| **Updated** | 2026-03-25 — integrated Plan 31 (Current Mission Selection), fixed role matrix, added mission membership screen |
+| **Depends on** | Plan 28 (Mission Control Platform Architecture), Plan 30 (User Management & Authentication), Plan 31 (Current Mission Selection) |
 | **Target** | `modules/frontend/` — React + Vite + Tailwind |
 
 ---
@@ -115,6 +115,15 @@ Hovering shows full name tooltip.
 - `●` filled = selected (you're inside this mission workspace)
 - `●` dot beside name = has active run (even when not selected)
 - Archived missions hidden by default; "Show archived" toggle at bottom
+
+**Current mission selection (Plan 31):**
+- `useAuthStore.user.current_mission_id` drives which mission is highlighted in the sidebar
+- Clicking a mission in the sidebar calls `PUT /api/v1/auth/me/current-mission` to persist
+  the selection across all clients (CLI, TUI, web)
+- On login/refresh, `GET /api/v1/auth/me` returns `current_mission_id` and
+  `current_mission_name` — the sidebar uses these to restore the active selection
+- If `current_mission_id` is set and the user navigates to `/`, auto-redirect to
+  `/missions/:current_mission_id/overview`
 
 **Notification bell:** Unread count badge. Click opens a **dropdown popover**
 (not the right drawer). Shows recent notifications grouped by type.
@@ -389,13 +398,28 @@ The Workflow Architect recommends a team based on your brief.
 [Get AI Recommendation]  or  [Browse Catalog]
 ```
 
+**E) Mission members section** (collapsible, below agent cards):
+
+Manages *human* access to the mission (separate from AI agent team above).
+
+- Table: display name, email, mission role (Owner / Maintainer / Viewer), added date
+- Owner actions:
+  - [+ Invite User] → modal with email input and role selector
+  - Role dropdown on each row to change role (cannot demote self from Owner)
+  - [Remove] button with confirmation (cannot remove self)
+- Maintainer/Viewer: read-only view of the member list
+
 **API endpoints consumed:**
-- `GET /api/v1/missions/:id/team` — team members
+- `GET /api/v1/missions/:id/team` — agent team members
 - `POST /api/v1/missions/:id/team` — add agent
 - `DELETE /api/v1/missions/:id/team/:memberId` — remove agent
 - `PUT /api/v1/missions/:id/team/:memberId/prompt` — update user prompt
 - `GET /api/v1/catalog/agents` — catalog for browse
 - `POST /api/v1/missions/:id/architect/chat` — AI recommendation
+- `GET /api/v1/missions/:id/members` — human mission members (**needs endpoint**)
+- `POST /api/v1/missions/:id/members` — invite user to mission (**needs endpoint**)
+- `PATCH /api/v1/missions/:id/members/:userId` — change member role (**needs endpoint**)
+- `DELETE /api/v1/missions/:id/members/:userId` — remove member (**needs endpoint**)
 
 **Right drawer content:**
 - Prompt version history with diffs and restore buttons
@@ -792,6 +816,7 @@ Current user's own account management. Accessible via the `👤` icon in the sid
 - Display name (editable inline)
 - Email address (read-only)
 - System role badge (read-only — changed by admins only)
+- Current mission: name with link to workspace, or "None" with [Select Mission] link
 - Last login timestamp
 
 **B) Security:**
@@ -933,7 +958,7 @@ const { role } = useRole(missionId)  // returns 'Owner' | 'Maintainer' | 'Viewer
 
 | Element | Owner | Maintainer | Viewer |
 |---|---|---|---|
-| + New Mission | Visible | Hidden | Hidden |
+| + New Mission | `system_role != 'viewer'` (not mission-scoped) | — | — |
 | Mission Pause/Archive | Visible | Hidden | Hidden |
 | Edit Brief | Visible | Hidden | Hidden |
 | Manage Team (add/remove) | Visible | Hidden | Hidden |
@@ -967,6 +992,21 @@ Every screen has a meaningful empty state that guides the user forward.
 | Runs (none) | "No runs yet. Go to Workflows to trigger your first run." | [Go to Workflows →] |
 | Workshop (no runs) | "Workshop needs a completed run for cached inputs." | [Go to Workflows →] |
 | Context (no runs) | "Context builds automatically as workflows run." | — |
+
+---
+
+## 9.5  Error States
+
+| Scenario | UI Treatment |
+|---|---|
+| API request fails (4xx/5xx) | Inline error banner at the top of the affected panel with retry button. Toast for transient errors. |
+| SSE disconnection | Status bar shows `○ Reconnecting...`. Active run card shows "Live updates paused — reconnecting" overlay. |
+| Agent failure mid-run | Red card in event stream with error message. Stack trace collapsible. Gate-like prompt: [Retry] or [Abort Run]. |
+| Auth token expired + refresh fails | Redirect to `/login` with toast "Session expired — please sign in again." |
+| Network offline | Full-screen overlay: "No network connection. Retrying..." with manual retry button. |
+
+React error boundaries wrap each route and the event stream component independently,
+so a failure in one panel does not crash the entire app.
 
 ---
 
@@ -1035,6 +1075,8 @@ const api = {
   // SSE: EventSource does not support custom headers natively.
   // Pass the access token as a query parameter: ?token=<access_token>
   // The backend validates it identically to the Bearer header.
+  // Security: access tokens have short TTLs (15min). The backend must strip
+  // ?token= from access logs. Consider issuing single-use SSE tickets in future.
   sse(path: string, body?: unknown): EventSource,
 }
 ```
@@ -1076,7 +1118,10 @@ The connection closes when the response completes.
 
 ### 12.3  Reconnection
 
-All SSE connections implement automatic reconnection with exponential backoff.
+All SSE connections implement automatic reconnection with exponential backoff
+(1s → 2s → 4s → ... capped at 30s). Connections send `Last-Event-ID` on reconnect
+so the backend can replay missed events. If disconnected for more than 5 minutes,
+the frontend triggers a full React Query refetch to resync state.
 The status bar shows connection state (`● Connected` / `○ Reconnecting...`).
 
 ---
@@ -1201,6 +1246,8 @@ Admin section and cross-cutting refinements.
 | Admin health | `GET /health/detailed` | Exists |
 | Admin user management | `GET/POST/PATCH/DELETE /api/v1/admin/users/*` | Exists |
 | Health | `/health/*` | Exists |
+| Current mission selection | `PUT /api/v1/auth/me/current-mission` | Exists (Plan 31) |
+| Mission membership CRUD | `GET/POST/PATCH/DELETE /api/v1/missions/:id/members` | **Needs endpoint** |
 | Notification SSE | User-scoped notification stream | **Needs endpoint** |
 | Run SSE | Execution event stream | **Needs endpoint** |
 | Prompt version history | User-facing `GET /api/v1/missions/:id/team/:id/prompt-history` | **Needs endpoint** (admin equivalent exists) |

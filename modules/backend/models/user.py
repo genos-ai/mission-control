@@ -7,7 +7,7 @@ Persistent user identity for authentication and authorization.
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -47,10 +47,21 @@ class User(UUIDMixin, TimestampMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True,
     )
+    current_mission_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("missions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Relationships
     api_keys: Mapped[list["ApiKey"]] = relationship(
         "ApiKey", back_populates="user", cascade="all, delete-orphan",
+    )
+    current_mission: Mapped["Mission | None"] = relationship(
+        "Mission",
+        foreign_keys=[current_mission_id],
+        lazy="joined",
     )
 
     def has_role(self, minimum: str) -> bool:

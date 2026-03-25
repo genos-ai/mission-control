@@ -31,6 +31,8 @@ def _mock_user(**overrides):
         is_active=True,
         is_service_account=False,
         last_login_at=None,
+        current_mission_id=None,
+        current_mission=None,
         created_at=NOW,
         updated_at=NOW,
     )
