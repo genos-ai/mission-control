@@ -508,20 +508,19 @@ def _make_agent_executor(
                 f"{json.dumps(inputs, indent=2, default=str)}\n```"
             )
 
-        # QA agent: pre-compute PQI deterministically and enrich message
-        pqi_data = None
-        if agent_name == "code.quality.agent" and hasattr(module, "_compute_pqi"):
-            pqi_data = await module._compute_pqi(deps)
-            if pqi_data and hasattr(module, "_format_pqi_for_llm"):
-                pqi_text = module._format_pqi_for_llm(pqi_data)
-                user_message = (
-                    f"{user_message}\n\n"
-                    f"## Pre-computed PQI (PyQuality Index)\n\n"
-                    f"The following PQI score has been computed deterministically. "
-                    f"Reference it in your summary and recommendations — you do NOT "
-                    f"need to call run_quality_score_tool yourself.\n\n"
-                    f"{pqi_text}"
-                )
+        # Pre-execution hook: let agent modules enrich the message
+        # (e.g., inject deterministic pre-computations).
+        # Any agent module can define:
+        #   async pre_execute(message, deps) -> (enriched_message, hook_data)
+        #   post_execute(output, hook_data) -> None
+        # The executor does not need to know what the hooks do.
+        # Best-effort — hook failure must not break agent execution.
+        hook_data = None
+        if hasattr(module, "pre_execute"):
+            try:
+                user_message, hook_data = await module.pre_execute(user_message, deps)
+            except Exception:
+                logger.warning("pre_execute hook failed for %s", agent_name, exc_info=True)
 
         # Stream agent execution for real-time event emission.
         # The executor still returns a complete dict — streaming is
@@ -551,9 +550,13 @@ def _make_agent_executor(
             )
             usage = stream.usage()
 
-        # QA agent: inject PQI deterministically before serialization
-        if pqi_data and hasattr(output, "pqi"):
-            output.pqi = pqi_data
+        # Post-execution hook: let agent modules inject deterministic
+        # data into the output before serialization.
+        if hook_data is not None and hasattr(module, "post_execute"):
+            try:
+                module.post_execute(output, hook_data)
+            except Exception:
+                logger.warning("post_execute hook failed for %s", agent_name, exc_info=True)
 
         if hasattr(output, "model_dump"):
             output_dict = output.model_dump()

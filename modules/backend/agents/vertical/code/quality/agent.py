@@ -154,6 +154,42 @@ def create_agent(model: str | Model) -> Agent[QaAgentDeps, QaAuditResult]:
     return agent
 
 
+async def pre_execute(
+    user_message: str,
+    deps: QaAgentDeps,
+) -> tuple[str, PqiScore | None]:
+    """Compute PQI deterministically and inject it into the user message.
+
+    Called by the dispatch executor (as a generic hook) and by this
+    module's own run_agent() / run_agent_stream() entry points.
+
+    Returns (enriched_message, pqi_data) where pqi_data is passed to
+    post_execute() for deterministic output injection.
+    """
+    pqi = await _compute_pqi(deps)
+    if pqi:
+        pqi_text = _format_pqi_for_llm(pqi)
+        user_message = (
+            f"{user_message}\n\n"
+            f"## Pre-computed PQI (PyQuality Index)\n\n"
+            f"The following PQI score has been computed deterministically. "
+            f"Reference it in your summary and recommendations — you do NOT "
+            f"need to call run_quality_score_tool yourself.\n\n"
+            f"{pqi_text}"
+        )
+    return user_message, pqi
+
+
+def post_execute(output: QaAuditResult, hook_data: PqiScore | None) -> None:
+    """Inject deterministic PQI into agent output, overwriting LLM values.
+
+    Called by the dispatch executor (as a generic hook) and by this
+    module's own run_agent() / run_agent_stream() entry points.
+    """
+    if hook_data is not None and hasattr(output, "pqi"):
+        output.pqi = hook_data
+
+
 async def _compute_pqi(deps: QaAgentDeps) -> PqiScore | None:
     """Compute PQI deterministically. Returns None on failure (non-fatal)."""
     try:
@@ -203,30 +239,19 @@ async def run_agent(
     """Standard agent entry point. Called by mission control.
 
     The agent instance is provided by mission control (from the registry).
+    Uses pre_execute/post_execute hooks for PQI enrichment — same logic
+    as the dispatch executor path.
     """
 
     logger.info("QA agent invoked", extra={"message": user_message})
 
-    # Compute PQI deterministically BEFORE the agent runs so the LLM
-    # can reference the scores in its summary and recommendations.
-    pqi = await _compute_pqi(deps)
+    user_message, pqi = await pre_execute(user_message, deps)
     if pqi:
-        pqi_text = _format_pqi_for_llm(pqi)
-        user_message = (
-            f"{user_message}\n\n"
-            f"## Pre-computed PQI (PyQuality Index)\n\n"
-            f"The following PQI score has been computed deterministically. "
-            f"Reference it in your summary and recommendations — you do NOT "
-            f"need to call run_quality_score_tool yourself.\n\n"
-            f"{pqi_text}"
-        )
         deps.emit({"type": "tool_done", "tool": "pqi_precompute", "detail": f"PQI {pqi.composite:.1f}"})
 
     result = await agent.run(user_message, deps=deps, usage_limits=usage_limits)
 
-    # Inject PQI deterministically — overwrite whatever the LLM returned
-    if pqi:
-        result.output.pqi = pqi
+    post_execute(result.output, pqi)
 
     logger.info(
         "QA agent completed",
@@ -267,19 +292,8 @@ async def run_agent_stream(
     original_progress = deps.on_progress
     deps.on_progress = lambda event: queue.put_nowait(event)
 
-    # Compute PQI deterministically before agent runs
-    pqi = await _compute_pqi(deps)
-    enriched_message = user_message
+    enriched_message, pqi = await pre_execute(user_message, deps)
     if pqi:
-        pqi_text = _format_pqi_for_llm(pqi)
-        enriched_message = (
-            f"{user_message}\n\n"
-            f"## Pre-computed PQI (PyQuality Index)\n\n"
-            f"The following PQI score has been computed deterministically. "
-            f"Reference it in your summary and recommendations — you do NOT "
-            f"need to call run_quality_score_tool yourself.\n\n"
-            f"{pqi_text}"
-        )
         queue.put_nowait({"type": "tool_done", "tool": "pqi_precompute", "detail": f"PQI {pqi.composite:.1f}"})
 
     async def _run():
@@ -302,9 +316,7 @@ async def run_agent_stream(
     deps.on_progress = original_progress
 
     output = task.result()
-    # Inject PQI deterministically
-    if pqi:
-        output.pqi = pqi
+    post_execute(output, pqi)
 
     logger.info(
         "QA agent completed (stream)",
