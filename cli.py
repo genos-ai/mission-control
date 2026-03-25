@@ -18,6 +18,8 @@ Usage:
     python cli.py workflow list
     python cli.py workflow run ops.platform-audit --mission my-app
     python cli.py credits
+    python cli.py console monitor
+    python cli.py console monitor --view developer
 """
 
 import sys
@@ -393,13 +395,14 @@ def execution(ctx):
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
 @click.option("--triggered-by", default="user:cli", help="Trigger origin.")
+@click.option("--mission", "-m", "mission_id", default=None, help="Mission ID (uses current mission if not specified).")
 @click.pass_obj
-def execution_run(ctx, objective, roster, budget, triggered_by):
+def execution_run(ctx, objective, roster, budget, triggered_by, mission_id):
     """Create and execute in one step."""
     from modules.clients.cli.execution_cmds import run_execution
     run_execution(ctx.logger, action="run", objective=objective, execution_id=None,
                   roster=roster, budget=budget, triggered_by=triggered_by,
-                  output_format=ctx.output_format)
+                  output_format=ctx.output_format, mission_id=mission_id)
 
 
 @execution.command("create")
@@ -407,13 +410,14 @@ def execution_run(ctx, objective, roster, budget, triggered_by):
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
 @click.option("--triggered-by", default="user:cli", help="Trigger origin.")
+@click.option("--mission", "-m", "mission_id", default=None, help="Mission ID (uses current mission if not specified).")
 @click.pass_obj
-def execution_create(ctx, objective, roster, budget, triggered_by):
+def execution_create(ctx, objective, roster, budget, triggered_by, mission_id):
     """Create an execution (PENDING state, not yet executed)."""
     from modules.clients.cli.execution_cmds import run_execution
     run_execution(ctx.logger, action="create", objective=objective, execution_id=None,
                   roster=roster, budget=budget, triggered_by=triggered_by,
-                  output_format=ctx.output_format)
+                  output_format=ctx.output_format, mission_id=mission_id)
 
 
 @execution.command("execute")
@@ -1268,6 +1272,37 @@ def workshop_history(ctx, agent_name, limit):
     from modules.clients.cli.workshop_cmds import run_workshop
     run_workshop(ctx.logger, "history", agent_name=agent_name, limit=limit,
                  output_format=ctx.output_format)
+
+
+# =============================================================================
+# Console — Rich Live terminal dashboard
+# =============================================================================
+
+
+@cli.group("console", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def console(ctx):
+    """Live terminal dashboard for monitoring Mission Control.
+
+    \b
+    Examples:
+        python cli.py console monitor
+        python cli.py console monitor --view developer
+        python cli.py console monitor --refresh 5
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@console.command("monitor")
+@click.option("--view", type=click.Choice(["user", "developer"]), default="user",
+              help="Display mode: user (default) or developer.")
+@click.option("--refresh", default=2.0, type=float, help="Refresh interval in seconds.")
+@click.pass_obj
+def console_monitor(ctx, view, refresh):
+    """Live-updating console monitor with missions, runs, and system health."""
+    from modules.clients.cli.console_cmds import run_monitor
+    run_monitor(view=view, refresh=refresh)
 
 
 # =============================================================================

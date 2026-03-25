@@ -29,6 +29,7 @@ def run_execution(
     budget: float | None,
     triggered_by: str,
     output_format: str = "human",
+    mission_id: str | None = None,
 ) -> None:
     """Dispatch execution CLI actions."""
     actions = {
@@ -62,6 +63,7 @@ def run_execution(
             budget=budget,
             triggered_by=triggered_by,
             output_format=output_format,
+            mission_id=mission_id,
         ))
     except _AbortExecution:
         sys.exit(1)
@@ -76,13 +78,17 @@ def run_execution(
 # =============================================================================
 
 
-async def _action_create(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
+async def _action_create(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
     """Create an execution (PENDING state)."""
     if not objective:
         click.echo(click.style("Error: --objective is required for create.", fg="red"), err=True)
         raise _AbortExecution("objective required")
 
     from modules.backend.services.execution import ExecutionService
+    from modules.clients.cli.mission_context import _async_resolve_current_mission_id
+
+    if not mission_id:
+        mission_id = await _async_resolve_current_mission_id()
 
     async with ExecutionService.factory() as service:
         execution = await service.create_adhoc_execution(
@@ -91,6 +97,7 @@ async def _action_create(cli_logger, *, objective, execution_id, roster, budget,
             session_id=_generate_session_id(),
             roster_ref=roster,
             cost_ceiling_usd=budget,
+            mission_id=mission_id,
         )
 
     click.echo(click.style("Execution created", fg="green", bold=True))
@@ -103,7 +110,7 @@ async def _action_create(cli_logger, *, objective, execution_id, roster, budget,
     click.echo(f"Execute with: python cli.py execution execute {execution.id}")
 
 
-async def _action_execute(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
+async def _action_execute(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
     """Execute an existing execution (PENDING -> RUNNING -> COMPLETED)."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for execute.", fg="red"), err=True)
@@ -111,19 +118,24 @@ async def _action_execute(cli_logger, *, objective, execution_id, roster, budget
 
     await _preflight_gate(roster)
 
+    from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.clients.cli.report import render_execution
     from modules.backend.services.execution import ExecutionService
 
     click.echo(f"Executing {execution_id}...")
     click.echo()
 
-    async with ExecutionService.factory() as service:
-        execution = await service.run_execution(execution_id)
+    display = LiveExecutionDisplay()
+    event_bus = display.create_event_bus()
+
+    async with ExecutionService.factory(event_bus=event_bus) as service:
+        with display.start():
+            execution = await service.run_execution(execution_id)
 
     await render_execution(execution, output_format)
 
 
-async def _action_run(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
+async def _action_run(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
     """Create + execute in one step (convenience)."""
     if not objective:
         click.echo(click.style("Error: --objective is required for run.", fg="red"), err=True)
@@ -131,28 +143,38 @@ async def _action_run(cli_logger, *, objective, execution_id, roster, budget, tr
 
     await _preflight_gate(roster)
 
+    from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.clients.cli.report import render_execution
     from modules.backend.services.execution import ExecutionService
+    from modules.clients.cli.mission_context import _async_resolve_current_mission_id
+
+    if not mission_id:
+        mission_id = await _async_resolve_current_mission_id()
 
     click.echo("Creating and executing...")
     click.echo()
 
-    async with ExecutionService.factory() as service:
+    display = LiveExecutionDisplay()
+    event_bus = display.create_event_bus()
+
+    async with ExecutionService.factory(event_bus=event_bus) as service:
         execution = await service.create_adhoc_execution(
             objective=objective,
             triggered_by=triggered_by,
             session_id=_generate_session_id(),
             roster_ref=roster,
             cost_ceiling_usd=budget,
+            mission_id=mission_id,
         )
         click.echo(f"  Execution ID: {execution.id}")
 
-        execution = await service.run_execution(execution.id)
+        with display.start():
+            execution = await service.run_execution(execution.id)
 
     await render_execution(execution, output_format)
 
 
-async def _action_list(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
+async def _action_list(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
     """List executions."""
     from modules.clients.cli.report import get_console, build_table, styled_status
     from modules.backend.services.execution import ExecutionService
@@ -185,7 +207,7 @@ async def _action_list(cli_logger, *, objective, execution_id, roster, budget, t
     console.print(table)
 
 
-async def _action_detail(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
+async def _action_detail(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
     """Show execution detail."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for detail.", fg="red"), err=True)
@@ -236,7 +258,7 @@ async def _action_detail(cli_logger, *, objective, execution_id, roster, budget,
         console.print(status_panel(content=str(execution.error_data), status="failed", title="Error"))
 
 
-async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
+async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
     """Show the TaskPlan DAG for an execution."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for plan.", fg="red"), err=True)
@@ -380,7 +402,7 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
     console.print()
 
 
-async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format):
+async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
     """Show execution cost breakdown."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for cost.", fg="red"), err=True)

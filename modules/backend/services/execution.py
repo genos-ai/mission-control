@@ -47,11 +47,17 @@ class ExecutionService(BaseService):
 
     @staticmethod
     @asynccontextmanager
-    async def factory() -> AsyncGenerator["ExecutionService", None]:
+    async def factory(
+        event_bus: "EventBusProtocol | None" = None,
+    ) -> AsyncGenerator["ExecutionService", None]:
         """Create an ExecutionService with its own DB session.
 
         Each call gets an independent session, adapter, and service —
         safe for concurrent use in parallel workflow waves.
+
+        Args:
+            event_bus: Optional event bus for real-time progress events.
+                       Defaults to NoOpEventBus if not provided.
 
         Usage:
             async with ExecutionService.factory() as svc:
@@ -64,16 +70,20 @@ class ExecutionService(BaseService):
         from modules.backend.core.database import get_async_session
         from modules.backend.services.session import SessionService
 
+        bus = event_bus or NoOpEventBus()
+
         async with get_async_session() as db:
             session_service = SessionService(db)
             adapter = MissionControlDispatchAdapter(
                 session_service=session_service,
                 db_session=db,
+                event_bus=bus,
             )
             yield ExecutionService(
                 session=db,
                 mission_control_dispatch=adapter,
                 session_service=session_service,
+                event_bus=bus,
             )
             await db.commit()
 
@@ -162,6 +172,7 @@ class ExecutionService(BaseService):
         complexity_tier: str = "simple",
         cost_ceiling_usd: float | None = None,
         upstream_context: dict | None = None,
+        mission_id: str | None = None,
     ) -> Execution:
         """Create an ad-hoc execution (not from a workflow)."""
         if not session_id:
@@ -192,6 +203,7 @@ class ExecutionService(BaseService):
                 upstream_context=upstream_context or {},
                 context={},
                 total_cost_usd=0.0,
+                mission_id=mission_id,
                 cost_ceiling_usd=(
                     cost_ceiling_usd
                     or app_config.workflows.default_budget_usd
