@@ -60,6 +60,21 @@ STATUS_ICONS: dict[str, str] = {
 }
 
 
+def filter_catalog_agents(
+    agents: list[dict], query: str,
+) -> list[dict]:
+    """Filter catalog agent dicts by name, description, or keywords."""
+    q = query.lower().strip()
+    if not q:
+        return agents
+    return [
+        a for a in agents
+        if q in a.get("agent_name", "").lower()
+        or q in a.get("description", "").lower()
+        or any(q in k.lower() for k in a.get("keywords", []))
+    ]
+
+
 def gate_header(ctx: GateContext, title: str) -> str:
     """Format a gate panel header with title, mission ID, and cost."""
     cc = cost_color(ctx.total_cost_usd, ctx.budget_usd)

@@ -13,6 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
 
 from modules.backend.core.logging import get_logger
+from modules.clients.common.gate_helpers import filter_catalog_agents
 
 logger = get_logger(__name__)
 
@@ -124,17 +125,9 @@ class CatalogBrowseModal(ModalScreen[None]):
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Filter catalog list as user types."""
-        query = event.value.lower().strip()
-        if not query:
-            self._render_agents(getattr(self, "_all_agents", []))
-            return
-
-        filtered = [
-            a for a in getattr(self, "_all_agents", [])
-            if query in a.get("agent_name", "").lower()
-            or query in a.get("description", "").lower()
-            or any(query in k.lower() for k in a.get("keywords", []))
-        ]
+        filtered = filter_catalog_agents(
+            getattr(self, "_all_agents", []), event.value,
+        )
         self._render_agents(filtered)
 
     async def on_agent_added(self, event: AgentAdded) -> None:

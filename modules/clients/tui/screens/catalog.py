@@ -12,6 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Input, Label, Static
 
 from modules.backend.core.logging import get_logger
+from modules.clients.common.gate_helpers import filter_catalog_agents
 
 logger = get_logger(__name__)
 
@@ -120,17 +121,9 @@ class CatalogScreen(Screen):
         if event.input.id != "catalog-search":
             return
 
-        query = event.value.lower().strip()
-        if not query:
-            self._render_list(getattr(self, "_all_agents", []))
-            return
-
-        filtered = [
-            a for a in getattr(self, "_all_agents", [])
-            if query in a.get("agent_name", "").lower()
-            or query in a.get("description", "").lower()
-            or any(query in k.lower() for k in a.get("keywords", []))
-        ]
+        filtered = filter_catalog_agents(
+            getattr(self, "_all_agents", []), event.value,
+        )
         self._render_list(filtered)
 
     def show_agent_detail(self, agent: dict) -> None:

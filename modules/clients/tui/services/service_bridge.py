@@ -38,6 +38,10 @@ async def _cli_user_session() -> AsyncGenerator[tuple[Any, Any, Any], None]:
     async with get_async_session() as db:
         repo = UserRepository(db)
         requesting_user = await repo.get_by_id(CLI_USER_ID)
+        if requesting_user is None:
+            raise RuntimeError(
+                f"CLI service user '{CLI_USER_ID}' not found in database"
+            )
         yield db, requesting_user, repo
 
 
@@ -207,9 +211,10 @@ class ServiceBridge:
     @staticmethod
     def _execution_to_dict(r: object) -> dict[str, Any]:
         """Convert an ExecutionRecord to a display dict."""
+        rid = str(getattr(r, "id", ""))
         return {
-            "id": str(r.id),
-            "execution_id": r.execution_id if hasattr(r, "execution_id") else str(r.id),
+            "id": rid,
+            "execution_id": r.execution_id if hasattr(r, "execution_id") else rid,
             "objective": getattr(r, "objective_statement", "") or getattr(r, "objective", "") or "",
             "status": getattr(r, "status", "unknown"),
             "total_cost_usd": getattr(r, "total_cost_usd", 0.0) or 0.0,
@@ -314,6 +319,8 @@ class ServiceBridge:
 
         async with AgentCatalogService.factory() as cat_svc:
             agent = await cat_svc.get_by_name(agent_name)
+            if agent is None:
+                raise ValueError(f"Agent '{agent_name}' not found in catalog")
             agent_catalog_id = str(agent.id)
 
         async with MissionTeamService.factory() as svc:

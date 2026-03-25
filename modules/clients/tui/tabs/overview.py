@@ -35,6 +35,7 @@ class OverviewTab(Static):
                         "Press [bold]Ctrl+M[/bold] to start a mission\n"
                         "Press [bold]Ctrl+P[/bold] to switch mission",
                         classes="placeholder-panel",
+                        markup=True,
                     ),
                     id="center-content",
                 )

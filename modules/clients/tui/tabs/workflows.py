@@ -230,17 +230,16 @@ class WorkflowsTab(Static):
                 panel.mount(Static(line, markup=True))
 
         # ── Action buttons ────────────────────────────────────
-        panel.mount(
-            Static("\n"),
+        panel.mount(Static("\n"))
+        actions = Horizontal(classes="prompt-editor-actions")
+        panel.mount(actions)
+        actions.mount(
+            Button(
+                "▶ Run Now",
+                id="workflows-run-btn",
+                variant="success",
+            ),
         )
-        with Horizontal(classes="prompt-editor-actions"):
-            panel.mount(
-                Button(
-                    "▶ Run Now",
-                    id="workflows-run-btn",
-                    variant="success",
-                ),
-            )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle workflow action buttons."""

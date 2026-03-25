@@ -97,7 +97,8 @@ class DagRenderer(Static):
                 depths[step_id] = 0
             else:
                 depths[step_id] = 1 + max(
-                    _depth(d) for d in deps if d in step_map
+                    (_depth(d) for d in deps if d in step_map),
+                    default=0,
                 )
             return depths[step_id]
 

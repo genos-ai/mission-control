@@ -116,6 +116,22 @@ class ContextTab(Static):
         except Exception:
             pass
 
+    @staticmethod
+    def _dict_section_to_md(
+        heading: str, data: dict[str, Any],
+    ) -> list[str]:
+        """Convert a key-value dict section into markdown lines."""
+        lines = [f"## {heading}"]
+        for key, val in data.items():
+            if isinstance(val, list):
+                lines.append(f"**{key}:**")
+                for item in val:
+                    lines.append(f"- {item}")
+            elif val:
+                lines.append(f"**{key}:** {val}")
+        lines.append("")
+        return lines
+
     def _render_context(self, context: dict[str, Any]) -> None:
         """Render context document as markdown."""
         try:
@@ -125,7 +141,6 @@ class ContextTab(Static):
                 self._show_empty_state()
                 return
 
-            # Build markdown from context sections
             lines: list[str] = []
 
             identity = context.get("identity", {})
@@ -139,15 +154,9 @@ class ContextTab(Static):
 
             architecture = context.get("architecture", {})
             if architecture:
-                lines.append("## Architecture")
-                for key, val in architecture.items():
-                    if isinstance(val, list):
-                        lines.append(f"**{key}:**")
-                        for item in val:
-                            lines.append(f"- {item}")
-                    elif val:
-                        lines.append(f"**{key}:** {val}")
-                lines.append("")
+                lines.extend(
+                    self._dict_section_to_md("Architecture", architecture),
+                )
 
             decisions = context.get("decisions", [])
             if decisions:
@@ -162,29 +171,13 @@ class ContextTab(Static):
                         lines.append(f"- {d}")
                 lines.append("")
 
-            current_state = context.get("current_state", {})
-            if current_state:
-                lines.append("## Current State")
-                for key, val in current_state.items():
-                    if isinstance(val, list):
-                        lines.append(f"**{key}:**")
-                        for item in val:
-                            lines.append(f"- {item}")
-                    elif val:
-                        lines.append(f"**{key}:** {val}")
-                lines.append("")
-
-            guardrails = context.get("guardrails", {})
-            if guardrails:
-                lines.append("## Guardrails")
-                for key, val in guardrails.items():
-                    if isinstance(val, list):
-                        lines.append(f"**{key}:**")
-                        for item in val:
-                            lines.append(f"- {item}")
-                    elif val:
-                        lines.append(f"**{key}:** {val}")
-                lines.append("")
+            for section, heading in (
+                ("current_state", "Current State"),
+                ("guardrails", "Guardrails"),
+            ):
+                data = context.get(section, {})
+                if data:
+                    lines.extend(self._dict_section_to_md(heading, data))
 
             version = context.get("version", "")
             updated = context.get("last_updated", "")
