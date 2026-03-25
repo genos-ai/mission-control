@@ -128,11 +128,11 @@ async def _action_list(cli_logger, *, output_format, **_):
 async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
     """Show mission details."""
     from modules.backend.services.mission import MissionService
+    from modules.clients.cli.mission_context import async_require_mission_id
 
     console = get_console()
     if not mission_id and not name:
-        console.print("[red]--mission or --name is required[/red]")
-        sys.exit(1)
+        mission_id = await async_require_mission_id(mission_id)
 
     async with MissionService.factory() as svc:
         if mission_id:
@@ -195,11 +195,10 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
 async def _action_archive(cli_logger, *, mission_id, **_):
     """Archive a mission."""
     from modules.backend.services.mission import MissionService
+    from modules.clients.cli.mission_context import async_require_mission_id
 
     console = get_console()
-    if not mission_id:
-        console.print("[red]MISSION_ID is required[/red]")
-        sys.exit(1)
+    mission_id = await async_require_mission_id(mission_id)
 
     async with MissionService.factory() as svc:
         mission = await svc.archive_mission(mission_id)
@@ -257,11 +256,10 @@ async def _action_context_show(cli_logger, *, mission_id, output_format, **_):
     """Show the MCD for a mission."""
     import json as _json
     from modules.backend.services.mission_context import MissionContextManager
+    from modules.clients.cli.mission_context import async_require_mission_id
 
     console = get_console()
-    if not mission_id:
-        console.print("[red]MISSION_ID is required[/red]")
-        sys.exit(1)
+    mission_id = await async_require_mission_id(mission_id)
 
     async with MissionContextManager.factory() as mgr:
         data = await mgr.get_context(mission_id)
@@ -280,11 +278,10 @@ async def _action_context_show(cli_logger, *, mission_id, output_format, **_):
 async def _action_context_history(cli_logger, *, mission_id, output_format, **_):
     """Show MCD change history."""
     from modules.backend.services.mission_context import MissionContextManager
+    from modules.clients.cli.mission_context import async_require_mission_id
 
     console = get_console()
-    if not mission_id:
-        console.print("[red]MISSION_ID is required[/red]")
-        sys.exit(1)
+    mission_id = await async_require_mission_id(mission_id)
 
     async with MissionContextManager.factory() as mgr:
         changes = await mgr.get_history(mission_id, limit=20)
@@ -310,11 +307,10 @@ async def _action_context_history(cli_logger, *, mission_id, output_format, **_)
 async def _action_summarize(cli_logger, *, mission_id, **_):
     """Run the summarization pipeline."""
     from modules.backend.services.summarization import SummarizationService
+    from modules.clients.cli.mission_context import async_require_mission_id
 
     console = get_console()
-    if not mission_id:
-        console.print("[red]MISSION_ID is required[/red]")
-        sys.exit(1)
+    mission_id = await async_require_mission_id(mission_id)
 
     async with SummarizationService.factory() as svc:
         results = await svc.run_full_pipeline(mission_id)

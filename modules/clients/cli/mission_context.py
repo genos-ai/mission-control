@@ -39,11 +39,30 @@ def _resolve_current_mission_id() -> str | None:
         return None
 
 
-def require_mission_id(mission_id: str | None) -> str:
-    """Resolve mission_id from explicit value or DB fallback.
+async def async_require_mission_id(mission_id: str | None) -> str:
+    """Resolve mission_id from explicit value or DB fallback (async).
 
-    Returns the resolved mission_id string, or raises click.UsageError
-    if neither an explicit value nor a DB-backed current mission exists.
+    Suitable for use inside async action functions that already have
+    a running event loop (avoids the nested asyncio.run() problem).
+    """
+    if not mission_id:
+        try:
+            mission_id = await _async_resolve_current_mission_id()
+        except Exception:
+            logger.debug("Could not resolve current mission from DB", exc_info=True)
+    if not mission_id:
+        raise click.UsageError(
+            "No mission specified. Use 'mission use <id>' to set a default."
+        )
+    return mission_id
+
+
+def require_mission_id(mission_id: str | None) -> str:
+    """Resolve mission_id from explicit value or DB fallback (sync).
+
+    Only safe to call from sync Click handlers that do NOT subsequently
+    call asyncio.run(). For handlers that dispatch to async actions via
+    run_mission(), use async_require_mission_id() inside the action instead.
     """
     if not mission_id:
         mission_id = _resolve_current_mission_id()
