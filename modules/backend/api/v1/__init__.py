@@ -12,10 +12,12 @@ from modules.backend.api.v1.endpoints import (
     agents,
     auth,
     catalog,
+    client_errors,
     executions,
     missions,
     notes,
     sessions,
+    streams,
     workflows,
     workshop,
 )
@@ -54,3 +56,9 @@ router.include_router(admin.router, prefix="/admin", tags=["admin"])
 
 # Admin user management endpoints
 router.include_router(admin_users.router, prefix="/admin/users", tags=["admin"])
+
+# SSE streaming endpoints (notifications, run events)
+router.include_router(streams.router, prefix="/streams", tags=["streams"])
+
+# Client error reporting (frontend → server logs)
+router.include_router(client_errors.router, prefix="/client-errors", tags=["client-errors"])

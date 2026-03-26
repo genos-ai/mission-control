@@ -58,6 +58,7 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
         status: ExecutionRecordStatus | None = None,
         roster_name: str | None = None,
         objective_category: str | None = None,
+        mission_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[ExecutionRecord], int]:
@@ -69,6 +70,8 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
             conditions.append(ExecutionRecord.roster_name == roster_name)
         if objective_category:
             conditions.append(ExecutionRecord.objective_category == objective_category)
+        if mission_id:
+            conditions.append(ExecutionRecord.mission_id == mission_id)
 
         count_stmt = select(func.count()).select_from(ExecutionRecord)
         if conditions:

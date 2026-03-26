@@ -4,6 +4,7 @@ Agent Catalog API Schemas.
 Request/response models for the agent catalog endpoints.
 """
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -44,8 +45,8 @@ class AgentCatalogDetailResponse(BaseModel):
     keywords: list[str]
     enabled: bool
     visibility: str
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class AgentCatalogCreateRequest(BaseModel):

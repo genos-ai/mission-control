@@ -4,6 +4,8 @@ Workflow Schedule API Schemas.
 Request/response models for cron-based workflow execution schedules.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -23,11 +25,11 @@ class WorkflowScheduleResponse(BaseModel):
     max_iterations: int | None
     iteration_count: int
     cooldown_seconds: int
-    last_fired_at: str | None
-    next_fire_at: str | None
+    last_fired_at: datetime | None
+    next_fire_at: datetime | None
     created_by: str
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class WorkflowScheduleCreateRequest(BaseModel):

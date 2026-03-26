@@ -36,6 +36,7 @@ async def list_executions(
     status: str | None = None,
     roster_name: str | None = None,
     objective_category: str | None = None,
+    mission_id: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> ApiResponse:
@@ -45,6 +46,7 @@ async def list_executions(
         status=status,
         roster_name=roster_name,
         objective_category=objective_category,
+        mission_id=mission_id,
         limit=limit,
         offset=offset,
     )

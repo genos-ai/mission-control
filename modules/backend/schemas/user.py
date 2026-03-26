@@ -74,6 +74,14 @@ class UserBriefResponse(BaseModel):
     is_service_account: bool
 
 
+class UpdateProfileRequest(BaseModel):
+    """Schema for self-service profile update (non-admin)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(None, min_length=1, max_length=200)
+
+
 class SetCurrentMissionRequest(BaseModel):
     """Schema for setting the user's current mission."""
 

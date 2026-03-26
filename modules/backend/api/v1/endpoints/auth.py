@@ -19,7 +19,7 @@ from modules.backend.schemas.auth import (
     build_api_key_create_response,
 )
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.user import SetCurrentMissionRequest, UserResponse
+from modules.backend.schemas.user import SetCurrentMissionRequest, UpdateProfileRequest, UserResponse
 
 router = APIRouter()
 
@@ -78,6 +78,30 @@ async def get_me(
     return ApiResponse(
         success=True,
         data=UserResponse.from_user(current_user).model_dump(mode="json"),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.patch("/me", response_model=ApiResponse, summary="Update own profile")
+async def update_me(
+    body: UpdateProfileRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Update the current user's own profile (display name only)."""
+    from modules.backend.services.user import UserService
+
+    service = UserService(db)
+    user = await service.update_user(
+        user_id=current_user.id,
+        requesting_user=current_user,
+        display_name=body.display_name,
+    )
+
+    return ApiResponse(
+        success=True,
+        data=UserResponse.from_user(user).model_dump(mode="json"),
         metadata={"request_id": request_id},
     )
 

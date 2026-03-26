@@ -4,6 +4,8 @@ Mission API schemas.
 Pydantic models for mission creation, update, and response serialization.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -82,8 +84,8 @@ class MissionResponse(BaseModel):
     budget_ceiling_usd: float | None
     repo_url: str | None
     repo_root: str | None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class MissionMemberResponse(BaseModel):
@@ -95,4 +97,32 @@ class MissionMemberResponse(BaseModel):
     mission_id: str
     user_id: str
     role: str
-    created_at: str
+    created_at: datetime
+
+
+class MissionMemberAddRequest(BaseModel):
+    """Request to add a human user to a mission."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str = Field(
+        ..., min_length=1, max_length=36,
+        description="UUID of the user to add",
+    )
+    role: str = Field(
+        default="viewer",
+        pattern=r"^(owner|maintainer|viewer)$",
+        description="Mission role for the user",
+    )
+
+
+class MissionMemberUpdateRequest(BaseModel):
+    """Request to update a mission member's role."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: str = Field(
+        ...,
+        pattern=r"^(owner|maintainer|viewer)$",
+        description="New mission role",
+    )

@@ -5,6 +5,8 @@ Request/response models for querying execution history,
 task results, decisions, and cost breakdowns.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -22,7 +24,7 @@ class TaskAttemptResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     cost_usd: float
-    created_at: str
+    created_at: datetime
 
 
 class TaskExecutionResponse(BaseModel):
@@ -39,9 +41,9 @@ class TaskExecutionResponse(BaseModel):
     cost_usd: float
     duration_seconds: float | None
     verification_outcome: dict | None
-    started_at: str | None
-    completed_at: str | None
-    created_at: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
 
 
 class TaskExecutionDetailResponse(TaskExecutionResponse):
@@ -59,7 +61,7 @@ class ExecutionDecisionResponse(BaseModel):
     decision_type: str
     task_id: str | None
     reasoning: str
-    created_at: str
+    created_at: datetime
 
 
 class ExecutionRecordResponse(BaseModel):
@@ -72,11 +74,11 @@ class ExecutionRecordResponse(BaseModel):
     roster_name: str | None
     status: str
     total_cost_usd: float
-    started_at: str | None
-    completed_at: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
     parent_execution_record_id: str | None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class ExecutionRecordDetailResponse(ExecutionRecordResponse):

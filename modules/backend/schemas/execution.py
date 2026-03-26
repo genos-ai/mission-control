@@ -5,6 +5,8 @@ Request/response models for execution CRUD, status reporting,
 and workflow-to-execution conversion.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -36,8 +38,8 @@ class ExecutionResponse(BaseModel):
     triggered_by: str
     total_cost_usd: float
     cost_ceiling_usd: float | None
-    started_at: str | None
-    completed_at: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
 
 
 class ExecutionDetailResponse(BaseModel):
@@ -59,8 +61,8 @@ class ExecutionDetailResponse(BaseModel):
     context: dict
     total_cost_usd: float
     cost_ceiling_usd: float | None
-    started_at: str | None
-    completed_at: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
     result_summary: str | None
     error_data: dict | None
 
@@ -74,5 +76,5 @@ class ExecutionStateSummary(BaseModel):
     roster_ref: str
     total_cost_usd: float
     cost_ceiling_usd: float | None
-    started_at: str | None
+    started_at: datetime | None
     elapsed_seconds: float | None

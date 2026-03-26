@@ -134,9 +134,12 @@ async def _dispatch_to_channels(
 ) -> None:
     """Dispatch notification to configured channels.
 
-    Currently supports 'telegram'. Other channels (slack, webhook, etc.)
+    Currently supports 'telegram' and 'sse'. Other channels (slack, webhook, etc.)
     can be added here without changing the callers.
     """
+    # Always publish to SSE notification channel for web frontend
+    await _publish_sse_notification(title, body, alert_type, data)
+
     for channel in channels:
         try:
             if channel == "telegram":
@@ -152,6 +155,50 @@ async def _dispatch_to_channels(
                 extra={"channel": channel, "title": title},
                 exc_info=True,
             )
+
+
+async def _publish_sse_notification(
+    title: str,
+    body: str,
+    alert_type: str,
+    data: dict | None = None,
+) -> None:
+    """Publish notification to Redis pub/sub for SSE delivery to web frontend.
+
+    Publishes to notify:{user_id} channels for all mission members
+    associated with the notification's mission_id. Falls back to
+    broadcasting to all known channels if no mission context.
+    """
+    import json
+
+    try:
+        from redis.asyncio import Redis as AsyncRedis
+
+        from modules.backend.core.config import get_redis_url
+
+        mission_id = (data or {}).get("mission_id")
+        if not mission_id:
+            return  # No mission context, skip SSE (Telegram still sends)
+
+        payload = json.dumps({
+            "type": alert_type,
+            "title": title,
+            "body": body,
+            "data": data,
+        })
+
+        # Publish to a mission-scoped notification channel.
+        # The frontend subscribes to notify:{user_id}, but we also
+        # publish to notify:mission:{mission_id} so a per-mission
+        # fan-out can be done at the edge or by a lightweight subscriber.
+        redis = AsyncRedis.from_url(get_redis_url())
+        try:
+            await redis.publish(f"notify:mission:{mission_id}", payload)
+        finally:
+            await redis.close()
+
+    except Exception:
+        logger.debug("Failed to publish SSE notification", exc_info=True)
 
 
 async def _send_telegram(

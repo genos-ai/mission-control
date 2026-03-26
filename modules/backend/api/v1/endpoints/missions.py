@@ -9,7 +9,14 @@ from fastapi import APIRouter, Query
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.mission import MissionCreate, MissionResponse, MissionUpdate
+from modules.backend.schemas.mission import (
+    MissionCreate,
+    MissionMemberAddRequest,
+    MissionMemberResponse,
+    MissionMemberUpdateRequest,
+    MissionResponse,
+    MissionUpdate,
+)
 from modules.backend.schemas.mission_team import (
     MissionTeamAddRequest,
     MissionTeamMemberResponse,
@@ -214,6 +221,138 @@ async def update_team_member_prompt(
     return ApiResponse(
         success=True,
         data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/{mission_id}/team/{member_id}/prompt-history",
+    response_model=ApiResponse,
+    summary="Get user prompt version history",
+)
+async def get_team_member_prompt_history(
+    mission_id: str,
+    member_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Get the user prompt version history for a team member."""
+    service = MissionTeamService(db)
+    versions = await service.get_prompt_history(member_id)
+    items = [
+        {
+            "version": v.version,
+            "content": v.content,
+            "changed_by": v.changed_by,
+            "change_reason": v.change_reason,
+            "created_at": str(v.created_at),
+        }
+        for v in versions
+    ]
+    return ApiResponse(
+        success=True,
+        data={"member_id": member_id, "versions": items},
+        metadata={"request_id": request_id},
+    )
+
+
+# ---- Mission membership (human users) ----
+
+
+@router.get(
+    "/{mission_id}/members",
+    response_model=ApiResponse,
+    summary="List mission members",
+)
+async def list_mission_members(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """List human members of a mission."""
+    service = MissionService(db)
+    members = await service.list_members(mission_id)
+    items = [
+        MissionMemberResponse.model_validate(m).model_dump()
+        for m in members
+    ]
+    return ApiResponse(
+        success=True,
+        data={"members": items, "total": len(items)},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.post(
+    "/{mission_id}/members",
+    response_model=ApiResponse,
+    summary="Add user to mission",
+)
+async def add_mission_member(
+    mission_id: str,
+    data: MissionMemberAddRequest,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Add a human user to a mission with a specified role."""
+    service = MissionService(db)
+    member = await service.add_member(
+        mission_id=mission_id,
+        user_id=data.user_id,
+        role=data.role,
+    )
+    response = MissionMemberResponse.model_validate(member)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.patch(
+    "/{mission_id}/members/{user_id}",
+    response_model=ApiResponse,
+    summary="Update member role",
+)
+async def update_mission_member(
+    mission_id: str,
+    user_id: str,
+    data: MissionMemberUpdateRequest,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Update a mission member's role."""
+    service = MissionService(db)
+    member = await service.update_member_role(
+        mission_id=mission_id,
+        user_id=user_id,
+        role=data.role,
+    )
+    response = MissionMemberResponse.model_validate(member)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.delete(
+    "/{mission_id}/members/{user_id}",
+    response_model=ApiResponse,
+    summary="Remove user from mission",
+)
+async def remove_mission_member(
+    mission_id: str,
+    user_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Remove a human user from a mission."""
+    service = MissionService(db)
+    await service.remove_member(mission_id=mission_id, user_id=user_id)
+    return ApiResponse(
+        success=True,
+        data={"removed": user_id, "mission_id": mission_id},
         metadata={"request_id": request_id},
     )
 

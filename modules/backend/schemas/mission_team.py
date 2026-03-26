@@ -4,6 +4,7 @@ Mission Team API Schemas.
 Request/response models for per-mission agent team management.
 """
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,8 +23,8 @@ class MissionTeamMemberResponse(BaseModel):
     enabled: bool
     display_order: int
     custom_constraints: dict[str, Any] | None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class MissionTeamAddRequest(BaseModel):

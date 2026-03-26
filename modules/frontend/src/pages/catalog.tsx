@@ -1,0 +1,171 @@
+import { useState, useMemo } from 'react'
+import { Search, BookOpen } from 'lucide-react'
+import { useCatalog } from '@/hooks/use-catalog'
+import { useDrawerStore } from '@/stores/drawer'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
+import { EmptyState } from '@/components/ui/empty-state'
+import type { AgentCatalogItem } from '@/types'
+
+const TYPE_COLORS: Record<string, 'default' | 'secondary' | 'warning'> = {
+  vertical: 'default',
+  horizontal: 'secondary',
+  system: 'warning',
+}
+
+export default function CatalogPage() {
+  const { data: agents, isLoading } = useCatalog()
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const { open: openDrawer } = useDrawerStore()
+
+  const filtered = useMemo(() => {
+    if (!agents) return []
+    let list = agents
+    if (typeFilter) {
+      list = list.filter((a) => a.agent_type === typeFilter)
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(
+        (a) =>
+          a.agent_name.toLowerCase().includes(q) ||
+          a.description.toLowerCase().includes(q) ||
+          a.keywords.some((k) => k.toLowerCase().includes(q)),
+      )
+    }
+    return list
+  }, [agents, search, typeFilter])
+
+  const types = useMemo(() => {
+    if (!agents) return []
+    return [...new Set(agents.map((a) => a.agent_type))]
+  }, [agents])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Spinner />
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Agent Catalog</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Browse available agents to add to your missions.
+        </p>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-6 flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search agents..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant={typeFilter === null ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setTypeFilter(null)}
+          >
+            All
+          </Button>
+          {types.map((t) => (
+            <Button
+              key={t}
+              variant={typeFilter === t ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setTypeFilter(t)}
+            >
+              {t}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Grid */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<BookOpen className="h-6 w-6 text-muted-foreground" />}
+          title="No agents found"
+          description={
+            search || typeFilter
+              ? 'Try adjusting your search or filters.'
+              : 'The catalog is empty.'
+          }
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((agent) => (
+            <CatalogCard
+              key={agent.id}
+              agent={agent}
+              onViewDetails={() =>
+                openDrawer('agent-detail', { agentName: agent.agent_name })
+              }
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CatalogCard({
+  agent,
+  onViewDetails,
+}: {
+  agent: AgentCatalogItem
+  onViewDetails: () => void
+}) {
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between">
+          <CardTitle className="text-base">{agent.agent_name}</CardTitle>
+          <Badge variant={TYPE_COLORS[agent.agent_type] ?? 'secondary'}>
+            {agent.agent_type}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col">
+        <p className="flex-1 text-sm text-muted-foreground line-clamp-3">
+          {agent.description}
+        </p>
+
+        {agent.keywords.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {agent.keywords.slice(0, 4).map((kw) => (
+              <Badge key={kw} variant="outline" className="text-[10px]">
+                {kw}
+              </Badge>
+            ))}
+            {agent.keywords.length > 4 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{agent.keywords.length - 4}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">v{agent.version}</span>
+          <Button variant="outline" size="sm" onClick={onViewDetails}>
+            Details
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}

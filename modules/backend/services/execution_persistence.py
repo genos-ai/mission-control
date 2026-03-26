@@ -272,6 +272,7 @@ class ExecutionPersistenceService(BaseService):
         status: str | None = None,
         roster_name: str | None = None,
         objective_category: str | None = None,
+        mission_id: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> tuple[list[ExecutionRecord], int]:
@@ -286,6 +287,7 @@ class ExecutionPersistenceService(BaseService):
             status=record_status,
             roster_name=roster_name,
             objective_category=objective_category,
+            mission_id=mission_id,
             limit=limit,
             offset=offset,
         )
