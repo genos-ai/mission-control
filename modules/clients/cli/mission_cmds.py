@@ -25,6 +25,7 @@ def run_mission(
     budget: float | None = None,
     repo_url: str | None = None,
     repo_root: str | None = None,
+    gate_mode: str | None = None,
     output_format: str = "human",
 ) -> None:
     """Dispatch mission CLI actions."""
@@ -38,6 +39,7 @@ def run_mission(
         "context-show": _action_context_show,
         "context-history": _action_context_history,
         "summarize": _action_summarize,
+        "set-gate": _action_set_gate,
     }
     fn = actions.get(action)
     if not fn:
@@ -55,11 +57,12 @@ def run_mission(
         budget=budget,
         repo_url=repo_url,
         repo_root=repo_root,
+        gate_mode=gate_mode,
         output_format=output_format,
     ))
 
 
-async def _action_create(cli_logger, *, name, description, brief, owner_id, roster, budget, repo_url, repo_root, **_):
+async def _action_create(cli_logger, *, name, description, brief, owner_id, roster, budget, repo_url, repo_root, gate_mode=None, **_):
     """Create a new mission."""
     from modules.backend.services.mission import MissionService
 
@@ -81,10 +84,13 @@ async def _action_create(cli_logger, *, name, description, brief, owner_id, rost
             budget_ceiling_usd=budget,
             repo_url=repo_url,
             repo_root=repo_root,
+            gate_mode=gate_mode,
         )
     console.print(f"[green]Mission created:[/green] {mission.id}")
     console.print(f"  Name: {mission.name}")
     console.print(f"  Owner: {mission.owner_id}")
+    if gate_mode:
+        console.print(f"  Gate: {gate_mode}")
 
 
 async def _action_list(cli_logger, *, output_format, **_):
@@ -319,3 +325,21 @@ async def _action_summarize(cli_logger, *, mission_id, **_):
     console.print(f"  Decisions archived:    {results['decisions_archived']}")
     console.print(f"  Executions summarized: {results['missions_summarized']}")
     console.print(f"  Milestones archived:   {results['milestones_archived']}")
+
+
+async def _action_set_gate(cli_logger, *, mission_id, gate_mode, **_):
+    """Set the default gate mode for a mission."""
+    from modules.backend.services.mission import MissionService
+    from modules.clients.cli.mission_context import async_require_mission_id
+
+    console = get_console()
+    mission_id = await async_require_mission_id(mission_id)
+
+    if not gate_mode:
+        console.print("[red]Gate mode is required. Valid: off, interactive, ai_assisted, autonomous[/red]")
+        sys.exit(1)
+
+    async with MissionService.factory() as svc:
+        mission = await svc.set_gate_mode(mission_id, gate_mode)
+
+    console.print(f"[green]Gate mode set:[/green] {mission.name} → {gate_mode}")

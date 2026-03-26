@@ -70,6 +70,10 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     repo_root: Mapped[str | None] = mapped_column(
         Text, nullable=True,
     )
+    gate_mode: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default=None,
+        comment="Default gate mode: off, interactive, ai_assisted, autonomous",
+    )
 
     # Relationships
     members: Mapped[list["MissionMember"]] = relationship(

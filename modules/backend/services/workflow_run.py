@@ -53,14 +53,24 @@ class WorkflowRunService(BaseService):
 
     @staticmethod
     @asynccontextmanager
-    async def factory() -> AsyncGenerator["WorkflowRunService", None]:
-        """Create a WorkflowRunService with its own DB session."""
+    async def factory(
+        event_bus: Any | None = None,
+    ) -> AsyncGenerator["WorkflowRunService", None]:
+        """Create a WorkflowRunService with its own DB session.
+
+        Args:
+            event_bus: Optional EventBusProtocol for real-time progress events.
+                       Passed through to each ExecutionService instance.
+        """
         from modules.backend.core.database import get_async_session
+
+        def _execution_factory():
+            return ExecutionService.factory(event_bus=event_bus)
 
         async with get_async_session() as db:
             yield WorkflowRunService(
                 session=db,
-                execution_service_factory=ExecutionService.factory,
+                execution_service_factory=_execution_factory,
             )
             await db.commit()
 

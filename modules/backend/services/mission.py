@@ -11,8 +11,10 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
+from modules.backend.core.exceptions import ConflictError, NotFoundError
 from modules.backend.models.mission import (
     Mission,
+    MissionMember,
     MissionMemberRole,
     MissionStatus,
 )
@@ -55,6 +57,7 @@ class MissionService(BaseService):
         budget_ceiling_usd: float | None = None,
         repo_url: str | None = None,
         repo_root: str | None = None,
+        gate_mode: str | None = None,
     ) -> Mission:
         """Create a new mission with initial owner membership.
 
@@ -62,7 +65,6 @@ class MissionService(BaseService):
         """
         existing = await self._mission_repo.get_by_name(name)
         if existing:
-            from modules.backend.core.exceptions import ConflictError
             raise ConflictError(f"Mission name already exists: {name}")
 
         mission = await self._mission_repo.create(
@@ -75,6 +77,7 @@ class MissionService(BaseService):
             budget_ceiling_usd=budget_ceiling_usd,
             repo_url=repo_url,
             repo_root=repo_root,
+            gate_mode=gate_mode,
         )
 
         # Auto-create owner membership
@@ -130,8 +133,111 @@ class MissionService(BaseService):
         """Update mission fields."""
         return await self._mission_repo.update(mission_id, **updates)
 
+    async def set_gate_mode(self, mission_id: str, mode: str) -> Mission:
+        """Update the default gate mode for a mission."""
+        valid_modes = {"off", "interactive", "ai_assisted", "autonomous"}
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid gate mode: {mode}. Valid: {', '.join(sorted(valid_modes))}")
+        mission = await self.get_mission(mission_id)
+        mission.gate_mode = mode
+        await self._session.flush()
+        self._log_operation("Gate mode updated", mission_id=mission_id, gate_mode=mode)
+        return mission
+
+    async def resolve_gate(self, mission_id: str, gate_override: str | None = None):
+        """Resolve gate reviewer: explicit override > mission default > off.
+
+        Returns a GateReviewer instance, or None if mode is off.
+        """
+        mode = gate_override
+        if mode is None:
+            mission = await self.get_mission(mission_id)
+            mode = mission.gate_mode
+
+        if not mode or mode == "off":
+            return None
+
+        from modules.backend.agents.mission_control.gate import create_gate
+        return create_gate(mode_override=mode)
+
     async def archive_mission(self, mission_id: str) -> Mission:
         """Archive a mission. No new executions can be created."""
         return await self._mission_repo.update(
             mission_id, status=MissionStatus.ARCHIVED,
+        )
+
+    # ---- Mission membership (human users) ----
+
+    async def list_members(self, mission_id: str) -> list[MissionMember]:
+        """List all human members of a mission."""
+        await self._mission_repo.get_by_id(mission_id)  # ensure mission exists
+        return await self._member_repo.get_members(mission_id)
+
+    async def add_member(
+        self,
+        mission_id: str,
+        user_id: str,
+        role: str = "viewer",
+    ) -> MissionMember:
+        """Add a human user to a mission."""
+        await self._mission_repo.get_by_id(mission_id)
+
+        existing = await self._member_repo.get_membership(mission_id, user_id)
+        if existing:
+            raise ConflictError("User is already a member of this mission")
+
+        member = await self._member_repo.create(
+            mission_id=mission_id,
+            user_id=user_id,
+            role=MissionMemberRole(role),
+        )
+        self._log_operation(
+            "Member added to mission",
+            mission_id=mission_id,
+            user_id=user_id,
+            role=role,
+        )
+        return member
+
+    async def update_member_role(
+        self,
+        mission_id: str,
+        user_id: str,
+        role: str,
+    ) -> MissionMember:
+        """Update a mission member's role."""
+        member = await self._member_repo.get_membership(mission_id, user_id)
+        if not member:
+            raise NotFoundError(
+                f"User '{user_id}' is not a member of mission '{mission_id}'"
+            )
+
+        member = await self._member_repo.update(
+            member.id, role=MissionMemberRole(role),
+        )
+        self._log_operation(
+            "Mission member role updated",
+            mission_id=mission_id,
+            user_id=user_id,
+            new_role=role,
+        )
+        return member
+
+    async def remove_member(
+        self,
+        mission_id: str,
+        user_id: str,
+    ) -> None:
+        """Remove a human user from a mission."""
+        member = await self._member_repo.get_membership(mission_id, user_id)
+        if not member:
+            raise NotFoundError(
+                f"User '{user_id}' is not a member of mission '{mission_id}'"
+            )
+
+        await self._member_repo.delete(member.id)
+        self._log_operation(
+            "Member removed from mission",
+            mission_id=mission_id,
+            user_id=user_id,
         )

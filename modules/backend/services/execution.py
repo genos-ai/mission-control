@@ -511,6 +511,7 @@ class ExecutionService(BaseService):
         self,
         status: str | None = None,
         workflow_run_id: str | None = None,
+        mission_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Execution], int]:
@@ -519,6 +520,7 @@ class ExecutionService(BaseService):
         return await self._execution_repo.list_executions(
             status=execution_status,
             workflow_run_id=workflow_run_id,
+            mission_id=mission_id,
             limit=limit,
             offset=offset,
         )

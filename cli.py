@@ -30,34 +30,10 @@ import click
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from modules.backend.core.config import validate_project_root
-from modules.backend.core.logging import bind_context, get_logger, setup_logging
+from modules.clients.cli.cli_context import CliContext
 
 # Unified output format for all commands — single source of truth.
 OUTPUT_FORMATS = click.Choice(["human", "json", "jsonl"])
-
-
-# =============================================================================
-# Root group — global options propagate to all subcommands
-# =============================================================================
-
-
-class CliContext:
-    """Shared context passed to all subcommands."""
-
-    def __init__(self, verbose: bool, debug: bool, output_format: str = "human"):
-        if debug:
-            log_level = "DEBUG"
-        elif verbose:
-            log_level = "INFO"
-        else:
-            log_level = "WARNING"
-
-        validate_project_root()
-        setup_logging(level=log_level, format_type="console")
-        bind_context(source="cli")
-        self.logger = get_logger("cli")
-        self.output_format = output_format
 
 
 class ShowHelpOnMissingArgs(click.Group):

@@ -182,72 +182,28 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
 
     await _preflight_gate(workflow_name)
 
+    from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.clients.cli.report import (
-        get_console, build_table, styled_status, status_panel,
+        get_console, styled_status, status_panel,
         info_panel, render_execution_outcomes,
         workflow_run_to_dict, generate_narrative, colorize_narrative,
     )
     from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
 
-    from rich.live import Live
-
     console = get_console()
     console.print(f"[bold]Running workflow:[/bold] {workflow_name}\n")
 
-    progress_state: dict = {"steps": {}, "total": 0, "workflow": workflow_name}
+    # Live display handles both step progress and agent-level events
+    display = LiveExecutionDisplay()
+    event_bus = display.create_event_bus()
 
-    def _build_progress_table():
-        table = build_table(columns=[
-            ("Step",        {"style": "cyan", "width": 22}),
-            ("Capability",  {"width": 28}),
-            ("Status",      {"width": 12}),
-            ("Cost",        {"justify": "right", "width": 8}),
-            ("Description", {"ratio": 1}),
-        ])
-
-        for step_id, info in progress_state["steps"].items():
-            status = info.get("status", "running")
-            if status == "running":
-                status_str = "[yellow]running...[/yellow]"
-            else:
-                status_str = styled_status(status)
-            cost = f"${info.get('cost_usd', 0):.4f}" if "cost_usd" in info else "—"
-            table.add_row(
-                step_id,
-                info.get("capability", ""),
-                status_str,
-                cost,
-                info.get("description", ""),
-            )
-        return table
-
-    live = Live(_build_progress_table(), console=console, refresh_per_second=4)
-
-    def on_progress(event: dict) -> None:
-        etype = event.get("type", "")
-        if etype == "workflow_start":
-            progress_state["total"] = event.get("total_steps", 0)
-        elif etype == "step_start":
-            progress_state["steps"][event["step_id"]] = {
-                "capability": event.get("capability", ""),
-                "description": event.get("description", ""),
-                "status": "running",
-            }
-            live.update(_build_progress_table())
-        elif etype == "step_done":
-            sid = event["step_id"]
-            if sid in progress_state["steps"]:
-                progress_state["steps"][sid]["status"] = event.get("status", "done")
-                progress_state["steps"][sid]["cost_usd"] = event.get("cost_usd", 0)
-            live.update(_build_progress_table())
-
-    async with WorkflowRunService.factory() as run_service:
-        with live:
+    async with WorkflowRunService.factory(event_bus=event_bus) as run_service:
+        with display.start():
             run = await run_service.run_workflow(
                 workflow_name=workflow_name,
                 triggered_by=triggered_by,
-                on_progress=on_progress,
+                on_progress=display.handle_progress,
                 mission_name=mission_name,
                 gate=gate,
             )

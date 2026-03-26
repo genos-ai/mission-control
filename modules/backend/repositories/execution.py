@@ -64,6 +64,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         self,
         status: ExecutionState | None = None,
         workflow_run_id: str | None = None,
+        mission_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Execution], int]:
@@ -77,6 +78,8 @@ class ExecutionRepository(BaseRepository[Execution]):
             conditions.append(Execution.status == status)
         if workflow_run_id:
             conditions.append(Execution.workflow_run_id == workflow_run_id)
+        if mission_id:
+            conditions.append(Execution.mission_id == mission_id)
 
         count_stmt = select(func.count()).select_from(Execution)
         if conditions:

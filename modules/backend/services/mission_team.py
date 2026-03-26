@@ -89,10 +89,39 @@ class MissionTeamService(BaseService):
         )
         return member
 
+    async def add_agent_by_name(
+        self,
+        mission_id: str,
+        agent_name: str,
+    ) -> MissionTeamMember:
+        """Add an agent to a mission's team by agent name."""
+        agent = await self._catalog_repo.get_by_name(agent_name)
+        if not agent:
+            raise NotFoundError(f"Agent '{agent_name}' not found in catalog")
+        return await self.add_agent(mission_id, str(agent.id))
+
     async def remove_agent(self, member_id: str) -> None:
         """Remove an agent from a mission's team."""
         await self._team_repo.delete(member_id)
         self._log_operation("Agent removed from mission team", member_id=member_id)
+
+    async def remove_agent_by_name(
+        self,
+        mission_id: str,
+        agent_name: str,
+    ) -> None:
+        """Remove an agent from a mission's team by agent name."""
+        members = await self.list_team(mission_id, enabled_only=False)
+        match = next(
+            (m for m in members
+             if m.agent_catalog and m.agent_catalog.agent_name == agent_name),
+            None,
+        )
+        if not match:
+            raise NotFoundError(
+                f"Agent '{agent_name}' not found on this mission's team"
+            )
+        await self.remove_agent(str(match.id))
 
     async def update_user_prompt(
         self,
@@ -145,3 +174,16 @@ class MissionTeamService(BaseService):
     ) -> MissionTeamMember:
         """Enable or disable a team member."""
         return await self._team_repo.update(member_id, enabled=enabled)
+
+    async def get_prompt_history(
+        self,
+        member_id: str,
+        limit: int = 50,
+    ) -> list:
+        """Get user prompt version history for a team member."""
+        await self.get_member(member_id)  # ensure member exists
+        return await self._prompt_repo.list_versions(
+            entity_type="mission_team_member",
+            entity_id=member_id,
+            limit=limit,
+        )
