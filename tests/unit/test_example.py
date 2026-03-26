@@ -1,5 +1,5 @@
 """
-Unit Tests for cli.py Entry Script.
+Unit Tests for admin.py Entry Script.
 
 Tests real functions against real configuration.
 """
@@ -12,7 +12,7 @@ from click.testing import CliRunner
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from cli import cli
+from admin import admin_cli as cli
 from modules.backend.core.config import validate_project_root
 
 
@@ -56,7 +56,7 @@ class TestMainCLI:
         result = runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
-        assert "Mission Control CLI" in result.output
+        assert "Mission Control" in result.output
         assert "--verbose" in result.output
         assert "--debug" in result.output
         assert "Commands:" in result.output
@@ -223,7 +223,7 @@ class TestActionBehavior:
         """Should show usage examples in info output."""
         result = runner.invoke(cli, ["info"])
 
-        assert "python cli.py" in result.output
+        assert "python admin.py" in result.output
         assert "Examples:" in result.output
 
     def test_config_shows_all_sections(self, runner):

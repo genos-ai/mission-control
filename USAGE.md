@@ -1,10 +1,11 @@
 # Mission Control CLI Usage
 
-All platform operations go through a single entry point: `python cli.py`.
+Two entry points: `python mc.py` (user tasks) and `python admin.py` (ops/infrastructure).
 
 ```
-python cli.py --help
-python cli.py <command> --help
+python mc.py --help
+python admin.py --help
+python admin.py <command> --help
 ```
 
 ---
@@ -14,45 +15,45 @@ python cli.py <command> --help
 ### Start the API server
 
 ```bash
-python cli.py --verbose server start
-python cli.py server start --port 8099 --reload
+python admin.py --verbose server start
+python admin.py server start --port 8099 --reload
 ```
 
 ### Stop / restart the server
 
 ```bash
-python cli.py server stop
-python cli.py server restart
-python cli.py server status
+python admin.py server stop
+python admin.py server restart
+python admin.py server status
 ```
 
 ### Database migrations
 
 ```bash
 # Check current migration state
-python cli.py migrate
+python admin.py migrate
 
 # Run all pending migrations
-python cli.py migrate upgrade head
+python admin.py migrate upgrade head
 
 # Generate a new migration from model changes
-python cli.py migrate autogenerate -m "add new table"
+python admin.py migrate autogenerate -m "add new table"
 
 # View migration history
-python cli.py migrate history
+python admin.py migrate history
 ```
 
 ### View configuration and app info
 
 ```bash
-python cli.py config
-python cli.py info
+python admin.py config
+python admin.py info
 ```
 
 ### Health check
 
 ```bash
-python cli.py health --verbose
+python admin.py health --verbose
 ```
 
 ---
@@ -64,15 +65,15 @@ Send a message to an agent. Mission Control routes to the best agent automatical
 ### Auto-routed
 
 ```bash
-python cli.py agent "run a health check" --verbose
-python cli.py agent "scan code quality in modules/backend" --verbose
+python admin.py agent "run a health check" --verbose
+python admin.py agent "scan code quality in modules/backend" --verbose
 ```
 
 ### Direct agent targeting (bypass routing)
 
 ```bash
-python cli.py agent "check for import violations" --name code.qa.agent
-python cli.py agent "audit system health" --name system.health.agent
+python admin.py agent "check for import violations" --name code.qa.agent
+python admin.py agent "audit system health" --name system.health.agent
 ```
 
 ---
@@ -84,37 +85,37 @@ Missions are the core execution primitive. A mission takes an objective, generat
 ### One-shot: create + execute
 
 ```bash
-python cli.py --verbose mission run \
+python admin.py --verbose mission run \
   "audit the platform: run a code quality scan and a system health check"
 ```
 
 ### With budget ceiling
 
 ```bash
-python cli.py --verbose mission run "full platform audit" --budget 2.00
+python admin.py --verbose mission run "full platform audit" --budget 2.00
 ```
 
 ### Two-step: create then execute
 
 ```bash
 # Step 1: Create (PENDING state)
-python cli.py mission create "scan for security violations"
+python admin.py mission create "scan for security violations"
 
 # Step 2: Execute (PENDING → RUNNING → COMPLETED)
-python cli.py --verbose mission execute <id from step 1>
+python admin.py --verbose mission execute <id from step 1>
 ```
 
 ### Inspect missions
 
 ```bash
 # List all missions
-python cli.py mission list
+python admin.py mission list
 
 # Detailed view (task executions, verification outcomes)
-python cli.py mission detail <id>
+python admin.py mission detail <id>
 
 # Cost breakdown (per-task tokens and cost)
-python cli.py mission cost <id>
+python admin.py mission cost <id>
 ```
 
 Note: `list` queries the `missions` table (lifecycle tracking). `detail` and `cost` query `mission_records` (execution history). The IDs are different — use `list` to find the mission ID, and check the logs or `query` the `mission_records` table for the record ID.
@@ -127,15 +128,15 @@ Note: `list` queries the `missions` table (lifecycle tracking). `detail` and `co
 
 ```bash
 # Row counts for all tables
-python cli.py db stats
+python admin.py db stats
 
 # Table schemas (columns, types, nullability)
-python cli.py db tables
+python admin.py db tables
 
 # Query recent rows from a specific table
-python cli.py db query missions
-python cli.py db query task_executions --limit 5
-python cli.py db query session_messages --limit 20
+python admin.py db query missions
+python admin.py db query task_executions --limit 5
+python admin.py db query session_messages --limit 20
 ```
 
 Available tables: `missions`, `playbook_runs`, `mission_records`, `task_executions`, `task_attempts`, `mission_decisions`, `sessions`, `session_channels`, `session_messages`, `notes`.
@@ -144,13 +145,13 @@ Available tables: `missions`, `playbook_runs`, `mission_records`, `task_executio
 
 ```bash
 # Clear EVERYTHING (all tables)
-python cli.py db clear --yes
+python admin.py db clear --yes
 
 # Clear mission data only (missions, records, executions, decisions)
-python cli.py db clear-missions --yes
+python admin.py db clear-missions --yes
 
 # Clear session data only (sessions, channels, messages)
-python cli.py db clear-sessions --yes
+python admin.py db clear-sessions --yes
 ```
 
 Without `--yes`, you will be prompted for confirmation.
@@ -164,24 +165,24 @@ Playbooks are YAML-defined multi-step workflows that execute missions in depende
 ### List available playbooks
 
 ```bash
-python cli.py playbook list
+python admin.py playbook list
 ```
 
 ### Inspect a playbook
 
 ```bash
-python cli.py playbook detail system.platform-audit
+python admin.py playbook detail system.platform-audit
 ```
 
 ### Execute a playbook
 
 ```bash
 # Default output (AI-generated summary)
-python cli.py --verbose playbook run system.platform-audit --project my-project
+python admin.py --verbose playbook run system.platform-audit --project my-project
 
 # With specific output format
-python cli.py playbook run system.platform-audit --project my-project --output detail
-python cli.py playbook run system.platform-audit --project my-project --output json
+python admin.py playbook run system.platform-audit --project my-project --output detail
+python admin.py playbook run system.platform-audit --project my-project --output json
 ```
 
 ### Gate review mode (step-through)
@@ -190,16 +191,16 @@ The gate system pauses execution at key decision points for human and/or AI revi
 
 ```bash
 # Interactive — pause at each gate point, human decides
-python cli.py playbook run system.platform-audit --project my-project --gate interactive
+python admin.py playbook run system.platform-audit --project my-project --gate interactive
 
 # Shorthand alias for interactive
-python cli.py playbook run system.platform-audit --project my-project --step
+python admin.py playbook run system.platform-audit --project my-project --step
 
 # AI-assisted — LLM recommends, human makes final call
-python cli.py playbook run system.platform-audit --project my-project --gate ai_assisted
+python admin.py playbook run system.platform-audit --project my-project --gate ai_assisted
 
 # Autonomous — LLM decides, auto-continue rules skip routine checks
-python cli.py playbook run system.platform-audit --project my-project --gate autonomous
+python admin.py playbook run system.platform-audit --project my-project --gate autonomous
 ```
 
 Gate modes:
@@ -218,26 +219,26 @@ Configuration: `config/settings/gate.yaml` — per-point enable/disable, per-poi
 ### List playbook runs
 
 ```bash
-python cli.py playbook runs
+python admin.py playbook runs
 ```
 
 ### Inspect a specific run (with missions)
 
 ```bash
-python cli.py playbook run-detail <id>
+python admin.py playbook run-detail <id>
 ```
 
 ### Render a report for a past run
 
 ```bash
 # AI-generated narrative summary (default)
-python cli.py playbook report <id>
+python admin.py playbook report <id>
 
 # Deterministic per-step breakdown
-python cli.py playbook report <id> --output detail
+python admin.py playbook report <id> --output detail
 
 # Raw structured JSON
-python cli.py playbook report <id> --output json
+python admin.py playbook report <id> --output json
 ```
 
 ---
@@ -249,13 +250,13 @@ Before running missions or playbooks, verify that all models in the roster have 
 ### Check default roster
 
 ```bash
-python cli.py credits
+python admin.py credits
 ```
 
 ### Check a specific roster
 
 ```bash
-python cli.py credits --roster default
+python admin.py credits --roster default
 ```
 
 Output shows pass/fail per model:
@@ -340,14 +341,14 @@ python scripts/code_quality.py --profile safety_critical
 
 ```bash
 # Run all unit tests
-python cli.py test unit
+python admin.py test unit
 
 # Run with coverage
-python cli.py test unit --coverage
+python admin.py test unit --coverage
 
 # Run integration or e2e tests
-python cli.py test integration
-python cli.py test e2e
+python admin.py test integration
+python admin.py test e2e
 ```
 
 ### Live agent tests (real LLM calls)
@@ -373,19 +374,19 @@ python scripts/test_gate_live.py --skip-llm    # Skip the real LLM call
 
 ```bash
 # Task worker
-python cli.py worker --workers 2
+python admin.py worker --workers 2
 
 # Scheduler (periodic tasks)
-python cli.py scheduler
+python admin.py scheduler
 
 # Telegram polling bot
-python cli.py telegram
+python admin.py telegram
 
 # Event worker
-python cli.py event-worker
+python admin.py event-worker
 ```
 
-Server lifecycle is managed via subcommands: `python cli.py server stop/status/restart`.
+Server lifecycle is managed via subcommands: `python admin.py server stop/status/restart`.
 
 ---
 
@@ -395,35 +396,35 @@ A complete cycle from clean slate to inspected results:
 
 ```bash
 # 1. Ensure migrations are current
-python cli.py migrate upgrade head
+python admin.py migrate upgrade head
 
 # 2. Clear any previous test data
-python cli.py db clear --yes
+python admin.py db clear --yes
 
 # 3. Verify clean state
-python cli.py db stats
+python admin.py db stats
 
 # 4. Check credits before running anything
-python cli.py credits
+python admin.py credits
 
 # 5. Run a mission
-python cli.py --verbose mission run \
+python admin.py --verbose mission run \
   "audit the platform: run a code quality scan and a system health check" \
   --budget 2.00
 
 # 6. List missions
-python cli.py mission list
+python admin.py mission list
 
 # 7. Check what was persisted
-python cli.py db stats
-python cli.py db query missions
-python cli.py db query task_executions
+python admin.py db stats
+python admin.py db query missions
+python admin.py db query task_executions
 
 # 8. Get cost breakdown (use the mission_records ID from query output)
-python cli.py mission cost <record-id>
+python admin.py mission cost <record-id>
 
 # 9. Run tests to confirm nothing broke
-python cli.py test unit
+python admin.py test unit
 ```
 
 ---

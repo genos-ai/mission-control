@@ -48,7 +48,7 @@ async def send_message(base_url: str, timeout: float, message: str, agent: str |
             )
         except httpx.ConnectError:
             click.echo(click.style("Error: Backend is not reachable.", fg="red"), err=True)
-            click.echo("Start it with: python cli.py server start", err=True)
+            click.echo("Start it with: python admin.py server start", err=True)
             return 1
 
     if raw:
@@ -136,7 +136,7 @@ async def send_message_stream(base_url: str, message: str, agent: str | None, ra
 
             except httpx.ConnectError:
                 click.echo(click.style("Error: Backend is not reachable.", fg="red"), err=True)
-                click.echo("Start it with: python cli.py server start", err=True)
+                click.echo("Start it with: python admin.py server start", err=True)
                 return 1
 
             if result_data is None:

@@ -1,4 +1,4 @@
-"""Shared CLI primitives — used by both mc.py and cli.py (admin.py)."""
+"""Shared CLI primitives — used by both mc.py and admin.py."""
 
 import click
 

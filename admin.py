@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """
-Mission Control CLI.
+Mission Control — Admin CLI.
 
 Usage:
-    python cli.py --help
-    python cli.py server --verbose
-    python cli.py server stop
-    python cli.py health
-    python cli.py test unit --coverage
-    python cli.py agent "run a health check"
-    python cli.py execution run "audit the platform"
-    python cli.py execution list
-    python cli.py execution cost <id>
-    python cli.py db stats
-    python cli.py db query missions --limit 5
-    python cli.py db clear --yes
-    python cli.py workflow list
-    python cli.py workflow run ops.platform-audit --mission my-app
-    python cli.py credits
-    python cli.py console monitor
-    python cli.py console monitor --view developer
+    python admin.py --help
+    python admin.py server --verbose
+    python admin.py server stop
+    python admin.py health
+    python admin.py test unit --coverage
+    python admin.py agent "run a health check"
+    python admin.py execution run "audit the platform"
+    python admin.py execution list
+    python admin.py execution cost <id>
+    python admin.py db stats
+    python admin.py db query missions --limit 5
+    python admin.py db clear --yes
+    python admin.py workflow list
+    python admin.py workflow run ops.platform-audit --mission my-app
+    python admin.py credits
+    python admin.py console monitor
+    python admin.py console monitor --view developer
 """
 
 import sys
@@ -42,8 +42,8 @@ OUTPUT_FORMATS = click.Choice(["human", "json", "jsonl"])
 @click.option("-o", "--output", "output_format", default="human",
               type=OUTPUT_FORMATS, help="Output format (human, json, jsonl).")
 @click.pass_context
-def cli(ctx, verbose: bool, debug: bool, output_format: str):
-    """Mission Control CLI.
+def admin_cli(ctx, verbose: bool, debug: bool, output_format: str):
+    """Mission Control — Admin CLI.
 
     \b
     Infrastructure:  server, worker, scheduler, telegram, event-worker
@@ -53,7 +53,7 @@ def cli(ctx, verbose: bool, debug: bool, output_format: str):
     Missions:        mission
     """
     ctx.ensure_object(dict)
-    ctx.obj = CliContext(verbose, debug, output_format)
+    ctx.obj = CliContext(verbose, debug, output_format=output_format, source="admin")
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
@@ -63,7 +63,7 @@ def cli(ctx, verbose: bool, debug: bool, output_format: str):
 # =============================================================================
 
 
-@cli.command()
+@admin_cli.command()
 @click.pass_obj
 def health(ctx):
     """Run local health checks."""
@@ -71,7 +71,7 @@ def health(ctx):
     check_health(ctx.logger, output_format=ctx.output_format)
 
 
-@cli.command()
+@admin_cli.command()
 @click.pass_obj
 def config(ctx):
     """Display loaded YAML configuration."""
@@ -79,7 +79,7 @@ def config(ctx):
     show_config(ctx.logger, output_format=ctx.output_format)
 
 
-@cli.command()
+@admin_cli.command()
 @click.pass_obj
 def info(ctx):
     """Show application metadata and version."""
@@ -87,7 +87,7 @@ def info(ctx):
     show_info(ctx.logger, output_format=ctx.output_format)
 
 
-@cli.command()
+@admin_cli.command()
 @click.option("--roster", default="default", help="Roster to check models from.")
 @click.pass_obj
 def credits(ctx, roster: str):
@@ -101,7 +101,7 @@ def credits(ctx, roster: str):
 # =============================================================================
 
 
-@cli.command()
+@admin_cli.command()
 @click.argument("message", required=False, default=None)
 @click.option("--name", default=None, help="Target a specific agent, bypassing routing.")
 @click.option("--list", "list_agents", is_flag=True, help="List available agents.")
@@ -111,10 +111,10 @@ def agent(ctx, message: str | None, name: str | None, list_agents: bool):
 
     \b
     Examples:
-        python cli.py agent "run a health check"
-        python cli.py agent "scan code quality" --name code.quality.agent
-        python cli.py -o jsonl agent "check health"
-        python cli.py agent --list
+        python admin.py agent "run a health check"
+        python admin.py agent "scan code quality" --name code.quality.agent
+        python admin.py -o jsonl agent "check health"
+        python admin.py agent --list
     """
     if list_agents:
         from modules.clients.cli.agent import show_agents
@@ -132,16 +132,16 @@ def agent(ctx, message: str | None, name: str | None, list_agents: bool):
 # =============================================================================
 
 
-@cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def server(ctx):
     """Manage the API server lifecycle.
 
     \b
     Examples:
-        python cli.py server start --reload --port 8099
-        python cli.py server stop
-        python cli.py server status
+        python admin.py server start --reload --port 8099
+        python admin.py server stop
+        python admin.py server status
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -196,7 +196,7 @@ def restart(ctx, host, port, reload):
 # =============================================================================
 
 
-@cli.command()
+@admin_cli.command()
 @click.option("--workers", default=1, type=int, help="Number of worker processes.")
 @click.pass_obj
 def worker(ctx, workers: int):
@@ -210,7 +210,7 @@ def worker(ctx, workers: int):
 # =============================================================================
 
 
-@cli.command()
+@admin_cli.command()
 @click.pass_obj
 def scheduler(ctx):
     """Start the cron-based task scheduler."""
@@ -223,7 +223,7 @@ def scheduler(ctx):
 # =============================================================================
 
 
-@cli.command()
+@admin_cli.command()
 @click.pass_obj
 def telegram(ctx):
     """Start the Telegram bot in polling mode."""
@@ -236,7 +236,7 @@ def telegram(ctx):
 # =============================================================================
 
 
-@cli.command("event-worker")
+@admin_cli.command("event-worker")
 @click.pass_obj
 def event_worker(ctx):
     """Start the event bus consumer worker."""
@@ -249,7 +249,7 @@ def event_worker(ctx):
 # =============================================================================
 
 
-@cli.command()
+@admin_cli.command()
 @click.argument("type", default="all", type=click.Choice(["all", "unit", "integration", "e2e"]))
 @click.option("--coverage", is_flag=True, help="Run with coverage reporting.")
 @click.pass_obj
@@ -258,9 +258,9 @@ def test(ctx, type: str, coverage: bool):
 
     \b
     Examples:
-        python cli.py test unit
-        python cli.py test unit --coverage
-        python cli.py test integration
+        python admin.py test unit
+        python admin.py test unit --coverage
+        python admin.py test integration
     """
     from modules.clients.cli.testing import run_tests
     run_tests(ctx.logger, type, coverage)
@@ -271,16 +271,16 @@ def test(ctx, type: str, coverage: bool):
 # =============================================================================
 
 
-@cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def migrate(ctx):
     """Database migrations (Alembic).
 
     \b
     Examples:
-        python cli.py migrate current
-        python cli.py migrate upgrade head
-        python cli.py migrate autogenerate -m "add table"
+        python admin.py migrate current
+        python admin.py migrate upgrade head
+        python admin.py migrate autogenerate -m "add table"
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -334,17 +334,17 @@ def autogenerate(ctx, message: str):
 # =============================================================================
 
 
-@cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def execution(ctx):
     """Create, execute, and inspect executions.
 
     \b
     Examples:
-        python cli.py execution run "audit the platform" --budget 2.00
-        python cli.py execution list
-        python cli.py execution detail <id>
-        python cli.py execution cost <id>
+        python admin.py execution run "audit the platform" --budget 2.00
+        python admin.py execution list
+        python admin.py execution detail <id>
+        python admin.py execution cost <id>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -354,7 +354,7 @@ def execution(ctx):
 @click.argument("objective")
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
-@click.option("--triggered-by", default="user:cli", help="Trigger origin.")
+@click.option("--triggered-by", default="user:admin", help="Trigger origin.")
 @click.option("--mission", "-m", "mission_id", default=None, help="Mission ID (uses current mission if not specified).")
 @click.pass_obj
 def execution_run(ctx, objective, roster, budget, triggered_by, mission_id):
@@ -369,7 +369,7 @@ def execution_run(ctx, objective, roster, budget, triggered_by, mission_id):
 @click.argument("objective")
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
-@click.option("--triggered-by", default="user:cli", help="Trigger origin.")
+@click.option("--triggered-by", default="user:admin", help="Trigger origin.")
 @click.option("--mission", "-m", "mission_id", default=None, help="Mission ID (uses current mission if not specified).")
 @click.pass_obj
 def execution_create(ctx, objective, roster, budget, triggered_by, mission_id):
@@ -388,7 +388,7 @@ def execution_execute(ctx, execution_id, roster):
     """Execute an existing PENDING execution."""
     from modules.clients.cli.execution_cmds import run_execution
     run_execution(ctx.logger, action="execute", objective=None, execution_id=execution_id,
-                  roster=roster, budget=None, triggered_by="user:cli",
+                  roster=roster, budget=None, triggered_by="user:admin",
                   output_format=ctx.output_format)
 
 
@@ -398,7 +398,7 @@ def execution_list(ctx):
     """List recent executions."""
     from modules.clients.cli.execution_cmds import run_execution
     run_execution(ctx.logger, action="list", objective=None, execution_id=None,
-                  roster="default", budget=None, triggered_by="user:cli",
+                  roster="default", budget=None, triggered_by="user:admin",
                   output_format=ctx.output_format)
 
 
@@ -409,7 +409,7 @@ def execution_detail(ctx, execution_id):
     """Show execution detail with task results."""
     from modules.clients.cli.execution_cmds import run_execution
     run_execution(ctx.logger, action="detail", objective=None, execution_id=execution_id,
-                  roster="default", budget=None, triggered_by="user:cli",
+                  roster="default", budget=None, triggered_by="user:admin",
                   output_format=ctx.output_format)
 
 
@@ -420,7 +420,7 @@ def execution_plan(ctx, execution_id):
     """Show the TaskPlan DAG for an execution."""
     from modules.clients.cli.execution_cmds import run_execution
     run_execution(ctx.logger, action="plan", objective=None, execution_id=execution_id,
-                  roster="default", budget=None, triggered_by="user:cli",
+                  roster="default", budget=None, triggered_by="user:admin",
                   output_format=ctx.output_format)
 
 
@@ -431,7 +431,7 @@ def execution_cost(ctx, execution_id):
     """Show execution cost breakdown."""
     from modules.clients.cli.execution_cmds import run_execution
     run_execution(ctx.logger, action="cost", objective=None, execution_id=execution_id,
-                  roster="default", budget=None, triggered_by="user:cli",
+                  roster="default", budget=None, triggered_by="user:admin",
                   output_format=ctx.output_format)
 
 
@@ -440,16 +440,16 @@ def execution_cost(ctx, execution_id):
 # =============================================================================
 
 
-@cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def workflow(ctx):
     """List, run, and inspect workflows.
 
     \b
     Examples:
-        python cli.py workflow list
-        python cli.py workflow run ops.platform-audit --mission my-app
-        python cli.py workflow detail ops.platform-audit
+        python admin.py workflow list
+        python admin.py workflow run ops.platform-audit --mission my-app
+        python admin.py workflow detail ops.platform-audit
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -461,7 +461,7 @@ def workflow_list(ctx):
     """List available workflows."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
     run_workflow_cli(ctx.logger, action="list", workflow_name=None, run_id=None,
-                     triggered_by="user:cli", output_format=ctx.output_format)
+                     triggered_by="user:admin", output_format=ctx.output_format)
 
 
 @workflow.command("detail")
@@ -471,12 +471,12 @@ def workflow_detail(ctx, name):
     """Show workflow configuration and steps."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
     run_workflow_cli(ctx.logger, action="detail", workflow_name=name, run_id=None,
-                     triggered_by="user:cli", output_format=ctx.output_format)
+                     triggered_by="user:admin", output_format=ctx.output_format)
 
 
 @workflow.command("run")
 @click.argument("name")
-@click.option("--triggered-by", default="user:cli", help="Trigger origin.")
+@click.option("--triggered-by", default="user:admin", help="Trigger origin.")
 @click.option("--mission", required=True, help="Mission name to run against (created if new).")
 @click.option(
     "--gate",
@@ -510,7 +510,7 @@ def workflow_runs(ctx, name):
     """List workflow runs."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
     run_workflow_cli(ctx.logger, action="runs", workflow_name=name, run_id=None,
-                     triggered_by="user:cli", output_format=ctx.output_format)
+                     triggered_by="user:admin", output_format=ctx.output_format)
 
 
 @workflow.command("run-detail")
@@ -520,7 +520,7 @@ def workflow_run_detail(ctx, run_id):
     """Show details for a specific workflow run."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
     run_workflow_cli(ctx.logger, action="run-detail", workflow_name=None,
-                     run_id=run_id, triggered_by="user:cli", output_format=ctx.output_format)
+                     run_id=run_id, triggered_by="user:admin", output_format=ctx.output_format)
 
 
 @workflow.command("report")
@@ -530,7 +530,7 @@ def workflow_report(ctx, run_id):
     """Render a report for a past workflow run."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
     run_workflow_cli(ctx.logger, action="report", workflow_name=None,
-                     run_id=run_id, triggered_by="user:cli", output_format=ctx.output_format)
+                     run_id=run_id, triggered_by="user:admin", output_format=ctx.output_format)
 
 
 # =============================================================================
@@ -538,17 +538,17 @@ def workflow_report(ctx, run_id):
 # =============================================================================
 
 
-@cli.group("mission", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("mission", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def mission(ctx):
     """Create, list, and manage missions.
 
     \b
     Examples:
-        python cli.py mission create --name my-mission --description "My mission"
-        python cli.py mission list
-        python cli.py mission detail <id>
-        python cli.py mission archive <id>
+        python admin.py mission create --name my-mission --description "My mission"
+        python admin.py mission list
+        python admin.py mission detail <id>
+        python admin.py mission archive <id>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -674,20 +674,20 @@ def mission_summarize(ctx, mission_id):
 # =============================================================================
 
 
-@cli.group("context", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("context", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def context(ctx):
     """Inspect agent context: Code Map, PQI scores, dependencies.
 
     \b
     Examples:
-        python cli.py context show
-        python cli.py context show --mission <id>
-        python cli.py context assembled --mission <id>
-        python cli.py context codemap
-        python cli.py context codemap --generate
-        python cli.py context pqi
-        python cli.py context deps
+        python admin.py context show
+        python admin.py context show --mission <id>
+        python admin.py context assembled --mission <id>
+        python admin.py context codemap
+        python admin.py context codemap --generate
+        python admin.py context pqi
+        python admin.py context deps
     """
     if ctx.invoked_subcommand is None:
         # Default to "show" when no subcommand given
@@ -756,16 +756,16 @@ def context_deps(ctx):
 # =============================================================================
 
 
-@cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def db(ctx):
     """Database inspection and management.
 
     \b
     Examples:
-        python cli.py db stats
-        python cli.py db query missions --limit 5
-        python cli.py db clear --yes
+        python admin.py db stats
+        python admin.py db query missions --limit 5
+        python admin.py db clear --yes
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -874,15 +874,15 @@ def _format_tree(group: click.Group, prefix: str = "", is_last: bool = True) -> 
 # =============================================================================
 
 
-@cli.group("catalog", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("catalog", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def catalog(ctx):
     """Browse and manage the agent catalog.
 
     \b
     Examples:
-        python cli.py catalog list
-        python cli.py catalog detail vertical.code.quality.agent
+        python admin.py catalog list
+        python admin.py catalog detail vertical.code.quality.agent
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -910,22 +910,22 @@ def catalog_detail(ctx, agent_name):
 # =============================================================================
 
 
-@cli.group("admin", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("admin", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def admin(ctx):
     """Administrative operations.
 
     \b
     Examples:
-        python cli.py admin seed-catalog
-        python cli.py admin seed-catalog --force
-        python cli.py admin metrics
-        python cli.py admin costs
-        python cli.py admin config
-        python cli.py admin health
-        python cli.py admin roles
-        python cli.py admin update-prompt --agent <name> --content @path/to/prompt.md
-        python cli.py admin toggle-agent --agent <name>
+        python admin.py admin seed-catalog
+        python admin.py admin seed-catalog --force
+        python admin.py admin metrics
+        python admin.py admin costs
+        python admin.py admin config
+        python admin.py admin health
+        python admin.py admin roles
+        python admin.py admin update-prompt --agent <name> --content @path/to/prompt.md
+        python admin.py admin toggle-agent --agent <name>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -1057,18 +1057,18 @@ def admin_ensure_system_accounts(ctx):
 # =============================================================================
 
 
-@cli.group("schedule", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("schedule", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def schedule(ctx):
     """Manage cron-based workflow schedules.
 
     \b
     Examples:
-        python cli.py schedule list --mission <id>
-        python cli.py schedule create --mission <id> --workflow <id> --cron "0 5 * * *"
-        python cli.py schedule enable <id>
-        python cli.py schedule disable <id>
-        python cli.py schedule delete <id>
+        python admin.py schedule list --mission <id>
+        python admin.py schedule create --mission <id> --workflow <id> --cron "0 5 * * *"
+        python admin.py schedule enable <id>
+        python admin.py schedule disable <id>
+        python admin.py schedule delete <id>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -1142,11 +1142,11 @@ def schedule_delete(ctx, schedule_id):
 # =============================================================================
 
 
-@cli.command("tree")
+@admin_cli.command("tree")
 def tree_cmd():
     """Show the full command tree with all options."""
-    click.echo("cli")
-    lines = _format_tree(cli)
+    click.echo("admin")
+    lines = _format_tree(admin_cli)
     click.echo("\n".join(lines))
 
 
@@ -1155,14 +1155,14 @@ def tree_cmd():
 # =============================================================================
 
 
-@cli.group("architect", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("architect", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def architect(ctx):
     """Design workflows with the Workflow Architect.
 
     \b
     Examples:
-        cli.py architect chat --mission <ID> --message "Design a code review workflow"
+        admin.py architect chat --mission <ID> --message "Design a code review workflow"
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -1184,16 +1184,16 @@ def architect_chat(ctx, mission_id, message):
 # =============================================================================
 
 
-@cli.group("workshop", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("workshop", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def workshop(ctx):
     """Run agents in workshop (sandbox) mode for testing and prompt iteration.
 
     \b
     Examples:
-        cli.py workshop run code.qa.agent --inputs '{"target": "modules/"}'
-        cli.py workshop cached-inputs code.qa.agent --mission <ID>
-        cli.py workshop history --agent code.qa.agent
+        admin.py workshop run code.qa.agent --inputs '{"target": "modules/"}'
+        admin.py workshop cached-inputs code.qa.agent --mission <ID>
+        admin.py workshop history --agent code.qa.agent
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -1239,16 +1239,16 @@ def workshop_history(ctx, agent_name, limit):
 # =============================================================================
 
 
-@cli.group("console", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@admin_cli.group("console", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def console(ctx):
     """Live terminal dashboard for monitoring Mission Control.
 
     \b
     Examples:
-        python cli.py console monitor
-        python cli.py console monitor --view developer
-        python cli.py console monitor --refresh 5
+        python admin.py console monitor
+        python admin.py console monitor --view developer
+        python admin.py console monitor --refresh 5
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -1271,4 +1271,4 @@ def console_monitor(ctx, view, refresh):
 
 
 if __name__ == "__main__":
-    cli()
+    admin_cli()
