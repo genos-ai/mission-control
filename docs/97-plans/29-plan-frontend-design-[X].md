@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Complete |
 | **Created** | 2026-03-21 |
 | **Updated** | 2026-03-25 — integrated Plan 31 (Current Mission Selection), fixed role matrix, added mission membership screen |
 | **Depends on** | Plan 28 (Mission Control Platform Architecture), Plan 30 (User Management & Authentication), Plan 31 (Current Mission Selection) |
