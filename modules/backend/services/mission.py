@@ -10,6 +10,8 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import func, select
+
 from modules.backend.core.logging import get_logger
 from modules.backend.core.exceptions import ConflictError, NotFoundError
 from modules.backend.models.mission import (
@@ -165,6 +167,57 @@ class MissionService(BaseService):
         return await self._mission_repo.update(
             mission_id, status=MissionStatus.ARCHIVED,
         )
+
+    async def get_stats(self, mission_id: str) -> dict:
+        """Get aggregated stats for a mission.
+
+        Returns team_count, workflow_count, execution_count,
+        total_cost_usd, last_run_at, last_run_status.
+        """
+        from modules.backend.models.execution_record import ExecutionRecord
+        from modules.backend.models.mission_team import MissionTeamMember
+        from modules.backend.models.workflow_definition import WorkflowDefinition
+
+        await self._mission_repo.get_by_id(mission_id)  # ensure exists
+
+        team_result = await self._session.execute(
+            select(func.count()).select_from(MissionTeamMember)
+            .where(MissionTeamMember.mission_id == mission_id)
+        )
+        team_count = team_result.scalar() or 0
+
+        wf_result = await self._session.execute(
+            select(func.count()).select_from(WorkflowDefinition)
+            .where(WorkflowDefinition.mission_id == mission_id)
+        )
+        workflow_count = wf_result.scalar() or 0
+
+        exec_result = await self._session.execute(
+            select(
+                func.count().label("count"),
+                func.coalesce(func.sum(ExecutionRecord.total_cost_usd), 0.0).label("cost"),
+            ).where(ExecutionRecord.mission_id == mission_id)
+        )
+        row = exec_result.one()
+        execution_count = row.count
+        total_cost_usd = float(row.cost)
+
+        last_run_result = await self._session.execute(
+            select(ExecutionRecord.created_at, ExecutionRecord.status)
+            .where(ExecutionRecord.mission_id == mission_id)
+            .order_by(ExecutionRecord.created_at.desc())
+            .limit(1)
+        )
+        last_run = last_run_result.first()
+
+        return {
+            "team_count": team_count,
+            "workflow_count": workflow_count,
+            "execution_count": execution_count,
+            "total_cost_usd": total_cost_usd,
+            "last_run_at": last_run.created_at.isoformat() if last_run else None,
+            "last_run_status": last_run.status if last_run else None,
+        }
 
     # ---- Mission membership (human users) ----
 

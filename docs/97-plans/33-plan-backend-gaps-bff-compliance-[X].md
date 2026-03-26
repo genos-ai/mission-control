@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Complete |
 | **Created** | 2026-03-25 |
 | **Depends on** | Plan 28 (Platform Architecture), Plan 32 (TUI Frontend Design) |
 | **Affects** | `modules/backend/services/`, `modules/clients/tui/services/service_bridge.py`, `modules/clients/web/` |

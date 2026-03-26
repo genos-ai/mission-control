@@ -11,7 +11,7 @@ from modules.backend.models.execution_record import (
 from modules.backend.models.mission_team import MissionTeamMember
 from modules.backend.models.note import Note
 from modules.backend.models.mission import Mission, MissionMember
-from modules.backend.models.mission_context import ContextChange, MissionContext
+from modules.backend.models.mission_context import ContextChange, ContextMilestone, MissionContext
 from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
 from modules.backend.models.prompt_version import PromptVersion
 from modules.backend.models.session import Session, SessionChannel, SessionMessage
@@ -25,6 +25,7 @@ __all__ = [
     "ApiKey",
     "Base",
     "ContextChange",
+    "ContextMilestone",
     "Execution",
     "ExecutionDecision",
     "ExecutionRecord",

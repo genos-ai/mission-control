@@ -97,6 +97,81 @@ class WorkflowArchitectService(BaseService):
 
         return result
 
+    async def recommend_team(
+        self,
+        mission_id: str,
+    ) -> list[dict[str, Any]]:
+        """Recommend agents for a mission based on its brief and catalog.
+
+        Loads the mission brief, queries the full agent catalog, constructs
+        a recommendation prompt, calls the LLM, and returns a ranked list.
+
+        Returns list of dicts with agent_name, reason, and priority.
+        """
+        from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+        from modules.backend.repositories.mission import MissionRepository
+
+        mission_repo = MissionRepository(self._session)
+        mission = await mission_repo.get_by_id(mission_id)
+        mission_brief = mission.brief or mission.description or ""
+
+        catalog_repo = AgentCatalogRepository(self._session)
+        agents = await catalog_repo.list_enabled()
+
+        if not agents:
+            return []
+
+        catalog_text = "\n".join(
+            f"- {a.agent_name} ({a.agent_type}): {a.description}"
+            for a in agents
+        )
+
+        prompt = (
+            "You are a team composition advisor. Given a mission brief and "
+            "available agents, recommend which agents should be on the team.\n\n"
+            f"## Mission Brief\n\n{mission_brief}\n\n"
+            f"## Available Agents\n\n{catalog_text}\n\n"
+            "Respond with a JSON array of objects, each with:\n"
+            '- "agent_name": the exact agent name from the catalog\n'
+            '- "reason": a brief explanation of why this agent is needed\n'
+            '- "priority": "high", "medium", or "low"\n\n'
+            "Only include agents that are relevant to this mission. "
+            "Respond with ONLY the JSON array, no other text."
+        )
+
+        agent = self._create_agent()
+        deps = self._build_deps(
+            mission_id=mission_id,
+            mission_brief=mission_brief,
+            team_summary="(requesting recommendation)",
+        )
+
+        import json
+        result = await run_conversational(agent, deps, prompt)
+        response_text = result.get("response", "[]")
+
+        # Extract JSON from response (handle markdown code blocks)
+        if "```" in response_text:
+            start = response_text.find("[")
+            end = response_text.rfind("]") + 1
+            if start >= 0 and end > start:
+                response_text = response_text[start:end]
+
+        try:
+            recommendations = json.loads(response_text)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse recommendation response", extra={
+                "response": response_text[:200],
+            })
+            recommendations = []
+
+        self._log_operation(
+            "Team recommendation generated",
+            mission_id=mission_id,
+            recommendation_count=len(recommendations),
+        )
+        return recommendations
+
     def _create_agent(self):
         """Create the architect agent from the registry config."""
         registry = get_registry()

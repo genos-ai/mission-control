@@ -8,6 +8,7 @@ are read-only and designed for periodic polling, not real-time streaming.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -73,8 +74,17 @@ class PlatformMetricsService(BaseService):
             "generated_at": utc_now().isoformat(),
         }
 
-    async def get_cost_summary(self) -> dict[str, Any]:
-        """Get cost breakdown by agent and by status."""
+    async def get_cost_summary(
+        self,
+        *,
+        since: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Get cost breakdown by agent and by status.
+
+        Args:
+            since: Optional datetime to filter records created after this time.
+                   When None, returns all-time aggregates.
+        """
         by_agent_stmt = (
             select(
                 TaskExecution.agent_name,
@@ -85,6 +95,9 @@ class PlatformMetricsService(BaseService):
             .order_by(func.sum(TaskExecution.cost_usd).desc())
             .limit(20)
         )
+        if since is not None:
+            by_agent_stmt = by_agent_stmt.where(TaskExecution.created_at >= since)
+
         agent_result = await self._session.execute(by_agent_stmt)
         by_agent = [
             {"agent_name": row.agent_name, "runs": row.runs, "total_cost_usd": float(row.total_cost)}
@@ -99,6 +112,9 @@ class PlatformMetricsService(BaseService):
             )
             .group_by(ExecutionRecord.status)
         )
+        if since is not None:
+            by_status_stmt = by_status_stmt.where(ExecutionRecord.created_at >= since)
+
         status_result = await self._session.execute(by_status_stmt)
         by_status = [
             {"status": row.status, "count": row.count, "total_cost_usd": float(row.cost)}
@@ -108,6 +124,7 @@ class PlatformMetricsService(BaseService):
         return {
             "by_agent": by_agent,
             "by_status": by_status,
+            "since": since.isoformat() if since else None,
             "generated_at": utc_now().isoformat(),
         }
 

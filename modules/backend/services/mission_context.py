@@ -19,10 +19,12 @@ from modules.backend.core.utils import estimate_tokens, utc_now
 from modules.backend.models.mission_context import (
     ChangeType,
     ContextChange,
+    ContextMilestone,
     MissionContext,
 )
 from modules.backend.repositories.mission_context import (
     ContextChangeRepository,
+    ContextMilestoneRepository,
     MissionContextRepository,
 )
 from modules.backend.services.base import BaseService
@@ -113,6 +115,7 @@ class MissionContextManager(BaseService):
         super().__init__(session)
         self._context_repo = MissionContextRepository(session)
         self._change_repo = ContextChangeRepository(session)
+        self._milestone_repo = ContextMilestoneRepository(session)
 
     @staticmethod
     @asynccontextmanager
@@ -354,3 +357,44 @@ class MissionContextManager(BaseService):
         if ctx is None:
             return []
         return await self._change_repo.list_by_context(ctx.id, limit=limit)
+
+    # ---- Context Milestones ----
+
+    async def create_milestone(
+        self,
+        mission_id: str,
+        title: str,
+        *,
+        description: str = "",
+        created_by: str = "system",
+    ) -> ContextMilestone:
+        """Create a named snapshot of the current MCD state."""
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
+        if ctx is None:
+            raise ValueError(f"No MCD found for mission {mission_id}")
+
+        milestone = await self._milestone_repo.create(
+            mission_id=mission_id,
+            title=title,
+            description=description,
+            version_snapshot=ctx.version,
+            context_snapshot=copy.deepcopy(ctx.context_data),
+            created_by=created_by,
+        )
+
+        self._log_operation(
+            "Context milestone created",
+            mission_id=mission_id,
+            milestone_id=milestone.id,
+            title=title,
+            version=ctx.version,
+        )
+        return milestone
+
+    async def list_milestones(
+        self,
+        mission_id: str,
+        limit: int = 50,
+    ) -> list[ContextMilestone]:
+        """List milestones for a mission, newest first."""
+        return await self._milestone_repo.list_by_mission(mission_id, limit=limit)

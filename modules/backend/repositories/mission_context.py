@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission_context import (
     ContextChange,
+    ContextMilestone,
     MissionContext,
 )
 from modules.backend.repositories.base import BaseRepository
@@ -84,6 +85,26 @@ class ContextChangeRepository(BaseRepository[ContextChange]):
             .where(ContextChange.context_id == context_id)
             .where(ContextChange.agent_id == agent_id)
             .order_by(ContextChange.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+
+class ContextMilestoneRepository(BaseRepository[ContextMilestone]):
+    """Repository for context milestones."""
+
+    model = ContextMilestone
+
+    async def list_by_mission(
+        self,
+        mission_id: str,
+        limit: int = 50,
+    ) -> list[ContextMilestone]:
+        """List milestones for a mission, newest first."""
+        result = await self.session.execute(
+            select(ContextMilestone)
+            .where(ContextMilestone.mission_id == mission_id)
+            .order_by(ContextMilestone.created_at.desc())
             .limit(limit)
         )
         return list(result.scalars().all())

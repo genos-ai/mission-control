@@ -69,6 +69,40 @@ class MissionContext(UUIDMixin, TimestampMixin, Base):
         )
 
 
+class ContextMilestone(UUIDMixin, TimestampMixin, Base):
+    """A named snapshot of the MCD at a point in time."""
+
+    __tablename__ = "context_milestones"
+
+    mission_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("missions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(
+        String(200), nullable=False,
+    )
+    description: Mapped[str] = mapped_column(
+        Text, nullable=False, default="",
+    )
+    version_snapshot: Mapped[int] = mapped_column(
+        Integer, nullable=False,
+    )
+    context_snapshot: Mapped[dict] = mapped_column(
+        JSON, nullable=False,
+    )
+    created_by: Mapped[str] = mapped_column(
+        String(200), nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ContextMilestone(mission={self.mission_id}, "
+            f"title={self.title!r}, version={self.version_snapshot})>"
+        )
+
+
 class ContextChange(UUIDMixin, TimestampMixin, Base):
     """Audit trail entry for a single MCD mutation."""
 

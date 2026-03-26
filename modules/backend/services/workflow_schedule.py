@@ -210,6 +210,33 @@ class WorkflowScheduleService(BaseService):
         await self._repo.delete(schedule_id)
         self._log_operation("Workflow schedule deleted", schedule_id=schedule_id)
 
+    async def get_next_run(self, mission_id: str) -> dict | None:
+        """Get the next scheduled run for a mission.
+
+        Returns a dict with schedule_id, workflow_definition_id,
+        next_fire_at, and cron_expression, or None if no enabled
+        schedules exist.
+        """
+        schedules = await self.list_by_mission(mission_id, enabled_only=True)
+        if not schedules:
+            return None
+
+        # Find the schedule with the earliest next_fire_at
+        nearest = min(
+            (s for s in schedules if s.next_fire_at),
+            key=lambda s: s.next_fire_at,
+            default=None,
+        )
+        if nearest is None:
+            return None
+
+        return {
+            "schedule_id": nearest.id,
+            "workflow_definition_id": nearest.workflow_definition_id,
+            "next_fire_at": nearest.next_fire_at,
+            "cron_expression": nearest.cron_expression,
+        }
+
     async def evaluate_due_schedules(self) -> list[dict]:
         """Find and process all schedules that are due to fire.
 
