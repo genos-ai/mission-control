@@ -85,7 +85,7 @@ def _action_show(cli_logger, *, output_format, mission_id=None, **_):
         console.print(f"  Markdown:  ~{md_tokens:,} tokens")
     else:
         console.print("[bold cyan]Layer 3: Code Map[/bold cyan] [red](missing)[/red]")
-        console.print("  Run: python cli.py context codemap --generate")
+        console.print("  Run: python admin.py context codemap --generate")
 
     # PQI score
     console.print()
@@ -423,7 +423,7 @@ def _action_deps(cli_logger, *, output_format, **_):
     code_map = loader.get_json()
 
     if code_map is None:
-        console.print("[red]No Code Map found. Run: python cli.py context codemap --generate[/red]")
+        console.print("[red]No Code Map found. Run: python admin.py context codemap --generate[/red]")
         sys.exit(1)
 
     import_graph = code_map.get("import_graph", {})

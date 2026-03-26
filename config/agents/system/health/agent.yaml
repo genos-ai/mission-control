@@ -59,7 +59,8 @@ scope:
     - "modules/"
     - "tests/"
     - "requirements.txt"
-    - "cli.py"
+    - "admin.py"
+    - "mc.py"
     - ".project_root"
     - "AGENTS.md"
   write: []

@@ -5,8 +5,8 @@ Rich Live dashboard showing missions, recent runs, agent status,
 and system metrics. Inspired by Zeblit's console monitor pattern.
 
 Usage:
-    python cli.py console monitor
-    python cli.py console monitor --view developer
+    python admin.py console monitor
+    python admin.py console monitor --view developer
 """
 
 from __future__ import annotations
@@ -289,7 +289,7 @@ async def _monitor_loop(view: str, refresh: float) -> None:
 
 
 def run_monitor(view: str = "user", refresh: float = 2.0) -> None:
-    """Run the console monitor (called from cli.py)."""
+    """Run the console monitor (called from admin.py)."""
     console = get_console()
     console.print(
         f"[bold cyan]Mission Control Console[/bold cyan]  |  "

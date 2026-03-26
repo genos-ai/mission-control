@@ -27,7 +27,7 @@ class LoggingMiddleware(BaseMiddleware):
     - Processing time
     - Errors
 
-    All logs are written to logs/system.jsonl with source="telegram".
+    All logs are written to var/logs/system.jsonl with source="telegram".
 
     Usage:
         # In dispatcher setup

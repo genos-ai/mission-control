@@ -78,11 +78,11 @@ async def scan_log_errors(
         Dict with error_count, warning_count, unique_errors,
         recent_errors, and level_distribution.
     """
-    scope.check_read("logs/")
-    log_path = project_root / "logs" / "system.jsonl"
+    scope.check_read("var/logs/")
+    log_path = project_root / "var" / "logs" / "system.jsonl"
 
     if not log_path.exists():
-        return {"status": "no_log_file", "path": "logs/system.jsonl"}
+        return {"status": "no_log_file", "path": "var/logs/system.jsonl"}
 
     lines = log_path.read_text(encoding="utf-8").splitlines()
     tail = lines[-max_lines:] if len(lines) > max_lines else lines

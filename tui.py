@@ -33,7 +33,7 @@ def main(verbose: bool, debug: bool) -> None:
     validate_project_root()
 
     # Disable console logging — Textual owns stdout/stderr.
-    # All logs go to logs/system.jsonl (configured in logging.yaml).
+    # All logs go to var/logs/system.jsonl (configured in logging.yaml).
     if debug:
         setup_logging(level="DEBUG", enable_console=False)
     elif verbose:

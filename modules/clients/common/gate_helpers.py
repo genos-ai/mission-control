@@ -48,6 +48,9 @@ def safe_css_id(raw: str) -> str:
 # ── Status icons (shared by mission panel, workflow, history) ─────
 
 STATUS_ICONS: dict[str, str] = {
+    "active": "[green]●[/green]",
+    "inactive": "[dim]○[/dim]",
+    "archived": "[dim]⊘[/dim]",
     "pending": "[dim]○[/dim]",
     "running": "[bold cyan]●[/bold cyan]",
     "success": "[green]✓[/green]",

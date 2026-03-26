@@ -34,7 +34,7 @@ Usage:
     log_with_source(logger, "telegram", "info", "Update received", chat_id=123)
 
 Log File:
-    logs/system.jsonl — single file, all records, filter by 'source' field
+    var/logs/system.jsonl — single file, all records, filter by 'source' field
 """
 
 import logging

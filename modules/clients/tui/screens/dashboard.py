@@ -1,6 +1,6 @@
 """DashboardScreen — global overview shown on launch.
 
-Displays mission cards, recent runs, cost summary, and system health.
+Displays clickable mission cards, recent runs, cost summary.
 Data loaded from ServiceBridge on mount.
 """
 
@@ -12,12 +12,13 @@ from textual.screen import Screen
 from textual.widgets import Label, Static
 
 from modules.backend.core.logging import get_logger
+from modules.clients.common.gate_helpers import STATUS_ICONS
 
 logger = get_logger(__name__)
 
 
 class MissionCard(Static):
-    """Clickable mission card in the dashboard grid."""
+    """Clickable mission card in the dashboard."""
 
     def __init__(self, mission: dict, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -26,14 +27,15 @@ class MissionCard(Static):
     def compose(self) -> ComposeResult:
         name = self._mission.get("name", "Untitled")
         status = self._mission.get("status", "unknown")
+        icon = STATUS_ICONS.get(status, "[dim]?[/dim]")
         yield Static(
-            f"[bold]{name}[/bold]\n"
-            f"{status}",
+            f"  {icon}  [bold]{name}[/bold]  [dim]\\[{status}][/dim]",
             markup=True,
         )
 
     def on_click(self) -> None:
         from modules.clients.tui.messages import MissionSelected
+
         self.post_message(MissionSelected(
             mission_id=self._mission["id"],
             mission_name=self._mission.get("name", ""),
@@ -44,7 +46,6 @@ class DashboardScreen(Screen):
     """Global overview — default screen on launch."""
 
     def compose(self) -> ComposeResult:
-        # ── Header ────────────────────────────────────────────────
         with Horizontal(id="dashboard-header"):
             yield Label(
                 "[bold]MISSION CONTROL DASHBOARD[/bold]",
@@ -52,7 +53,6 @@ class DashboardScreen(Screen):
                 markup=True,
             )
 
-        # ── Scrollable content ────────────────────────────────────
         with VerticalScroll(id="dashboard-content"):
             yield Static(
                 "[dim]Loading...[/dim]",
@@ -61,12 +61,13 @@ class DashboardScreen(Screen):
             )
 
     async def on_mount(self) -> None:
-        """Load dashboard data from ServiceBridge."""
         self.run_worker(self._load_data(), thread=False)
 
     async def _load_data(self) -> None:
         """Fetch missions and recent executions."""
+        scroll = self.query_one("#dashboard-content", VerticalScroll)
         body = self.query_one("#dashboard-body", Static)
+
         try:
             missions = await self.app.bridge.list_missions()
         except Exception:
@@ -77,35 +78,42 @@ class DashboardScreen(Screen):
             body.update(
                 "[dim]Welcome to Mission Control[/dim]\n"
                 "Create your first mission to get started.\n"
-                "Press [bold]Ctrl+P[/bold] to create a mission."
+                "Press [bold]Ctrl+P[/bold] to create a mission.",
             )
             return
 
-        # Build dashboard content
-        lines: list[str] = []
+        # Replace placeholder with mission cards
+        body.update("[bold]── MISSIONS ── [dim](click to select)[/dim][/bold]")
 
-        # ── Missions section ──────────────────────────────────────
-        lines.append("[bold]── MISSIONS ──[/bold]")
         for m in missions:
-            name = m.get("name", "Untitled")
-            status = m.get("status", "unknown")
-            lines.append(f"  {name}  [{status}]")
-        lines.append("")
+            scroll.mount(MissionCard(m, classes="mission-item"))
 
-        # ── Recent runs section ───────────────────────────────────
-        lines.append("[bold]── RECENT RUNS ──[/bold]")
+        # Recent runs section
+        runs_header = Static(
+            "\n[bold]── RECENT RUNS ──[/bold]",
+            markup=True,
+        )
+        scroll.mount(runs_header)
+
         try:
             executions = await self.app.bridge.list_executions(limit=10)
             if not executions:
-                lines.append("  [dim]No runs yet[/dim]")
+                scroll.mount(
+                    Static("  [dim]No runs yet[/dim]", markup=True),
+                )
             else:
+                lines: list[str] = []
                 for ex in executions:
                     obj = ex.get("objective", "")[:40] or "(no objective)"
                     status = ex.get("status", "?")
                     cost = ex.get("total_cost_usd", 0.0)
-                    lines.append(f"  {status}  {obj}  ${cost:.2f}")
+                    icon = STATUS_ICONS.get(status, "[dim]?[/dim]")
+                    lines.append(f"  {icon}  {obj}  ${cost:.2f}")
+                scroll.mount(
+                    Static("\n".join(lines), markup=True),
+                )
         except Exception:
             logger.warning("Could not load executions for dashboard", exc_info=True)
-            lines.append("  [dim]Could not load runs[/dim]")
-
-        body.update("\n".join(lines))
+            scroll.mount(
+                Static("  [dim]Could not load runs[/dim]", markup=True),
+            )

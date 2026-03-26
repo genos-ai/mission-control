@@ -2,7 +2,7 @@
 Event Consumer Worker.
 
 Runs the FastStream application with Redis Streams consumers.
-Launched via: python cli.py event-worker
+Launched via: python admin.py event-worker
 """
 
 import subprocess

@@ -9,7 +9,7 @@ Usage:
     from modules.backend.events.broker import get_event_broker
 
     # Start worker process
-    python cli.py event-worker
+    python admin.py event-worker
 
     # Or directly with faststream
     faststream run modules.backend.events.broker:create_event_app --factory
