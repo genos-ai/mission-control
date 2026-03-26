@@ -41,6 +41,7 @@ from modules.backend.agents.mission_control.models import (
 from modules.backend.agents.mission_control.outcome import (
     ExecutionOutcome,
     ExecutionStatus,
+    GateDecisionRecord,
     TaskResult,
     TaskStatus,
     TaskTokenUsage,
@@ -83,6 +84,8 @@ async def dispatch(
     _sid = session_id or plan.mission_id
     layers = topological_sort(plan)
 
+    gate_decisions: list[GateDecisionRecord] = []
+
     decision = await _gate.review(GateContext(
         gate_type="pre_dispatch",
         mission_id=plan.mission_id,
@@ -95,9 +98,16 @@ async def dispatch(
         total_cost_usd=0.0,
         budget_usd=mission_budget_usd,
     ))
+    gate_decisions.append(GateDecisionRecord(
+        gate_type="pre_dispatch", layer_index=0,
+        action=decision.action.value, reason=decision.reason,
+        reviewer=decision.reviewer,
+    ))
     if decision.action == GateAction.ABORT:
         logger.info("Mission aborted at pre_dispatch gate", extra={"reason": decision.reason})
-        return aborted_outcome(plan, decision.reason, start_time)
+        outcome = aborted_outcome(plan, decision.reason, start_time)
+        outcome.gate_decisions = gate_decisions
+        return outcome
 
     await _emit(_bus, PlanCreatedEvent,
         session_id=_sid,
@@ -132,6 +142,7 @@ async def dispatch(
             total_cost=total_cost,
             mission_budget_usd=mission_budget_usd,
             gate=_gate,
+            gate_decisions=gate_decisions,
             mission_id=mission_id,
             context_curator=context_curator,
             context_assembler=context_assembler,
@@ -174,6 +185,7 @@ async def dispatch(
         aborted=aborted,
         abort_reason=abort_reason,
         start_time=start_time,
+        gate_decisions=gate_decisions,
     )
 
 
@@ -208,6 +220,7 @@ async def _execute_layer(
     total_cost: float,
     mission_budget_usd: float,
     gate: GateReviewer,
+    gate_decisions: list[GateDecisionRecord],
     mission_id: str | None,
     context_curator: ContextCuratorProtocol | None,
     context_assembler: ContextAssemblerProtocol | None,
@@ -287,6 +300,11 @@ async def _execute_layer(
         total_cost_usd=total_cost,
         budget_usd=mission_budget_usd,
     ))
+    gate_decisions.append(GateDecisionRecord(
+        gate_type="pre_layer", layer_index=layer_idx,
+        action=decision.action.value, reason=decision.reason,
+        reviewer=decision.reviewer,
+    ))
     if decision.action == GateAction.ABORT:
         logger.info("Mission aborted at pre_layer gate", extra={"layer": layer_idx})
         for c in coros:
@@ -345,6 +363,11 @@ async def _execute_layer(
         completed_tasks=[r.model_dump() for r in task_results],
         total_cost_usd=total_cost,
         budget_usd=mission_budget_usd,
+    ))
+    gate_decisions.append(GateDecisionRecord(
+        gate_type="post_layer", layer_index=layer_idx,
+        action=decision.action.value, reason=decision.reason,
+        reviewer=decision.reviewer,
     ))
     if decision.action == GateAction.ABORT:
         logger.info("Mission aborted at post_layer gate", extra={"layer": layer_idx})
@@ -406,6 +429,7 @@ def _build_outcome(
     aborted: bool,
     abort_reason: str | None,
     start_time: float,
+    gate_decisions: list[GateDecisionRecord] | None = None,
 ) -> ExecutionOutcome:
     """Determine execution status and build the final ExecutionOutcome."""
     budget_exceeded = bool(mission_budget_usd and total_cost > mission_budget_usd)
@@ -452,4 +476,5 @@ def _build_outcome(
             thinking=total_thinking_tokens,
         ),
         abort_reason=abort_reason,
+        gate_decisions=gate_decisions or [],
     )

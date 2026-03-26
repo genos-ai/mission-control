@@ -132,6 +132,19 @@ class TaskResult(BaseModel):
     skip_reason: str | None = None
 
 
+class GateDecisionRecord(BaseModel):
+    """Record of a single gate review decision for audit trail."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    gate_type: str
+    layer_index: int = 0
+    task_id: str | None = None
+    action: str
+    reason: str | None = None
+    reviewer: str = "human"
+
+
 class ExecutionOutcome(BaseModel):
     """Complete result of a Mission Control dispatch.
 
@@ -149,6 +162,7 @@ class ExecutionOutcome(BaseModel):
     abort_reason: str | None = None
     planning_trace_reference: str | None = None
     task_plan_reference: str | None = None
+    gate_decisions: list[GateDecisionRecord] = Field(default_factory=list)
 
 
 def build_verification_outcome(

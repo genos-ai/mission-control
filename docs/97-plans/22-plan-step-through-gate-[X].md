@@ -1,6 +1,6 @@
 # Plan 22 — Step-Through Gate (Human/AI-in-the-Loop)
 
-**Status:** Draft
+**Status:** Complete
 **Created:** 2026-03-17
 **Depends on:** Plans 13 (Dispatch), 17 (Playbooks/Missions), 14 (Verification)
 
