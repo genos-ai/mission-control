@@ -117,11 +117,7 @@ async def _run_workflow(
     from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
-    from modules.clients.cli.report import (
-        get_console as report_console, styled_status, status_panel,
-        info_panel, render_execution_outcomes,
-        workflow_run_to_dict, generate_narrative, colorize_narrative,
-    )
+    from modules.clients.cli.report import render_workflow_completion
 
     console = get_console()
     console.print(f"[bold]Running workflow:[/bold] {workflow.workflow_name}\n")
@@ -148,25 +144,7 @@ async def _run_workflow(
             workflow_run_id=wf_run.id,
         )
 
-    # Post-run report
-    header = (
-        f"[bold]{wf_run.workflow_name}[/bold] v{wf_run.workflow_version}    "
-        f"Status: {styled_status(wf_run.status)}    "
-        f"Cost: ${wf_run.total_cost_usd:.4f}"
-    )
-    if wf_run.budget_usd:
-        pct = (wf_run.total_cost_usd / wf_run.budget_usd) * 100
-        header += f"  ({pct:.0f}% of ${wf_run.budget_usd:.2f} budget)"
-
-    console.print()
-    console.print(status_panel(content=header, status=wf_run.status))
-
-    narrative = await generate_narrative(workflow_run_to_dict(wf_run, executions))
-    narrative = colorize_narrative(narrative)
-    console.print(info_panel(content=narrative.strip(), title="Summary"))
-
-    console.print()
-    render_execution_outcomes(console, executions)
+    await render_workflow_completion(console, wf_run, executions)
 
 
 async def _run_adhoc(

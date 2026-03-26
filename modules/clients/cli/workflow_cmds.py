@@ -183,11 +183,7 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
     await _preflight_gate(workflow_name)
 
     from modules.clients.cli.live_display import LiveExecutionDisplay
-    from modules.clients.cli.report import (
-        get_console, styled_status, status_panel,
-        info_panel, render_execution_outcomes,
-        workflow_run_to_dict, generate_narrative, colorize_narrative,
-    )
+    from modules.clients.cli.report import get_console, render_workflow_completion
     from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
 
@@ -213,24 +209,7 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
             workflow_run_id=run.id,
         )
 
-    header = (
-        f"[bold]{run.workflow_name}[/bold] v{run.workflow_version}    "
-        f"Status: {styled_status(run.status)}    "
-        f"Cost: ${run.total_cost_usd:.4f}"
-    )
-    if run.budget_usd:
-        pct = (run.total_cost_usd / run.budget_usd) * 100
-        header += f"  ({pct:.0f}% of ${run.budget_usd:.2f} budget)"
-
-    console.print()
-    console.print(status_panel(content=header, status=run.status))
-
-    narrative = await generate_narrative(workflow_run_to_dict(run, executions))
-    narrative = colorize_narrative(narrative)
-    console.print(info_panel(content=narrative.strip(), title="Summary"))
-
-    console.print()
-    render_execution_outcomes(console, executions)
+    await render_workflow_completion(console, run, executions)
 
 
 async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):

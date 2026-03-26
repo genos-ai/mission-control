@@ -30,26 +30,10 @@ import click
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from modules.clients.cli.cli_context import CliContext
+from modules.clients.cli.cli_context import CliContext, ShowHelpOnMissingArgs
 
 # Unified output format for all commands — single source of truth.
 OUTPUT_FORMATS = click.Choice(["human", "json", "jsonl"])
-
-
-class ShowHelpOnMissingArgs(click.Group):
-    """Show full help instead of terse error when required args are missing."""
-
-    def resolve_command(self, ctx, args):
-        cmd_name, cmd, remaining = super().resolve_command(ctx, args)
-        if cmd is not None and not isinstance(cmd, click.Group):
-            # Count required arguments
-            required_args = [p for p in cmd.params if isinstance(p, click.Argument) and p.required]
-            if required_args and len(remaining) < len(required_args):
-                # Not enough positional args — show help instead of cryptic error
-                with click.Context(cmd, info_name=cmd_name, parent=ctx) as sub_ctx:
-                    click.echo(cmd.get_help(sub_ctx))
-                ctx.exit(0)
-        return cmd_name, cmd, remaining
 
 
 @click.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)

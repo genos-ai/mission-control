@@ -353,6 +353,32 @@ async def render_execution(execution: Any, output_format: str = "human") -> None
 render_mission = render_execution
 
 
+async def render_workflow_completion(
+    console: Console,
+    run: Any,
+    executions: list[Any],
+) -> None:
+    """Render post-run workflow report: status header, narrative summary, outcomes."""
+    header = (
+        f"[bold]{run.workflow_name}[/bold] v{run.workflow_version}    "
+        f"Status: {styled_status(run.status)}    "
+        f"Cost: ${run.total_cost_usd:.4f}"
+    )
+    if run.budget_usd:
+        pct = (run.total_cost_usd / run.budget_usd) * 100
+        header += f"  ({pct:.0f}% of ${run.budget_usd:.2f} budget)"
+
+    console.print()
+    console.print(status_panel(content=header, status=run.status))
+
+    narrative = await generate_narrative(workflow_run_to_dict(run, executions))
+    narrative = colorize_narrative(narrative)
+    console.print(info_panel(content=narrative.strip(), title="Summary"))
+
+    console.print()
+    render_execution_outcomes(console, executions)
+
+
 async def render_workflow_run(
     run: Any,
     executions: list[Any],

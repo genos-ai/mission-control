@@ -1,7 +1,26 @@
-"""Shared CLI context — used by both mc.py and cli.py (admin.py)."""
+"""Shared CLI primitives — used by both mc.py and cli.py (admin.py)."""
+
+import click
 
 from modules.backend.core.config import validate_project_root
 from modules.backend.core.logging import bind_context, get_logger, setup_logging
+
+
+class ShowHelpOnMissingArgs(click.Group):
+    """Show full help instead of terse error when required args are missing."""
+
+    def resolve_command(self, ctx, args):
+        cmd_name, cmd, remaining = super().resolve_command(ctx, args)
+        if cmd is not None and not isinstance(cmd, click.Group):
+            required_args = [
+                p for p in cmd.params
+                if isinstance(p, click.Argument) and p.required
+            ]
+            if required_args and len(remaining) < len(required_args):
+                with click.Context(cmd, info_name=cmd_name, parent=ctx) as sub_ctx:
+                    click.echo(cmd.get_help(sub_ctx))
+                ctx.exit(0)
+        return cmd_name, cmd, remaining
 
 
 class CliContext:

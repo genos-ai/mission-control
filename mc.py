@@ -22,31 +22,7 @@ import click
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from modules.clients.cli.cli_context import CliContext
-
-
-# =============================================================================
-# Custom group — shows quick-start when invoked without subcommand
-# =============================================================================
-
-
-class McGroup(click.Group):
-    """Show quick-start guide when invoked without subcommand.
-    Show help when required args are missing.
-    """
-
-    def resolve_command(self, ctx, args):
-        cmd_name, cmd, remaining = super().resolve_command(ctx, args)
-        if cmd is not None and not isinstance(cmd, click.Group):
-            required_args = [
-                p for p in cmd.params
-                if isinstance(p, click.Argument) and p.required
-            ]
-            if required_args and len(remaining) < len(required_args):
-                with click.Context(cmd, info_name=cmd_name, parent=ctx) as sub_ctx:
-                    click.echo(cmd.get_help(sub_ctx))
-                ctx.exit(0)
-        return cmd_name, cmd, remaining
+from modules.clients.cli.cli_context import CliContext, ShowHelpOnMissingArgs
 
 
 # =============================================================================
@@ -54,36 +30,25 @@ class McGroup(click.Group):
 # =============================================================================
 
 
-def _require_mission() -> str:
-    """Resolve current mission or exit with helpful error."""
-    from modules.clients.cli.mission_context import _resolve_current_mission_id
-
-    mid = _resolve_current_mission_id()
-    if not mid:
-        click.echo(click.style(
-            "No mission selected.\n\n"
-            "  Set one with:  mc mission use <name>\n"
-            "  Or create:     mc mission create --name my-project --description '...'\n",
-            fg="yellow",
-        ))
-        sys.exit(1)
-    return mid
+_MC_MISSION_HINT = (
+    "No mission selected.\n\n"
+    "  Set one with:  mc mission use <name>\n"
+    "  Or create:     mc mission create --name my-project --description '...'\n"
+)
 
 
 async def _async_require_mission() -> str:
-    """Async version for handlers already in asyncio.run()."""
-    from modules.clients.cli.mission_context import _async_resolve_current_mission_id
+    """Resolve current mission or exit with user-friendly error.
 
-    mid = await _async_resolve_current_mission_id()
-    if not mid:
-        click.echo(click.style(
-            "No mission selected.\n\n"
-            "  Set one with:  mc mission use <name>\n"
-            "  Or create:     mc mission create --name my-project --description '...'\n",
-            fg="yellow",
-        ))
+    Wraps async_require_mission_id() with mc-specific error formatting.
+    """
+    from modules.clients.cli.mission_context import async_require_mission_id
+
+    try:
+        return await async_require_mission_id(None)
+    except click.UsageError:
+        click.echo(click.style(_MC_MISSION_HINT, fg="yellow"))
         raise SystemExit(1)
-    return mid
 
 
 # =============================================================================
@@ -91,7 +56,7 @@ async def _async_require_mission() -> str:
 # =============================================================================
 
 
-@click.group(cls=McGroup, invoke_without_command=True)
+@click.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.option("--verbose", "-v", is_flag=True, help="Enable INFO-level logging.")
 @click.option("--debug", "-d", is_flag=True, help="Enable DEBUG-level logging.")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output.")
@@ -138,7 +103,7 @@ def _show_quickstart():
 # =============================================================================
 
 
-@mc.group("mission", cls=McGroup, invoke_without_command=True)
+@mc.group("mission", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def mission(ctx):
     """Manage missions."""
@@ -364,7 +329,7 @@ def _parse_chat_args(args: tuple) -> tuple[str | None, str | None]:
 # =============================================================================
 
 
-@mc.group("team", cls=McGroup, invoke_without_command=True)
+@mc.group("team", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def team(ctx):
     """Manage your agent team."""
@@ -428,7 +393,7 @@ def team_remove(ctx, agent):
 # =============================================================================
 
 
-@mc.group("context", cls=McGroup, invoke_without_command=True)
+@mc.group("context", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def context(ctx):
     """View mission context."""
@@ -467,7 +432,7 @@ def context_history(ctx):
 # =============================================================================
 
 
-@mc.group("console", cls=McGroup, invoke_without_command=True)
+@mc.group("console", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def console(ctx):
     """Console monitor."""
