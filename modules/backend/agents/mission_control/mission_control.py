@@ -154,6 +154,7 @@ async def handle(
     channel: str = "api",
     sender_id: str | None = None,
     mission_brief: str | None = None,
+    db_session: Any | None = None,
 ) -> AsyncIterator[SessionEvent]:
     """Universal streaming mission control entry point.
 
@@ -255,7 +256,7 @@ async def handle(
         registry = get_registry()
         model = _build_model(agent_config.model)
         agent = registry.get_instance(agent_name, model)
-        deps = _build_agent_deps(agent_name, agent_config, session_id)
+        deps = _build_agent_deps(agent_name, agent_config, session_id, mission_id=mission_id, db_session=db_session)
         limits = _get_usage_limits(agent_name)
 
         # Load conversation history

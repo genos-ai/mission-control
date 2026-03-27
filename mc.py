@@ -280,7 +280,7 @@ def history(ctx, n):
 @mc.command()
 @click.argument("message", required=False)
 @click.option("--agent", "-a", "agent_name", default=None,
-              help="Target a specific agent (default: planning agent).")
+              help="Target a specific agent (default: mission director).")
 @click.pass_obj
 def chat(ctx, message, agent_name):
     """Talk to your AI team. Interactive REPL or single-shot."""

@@ -84,6 +84,7 @@ async def chat_repl(
                     session_service=session_svc,
                     channel="mc",
                     mission_id=mission_id,
+                    db_session=db,
                 ):
                     if verbose:
                         _render_chat_event_verbose(event)

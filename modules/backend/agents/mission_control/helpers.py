@@ -162,12 +162,17 @@ def _build_agent_deps(
     agent_name: str,
     agent_config: AgentConfigSchema,
     session_id: str | None = None,
+    mission_id: str | None = None,
+    db_session: Any | None = None,
 ) -> BaseAgentDeps:
     """Build the appropriate deps dataclass for a given agent."""
     common = build_deps_from_config(agent_config)
     common["session_id"] = session_id
     category = agent_name.split(".")[0]
 
+    if "mission_director" in agent_name:
+        from modules.backend.agents.horizontal.mission_director.deps import MissionDirectorDeps
+        return MissionDirectorDeps(**common, mission_id=mission_id or "", db_session=db_session)
     if category == "system" and "health" in agent_name:
         return HealthAgentDeps(**common, app_config=get_app_config())
     if category == "code":

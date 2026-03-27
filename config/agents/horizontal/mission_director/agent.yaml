@@ -1,0 +1,55 @@
+# Mission Director Agent Configuration
+#   Conversational mission delegate for mc chat. Answers questions about
+#   the mission, triggers runs, queries history, and manages the mission
+#   on behalf of the user.
+#
+#   Model: Opus 4.6 — best reasoning for conversational delegation.
+#   Model is PINNED — no runtime override (P2).
+
+agent_name: horizontal.mission_director.agent
+agent_type: horizontal
+description: >-
+  Conversational mission delegate. Answers questions about the mission,
+  triggers runs, queries history, and resolves approval gates on behalf
+  of the user.
+enabled: true
+version: "1.0.0"
+
+model:
+  name: "anthropic:claude-opus-4-20250514"
+  temperature: 0.0
+  max_tokens: 16384
+
+keywords:
+  - mission
+  - director
+  - delegate
+
+tools:
+  - get_mission_info
+  - list_team
+  - get_execution_history
+  - get_execution_detail
+  - get_mission_context
+  - list_workflows
+  - run_objective
+  - run_workflow
+
+max_input_length: 64000
+max_budget_usd: 5.00
+
+execution:
+  mode: local
+
+scope:
+  read:
+    - "config/"
+    - "modules/"
+    - "var/logs/"
+  write: []
+
+interface:
+  input:
+    message: "string"
+  output:
+    response: "string"
