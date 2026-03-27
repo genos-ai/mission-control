@@ -83,9 +83,11 @@ async def _prepend_mission_context(mission_id: str, message: str) -> str:
     """Load mission and prepend context to the user message.
 
     Gives the agent awareness of the active mission (name, description,
-    brief) so it can answer questions and plan within that scope.
+    brief, team) so it can answer questions and plan within that scope.
     """
+    from modules.backend.core.database import get_async_session
     from modules.backend.services.mission import MissionService
+    from modules.backend.services.mission_team import MissionTeamService
 
     try:
         async with MissionService.factory() as svc:
@@ -94,11 +96,47 @@ async def _prepend_mission_context(mission_id: str, message: str) -> str:
         logger.warning("Could not load mission context", extra={"mission_id": mission_id})
         return message
 
-    parts = [f"[Mission Context]", f"Mission: {mission.name}"]
+    parts = ["[Mission Context]", f"Mission: {mission.name}"]
     if mission.description:
         parts.append(f"Description: {mission.description}")
     if mission.brief:
         parts.append(f"Brief: {mission.brief}")
+
+    # Load team members with full capabilities
+    try:
+        async with get_async_session() as db:
+            team_svc = MissionTeamService(db)
+            members = await team_svc.list_team(mission_id)
+            if members:
+                from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+                catalog_repo = AgentCatalogRepository(db)
+                team_lines = []
+                for member in members:
+                    entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
+                    if not entry:
+                        continue
+                    line = f"  - {entry.agent_name}: {entry.description}"
+                    if entry.tools:
+                        line += f"\n    Tools: {', '.join(entry.tools)}"
+                    scope = entry.scope or {}
+                    read_paths = scope.get("read", [])
+                    write_paths = scope.get("write", [])
+                    if read_paths or write_paths:
+                        access = []
+                        if read_paths:
+                            access.append(f"read: {', '.join(read_paths)}")
+                        if write_paths:
+                            access.append(f"write: {', '.join(write_paths)}")
+                        line += f"\n    Access: {'; '.join(access)}"
+                    if entry.keywords:
+                        line += f"\n    Capabilities: {', '.join(entry.keywords)}"
+                    team_lines.append(line)
+                if team_lines:
+                    parts.append("Team:")
+                    parts.extend(team_lines)
+    except Exception:
+        logger.debug("Could not load team for mission context", extra={"mission_id": mission_id})
+
     parts.append("[End Mission Context]")
     parts.append("")
     parts.append(message)
