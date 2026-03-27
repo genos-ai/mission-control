@@ -387,9 +387,9 @@ async def handle(
     except Exception as exc:
         logger.error(
             "Agent execution error",
-            exc_info=True,
-            extra={"session_id": session_id, "agent_id": agent_name},
+            extra={"session_id": session_id, "agent_id": agent_name, "error": str(exc)},
         )
+        logger.debug("Agent execution traceback", exc_info=True)
         # Yield a partial complete event so the stream always terminates cleanly
         yield AgentResponseCompleteEvent(
             session_id=sid,

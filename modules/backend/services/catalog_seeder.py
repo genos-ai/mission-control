@@ -88,12 +88,7 @@ async def seed_catalog(
         logger.warning("Agents config directory not found", extra={"path": str(agents_dir)})
         return {"seeded": 0, "skipped": 0, "errors": 0}
 
-    if force:
-        all_entries = await service.list_catalog(enabled_only=False)
-        for entry in all_entries:
-            await service._repo.delete(entry.id)
-        logger.info("Catalog cleared for re-seeding", extra={"deleted": len(all_entries)})
-    elif not await service.is_catalog_empty():
+    if not force and not await service.is_catalog_empty():
         logger.info("Catalog already seeded, skipping")
         return {"seeded": 0, "skipped": 0, "errors": 0}
 
@@ -116,8 +111,7 @@ async def seed_catalog(
             config = AgentConfigSchema(**raw)
             system_prompt = _resolve_system_prompt(config.agent_name, project_root)
 
-            await service.create_entry(
-                agent_name=config.agent_name,
+            fields = dict(
                 agent_type=config.agent_type,
                 version=config.version,
                 description=config.description,
@@ -138,8 +132,18 @@ async def seed_catalog(
                 enabled=config.enabled,
                 visibility=_infer_visibility(config.agent_type, config.agent_name),
             )
+
+            # Upsert: update existing entry or create new one.
+            # Never delete — that would cascade to mission team members.
+            existing = await service.get_by_name_or_none(config.agent_name)
+            if existing:
+                await service.update_entry(config.agent_name, **fields)
+                logger.debug("Agent updated", extra={"agent_name": config.agent_name})
+            else:
+                await service.create_entry(agent_name=config.agent_name, **fields)
+                logger.debug("Agent seeded", extra={"agent_name": config.agent_name})
+
             counts["seeded"] += 1
-            logger.debug("Agent seeded", extra={"agent_name": config.agent_name})
 
         except (ValidationError, yaml.YAMLError) as e:
             logger.warning(
