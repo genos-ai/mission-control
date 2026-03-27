@@ -200,6 +200,7 @@ async def handle(
             )
         return
 
+    agent_name = "unknown"
     try:
         # 1. Validate session exists
         session = await session_service.get_session(session_id)
@@ -384,12 +385,16 @@ async def handle(
             logger.debug("Failed to touch session activity", exc_info=True)
 
     except Exception as exc:
-        logger.error("Mission control error", exc_info=True, extra={"session_id": session_id})
+        logger.error(
+            "Agent execution error",
+            exc_info=True,
+            extra={"session_id": session_id, "agent_id": agent_name},
+        )
         # Yield a partial complete event so the stream always terminates cleanly
         yield AgentResponseCompleteEvent(
             session_id=sid,
             source=source,
-            agent_id="unknown",
+            agent_id=agent_name,
             full_content=f"Error: {exc}",
             metadata={"error": True},
         )

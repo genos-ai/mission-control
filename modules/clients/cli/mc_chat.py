@@ -172,7 +172,9 @@ def _render_chat_event(console, event):
 
     elif isinstance(event, AgentResponseCompleteEvent):
         console.print()
-        if event.cost_usd > 0:
+        if event.metadata and event.metadata.get("error"):
+            console.print(f"  [bold red]Error:[/bold red] {event.full_content}")
+        elif event.cost_usd > 0:
             console.print(
                 f"[dim]  ${event.cost_usd:.4f} | "
                 f"{event.input_tokens + event.output_tokens:,} tokens[/dim]"

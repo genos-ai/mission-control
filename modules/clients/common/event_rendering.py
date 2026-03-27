@@ -61,6 +61,10 @@ def summarize_event(event: SessionEvent) -> str:
 
     if etype == "agent.response.complete":
         agent = getattr(event, "agent_id", "?")
+        metadata = getattr(event, "metadata", None) or {}
+        if metadata.get("error"):
+            content = getattr(event, "full_content", "unknown error")
+            return f"[bold red]{agent} error:[/bold red] {content}"
         cost = getattr(event, "cost_usd", 0.0)
         return f"{agent} done ${cost:.3f}"
 
