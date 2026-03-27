@@ -49,6 +49,8 @@ from modules.backend.events.types import (
     AgentResponseChunkEvent,
     AgentResponseCompleteEvent,
     AgentThinkingEvent,
+    AgentToolCallEvent,
+    AgentToolResultEvent,
     CostUpdateEvent,
     SessionEvent,
     UserMessageEvent,
@@ -268,54 +270,110 @@ async def handle(
         if not model_history:
             message = await _prepend_mission_context(mission_id, message)
 
-        # 7. Execute agent with streaming
+        # 7. Execute agent with full tool-call support
+        #
+        # Uses agent.run() with event_stream_handler instead of
+        # run_stream(). This ensures tool-using agents (like the
+        # Mission Director) complete the full tool→LLM→response
+        # cycle. run_stream stops at the first text output.
+        import asyncio as _asyncio
+        from pydantic_ai.messages import (
+            PartDeltaEvent,
+            FunctionToolCallEvent,
+            FunctionToolResultEvent,
+            TextPartDelta,
+            ThinkingPartDelta,
+        )
+
         full_content = ""
         input_tokens = 0
         output_tokens = 0
         cost_usd = 0.0
+        thinking_parts: list[str] = []
+        event_queue: _asyncio.Queue[SessionEvent | None] = _asyncio.Queue()
 
-        async with agent.run_stream(
-            message,
-            message_history=model_history or None,
-            deps=deps,
-            usage_limits=limits,
-        ) as stream:
-            # Text output agents: stream text deltas.
-            # Structured output agents: stream_text() raises UserError,
-            # so fall back to get_output() and serialize.
-            try:
-                async for text in stream.stream_text(delta=True):
-                    full_content += text
-                    chunk_event = AgentResponseChunkEvent(
+        async def _stream_handler(ctx, events):
+            """Callback for agent.run() — pushes SessionEvents to queue."""
+            async for event in events:
+                if isinstance(event, PartDeltaEvent):
+                    delta = event.delta
+                    if isinstance(delta, TextPartDelta):
+                        chunk_event = AgentResponseChunkEvent(
+                            session_id=sid,
+                            source=source,
+                            agent_id=agent_name,
+                            content=delta.content_delta,
+                        )
+                        await event_queue.put(chunk_event)
+                    elif isinstance(delta, ThinkingPartDelta):
+                        if delta.content_delta:
+                            thinking_parts.append(delta.content_delta)
+                elif isinstance(event, FunctionToolCallEvent):
+                    tool_event = AgentToolCallEvent(
                         session_id=sid,
                         source=source,
                         agent_id=agent_name,
-                        content=text,
+                        tool_name=event.part.tool_name,
+                        tool_args={"raw": str(event.part.args) if event.part.args else ""},
+                        tool_call_id=event.tool_call_id or "",
                     )
-                    yield chunk_event
-                    await _publish(event_bus, chunk_event)
-            except UserError:
-                output = await stream.get_output()
-                if isinstance(output, str):
-                    full_content = output
-                elif hasattr(output, "model_dump_json"):
-                    full_content = output.model_dump_json()
-                else:
-                    full_content = str(output)
+                    await event_queue.put(tool_event)
+                elif isinstance(event, FunctionToolResultEvent):
+                    result_str = str(event.content) if event.content else "ok"
+                    status = "error" if "error" in result_str.lower()[:50] else "success"
+                    result_event = AgentToolResultEvent(
+                        session_id=sid,
+                        source=source,
+                        agent_id=agent_name,
+                        tool_name=event.tool_call_id or "unknown",
+                        tool_call_id=event.tool_call_id or "",
+                        result=result_str[:200],
+                        status=status,
+                    )
+                    await event_queue.put(result_event)
 
-            # After streaming completes, get usage
-            usage = stream.usage()
-            input_tokens = usage.input_tokens or 0
-            output_tokens = usage.output_tokens or 0
-            cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
+        async def _run_agent():
+            """Run agent in background task, signal completion via None."""
+            try:
+                result = await agent.run(
+                    message,
+                    message_history=model_history or None,
+                    deps=deps,
+                    usage_limits=limits,
+                    event_stream_handler=_stream_handler,
+                )
+                return result
+            finally:
+                await event_queue.put(None)  # sentinel
 
-            # Extract tool events and thinking from new_messages (retrospective)
-            thinking_parts, tool_events = await _emit_tool_events(
-                event_bus, stream,
-                session_id=sid, source=source, agent_id=agent_name,
-            )
-            for evt in tool_events:
-                yield evt
+        # Start agent in background, yield events as they arrive
+        agent_task = _asyncio.create_task(_run_agent())
+
+        while True:
+            event = await event_queue.get()
+            if event is None:
+                break
+            if isinstance(event, AgentResponseChunkEvent):
+                full_content += event.content
+            yield event
+            await _publish(event_bus, event)
+
+        # Await agent result for usage stats
+        result = await agent_task
+        usage = result.usage()
+        input_tokens = usage.input_tokens or 0
+        output_tokens = usage.output_tokens or 0
+        cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
+
+        # Extract final output if agent used structured output
+        if not full_content:
+            output = result.output
+            if isinstance(output, str):
+                full_content = output
+            elif hasattr(output, "model_dump_json"):
+                full_content = output.model_dump_json()
+            else:
+                full_content = str(output)
 
         # 8. Yield complete event
         metadata: dict[str, Any] = {}
