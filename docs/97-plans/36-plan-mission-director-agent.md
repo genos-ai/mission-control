@@ -95,10 +95,18 @@ The Mission Director has **read tools** (query state) and **action tools** (trig
 
 | Tool | Service | Purpose |
 |------|---------|---------|
-| `run_objective` | `ExecutionService.create_adhoc_execution()` + `run_execution()` | Trigger an ad-hoc run |
-| `run_workflow` | `WorkflowRunService.run()` | Trigger a named workflow |
-| `approve_gate` | Gate resolution | Approve a pending gate decision |
-| `reject_gate` | Gate resolution | Reject a pending gate with reason |
+| `run_objective` | `ExecutionService.create_adhoc_execution()` + `run_execution()` | Trigger an ad-hoc run (blocks until dispatch completes) |
+| `run_workflow` | `MissionService.get_mission()` → `WorkflowRunService.run_workflow(mission_name=...)` | Trigger a named workflow (resolves mission_id → name first) |
+
+#### Phase 2 Tools (deferred — requires async gate queue)
+
+Gates currently resolve **inline during dispatch** via `GateReviewer.review()`. There is no pending gate queue or async resolution mechanism. These tools require a new gate storage layer before they can be implemented.
+
+| Tool | Blocker | Purpose |
+|------|---------|---------|
+| `get_pending_gates` | No gate queue exists | List gates waiting for a decision |
+| `approve_gate` | No async gate resolution | Approve a pending gate |
+| `reject_gate` | No async gate resolution | Reject a pending gate |
 
 ### 2.3 Dependencies Dataclass
 
@@ -365,40 +373,15 @@ def create_agent(model: str | Model) -> Agent:
         Args:
             workflow_name: The workflow identifier (e.g., "system.platform-audit.workflow")
         """
-        # Use WorkflowRunService to trigger the workflow
+        # IMPORTANT: WorkflowRunService.run_workflow takes mission_name, not mission_id.
+        # Resolve mission_id → mission.name via MissionService.get_mission() first.
+        # Then call WorkflowRunService.run_workflow(mission_name=mission.name, ...)
         # Return run summary as JSON
         ...
 
-    @agent.tool
-    async def approve_gate(
-        ctx: RunContext[MissionDirectorDeps],
-        gate_id: str,
-        reason: str = "Approved by Mission Director",
-    ) -> str:
-        """Approve a pending gate decision.
-
-        Args:
-            gate_id: The gate decision ID to approve
-            reason: Reason for approval
-        """
-        # Resolve the gate with CONTINUE action
-        # Return confirmation
-        ...
-
-    @agent.tool
-    async def reject_gate(
-        ctx: RunContext[MissionDirectorDeps],
-        gate_id: str,
-        reason: str,
-    ) -> str:
-        """Reject a pending gate decision.
-
-        Args:
-            gate_id: The gate decision ID to reject
-            reason: Why the gate is being rejected
-        """
-        # Resolve the gate with ABORT action
-        # Return confirmation
+    # NOTE: Gate tools (approve_gate, reject_gate, get_pending_gates) are
+    # deferred to Phase 2. Gates currently resolve inline during dispatch —
+    # no async queue exists for out-of-band resolution.
         ...
 
     return agent
@@ -569,12 +552,16 @@ class TestMissionDirectorAgent:
         assert "get_mission_info" in tool_names
         assert "list_team" in tool_names
         assert "run_objective" in tool_names
-        assert "approve_gate" in tool_names
+        # Gate tools deferred to Phase 2
 ```
 
 #### 3.5.2 Integration Consideration
 
 The `run_objective` tool triggers `handle_mission()` which is a full dispatch cycle. Integration tests should mock the dispatch adapter rather than running real agent calls.
+
+#### 3.5.3 Blocking Behavior Note
+
+`run_objective` and `run_workflow` block until dispatch completes (can be 2-5 minutes). This matches `mc run` CLI behavior. Phase 2 enhancement: fire-and-forget with `get_execution_detail` for polling.
 
 ---
 
@@ -631,7 +618,7 @@ The `run_objective` tool triggers `handle_mission()` which is a full dispatch cy
 2. Create agent YAML config (`agent.yaml`)
 3. Write system prompt (`system.md`)
 4. Implement agent factory + read tools (`agent.py`)
-5. Implement action tools (`run_objective`, `run_workflow`, gate tools)
+5. Implement action tools (`run_objective`, `run_workflow`) — gate tools deferred to Phase 2
 6. Wire into `_build_agent_deps` (`helpers.py`)
 7. Add `db_session` passthrough to `handle()` and `mc_chat.py`
 8. Update `chat_agent` config (`mission_control.yaml`)
