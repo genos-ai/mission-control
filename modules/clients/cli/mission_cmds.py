@@ -102,6 +102,9 @@ async def _action_list(cli_logger, *, output_format, **_):
 
     current_mission_id = await _async_resolve_current_mission_id()
 
+    from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+    from modules.backend.services.mission_team import MissionTeamService
+
     async with MissionService.factory() as svc:
         missions = await svc.list_missions()
 
@@ -109,19 +112,38 @@ async def _action_list(cli_logger, *, output_format, **_):
         console.print("[dim]No missions found.[/dim]")
         return
 
+    # Build team summaries per mission
+    team_summaries: dict[str, str] = {}
+    async with MissionTeamService.factory() as team_svc:
+        catalog_repo = AgentCatalogRepository(team_svc._session)
+        for m in missions:
+            members = await team_svc.list_team(m.id)
+            if not members:
+                team_summaries[m.id] = "[dim]none[/dim]"
+                continue
+            names = []
+            for member in members:
+                entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
+                if entry:
+                    # Short name: "code.quality.agent" → "quality"
+                    parts = entry.agent_name.split(".")
+                    names.append(parts[-2] if len(parts) >= 2 else parts[0])
+            team_summaries[m.id] = f"{len(members)}: {', '.join(names)}" if names else "[dim]none[/dim]"
+
     table = build_table("Missions", columns=[
         ("Status", {"width": 10}),
-        ("Name", {"style": "cyan", "width": 32}),
+        ("Name", {"style": "cyan", "width": 28}),
         ("ID", {"width": 38}),
         ("Gate", {"width": 12}),
-        ("Roster", {"width": 15}),
+        ("Team", {"ratio": 1}),
         ("Description", {"ratio": 1}),
     ], show_lines=True, table_box=DOTTED_ROWS)
     for m in missions:
         desc = m.description[:60] + "..." if len(m.description or "") > 60 else (m.description or "")
         name = annotate_current_mission(m.name, m.id, current_mission_id)
         gate = m.gate_mode or "[dim]off[/dim]"
-        table.add_row(styled_status(m.status), name, m.id, gate, m.default_roster, desc)
+        team = team_summaries.get(m.id, "[dim]none[/dim]")
+        table.add_row(styled_status(m.status), name, m.id, gate, team, desc)
 
     console.print(table)
 
