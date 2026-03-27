@@ -227,7 +227,7 @@ class TestHandleErrors:
 
         complete = [e for e in events if isinstance(e, AgentResponseCompleteEvent)]
         assert len(complete) == 1
-        assert "Error" in complete[0].full_content
+        assert complete[0].metadata.get("error") is True
 
     @pytest.mark.asyncio
     async def test_works_with_default_event_bus(self, session_service, health_session):

@@ -189,6 +189,11 @@ class LiveExecutionDisplay:
             cost = getattr(event, "cost_usd", 0.0)
             self._total_cost += cost
             self._agent_costs[agent_id] = self._agent_costs.get(agent_id, 0.0) + cost
+            # Capture agent errors
+            metadata = getattr(event, "metadata", None) or {}
+            if metadata.get("error"):
+                content = getattr(event, "full_content", "unknown error")
+                self._errors.append(f"{agent_id}: {content}")
 
         elif etype == "session.cost.updated":
             self._total_cost = getattr(event, "cumulative_cost_usd", self._total_cost)
@@ -225,6 +230,8 @@ class LiveExecutionDisplay:
                 "duration": duration,
                 "summary": result_summary,
             })
+            if status == "failed" and result_summary:
+                self._errors.append(f"{step_id} ({agent}): {result_summary}")
 
         self._refresh()
 
