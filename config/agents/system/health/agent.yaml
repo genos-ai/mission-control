@@ -54,7 +54,7 @@ tools:
 
 scope:
   read:
-    - "logs/"
+    - "var/logs/"
     - "config/"
     - "modules/"
     - "tests/"
