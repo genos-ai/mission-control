@@ -187,16 +187,24 @@ export const useLiveRunStore = create<LiveRunState>((set, get) => ({
       case 'agent.response.complete': {
         const agentId = String(d.agent_id ?? '')
         const cost = Number(d.cost_usd ?? 0)
+        const metadata = (d.metadata ?? {}) as Record<string, unknown>
+        const isError = metadata.error === true
         const newActive = new Map(state.activeAgents)
         const newBuffers = new Map(state.thinkingBuffers)
         const newCosts = new Map(state._agentCosts)
         newActive.delete(agentId)
         newBuffers.delete(agentId)
         newCosts.set(agentId, (newCosts.get(agentId) ?? 0) + cost)
+
+        const errors = isError
+          ? [...state.errors, `${agentId}: ${String(d.full_content ?? 'unknown error')}`]
+          : state.errors
+
         set({
           activeAgents: newActive,
           thinkingBuffers: newBuffers,
           _agentCosts: newCosts,
+          errors,
           eventLog: [...state.eventLog, event].slice(-100),
         })
         return

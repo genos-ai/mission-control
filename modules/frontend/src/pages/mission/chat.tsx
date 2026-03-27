@@ -8,11 +8,15 @@ import {
   Bot,
   User,
   Circle,
+  ChevronDown,
+  AlertTriangle,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
 import { useSessions, useMessages, useCreateSession } from '@/hooks/use-sessions'
+import { useTeam } from '@/hooks/use-team'
+import { useCatalog } from '@/hooks/use-catalog'
 import { API_BASE } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -20,6 +24,8 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/cn'
 import type { SessionMessage } from '@/types'
+
+const PLANNING_AGENT = 'horizontal.planning.agent'
 
 export default function ChatPage() {
   const { id: missionId, threadId } = useParams<{
@@ -32,17 +38,49 @@ export default function ChatPage() {
   const { data: sessions, isLoading: loadingSessions } = useSessions(
     user ? { user_id: user.id } : undefined,
   )
+  const { data: teamMembers } = useTeam(missionId)
+  const { data: catalog } = useCatalog()
   const createSession = useCreateSession()
+
+  // Build agent lookup: catalog_id → agent_name
+  const catalogLookup = new Map(
+    catalog?.map((a) => [a.id, a]) ?? [],
+  )
+
+  // Build selectable agents from team, planning agent first
+  const teamAgents = (teamMembers ?? [])
+    .map((m) => ({
+      catalogId: m.agent_catalog_id,
+      name: catalogLookup.get(m.agent_catalog_id)?.agent_name ?? m.agent_catalog_id,
+      type: catalogLookup.get(m.agent_catalog_id)?.agent_type,
+    }))
+    .sort((a, b) => {
+      if (a.name === PLANNING_AGENT) return -1
+      if (b.name === PLANNING_AGENT) return 1
+      return a.name.localeCompare(b.name)
+    })
+
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+
+  // Default to planning agent when team loads
+  useEffect(() => {
+    if (!selectedAgent && teamAgents.length > 0) {
+      const planner = teamAgents.find((a) => a.name === PLANNING_AGENT)
+      setSelectedAgent(planner?.name ?? teamAgents[0].name)
+    }
+  }, [teamAgents.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNewChat = async () => {
     if (!user) return
+    const agentLabel = selectedAgent
+      ? shortName(selectedAgent)
+      : 'Chat'
     try {
       const session = await createSession.mutateAsync({
-        goal: 'Chat session',
+        goal: `Chat with ${agentLabel}`,
+        agent_id: selectedAgent ?? undefined,
       })
-      navigate(
-        `/missions/${missionId}/chat/${session.id}`,
-      )
+      navigate(`/missions/${missionId}/chat/${session.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create session')
     }
@@ -50,8 +88,33 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full">
-      {/* Thread list */}
+      {/* Thread list + agent selector */}
       <div className="w-64 flex-shrink-0 border-r flex flex-col">
+        {/* Agent selector */}
+        {teamAgents.length > 0 && (
+          <div className="p-3 border-b">
+            <label className="text-[10px] font-semibold uppercase text-muted-foreground">
+              Agent
+            </label>
+            <div className="relative mt-1">
+              <select
+                value={selectedAgent ?? ''}
+                onChange={(e) => setSelectedAgent(e.target.value)}
+                className="flex h-8 w-full appearance-none rounded-md border border-input bg-transparent pl-2 pr-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {teamAgents.map((a) => (
+                  <option key={a.name} value={a.name}>
+                    {shortName(a.name)}
+                    {a.name === PLANNING_AGENT ? ' (default)' : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+          </div>
+        )}
+
+        {/* Thread header */}
         <div className="flex items-center justify-between p-3 border-b">
           <span className="text-sm font-medium">Threads</span>
           <Button
@@ -68,6 +131,8 @@ export default function ChatPage() {
             )}
           </Button>
         </div>
+
+        {/* Thread list */}
         <div className="flex-1 overflow-y-auto">
           {loadingSessions ? (
             <div className="flex justify-center p-4">
@@ -100,11 +165,18 @@ export default function ChatPage() {
                     {s.goal || s.id.slice(0, 8)}
                   </span>
                 </div>
-                <span className="text-[10px] text-muted-foreground pl-4">
-                  {formatDistanceToNow(new Date(s.last_activity_at), {
-                    addSuffix: true,
-                  })}
-                </span>
+                <div className="flex items-center gap-2 pl-4">
+                  {s.agent_id && (
+                    <Badge variant="secondary" className="text-[9px]">
+                      {shortName(s.agent_id)}
+                    </Badge>
+                  )}
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatDistanceToNow(new Date(s.last_activity_at), {
+                      addSuffix: true,
+                    })}
+                  </span>
+                </div>
               </button>
             ))
           )}
@@ -114,7 +186,7 @@ export default function ChatPage() {
       {/* Conversation area */}
       <div className="flex-1 flex flex-col min-w-0">
         {threadId ? (
-          <ConversationView sessionId={threadId} />
+          <ConversationView sessionId={threadId} missionId={missionId!} />
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <EmptyState
@@ -135,7 +207,20 @@ export default function ChatPage() {
   )
 }
 
-function ConversationView({ sessionId }: { sessionId: string }) {
+/** Strip ".agent" suffix for display: "horizontal.planning.agent" → "horizontal.planning" */
+function shortName(agentName: string): string {
+  return agentName.endsWith('.agent')
+    ? agentName.slice(0, -6)
+    : agentName
+}
+
+function ConversationView({
+  sessionId,
+  missionId,
+}: {
+  sessionId: string
+  missionId: string
+}) {
   const { data: history, isLoading } = useMessages(sessionId)
   const { user } = useAuthStore()
   const [messages, setMessages] = useState<SessionMessage[]>([])
@@ -206,7 +291,7 @@ function ConversationView({ sessionId }: { sessionId: string }) {
 
     try {
       const token = useAuthStore.getState().accessToken
-      const response = await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
+      const response = await fetch(`${API_BASE}/sessions/${sessionId}/messages?mission_id=${missionId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -246,20 +331,21 @@ function ConversationView({ sessionId }: { sessionId: string }) {
             if (raw === '{}') continue
             try {
               const event = JSON.parse(raw)
-              if (event.event_type === 'assistant.message.delta') {
-                accumulated += event.data?.content ?? ''
+              if (event.event_type === 'agent.response.chunk') {
+                accumulated += event.content ?? ''
                 setStreamingContent(accumulated)
-              } else if (event.event_type === 'assistant.message.complete') {
+              } else if (event.event_type === 'agent.response.complete') {
+                const isError = event.metadata?.error === true
                 const assistantMsg: SessionMessage = {
-                  id: event.data?.message_id ?? `resp-${Date.now()}`,
+                  id: `resp-${Date.now()}`,
                   session_id: sessionId,
-                  role: 'assistant',
-                  content: event.data?.content ?? accumulated,
-                  sender_id: null,
-                  model: event.data?.model ?? null,
-                  input_tokens: event.data?.input_tokens ?? null,
-                  output_tokens: event.data?.output_tokens ?? null,
-                  cost_usd: event.data?.cost_usd ?? null,
+                  role: isError ? 'error' : 'assistant',
+                  content: event.full_content ?? accumulated,
+                  sender_id: event.agent_id ?? null,
+                  model: event.model ?? null,
+                  input_tokens: event.input_tokens ?? null,
+                  output_tokens: event.output_tokens ?? null,
+                  cost_usd: event.cost_usd ?? null,
                   tool_name: null,
                   tool_call_id: null,
                   created_at: new Date().toISOString(),
@@ -301,7 +387,7 @@ function ConversationView({ sessionId }: { sessionId: string }) {
       abortRef.current = null
       setSending(false)
     }
-  }, [input, sending, sessionId, user?.id])
+  }, [input, sending, sessionId, missionId, user?.id])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -323,7 +409,7 @@ function ConversationView({ sessionId }: { sessionId: string }) {
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'error')
           .map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
@@ -388,12 +474,15 @@ function ConversationView({ sessionId }: { sessionId: string }) {
 
 function MessageBubble({ message }: { message: SessionMessage }) {
   const isUser = message.role === 'user'
+  const isError = message.role === 'error'
 
   return (
     <div className={cn('flex gap-3', isUser && 'flex-row-reverse')}>
       <div className="flex-shrink-0 mt-1">
         {isUser ? (
           <User className="h-5 w-5 text-muted-foreground" />
+        ) : isError ? (
+          <AlertTriangle className="h-5 w-5 text-destructive" />
         ) : (
           <Bot className="h-5 w-5 text-primary" />
         )}
@@ -401,7 +490,11 @@ function MessageBubble({ message }: { message: SessionMessage }) {
       <div
         className={cn(
           'max-w-[75%] rounded-lg p-3',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted/50',
+          isUser
+            ? 'bg-primary text-primary-foreground'
+            : isError
+              ? 'bg-destructive/10 border border-destructive/20'
+              : 'bg-muted/50',
         )}
       >
         <p className="text-sm whitespace-pre-wrap">{message.content}</p>
