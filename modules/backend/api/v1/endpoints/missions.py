@@ -176,6 +176,34 @@ async def add_agent_to_team(
     )
 
 
+@router.post(
+    "/{mission_id}/team/seed",
+    response_model=ApiResponse,
+    summary="Seed team from catalog",
+)
+async def seed_team_from_catalog(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Populate mission team from all enabled catalog agents.
+
+    Adds any catalog agents not already on the team. Idempotent.
+    """
+    service = MissionTeamService(db)
+    added = await service.seed_from_catalog(mission_id)
+    await db.commit()
+    items = [
+        MissionTeamMemberResponse.model_validate(m).model_dump()
+        for m in added
+    ]
+    return ApiResponse(
+        success=True,
+        data={"added": items, "added_count": len(items)},
+        metadata={"request_id": request_id},
+    )
+
+
 @router.delete(
     "/{mission_id}/team/{member_id}",
     response_model=ApiResponse,

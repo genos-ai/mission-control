@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useParams } from 'react-router-dom'
 import {
   Activity,
@@ -10,7 +11,11 @@ import {
   Pause,
   Archive,
   RotateCcw,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
 import { useMission, useUpdateMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
@@ -51,7 +56,7 @@ export default function MissionLayout() {
     <div className="flex h-full flex-col">
       {/* Mission header */}
       <div className="flex items-start justify-between border-b px-6 py-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           {isLoading ? (
             <Spinner className="h-5 w-5" />
           ) : mission ? (
@@ -62,11 +67,11 @@ export default function MissionLayout() {
                   {mission.status}
                 </Badge>
               </div>
-              {mission.brief && (
-                <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
-                  {mission.brief}
-                </p>
-              )}
+              <InlineBrief
+                brief={mission.brief}
+                missionId={id!}
+                editable={isOwner}
+              />
             </>
           ) : (
             <p className="text-muted-foreground">Mission not found</p>
@@ -123,5 +128,101 @@ export default function MissionLayout() {
         <Outlet />
       </div>
     </div>
+  )
+}
+
+function InlineBrief({
+  brief,
+  missionId,
+  editable,
+}: {
+  brief: string | null
+  missionId: string
+  editable: boolean
+}) {
+  const updateMission = useUpdateMission(missionId)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(brief ?? '')
+
+  const save = () => {
+    const value = draft.trim()
+    updateMission.mutate(
+      { brief: value || undefined },
+      {
+        onSuccess: () => {
+          setEditing(false)
+          toast.success('Brief updated')
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  if (editing) {
+    return (
+      <div className="mt-1 flex items-center gap-2">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') {
+              setEditing(false)
+              setDraft(brief ?? '')
+            }
+          }}
+          className="flex-1 rounded-md border bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          placeholder="Set mission objective / brief..."
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={save}
+          disabled={updateMission.isPending}
+        >
+          <Check className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => {
+            setEditing(false)
+            setDraft(brief ?? '')
+          }}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    )
+  }
+
+  if (!brief && editable) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+      >
+        <Pencil className="h-3 w-3" />
+        <span className="italic">Set mission brief...</span>
+      </button>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => editable && setEditing(true)}
+      className={cn(
+        'mt-1 flex items-center gap-1.5 text-sm text-muted-foreground group',
+        editable && 'cursor-pointer hover:text-foreground',
+      )}
+    >
+      <span className="line-clamp-1">{brief}</span>
+      {editable && (
+        <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+      )}
+    </button>
   )
 }

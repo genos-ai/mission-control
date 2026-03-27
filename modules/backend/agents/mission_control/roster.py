@@ -1,18 +1,13 @@
-"""Agent roster loader and validator.
+"""Agent roster derived from DB-backed mission team.
 
 The roster defines which agents are available for Mission Control dispatch.
-
-Two loading modes:
-  1. YAML-based (load_roster) — loads from config/mission_control/rosters/*.yaml
-  2. DB-based (derive_roster_from_team) — joins mission_team_members + agent_catalog
+Built by joining mission_team_members + agent_catalog.
 
 Planning Agent and Verification Agent are auto-included in every roster.
 """
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -95,50 +90,6 @@ PLANNING_AGENT_NAME = "horizontal.planning.agent"
 VERIFICATION_AGENT_NAME = "horizontal.verification.agent"
 
 
-def load_roster(roster_name: str = "default") -> Roster:
-    """Load and validate a roster from YAML.
-
-    Planning and verification agents must be defined in the roster YAML.
-    Raises ValueError if either is missing.
-    """
-    roster_path = (
-        find_project_root()
-        / "config"
-        / "mission_control"
-        / "rosters"
-        / f"{roster_name}.yaml"
-    )
-    if not roster_path.exists():
-        raise FileNotFoundError(f"Roster not found: {roster_path}")
-
-    with open(roster_path) as f:
-        raw = yaml.safe_load(f)
-
-    roster = Roster.model_validate(raw)
-
-    # Validate required infrastructure agents are present in YAML
-    missing = []
-    if not roster.get_agent_by_name(PLANNING_AGENT_NAME):
-        missing.append(PLANNING_AGENT_NAME)
-    if not roster.get_agent_by_name(VERIFICATION_AGENT_NAME):
-        missing.append(VERIFICATION_AGENT_NAME)
-    if missing:
-        raise ValueError(
-            f"Roster '{roster_name}' is missing required agents: "
-            f"{', '.join(missing)}. Add them to {roster_path}."
-        )
-
-    logger.info(
-        "Roster loaded",
-        extra={
-            "roster": roster_name,
-            "agent_count": len(roster.agents),
-            "agents": roster.agent_names,
-        },
-    )
-    return roster
-
-
 async def derive_roster_from_team(
     mission_id: str,
     session: "AsyncSession",
@@ -146,8 +97,9 @@ async def derive_roster_from_team(
     """Build a Roster from the DB-backed mission team + agent catalog.
 
     Joins mission_team_members (enabled=True) with agent_catalog to
-    construct RosterAgentEntry objects. Falls back to YAML-based
-    load_roster() if no team members are found.
+    construct RosterAgentEntry objects.
+
+    Raises ValueError if no team members are assigned.
     """
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,11 +112,10 @@ async def derive_roster_from_team(
     members = await team_repo.list_by_mission(mission_id, enabled_only=True)
 
     if not members:
-        logger.info(
-            "No team members found, falling back to YAML roster",
-            extra={"mission_id": mission_id},
+        raise ValueError(
+            f"Mission '{mission_id}' has no agents assigned. "
+            "Add agents via the Team tab or seed from the catalog."
         )
-        return load_roster()
 
     entries: list[RosterAgentEntry] = []
     for member in members:
@@ -206,6 +157,12 @@ async def derive_roster_from_team(
             ),
         ))
 
+    if not entries:
+        raise ValueError(
+            f"Mission '{mission_id}' has team members but none resolved "
+            "to enabled catalog agents."
+        )
+
     roster = Roster(agents=entries)
 
     missing = []
@@ -214,9 +171,9 @@ async def derive_roster_from_team(
     if not roster.get_agent_by_name(VERIFICATION_AGENT_NAME):
         missing.append(VERIFICATION_AGENT_NAME)
     if missing:
-        logger.warning(
-            "DB-derived roster missing required agents — they must be on the team",
-            extra={"mission_id": mission_id, "missing": missing},
+        raise ValueError(
+            f"Mission team is missing required agents: {', '.join(missing)}. "
+            "Add them via the Team tab."
         )
 
     logger.info(

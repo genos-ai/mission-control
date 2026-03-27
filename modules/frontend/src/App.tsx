@@ -18,6 +18,7 @@ import TeamPage from '@/pages/mission/team'
 import ChatPage from '@/pages/mission/chat'
 import WorkflowsPage from '@/pages/mission/workflows'
 import RunsPage from '@/pages/mission/runs'
+import RunLivePage from '@/pages/mission/run-live'
 import WorkshopPage from '@/pages/mission/workshop'
 import ContextPage from '@/pages/mission/context'
 
@@ -59,7 +60,7 @@ export default function App() {
             <Route path="chat/:threadId" element={<ChatPage />} />
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="runs" element={<RunsPage />} />
-            <Route path="runs/:runId" element={<RunsPage />} />
+            <Route path="runs/:runId" element={<RunLivePage />} />
             <Route path="workshop" element={<WorkshopPage />} />
             <Route path="context" element={<ContextPage />} />
           </Route>

@@ -1,17 +1,16 @@
 import { useState } from 'react'
 import { Activity, CheckCircle, XCircle, Circle, Pause } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { api } from '@/lib/api'
 import { useRunStream } from '@/hooks/use-sse'
 import { useDrawerStore } from '@/stores/drawer'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { GateApproval } from '@/components/mission/gate-approval'
 import type { ExecutionRecord } from '@/types'
 
 interface ActiveRunCardProps {
   execution: ExecutionRecord
+  onClick?: () => void
 }
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
@@ -22,23 +21,23 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
   gate: <Pause className="h-3.5 w-3.5 text-amber-500" />,
 }
 
-export function ActiveRunCard({ execution }: ActiveRunCardProps) {
+export function ActiveRunCard({ execution, onClick }: ActiveRunCardProps) {
   const { events, connected } = useRunStream(execution.session_id)
   const { open: openDrawer } = useDrawerStore()
-  const [gateState, setGateState] = useState<{
-    executionId: string
-    visible: boolean
-  } | null>(null)
+  const [gateResolved, setGateResolved] = useState(false)
 
   // Detect gate approval requests from SSE events
   const latestGate = [...events].reverse().find(
     (e: { event_type: string }) => e.event_type === 'agent.approval.requested',
   )
 
-  const showGate = latestGate && !gateState?.visible
+  const showGate = latestGate && !gateResolved
 
   return (
-    <Card className="border-amber-500/30 bg-amber-500/5">
+    <Card
+      className="border-amber-500/30 bg-amber-500/5 cursor-pointer"
+      onClick={onClick}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -54,11 +53,12 @@ export function ActiveRunCard({ execution }: ActiveRunCardProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() =>
+              onClick={(e) => {
+                e.stopPropagation()
                 openDrawer('run-events', {
                   sessionId: execution.session_id,
                 })
-              }
+              }}
             >
               View Events
             </Button>
@@ -95,99 +95,15 @@ export function ActiveRunCard({ execution }: ActiveRunCardProps) {
 
         {/* Gate approval UI */}
         {showGate && (
-          <GateApproval
-            executionId={execution.id}
-            gateData={latestGate.data}
-            onResolved={() => setGateState({ executionId: execution.id, visible: true })}
-          />
+          <div onClick={(e) => e.stopPropagation()}>
+            <GateApproval
+              executionId={execution.id}
+              gateMessage={String(latestGate.data.message ?? '')}
+              onResolved={() => setGateResolved(true)}
+            />
+          </div>
         )}
       </CardContent>
     </Card>
-  )
-}
-
-function GateApproval({
-  executionId,
-  gateData,
-  onResolved,
-}: {
-  executionId: string
-  gateData: Record<string, unknown>
-  onResolved: () => void
-}) {
-  const [feedback, setFeedback] = useState('')
-  const [showFeedback, setShowFeedback] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-
-  const submit = async (decision: string) => {
-    setSubmitting(true)
-    try {
-      await api.post(
-        `/executions/${executionId}/approve?decision=${decision}&responder_id=user:web${feedback ? `&reason=${encodeURIComponent(feedback)}` : ''}`,
-      )
-      toast.success(`Gate ${decision}`)
-      onResolved()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <Pause className="h-4 w-4 text-amber-500" />
-        <span className="text-sm font-medium">Gate Approval Required</span>
-      </div>
-
-      {gateData.message != null ? (
-        <p className="text-xs text-muted-foreground">
-          {String(gateData.message)}
-        </p>
-      ) : null}
-
-      {showFeedback && (
-        <Textarea
-          value={feedback}
-          onChange={(e) => setFeedback(e.target.value)}
-          rows={2}
-          placeholder="Feedback for retry..."
-          className="text-xs"
-        />
-      )}
-
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          onClick={() => submit('approve')}
-          disabled={submitting}
-        >
-          Approve
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            if (!showFeedback) {
-              setShowFeedback(true)
-            } else {
-              submit('retry')
-            }
-          }}
-          disabled={submitting}
-        >
-          {showFeedback ? 'Retry' : 'Retry with Feedback'}
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => submit('reject')}
-          disabled={submitting}
-        >
-          Reject
-        </Button>
-      </div>
-    </div>
   )
 }

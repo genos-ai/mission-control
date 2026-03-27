@@ -1,10 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type {
   ExecutionRecord,
   ExecutionRecordDetail,
   ExecutionDecision,
   ExecutionCostBreakdown,
+  ExecutionCreateRequest,
+  ExecutionCreateResponse,
 } from '@/types'
 
 export const executionKeys = {
@@ -60,5 +62,48 @@ export function useExecutionCost(id: string | undefined) {
     queryFn: () =>
       api.get<ExecutionCostBreakdown>(`/executions/${id}/cost`),
     enabled: !!id,
+  })
+}
+
+export function useCreateExecution() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: ExecutionCreateRequest) =>
+      api.post<ExecutionCreateResponse>('/workflows/missions', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['executions'] })
+    },
+  })
+}
+
+export function useStartExecution() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (executionId: string) =>
+      api.post<ExecutionRecordDetail>(`/executions/${executionId}/execute`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['executions'] })
+    },
+  })
+}
+
+export function useSubmitApproval() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      executionId: string
+      decision: 'approve' | 'reject' | 'retry'
+      reason?: string
+    }) => {
+      const qs = new URLSearchParams({
+        decision: params.decision,
+        responder_id: 'user:web',
+      })
+      if (params.reason) qs.set('reason', params.reason)
+      return api.post(`/executions/${params.executionId}/submit-approval?${qs}`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['executions'] })
+    },
   })
 }

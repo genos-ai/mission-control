@@ -446,6 +446,22 @@ export interface ChangePasswordRequest {
   new_password: string
 }
 
+// Execution create/execute types
+export interface ExecutionCreateRequest {
+  objective: string
+  triggered_by: string
+  mission_id?: string
+  roster_ref?: string
+  complexity_tier?: string
+  cost_ceiling_usd?: number
+}
+
+export interface ExecutionCreateResponse {
+  id: string
+  session_id: string
+  status: string
+}
+
 // Drawer types
 export type DrawerContentType =
   | 'run-events'

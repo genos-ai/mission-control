@@ -150,6 +150,40 @@ class MissionTeamService(BaseService):
         )
         return member
 
+    async def seed_from_catalog(
+        self,
+        mission_id: str,
+    ) -> list[MissionTeamMember]:
+        """Seed a mission's team from all enabled agents in the catalog.
+
+        Adds each enabled catalog agent to mission_team_members if not
+        already present. Idempotent. Returns newly added members.
+        """
+        await self._mission_repo.get_by_id(mission_id)  # ensure exists
+
+        all_agents = await self._catalog_repo.list_enabled()
+
+        added: list[MissionTeamMember] = []
+        for catalog_agent in all_agents:
+            existing = await self._team_repo.get_by_mission_and_agent(
+                mission_id, catalog_agent.id,
+            )
+            if existing:
+                continue
+
+            member = await self._team_repo.create(
+                mission_id=mission_id,
+                agent_catalog_id=catalog_agent.id,
+            )
+            added.append(member)
+
+        self._log_operation(
+            "Team seeded from catalog",
+            mission_id=mission_id,
+            added_count=len(added),
+        )
+        return added
+
     async def list_team(
         self,
         mission_id: str,

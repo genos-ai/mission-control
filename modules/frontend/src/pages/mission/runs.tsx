@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Play, ChevronDown, ChevronRight, FileText, DollarSign, List } from 'lucide-react'
+import { Play, ChevronDown, ChevronRight, FileText, DollarSign, List, Radio } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useExecutions, useExecution, useExecutionDecisions } from '@/hooks/use-executions'
 import { useDrawerStore } from '@/stores/drawer'
@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { EmptyState } from '@/components/ui/empty-state'
+import { RunModal } from '@/components/mission/run-modal'
+import { ROUTES } from '@/lib/constants'
 import type { ExecutionRecord } from '@/types'
 
 const STATUS_BADGE: Record<string, { variant: 'success' | 'destructive' | 'warning' | 'secondary'; label: string }> = {
@@ -23,6 +25,7 @@ export default function RunsPage() {
   const navigate = useNavigate()
   const { data, isLoading } = useExecutions({ limit: 50, mission_id: missionId })
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showRunModal, setShowRunModal] = useState(false)
 
   if (isLoading) {
     return (
@@ -59,7 +62,22 @@ export default function RunsPage() {
             {data?.total ?? 0} total executions
           </p>
         </div>
+        <Button onClick={() => setShowRunModal(true)}>
+          <Play className="mr-2 h-4 w-4" />
+          New Run
+        </Button>
       </div>
+
+      {showRunModal && (
+        <RunModal
+          missionId={missionId!}
+          onClose={() => setShowRunModal(false)}
+          onStarted={(execId) => {
+            setShowRunModal(false)
+            navigate(ROUTES.MISSION_RUN_LIVE(missionId!, execId))
+          }}
+        />
+      )}
 
       {/* Table */}
       <div className="rounded-lg border">
@@ -80,6 +98,7 @@ export default function RunsPage() {
             onToggle={() =>
               setExpandedId(expandedId === exec.id ? null : exec.id)
             }
+            missionId={missionId!}
           />
         ))}
       </div>
@@ -91,48 +110,63 @@ function RunRow({
   execution,
   expanded,
   onToggle,
+  missionId,
 }: {
   execution: ExecutionRecord
   expanded: boolean
   onToggle: () => void
+  missionId: string
 }) {
+  const navigate = useNavigate()
   const badge = STATUS_BADGE[execution.status] ?? STATUS_BADGE.pending
+  const isRunning = execution.status === 'running'
 
   return (
     <div className="border-b last:border-b-0">
-      <button
-        onClick={onToggle}
-        className="grid w-full grid-cols-[2rem_1fr_6rem_5rem_5rem_8rem] gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-accent"
-      >
-        <span className="flex items-center">
+      <div className="grid w-full grid-cols-[2rem_1fr_6rem_5rem_5rem_8rem] gap-2 px-4 py-3 text-sm">
+        <button
+          onClick={onToggle}
+          className="flex items-center"
+        >
           {expanded ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
             <ChevronRight className="h-4 w-4" />
           )}
-        </span>
-        <span className="truncate font-mono text-xs">
-          {execution.id.slice(0, 8)}
-        </span>
-        <span>
+        </button>
+        <button
+          onClick={isRunning ? () => navigate(ROUTES.MISSION_RUN_LIVE(missionId, execution.id)) : onToggle}
+          className="flex items-center gap-2 truncate text-left"
+        >
+          <span className="truncate font-mono text-xs">
+            {execution.id.slice(0, 8)}
+          </span>
+          {isRunning && (
+            <Badge variant="warning" className="text-[10px]">
+              <Radio className="mr-1 h-2.5 w-2.5 animate-pulse" />
+              Live
+            </Badge>
+          )}
+        </button>
+        <span className="flex items-center">
           <Badge variant={badge.variant} className="text-[10px]">
             {badge.label}
           </Badge>
         </span>
-        <span className="text-right text-xs">
+        <span className="flex items-center justify-end text-xs">
           ${execution.total_cost_usd.toFixed(4)}
         </span>
-        <span className="truncate text-xs text-muted-foreground">
+        <span className="flex items-center truncate text-xs text-muted-foreground">
           {execution.roster_name ?? '—'}
         </span>
-        <span className="text-right text-xs text-muted-foreground">
+        <span className="flex items-center justify-end text-xs text-muted-foreground">
           {execution.created_at
             ? formatDistanceToNow(new Date(execution.created_at), {
                 addSuffix: true,
               })
             : '—'}
         </span>
-      </button>
+      </div>
 
       {expanded && <RunDetail executionId={execution.id} />}
     </div>

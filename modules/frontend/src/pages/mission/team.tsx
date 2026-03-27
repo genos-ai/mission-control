@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Users, Trash2, History, Save, Plus } from 'lucide-react'
+import { Users, Trash2, History, Save, Plus, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useTeam, useRemoveFromTeam, useUpdatePrompt } from '@/hooks/use-team'
+import { useTeam, useRemoveFromTeam, useUpdatePrompt, useSeedTeam } from '@/hooks/use-team'
 import { useCatalog } from '@/hooks/use-catalog'
+import { useMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,6 +19,7 @@ export default function TeamPage() {
   const { id: missionId } = useParams<{ id: string }>()
   const { data: members, isLoading } = useTeam(missionId)
   const { data: catalog } = useCatalog()
+  const { data: mission } = useMission(missionId)
   const { open: openDrawer } = useDrawerStore()
 
   if (isLoading) {
@@ -28,19 +30,35 @@ export default function TeamPage() {
     )
   }
 
+  const seedMutation = useSeedTeam(missionId!)
+
   if (!members?.length) {
     return (
       <div className="p-6">
         <EmptyState
           icon={<Users className="h-6 w-6 text-muted-foreground" />}
           title="No agents yet"
-          description="Add agents from the catalog to build your mission team."
+          description="Add all available agents from the catalog, or pick them individually."
           action={{
-            label: 'Browse Catalog',
+            label: 'Add All Agents',
             onClick: () =>
-              openDrawer('agent-detail', { missionId, mode: 'add-from-catalog' }),
+              seedMutation.mutate(undefined, {
+                onSuccess: () => toast.success('Agents added to team'),
+                onError: (err) => toast.error(err.message),
+              }),
           }}
         />
+        <div className="mt-3 text-center">
+          <Button
+            variant="link"
+            size="sm"
+            onClick={() =>
+              openDrawer('agent-detail', { missionId, mode: 'add-from-catalog' })
+            }
+          >
+            Or browse the catalog manually
+          </Button>
+        </div>
       </div>
     )
   }
@@ -69,6 +87,19 @@ export default function TeamPage() {
           Add Agent
         </Button>
       </div>
+
+      {/* Mission brief context — helps when writing agent prompts */}
+      {mission?.brief && (
+        <div className="mb-6 flex items-start gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+          <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">
+              Mission Brief
+            </p>
+            <p className="mt-0.5 text-sm">{mission.brief}</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4">
         {members.map((member) => (

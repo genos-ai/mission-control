@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   GitBranch,
   Clock,
@@ -8,6 +8,7 @@ import {
   Import,
   MessageSquare,
   CalendarClock,
+  Play,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
@@ -25,6 +26,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { DagGraph } from '@/components/workflow/dag-graph'
 import { StepDetail } from '@/components/workflow/step-detail'
 import { ScheduleModal } from '@/components/workflow/schedule-modal'
+import { RunModal } from '@/components/mission/run-modal'
+import { ROUTES } from '@/lib/constants'
 import type { MissionWorkflow, WorkflowStep } from '@/types'
 
 const TRIGGER_ICONS: Record<string, React.ReactNode> = {
@@ -173,11 +176,13 @@ function WorkflowDetailPanel({
   workflow: MissionWorkflow
   missionId: string
 }) {
+  const navigate = useNavigate()
   // Load the full template detail if this workflow has a matching template name
   const { data: template } = useWorkflowTemplate(workflow.name)
   const { data: schedules } = useSchedules(missionId)
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [showRunModal, setShowRunModal] = useState(false)
 
   const workflowSchedules = schedules?.filter(
     (s) => s.workflow_definition_id === workflow.id,
@@ -211,6 +216,13 @@ function WorkflowDetailPanel({
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setShowRunModal(true)}
+          >
+            <Play className="mr-1 h-3.5 w-3.5" />
+            Run
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -278,6 +290,19 @@ function WorkflowDetailPanel({
           missionId={missionId}
           workflowDefinitionId={workflow.id}
           onClose={() => setShowScheduleModal(false)}
+        />
+      )}
+
+      {/* Run modal */}
+      {showRunModal && (
+        <RunModal
+          missionId={missionId}
+          workflowName={workflow.name}
+          onClose={() => setShowRunModal(false)}
+          onStarted={(execId) => {
+            setShowRunModal(false)
+            navigate(ROUTES.MISSION_RUN_LIVE(missionId, execId))
+          }}
         />
       )}
     </div>

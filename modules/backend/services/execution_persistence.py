@@ -282,7 +282,10 @@ class ExecutionPersistenceService(BaseService):
             limit = config.default_page_size
         limit = min(limit, config.max_page_size)
 
-        record_status = ExecutionRecordStatus(status) if status else None
+        try:
+            record_status = ExecutionRecordStatus(status) if status else None
+        except ValueError:
+            record_status = None
         return await self._repo.list_executions(
             status=record_status,
             roster_name=roster_name,

@@ -17,11 +17,24 @@ export function useTeam(missionId: string | undefined) {
   return useQuery({
     queryKey: teamKeys.all(missionId!),
     queryFn: () =>
-      api.get<{ members: MissionTeamMember[]; total: number }>(
+      api.get<{ team_members: MissionTeamMember[]; total: number }>(
         `/missions/${missionId}/team`,
       ),
-    select: (data) => data.members,
+    select: (data) => data.team_members,
     enabled: !!missionId,
+  })
+}
+
+export function useSeedTeam(missionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ added_count: number }>(
+        `/missions/${missionId}/team/seed`,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teamKeys.all(missionId) })
+    },
   })
 }
 

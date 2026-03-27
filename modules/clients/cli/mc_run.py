@@ -53,7 +53,14 @@ async def run(
         )
 
 
-async def retry(n: int, *, mission_id: str, gate_override: str | None) -> None:
+async def retry(
+    n: int,
+    *,
+    mission_id: str,
+    gate_override: str | None,
+    quiet: bool = False,
+    verbose: bool = False,
+) -> None:
     """Re-run the Nth most recent execution."""
     from modules.backend.services.execution import ExecutionService
 
@@ -71,8 +78,8 @@ async def retry(n: int, *, mission_id: str, gate_override: str | None) -> None:
         budget=original.cost_ceiling_usd,
         gate_override=gate_override,
         dry_run=False,
-        quiet=False,
-        verbose=False,
+        quiet=quiet,
+        verbose=verbose,
     )
 
 
@@ -114,36 +121,54 @@ async def _run_workflow(
         mission = await svc.get_mission(mission_id)
     mission_name = mission.name
 
-    from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
     from modules.clients.cli.report import render_workflow_completion
 
-    console = get_console()
-    console.print(f"[bold]Running workflow:[/bold] {workflow.workflow_name}\n")
-
-    display = LiveExecutionDisplay(show_thinking=not quiet)
-    event_bus = display.create_event_bus()
-
     # Merge context overrides
     merged_context = {**(workflow.context or {}), **context_overrides} if context_overrides else None
 
-    async with WorkflowRunService.factory(event_bus=event_bus) as run_service:
-        with display.start():
+    if verbose:
+        from modules.clients.cli.live_display import VerboseEventBus
+
+        click.echo(f"Running workflow: {workflow.workflow_name}\n")
+        event_bus = VerboseEventBus()
+
+        async with WorkflowRunService.factory(event_bus=event_bus) as run_service:
             wf_run = await run_service.run_workflow(
                 workflow_name=workflow.workflow_name,
                 triggered_by="user:mc",
-                on_progress=display.handle_progress,
+                on_progress=lambda e: click.echo(f"progress: {e}"),
                 mission_name=mission_name,
                 gate=gate,
                 context_overrides=merged_context,
             )
+    else:
+        from modules.clients.cli.live_display import LiveExecutionDisplay
+
+        console = get_console()
+        console.print(f"[bold]Running workflow:[/bold] {workflow.workflow_name}\n")
+
+        display = LiveExecutionDisplay(show_thinking=not quiet)
+        event_bus = display.create_event_bus()
+
+        async with WorkflowRunService.factory(event_bus=event_bus) as run_service:
+            with display.start():
+                wf_run = await run_service.run_workflow(
+                    workflow_name=workflow.workflow_name,
+                    triggered_by="user:mc",
+                    on_progress=display.handle_progress,
+                    mission_name=mission_name,
+                    gate=gate,
+                    context_overrides=merged_context,
+                )
 
     async with ExecutionService.factory() as execution_service:
         executions, _ = await execution_service.list_executions(
             workflow_run_id=wf_run.id,
         )
 
+    console = get_console()
     await render_workflow_completion(console, wf_run, executions)
 
 
@@ -169,9 +194,30 @@ async def _run_adhoc(
 
     gate = await _resolve_gate(mission_id, gate_override)
 
-    from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.backend.services.execution import ExecutionService
     from modules.clients.cli.report import render_execution
+
+    if verbose:
+        # Verbose / AI-friendly mode: raw JSONL event stream, no Rich
+        from modules.clients.cli.live_display import VerboseEventBus
+
+        click.echo(f"Running: {objective}\n")
+        event_bus = VerboseEventBus()
+
+        async with ExecutionService.factory(event_bus=event_bus) as svc:
+            execution = await svc.create_adhoc_execution(
+                objective=objective,
+                triggered_by="user:mc",
+                session_id=str(uuid4()),
+                mission_id=mission_id,
+                cost_ceiling_usd=budget,
+            )
+            execution = await svc.run_execution(execution.id, gate=gate)
+
+        await render_execution(execution, "human")
+        return
+
+    from modules.clients.cli.live_display import LiveExecutionDisplay
 
     console = get_console()
     console.print(f"[bold]Running:[/bold] {objective}\n")
@@ -188,7 +234,17 @@ async def _run_adhoc(
             cost_ceiling_usd=budget,
         )
         with display.start():
-            execution = await svc.run_execution(execution.id, gate=gate)
+            try:
+                execution = await svc.run_execution(execution.id, gate=gate)
+            except Exception as exc:
+                display.add_error(str(exc))
+                import asyncio
+                await asyncio.sleep(2)  # brief pause so user can see the error
+                raise
+            finally:
+                status = getattr(execution, "status", "failed")
+                s = status.value if hasattr(status, "value") else str(status)
+                display.set_status("success" if s == "completed" else "failed" if s == "failed" else s)
 
     await render_execution(execution, "human")
 
