@@ -14,8 +14,16 @@ async def list_team(mission_id: str) -> None:
 
     console = get_console()
 
+    from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+
     async with MissionTeamService.factory() as svc:
         members = await svc.list_team(mission_id, enabled_only=False)
+        catalog_repo = AgentCatalogRepository(svc._session)
+        catalog_map = {}
+        for m in members:
+            entry = await catalog_repo.get_by_id_or_none(m.agent_catalog_id)
+            if entry:
+                catalog_map[m.agent_catalog_id] = entry.agent_name
 
     if not members:
         console.print("[dim]No agents assigned to this mission.[/dim]")
@@ -31,7 +39,7 @@ async def list_team(mission_id: str) -> None:
     for m in members:
         enabled = "[green]yes[/green]" if m.enabled else "[red]no[/red]"
         when = m.created_at.strftime("%m-%d %H:%M") if m.created_at else ""
-        agent_name = m.agent_catalog.agent_name if m.agent_catalog else str(m.agent_catalog_id)
+        agent_name = catalog_map.get(m.agent_catalog_id, m.agent_catalog_id)
         table.add_row(agent_name, enabled, when)
 
     console.print(table)
