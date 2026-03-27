@@ -125,10 +125,8 @@ async def _action_list(cli_logger, *, output_format, **_):
             for member in members:
                 entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
                 if entry:
-                    # Short name: "code.quality.agent" → "quality"
-                    parts = entry.agent_name.split(".")
-                    names.append(parts[-2] if len(parts) >= 2 else parts[0])
-            team_summaries[m.id] = f"{len(members)}: {', '.join(names)}" if names else "[dim]none[/dim]"
+                    names.append(entry.agent_name)
+            team_summaries[m.id] = "\n".join(names) if names else "[dim]none[/dim]"
 
     table = build_table("Missions", columns=[
         ("Status", {"width": 10}),
