@@ -232,7 +232,10 @@ def retry(ctx, n, gate_override):
 
     async def _run():
         mid = await _async_require_mission()
-        await mc_retry(n, mission_id=mid, gate_override=gate_override)
+        await mc_retry(
+            n, mission_id=mid, gate_override=gate_override,
+            quiet=ctx.quiet, verbose=ctx.verbose,
+        )
 
     asyncio.run(_run())
 
@@ -250,7 +253,7 @@ def status(ctx):
 
     async def _run():
         mid = await _async_require_mission()
-        await show_status(mid)
+        await show_status(mid, verbose=ctx.verbose)
 
     asyncio.run(_run())
 
@@ -264,7 +267,7 @@ def history(ctx, n):
 
     async def _run():
         mid = await _async_require_mission()
-        await show_history(n, mission_id=mid)
+        await show_history(n, mission_id=mid, verbose=ctx.verbose)
 
     asyncio.run(_run())
 
@@ -275,16 +278,20 @@ def history(ctx, n):
 
 
 @mc.command()
-@click.argument("agent_or_message", nargs=-1)
+@click.argument("message", required=False)
+@click.option("--agent", "-a", "agent_name", default=None,
+              help="Target a specific agent (default: planning agent).")
 @click.pass_obj
-def chat(ctx, agent_or_message):
+def chat(ctx, message, agent_name):
     """Talk to your AI team. Interactive REPL or single-shot."""
-    agent_name, message = _parse_chat_args(agent_or_message)
     from modules.clients.cli.mc_chat import chat_repl
 
     async def _run():
         mid = await _async_require_mission()
-        await chat_repl(agent_name=agent_name, initial_message=message, mission_id=mid)
+        await chat_repl(
+            agent_name=agent_name, initial_message=message,
+            mission_id=mid, verbose=ctx.verbose,
+        )
 
     asyncio.run(_run())
 
@@ -298,30 +305,9 @@ def design(ctx, description):
 
     async def _run():
         mid = await _async_require_mission()
-        await design_repl(description=description, mission_id=mid)
+        await design_repl(description=description, mission_id=mid, verbose=ctx.verbose)
 
     asyncio.run(_run())
-
-
-def _parse_chat_args(args: tuple) -> tuple[str | None, str | None]:
-    """Parse chat arguments: agent name, message, or both.
-
-    mc chat                   → (None, None)       — REPL with coordinator
-    mc chat "question"        → (None, "question")  — single-shot
-    mc chat agent-name        → ("agent-name", None) — REPL with agent
-    mc chat agent-name "q"    → ("agent-name", "q")  — single-shot to agent
-    """
-    if not args:
-        return None, None
-    if len(args) == 1:
-        # If it looks like a message (has spaces or is quoted), treat as message
-        val = args[0]
-        if " " in val or len(val) > 30:
-            return None, val
-        # Could be an agent name — try to resolve
-        return val, None
-    # Two+ args: first is agent, rest is message
-    return args[0], " ".join(args[1:])
 
 
 # =============================================================================

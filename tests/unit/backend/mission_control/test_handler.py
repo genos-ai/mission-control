@@ -60,13 +60,25 @@ def _patch_build_model():
     )
 
 
+STUB_MISSION_ID = "test-mission-00000000-0000-0000-0000-000000000000"
+
+
+def _patch_mission_context():
+    """Stub out mission context loading — tests don't need real missions."""
+    return patch(
+        "modules.backend.agents.mission_control.mission_control._prepend_mission_context",
+        side_effect=lambda mid, msg: msg,
+    )
+
+
 async def _collect_events(session_id, message, session_service):
     """Helper: consume handle() and return list of events."""
     events = []
-    with _patch_build_model():
+    with _patch_build_model(), _patch_mission_context():
         async for event in handle(
             str(session_id),
             message,
+            mission_id=STUB_MISSION_ID,
             session_service=session_service,
         ):
             events.append(event)
@@ -205,8 +217,12 @@ class TestHandleErrors:
         """Invalid session_id yields an error complete event, no exception."""
         fake_id = str(uuid.uuid4())
         events = []
-        with _patch_build_model():
-            async for event in handle(fake_id, "hello", session_service=session_service):
+        with _patch_build_model(), _patch_mission_context():
+            async for event in handle(
+                fake_id, "hello",
+                mission_id=STUB_MISSION_ID,
+                session_service=session_service,
+            ):
                 events.append(event)
 
         complete = [e for e in events if isinstance(e, AgentResponseCompleteEvent)]

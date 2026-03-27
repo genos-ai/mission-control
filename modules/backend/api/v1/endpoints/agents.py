@@ -28,6 +28,10 @@ class ChatRequest(BaseModel):
         min_length=1,
         description="User message to send to the agent",
     )
+    mission_id: str = Field(
+        ...,
+        description="Mission ID. Every conversation must be scoped to a mission.",
+    )
     agent: str | None = Field(
         default=None,
         description="Target a specific agent by name, bypassing routing.",
@@ -109,7 +113,11 @@ async def agent_chat_stream(
     )
 
     async def generate():
-        async for event in handle(session_id, data.message, session_service=service):
+        async for event in handle(
+            session_id, data.message,
+            mission_id=data.mission_id,
+            session_service=service,
+        ):
             yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
         yield "event: done\ndata: {}\n\n"
 

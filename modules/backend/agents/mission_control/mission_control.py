@@ -43,7 +43,7 @@ from modules.backend.core.protocols import SessionServiceProtocol
 from modules.backend.agents.mission_control.outcome import ExecutionOutcome, ExecutionStatus
 from modules.backend.agents.mission_control.plan_validator import validate_plan
 from modules.backend.agents.mission_control.registry import get_registry
-from modules.backend.agents.mission_control.roster import load_roster
+from modules.backend.agents.mission_control.roster import derive_roster_from_team
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import (
     AgentResponseChunkEvent,
@@ -79,10 +79,38 @@ def list_agents() -> list[dict[str, Any]]:
     return get_registry().list_all()
 
 
+async def _prepend_mission_context(mission_id: str, message: str) -> str:
+    """Load mission and prepend context to the user message.
+
+    Gives the agent awareness of the active mission (name, description,
+    brief) so it can answer questions and plan within that scope.
+    """
+    from modules.backend.services.mission import MissionService
+
+    try:
+        async with MissionService.factory() as svc:
+            mission = await svc.get_mission(mission_id)
+    except Exception:
+        logger.warning("Could not load mission context", extra={"mission_id": mission_id})
+        return message
+
+    parts = [f"[Mission Context]", f"Mission: {mission.name}"]
+    if mission.description:
+        parts.append(f"Description: {mission.description}")
+    if mission.brief:
+        parts.append(f"Brief: {mission.brief}")
+    parts.append("[End Mission Context]")
+    parts.append("")
+    parts.append(message)
+
+    return "\n".join(parts)
+
+
 async def handle(
     session_id: str,
     message: str,
     *,
+    mission_id: str,
     session_service: SessionServiceProtocol,
     event_bus: EventBusProtocol = NoOpEventBus(),
     channel: str = "api",
@@ -91,9 +119,12 @@ async def handle(
 ) -> AsyncIterator[SessionEvent]:
     """Universal streaming mission control entry point.
 
+    Every conversation happens within a mission — mission_id is required.
+    Mission context is injected into the agent's first message so it
+    knows what mission it's operating in.
+
     Simple requests: existing direct-agent path (Plan 12).
     Complex requests: routed to dispatch via handle_mission() (Plan 13).
-
     A request is complex if mission_brief is explicitly provided.
 
     Yields SessionEvent instances as the agent works.
@@ -191,6 +222,11 @@ async def handle(
         # Load conversation history
         history_messages, _ = await session_service.get_messages(session_id, limit=100)
         model_history = session_messages_to_model_history(history_messages)
+
+        # Inject mission context on first turn so the agent knows
+        # what mission it's operating in
+        if not model_history:
+            message = await _prepend_mission_context(mission_id, message)
 
         # 7. Execute agent with streaming
         full_content = ""
@@ -378,7 +414,12 @@ async def handle_mission(
     Complex requests (explicit mission_brief or matched workflow)
     route here.
     """
-    roster = load_roster(roster_name)
+    if not mission_id or not db_session:
+        raise ValueError(
+            "mission_id and db_session are required for dispatch. "
+            "Agents are resolved from the mission team in the database."
+        )
+    roster = await derive_roster_from_team(mission_id, db_session)
     roster_description = _build_roster_prompt(roster)
 
     # Create context services BEFORE planning so the planner gets PCD + history

@@ -155,6 +155,7 @@ class RoutingSchema(_StrictBase):
     llm_model: str
     complex_request_agent: str
     fallback_agent: str
+    chat_agent: str
     max_routing_depth: int
 
 

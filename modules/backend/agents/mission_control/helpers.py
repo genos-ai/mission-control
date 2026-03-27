@@ -244,6 +244,12 @@ def _resolve_agent(session: "SessionResponse", message: str) -> str:
     raise ValidationError(f"No agent matched. Available agents: {available}.")
 
 
+def get_chat_agent() -> str:
+    """Return the configured default agent for interactive chat sessions."""
+    mc_config = _load_mission_control_config()
+    return mc_config.routing.chat_agent
+
+
 # ---------------------------------------------------------------------------
 # Event / persistence plumbing
 # ---------------------------------------------------------------------------
@@ -637,10 +643,8 @@ async def _call_planning_agent(
 
     registry = get_registry()
     planning_cfg = registry.get("horizontal.planning.agent")
-    config = {
-        "model": _get_model_name(planning_cfg.model),
-    }
-    agent = create_agent(config)
+    model = _build_model(planning_cfg.model)
+    agent = create_agent(model)
 
     roster_desc = _build_roster_prompt(roster)
     planning_prompt = _build_planning_prompt(

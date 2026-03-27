@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, UsageLimits
 
-from modules.backend.agents.mission_control.helpers import _build_model
-from modules.backend.agents.mission_control.roster import load_roster
+from modules.backend.agents.mission_control.helpers import _build_model, _get_model_name
+from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -81,8 +81,12 @@ async def preflight_check(
         PreflightResult with per-model pass/fail.
     """
     if models is None:
-        roster = load_roster(roster_name)
-        model_names = list({agent.model.name for agent in roster.agents})
+        registry = get_registry()
+        all_agents = registry.list_all()
+        model_names = list({
+            _get_model_name(registry.get(a["agent_name"]).model)
+            for a in all_agents
+        })
     else:
         model_names = list(set(models))
 

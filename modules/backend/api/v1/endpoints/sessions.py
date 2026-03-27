@@ -253,6 +253,7 @@ async def get_messages(
 )
 async def send_message_stream(
     session_id: str,
+    mission_id: str,
     data: SessionMessageCreate,
     db: DbSession,
 ) -> StreamingResponse:
@@ -265,6 +266,7 @@ async def send_message_stream(
         async for event in handle(
             session_id,
             data.content,
+            mission_id=mission_id,
             session_service=service,
             sender_id=data.sender_id,
         ):

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from modules.backend.agents.deps.base import BaseAgentDeps
 from modules.backend.agents.mission_control.helpers import (
@@ -33,15 +34,14 @@ class PlanningAgentDeps(BaseAgentDeps):
     code_map: dict | None = None
 
 
-def create_agent(config: dict) -> Agent:
+def create_agent(model: str | Model) -> Agent:
     """Create the Planning Agent instance.
 
-    Model resolved from caller-provided config (sourced from agent.yaml).
-    System prompt loaded from config/prompts/agents/horizontal/planning/system.md.
+    Model resolved from caller (registry or direct). System prompt
+    loaded from config/prompts/agents/horizontal/planning/system.md.
     """
-    if "model" not in config:
-        raise ValueError("Planning agent requires 'model' in config (from agent.yaml)")
-    model = _build_model(config["model"])
+    if isinstance(model, str):
+        model = _build_model(model)
     system_prompt = assemble_instructions("horizontal", "planning")
 
     return Agent(

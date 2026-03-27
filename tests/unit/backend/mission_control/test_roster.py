@@ -3,13 +3,10 @@
 import pytest
 
 from modules.backend.agents.mission_control.roster import (
-    PLANNING_AGENT_NAME,
-    VERIFICATION_AGENT_NAME,
     Roster,
     RosterAgentEntry,
     RosterInterfaceSchema,
     RosterModelSchema,
-    load_roster,
 )
 
 
@@ -55,26 +52,3 @@ class TestRoster:
             )
 
 
-class TestLoadRoster:
-    def test_load_default_roster(self):
-        roster = load_roster("default")
-        assert len(roster.agents) >= 4  # 2 worker + planning + verification
-
-    def test_planning_agent_loaded_from_yaml(self):
-        roster = load_roster("default")
-        planning = roster.get_agent_by_name(PLANNING_AGENT_NAME)
-        assert planning is not None
-
-    def test_verification_agent_loaded_from_yaml(self):
-        roster = load_roster("default")
-        verification = roster.get_agent_by_name(VERIFICATION_AGENT_NAME)
-        assert verification is not None
-
-    def test_worker_agents_present(self):
-        roster = load_roster("default")
-        assert roster.get_agent_by_name("code.quality.agent") is not None
-        assert roster.get_agent_by_name("system.health.agent") is not None
-
-    def test_missing_roster_raises(self):
-        with pytest.raises(FileNotFoundError):
-            load_roster("nonexistent_roster")

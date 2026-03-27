@@ -161,23 +161,23 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
     if mission.repo_url:
         console.print(f"  Repo:        {mission.repo_url}")
 
-    # Show roster and agents
-    from modules.backend.agents.mission_control.roster import load_roster
+    # Show available agents from the registry
+    from modules.backend.agents.mission_control.registry import get_registry
     try:
-        roster = load_roster(mission.default_roster or "default")
-        roster_name = mission.default_roster or "default"
+        registry = get_registry()
+        all_agents = registry.list_all()
         vertical_agents = [
-            a for a in roster.agents if not a.agent_name.startswith("horizontal.")
+            a for a in all_agents if not a["agent_name"].startswith("horizontal.")
         ]
-        console.print(f"\n  [bold]Roster:[/bold] {roster_name}  ({len(vertical_agents)} agents)")
+        console.print(f"\n  [bold]Agents:[/bold]  ({len(vertical_agents)} available)")
         for agent in vertical_agents:
-            desc = agent.description.strip()[:60]
-            if len(agent.description.strip()) > 60:
+            desc = agent["description"].strip()[:60]
+            if len(agent["description"].strip()) > 60:
                 desc += "..."
-            console.print(f"    [cyan]{agent.agent_name}[/cyan]  v{agent.agent_version}")
+            console.print(f"    [cyan]{agent['agent_name']}[/cyan]")
             console.print(f"      {desc}")
-    except FileNotFoundError:
-        console.print(f"\n  [dim]Roster '{mission.default_roster}' not found.[/dim]")
+    except Exception:
+        console.print("\n  [dim]Could not load agent registry.[/dim]")
 
     from modules.backend.services.workflow import WorkflowService
     workflow_svc = WorkflowService()

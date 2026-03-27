@@ -14,7 +14,7 @@ from modules.backend.agents.mission_control.gate import GateReviewer
 from modules.backend.agents.mission_control.mission_control import handle_mission
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
 from modules.backend.agents.mission_control.outcome import ExecutionOutcome
-from modules.backend.agents.mission_control.roster import load_roster, Roster
+from modules.backend.agents.mission_control.roster import derive_roster_from_team, Roster
 from modules.backend.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -127,9 +127,9 @@ class ServiceBridge:
 
     # ── Roster ───────────────────────────────────────────────────────
 
-    def load_roster(self, roster_name: str = "default") -> Roster:
-        """Load agent roster from YAML config."""
-        return load_roster(roster_name)
+    async def load_roster(self, mission_id: str, db_session: "Any") -> Roster:
+        """Load agent roster from mission team in the database."""
+        return await derive_roster_from_team(mission_id, db_session)
 
     # ── Execution dispatch ──────────────────────────────────────────
 
