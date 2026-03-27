@@ -113,13 +113,15 @@ async def _action_list(cli_logger, *, output_format, **_):
         ("Status", {"width": 10}),
         ("Name", {"style": "cyan", "width": 32}),
         ("ID", {"width": 38}),
+        ("Gate", {"width": 12}),
         ("Roster", {"width": 15}),
         ("Description", {"ratio": 1}),
     ], show_lines=True, table_box=DOTTED_ROWS)
     for m in missions:
         desc = m.description[:60] + "..." if len(m.description or "") > 60 else (m.description or "")
         name = annotate_current_mission(m.name, m.id, current_mission_id)
-        table.add_row(styled_status(m.status), name, m.id, m.default_roster, desc)
+        gate = m.gate_mode or "[dim]off[/dim]"
+        table.add_row(styled_status(m.status), name, m.id, gate, m.default_roster, desc)
 
     console.print(table)
 
