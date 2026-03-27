@@ -195,7 +195,7 @@ async def handle(
                 session_id=sid,
                 source=source,
                 agent_id="mission_control",
-                full_content=f"Error: {exc}",
+                full_content=str(exc),
                 metadata={"error": True},
             )
         return
@@ -395,7 +395,7 @@ async def handle(
             session_id=sid,
             source=source,
             agent_id=agent_name,
-            full_content=f"Error: {exc}",
+            full_content=str(exc),
             metadata={"error": True},
         )
 
