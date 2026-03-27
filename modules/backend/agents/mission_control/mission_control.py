@@ -522,6 +522,14 @@ async def handle_mission(
     plan = None
     thinking_trace = None
     max_planning_attempts = 3
+    planning_agent_id = "horizontal.planning.agent"
+
+    # Emit planning started event
+    await _publish(event_bus, AgentThinkingEvent(
+        session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+        source="mission_control",
+        agent_id=planning_agent_id,
+    ))
 
     for attempt in range(max_planning_attempts):
         try:
@@ -562,7 +570,23 @@ async def handle_mission(
                 planning_prompt, [str(e)],
             )
 
-    if plan is None:
+    # Emit planning complete event
+    _sid = uuid.UUID(session_id) if session_id else uuid.uuid4()
+    if plan is not None:
+        await _publish(event_bus, AgentResponseCompleteEvent(
+            session_id=_sid,
+            source="mission_control",
+            agent_id=planning_agent_id,
+            full_content=f"Plan created: {len(plan.tasks)} tasks",
+        ))
+    else:
+        await _publish(event_bus, AgentResponseCompleteEvent(
+            session_id=_sid,
+            source="mission_control",
+            agent_id=planning_agent_id,
+            full_content="Planning failed after retries",
+            metadata={"error": True},
+        ))
         return ExecutionOutcome(
             mission_id=mission_run_id,
             status=ExecutionStatus.FAILED,
