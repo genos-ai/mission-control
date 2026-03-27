@@ -87,7 +87,7 @@ class LiveExecutionDisplay:
     Footer: cost, progress, status, elapsed time.
     """
 
-    def __init__(self, max_events: int = 30, show_thinking: bool = True) -> None:
+    def __init__(self, max_events: int = 100, show_thinking: bool = True) -> None:
         self._events: deque[SessionEvent] = deque(maxlen=max_events)
         self._total_cost: float = 0.0
         self._total_steps: int = 0
@@ -315,8 +315,8 @@ class LiveExecutionDisplay:
         if self._show_thinking and self._thinking_buffer:
             for aid, buf in self._thinking_buffer.items():
                 if buf:
-                    display_text = buf[-300:].replace("\n", " ")
-                    if len(buf) > 300:
+                    display_text = buf[-800:].replace("\n", " ")
+                    if len(buf) > 800:
                         display_text = "…" + display_text
                     activity_lines.append(
                         f"\U0001f4ad [cyan]{aid}[/cyan]:"
