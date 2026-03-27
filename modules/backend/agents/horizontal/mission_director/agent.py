@@ -235,11 +235,11 @@ def create_agent(model: str | Model) -> Agent:
         objective: str,
         budget_usd: float = 5.0,
     ) -> str:
-        """Trigger an ad-hoc execution with the given objective.
+        """Start an ad-hoc execution with the given objective.
 
-        This creates an execution and runs it through the dispatch loop
-        (planning -> task assignment -> agent execution -> verification).
-        Blocks until the dispatch completes.
+        Creates the execution and starts it in the background. Returns
+        the execution ID immediately — use get_execution_detail to
+        check progress and results.
 
         Args:
             objective: What to accomplish (e.g., "run a health check").
@@ -249,6 +249,7 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
+            import asyncio
             from modules.backend.services.execution import ExecutionService
 
             async with ExecutionService.factory() as svc:
@@ -258,16 +259,24 @@ def create_agent(model: str | Model) -> Agent:
                     cost_ceiling_usd=budget_usd,
                     mission_id=ctx.deps.mission_id,
                 )
-                execution = await svc.run_execution(str(execution.id))
+                execution_id = str(execution.id)
 
-            status = execution.status if isinstance(execution.status, str) else execution.status.value
+            # Run in background — don't block the chat
+            async def _run_in_background():
+                try:
+                    async with ExecutionService.factory() as svc:
+                        await svc.run_execution(execution_id)
+                except Exception:
+                    logger.error("Background execution failed", extra={"execution_id": execution_id})
+
+            asyncio.create_task(_run_in_background())
+
             return json.dumps({
-                "execution_id": str(execution.id),
-                "status": status,
-                "objective": execution.objective,
-                "total_cost_usd": execution.total_cost_usd,
-                "result_summary": execution.result_summary,
-                "error_data": execution.error_data,
+                "execution_id": execution_id,
+                "status": "started",
+                "objective": objective,
+                "budget_usd": budget_usd,
+                "message": "Execution started in background. Use get_execution_detail to check progress.",
             }, indent=2, default=str)
         except Exception as e:
             logger.error("run_objective failed", exc_info=True)
@@ -278,7 +287,10 @@ def create_agent(model: str | Model) -> Agent:
         ctx: RunContext[MissionDirectorDeps],
         workflow_name: str,
     ) -> str:
-        """Trigger a named workflow against the current mission.
+        """Start a named workflow against the current mission.
+
+        Creates the workflow run and starts it in the background. Returns
+        immediately — use get_execution_history to check progress.
 
         Args:
             workflow_name: The workflow identifier (e.g., "system.platform-audit.workflow").
@@ -287,29 +299,35 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
+            import asyncio
+
             # Resolve mission_id -> mission.name (WorkflowRunService needs mission_name)
             from modules.backend.services.mission import MissionService
 
             mission_svc = MissionService(ctx.deps.db_session)
             mission = await mission_svc.get_mission(ctx.deps.mission_id)
+            mission_name = mission.name
 
-            from modules.backend.services.workflow_run import WorkflowRunService
+            # Run in background — don't block the chat
+            async def _run_in_background():
+                try:
+                    from modules.backend.services.workflow_run import WorkflowRunService
+                    async with WorkflowRunService.factory() as svc:
+                        await svc.run_workflow(
+                            workflow_name=workflow_name,
+                            triggered_by="mission_director",
+                            mission_name=mission_name,
+                        )
+                except Exception:
+                    logger.error("Background workflow failed", extra={"workflow": workflow_name})
 
-            async with WorkflowRunService.factory() as svc:
-                run = await svc.run_workflow(
-                    workflow_name=workflow_name,
-                    triggered_by="mission_director",
-                    mission_name=mission.name,
-                )
+            asyncio.create_task(_run_in_background())
 
-            status = run.status if isinstance(run.status, str) else run.status.value
             return json.dumps({
-                "run_id": str(run.id),
-                "workflow_name": run.workflow_name,
-                "status": status,
-                "total_cost_usd": run.total_cost_usd,
-                "result_summary": run.result_summary,
-                "error_data": run.error_data,
+                "workflow_name": workflow_name,
+                "mission": mission_name,
+                "status": "started",
+                "message": "Workflow started in background. Use get_execution_history to check progress.",
             }, indent=2, default=str)
         except Exception as e:
             logger.error("run_workflow failed", exc_info=True)

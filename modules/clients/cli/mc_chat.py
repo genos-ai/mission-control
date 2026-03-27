@@ -34,6 +34,12 @@ async def chat_repl(
 
     console = get_console()
 
+    # Suppress console log noise during chat (warnings from dispatch loop etc.)
+    # Verbose mode keeps full logging; normal mode silences everything below CRITICAL.
+    if not verbose:
+        import logging
+        logging.getLogger().setLevel(logging.CRITICAL)
+
     # Resolve which agent to chat with
     target_agent = agent_name or get_chat_agent()
 
