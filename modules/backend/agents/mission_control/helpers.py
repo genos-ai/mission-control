@@ -622,17 +622,26 @@ async def _call_planning_agent(
     prompt: str,
     roster: Roster,
     upstream_context: dict | None,
+    event_bus: "EventBusProtocol | None" = None,
+    session_id: str | None = None,
 ) -> dict:
     """Call the Planning Agent and return the raw result.
 
     Loads the Code Map (regenerating if stale) and injects it into both
     the planning prompt and PlanningAgentDeps.
+
+    When event_bus is provided, streams text deltas as
+    AgentResponseChunkEvent so the live display can show planning
+    progress in real-time.
     """
+    import uuid as _uuid
+
     from modules.backend.agents.horizontal.planning.agent import (
         PlanningAgentDeps,
         create_agent,
-        run_agent,
+        extract_task_plan_json,
     )
+    from modules.backend.events.types import AgentResponseChunkEvent
     from modules.backend.services.code_map.loader import CodeMapLoader
 
     project_root = find_project_root()
@@ -664,4 +673,37 @@ async def _call_planning_agent(
         code_map=code_map,
     )
 
-    return await run_agent(agent, deps, planning_prompt)
+    planning_agent_id = "horizontal.planning.agent"
+    sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
+    full_content = ""
+
+    async with agent.run_stream(planning_prompt, deps=deps) as stream:
+        async for text in stream.stream_text(delta=True):
+            full_content += text
+            if event_bus:
+                await event_bus.publish(AgentResponseChunkEvent(
+                    session_id=sid,
+                    source="mission_control",
+                    agent_id=planning_agent_id,
+                    content=text,
+                ))
+
+        usage = stream.usage()
+
+    # Extract task plan from full response
+    plan_json = extract_task_plan_json(full_content)
+
+    # Capture thinking trace from messages
+    thinking_trace = None
+    if hasattr(stream, "all_messages"):
+        for msg in stream.all_messages():
+            for part in getattr(msg, "parts", []):
+                if hasattr(part, "content") and hasattr(part, "part_kind"):
+                    if "thinking" in str(getattr(part, "part_kind", "")):
+                        thinking_trace = part.content
+
+    return {
+        "task_plan": plan_json,
+        "thinking_trace": thinking_trace,
+        "usage": usage,
+    }

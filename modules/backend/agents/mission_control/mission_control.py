@@ -535,6 +535,7 @@ async def handle_mission(
         try:
             planning_result = await _call_planning_agent(
                 planning_prompt, roster, upstream_context,
+                event_bus=event_bus, session_id=session_id,
             )
             thinking_trace = planning_result.get("thinking_trace")
 
