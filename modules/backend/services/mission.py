@@ -168,6 +168,12 @@ class MissionService(BaseService):
             mission_id, status=MissionStatus.ARCHIVED,
         )
 
+    async def unarchive_mission(self, mission_id: str) -> Mission:
+        """Restore an archived mission to active status."""
+        return await self._mission_repo.update(
+            mission_id, status=MissionStatus.ACTIVE,
+        )
+
     async def get_stats(self, mission_id: str) -> dict:
         """Get aggregated stats for a mission.
 

@@ -272,6 +272,39 @@ def history(ctx, n):
     asyncio.run(_run())
 
 
+@mission.command("archive")
+@click.pass_obj
+def mission_archive(ctx):
+    """Archive the current mission."""
+    from modules.backend.services.mission import MissionService
+
+    async def _run():
+        mid = await _async_require_mission()
+        async with MissionService.factory() as svc:
+            mission = await svc.archive_mission(mid)
+        click.echo(f"Archived: {mission.name}")
+
+    asyncio.run(_run())
+
+
+@mission.command("unarchive")
+@click.argument("name_or_id")
+@click.pass_obj
+def mission_unarchive(ctx, name_or_id):
+    """Restore an archived mission to active status."""
+    from modules.backend.services.mission import MissionService
+
+    async def _run():
+        async with MissionService.factory() as svc:
+            mission = await svc.get_mission_by_name(name_or_id)
+            if not mission:
+                mission = await svc.get_mission(name_or_id)
+            await svc.unarchive_mission(str(mission.id))
+        click.echo(f"Unarchived: {mission.name}")
+
+    asyncio.run(_run())
+
+
 # =============================================================================
 # Chat + Design
 # =============================================================================
