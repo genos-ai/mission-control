@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Search, BookOpen } from 'lucide-react'
+import { Search, BookOpen, Cpu, FolderOpen } from 'lucide-react'
 import { useCatalog } from '@/hooks/use-catalog'
 import { useDrawerStore } from '@/stores/drawer'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,6 +9,16 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { AgentCatalogItem } from '@/types'
+
+function modelLabel(name: string | undefined): string {
+  if (!name) return 'Unknown'
+  const bare = name.includes(':') ? name.split(':')[1] : name
+  if (bare.includes('opus')) return 'Opus 4'
+  if (bare.includes('sonnet-4-6')) return 'Sonnet 4.6'
+  if (bare.includes('sonnet-4')) return 'Sonnet 4'
+  if (bare.includes('haiku')) return 'Haiku 4.5'
+  return bare
+}
 
 const TYPE_COLORS: Record<string, 'default' | 'secondary' | 'warning'> = {
   vertical: 'default',
@@ -140,9 +150,31 @@ function CatalogCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
-        <p className="flex-1 text-sm text-muted-foreground line-clamp-3">
+        <p className="flex-1 text-sm text-muted-foreground line-clamp-2">
           {agent.description}
         </p>
+
+        {/* Model & scope */}
+        <div className="mt-3 space-y-1.5">
+          {agent.model_config_json?.name && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Cpu className="h-3 w-3 flex-shrink-0" />
+              <span>{modelLabel(agent.model_config_json.name)}</span>
+            </div>
+          )}
+          {agent.scope?.read && agent.scope.read.length > 0 && (
+            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <FolderOpen className="h-3 w-3 flex-shrink-0 mt-0.5" />
+              <div className="flex flex-wrap gap-1">
+                {agent.scope.read.map((p) => (
+                  <span key={p} className="font-mono text-[10px] rounded bg-muted px-1 py-0.5">
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {agent.keywords.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1">

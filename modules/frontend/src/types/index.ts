@@ -124,6 +124,8 @@ export interface AgentCatalogItem {
   visibility: string
   keywords: string[]
   tools: string[]
+  model_config_json: { name?: string; temperature?: number; max_tokens?: number }
+  scope: { read?: string[]; write?: string[] }
 }
 
 export interface AgentCatalogDetail extends AgentCatalogItem {

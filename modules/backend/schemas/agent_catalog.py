@@ -24,6 +24,8 @@ class AgentCatalogResponse(BaseModel):
     visibility: str
     keywords: list[str]
     tools: list[str]
+    model_config_json: dict[str, Any]
+    scope: dict[str, Any]
 
 
 class AgentCatalogDetailResponse(BaseModel):

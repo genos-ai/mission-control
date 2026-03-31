@@ -11,7 +11,6 @@ import {
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
 import { useTeam } from '@/hooks/use-team'
-import { useCatalog } from '@/hooks/use-catalog'
 import { API_BASE } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -34,7 +33,6 @@ export default function WorkshopPage() {
   const { id: missionId } = useParams<{ id: string }>()
   const { user } = useAuthStore()
   const { data: team } = useTeam(missionId)
-  const { data: catalog } = useCatalog()
 
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [prompt, setPrompt] = useState('')
@@ -51,10 +49,10 @@ export default function WorkshopPage() {
     }
   }, [])
 
-  // Map catalog IDs to agent names (memoized to avoid recreating on every render)
-  const agentLookup = useMemo(
-    () => new Map(catalog?.map((a) => [a.id, a]) ?? []),
-    [catalog],
+  // Look up team member by catalog ID
+  const selectedMember = useMemo(
+    () => team?.find((m) => m.agent_catalog_id === selectedAgent),
+    [team, selectedAgent],
   )
 
   const runTest = useCallback(async () => {
@@ -142,10 +140,9 @@ export default function WorkshopPage() {
         }
       }
 
-      const agentInfo = agentLookup.get(selectedAgent)
       const run: TestRun = {
         id: `run-${Date.now()}`,
-        agentName: agentInfo?.agent_name ?? selectedAgent.slice(0, 8),
+        agentName: selectedMember?.agent?.agent_name ?? selectedAgent.slice(0, 8),
         prompt,
         input: testInput,
         output: output || '(no output)',
@@ -162,7 +159,7 @@ export default function WorkshopPage() {
       abortRef.current = null
       setRunning(false)
     }
-  }, [selectedAgent, prompt, testInput, running, user?.id, agentLookup])
+  }, [selectedAgent, prompt, testInput, running, user?.id, selectedMember])
 
   const toggleCompare = (runId: string) => {
     setCompareIds((prev) => {
@@ -193,33 +190,30 @@ export default function WorkshopPage() {
             Agent
           </label>
           <div className="space-y-1">
-            {team?.map((member) => {
-              const agent = agentLookup.get(member.agent_catalog_id)
-              return (
-                <button
-                  key={member.id}
-                  onClick={() => setSelectedAgent(member.agent_catalog_id)}
+            {team?.map((member) => (
+              <button
+                key={member.id}
+                onClick={() => setSelectedAgent(member.agent_catalog_id)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent',
+                  selectedAgent === member.agent_catalog_id &&
+                    'bg-accent text-accent-foreground',
+                )}
+              >
+                <span
                   className={cn(
-                    'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent',
-                    selectedAgent === member.agent_catalog_id &&
-                      'bg-accent text-accent-foreground',
+                    'h-2 w-2 rounded-full',
+                    member.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30',
                   )}
-                >
-                  <span
-                    className={cn(
-                      'h-2 w-2 rounded-full',
-                      member.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30',
-                    )}
-                  />
-                  <span className="truncate">
-                    {agent?.agent_name ?? member.agent_catalog_id.slice(0, 8)}
-                  </span>
-                  <Badge variant="secondary" className="text-[9px] ml-auto">
-                    {agent?.agent_type ?? 'agent'}
-                  </Badge>
-                </button>
-              )
-            })}
+                />
+                <span className="truncate">
+                  {member.agent?.agent_name ?? member.agent_catalog_id.slice(0, 8)}
+                </span>
+                <Badge variant="secondary" className="text-[9px] ml-auto">
+                  {member.agent?.agent_type ?? 'agent'}
+                </Badge>
+              </button>
+            ))}
             {!team?.length && (
               <p className="text-xs text-muted-foreground">
                 No agents on this mission's team.
