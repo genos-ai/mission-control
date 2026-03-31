@@ -89,11 +89,13 @@ async def list_sessions(
     request_id: RequestId,
     pagination: PaginationParams = Depends(get_pagination_params),
     user_id: str | None = Query(default=None, description="Filter by user ID"),
+    mission_id: str | None = Query(default=None, description="Filter by mission ID"),
     status: str | None = Query(default=None, description="Filter by status"),
 ) -> dict:
     service = SessionService(db)
     sessions, total = await service.list_sessions(
         user_id=user_id,
+        mission_id=mission_id,
         status_filter=status,
         limit=pagination.limit,
         offset=pagination.offset,

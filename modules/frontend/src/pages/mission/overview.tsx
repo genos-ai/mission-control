@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Settings,
   X,
+  XCircle,
   CheckCircle,
   Circle,
 } from 'lucide-react'
@@ -92,31 +93,7 @@ export default function OverviewPage() {
         />
       )}
 
-      {/* Setup checklist — shown when mission needs configuration */}
-      {needsSetup && executions.length === 0 && (
-        <SetupChecklist
-          hasBrief={hasBrief}
-          agentCount={agentCount}
-          workflowCount={workflowCount}
-          missionId={id!}
-        />
-      )}
-
-      {/* Active runs */}
-      {activeRuns.map((run) => (
-        <ActiveRunCard
-          key={run.id}
-          execution={run}
-          onClick={() => navigate(ROUTES.MISSION_RUN_LIVE(id!, run.id))}
-        />
-      ))}
-
-      {/* Failure banner */}
-      {failedRuns.length > 0 && activeRuns.length === 0 && (
-        <FailureBanner lastFailedId={failedRuns[0].id} />
-      )}
-
-      {/* Quick stats */}
+      {/* Quick stats — always first */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Status" value={mission.status} capitalize />
         <StatCard
@@ -147,33 +124,52 @@ export default function OverviewPage() {
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Mission summary */}
-        <div className="space-y-4">
-          {mission.brief && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Brief
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="whitespace-pre-wrap text-sm">{mission.brief}</p>
-              </CardContent>
-            </Card>
-          )}
+      {/* Setup checklist — shown when mission needs configuration */}
+      {needsSetup && executions.length === 0 && (
+        <SetupChecklist
+          hasBrief={hasBrief}
+          agentCount={agentCount}
+          workflowCount={workflowCount}
+          missionId={id!}
+        />
+      )}
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Description
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">{mission.description}</p>
-            </CardContent>
-          </Card>
-        </div>
+      {/* Active runs */}
+      {activeRuns.map((run) => (
+        <ActiveRunCard
+          key={run.id}
+          execution={run}
+          onClick={() => navigate(ROUTES.MISSION_RUN_LIVE(id!, run.id))}
+        />
+      ))}
+
+      {/* Brief + Description */}
+      {(mission.brief || mission.description) && (
+        <Card>
+          <CardContent className="pt-4">
+            {mission.brief && (
+              <p className="whitespace-pre-wrap text-sm">{mission.brief}</p>
+            )}
+            {mission.brief && mission.description && (
+              <hr className="my-3 border-muted" />
+            )}
+            <p className="text-sm text-muted-foreground">
+              {mission.description}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent errors */}
+      {failedRuns.length > 0 && (
+        <RecentErrors
+          failedRunIds={failedRuns.slice(0, 3).map((r) => r.id)}
+          missionId={id!}
+        />
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Recent runs */}
 
         {/* Recent runs */}
         <Card>
@@ -252,41 +248,78 @@ export default function OverviewPage() {
 
 // --- Sub-components ---
 
-function FailureBanner({ lastFailedId }: { lastFailedId: string }) {
-  const { data: detail } = useExecution(lastFailedId)
+function RecentErrors({
+  failedRunIds,
+  missionId,
+}: {
+  failedRunIds: string[]
+  missionId: string
+}) {
+  const navigate = useNavigate()
+  // Fetch details for up to 3 recent failed runs
+  const q0 = useExecution(failedRunIds[0])
+  const q1 = useExecution(failedRunIds[1])
+  const q2 = useExecution(failedRunIds[2])
+  const details = [q0.data, q1.data, q2.data].filter(Boolean)
 
-  // Extract failure reason from task executions or outcome
-  let reason = ''
-  if (detail) {
-    const failedTask = detail.task_executions.find((t) => t.status === 'failed')
-    if (failedTask?.output_data) {
-      reason = String(
-        (failedTask.output_data as Record<string, unknown>).error ??
-          (failedTask.output_data as Record<string, unknown>).message ??
-          '',
-      )
-    }
-    if (!reason && detail.execution_outcome_json) {
-      const outcome = detail.execution_outcome_json as Record<string, unknown>
-      reason = String(outcome.error ?? outcome.summary ?? '')
-    }
-    if (!reason) {
-      reason = `${detail.task_executions.filter((t) => t.status === 'failed').length} task(s) failed`
+  // Extract all task-level errors across runs
+  const errors: { runId: string; agent: string; error: string; when: string }[] = []
+  for (const detail of details) {
+    if (!detail) continue
+    for (const task of detail.task_executions) {
+      if (task.status !== 'failed') continue
+      const output = task.output_data as Record<string, unknown> | null
+      const msg =
+        String(output?.error ?? output?.message ?? '') ||
+        `${task.agent_name} failed`
+      errors.push({
+        runId: detail.id,
+        agent: task.agent_name,
+        error: msg,
+        when: task.completed_at ?? task.started_at ?? detail.created_at,
+      })
     }
   }
 
+  if (errors.length === 0) return null
+
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-      <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-      <div>
-        <p className="text-sm font-medium text-destructive">
-          Last run failed
-        </p>
-        {reason && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{reason}</p>
-        )}
-      </div>
-    </div>
+    <Card className="border-destructive/20">
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <CardTitle className="text-sm font-medium text-destructive">
+            Recent Errors ({errors.length})
+          </CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {errors.slice(0, 5).map((err, i) => (
+          <button
+            key={i}
+            onClick={() =>
+              navigate(ROUTES.MISSION_RUN_LIVE(missionId, err.runId))
+            }
+            className="flex w-full items-start gap-3 rounded-md border border-destructive/10 bg-destructive/5 px-3 py-2 text-left transition-colors hover:bg-destructive/10"
+          >
+            <XCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">{err.agent}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {formatDistanceToNow(new Date(err.when), {
+                    addSuffix: true,
+                  })}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                {err.error}
+              </p>
+            </div>
+          </button>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 

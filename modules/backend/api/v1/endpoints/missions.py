@@ -608,3 +608,58 @@ async def architect_chat(
         },
         metadata={"request_id": request_id},
     )
+
+
+# ---- Mission Context (MCD) ----
+
+
+@router.get(
+    "/{mission_id}/context",
+    response_model=ApiResponse,
+    summary="Get Mission Context Document",
+)
+async def get_mission_context(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Get the full MCD content with version and size metrics."""
+    from modules.backend.services.mission_context import MissionContextManager
+
+    manager = MissionContextManager(db)
+    context_data = await manager.get_context(mission_id)
+    size = await manager.get_context_size(mission_id)
+    return ApiResponse(
+        success=True,
+        data={
+            "mission_id": mission_id,
+            "context_data": context_data,
+            **size,
+        },
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/{mission_id}/context/history",
+    response_model=ApiResponse,
+    summary="Get MCD change history",
+)
+async def get_context_history(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    limit: int = Query(30, ge=1, le=100),
+) -> ApiResponse:
+    """Get recent changes to the Mission Context Document."""
+    from modules.backend.schemas.mission_context import ContextChangeResponse
+    from modules.backend.services.mission_context import MissionContextManager
+
+    manager = MissionContextManager(db)
+    changes = await manager.get_history(mission_id, limit=limit)
+    items = [ContextChangeResponse.model_validate(c).model_dump() for c in changes]
+    return ApiResponse(
+        success=True,
+        data={"changes": items, "total": len(items)},
+        metadata={"request_id": request_id},
+    )

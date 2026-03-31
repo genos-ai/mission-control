@@ -51,6 +51,9 @@ class Session(UUIDMixin, TimestampMixin, Base):
 
     # Identity
     user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    mission_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )  # Mission this session belongs to
     agent_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )  # Primary agent assigned

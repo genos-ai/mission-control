@@ -353,6 +353,7 @@ export interface SessionListItem {
   id: string
   status: string
   goal: string | null
+  mission_id: string | null
   agent_id: string | null
   total_cost_usd: number
   created_at: string
@@ -374,6 +375,7 @@ export interface SessionResponse {
 
 export interface SessionCreateRequest {
   goal?: string
+  mission_id?: string
   agent_id?: string
   cost_budget_usd?: number
 }
@@ -381,7 +383,7 @@ export interface SessionCreateRequest {
 export interface SessionMessage {
   id: string
   session_id: string
-  role: 'user' | 'assistant' | 'system' | 'tool_call' | 'tool_result'
+  role: 'user' | 'assistant' | 'system' | 'tool_call' | 'tool_result' | 'error'
   content: string
   sender_id: string | null
   model: string | null

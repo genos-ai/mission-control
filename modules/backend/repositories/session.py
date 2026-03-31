@@ -48,14 +48,17 @@ class SessionRepository(BaseRepository[Session]):
     async def get_by_user(
         self,
         user_id: str | None = None,
+        mission_id: str | None = None,
         status_filter: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[Session]:
-        """Get sessions, optionally filtered by user and/or status."""
+        """Get sessions, optionally filtered by user, mission, and/or status."""
         stmt = select(Session)
         if user_id is not None:
             stmt = stmt.where(Session.user_id == user_id)
+        if mission_id is not None:
+            stmt = stmt.where(Session.mission_id == mission_id)
         if status_filter:
             stmt = stmt.where(Session.status == status_filter)
         stmt = stmt.order_by(Session.last_activity_at.desc()).limit(limit).offset(offset)
@@ -65,12 +68,15 @@ class SessionRepository(BaseRepository[Session]):
     async def count_by_user(
         self,
         user_id: str | None = None,
+        mission_id: str | None = None,
         status_filter: str | None = None,
     ) -> int:
-        """Count sessions, optionally filtered by user and/or status."""
+        """Count sessions, optionally filtered by user, mission, and/or status."""
         stmt = select(func.count()).select_from(Session)
         if user_id is not None:
             stmt = stmt.where(Session.user_id == user_id)
+        if mission_id is not None:
+            stmt = stmt.where(Session.mission_id == mission_id)
         if status_filter:
             stmt = stmt.where(Session.status == status_filter)
         result = await self.session.execute(stmt)

@@ -14,6 +14,11 @@ class SessionCreate(BaseModel):
         description="What this session is trying to achieve",
         examples=["Analyze Q4 revenue data and generate a report"],
     )
+    mission_id: str | None = Field(
+        default=None,
+        max_length=36,
+        description="Mission this session belongs to",
+    )
     agent_id: str | None = Field(
         default=None,
         max_length=100,
@@ -51,6 +56,7 @@ class SessionResponse(BaseModel):
     id: str = Field(description="Session unique identifier")
     status: str = Field(description="Session lifecycle status")
     user_id: str | None = Field(description="User who owns this session")
+    mission_id: str | None = Field(default=None, description="Mission this session belongs to")
     agent_id: str | None = Field(description="Primary agent assigned")
     goal: str | None = Field(description="Session goal")
     plan_id: str | None = Field(description="Active plan ID (Phase 5)")
@@ -76,6 +82,7 @@ class SessionListResponse(BaseModel):
     id: str
     status: str
     goal: str | None
+    mission_id: str | None = None
     agent_id: str | None
     total_cost_usd: float
     created_at: datetime

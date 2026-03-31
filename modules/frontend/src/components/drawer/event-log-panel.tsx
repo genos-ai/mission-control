@@ -17,20 +17,13 @@ export function EventLogPanel() {
   const events: { time: string; type: string; label: string; detail?: string }[] = []
 
   for (const task of detail.task_executions) {
-    if (task.started_at) {
+    const time = task.completed_at ?? task.started_at ?? task.created_at
+    if (time) {
       events.push({
-        time: task.started_at,
-        type: 'start',
-        label: `${task.agent_name} started`,
-        detail: task.task_id,
-      })
-    }
-    if (task.completed_at) {
-      events.push({
-        time: task.completed_at,
-        type: task.status === 'completed' ? 'success' : 'error',
+        time,
+        type: task.status === 'completed' ? 'success' : task.status === 'failed' ? 'error' : 'start',
         label: `${task.agent_name} ${task.status}`,
-        detail: `$${task.cost_usd.toFixed(4)} · ${task.duration_seconds?.toFixed(1) ?? '?'}s`,
+        detail: `${task.task_id} · $${task.cost_usd.toFixed(4)} · ${task.duration_seconds?.toFixed(1) ?? '?'}s`,
       })
     }
   }

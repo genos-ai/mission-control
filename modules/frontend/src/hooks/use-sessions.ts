@@ -14,9 +14,10 @@ export const sessionKeys = {
   messages: (id: string) => ['sessions', id, 'messages'] as const,
 }
 
-export function useSessions(filters?: { user_id?: string; status?: string }) {
+export function useSessions(filters?: { user_id?: string; mission_id?: string; status?: string }) {
   const params = new URLSearchParams()
   if (filters?.user_id) params.set('user_id', filters.user_id)
+  if (filters?.mission_id) params.set('mission_id', filters.mission_id)
   if (filters?.status) params.set('status', filters.status)
   const qs = params.toString()
 

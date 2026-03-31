@@ -73,17 +73,54 @@ async def get_execution(
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get an execution record with full details."""
+    """Get an execution record with full details.
+
+    Checks both execution_records (post-run persistence) and
+    executions (live/in-flight runs) so the frontend can display
+    runs that are still in progress.
+    """
     service = ExecutionPersistenceService(db)
     execution = await service.get_execution(execution_id)
 
-    if not execution:
+    if execution:
+        response = ExecutionRecordDetailResponse.model_validate(execution)
+        return ApiResponse(
+            success=True,
+            data=response.model_dump(),
+            metadata={"request_id": request_id},
+        )
+
+    # Fallback: check the live executions table
+    from modules.backend.repositories.execution import ExecutionRepository
+
+    repo = ExecutionRepository(db)
+    live = await repo.get_by_id_or_none(execution_id)
+
+    if not live:
         raise NotFoundError(f"Execution '{execution_id}' not found")
 
-    response = ExecutionRecordDetailResponse.model_validate(execution)
+    # Map live execution to the detail response shape
     return ApiResponse(
         success=True,
-        data=response.model_dump(),
+        data={
+            "id": str(live.id),
+            "session_id": str(live.session_id),
+            "roster_name": live.roster_ref,
+            "status": live.status.value if hasattr(live.status, "value") else str(live.status),
+            "total_cost_usd": float(live.total_cost_usd or 0),
+            "started_at": str(live.started_at) if live.started_at else None,
+            "completed_at": str(live.completed_at) if live.completed_at else None,
+            "created_at": str(live.created_at) if live.created_at else None,
+            "updated_at": str(live.updated_at) if live.updated_at else None,
+            "parent_execution_record_id": None,
+            "objective_statement": live.objective,
+            "objective_category": None,
+            "task_plan_json": None,
+            "execution_outcome_json": None,
+            "planning_thinking_trace": None,
+            "task_executions": [],
+            "decisions": [],
+        },
         metadata={"request_id": request_id},
     )
 

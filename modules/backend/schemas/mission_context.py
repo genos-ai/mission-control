@@ -4,6 +4,7 @@ Mission Context schemas.
 Pydantic models for MCD operations, context updates, and API responses.
 """
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -70,4 +71,4 @@ class ContextChangeResponse(BaseModel):
     mission_id: str | None
     task_id: str | None
     reason: str
-    created_at: str
+    created_at: datetime

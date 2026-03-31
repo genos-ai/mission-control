@@ -66,6 +66,7 @@ class SessionService(BaseService):
             "create_session",
             self.repo.create(
                 user_id=user_id,
+                mission_id=data.mission_id,
                 status=SessionStatus.ACTIVE.value,
                 goal=data.goal,
                 agent_id=data.agent_id,
@@ -129,15 +130,19 @@ class SessionService(BaseService):
     async def list_sessions(
         self,
         user_id: str | None = None,
+        mission_id: str | None = None,
         status_filter: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Session], int]:
-        """List sessions with optional user and status filters. Pagination included."""
+        """List sessions with optional user, mission, and status filters."""
         sessions = await self.repo.get_by_user(
-            user_id=user_id, status_filter=status_filter, limit=limit, offset=offset
+            user_id=user_id, mission_id=mission_id,
+            status_filter=status_filter, limit=limit, offset=offset,
         )
-        total = await self.repo.count_by_user(user_id=user_id, status_filter=status_filter)
+        total = await self.repo.count_by_user(
+            user_id=user_id, mission_id=mission_id, status_filter=status_filter,
+        )
         return sessions, total
 
     # --- State Transitions ---

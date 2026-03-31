@@ -25,7 +25,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/cn'
 import type { SessionMessage } from '@/types'
 
-const PLANNING_AGENT = 'horizontal.planning.agent'
+const DEFAULT_CHAT_AGENT = 'horizontal.mission_director.agent'
 
 export default function ChatPage() {
   const { id: missionId, threadId } = useParams<{
@@ -36,7 +36,7 @@ export default function ChatPage() {
   const { user } = useAuthStore()
 
   const { data: sessions, isLoading: loadingSessions } = useSessions(
-    user ? { user_id: user.id } : undefined,
+    missionId ? { mission_id: missionId } : undefined,
   )
   const { data: teamMembers } = useTeam(missionId)
   const { data: catalog } = useCatalog()
@@ -55,8 +55,8 @@ export default function ChatPage() {
       type: catalogLookup.get(m.agent_catalog_id)?.agent_type,
     }))
     .sort((a, b) => {
-      if (a.name === PLANNING_AGENT) return -1
-      if (b.name === PLANNING_AGENT) return 1
+      if (a.name === DEFAULT_CHAT_AGENT) return -1
+      if (b.name === DEFAULT_CHAT_AGENT) return 1
       return a.name.localeCompare(b.name)
     })
 
@@ -65,7 +65,7 @@ export default function ChatPage() {
   // Default to planning agent when team loads
   useEffect(() => {
     if (!selectedAgent && teamAgents.length > 0) {
-      const planner = teamAgents.find((a) => a.name === PLANNING_AGENT)
+      const planner = teamAgents.find((a) => a.name === DEFAULT_CHAT_AGENT)
       setSelectedAgent(planner?.name ?? teamAgents[0].name)
     }
   }, [teamAgents.length]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,6 +78,7 @@ export default function ChatPage() {
     try {
       const session = await createSession.mutateAsync({
         goal: `Chat with ${agentLabel}`,
+        mission_id: missionId,
         agent_id: selectedAgent ?? undefined,
       })
       navigate(`/missions/${missionId}/chat/${session.id}`)
@@ -105,7 +106,7 @@ export default function ChatPage() {
                 {teamAgents.map((a) => (
                   <option key={a.name} value={a.name}>
                     {shortName(a.name)}
-                    {a.name === PLANNING_AGENT ? ' (default)' : ''}
+                    {a.name === DEFAULT_CHAT_AGENT ? ' (default)' : ''}
                   </option>
                 ))}
               </select>

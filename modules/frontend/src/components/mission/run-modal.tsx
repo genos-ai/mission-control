@@ -37,7 +37,6 @@ export function RunModal({
   )
   const [budget, setBudget] = useState('')
   const [gateMode, setGateMode] = useState('')
-  const [roster, setRoster] = useState('default')
 
   const submitting = createExecution.isPending || startExecution.isPending
 
@@ -53,7 +52,7 @@ export function RunModal({
         objective: objective.trim(),
         triggered_by: 'user:web',
         mission_id: missionId,
-        roster_ref: roster || 'default',
+        roster_ref: 'default',
         complexity_tier: gateMode || undefined,
         cost_ceiling_usd: budget ? parseFloat(budget) : undefined,
       })
@@ -138,14 +137,6 @@ export function RunModal({
             </select>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Roster</label>
-            <Input
-              value={roster}
-              onChange={(e) => setRoster(e.target.value)}
-              placeholder="default"
-            />
-          </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" type="button" onClick={onClose}>

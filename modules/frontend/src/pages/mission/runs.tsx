@@ -86,7 +86,7 @@ export default function RunsPage() {
           <span>Session</span>
           <span>Status</span>
           <span className="text-right">Cost</span>
-          <span>Roster</span>
+          <span>Team</span>
           <span className="text-right">When</span>
         </div>
 
