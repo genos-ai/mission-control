@@ -137,6 +137,24 @@ export interface AgentCatalogDetail extends AgentCatalogItem {
 }
 
 // Mission Team types
+export interface AgentConfigSummary {
+  agent_name: string
+  agent_type: string
+  description: string
+  model: {
+    name?: string
+    temperature?: number
+    max_tokens?: number
+  }
+  tools: string[]
+  scope: { read?: string[]; write?: string[] }
+  constraints: {
+    timeout_seconds?: number
+    cost_ceiling_usd?: number
+    retry_budget?: number
+  }
+}
+
 export interface MissionTeamMember {
   id: string
   mission_id: string
@@ -148,6 +166,7 @@ export interface MissionTeamMember {
   custom_constraints: Record<string, unknown> | null
   created_at: string
   updated_at: string
+  agent: AgentConfigSummary | null
 }
 
 export interface MissionTeamAddRequest {

@@ -10,8 +10,20 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class AgentConfigSummary(BaseModel):
+    """Subset of catalog data surfaced on the team page."""
+
+    agent_name: str
+    agent_type: str
+    description: str
+    model: dict[str, Any]
+    tools: list[str]
+    scope: dict[str, Any]
+    constraints: dict[str, Any]
+
+
 class MissionTeamMemberResponse(BaseModel):
-    """Response for a team member entry."""
+    """Response for a team member entry with catalog configuration."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -25,6 +37,7 @@ class MissionTeamMemberResponse(BaseModel):
     custom_constraints: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
+    agent: AgentConfigSummary | None = None
 
 
 class MissionTeamAddRequest(BaseModel):

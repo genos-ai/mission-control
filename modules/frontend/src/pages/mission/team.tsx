@@ -1,9 +1,22 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Users, Trash2, History, Save, Plus, FileText } from 'lucide-react'
+import {
+  Users,
+  Trash2,
+  History,
+  Save,
+  Plus,
+  FileText,
+  Cpu,
+  FolderOpen,
+  Wrench,
+  Clock,
+  DollarSign,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useTeam, useRemoveFromTeam, useUpdatePrompt, useSeedTeam } from '@/hooks/use-team'
-import { useCatalog } from '@/hooks/use-catalog'
 import { useMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
@@ -15,10 +28,20 @@ import { Spinner } from '@/components/ui/spinner'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { MissionTeamMember } from '@/types'
 
+/** Extract short model label from full model string, e.g. "anthropic:claude-opus-4-20250514" → "Opus 4" */
+function modelLabel(name: string | undefined): string {
+  if (!name) return 'Unknown'
+  const bare = name.includes(':') ? name.split(':')[1] : name
+  if (bare.includes('opus')) return 'Opus 4'
+  if (bare.includes('sonnet-4-6')) return 'Sonnet 4.6'
+  if (bare.includes('sonnet-4')) return 'Sonnet 4'
+  if (bare.includes('haiku')) return 'Haiku 4.5'
+  return bare
+}
+
 export default function TeamPage() {
   const { id: missionId } = useParams<{ id: string }>()
   const { data: members, isLoading } = useTeam(missionId)
-  const { data: catalog } = useCatalog()
   const { data: mission } = useMission(missionId)
   const { open: openDrawer } = useDrawerStore()
 
@@ -63,11 +86,6 @@ export default function TeamPage() {
     )
   }
 
-  // Build a lookup from catalog ID → agent name
-  const catalogLookup = new Map(
-    catalog?.map((a) => [a.id, a]) ?? [],
-  )
-
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -88,7 +106,6 @@ export default function TeamPage() {
         </Button>
       </div>
 
-      {/* Mission brief context — helps when writing agent prompts */}
       {mission?.brief && (
         <div className="mb-6 flex items-start gap-3 rounded-lg border bg-muted/30 px-4 py-3">
           <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
@@ -107,8 +124,6 @@ export default function TeamPage() {
             key={member.id}
             member={member}
             missionId={missionId!}
-            agentName={catalogLookup.get(member.agent_catalog_id)?.agent_name}
-            agentType={catalogLookup.get(member.agent_catalog_id)?.agent_type}
           />
         ))}
       </div>
@@ -119,13 +134,9 @@ export default function TeamPage() {
 function TeamMemberCard({
   member,
   missionId,
-  agentName,
-  agentType,
 }: {
   member: MissionTeamMember
   missionId: string
-  agentName?: string
-  agentType?: string
 }) {
   const user = useAuthStore((s) => s.user)
   const { open: openDrawer } = useDrawerStore()
@@ -134,6 +145,10 @@ function TeamMemberCard({
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(member.user_prompt ?? '')
+  const [expanded, setExpanded] = useState(false)
+
+  const agent = member.agent
+  const agentName = agent?.agent_name ?? member.agent_catalog_id
 
   const handleSave = () => {
     if (!draft.trim()) return
@@ -164,16 +179,14 @@ function TeamMemberCard({
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
-            {(agentName ?? 'A').charAt(0).toUpperCase()}
+            {agentName.charAt(0).toUpperCase()}
           </div>
           <div>
-            <CardTitle className="text-base">
-              {agentName ?? member.agent_catalog_id}
-            </CardTitle>
-            <div className="mt-1 flex items-center gap-2">
-              {agentType && (
+            <CardTitle className="text-base">{agentName}</CardTitle>
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              {agent?.agent_type && (
                 <Badge variant="secondary" className="text-[11px]">
-                  {agentType}
+                  {agent.agent_type}
                 </Badge>
               )}
               <Badge
@@ -182,6 +195,12 @@ function TeamMemberCard({
               >
                 {member.enabled ? 'Active' : 'Disabled'}
               </Badge>
+              {agent?.model_config?.name && (
+                <Badge variant="outline" className="text-[11px] gap-1">
+                  <Cpu className="h-2.5 w-2.5" />
+                  {modelLabel(agent.model.name)}
+                </Badge>
+              )}
               <span className="text-xs text-muted-foreground">
                 v{member.user_prompt_version}
               </span>
@@ -214,7 +233,105 @@ function TeamMemberCard({
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="space-y-3">
+        {/* Agent description */}
+        {agent?.description && (
+          <p className="text-xs text-muted-foreground">{agent.description}</p>
+        )}
+
+        {/* Expandable config section */}
+        {agent && (
+          <div>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {expanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              Configuration
+            </button>
+
+            {expanded && (
+              <div className="mt-2 grid gap-3 rounded-md border bg-muted/20 p-3 text-xs">
+                {/* Model */}
+                <ConfigRow icon={<Cpu className="h-3 w-3" />} label="Model">
+                  <span className="font-mono">
+                    {agent.model.name ?? 'default'}
+                  </span>
+                  {agent.model.max_tokens && (
+                    <span className="text-muted-foreground ml-2">
+                      max {agent.model.max_tokens.toLocaleString()} tokens
+                    </span>
+                  )}
+                </ConfigRow>
+
+                {/* Tools */}
+                {agent.tools.length > 0 && (
+                  <ConfigRow icon={<Wrench className="h-3 w-3" />} label="Tools">
+                    <div className="flex flex-wrap gap-1">
+                      {agent.tools.map((t) => (
+                        <Badge key={t} variant="secondary" className="text-[10px] font-mono">
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  </ConfigRow>
+                )}
+
+                {/* Scope */}
+                {(agent.scope.read?.length || agent.scope.write?.length) ? (
+                  <ConfigRow icon={<FolderOpen className="h-3 w-3" />} label="Scope">
+                    <div className="space-y-1">
+                      {agent.scope.read && agent.scope.read.length > 0 && (
+                        <div className="flex flex-wrap gap-1 items-center">
+                          <span className="text-muted-foreground w-10">read</span>
+                          {agent.scope.read.map((p) => (
+                            <span key={p} className="font-mono text-[10px] rounded bg-muted px-1.5 py-0.5">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {agent.scope.write && agent.scope.write.length > 0 && (
+                        <div className="flex flex-wrap gap-1 items-center">
+                          <span className="text-muted-foreground w-10">write</span>
+                          {agent.scope.write.map((p) => (
+                            <span key={p} className="font-mono text-[10px] rounded bg-muted px-1.5 py-0.5">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </ConfigRow>
+                ) : null}
+
+                {/* Constraints */}
+                <ConfigRow icon={<Clock className="h-3 w-3" />} label="Limits">
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    {agent.constraints.timeout_seconds && (
+                      <span>{agent.constraints.timeout_seconds}s timeout</span>
+                    )}
+                    {agent.constraints.cost_ceiling_usd && (
+                      <span>
+                        <DollarSign className="inline h-2.5 w-2.5" />
+                        {agent.constraints.cost_ceiling_usd} ceiling
+                      </span>
+                    )}
+                    {agent.constraints.retry_budget != null && (
+                      <span>{agent.constraints.retry_budget} retries</span>
+                    )}
+                  </div>
+                </ConfigRow>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* User prompt editor */}
         {editing ? (
           <div className="space-y-2">
             <Textarea
@@ -254,5 +371,25 @@ function TeamMemberCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function ConfigRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: React.ReactNode
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="mt-0.5 flex-shrink-0 text-muted-foreground">{icon}</span>
+      <div className="min-w-0">
+        <span className="font-medium text-muted-foreground mr-2">{label}</span>
+        {children}
+      </div>
+    </div>
   )
 }

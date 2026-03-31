@@ -18,6 +18,7 @@ from modules.backend.schemas.mission import (
     MissionUpdate,
 )
 from modules.backend.schemas.mission_team import (
+    AgentConfigSummary,
     MissionTeamAddRequest,
     MissionTeamMemberResponse,
     UserPromptUpdateRequest,
@@ -134,13 +135,23 @@ async def list_mission_team(
     request_id: RequestId,
     enabled_only: bool = True,
 ) -> ApiResponse:
-    """List agents on a mission's team."""
+    """List agents on a mission's team with catalog configuration."""
     service = MissionTeamService(db)
     members = await service.list_team(mission_id, enabled_only=enabled_only)
-    items = [
-        MissionTeamMemberResponse.model_validate(m).model_dump()
-        for m in members
-    ]
+    items = []
+    for m in members:
+        resp = MissionTeamMemberResponse.model_validate(m)
+        if m.agent_catalog:
+            resp.agent = AgentConfigSummary(
+                agent_name=m.agent_catalog.agent_name,
+                agent_type=m.agent_catalog.agent_type,
+                description=m.agent_catalog.description,
+                model=m.agent_catalog.model_config_json,
+                tools=m.agent_catalog.tools,
+                scope=m.agent_catalog.scope,
+                constraints=m.agent_catalog.constraints,
+            )
+        items.append(resp.model_dump())
     return ApiResponse(
         success=True,
         data={"team_members": items, "total": len(items)},

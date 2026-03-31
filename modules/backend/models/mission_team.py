@@ -8,7 +8,7 @@ mission-specific constraint overrides.
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.sqlite import JSON
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
@@ -52,6 +52,10 @@ class MissionTeamMember(UUIDMixin, TimestampMixin, Base):
     custom_constraints: Mapped[dict | None] = mapped_column(
         JSON, nullable=True,
         comment="Per-mission overrides for agent constraints",
+    )
+
+    agent_catalog = relationship(
+        "AgentCatalog", lazy="raise", foreign_keys=[agent_catalog_id],
     )
 
     def __repr__(self) -> str:

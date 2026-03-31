@@ -6,6 +6,7 @@ Data access for per-mission agent team composition.
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from modules.backend.models.mission_team import MissionTeamMember
 from modules.backend.repositories.base import BaseRepository
@@ -24,16 +25,17 @@ class MissionTeamRepository(BaseRepository[MissionTeamMember]):
         mission_id: str,
         enabled_only: bool = True,
     ) -> list[MissionTeamMember]:
-        """List team members for a mission, ordered by display_order."""
+        """List team members for a mission with catalog data, ordered by display_order."""
         stmt = (
             select(MissionTeamMember)
+            .options(joinedload(MissionTeamMember.agent_catalog))
             .where(MissionTeamMember.mission_id == mission_id)
             .order_by(MissionTeamMember.display_order)
         )
         if enabled_only:
             stmt = stmt.where(MissionTeamMember.enabled.is_(True))
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        return list(result.unique().scalars().all())
 
     async def get_by_mission_and_agent(
         self,
