@@ -87,6 +87,17 @@ export function useStartExecution() {
   })
 }
 
+export function useCancelExecution() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (executionId: string) =>
+      api.post(`/executions/${executionId}/cancel?reason=Cancelled+by+user`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['executions'] })
+    },
+  })
+}
+
 export function useSubmitApproval() {
   const qc = useQueryClient()
   return useMutation({

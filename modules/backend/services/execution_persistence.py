@@ -315,22 +315,22 @@ class ExecutionPersistenceService(BaseService):
         total_attempts = 0
 
         for execution in executions:
+            input_tok = 0
+            output_tok = 0
+            if execution.token_usage:
+                input_tok = execution.token_usage.get("input_tokens", 0)
+                output_tok = execution.token_usage.get("output_tokens", 0)
+            total_input_tokens += input_tok
+            total_output_tokens += output_tok
             task_cost: dict[str, Any] = {
                 "task_id": execution.task_id,
                 "agent_name": execution.agent_name,
                 "cost_usd": execution.cost_usd,
                 "status": execution.status,
                 "duration_seconds": execution.duration_seconds,
+                "input_tokens": input_tok,
+                "output_tokens": output_tok,
             }
-            if execution.token_usage:
-                task_cost["input_tokens"] = execution.token_usage.get(
-                    "input_tokens", 0,
-                )
-                task_cost["output_tokens"] = execution.token_usage.get(
-                    "output_tokens", 0,
-                )
-                total_input_tokens += task_cost.get("input_tokens", 0)
-                total_output_tokens += task_cost.get("output_tokens", 0)
 
             total_attempts += len(execution.attempts)
             task_costs.append(task_cost)

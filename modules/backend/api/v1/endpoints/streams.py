@@ -42,11 +42,11 @@ async def stream_run_events(
         redis = AsyncRedis.from_url(get_redis_url())
         bus = SessionEventBus(redis)
         try:
-            # Send initial connected event
+            # Send initial connected event (named so onmessage ignores it)
             yield f"event: connected\ndata: {json.dumps({'session_id': session_id})}\n\n"
 
             async for event in bus.subscribe(uuid.UUID(session_id)):
-                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+                yield f"data: {event.model_dump_json()}\n\n"
         except asyncio.CancelledError:
             logger.debug("Run SSE stream cancelled", extra={"session_id": session_id})
         finally:

@@ -49,7 +49,7 @@ export function CostBreakdownPanel() {
                 <div className="text-right text-xs">
                   <span className="font-medium">${tc.cost_usd.toFixed(4)}</span>
                   <span className="ml-2 text-muted-foreground">
-                    {tc.tokens.toLocaleString()} tok
+                    {(tc.input_tokens + tc.output_tokens).toLocaleString()} tok
                   </span>
                 </div>
               </div>

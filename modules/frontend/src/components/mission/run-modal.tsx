@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useCreateExecution, useStartExecution } from '@/hooks/use-executions'
+import { useCreateExecution } from '@/hooks/use-executions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,15 +30,12 @@ export function RunModal({
   onStarted,
 }: RunModalProps) {
   const createExecution = useCreateExecution()
-  const startExecution = useStartExecution()
 
   const [objective, setObjective] = useState(
     workflowName ? `Execute workflow: ${workflowName}` : '',
   )
   const [budget, setBudget] = useState('')
   const [gateMode, setGateMode] = useState('')
-
-  const submitting = createExecution.isPending || startExecution.isPending
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,11 +54,9 @@ export function RunModal({
         cost_ceiling_usd: budget ? parseFloat(budget) : undefined,
       })
 
-      await startExecution.mutateAsync(execution.id)
-      toast.success('Run started')
       onStarted(execution.id, execution.session_id)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to start run')
+      toast.error(err instanceof Error ? err.message : 'Failed to create run')
     }
   }
 
@@ -142,9 +137,9 @@ export function RunModal({
             <Button variant="outline" type="button" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={createExecution.isPending}>
               <Play className="mr-2 h-4 w-4" />
-              {submitting ? 'Starting...' : 'Start Run'}
+              {createExecution.isPending ? 'Creating...' : 'Start Run'}
             </Button>
           </div>
         </form>

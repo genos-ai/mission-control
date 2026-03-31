@@ -13,7 +13,7 @@ import json
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
-from pydantic_ai import Agent, RunContext, UsageLimits
+from pydantic_ai import Agent, ModelRetry, RunContext, UsageLimits
 from pydantic_ai.models import Model
 
 from modules.backend.agents.mission_control.helpers import assemble_instructions
@@ -75,6 +75,34 @@ def create_agent(model: str | Model) -> Agent[QaAgentDeps, ArchitectureReviewRes
         content = baseline_file.read_text(encoding="utf-8")
         ctx.deps.emit({"type": "tool_done", "tool": "read_baseline", "detail": "loaded"})
         return content
+
+    @agent.output_validator
+    async def validate_output(
+        ctx: RunContext[QaAgentDeps], output: ArchitectureReviewResult,
+    ) -> ArchitectureReviewResult:
+        """Validate the structured output and retry with clear feedback."""
+        problems: list[str] = []
+        if not output.summary or not output.summary.strip():
+            problems.append("summary is empty — provide a concise summary of your review")
+        if output.files_reviewed < 1:
+            problems.append("files_reviewed must be >= 1 — set it to the number of files you read")
+        if output.total_findings != len(output.findings):
+            problems.append(
+                f"total_findings ({output.total_findings}) must equal len(findings) ({len(output.findings)})"
+            )
+        if output.new_findings + output.baseline_findings != output.total_findings:
+            problems.append(
+                f"new_findings ({output.new_findings}) + baseline_findings ({output.baseline_findings}) "
+                f"must equal total_findings ({output.total_findings})"
+            )
+        for i, f in enumerate(output.findings):
+            if not f.file or not f.message:
+                problems.append(f"findings[{i}] is missing file or message")
+        if problems:
+            raise ModelRetry(
+                "Output validation failed:\n- " + "\n- ".join(problems)
+            )
+        return output
 
     logger.info("Architecture review agent created (read-only)", extra={"model": str(model)})
     return agent

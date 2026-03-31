@@ -155,6 +155,14 @@ class ApprovalResponseEvent(SessionEvent):
 # =============================================================================
 
 
+class PlanningPhaseEvent(SessionEvent):
+    """Lightweight status update during the planning phase."""
+
+    event_type: str = "plan.phase"
+    step: str  # e.g. "roster", "context", "thinking"
+    message: str
+
+
 class PlanCreatedEvent(SessionEvent):
     """Multi-step plan was created."""
 
@@ -294,6 +302,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "agent.response.complete": AgentResponseCompleteEvent,
     "agent.approval.requested": ApprovalRequestedEvent,
     "approval.response.received": ApprovalResponseEvent,
+    "plan.phase": PlanningPhaseEvent,
     "plan.created": PlanCreatedEvent,
     "plan.step.started": PlanStepStartedEvent,
     "plan.step.completed": PlanStepCompletedEvent,

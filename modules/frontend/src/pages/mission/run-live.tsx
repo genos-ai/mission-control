@@ -1,7 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Radio } from 'lucide-react'
-import { useExecution } from '@/hooks/use-executions'
+import { ArrowLeft, Radio, StopCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
+import {
+  useExecution,
+  useCancelExecution,
+  useStartExecution,
+} from '@/hooks/use-executions'
 import { useRunStream } from '@/hooks/use-sse'
 import { useLiveRunStore } from '@/stores/live-run'
 import { ROUTES } from '@/lib/constants'
@@ -13,6 +18,7 @@ import { LiveResultsPanel } from '@/components/live/live-results-panel'
 import { LiveFooter } from '@/components/live/live-footer'
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'timed_out'])
+const PENDING_STATUSES = new Set(['pending', 'created'])
 
 export default function RunLivePage() {
   const { id: missionId, runId } = useParams<{ id: string; runId: string }>()
@@ -23,10 +29,25 @@ export default function RunLivePage() {
   const isTerminal = execution
     ? TERMINAL_STATUSES.has(execution.status)
     : false
+  const isPending = execution
+    ? PENDING_STATUSES.has(execution.status)
+    : false
 
   // SSE stream
   const sessionId = execution?.session_id ?? null
   const { events, connected } = useRunStream(isTerminal ? null : sessionId)
+
+  // Start execution once SSE is connected (only for pending runs)
+  const startExecution = useStartExecution()
+  const startedRef = useRef(false)
+  useEffect(() => {
+    if (connected && isPending && execution && !startedRef.current) {
+      startedRef.current = true
+      startExecution.mutate(execution.id, {
+        onError: (err) => toast.error(err.message),
+      })
+    }
+  }, [connected, isPending, execution]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Store init + reset
   const init = useLiveRunStore((s) => s.init)
@@ -39,15 +60,16 @@ export default function RunLivePage() {
   useEffect(() => {
     if (execution && storeExecId !== execution.id) {
       init(execution.id, execution.session_id)
+      processedCount.current = 0
     }
   }, [execution, storeExecId, init])
 
   // Forward SSE events to store
-  const lastProcessed = useLiveRunStore((s) => s.eventLog.length)
+  const processedCount = useRef(0)
   useEffect(() => {
-    if (events.length > 0) {
-      // Process only new events since last forward
-      const newEvents = events.slice(lastProcessed)
+    if (events.length > processedCount.current) {
+      const newEvents = events.slice(processedCount.current)
+      processedCount.current = events.length
       newEvents.forEach(handleEvent)
     }
   }, [events.length]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -60,6 +82,8 @@ export default function RunLivePage() {
     }
   }, [isTerminal, execution, setDone])
 
+  const cancelMutation = useCancelExecution()
+
   // Cleanup on unmount
   useEffect(() => reset, [reset])
 
@@ -69,6 +93,13 @@ export default function RunLivePage() {
         <Spinner />
       </div>
     )
+  }
+
+  const handleCancel = () => {
+    cancelMutation.mutate(execution!.id, {
+      onSuccess: () => toast.success('Run cancelled'),
+      onError: (err) => toast.error(err.message),
+    })
   }
 
   if (!execution || !missionId) return null
@@ -96,6 +127,18 @@ export default function RunLivePage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {!isTerminal && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCancel}
+              disabled={cancelMutation.isPending}
+              className="text-destructive hover:text-destructive"
+            >
+              <StopCircle className="mr-1.5 h-3.5 w-3.5" />
+              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
+            </Button>
+          )}
           {connected && (
             <Badge variant="success" className="text-[10px]">
               <Radio className="mr-1 h-3 w-3 animate-pulse" />

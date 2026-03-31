@@ -4,9 +4,12 @@ import {
   Zap,
   CheckCircle,
   XCircle,
+  AlertTriangle,
   FileText,
   Wrench,
   Loader2,
+  Users,
+  Database,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { useLiveRunStore } from '@/stores/live-run'
@@ -29,17 +32,35 @@ function eventLabel(etype: string): string {
   return last.charAt(0).toUpperCase() + last.slice(1)
 }
 
-function eventDetail(data: Record<string, unknown>): string {
+function eventDetail(etype: string, data: Record<string, unknown>): string {
+  if (etype === 'agent.tool.called') {
+    const tool = String(data.tool_name ?? '')
+    const detail = (data.tool_args as Record<string, unknown>)?.detail
+    return detail ? `${tool} — ${detail}` : tool
+  }
+  if (etype === 'agent.tool.returned') {
+    const tool = String(data.tool_name ?? '')
+    const result = data.result ? String(data.result).slice(0, 60) : ''
+    return result ? `${tool} → ${result}` : tool
+  }
   if (data.agent_id) return String(data.agent_id)
   if (data.step_id) return String(data.step_id)
   if (data.assigned_agent) return String(data.assigned_agent)
   return ''
 }
 
+const STEP_ICONS: Record<string, React.ReactNode> = {
+  roster: <Users className="h-3 w-3 text-blue-400" />,
+  context: <Database className="h-3 w-3 text-teal-400" />,
+  thinking: <Brain className="h-3 w-3 text-purple-400" />,
+  error: <AlertTriangle className="h-3 w-3 text-destructive" />,
+}
+
 export function LiveActivityPanel() {
   const phase = useLiveRunStore((s) => s.phase)
   const activeAgents = useLiveRunStore((s) => s.activeAgents)
   const thinkingBuffers = useLiveRunStore((s) => s.thinkingBuffers)
+  const planningSteps = useLiveRunStore((s) => s.planningSteps)
   const eventLog = useLiveRunStore((s) => s.eventLog)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -60,18 +81,56 @@ export function LiveActivityPanel() {
 
       {/* Planning phase indicator */}
       {phase === 'planning' && (
-        <div className="flex items-center gap-2 border-b px-4 py-3 bg-amber-500/5">
-          <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-          <span className="text-sm text-amber-600">
-            Planning execution...
-          </span>
+        <div className="border-b bg-amber-500/5 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+            <span className="text-sm text-amber-600">Planning execution</span>
+          </div>
+
+          {/* Planning phase steps */}
+          {planningSteps.length > 0 && (
+            <div className="space-y-1">
+              {planningSteps.map((ps, i) => (
+                <div key={i} className={`flex items-start gap-2 text-xs ${ps.step === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  <span className="mt-0.5 flex-shrink-0">
+                    {STEP_ICONS[ps.step] ?? <Zap className="h-3 w-3 text-gray-400" />}
+                  </span>
+                  <span>{ps.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Planning agent thinking stream */}
+          {activeAgents.size > 0 && (
+            <div className="space-y-2">
+              {Array.from(activeAgents.entries()).map(([agentId, agentState]) => (
+                <div key={agentId}>
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-3.5 w-3.5 text-purple-400 animate-pulse" />
+                    <span className="text-xs font-medium truncate">
+                      {agentId}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {agentState}
+                    </Badge>
+                  </div>
+                  {thinkingBuffers.get(agentId) && (
+                    <p className="mt-1 ml-5 max-h-40 overflow-y-auto text-[11px] italic text-muted-foreground font-mono whitespace-pre-wrap">
+                      {(thinkingBuffers.get(agentId) ?? '').slice(-600)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Active agents */}
-      {activeAgents.size > 0 && (
+      {/* Active agents (executing phase) */}
+      {phase !== 'planning' && activeAgents.size > 0 && (
         <div className="border-b px-4 py-2 space-y-1">
-          {Array.from(activeAgents.entries()).map(([agentId, state]) => (
+          {Array.from(activeAgents.entries()).map(([agentId, agentState]) => (
             <div key={agentId}>
               <div className="flex items-center gap-2">
                 <Brain className="h-3.5 w-3.5 text-purple-400 animate-pulse" />
@@ -79,10 +138,9 @@ export function LiveActivityPanel() {
                   {agentId}
                 </span>
                 <Badge variant="secondary" className="text-[10px]">
-                  {state}
+                  {agentState}
                 </Badge>
               </div>
-              {/* Thinking buffer preview */}
               {thinkingBuffers.get(agentId) && (
                 <p className="mt-1 ml-5 text-[11px] italic text-muted-foreground font-mono line-clamp-3 whitespace-pre-wrap">
                   {(thinkingBuffers.get(agentId) ?? '').slice(-300)}
@@ -115,9 +173,9 @@ export function LiveActivityPanel() {
                 <span className="font-medium text-foreground">
                   {eventLabel(ev.event_type)}
                 </span>
-                {eventDetail(ev.data ?? ev) && (
+                {eventDetail(ev.event_type, ev.data ?? ev) && (
                   <span className="ml-1.5 text-muted-foreground truncate">
-                    {eventDetail(ev.data ?? ev)}
+                    {eventDetail(ev.event_type, ev.data ?? ev)}
                   </span>
                 )}
               </div>

@@ -503,6 +503,36 @@ def _make_agent_executor(
         agent = module.create_agent(model)
         deps = _build_agent_deps(agent_name, agent_config)
 
+        # Wire deps progress callback to emit real-time tool events
+        if hasattr(deps, 'on_progress') and event_bus is not None:
+            import asyncio as _asyncio
+
+            def _on_progress(evt: dict) -> None:
+                tool = evt.get("tool", "")
+                detail = evt.get("detail", "")
+                evt_type = evt.get("type", "")
+                if evt_type == "tool_start":
+                    _asyncio.ensure_future(_emit(
+                        event_bus, AgentToolCallEvent,
+                        session_id=session_id,
+                        source=f"dispatch:{mission_id}",
+                        agent_id=agent_name,
+                        tool_name=tool,
+                        tool_args={"detail": detail} if detail else {},
+                    ))
+                elif evt_type == "tool_done":
+                    _asyncio.ensure_future(_emit(
+                        event_bus, AgentToolResultEvent,
+                        session_id=session_id,
+                        source=f"dispatch:{mission_id}",
+                        agent_id=agent_name,
+                        tool_name=tool,
+                        tool_call_id="",
+                        result=detail or None,
+                    ))
+
+            deps.on_progress = _on_progress
+
         # Signal that this agent is about to execute
         await _emit(event_bus, AgentThinkingEvent,
             session_id=session_id,

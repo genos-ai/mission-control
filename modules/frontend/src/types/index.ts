@@ -341,7 +341,15 @@ export interface ExecutionRecordDetail extends ExecutionRecord {
 export interface ExecutionCostBreakdown {
   execution_id: string
   total_cost_usd: number
-  task_costs: { task_id: string; agent_name: string; cost_usd: number; tokens: number }[]
+  task_costs: {
+    task_id: string
+    agent_name: string
+    cost_usd: number
+    input_tokens: number
+    output_tokens: number
+    status: string
+    duration_seconds: number | null
+  }[]
   model_costs: Record<string, number>
   attempt_count: number
   total_input_tokens: number

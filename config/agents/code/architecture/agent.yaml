@@ -31,7 +31,10 @@ agent_name: code.architecture.agent
 agent_type: vertical
 description: "Deep architectural review: evaluates code against six engineering principles (read-only)"
 enabled: true
-model: anthropic:claude-haiku-4-5-20251001
+model:
+  name: "anthropic:claude-opus-4-20250514"
+  temperature: 0.0
+  max_tokens: 16384
 max_input_length: 64000
 max_budget_usd: 5.00
 

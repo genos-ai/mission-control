@@ -31,6 +31,7 @@ interface LiveRunState {
   // Left panel: live activity
   activeAgents: Map<string, string>
   thinkingBuffers: Map<string, string>
+  planningSteps: { step: string; message: string }[]
   eventLog: SseEvent[]
 
   // Right panel: results
@@ -65,6 +66,7 @@ const INITIAL_STATE = {
   status: 'planning' as const,
   activeAgents: new Map<string, string>(),
   thinkingBuffers: new Map<string, string>(),
+  planningSteps: [] as { step: string; message: string }[],
   eventLog: [] as SseEvent[],
   taskResults: [] as TaskResult[],
   errors: [] as string[],
@@ -94,6 +96,15 @@ export const useLiveRunStore = create<LiveRunState>((set, get) => ({
     const d = event.data ?? event
 
     switch (etype) {
+      case 'plan.phase': {
+        const step = String(d.step ?? '')
+        const message = String(d.message ?? '')
+        set({
+          planningSteps: [...state.planningSteps, { step, message }],
+        })
+        return
+      }
+
       case 'plan.created': {
         const tasks = (d.tasks as unknown[]) ?? []
         set({
@@ -168,7 +179,38 @@ export const useLiveRunStore = create<LiveRunState>((set, get) => ({
         const newBuffers = new Map(state.thinkingBuffers)
         newActive.set(agentId, 'thinking')
         newBuffers.set(agentId, '')
-        set({ activeAgents: newActive, thinkingBuffers: newBuffers })
+        set({
+          activeAgents: newActive,
+          thinkingBuffers: newBuffers,
+          eventLog: [...state.eventLog, event].slice(-100),
+        })
+        return
+      }
+
+      case 'agent.tool.called': {
+        const agentId = String(d.agent_id ?? '')
+        const toolName = String(d.tool_name ?? '')
+        if (!agentId) break
+        const newActive = new Map(state.activeAgents)
+        newActive.set(agentId, `tool: ${toolName}`)
+        set({
+          activeAgents: newActive,
+          eventLog: [...state.eventLog, event].slice(-100),
+        })
+        return
+      }
+
+      case 'agent.tool.returned': {
+        const agentId = String(d.agent_id ?? '')
+        if (!agentId) break
+        const newActive = new Map(state.activeAgents)
+        if (newActive.has(agentId)) {
+          newActive.set(agentId, 'executing')
+        }
+        set({
+          activeAgents: newActive,
+          eventLog: [...state.eventLog, event].slice(-100),
+        })
         return
       }
 

@@ -52,6 +52,7 @@ from modules.backend.events.types import (
     AgentToolCallEvent,
     AgentToolResultEvent,
     CostUpdateEvent,
+    PlanningPhaseEvent,
     SessionEvent,
     UserMessageEvent,
 )
@@ -521,8 +522,18 @@ async def handle_mission(
             "mission_id and db_session are required for dispatch. "
             "Agents are resolved from the mission team in the database."
         )
+    _plan_sid = uuid.UUID(session_id) if session_id else uuid.uuid4()
+
+    async def _phase(step: str, message: str) -> None:
+        await _publish(event_bus, PlanningPhaseEvent(
+            session_id=_plan_sid, source="mission_control",
+            step=step, message=message,
+        ))
+
+    await _phase("roster", "Deriving agent roster from team")
     roster = await derive_roster_from_team(mission_id, db_session)
     roster_description = _build_roster_prompt(roster)
+    await _phase("roster", f"Roster ready — {len(roster.agents)} agents")
 
     # Create context services BEFORE planning so the planner gets PCD + history
     context_curator = None
@@ -546,6 +557,7 @@ async def handle_mission(
         )
 
         # Load project context for the planner (non-fatal)
+        await _phase("context", "Loading mission context")
         try:
             project_context = await context_curator.get_mission_context(mission_id)
         except (OSError, ValueError, RuntimeError):
@@ -566,6 +578,7 @@ async def handle_mission(
                 extra={"mission_id": mission_id},
                 exc_info=True,
             )
+        await _phase("context", "Context assembled")
 
     # Build planning prompt WITH project context
     planning_prompt = _build_planning_prompt(
@@ -584,12 +597,14 @@ async def handle_mission(
     planning_agent_id = "horizontal.planning.agent"
 
     # Emit planning started event
+    await _phase("thinking", "Planning agent decomposing objective")
     await _publish(event_bus, AgentThinkingEvent(
-        session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+        session_id=_plan_sid,
         source="mission_control",
         agent_id=planning_agent_id,
     ))
 
+    last_error = ""
     for attempt in range(max_planning_attempts):
         try:
             planning_result = await _call_planning_agent(
@@ -604,6 +619,8 @@ async def handle_mission(
             if validation.is_valid:
                 break
 
+            last_error = "; ".join(validation.errors)
+            await _phase("error", f"Attempt {attempt + 1} failed: plan validation — {last_error}")
             logger.warning(
                 "TaskPlan validation failed, retrying Planning Agent",
                 extra={
@@ -618,16 +635,18 @@ async def handle_mission(
             plan = None
 
         except (ValueError, Exception) as e:
+            last_error = str(e)
+            await _phase("error", f"Attempt {attempt + 1} failed: {last_error}")
             logger.warning(
                 "Planning Agent error, retrying",
                 extra={
                     "attempt": attempt + 1,
-                    "error": str(e),
+                    "error": last_error,
                     "mission_id": mission_run_id,
                 },
             )
             planning_prompt = _append_validation_feedback(
-                planning_prompt, [str(e)],
+                planning_prompt, [last_error],
             )
 
     # Emit planning complete event
@@ -644,7 +663,7 @@ async def handle_mission(
             session_id=_sid,
             source="mission_control",
             agent_id=planning_agent_id,
-            full_content="Planning failed after retries",
+            full_content=last_error or "Planning failed after retries",
             metadata={"error": True},
         ))
         return ExecutionOutcome(
@@ -673,6 +692,11 @@ async def handle_mission(
 
     outcome.planning_trace_reference = thinking_trace
     outcome.task_plan_reference = plan.model_dump_json()
+
+    # Best-effort synthesis — generate human narrative summary
+    from modules.backend.services.synthesis import summarize_outcome
+
+    outcome.summary = await summarize_outcome(outcome)
 
     # Best-effort persistence — does not block or fail the mission
     if db_session is not None:
