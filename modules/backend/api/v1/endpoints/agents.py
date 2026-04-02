@@ -82,7 +82,9 @@ async def agent_chat(
     result = await collect(
         session_id,
         data.message,
+        mission_id=data.mission_id,
         session_service=service,
+        db_session=db,
     )
 
     return ApiResponse(
@@ -117,6 +119,7 @@ async def agent_chat_stream(
             session_id, data.message,
             mission_id=data.mission_id,
             session_service=service,
+            db_session=db,
         ):
             yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
         yield "event: done\ndata: {}\n\n"
