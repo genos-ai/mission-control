@@ -66,6 +66,7 @@ async def dispatch(
     context_assembler: ContextAssemblerProtocol | None = None,
     event_bus: EventBusProtocol | None = None,
     session_id: str | None = None,
+    execution_mode: str = "local",
 ) -> ExecutionOutcome:
     """Execute the dispatch loop for a validated TaskPlan.
 
@@ -83,6 +84,12 @@ async def dispatch(
     _bus = event_bus or NoOpEventBus()
     _sid = session_id or plan.mission_id
     layers = topological_sort(plan)
+
+    if execution_mode != "local":
+        logger.info(
+            "Dispatch using non-local execution mode",
+            extra={"execution_mode": execution_mode, "mission_id": plan.mission_id},
+        )
 
     gate_decisions: list[GateDecisionRecord] = []
 

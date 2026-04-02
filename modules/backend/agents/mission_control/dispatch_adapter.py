@@ -45,8 +45,22 @@ class MissionControlDispatchAdapter:
         session_id: str | None = None,
         mission_id: str | None = None,
         gate: object | None = None,
+        execution_mode: str | None = None,
     ) -> dict:
         """Execute a mission via handle_mission() and return result dict."""
+        from modules.backend.agents.mission_control.dispatch.environment import (
+            resolve_execution_mode,
+        )
+
+        resolved_mode = execution_mode or resolve_execution_mode(
+            mission_environment=None,  # TODO: load from mission model
+            mission_repo_root=None,    # TODO: load from mission model
+        )
+        logger.info(
+            "Execution mode resolved",
+            extra={"execution_mode": resolved_mode, "mission_id": mission_id},
+        )
+
         mission_run_id = f"mission-{session_id}" if session_id else "mission-adhoc"
         budget = cost_ceiling_usd or 10.0
 
