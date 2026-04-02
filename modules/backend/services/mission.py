@@ -100,12 +100,56 @@ class MissionService(BaseService):
             description=description,
         )
 
+        # Auto-assign default agents based on tier
+        await self._auto_assign_agents(mission.id, tier)
+
         self._log_operation(
             "Mission created",
             mission_id=mission.id,
             mission_name=name,
+            tier=tier,
         )
         return mission
+
+    async def _auto_assign_agents(self, mission_id: str, tier: str) -> None:
+        """Auto-assign system + mission agents to a new mission.
+
+        All missions get:
+            - system.* agents (dispatch infrastructure, read-only visible)
+            - mission.* agents (director, workflow architect)
+
+        Platform missions additionally get:
+            - platform.director.agent (admin conversational entry point)
+        """
+        from modules.backend.services.mission_team import MissionTeamService
+
+        team_svc = MissionTeamService(self._session)
+
+        # Collect agents to auto-assign from the registry
+        from modules.backend.agents.mission_control.registry import get_registry
+        registry = get_registry()
+
+        auto_agents: list[str] = []
+        for agent_info in registry.list_system():
+            auto_agents.append(agent_info["agent_name"])
+        for agent_info in registry.list_all(tier="user"):
+            name = agent_info["agent_name"]
+            if name.startswith("mission."):
+                auto_agents.append(name)
+
+        if tier == "platform":
+            auto_agents.append("platform.director.agent")
+
+        assigned = []
+        for agent_name in auto_agents:
+            try:
+                await team_svc.add_agent_by_name(mission_id, agent_name)
+                assigned.append(agent_name)
+            except Exception as e:
+                logger.debug(
+                    "Could not auto-assign agent",
+                    extra={"agent": agent_name, "error": str(e)},
+                )
 
     async def get_mission(self, mission_id: str) -> Mission:
         """Get a mission by ID. Raises NotFoundError if not found."""
