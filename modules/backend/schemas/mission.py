@@ -57,6 +57,11 @@ class MissionCreate(BaseModel):
         pattern=r"^(user|platform)$",
         description="Mission tier: user (standard) or platform (admin-only)",
     )
+    execution_environment: str | None = Field(
+        None,
+        pattern=r"^(local|worktree|container)$",
+        description="Default execution environment for this mission. NULL = local.",
+    )
 
 
 class MissionUpdate(BaseModel):
@@ -90,6 +95,7 @@ class MissionResponse(BaseModel):
     repo_url: str | None
     repo_root: str | None
     tier: str
+    execution_environment: str | None
     created_at: datetime
     updated_at: datetime
 

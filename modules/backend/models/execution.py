@@ -19,6 +19,20 @@ from sqlalchemy.orm import Mapped, mapped_column
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
+class ExecutionEnvironment(str, enum.Enum):
+    """Execution environment mode.
+
+    Graduated isolation hierarchy:
+        local     — in-process, FileScope isolation only (default)
+        worktree  — git branch + separate working directory (future)
+        container — Docker namespace isolation with full runtime
+    """
+
+    LOCAL = "local"
+    WORKTREE = "worktree"
+    CONTAINER = "container"
+
+
 class ExecutionState(str, enum.Enum):
     """Execution lifecycle status.
 
@@ -188,6 +202,10 @@ class Execution(UUIDMixin, TimestampMixin, Base):
     )
     result_summary: Mapped[str | None] = mapped_column(
         Text, nullable=True,
+    )
+    execution_environment: Mapped[str] = mapped_column(
+        String(20), default="local", nullable=False, server_default="local",
+        comment="Execution environment: local, worktree, container",
     )
 
     def __repr__(self) -> str:

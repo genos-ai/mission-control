@@ -141,6 +141,7 @@ class ExecutionService(BaseService):
                 total_cost_usd=0.0,
                 cost_ceiling_usd=cost_ceiling_usd,
                 mission_id=mission_id,
+                execution_environment=environment,
             )
             self._session.add(execution)
             await self._session.flush()

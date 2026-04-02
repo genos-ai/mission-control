@@ -106,6 +106,7 @@ class TestMissionResponse:
             budget_ceiling_usd=None,
             repo_url=None,
             repo_root=None,
+            execution_environment=None,
             created_at="2025-01-01T00:00:00",
             updated_at="2025-01-01T00:00:00",
         )

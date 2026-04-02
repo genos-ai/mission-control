@@ -1,0 +1,34 @@
+# =============================================================================
+# Execution Environment Configuration
+# =============================================================================
+# Configures where agents run: in-process (local), git worktree, or Docker
+# container. See Plan 37 for the three-tier isolation model.
+#
+# Options:
+#   default_mode      - Default execution mode for new executions (string: local)
+#   container         - Container backend settings (object)
+#     enabled         - Whether container execution is available (boolean)
+#     templates       - Named container templates (object)
+#   worktree          - Worktree backend settings (object, future)
+#     enabled         - Whether worktree execution is available (boolean)
+# =============================================================================
+
+default_mode: local
+
+container:
+  enabled: false
+  # templates:
+  #   code-workspace:
+  #     description: "Python workspace with git worktree support"
+  #     dockerfile: "code-workspace.Dockerfile"
+  #     git_aware: true
+  #     cpu_limit: 2.0
+  #     memory_limit_mb: 2048
+  #     auto_stop_after_seconds: 3600
+
+worktree:
+  enabled: false
+  # base_dir: "../agent-workspaces"
+  # branch_prefix: "agent"
+  # max_concurrent_worktrees: 10
+  # stale_branch_ttl_days: 7

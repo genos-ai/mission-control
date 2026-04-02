@@ -86,7 +86,7 @@ class WorkflowStepSchema(BaseModel):
     cost_ceiling_usd: float | None = Field(None, ge=0.01)
     environment: str = Field(
         default="local",
-        pattern=r"^(local|container|sandbox)$",
+        pattern=r"^(local|worktree|container|sandbox|auto)$",
     )
     input: dict[str, Any] = Field(default_factory=dict)
     output_mapping: WorkflowStepOutputMapping | None = None

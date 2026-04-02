@@ -50,6 +50,8 @@ class ExecutionSchema(_StrictBase):
     """Agent execution environment."""
 
     mode: str
+    prefer: Literal["local", "worktree", "container"] | None = None
+    template: str | None = None
 
 
 class ComplianceRuleSchema(_StrictBase):

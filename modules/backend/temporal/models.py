@@ -19,6 +19,7 @@ class MissionWorkflowInput:
     roster_name: str = "default"
     mission_budget_usd: float = 10.0
     mission_id: str | None = None
+    execution_mode: str | None = None
     approval_timeout_seconds: int = 14400
     escalation_timeout_seconds: int = 86400
     notification_timeout_seconds: int = 30

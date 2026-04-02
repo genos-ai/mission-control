@@ -92,6 +92,10 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         server_default="user",
         comment="Mission tier: user (standard) or platform (admin-only)",
     )
+    execution_environment: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default=None,
+        comment="Default execution environment for this mission: local, worktree, container. NULL = local.",
+    )
 
     # Relationships
     members: Mapped[list["MissionMember"]] = relationship(
