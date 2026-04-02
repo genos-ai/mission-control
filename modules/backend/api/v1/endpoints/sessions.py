@@ -271,6 +271,7 @@ async def send_message_stream(
             mission_id=mission_id,
             session_service=service,
             sender_id=data.sender_id,
+            db_session=db,
         ):
             yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
         yield "event: done\ndata: {}\n\n"

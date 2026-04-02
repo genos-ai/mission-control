@@ -14,7 +14,8 @@ import {
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
-import { useSessions, useMessages, useCreateSession } from '@/hooks/use-sessions'
+import { useSessions, useMessages, useCreateSession, sessionKeys } from '@/hooks/use-sessions'
+import { queryClient } from '@/main'
 import { useTeam } from '@/hooks/use-team'
 import { useCatalog } from '@/hooks/use-catalog'
 import { API_BASE } from '@/lib/constants'
@@ -69,6 +70,13 @@ export default function ChatPage() {
       setSelectedAgent(planner?.name ?? teamAgents[0].name)
     }
   }, [teamAgents.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-select most recent thread when navigating to /chat without threadId
+  useEffect(() => {
+    if (!threadId && sessions && sessions.length > 0) {
+      navigate(`/missions/${missionId}/chat/${sessions[0].id}`, { replace: true })
+    }
+  }, [threadId, sessions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNewChat = async () => {
     if (!user) return
@@ -387,6 +395,8 @@ function ConversationView({
     } finally {
       abortRef.current = null
       setSending(false)
+      // Invalidate message cache so history persists across navigations
+      queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
     }
   }, [input, sending, sessionId, missionId, user?.id])
 
