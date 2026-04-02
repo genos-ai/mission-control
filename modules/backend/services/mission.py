@@ -191,6 +191,8 @@ class MissionService(BaseService):
             ("workflow_schedules", "mission_id", None, None),
             ("workflow_runs", "mission_id", None, None),
             ("workflow_definitions", "mission_id", None, None),
+            # Execution environments
+            ("execution_environments", "mission_id", None, None),
         ]
 
         for entry in cascade_tables:
@@ -225,11 +227,24 @@ class MissionService(BaseService):
 
         await self._session.flush()
 
-        # Cleanup any stale containers for this mission
+        # Cleanup any running containers for this mission
         try:
-            self._cleanup_mission_containers(mission_id)
+            from modules.backend.services.execution_environment import (
+                ExecutionEnvironmentService,
+            )
+            from modules.backend.services.container_backend import ContainerBackend
+
+            env_svc = ExecutionEnvironmentService(db_session=self._session)
+            env_svc.register_backend("container", ContainerBackend())
+            count = await env_svc.cleanup_for_mission(mission_id)
+            if count:
+                logger.info("Cleaned up mission containers", extra={"count": count})
         except Exception:
-            logger.debug("Container cleanup skipped (non-fatal)", exc_info=True)
+            # Fallback: direct Docker cleanup
+            try:
+                self._cleanup_mission_containers(mission_id)
+            except Exception:
+                logger.debug("Container cleanup skipped (non-fatal)", exc_info=True)
 
         self._log_operation(
             "Mission deleted",
