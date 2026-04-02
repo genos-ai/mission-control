@@ -151,6 +151,110 @@ class MissionService(BaseService):
                     extra={"agent": agent_name, "error": str(e)},
                 )
 
+    async def delete_mission(self, mission_id: str) -> str:
+        """Permanently delete a mission and all related data.
+
+        Cascades through all FK dependencies in the correct order.
+        Also cleans up any running containers for this mission.
+
+        Returns the mission name for confirmation output.
+        """
+        from sqlalchemy import text
+
+        mission = await self._mission_repo.get_by_id(mission_id)
+        mission_name = mission.name
+
+        # Clear current_mission_id on any users pointing to this mission
+        await self._session.execute(
+            text("UPDATE users SET current_mission_id = NULL WHERE current_mission_id = :mid"),
+            {"mid": mission_id},
+        )
+
+        # Delete in FK order (deepest children first)
+        cascade_tables = [
+            # Deepest children: task_attempts → task_executions → execution_records
+            ("task_attempts", "task_execution_id", "task_executions", "execution_record_id",
+             "execution_records", "mission_id"),
+            # Children of execution_records
+            ("execution_decisions", "execution_record_id", "execution_records", "mission_id"),
+            ("task_executions", "execution_record_id", "execution_records", "mission_id"),
+            # execution_records themselves
+            ("execution_records", "mission_id", None, None),
+            # Direct children of missions
+            ("executions", "mission_id", None, None),
+            ("milestone_summaries", "mission_id", None, None),
+            ("mission_contexts", "mission_id", None, None),
+            ("mission_decisions", "mission_id", None, None),
+            ("mission_members", "mission_id", None, None),
+            ("mission_team_members", "mission_id", None, None),
+            # Workflow chain
+            ("workflow_schedules", "mission_id", None, None),
+            ("workflow_runs", "mission_id", None, None),
+            ("workflow_definitions", "mission_id", None, None),
+        ]
+
+        for entry in cascade_tables:
+            if len(entry) == 6:
+                # 3-level deep: table → parent → grandparent → mission
+                table, fk_col, parent, parent_fk, grandparent, gp_fk = entry
+                await self._session.execute(
+                    text(f"DELETE FROM {table} WHERE {fk_col} IN "
+                         f"(SELECT id FROM {parent} WHERE {parent_fk} IN "
+                         f"(SELECT id FROM {grandparent} WHERE {gp_fk} = :mid))"),
+                    {"mid": mission_id},
+                )
+            elif len(entry) == 4:
+                table, fk_col, parent_table, parent_fk = entry
+                if parent_table:
+                    await self._session.execute(
+                        text(f"DELETE FROM {table} WHERE {fk_col} IN "
+                             f"(SELECT id FROM {parent_table} WHERE {parent_fk} = :mid)"),
+                        {"mid": mission_id},
+                    )
+                else:
+                    await self._session.execute(
+                        text(f"DELETE FROM {table} WHERE {fk_col} = :mid"),
+                        {"mid": mission_id},
+                    )
+
+        # Delete the mission itself
+        await self._session.execute(
+            text("DELETE FROM missions WHERE id = :mid"),
+            {"mid": mission_id},
+        )
+
+        await self._session.flush()
+
+        # Cleanup any stale containers for this mission
+        try:
+            self._cleanup_mission_containers(mission_id)
+        except Exception:
+            logger.debug("Container cleanup skipped (non-fatal)", exc_info=True)
+
+        self._log_operation(
+            "Mission deleted",
+            mission_id=mission_id,
+            mission_name=mission_name,
+        )
+        return mission_name
+
+    @staticmethod
+    def _cleanup_mission_containers(mission_id: str) -> None:
+        """Remove any Docker containers labeled with this mission ID."""
+        try:
+            import docker
+            client = docker.from_env()
+            containers = client.containers.list(
+                all=True,
+                filters={"label": f"mc-environment={mission_id}"},
+            )
+            for container in containers:
+                container.remove(force=True)
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
     async def get_mission(self, mission_id: str) -> Mission:
         """Get a mission by ID. Raises NotFoundError if not found."""
         return await self._mission_repo.get_by_id(mission_id)

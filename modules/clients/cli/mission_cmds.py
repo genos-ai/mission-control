@@ -35,6 +35,7 @@ def run_mission(
         "list": _action_list,
         "detail": _action_detail,
         "archive": _action_archive,
+        "delete": _action_delete,
         "use": _action_use,
         "clear-mission": _action_clear_mission,
         "context-show": _action_context_show,
@@ -236,6 +237,20 @@ async def _action_archive(cli_logger, *, mission_id, **_):
         mission = await svc.archive_mission(mission_id)
 
     console.print(f"[yellow]Mission archived:[/yellow] {mission.name} ({mission.id})")
+
+
+async def _action_delete(cli_logger, *, mission_id, **_):
+    """Permanently delete a mission and all related data."""
+    from modules.backend.services.mission import MissionService
+    from modules.clients.cli.mission_context import async_require_mission_id
+
+    console = get_console()
+    mission_id = await async_require_mission_id(mission_id)
+
+    async with MissionService.factory() as svc:
+        mission_name = await svc.delete_mission(mission_id)
+
+    console.print(f"[red]Mission deleted:[/red] {mission_name} ({mission_id})")
 
 
 async def _action_use(cli_logger, *, mission_id, **_):

@@ -287,6 +287,25 @@ def mission_archive(ctx):
     asyncio.run(_run())
 
 
+@mission.command("delete")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt.")
+@click.pass_obj
+def mission_delete(ctx, confirm):
+    """Permanently delete the current mission and all its data."""
+    if not confirm:
+        click.confirm("This will permanently delete the mission and all its data. Continue?", abort=True)
+
+    from modules.backend.services.mission import MissionService
+
+    async def _run():
+        mid = await _async_require_mission()
+        async with MissionService.factory() as svc:
+            name = await svc.delete_mission(mid)
+        click.echo(f"Deleted: {name}")
+
+    asyncio.run(_run())
+
+
 @mission.command("unarchive")
 @click.argument("name_or_id")
 @click.pass_obj

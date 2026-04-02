@@ -607,6 +607,25 @@ def mission_archive(ctx, mission_id):
                 output_format=ctx.output_format)
 
 
+@mission.command("delete")
+@click.argument("mission_id", required=False)
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt.")
+@click.pass_obj
+def mission_delete(ctx, mission_id, confirm):
+    """Permanently delete a mission and all related data.
+
+    Cascades through all executions, records, workflows, team members.
+    Also cleans up any Docker containers for this mission.
+
+    Uses current mission if MISSION_ID is omitted.
+    """
+    if not confirm:
+        click.confirm("This will permanently delete the mission and all its data. Continue?", abort=True)
+    from modules.clients.cli.mission_cmds import run_mission
+    run_mission(ctx.logger, "delete", mission_id=mission_id,
+                output_format=ctx.output_format)
+
+
 @mission.command("use")
 @click.argument("mission_id")
 @click.pass_obj
