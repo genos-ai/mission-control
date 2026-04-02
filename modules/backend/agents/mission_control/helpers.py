@@ -474,11 +474,15 @@ def _make_agent_executor(
     *,
     session_id: str,
     mission_id: str,
+    environment_handle: object | None = None,
 ) -> ExecuteAgentFn:
     """Create the execute_agent_fn closure for the dispatch loop.
 
     Emits SessionEvents via event_bus so that real-time consumers (TUI,
     event stream, etc.) can observe agent lifecycle during dispatch.
+
+    When environment_handle is set, agents receive it in their deps
+    so their tools can execute commands inside the container/worktree.
     """
     cumulative_cost_usd = 0.0
 
@@ -505,6 +509,10 @@ def _make_agent_executor(
         model = _build_model(agent_config.model)
         agent = module.create_agent(model)
         deps = _build_agent_deps(agent_name, agent_config)
+
+        # Inject environment handle for container/worktree execution
+        if environment_handle is not None:
+            deps.environment_handle = environment_handle
 
         # Wire deps progress callback to emit real-time tool events
         if hasattr(deps, 'on_progress') and event_bus is not None:

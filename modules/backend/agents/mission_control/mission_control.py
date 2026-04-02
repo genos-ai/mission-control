@@ -504,6 +504,7 @@ async def handle_mission(
     mission_id: str | None = None,
     db_session: Any | None = None,
     gate: GateReviewer | None = None,
+    execution_mode: str = "local",
 ) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
@@ -672,23 +673,72 @@ async def handle_mission(
             planning_trace_reference=thinking_trace,
         )
 
+    # Provision execution environment if non-local
+    env_handle = None
+    env_service = None
+    if execution_mode != "local":
+        try:
+            from modules.backend.services.execution_environment import (
+                ExecutionEnvironmentService,
+            )
+            from modules.backend.services.container_backend import ContainerBackend
+            from modules.backend.core.config import find_project_root
+
+            env_service = ExecutionEnvironmentService()
+            env_service.register_backend("container", ContainerBackend())
+
+            repo_root = str(find_project_root())
+            env_handle = await env_service.resolve_or_create(
+                name=mission_run_id,
+                mode=execution_mode,
+                config={
+                    "image": "code-workspace:latest",
+                    "git_aware": True,
+                    "repo_root": repo_root,
+                    "branch_name": f"agent/{mission_run_id[:8]}/dispatch",
+                },
+            )
+            logger.info(
+                "Execution environment provisioned",
+                extra={
+                    "mode": execution_mode,
+                    "environment_id": env_handle.environment_id,
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Failed to provision execution environment, falling back to local",
+                exc_info=True,
+            )
+            env_handle = None
+
     # Execute dispatch loop (context services already created above)
-    outcome = await dispatch(
-        plan=plan,
-        roster=roster,
-        execute_agent_fn=_make_agent_executor(
-            event_bus,
+    try:
+        outcome = await dispatch(
+            plan=plan,
+            roster=roster,
+            execute_agent_fn=_make_agent_executor(
+                event_bus,
+                session_id=session_id or mission_run_id,
+                mission_id=mission_run_id,
+                environment_handle=env_handle,
+            ),
+            mission_budget_usd=mission_budget_usd,
+            gate=gate,
+            mission_id=mission_id,
+            context_curator=context_curator,
+            context_assembler=context_assembler,
+            event_bus=event_bus,
             session_id=session_id or mission_run_id,
-            mission_id=mission_run_id,
-        ),
-        mission_budget_usd=mission_budget_usd,
-        gate=gate,
-        mission_id=mission_id,
-        context_curator=context_curator,
-        context_assembler=context_assembler,
-        event_bus=event_bus,
-        session_id=session_id or mission_run_id,
-    )
+            execution_mode=execution_mode,
+        )
+    finally:
+        # Cleanup environment after dispatch completes
+        if env_handle is not None and env_service is not None:
+            try:
+                await env_service.cleanup(env_handle)
+            except Exception:
+                logger.warning("Environment cleanup failed", exc_info=True)
 
     outcome.planning_trace_reference = thinking_trace
     outcome.task_plan_reference = plan.model_dump_json()

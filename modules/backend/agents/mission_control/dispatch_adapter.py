@@ -94,6 +94,7 @@ class MissionControlDispatchAdapter:
             mission_id=mission_id,
             db_session=self._db_session,
             gate=gate,
+            execution_mode=resolved_mode,
         )
 
         outcome_dict = outcome.model_dump()

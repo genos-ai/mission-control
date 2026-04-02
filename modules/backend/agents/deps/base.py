@@ -59,6 +59,7 @@ class BaseAgentDeps:
     config: AgentConfigSchema | None = None
     session_id: str | None = None       # Set when running within a session
     on_event: Any = None                # Callable[[SessionEvent], Awaitable[None]] | None
+    environment_handle: Any = None      # EnvironmentHandle when running in container/worktree mode
 
 
 @dataclass
