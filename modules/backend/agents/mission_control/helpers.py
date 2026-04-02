@@ -173,6 +173,9 @@ def _build_agent_deps(
     if "mission.director" in agent_name:
         from modules.backend.agents.mission.director.deps import MissionDirectorDeps
         return MissionDirectorDeps(**common, mission_id=mission_id or "", db_session=db_session)
+    if "platform.director" in agent_name:
+        from modules.backend.agents.platform.director.deps import PlatformDirectorDeps
+        return PlatformDirectorDeps(**common, db_session=db_session)
     if category == "platform" and "health" in agent_name:
         return HealthAgentDeps(**common, app_config=get_app_config())
     if category == "software":

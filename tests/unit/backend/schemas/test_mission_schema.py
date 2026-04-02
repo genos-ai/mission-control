@@ -99,6 +99,7 @@ class TestMissionResponse:
             description="Response test",
             brief=None,
             status="active",
+            tier="user",
             owner_id="user:test",
             team_id=None,
             default_roster="default",

@@ -34,7 +34,7 @@ def _get_agent() -> Agent[None, str]:
     all context is in the prompt, so caching is safe.
     """
     model = _build_model(_DEFAULT_MODEL)
-    instructions = assemble_instructions("horizontal", "synthesis")
+    instructions = assemble_instructions("system", "synthesis")
 
     agent = Agent(
         model,

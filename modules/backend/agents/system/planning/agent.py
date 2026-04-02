@@ -42,7 +42,7 @@ def create_agent(model: str | Model) -> Agent:
     """
     if isinstance(model, str):
         model = _build_model(model)
-    system_prompt = assemble_instructions("horizontal", "planning")
+    system_prompt = assemble_instructions("system", "planning")
 
     return Agent(
         model,

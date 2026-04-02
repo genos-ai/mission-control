@@ -15,6 +15,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
+class MissionTier(str, enum.Enum):
+    """Mission trust tier.
+
+    user     — standard mission, any authenticated user
+    platform — admin-only, accesses platform internals
+    """
+
+    USER = "user"
+    PLATFORM = "platform"
+
+
 class MissionStatus(str, enum.Enum):
     """Mission lifecycle status."""
 
@@ -73,6 +84,13 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     gate_mode: Mapped[str | None] = mapped_column(
         String(20), nullable=True, default=None,
         comment="Default gate mode: off, interactive, ai_assisted, autonomous",
+    )
+    tier: Mapped[str] = mapped_column(
+        Enum(MissionTier, native_enum=False),
+        default=MissionTier.USER,
+        nullable=False,
+        server_default="user",
+        comment="Mission tier: user (standard) or platform (admin-only)",
     )
 
     # Relationships

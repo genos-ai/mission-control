@@ -52,7 +52,7 @@ class TestCreateAgent:
 
         create_agent(mock_model)
 
-        mock_assemble.assert_called_once_with("horizontal", "workflow_architect")
+        mock_assemble.assert_called_once_with("mission", "workflow")
 
 
 class TestArchitectAgentDeps:

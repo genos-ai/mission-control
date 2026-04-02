@@ -35,7 +35,7 @@ def create_agent(model: str | Model) -> Agent[QaAgentDeps, ArchitectureReviewRes
     unless registry.reset() is called.
     """
 
-    instructions = assemble_instructions("code", "architecture")
+    instructions = assemble_instructions("software", "architecture")
 
     agent = Agent(
         model,

@@ -60,6 +60,7 @@ class MissionService(BaseService):
         repo_url: str | None = None,
         repo_root: str | None = None,
         gate_mode: str | None = None,
+        tier: str = "user",
     ) -> Mission:
         """Create a new mission with initial owner membership.
 
@@ -80,6 +81,7 @@ class MissionService(BaseService):
             repo_url=repo_url,
             repo_root=repo_root,
             gate_mode=gate_mode,
+            tier=tier,
         )
 
         # Auto-create owner membership

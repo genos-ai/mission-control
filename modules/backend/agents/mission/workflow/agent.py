@@ -39,7 +39,7 @@ def create_agent(model: str | Model) -> Agent:
     if isinstance(model, str):
         model = _build_model(model)
 
-    system_prompt = assemble_instructions("horizontal", "workflow_architect")
+    system_prompt = assemble_instructions("mission", "workflow")
 
     agent: Agent[ArchitectAgentDeps, str] = Agent(
         model,

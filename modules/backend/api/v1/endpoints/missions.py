@@ -43,7 +43,14 @@ async def create_mission(
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Create a new mission."""
+    """Create a new mission.
+
+    Platform missions (tier='platform') require admin role.
+    """
+    # TODO: enforce admin role for platform missions when auth middleware is wired
+    # if data.tier == "platform" and current_user.role != "admin":
+    #     raise HTTPException(403, "Platform missions require admin role")
+
     service = MissionService(db)
     mission = await service.create_mission(
         name=data.name,
@@ -55,6 +62,7 @@ async def create_mission(
         budget_ceiling_usd=data.budget_ceiling_usd,
         repo_url=data.repo_url,
         repo_root=data.repo_root,
+        tier=data.tier,
     )
     response = MissionResponse.model_validate(mission)
     return ApiResponse(

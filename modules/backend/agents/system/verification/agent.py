@@ -56,7 +56,7 @@ def create_agent(model: str | Model) -> Agent[BaseAgentDeps, VerificationEvaluat
     Called by AgentRegistry.get_instance() on first use. The registry
     caches the result.
     """
-    instructions = assemble_instructions("horizontal", "verification")
+    instructions = assemble_instructions("system", "verification")
 
     agent = Agent(
         model,

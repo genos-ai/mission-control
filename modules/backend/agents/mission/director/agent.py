@@ -30,7 +30,7 @@ def create_agent(model: str | Model) -> Agent:
     if isinstance(model, str):
         model = _build_model(model)
 
-    system_prompt = assemble_instructions("horizontal", "mission_director")
+    system_prompt = assemble_instructions("mission", "director")
 
     agent: Agent[MissionDirectorDeps, str] = Agent(
         model,

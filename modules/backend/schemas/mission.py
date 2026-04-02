@@ -52,6 +52,11 @@ class MissionCreate(BaseModel):
         None, max_length=1000,
         description="Local filesystem root path",
     )
+    tier: str = Field(
+        default="user",
+        pattern=r"^(user|platform)$",
+        description="Mission tier: user (standard) or platform (admin-only)",
+    )
 
 
 class MissionUpdate(BaseModel):
@@ -84,6 +89,7 @@ class MissionResponse(BaseModel):
     budget_ceiling_usd: float | None
     repo_url: str | None
     repo_root: str | None
+    tier: str
     created_at: datetime
     updated_at: datetime
 

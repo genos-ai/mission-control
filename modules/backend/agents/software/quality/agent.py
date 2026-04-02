@@ -29,7 +29,7 @@ def create_agent(model: str | Model) -> Agent[QaAgentDeps, QaAuditResult]:
     unless registry.reset() is called.
     """
 
-    instructions = assemble_instructions("code", "quality")
+    instructions = assemble_instructions("software", "quality")
 
     agent = Agent(
         model,

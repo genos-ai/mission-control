@@ -1,0 +1,56 @@
+# Platform Director Agent Configuration
+#   Admin-only conversational agent for platform operations. Provides
+#   cross-mission visibility, platform health, and infrastructure management.
+#
+#   Model: Opus 4.6 — best reasoning for broad platform context.
+#   Model is PINNED — no runtime override.
+
+agent_name: platform.director.agent
+agent_type: horizontal
+description: >-
+  Admin-only conversational agent for platform operations. Provides
+  cross-mission visibility, cost analytics, system health status,
+  and infrastructure management.
+enabled: true
+version: "1.0.0"
+
+model:
+  name: "anthropic:claude-opus-4-20250514"
+  temperature: 0.0
+  max_tokens: 16384
+
+keywords:
+  - platform
+  - admin
+  - health
+  - infrastructure
+
+tools:
+  - get_platform_status
+  - list_all_missions
+  - get_cross_mission_costs
+  - get_system_agent_status
+  - get_platform_config
+
+max_input_length: 64000
+max_budget_usd: 5.00
+
+execution:
+  mode: local
+invocation:
+  tier: platform
+  required_role: admin
+
+scope:
+  read:
+    - "config/"
+    - "modules/"
+    - "var/logs/"
+    - ".codemap/"
+  write: []
+
+interface:
+  input:
+    message: "string"
+  output:
+    response: "string"

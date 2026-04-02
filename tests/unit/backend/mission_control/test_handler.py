@@ -167,7 +167,7 @@ class TestHandleRouting:
         events = await _collect_events(session.id, "check system health", session_service)
         complete = [e for e in events if isinstance(e, AgentResponseCompleteEvent)]
         # Should route to health agent by keyword
-        assert complete[0].agent_id == "platform.health.agent"
+        assert complete[0].agent_id == "platform.director.agent"
 
 
 # ---------------------------------------------------------------------------

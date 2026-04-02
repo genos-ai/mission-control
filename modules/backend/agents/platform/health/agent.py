@@ -28,7 +28,7 @@ def create_agent(model: str | Model) -> Agent[HealthAgentDeps, HealthCheckResult
     unless registry.reset() is called.
     """
 
-    instructions = assemble_instructions("system", "health")
+    instructions = assemble_instructions("platform", "health")
 
     agent = Agent(
         model,

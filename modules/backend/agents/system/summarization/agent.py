@@ -45,7 +45,7 @@ def _get_agent() -> Agent[None, SummarizationOutput]:
     """Cached summarization agent instance. Model loaded from agent.yaml."""
     agent_config = get_registry().get(_AGENT_NAME)
     model = _build_model(agent_config.model)
-    instructions = assemble_instructions("horizontal", "summarization")
+    instructions = assemble_instructions("system", "summarization")
 
     return Agent(
         model,
@@ -61,7 +61,7 @@ def get_agent(model: Model | None = None) -> Agent[None, SummarizationOutput]:
         model: Optional model override for testing or roster-driven execution.
     """
     if model is not None:
-        instructions = assemble_instructions("horizontal", "summarization")
+        instructions = assemble_instructions("system", "summarization")
         return Agent(
             model,
             system_prompt=instructions,

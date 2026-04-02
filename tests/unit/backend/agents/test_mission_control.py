@@ -50,7 +50,7 @@ class TestAgentRegistry:
     def test_get_by_keyword_matches(self):
         registry = get_registry()
         assert registry.get_by_keyword("run compliance audit") == "software.quality.agent"
-        assert registry.get_by_keyword("check system health") == "platform.health.agent"
+        assert registry.get_by_keyword("check system health") == "platform.director.agent"
 
     def test_get_by_keyword_returns_none_for_no_match(self):
         registry = get_registry()
@@ -89,7 +89,7 @@ class TestRuleBasedRouter:
         registry = get_registry()
         router = RuleBasedRouter(registry)
         request = MissionControlRequest(user_input="check system health status")
-        assert router.route(request) == "platform.health.agent"
+        assert router.route(request) == "platform.director.agent"
 
     def test_returns_none_for_no_match(self):
         registry = get_registry()
