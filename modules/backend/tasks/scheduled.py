@@ -133,6 +133,50 @@ async def metrics_aggregation(interval_minutes: int = 15) -> dict[str, Any]:
     return result
 
 
+async def cleanup_stale_environments() -> dict[str, Any]:
+    """
+    Clean up stale execution environments. Runs every hour.
+
+    Removes stopped/orphaned Docker containers labeled with
+    mission-control=true that have been idle for too long.
+
+    Returns:
+        Cleanup statistics
+    """
+    logger.info("Starting environment cleanup")
+    cleaned = []
+
+    try:
+        import docker
+        client = docker.from_env()
+        containers = client.containers.list(
+            all=True,
+            filters={"label": "mission-control=true", "status": "exited"},
+        )
+        for container in containers:
+            try:
+                container.remove(force=True)
+                cleaned.append(container.name)
+            except Exception as e:
+                logger.warning(
+                    "Failed to remove container",
+                    extra={"container": container.name, "error": str(e)},
+                )
+    except ImportError:
+        logger.debug("docker-py not installed, skipping container cleanup")
+    except Exception as e:
+        logger.warning("Docker not available for cleanup", extra={"error": str(e)})
+
+    result = {
+        "status": "completed",
+        "containers_removed": cleaned,
+        "count": len(cleaned),
+        "cleaned_at": utc_now().isoformat(),
+    }
+    logger.info("Environment cleanup completed", extra=result)
+    return result
+
+
 SCHEDULED_TASKS = {
     "daily_cleanup": {
         "function": daily_cleanup,
@@ -158,6 +202,12 @@ SCHEDULED_TASKS = {
         "schedule": [{"cron": "*/15 * * * *", "kwargs": {"interval_minutes": 15}}],
         "retry_on_error": False,
         "description": "Aggregate metrics every 15 minutes",
+    },
+    "cleanup_stale_environments": {
+        "function": cleanup_stale_environments,
+        "schedule": [{"cron": "0 * * * *"}],
+        "retry_on_error": False,
+        "description": "Clean up stale execution environment containers every hour",
     },
 }
 
