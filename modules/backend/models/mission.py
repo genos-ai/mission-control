@@ -22,8 +22,8 @@ class MissionTier(str, enum.Enum):
     platform — admin-only, accesses platform internals
     """
 
-    USER = "user"
-    PLATFORM = "platform"
+    user = "user"
+    platform = "platform"
 
 
 class MissionStatus(str, enum.Enum):
@@ -87,7 +87,7 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     )
     tier: Mapped[str] = mapped_column(
         Enum(MissionTier, native_enum=False),
-        default=MissionTier.USER,
+        default=MissionTier.user,
         nullable=False,
         server_default="user",
         comment="Mission tier: user (standard) or platform (admin-only)",

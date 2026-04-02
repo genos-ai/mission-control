@@ -223,7 +223,8 @@ class UserService(BaseService):
             mission = await mission_repo.get_by_id_or_none(mission_id)
             if mission is None:
                 raise NotFoundError("Mission not found")
-            if mission.status != "active":
+            from modules.backend.models.mission import MissionStatus
+            if mission.status not in (MissionStatus.ACTIVE, MissionStatus.ACTIVE.value):
                 raise ValidationError("Cannot select a non-active mission")
 
         user = await self.user_repo.update(user_id, current_mission_id=mission_id)

@@ -26,6 +26,7 @@ def run_mission(
     repo_url: str | None = None,
     repo_root: str | None = None,
     gate_mode: str | None = None,
+    tier: str = "user",
     output_format: str = "human",
 ) -> None:
     """Dispatch mission CLI actions."""
@@ -58,11 +59,12 @@ def run_mission(
         repo_url=repo_url,
         repo_root=repo_root,
         gate_mode=gate_mode,
+        tier=tier,
         output_format=output_format,
     ))
 
 
-async def _action_create(cli_logger, *, name, description, brief, owner_id, roster, budget, repo_url, repo_root, gate_mode=None, **_):
+async def _action_create(cli_logger, *, name, description, brief, owner_id, roster, budget, repo_url, repo_root, gate_mode=None, tier="user", **_):
     """Create a new mission."""
     from modules.backend.services.mission import MissionService
 
@@ -85,9 +87,11 @@ async def _action_create(cli_logger, *, name, description, brief, owner_id, rost
             repo_url=repo_url,
             repo_root=repo_root,
             gate_mode=gate_mode,
+            tier=tier,
         )
     console.print(f"[green]Mission created:[/green] {mission.id}")
     console.print(f"  Name: {mission.name}")
+    console.print(f"  Tier: {mission.tier}")
     console.print(f"  Owner: {mission.owner_id}")
     if gate_mode:
         console.print(f"  Gate: {gate_mode}")
@@ -237,6 +241,7 @@ async def _action_archive(cli_logger, *, mission_id, **_):
 async def _action_use(cli_logger, *, mission_id, **_):
     """Set the current mission."""
     from modules.backend.services.user import UserService
+    from modules.backend.repositories.mission import MissionRepository
 
     console = get_console()
     if not mission_id:
@@ -249,9 +254,21 @@ async def _action_use(cli_logger, *, mission_id, **_):
             console.print("[red]CLI service account not found. Run 'admin bootstrap-user' first.[/red]")
             sys.exit(1)
 
+        # Resolve name to ID if needed
+        resolved_id = mission_id
+        mission_repo = MissionRepository(svc.session)
+        mission = await mission_repo.get_by_id_or_none(mission_id)
+        if mission is None:
+            # Try by name
+            mission = await mission_repo.get_by_name(mission_id)
+            if mission is None:
+                console.print(f"[red]Mission not found: {mission_id}[/red]")
+                sys.exit(1)
+            resolved_id = mission.id
+
         user = await svc.set_current_mission(
             user_id=CLI_SERVICE_ACCOUNT_ID,
-            mission_id=mission_id,
+            mission_id=resolved_id,
             requesting_user=cli_user,
         )
 

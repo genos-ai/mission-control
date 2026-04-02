@@ -562,13 +562,14 @@ def mission(ctx):
 @click.option("--budget", type=float, default=None, help="Budget ceiling (USD).")
 @click.option("--repo-url", default=None, help="Repository URL.")
 @click.option("--repo-root", default=None, help="Local repo root path.")
+@click.option("--tier", default="user", type=click.Choice(["user", "platform"]), help="Mission tier.")
 @click.pass_obj
-def mission_create(ctx, name, description, brief, roster, budget, repo_url, repo_root):
+def mission_create(ctx, name, description, brief, roster, budget, repo_url, repo_root, tier):
     """Create a new mission."""
     from modules.clients.cli.mission_cmds import run_mission
     run_mission(ctx.logger, "create", name=name, description=description,
                 brief=brief, roster=roster, budget=budget, repo_url=repo_url,
-                repo_root=repo_root, output_format=ctx.output_format)
+                repo_root=repo_root, tier=tier, output_format=ctx.output_format)
 
 
 @mission.command("list")
