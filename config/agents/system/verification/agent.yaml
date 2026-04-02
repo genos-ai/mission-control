@@ -23,7 +23,7 @@ agent_name: system.verification.agent
 agent_type: horizontal
 description: "Evaluates other agents' work quality against criteria from the TaskPlan"
 enabled: true
-model: anthropic:claude-opus-4-20250514
+model: anthropic:claude-haiku-4-5-20251001
 max_input_length: 64000
 max_budget_usd: 2.00
 
