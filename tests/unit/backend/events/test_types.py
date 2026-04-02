@@ -280,7 +280,7 @@ class TestEventTypeMap:
             assert EVENT_TYPE_MAP[event_type] is cls
 
     def test_registry_has_twenty_entries(self):
-        assert len(EVENT_TYPE_MAP) == 21
+        assert len(EVENT_TYPE_MAP) == 23
 
 
 class TestDeserializeEvent:

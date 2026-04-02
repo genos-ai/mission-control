@@ -288,6 +288,33 @@ class WorkflowGraphEvent(SessionEvent):
 
 
 # =============================================================================
+# Convergence Loop Events
+# =============================================================================
+
+
+class ConvergenceIterationEvent(SessionEvent):
+    """A single evaluation/remediation cycle completed in a convergence loop."""
+
+    event_type: str = "convergence.iteration"
+    loop_task_id: str
+    cycle_number: int
+    findings_count: int
+    fixes_applied: int
+    convergence_metric: float | None = None
+    converged: bool = False
+
+
+class ConvergenceCompletedEvent(SessionEvent):
+    """A convergence loop finished (converged or hit max iterations)."""
+
+    event_type: str = "convergence.completed"
+    loop_task_id: str
+    total_cycles: int
+    final_metric: float | None = None
+    outcome: str  # "converged", "max_iterations", "aborted"
+
+
+# =============================================================================
 # Event Type Registry
 # =============================================================================
 
@@ -314,6 +341,8 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.run.completed": WorkflowRunCompletedEvent,
     "workflow.run.failed": WorkflowRunFailedEvent,
     "workflow.graph.updated": WorkflowGraphEvent,
+    "convergence.iteration": ConvergenceIterationEvent,
+    "convergence.completed": ConvergenceCompletedEvent,
 }
 
 
