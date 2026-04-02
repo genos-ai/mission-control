@@ -360,16 +360,76 @@ class ExecutionEnvironmentService:
                 import docker
                 client = docker.from_env()
                 container = client.containers.get(env.container_id)
-                if container.status != "running":
+
+                if container.status == "running":
+                    pass  # All good — reuse it
+
+                elif container.status in ("exited", "created", "paused"):
+                    # Container exists but stopped — restart it to preserve state
                     logger.info(
-                        "DB says running but container is not — marking destroyed",
-                        extra={"container_id": env.container_id},
+                        "Previous container '%s' is stopped (%s) — restarting "
+                        "to preserve %d execution(s) of state (packages, files, git changes)",
+                        env.container_name,
+                        container.status,
+                        env.execution_count,
+                        extra={
+                            "container_id": env.container_id,
+                            "container_status": container.status,
+                            "executions_preserved": env.execution_count,
+                        },
                     )
-                    env.status = EnvironmentStatus.DESTROYED.value
+                    container.start()
+                    env.status = EnvironmentStatus.RUNNING.value
+                    await self._db.flush()
+
+                else:
+                    # Dead/removing — can't recover
+                    logger.warning(
+                        "Previous container '%s' is in unrecoverable state '%s'. "
+                        "State from %d execution(s) is lost. "
+                        "A new container will be created.",
+                        env.container_name,
+                        container.status,
+                        env.execution_count,
+                        extra={
+                            "container_id": env.container_id,
+                            "container_status": container.status,
+                            "executions_lost": env.execution_count,
+                            "last_execution_at": env.last_execution_at,
+                        },
+                    )
+                    env.status = EnvironmentStatus.FAILED.value
                     await self._db.flush()
                     return None
-            except Exception:
-                env.status = EnvironmentStatus.DESTROYED.value
+
+            except docker.errors.NotFound:
+                logger.warning(
+                    "Previous container '%s' no longer exists (crashed or removed). "
+                    "State from %d execution(s) is lost — installed packages, "
+                    "uncommitted changes, and intermediate files are gone. "
+                    "A new container will be created.",
+                    env.container_name,
+                    env.execution_count,
+                    extra={
+                        "container_id": env.container_id,
+                        "executions_lost": env.execution_count,
+                        "last_execution_at": env.last_execution_at,
+                    },
+                )
+                env.status = EnvironmentStatus.FAILED.value
+                await self._db.flush()
+                return None
+
+            except Exception as e:
+                logger.warning(
+                    "Cannot reach Docker to verify container '%s' "
+                    "(%d execution(s) of state at risk). "
+                    "Creating new container. Error: %s",
+                    env.container_name,
+                    env.execution_count,
+                    str(e),
+                )
+                env.status = EnvironmentStatus.FAILED.value
                 await self._db.flush()
                 return None
 
