@@ -86,8 +86,8 @@ class ContainerBackend:
         # Build volume mounts
         volumes = {}
         if git_aware and repo_root:
-            git_dir = Path(repo_root) / ".git"
-            volumes[str(git_dir)] = {"bind": "/repo/.git", "mode": "ro"}
+            # Mount entire repo (read-write for worktree/branch operations)
+            volumes[str(repo_root)] = {"bind": "/repo", "mode": "rw"}
 
         # Create container (non-blocking via thread pool)
         def _create() -> Any:
@@ -125,29 +125,29 @@ class ContainerBackend:
             },
         )
 
-        # If git-aware, create worktree inside container
+        # If git-aware, create worktree from the mounted repo
         if git_aware and branch_name:
+            # Repo is mounted at /repo. Create a worktree at /workspace
+            # on a new branch from the current HEAD.
             result = await self.execute(
                 handle,
                 [
-                    "git", "worktree", "add",
-                    workspace_dir, "-b", branch_name,
-                    "--detach",
+                    "sh", "-c",
+                    f"cd /repo && git worktree add {workspace_dir} -b {branch_name} 2>&1",
                 ],
                 timeout_seconds=30,
             )
             if result.exit_code != 0:
-                logger.error(
-                    "Failed to create worktree in container",
+                logger.warning(
+                    "Worktree creation failed, falling back to working in /repo",
                     extra={
                         "container": container_name,
                         "stderr": result.stderr,
+                        "stdout": result.stdout,
                     },
                 )
-                await self.cleanup(handle)
-                raise RuntimeError(
-                    f"Worktree creation failed: {result.stderr}"
-                )
+                # Fallback: use /repo directly as workspace
+                handle.working_dir = Path("/repo")
 
         logger.info(
             "Container created",
