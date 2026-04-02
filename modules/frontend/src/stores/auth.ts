@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { UserResponse } from '@/types'
+import { queryClient } from '@/main'
 
 const REFRESH_TOKEN_KEY = 'mc_refresh_token'
 
@@ -53,6 +54,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: () => {
     localStorage.removeItem(REFRESH_TOKEN_KEY)
+    queryClient.clear()
     set({
       accessToken: null,
       refreshToken: null,
