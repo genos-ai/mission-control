@@ -63,6 +63,9 @@ export default function MissionLayout() {
             <>
               <div className="flex items-center gap-3">
                 <h1 className="truncate text-lg font-bold">{mission.name}</h1>
+                {mission.tier === 'platform' && (
+                  <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">platform</Badge>
+                )}
                 <Badge variant={statusVariant[mission.status as MissionStatus]}>
                   {mission.status}
                 </Badge>

@@ -76,6 +76,7 @@ export interface UserResponse {
 
 // Mission types
 export type MissionStatus = 'active' | 'paused' | 'archived'
+export type MissionTier = 'user' | 'platform'
 
 export interface MissionListItem {
   id: string
@@ -83,8 +84,10 @@ export interface MissionListItem {
   description: string
   brief: string | null
   status: MissionStatus
+  tier: MissionTier
   owner_id: string
   budget_ceiling_usd: number | null
+  execution_environment: string | null
   created_at: string
   updated_at: string
 }
@@ -101,6 +104,7 @@ export interface MissionCreateRequest {
   description: string
   brief?: string
   owner_id: string
+  tier?: MissionTier
   budget_ceiling_usd?: number
   repo_url?: string
 }

@@ -25,7 +25,12 @@ function MissionCard({ mission }: { mission: MissionListItem }) {
     >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
-          <CardTitle className="text-base">{mission.name}</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">{mission.name}</CardTitle>
+            {mission.tier === 'platform' && (
+              <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">platform</Badge>
+            )}
+          </div>
           <Badge variant={statusVariant[mission.status]}>{mission.status}</Badge>
         </div>
       </CardHeader>

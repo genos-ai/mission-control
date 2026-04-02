@@ -97,6 +97,11 @@ export default function OverviewPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Status" value={mission.status} capitalize />
         <StatCard
+          label="Environment"
+          value={mission.execution_environment ?? 'local'}
+          capitalize
+        />
+        <StatCard
           label="Budget"
           value={
             mission.budget_ceiling_usd != null
