@@ -311,7 +311,17 @@ class ConvergenceCompletedEvent(SessionEvent):
     loop_task_id: str
     total_cycles: int
     final_metric: float | None = None
-    outcome: str  # "converged", "max_iterations", "aborted"
+    outcome: str  # "converged", "max_iterations", "aborted", "verification_failed"
+
+
+class FinalVerificationEvent(SessionEvent):
+    """Clean-slate verification after convergence loop."""
+
+    event_type: str = "convergence.verification"
+    loop_task_id: str
+    passed: bool
+    test_summary: str
+    environment_mode: str  # "local", "container"
 
 
 # =============================================================================
@@ -343,6 +353,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.graph.updated": WorkflowGraphEvent,
     "convergence.iteration": ConvergenceIterationEvent,
     "convergence.completed": ConvergenceCompletedEvent,
+    "convergence.verification": FinalVerificationEvent,
 }
 
 

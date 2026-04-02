@@ -225,9 +225,41 @@ async def execute_convergence_loop(
             if r:
                 total_cost += r.cost_usd
 
-    # --- Build final result ---
+    # --- Final clean verification (optional) ---
     final_converged = cycles[-1].converged if cycles else False
-    outcome = "converged" if final_converged else "max_iterations"
+    verification_passed: bool | None = None
+
+    if final_converged and config.final_verification:
+        logger.info(
+            "Running final clean verification",
+            extra={"task_id": task_id},
+        )
+        verification_result = await _run_final_verification(
+            task_id=task_id,
+            config=config,
+            execute_agent_fn=execute_agent_fn,
+            event_bus=_bus,
+            session_id=_sid,
+        )
+        verification_passed = verification_result.status == TaskStatus.SUCCESS
+        total_cost += verification_result.cost_usd
+        if verification_result.token_usage:
+            total_tokens.input += verification_result.token_usage.input
+            total_tokens.output += verification_result.token_usage.output
+            total_tokens.thinking += verification_result.token_usage.thinking
+
+        if not verification_passed:
+            logger.warning(
+                "Final verification failed — branch may not be deployable",
+                extra={"task_id": task_id},
+            )
+
+    # --- Build final result ---
+    outcome = (
+        "converged" if final_converged and verification_passed is not False
+        else "verification_failed" if verification_passed is False
+        else "max_iterations"
+    )
 
     # Publish completion event
     from modules.backend.events.types import ConvergenceCompletedEvent
@@ -243,14 +275,17 @@ async def execute_convergence_loop(
     return TaskResult(
         task_id=task_id,
         agent_name=f"convergence({config.evaluation_agent},{config.remediation_agent})",
-        status=TaskStatus.SUCCESS if final_converged else TaskStatus.FAILED,
+        status=TaskStatus.SUCCESS if outcome == "converged" else TaskStatus.FAILED,
         summary=(
             f"Convergence loop {outcome} after {len(cycles)} cycles. "
             f"Final findings: {cycles[-1].findings_count if cycles else 'N/A'}."
+            + (f" Final verification: {'passed' if verification_passed else 'failed'}."
+               if verification_passed is not None else "")
         ),
         output_reference={
             "outcome": outcome,
             "total_cycles": len(cycles),
+            "final_verification_passed": verification_passed,
             "cycles": [
                 {
                     "cycle": c.cycle_number,
@@ -264,6 +299,58 @@ async def execute_convergence_loop(
         },
         cost_usd=total_cost,
         token_usage=total_tokens,
+    )
+
+
+async def _run_final_verification(
+    *,
+    task_id: str,
+    config: ConvergenceConfig,
+    execute_agent_fn: ExecuteAgentFn,
+    event_bus: EventBusProtocol,
+    session_id: str,
+) -> TaskResult:
+    """Run a clean-slate verification after convergence.
+
+    Spins up the evaluation agent one final time in a fresh context
+    to prove the codebase is clean. In container mode, this would
+    use a fresh ephemeral container (bootstrap from zero, install,
+    migrate, run full suite). In local mode, it re-runs the evaluator.
+
+    The result determines whether a PR should be opened or the branch
+    should be flagged for human review.
+    """
+    logger.info("Final verification: re-running evaluation from clean state")
+
+    eval_result = await execute_agent_fn(
+        agent_name=config.evaluation_agent,
+        task_instructions=(
+            "FINAL VERIFICATION — clean-slate check. "
+            "Run the full evaluation suite. This is the last check "
+            "before the branch is submitted for review. "
+            "Report ALL findings, no matter how minor."
+        ),
+        resolved_inputs=config.evaluation_config,
+    )
+
+    findings = _extract_findings_count(eval_result)
+    passed = findings == 0
+
+    # Publish verification event
+    from modules.backend.events.types import FinalVerificationEvent
+    await _emit(event_bus, FinalVerificationEvent,
+        session_id=session_id,
+        source=f"convergence:{task_id}",
+        loop_task_id=task_id,
+        passed=passed,
+        test_summary=f"{findings} findings" if not passed else "0 findings — clean",
+        environment_mode="local",  # TODO: use actual environment mode
+    )
+
+    return _to_task_result(
+        f"{task_id}-final-verify",
+        config.evaluation_agent,
+        eval_result,
     )
 
 
