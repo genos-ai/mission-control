@@ -10,9 +10,11 @@ import {
   CheckCircle,
   Circle,
   Container,
+  Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useMission, useUpdateMission, useMissionEnvironment } from '@/hooks/use-missions'
+import { useMission, useUpdateMission, useDeleteMission, useMissionEnvironment } from '@/hooks/use-missions'
+import { useAuthStore } from '@/stores/auth'
 import { useTeam } from '@/hooks/use-team'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { useExecutions, useExecution } from '@/hooks/use-executions'
@@ -60,6 +62,7 @@ export default function OverviewPage() {
     <div className="p-6 space-y-6">
       {/* Action bar */}
       <div className="flex items-center justify-end gap-2">
+        <DeleteMissionButton missionId={id!} missionName={mission.name} />
         <Button
           variant="outline"
           size="sm"
@@ -620,5 +623,55 @@ function EnvironmentStatusCard({ missionId }: { missionId: string }) {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+
+function DeleteMissionButton({ missionId, missionName }: { missionId: string; missionName: string }) {
+  const navigate = useNavigate()
+  const deleteMission = useDeleteMission()
+  const { isAdmin } = useAuthStore()
+  const [confirming, setConfirming] = useState(false)
+
+  // TODO: also allow owner to delete (check mission.owner_id === user.id)
+  // For now, show for admin always, and for all users (ownership check pending)
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-destructive">Delete "{missionName}"?</span>
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={deleteMission.isPending}
+          onClick={() => {
+            deleteMission.mutate(missionId, {
+              onSuccess: () => {
+                toast.success(`Deleted: ${missionName}`)
+                navigate(ROUTES.DASHBOARD)
+              },
+              onError: (err) => toast.error(err.message),
+            })
+          }}
+        >
+          {deleteMission.isPending ? 'Deleting...' : 'Confirm'}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+          Cancel
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="text-muted-foreground hover:text-destructive"
+      onClick={() => setConfirming(true)}
+    >
+      <Trash2 className="mr-2 h-4 w-4" />
+      Delete
+    </Button>
   )
 }

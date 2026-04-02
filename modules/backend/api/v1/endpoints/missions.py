@@ -158,6 +158,30 @@ async def get_mission_environment(
     )
 
 
+@router.delete("/{mission_id}", response_model=ApiResponse, summary="Delete mission")
+async def delete_mission(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Permanently delete a mission and all related data.
+
+    Cascades through executions, records, team, workflows, and containers.
+    Admin can delete any mission. Users can delete their own missions.
+    """
+    # TODO: enforce ownership check when auth middleware is wired
+    # if current_user.system_role != "admin" and mission.owner_id != current_user.id:
+    #     raise HTTPException(403, "Cannot delete missions you don't own")
+
+    service = MissionService(db)
+    name = await service.delete_mission(mission_id)
+    return ApiResponse(
+        success=True,
+        data={"id": mission_id, "name": name, "deleted": True},
+        metadata={"request_id": request_id},
+    )
+
+
 @router.patch("/{mission_id}", response_model=ApiResponse, summary="Update mission")
 async def update_mission(
     mission_id: str,

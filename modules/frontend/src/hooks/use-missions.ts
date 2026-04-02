@@ -41,6 +41,17 @@ export function useCreateMission() {
   })
 }
 
+export function useDeleteMission() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.del(`/missions/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: missionKeys.all })
+    },
+  })
+}
+
 export function useUpdateMission(id: string) {
   const qc = useQueryClient()
   return useMutation({

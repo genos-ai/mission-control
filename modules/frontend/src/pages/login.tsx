@@ -82,6 +82,43 @@ export default function LoginPage() {
               Sign In
             </Button>
           </form>
+
+          {/* Dev quick-login buttons */}
+          <div className="mt-6 border-t pt-4">
+            <p className="mb-3 text-center text-xs text-muted-foreground">
+              Development quick login
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 border-amber-500/30 text-amber-600 hover:bg-amber-50"
+                disabled={loading}
+                onClick={() => {
+                  setEmail('admin@missioncontrol.dev')
+                  setPassword('admin')
+                  setTimeout(() => {
+                    document.querySelector<HTMLFormElement>('form')?.requestSubmit()
+                  }, 50)
+                }}
+              >
+                Admin
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={loading}
+                onClick={() => {
+                  setEmail('user@missioncontrol.dev')
+                  setPassword('user')
+                  setTimeout(() => {
+                    document.querySelector<HTMLFormElement>('form')?.requestSubmit()
+                  }, 50)
+                }}
+              >
+                User
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

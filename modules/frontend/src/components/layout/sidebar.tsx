@@ -6,6 +6,7 @@ import {
   Shield,
   Settings,
   User,
+  LogOut,
 } from 'lucide-react'
 import { NotificationDropdown } from './notification-dropdown'
 import { cn } from '@/lib/cn'
@@ -101,22 +102,39 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="flex items-center justify-around border-t p-3">
-        <button
-          onClick={() => navigate(ROUTES.PROFILE)}
-          className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
+      <div className="border-t p-3">
+        {user && (
+          <div className="mb-2 flex items-center gap-2 px-1">
+            <div className="flex-1 truncate">
+              <p className="truncate text-xs font-medium">{user.display_name || user.email}</p>
+              <p className="text-[10px] text-muted-foreground">
+                {isAdmin ? 'Admin' : 'User'}
+              </p>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-around">
+          <button
+            onClick={() => navigate(ROUTES.PROFILE)}
+            className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
 
-        <NotificationDropdown />
+          <NotificationDropdown />
 
-        <button
-          onClick={() => navigate(ROUTES.PROFILE)}
-          className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <User className="h-4 w-4" />
-        </button>
+          <button
+            onClick={() => {
+              useAuthStore.getState().logout()
+              navigate(ROUTES.LOGIN)
+            }}
+            className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-destructive"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </aside>
   )
