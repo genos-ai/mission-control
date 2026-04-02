@@ -2,7 +2,7 @@
 
 import pytest
 
-from modules.backend.agents.horizontal.planning.agent import (
+from modules.backend.agents.system.planning.agent import (
     extract_task_plan_json,
 )
 

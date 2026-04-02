@@ -12,7 +12,7 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 
 function agentShortName(agent: string): string {
   if (!agent) return ''
-  // "code.quality.agent" → "code.quality"
+  // "software.quality.agent" → "software.quality"
   return agent.endsWith('.agent')
     ? agent.slice(0, -6)
     : agent

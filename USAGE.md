@@ -73,7 +73,7 @@ python admin.py agent "scan code quality in modules/backend" --verbose
 
 ```bash
 python admin.py agent "check for import violations" --name code.qa.agent
-python admin.py agent "audit system health" --name system.health.agent
+python admin.py agent "audit system health" --name platform.health.agent
 ```
 
 ---

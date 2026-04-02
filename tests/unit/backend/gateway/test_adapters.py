@@ -84,10 +84,10 @@ class TestAgentResponse:
             token_input=500,
             token_output=200,
             duration_ms=1500,
-            agent_name="code.quality.agent",
+            agent_name="software.quality.agent",
         )
         assert resp.cost_usd == 0.003
-        assert resp.agent_name == "code.quality.agent"
+        assert resp.agent_name == "software.quality.agent"
 
 
 class TestBaseChunking:

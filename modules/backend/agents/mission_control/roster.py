@@ -86,8 +86,8 @@ class Roster(BaseModel):
         return [a.agent_name for a in self.agents]
 
 
-PLANNING_AGENT_NAME = "horizontal.planning.agent"
-VERIFICATION_AGENT_NAME = "horizontal.verification.agent"
+PLANNING_AGENT_NAME = "system.planning.agent"
+VERIFICATION_AGENT_NAME = "system.verification.agent"
 
 
 async def derive_roster_from_team(

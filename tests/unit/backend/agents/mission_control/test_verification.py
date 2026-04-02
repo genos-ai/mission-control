@@ -22,7 +22,7 @@ def basic_task():
     """A minimal task dict with verification config."""
     return {
         "task_id": "task_001",
-        "agent": "code.quality.agent",
+        "agent": "software.quality.agent",
         "instructions": "Scan the codebase for violations",
         "description": "QA scan",
         "verification": {
@@ -65,7 +65,7 @@ def task_with_tier3(basic_task):
             "Analysis covers all critical code paths",
             "No false positives reported",
         ],
-        "evaluator_agent": "horizontal.verification.agent",
+        "evaluator_agent": "system.verification.agent",
         "min_evaluation_score": 0.8,
     }
     return basic_task
@@ -293,7 +293,7 @@ class TestTier3:
         """Agent cannot evaluate its own output (P13)."""
         task = {
             "task_id": "t1",
-            "agent": "horizontal.verification.agent",
+            "agent": "system.verification.agent",
             "description": "Test task for self-evaluation prevention",
             "instructions": "Evaluate the output",
             "verification": {
@@ -301,7 +301,7 @@ class TestTier3:
                 "tier_3": {
                     "requires_ai_evaluation": True,
                     "evaluation_criteria": ["test"],
-                    "evaluator_agent": "horizontal.verification.agent",
+                    "evaluator_agent": "system.verification.agent",
                     "min_evaluation_score": 0.8,
                 },
             },
@@ -325,7 +325,7 @@ class TestTier3:
         """Tier 3 skips (not fails) when evaluation_criteria is empty (P2)."""
         task = {
             "task_id": "t1",
-            "agent": "code.quality.agent",
+            "agent": "software.quality.agent",
             "instructions": "Scan the codebase",
             "description": "QA scan",
             "verification": {
@@ -333,7 +333,7 @@ class TestTier3:
                 "tier_3": {
                     "requires_ai_evaluation": True,
                     "evaluation_criteria": [],
-                    "evaluator_agent": "horizontal.verification.agent",
+                    "evaluator_agent": "system.verification.agent",
                     "min_evaluation_score": 0.8,
                 },
             },
@@ -350,13 +350,13 @@ class TestTier3:
         """Tier 3 skips when task has no instructions or description."""
         task = {
             "task_id": "t1",
-            "agent": "code.quality.agent",
+            "agent": "software.quality.agent",
             "verification": {
                 "tier_1": {"schema_validation": True},
                 "tier_3": {
                     "requires_ai_evaluation": True,
                     "evaluation_criteria": ["check quality"],
-                    "evaluator_agent": "horizontal.verification.agent",
+                    "evaluator_agent": "system.verification.agent",
                     "min_evaluation_score": 0.8,
                 },
             },
@@ -373,7 +373,7 @@ class TestTier3:
         """Tier 3 skips when agent output is empty (only _meta)."""
         task = {
             "task_id": "t1",
-            "agent": "code.quality.agent",
+            "agent": "software.quality.agent",
             "instructions": "Scan the codebase",
             "description": "QA scan",
             "verification": {
@@ -381,7 +381,7 @@ class TestTier3:
                 "tier_3": {
                     "requires_ai_evaluation": True,
                     "evaluation_criteria": ["check quality"],
-                    "evaluator_agent": "horizontal.verification.agent",
+                    "evaluator_agent": "system.verification.agent",
                     "min_evaluation_score": 0.8,
                 },
             },

@@ -44,12 +44,12 @@ async def run_qa_agent() -> dict:
     from modules.backend.agents.deps.base import FileScope, QaAgentDeps
     from modules.backend.agents.mission_control.helpers import _build_model
     from modules.backend.agents.mission_control.registry import get_registry
-    from modules.backend.agents.vertical.code.quality.agent import create_agent, run_agent
+    from modules.backend.agents.software.quality.agent import create_agent, run_agent
 
     logger.info("=== QA Agent: starting live audit ===")
 
     registry = get_registry()
-    qa_config = registry.get("code.quality.agent")
+    qa_config = registry.get("software.quality.agent")
 
     scope = FileScope(
         read_paths=qa_config.scope.read,
@@ -101,13 +101,13 @@ async def run_health_agent() -> dict:
     from modules.backend.agents.deps.base import FileScope, HealthAgentDeps
     from modules.backend.agents.mission_control.helpers import _build_model
     from modules.backend.agents.mission_control.registry import get_registry
-    from modules.backend.agents.vertical.system.health.agent import create_agent, run_agent
+    from modules.backend.agents.platform.health.agent import create_agent, run_agent
     from modules.backend.core.config import get_app_config
 
     logger.info("=== Health Agent: starting platform health audit ===")
 
     registry = get_registry()
-    health_config = registry.get("system.health.agent")
+    health_config = registry.get("platform.health.agent")
 
     scope = FileScope(
         read_paths=health_config.scope.read,
@@ -153,7 +153,7 @@ async def run_health_agent() -> dict:
 async def run_planning_agent() -> dict:
     """Run the Planning Agent with a test mission brief. Returns TaskPlan dict."""
     from modules.backend.agents.deps.base import FileScope
-    from modules.backend.agents.horizontal.planning.agent import (
+    from modules.backend.agents.system.planning.agent import (
         PlanningAgentDeps,
         create_agent,
         run_agent,
@@ -216,7 +216,7 @@ async def run_verification_agent(qa_output: dict) -> dict:
     from pydantic_ai import UsageLimits
 
     from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
-    from modules.backend.agents.horizontal.verification.agent import (
+    from modules.backend.agents.system.verification.agent import (
         create_agent,
         run_agent,
     )

@@ -1,0 +1,61 @@
+# Workflow Architect Agent Configuration
+#   The Workflow Architect designs workflows conversationally from a mission
+#   brief and team composition. It proposes step graphs, validates them
+#   against the agent catalog, and saves confirmed designs to the database.
+#
+#   Model: Opus 4.6 with extended thinking — best reasoning for workflow design.
+#   Model is PINNED — no runtime override (P2).
+#   System prompt is security-critical — changes require review.
+
+agent_name: mission.workflow.agent
+agent_type: horizontal
+description: "Designs workflows conversationally from mission brief and team composition. Proposes step graphs, validates against the agent catalog, and saves confirmed designs."
+enabled: true
+version: "1.0.0"
+
+model:
+  name: "anthropic:claude-opus-4-20250514"
+  temperature: 0.0
+  max_tokens: 16384
+
+keywords:
+  - workflow
+  - design
+  - architect
+  - orchestration
+  - steps
+  - pipeline
+
+tools:
+  - browse_catalog
+  - validate_workflow
+  - render_graph
+  - save_workflow
+
+max_input_length: 64000
+max_budget_usd: 5.00
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+scope:
+  read:
+    - "config/"
+    - "modules/"
+  write: []
+
+interface:
+  input:
+    mission_id: string
+    mission_brief: string
+    team_roster: object
+  output:
+    workflow_definition: object
+    design_rationale: string
+
+thinking_budget:
+  simple: 10000
+  standard: 20000
+  complex: 30000

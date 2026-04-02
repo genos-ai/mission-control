@@ -37,7 +37,7 @@ def session_service(db_session):
 async def health_session(session_service):
     """Create a real session in the DB, pinned to the health agent."""
     session = await session_service.create_session(
-        SessionCreate(goal="test handler", agent_id="system.health.agent"),
+        SessionCreate(goal="test handler", agent_id="platform.health.agent"),
     )
     return session
 
@@ -105,14 +105,14 @@ class TestHandleEventFlow:
         events = await _collect_events(health_session.id, "check health", session_service)
         thinking = [e for e in events if isinstance(e, AgentThinkingEvent)]
         assert len(thinking) == 1
-        assert thinking[0].agent_id == "system.health.agent"
+        assert thinking[0].agent_id == "platform.health.agent"
 
     @pytest.mark.asyncio
     async def test_yields_complete_event(self, session_service, health_session):
         events = await _collect_events(health_session.id, "check health", session_service)
         complete = [e for e in events if isinstance(e, AgentResponseCompleteEvent)]
         assert len(complete) == 1
-        assert complete[0].agent_id == "system.health.agent"
+        assert complete[0].agent_id == "platform.health.agent"
 
     @pytest.mark.asyncio
     async def test_yields_cost_update_event(self, session_service, health_session):
@@ -156,7 +156,7 @@ class TestHandleRouting:
         """Uses session.agent_id when set."""
         events = await _collect_events(health_session.id, "anything", session_service)
         complete = [e for e in events if isinstance(e, AgentResponseCompleteEvent)]
-        assert complete[0].agent_id == "system.health.agent"
+        assert complete[0].agent_id == "platform.health.agent"
 
     @pytest.mark.asyncio
     async def test_keyword_routing_fallback(self, session_service):
@@ -167,7 +167,7 @@ class TestHandleRouting:
         events = await _collect_events(session.id, "check system health", session_service)
         complete = [e for e in events if isinstance(e, AgentResponseCompleteEvent)]
         # Should route to health agent by keyword
-        assert complete[0].agent_id == "system.health.agent"
+        assert complete[0].agent_id == "platform.health.agent"
 
 
 # ---------------------------------------------------------------------------

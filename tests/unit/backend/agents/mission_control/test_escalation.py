@@ -138,8 +138,8 @@ class TestRiskMatrix:
             "invoke_agent",
             {
                 "estimated_cost_usd": 5.0,
-                "allowed_agents": {"code.quality.agent"},
-                "agent_name": "code.quality.agent",
+                "allowed_agents": {"software.quality.agent"},
+                "agent_name": "software.quality.agent",
             },
         )
         assert result is not None

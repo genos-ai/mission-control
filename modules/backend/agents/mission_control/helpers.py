@@ -170,15 +170,15 @@ def _build_agent_deps(
     common["session_id"] = session_id
     category = agent_name.split(".")[0]
 
-    if "mission_director" in agent_name:
-        from modules.backend.agents.horizontal.mission_director.deps import MissionDirectorDeps
+    if "mission.director" in agent_name:
+        from modules.backend.agents.mission.director.deps import MissionDirectorDeps
         return MissionDirectorDeps(**common, mission_id=mission_id or "", db_session=db_session)
-    if category == "system" and "health" in agent_name:
+    if category == "platform" and "health" in agent_name:
         return HealthAgentDeps(**common, app_config=get_app_config())
-    if category == "code":
+    if category == "software":
         return QaAgentDeps(**common)
-    if "workflow_architect" in agent_name:
-        from modules.backend.agents.horizontal.workflow_architect.deps import ArchitectAgentDeps
+    if "mission.workflow" in agent_name:
+        from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
         return ArchitectAgentDeps(**common)
 
     return BaseAgentDeps(**common)
@@ -671,7 +671,7 @@ async def _call_planning_agent(
     """
     import uuid as _uuid
 
-    from modules.backend.agents.horizontal.planning.agent import (
+    from modules.backend.agents.system.planning.agent import (
         PlanningAgentDeps,
         create_agent,
         extract_task_plan_json,
@@ -686,7 +686,7 @@ async def _call_planning_agent(
     code_map = loader.ensure_fresh()
 
     registry = get_registry()
-    planning_cfg = registry.get("horizontal.planning.agent")
+    planning_cfg = registry.get("system.planning.agent")
     model = _build_model(planning_cfg.model)
     agent = create_agent(model)
 
@@ -708,7 +708,7 @@ async def _call_planning_agent(
         code_map=code_map,
     )
 
-    planning_agent_id = "horizontal.planning.agent"
+    planning_agent_id = "system.planning.agent"
     sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
     full_content = ""
 

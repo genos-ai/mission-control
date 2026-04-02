@@ -6,12 +6,12 @@ that shows real-time agent activity during workflow and execution runs.
 
 Layout:
     ┌─ Live Activity (70%) ─────────────────┬─ Results (30%) ────────────────┐
-    │  Active: code.quality.agent            │  ✓ task-001 code.quality $0.12│
+    │  Active: software.quality.agent            │  ✓ task-001 software.quality $0.12│
     │                                        │    34.2s — 3 tools called     │
-    │  💭 code.quality.agent:                │  ✗ task-002 system.health     │
+    │  💭 software.quality.agent:                │  ✗ task-002 platform.health     │
     │    …reviewing the auth module code     │    Agent not found in roster  │
     │                                        │                               │
-    │  14:30:05 🧠 code.quality thinking     │                               │
+    │  14:30:05 🧠 software.quality thinking     │                               │
     │  14:30:07 🔧 read_file                 │                               │
     │  14:30:08 📎 read_file → ok            │                               │
     ├─ Execution Progress ───────────────────┴───────────────────────────────┤

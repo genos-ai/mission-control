@@ -594,7 +594,7 @@ async def handle_mission(
     plan = None
     thinking_trace = None
     max_planning_attempts = 3
-    planning_agent_id = "horizontal.planning.agent"
+    planning_agent_id = "system.planning.agent"
 
     # Emit planning started event
     await _phase("thinking", "Planning agent decomposing objective")

@@ -12,11 +12,11 @@ from typing import Any, AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.agents.deps.base import FileScope
-from modules.backend.agents.horizontal.workflow_architect.agent import (
+from modules.backend.agents.mission.workflow.agent import (
     create_agent,
     run_conversational,
 )
-from modules.backend.agents.horizontal.workflow_architect.deps import ArchitectAgentDeps
+from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
 from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.config import find_project_root
@@ -26,7 +26,7 @@ from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
 
-ARCHITECT_AGENT_NAME = "horizontal.workflow_architect.agent"
+ARCHITECT_AGENT_NAME = "mission.workflow.agent"
 
 
 class WorkflowArchitectService(BaseService):

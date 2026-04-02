@@ -96,16 +96,16 @@ class TestAgentEvents:
         event = AgentThinkingEvent(
             session_id=SESSION_ID,
             source="agent:health",
-            agent_id="system.health.agent",
+            agent_id="platform.health.agent",
         )
         assert event.event_type == "agent.thinking.started"
-        assert event.agent_id == "system.health.agent"
+        assert event.agent_id == "platform.health.agent"
 
     def test_agent_tool_call_event(self):
         event = AgentToolCallEvent(
             session_id=SESSION_ID,
             source="agent:health",
-            agent_id="system.health.agent",
+            agent_id="platform.health.agent",
             tool_name="check_system_health",
             tool_args={"verbose": True},
         )
@@ -118,7 +118,7 @@ class TestAgentEvents:
         event = AgentToolResultEvent(
             session_id=SESSION_ID,
             source="agent:health",
-            agent_id="system.health.agent",
+            agent_id="platform.health.agent",
             tool_name="check_system_health",
             tool_call_id="tc-1",
             result="All healthy",
@@ -131,7 +131,7 @@ class TestAgentEvents:
         event = AgentResponseChunkEvent(
             session_id=SESSION_ID,
             source="agent:health",
-            agent_id="system.health.agent",
+            agent_id="platform.health.agent",
             content="partial response",
         )
         assert event.event_type == "agent.response.chunk"
@@ -141,7 +141,7 @@ class TestAgentEvents:
         event = AgentResponseCompleteEvent(
             session_id=SESSION_ID,
             source="agent:health",
-            agent_id="system.health.agent",
+            agent_id="platform.health.agent",
             full_content="All systems healthy",
             input_tokens=100,
             output_tokens=50,
@@ -162,7 +162,7 @@ class TestApprovalEvents:
         event = ApprovalRequestedEvent(
             session_id=SESSION_ID,
             source="agent:qa",
-            agent_id="code.quality.agent",
+            agent_id="software.quality.agent",
             action="apply_fix",
             context={"file": "main.py"},
             allowed_decisions=["approve", "deny", "modify"],
@@ -205,7 +205,7 @@ class TestPlanEvents:
             plan_id="plan-1",
             step_id="step-1",
             step_name="Run tests",
-            assigned_agent="code.quality.agent",
+            assigned_agent="software.quality.agent",
         )
         assert event.event_type == "plan.step.started"
 
@@ -280,7 +280,7 @@ class TestEventTypeMap:
             assert EVENT_TYPE_MAP[event_type] is cls
 
     def test_registry_has_twenty_entries(self):
-        assert len(EVENT_TYPE_MAP) == 20
+        assert len(EVENT_TYPE_MAP) == 21
 
 
 class TestDeserializeEvent:
@@ -291,11 +291,11 @@ class TestDeserializeEvent:
             "event_type": "agent.thinking.started",
             "session_id": str(SESSION_ID),
             "source": "agent:health",
-            "agent_id": "system.health.agent",
+            "agent_id": "platform.health.agent",
         }
         event = deserialize_event(data)
         assert isinstance(event, AgentThinkingEvent)
-        assert event.agent_id == "system.health.agent"
+        assert event.agent_id == "platform.health.agent"
 
     def test_unknown_type_falls_back_to_base(self):
         data = {

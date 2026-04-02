@@ -14,11 +14,11 @@ class TestAgentDetailWidget:
 
         class TestApp(App):
             def compose(self) -> ComposeResult:
-                yield AgentDetailWidget("code.quality.agent", id="agent-detail")
+                yield AgentDetailWidget("software.quality.agent", id="agent-detail")
 
         async with TestApp().run_test() as pilot:
             detail = pilot.app.query_one("#agent-detail", AgentDetailWidget)
-            assert detail.agent_name == "code.quality.agent"
+            assert detail.agent_name == "software.quality.agent"
             # Should have tabbed content with three tabs
             assert detail.query_one(TabbedContent)
             assert detail.query_one("#output-log", RichLog)
@@ -27,8 +27,8 @@ class TestAgentDetailWidget:
 
     @pytest.mark.asyncio
     async def test_display_name_extraction(self):
-        """Agent name 'code.quality.agent' should display as 'quality'."""
-        detail = AgentDetailWidget("code.quality.agent")
+        """Agent name 'software.quality.agent' should display as 'quality'."""
+        detail = AgentDetailWidget("software.quality.agent")
         assert detail._display_name == "quality"
 
     @pytest.mark.asyncio

@@ -216,7 +216,7 @@ class TestRule10Tier3Completeness:
     def test_complete_tier3_passes(self):
         roster = Roster(agents=[
             _entry("agent_a"),
-            _entry("horizontal.verification.agent"),
+            _entry("system.verification.agent"),
         ])
         plan = _plan([_task("t1", "agent_a", verification={
             "tier_1": {"schema_validation": True, "required_output_fields": []},
@@ -224,7 +224,7 @@ class TestRule10Tier3Completeness:
             "tier_3": {
                 "requires_ai_evaluation": True,
                 "evaluation_criteria": ["Is it good?"],
-                "evaluator_agent": "horizontal.verification.agent",
+                "evaluator_agent": "system.verification.agent",
                 "min_evaluation_score": 0.85,
             },
         })])
@@ -234,7 +234,7 @@ class TestRule10Tier3Completeness:
     def test_missing_criteria_fails(self):
         roster = Roster(agents=[
             _entry("agent_a"),
-            _entry("horizontal.verification.agent"),
+            _entry("system.verification.agent"),
         ])
         plan = _plan([_task("t1", "agent_a", verification={
             "tier_1": {"schema_validation": True, "required_output_fields": []},
@@ -242,7 +242,7 @@ class TestRule10Tier3Completeness:
             "tier_3": {
                 "requires_ai_evaluation": True,
                 "evaluation_criteria": [],
-                "evaluator_agent": "horizontal.verification.agent",
+                "evaluator_agent": "system.verification.agent",
                 "min_evaluation_score": 0.85,
             },
         })])
@@ -267,7 +267,7 @@ class TestRule10Tier3Completeness:
     def test_missing_score_fails(self):
         roster = Roster(agents=[
             _entry("agent_a"),
-            _entry("horizontal.verification.agent"),
+            _entry("system.verification.agent"),
         ])
         plan = _plan([_task("t1", "agent_a", verification={
             "tier_1": {"schema_validation": True, "required_output_fields": []},
@@ -275,7 +275,7 @@ class TestRule10Tier3Completeness:
             "tier_3": {
                 "requires_ai_evaluation": True,
                 "evaluation_criteria": ["Check quality"],
-                "evaluator_agent": "horizontal.verification.agent",
+                "evaluator_agent": "system.verification.agent",
                 "min_evaluation_score": None,
             },
         })])
@@ -287,7 +287,7 @@ class TestRule11SelfEvaluationPrevention:
     def test_different_evaluator_passes(self):
         roster = Roster(agents=[
             _entry("agent_a"),
-            _entry("horizontal.verification.agent"),
+            _entry("system.verification.agent"),
         ])
         plan = _plan([_task("t1", "agent_a", verification={
             "tier_1": {"schema_validation": True, "required_output_fields": []},
@@ -295,7 +295,7 @@ class TestRule11SelfEvaluationPrevention:
             "tier_3": {
                 "requires_ai_evaluation": True,
                 "evaluation_criteria": ["Check quality"],
-                "evaluator_agent": "horizontal.verification.agent",
+                "evaluator_agent": "system.verification.agent",
                 "min_evaluation_score": 0.85,
             },
         })])

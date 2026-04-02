@@ -168,10 +168,10 @@ class TestParseAgentPath:
     """Tests for _parse_agent_path static method."""
 
     def test_three_part_name(self):
-        assert WorkshopService._parse_agent_path("horizontal.planning.agent") == ("horizontal", "planning")
+        assert WorkshopService._parse_agent_path("system.planning.agent") == ("system", "planning")
 
     def test_two_part_name(self):
-        assert WorkshopService._parse_agent_path("code.qa") == ("code", "qa")
+        assert WorkshopService._parse_agent_path("software.qa") == ("software", "qa")
 
     def test_single_part_name(self):
         assert WorkshopService._parse_agent_path("standalone") == ("standalone", "standalone")

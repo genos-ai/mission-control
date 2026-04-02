@@ -36,7 +36,7 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
 
 async def _seed_catalog_agent(
     db_session: AsyncSession,
-    agent_name: str = "vertical.code.quality.agent",
+    agent_name: str = "vertical.software.quality.agent",
 ) -> str:
     """Create a catalog agent and return its ID."""
     svc = AgentCatalogService(db_session)

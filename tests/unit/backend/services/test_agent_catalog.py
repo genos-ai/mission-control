@@ -15,7 +15,7 @@ def service(db_session: AsyncSession) -> AgentCatalogService:
 async def _create_agent(service: AgentCatalogService, **overrides):
     """Helper to create a catalog entry."""
     defaults = {
-        "agent_name": "vertical.code.quality.agent",
+        "agent_name": "vertical.software.quality.agent",
         "agent_type": "vertical",
         "description": "Evaluates code quality",
         "model_config_json": {"name": "anthropic:claude-haiku-4-5-20251001", "temperature": 0.0, "max_tokens": 4096},
@@ -28,7 +28,7 @@ class TestCreateEntry:
     @pytest.mark.asyncio
     async def test_creates_agent(self, service):
         entry = await _create_agent(service)
-        assert entry.agent_name == "vertical.code.quality.agent"
+        assert entry.agent_name == "vertical.software.quality.agent"
         assert entry.agent_type == "vertical"
         assert entry.enabled is True
         assert entry.visibility == "public"
@@ -43,7 +43,7 @@ class TestCreateEntry:
     async def test_custom_fields(self, service):
         entry = await _create_agent(
             service,
-            agent_name="system.health.agent",
+            agent_name="platform.health.agent",
             agent_type="system",
             tools=["health_check", "ping"],
             keywords=["health", "monitoring"],
@@ -61,8 +61,8 @@ class TestGetByName:
     @pytest.mark.asyncio
     async def test_found(self, service):
         await _create_agent(service)
-        result = await service.get_by_name("vertical.code.quality.agent")
-        assert result.agent_name == "vertical.code.quality.agent"
+        result = await service.get_by_name("vertical.software.quality.agent")
+        assert result.agent_name == "vertical.software.quality.agent"
 
     @pytest.mark.asyncio
     async def test_not_found(self, service):
@@ -98,12 +98,12 @@ class TestSearchByKeyword:
     async def test_keyword_match(self, service):
         await _create_agent(
             service,
-            agent_name="code.quality.agent",
+            agent_name="software.quality.agent",
             keywords=["code", "quality", "review"],
         )
         results = await service.search_by_keyword("quality review")
         assert len(results) >= 1
-        assert results[0].agent_name == "code.quality.agent"
+        assert results[0].agent_name == "software.quality.agent"
 
     @pytest.mark.asyncio
     async def test_no_match(self, service):
@@ -117,7 +117,7 @@ class TestUpdateEntry:
     async def test_update_fields(self, service):
         await _create_agent(service)
         updated = await service.update_entry(
-            "vertical.code.quality.agent",
+            "vertical.software.quality.agent",
             description="Updated description",
         )
         assert updated.description == "Updated description"

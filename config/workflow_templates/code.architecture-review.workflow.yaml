@@ -35,7 +35,7 @@ context:
 steps:
   - id: code-quality
     description: "Quick compliance scan to provide baseline context"
-    capability: code.quality
+    capability: software.quality
     roster: default
     complexity_tier: simple
     cost_ceiling_usd: 0.75
@@ -44,7 +44,7 @@ steps:
       target_path: "@context.target_path"
     output_mapping:
       field_mappings:
-        - source_task: code.quality.agent
+        - source_task: software.quality.agent
           source_field: violations
           target_key: code_violations
     timeout_seconds: 120
@@ -52,7 +52,7 @@ steps:
 
   - id: architecture-review
     description: "Deep architectural review against six engineering principles"
-    capability: code.architecture
+    capability: software.architecture
     roster: default
     complexity_tier: simple
     cost_ceiling_usd: 5.00
@@ -61,7 +61,7 @@ steps:
       target_path: "@context.target_path"
     output_mapping:
       field_mappings:
-        - source_task: code.architecture.agent
+        - source_task: software.architecture.agent
           source_field: findings
           target_key: architecture_findings
     timeout_seconds: 600

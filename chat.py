@@ -312,13 +312,13 @@ def main(message: str | None, agent: str | None, list_agents: bool, ping: bool, 
 
         python chat.py --message "check system health" --verbose
 
-        python chat.py --agent system.health.agent --message "full diagnostic"
+        python chat.py --agent platform.health.agent --message "full diagnostic"
 
         python chat.py --message "check system health" --raw
 
         python chat.py --ping
 
-        python chat.py -a system.health.agent -m "what needs fixing?" -v
+        python chat.py -a platform.health.agent -m "what needs fixing?" -v
     """
     validate_project_root()
 

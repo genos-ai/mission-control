@@ -27,7 +27,7 @@ def session_service(db_session):
 @pytest.fixture
 async def health_session(session_service):
     return await session_service.create_session(
-        SessionCreate(goal="test collect", agent_id="system.health.agent"),
+        SessionCreate(goal="test collect", agent_id="platform.health.agent"),
     )
 
 
@@ -64,7 +64,7 @@ class TestCollect:
                 str(health_session.id), "check health",
                 mission_id=STUB_MISSION_ID, session_service=session_service,
             )
-        assert result["agent_name"] == "system.health.agent"
+        assert result["agent_name"] == "platform.health.agent"
 
     @pytest.mark.asyncio
     async def test_returns_output(self, session_service, health_session):

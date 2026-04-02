@@ -8,7 +8,7 @@ import pytest
 from pydantic_ai.models.test import TestModel
 
 from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
-from modules.backend.agents.horizontal.verification.agent import (
+from modules.backend.agents.system.verification.agent import (
     VerificationEvaluation,
     create_agent,
     run_agent,
@@ -26,7 +26,7 @@ def verification_deps():
 
 
 class TestVerificationAgentWithTestModel:
-    """Tests for horizontal.verification.agent using TestModel."""
+    """Tests for system.verification.agent using TestModel."""
 
     @pytest.mark.asyncio
     async def test_returns_verification_evaluation(self, verification_deps):

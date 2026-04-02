@@ -10,7 +10,9 @@ Each top-level class corresponds to one config file:
     MissionControlConfigSchema     -> config/agents/mission_control.yaml
 """
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _StrictBase(BaseModel):
@@ -29,6 +31,19 @@ class FileScopeConfigSchema(_StrictBase):
 
     read: list[str] = Field(default_factory=list)
     write: list[str] = Field(default_factory=list)
+
+
+class InvocationSchema(_StrictBase):
+    """Who can invoke this agent.
+
+    Tiers:
+        user     — any authenticated user (default)
+        platform — admin role required, platform missions only
+        system   — dispatch infrastructure, not user-invocable
+    """
+
+    tier: Literal["user", "platform", "system"] = "user"
+    required_role: Literal["admin", "user"] | None = None
 
 
 class ExecutionSchema(_StrictBase):
@@ -113,6 +128,7 @@ class AgentConfigSchema(_StrictBase):
     max_input_length: int
     max_budget_usd: float
     execution: ExecutionSchema
+    invocation: InvocationSchema = Field(default_factory=InvocationSchema)
     scope: FileScopeConfigSchema = Field(default_factory=FileScopeConfigSchema)
     interface: AgentInterfaceSchema | None = None
     version: str = "1.0.0"
@@ -134,6 +150,31 @@ class AgentConfigSchema(_StrictBase):
     def _normalize_model(cls, v: str | dict) -> str | dict:
         """Accept flat string model specs as-is; dicts become AgentModelSchema."""
         return v
+
+    @model_validator(mode="after")
+    def _validate_invocation_tier(self) -> Self:
+        """Enforce naming ↔ tier constraints."""
+        prefix = self.agent_name.split(".")[0]
+        tier = self.invocation.tier
+
+        if prefix == "platform":
+            if tier != "platform":
+                raise ValueError("platform.* agents must have invocation.tier: platform")
+            if self.invocation.required_role != "admin":
+                raise ValueError("platform.* agents must set required_role: admin")
+            if self.execution.mode != "local":
+                raise ValueError("platform.* agents must use execution.mode: local")
+
+        if prefix == "system" and tier != "system":
+            raise ValueError("system.* agents must have invocation.tier: system")
+
+        if tier == "platform" and prefix != "platform":
+            raise ValueError("only platform.* agents can use tier: platform")
+
+        if tier == "system" and prefix != "system":
+            raise ValueError("only system.* agents can use tier: system")
+
+        return self
 
 
 # =============================================================================

@@ -26,7 +26,7 @@ def _make_detail() -> dict:
             },
             {
                 "task_id": "task-2",
-                "agent_name": "code.quality.agent",
+                "agent_name": "software.quality.agent",
                 "status": "failed",
                 "cost_usd": 0.3,
                 "input_tokens": 800,

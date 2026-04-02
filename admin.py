@@ -112,7 +112,7 @@ def agent(ctx, message: str | None, name: str | None, list_agents: bool):
     \b
     Examples:
         python admin.py agent "run a health check"
-        python admin.py agent "scan code quality" --name code.quality.agent
+        python admin.py agent "scan code quality" --name software.quality.agent
         python admin.py -o jsonl agent "check health"
         python admin.py agent --list
     """
@@ -882,7 +882,7 @@ def catalog(ctx):
     \b
     Examples:
         python admin.py catalog list
-        python admin.py catalog detail vertical.code.quality.agent
+        python admin.py catalog detail vertical.software.quality.agent
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

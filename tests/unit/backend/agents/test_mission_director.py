@@ -10,8 +10,8 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
 from modules.backend.agents.deps.base import FileScope
-from modules.backend.agents.horizontal.mission_director.agent import create_agent
-from modules.backend.agents.horizontal.mission_director.deps import MissionDirectorDeps
+from modules.backend.agents.mission.director.agent import create_agent
+from modules.backend.agents.mission.director.deps import MissionDirectorDeps
 from modules.backend.core.config import find_project_root
 
 

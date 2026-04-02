@@ -33,7 +33,7 @@ class TestPublish:
         event = AgentThinkingEvent(
             session_id=SESSION_ID,
             source="agent:health",
-            agent_id="system.health.agent",
+            agent_id="platform.health.agent",
         )
 
         # Subscribe first so we can verify the message arrives
@@ -51,7 +51,7 @@ class TestPublish:
 
         data = json.loads(message["data"])
         assert data["event_type"] == "agent.thinking.started"
-        assert data["agent_id"] == "system.health.agent"
+        assert data["agent_id"] == "platform.health.agent"
         assert data["session_id"] == str(SESSION_ID)
 
         await pubsub.unsubscribe(channel)
@@ -64,7 +64,7 @@ class TestPublish:
         event = AgentThinkingEvent(
             session_id=sid,
             source="agent:health",
-            agent_id="system.health.agent",
+            agent_id="platform.health.agent",
         )
         expected_channel = f"session:{sid}"
 

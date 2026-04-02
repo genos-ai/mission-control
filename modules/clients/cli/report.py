@@ -419,7 +419,7 @@ async def _render_summary(title: str, status_line: str, data: dict) -> None:
 async def generate_narrative(data: dict) -> str:
     """Call the synthesis agent; fall back to deterministic summary on failure."""
     try:
-        from modules.backend.agents.horizontal.synthesis.agent import synthesize
+        from modules.backend.agents.system.synthesis.agent import synthesize
         return await synthesize(data)
     except (ImportError, RuntimeError, OSError, ValueError) as e:
         logger.warning(

@@ -21,16 +21,16 @@ class TestAgentRegistry:
         registry = get_registry()
         agents = registry.list_all()
         names = [a["agent_name"] for a in agents]
-        assert "code.quality.agent" in names
-        assert "system.health.agent" in names
+        assert "software.quality.agent" in names
+        assert "platform.health.agent" in names
 
     def test_get_returns_config(self):
         from modules.backend.agents.config_schema import AgentConfigSchema
 
         registry = get_registry()
-        config = registry.get("code.quality.agent")
+        config = registry.get("software.quality.agent")
         assert isinstance(config, AgentConfigSchema)
-        assert config.agent_name == "code.quality.agent"
+        assert config.agent_name == "software.quality.agent"
         assert config.enabled is True
         assert config.model is not None
 
@@ -41,7 +41,7 @@ class TestAgentRegistry:
 
     def test_has_returns_true_for_known(self):
         registry = get_registry()
-        assert registry.has("code.quality.agent") is True
+        assert registry.has("software.quality.agent") is True
 
     def test_has_returns_false_for_unknown(self):
         registry = get_registry()
@@ -49,8 +49,8 @@ class TestAgentRegistry:
 
     def test_get_by_keyword_matches(self):
         registry = get_registry()
-        assert registry.get_by_keyword("run compliance audit") == "code.quality.agent"
-        assert registry.get_by_keyword("check system health") == "system.health.agent"
+        assert registry.get_by_keyword("run compliance audit") == "software.quality.agent"
+        assert registry.get_by_keyword("check system health") == "platform.health.agent"
 
     def test_get_by_keyword_returns_none_for_no_match(self):
         registry = get_registry()
@@ -67,13 +67,13 @@ class TestAgentRegistry:
 
     def test_resolve_module_path_vertical(self):
         registry = get_registry()
-        path = registry.resolve_module_path("code.quality.agent")
-        assert path == "modules.backend.agents.vertical.code.quality.agent"
+        path = registry.resolve_module_path("software.quality.agent")
+        assert path == "modules.backend.agents.software.quality.agent"
 
     def test_resolve_module_path_system(self):
         registry = get_registry()
-        path = registry.resolve_module_path("system.health.agent")
-        assert path == "modules.backend.agents.vertical.system.health.agent"
+        path = registry.resolve_module_path("platform.health.agent")
+        assert path == "modules.backend.agents.platform.health.agent"
 
 
 class TestRuleBasedRouter:
@@ -83,13 +83,13 @@ class TestRuleBasedRouter:
         registry = get_registry()
         router = RuleBasedRouter(registry)
         request = MissionControlRequest(user_input="run compliance audit")
-        assert router.route(request) == "code.quality.agent"
+        assert router.route(request) == "software.quality.agent"
 
     def test_routes_health_keywords(self):
         registry = get_registry()
         router = RuleBasedRouter(registry)
         request = MissionControlRequest(user_input="check system health status")
-        assert router.route(request) == "system.health.agent"
+        assert router.route(request) == "platform.health.agent"
 
     def test_returns_none_for_no_match(self):
         registry = get_registry()
@@ -102,9 +102,9 @@ class TestRuleBasedRouter:
         router = RuleBasedRouter(registry)
         request = MissionControlRequest(
             user_input="check health",
-            agent="code.quality.agent",
+            agent="software.quality.agent",
         )
-        assert router.route(request) == "code.quality.agent"
+        assert router.route(request) == "software.quality.agent"
 
 
 class TestMissionControlModels:
@@ -118,11 +118,11 @@ class TestMissionControlModels:
 
     def test_response_structure(self):
         resp = MissionControlResponse(
-            agent_name="code.quality.agent",
+            agent_name="software.quality.agent",
             output="Found 3 violations",
             metadata={"total_violations": 3},
         )
-        assert resp.agent_name == "code.quality.agent"
+        assert resp.agent_name == "software.quality.agent"
         assert resp.metadata["total_violations"] == 3
 
 

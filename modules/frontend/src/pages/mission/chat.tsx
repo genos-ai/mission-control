@@ -25,7 +25,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/cn'
 import type { SessionMessage } from '@/types'
 
-const DEFAULT_CHAT_AGENT = 'horizontal.mission_director.agent'
+const DEFAULT_CHAT_AGENT = 'mission.director.agent'
 
 export default function ChatPage() {
   const { id: missionId, threadId } = useParams<{
@@ -208,7 +208,7 @@ export default function ChatPage() {
   )
 }
 
-/** Strip ".agent" suffix for display: "horizontal.planning.agent" → "horizontal.planning" */
+/** Strip ".agent" suffix for display: "system.planning.agent" → "system.planning" */
 function shortName(agentName: string): string {
   return agentName.endsWith('.agent')
     ? agentName.slice(0, -6)

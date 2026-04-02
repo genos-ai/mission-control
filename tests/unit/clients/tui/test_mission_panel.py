@@ -22,7 +22,7 @@ def _make_plan(task_count: int = 3) -> TaskPlan:
         tasks.append(
             TaskDefinition(
                 task_id=f"task-{i}",
-                agent=f"code.quality.agent-{i}",
+                agent=f"software.quality.agent-{i}",
                 agent_version="1.0.0",
                 description=f"Do thing {i}",
                 instructions=f"Instructions for task {i}",
@@ -90,7 +90,7 @@ def _make_parallel_plan() -> tuple[TaskPlan, list[list[str]]]:
 
 class TestAgentShortName:
     def test_dotted_name(self):
-        assert _agent_short_name("code.quality.agent") == "quality"
+        assert _agent_short_name("software.quality.agent") == "quality"
 
     def test_simple_name(self):
         assert _agent_short_name("planner") == "planner"
@@ -281,7 +281,7 @@ class TestMissionPanel:
 
             result = TaskResult(
                 task_id="task-0",
-                agent_name="code.quality.agent-0",
+                agent_name="software.quality.agent-0",
                 status=TaskStatus.SUCCESS,
                 cost_usd=0.01,
             )

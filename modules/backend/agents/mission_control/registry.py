@@ -86,21 +86,48 @@ class AgentRegistry:
         self._ensure_loaded()
         return agent_name in self._agents
 
-    def list_all(self) -> list[dict[str, Any]]:
-        """List all registered agents with their metadata."""
+    def list_all(self, tier: str | None = None) -> list[dict[str, Any]]:
+        """List registered agents with their metadata, filtered by tier.
+
+        Args:
+            tier: If "user", returns user + mission agents (catalog for users).
+                  If "platform", returns user + mission + platform agents.
+                  If None, returns all non-system agents.
+                  System agents are never included — use list_system().
+        """
         self._ensure_loaded()
-        return [
-            {
+        result = []
+        for config in self._agents.values():
+            agent_tier = config.invocation.tier
+            if agent_tier == "system":
+                continue  # system agents excluded from catalog
+            if tier == "user" and agent_tier == "platform":
+                continue  # users can't see platform agents
+            result.append({
                 "agent_name": config.agent_name,
+                "agent_type": config.agent_type,
                 "description": config.description,
                 "keywords": config.keywords,
                 "tools": config.tools,
+                "invocation_tier": agent_tier,
                 "scope": {
                     "read": config.scope.read,
                     "write": config.scope.write,
                 },
+            })
+        return result
+
+    def list_system(self) -> list[dict[str, Any]]:
+        """List system (dispatch infrastructure) agents only."""
+        self._ensure_loaded()
+        return [
+            {
+                "agent_name": config.agent_name,
+                "agent_type": config.agent_type,
+                "description": config.description,
             }
             for config in self._agents.values()
+            if config.invocation.tier == "system"
         ]
 
     def get_by_keyword(self, text: str) -> str | None:
@@ -117,22 +144,15 @@ class AgentRegistry:
         return None
 
     def resolve_module_path(self, agent_name: str) -> str:
-        """Derive the Python import path from agent name and type.
+        """Derive the Python import path from agent name.
 
-        vertical agents: modules.backend.agents.vertical.{category}.{name}.agent
-        horizontal agents: modules.backend.agents.horizontal.{name}.agent
+        Convention: modules.backend.agents.{category}.{name}.agent
+        Example: software.quality.agent → modules.backend.agents.software.quality.agent
         """
-        config = self.get(agent_name)
-        agent_type = config.agent_type
         parts = agent_name.replace(".agent", "").split(".")
-
-        if agent_type == "horizontal":
-            name = parts[-1]
-            return f"modules.backend.agents.horizontal.{name}.agent"
-
         category = parts[0]
         name = parts[1]
-        return f"modules.backend.agents.vertical.{category}.{name}.agent"
+        return f"modules.backend.agents.{category}.{name}.agent"
 
     def get_instance(self, agent_name: str, model: Any) -> Any:
         """Get or create a cached PydanticAI Agent instance.

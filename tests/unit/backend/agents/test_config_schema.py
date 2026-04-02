@@ -19,22 +19,22 @@ class TestAgentConfigSchema:
     """Tests for agent YAML schema validation."""
 
     def test_qa_agent_config_validates(self):
-        path = find_project_root() / "config" / "agents" / "code" / "quality" / "agent.yaml"
+        path = find_project_root() / "config" / "agents" / "software" / "quality" / "agent.yaml"
         with open(path) as f:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
-        assert config.agent_name == "code.quality.agent"
+        assert config.agent_name == "software.quality.agent"
         assert config.agent_type == "vertical"
         assert config.enabled is True
         assert len(config.rules) > 0
         assert config.exclusions is not None
 
     def test_health_agent_config_validates(self):
-        path = find_project_root() / "config" / "agents" / "system" / "health" / "agent.yaml"
+        path = find_project_root() / "config" / "agents" / "platform" / "health" / "agent.yaml"
         with open(path) as f:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
-        assert config.agent_name == "system.health.agent"
+        assert config.agent_name == "platform.health.agent"
         assert config.rules is None
         assert config.exclusions is None
 
@@ -63,13 +63,13 @@ class TestAgentConfigSchema:
             )
 
     def test_model_dump_produces_dict(self):
-        path = find_project_root() / "config" / "agents" / "code" / "quality" / "agent.yaml"
+        path = find_project_root() / "config" / "agents" / "software" / "quality" / "agent.yaml"
         with open(path) as f:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         dumped = config.model_dump()
         assert isinstance(dumped, dict)
-        assert dumped["agent_name"] == "code.quality.agent"
+        assert dumped["agent_name"] == "software.quality.agent"
 
 
 class TestAgentConfigMalformed:

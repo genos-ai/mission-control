@@ -5,17 +5,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from modules.backend.agents.horizontal.workflow_architect.deps import ArchitectAgentDeps
+from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
 
 
 class TestCreateAgent:
     """Tests for agent factory function."""
 
-    @patch("modules.backend.agents.horizontal.workflow_architect.agent.Agent")
-    @patch("modules.backend.agents.horizontal.workflow_architect.agent._build_model")
-    @patch("modules.backend.agents.horizontal.workflow_architect.agent.assemble_instructions")
+    @patch("modules.backend.agents.mission.workflow.agent.Agent")
+    @patch("modules.backend.agents.mission.workflow.agent._build_model")
+    @patch("modules.backend.agents.mission.workflow.agent.assemble_instructions")
     def test_creates_agent_with_string_model(self, mock_assemble, mock_build_model, mock_agent_cls):
-        from modules.backend.agents.horizontal.workflow_architect.agent import create_agent
+        from modules.backend.agents.mission.workflow.agent import create_agent
 
         mock_assemble.return_value = "You are the architect."
         mock_model = MagicMock()
@@ -28,10 +28,10 @@ class TestCreateAgent:
         mock_agent_cls.assert_called_once()
         assert agent is not None
 
-    @patch("modules.backend.agents.horizontal.workflow_architect.agent.Agent")
-    @patch("modules.backend.agents.horizontal.workflow_architect.agent.assemble_instructions")
+    @patch("modules.backend.agents.mission.workflow.agent.Agent")
+    @patch("modules.backend.agents.mission.workflow.agent.assemble_instructions")
     def test_creates_agent_with_model_object(self, mock_assemble, mock_agent_cls):
-        from modules.backend.agents.horizontal.workflow_architect.agent import create_agent
+        from modules.backend.agents.mission.workflow.agent import create_agent
 
         mock_assemble.return_value = "You are the architect."
         mock_model = MagicMock()
@@ -41,10 +41,10 @@ class TestCreateAgent:
 
         assert agent is not None
 
-    @patch("modules.backend.agents.horizontal.workflow_architect.agent.Agent")
-    @patch("modules.backend.agents.horizontal.workflow_architect.agent.assemble_instructions")
+    @patch("modules.backend.agents.mission.workflow.agent.Agent")
+    @patch("modules.backend.agents.mission.workflow.agent.assemble_instructions")
     def test_assembles_instructions_for_correct_category(self, mock_assemble, mock_agent_cls):
-        from modules.backend.agents.horizontal.workflow_architect.agent import create_agent
+        from modules.backend.agents.mission.workflow.agent import create_agent
 
         mock_assemble.return_value = "system prompt"
         mock_model = MagicMock()
