@@ -367,12 +367,9 @@ class ExecutionEnvironmentService:
                 elif container.status in ("exited", "created", "paused"):
                     # Container exists but stopped — restart it to preserve state
                     logger.info(
-                        "Previous container '%s' is stopped (%s) — restarting "
-                        "to preserve %d execution(s) of state (packages, files, git changes)",
-                        env.container_name,
-                        container.status,
-                        env.execution_count,
+                        "Restarting stopped container to preserve state",
                         extra={
+                            "container_name": env.container_name,
                             "container_id": env.container_id,
                             "container_status": container.status,
                             "executions_preserved": env.execution_count,
@@ -385,13 +382,9 @@ class ExecutionEnvironmentService:
                 else:
                     # Dead/removing — can't recover
                     logger.warning(
-                        "Previous container '%s' is in unrecoverable state '%s'. "
-                        "State from %d execution(s) is lost. "
-                        "A new container will be created.",
-                        env.container_name,
-                        container.status,
-                        env.execution_count,
+                        "Container in unrecoverable state — state lost, creating new",
                         extra={
+                            "container_name": env.container_name,
                             "container_id": env.container_id,
                             "container_status": container.status,
                             "executions_lost": env.execution_count,
@@ -404,13 +397,9 @@ class ExecutionEnvironmentService:
 
             except docker.errors.NotFound:
                 logger.warning(
-                    "Previous container '%s' no longer exists (crashed or removed). "
-                    "State from %d execution(s) is lost — installed packages, "
-                    "uncommitted changes, and intermediate files are gone. "
-                    "A new container will be created.",
-                    env.container_name,
-                    env.execution_count,
+                    "Container no longer exists — state lost, creating new",
                     extra={
+                        "container_name": env.container_name,
                         "container_id": env.container_id,
                         "executions_lost": env.execution_count,
                         "last_execution_at": env.last_execution_at,
@@ -422,12 +411,13 @@ class ExecutionEnvironmentService:
 
             except Exception as e:
                 logger.warning(
-                    "Cannot reach Docker to verify container '%s' "
-                    "(%d execution(s) of state at risk). "
-                    "Creating new container. Error: %s",
-                    env.container_name,
-                    env.execution_count,
-                    str(e),
+                    "Docker unreachable — cannot verify container, creating new",
+                    extra={
+                        "container_name": env.container_name,
+                        "container_id": env.container_id,
+                        "executions_at_risk": env.execution_count,
+                        "error": str(e),
+                    },
                 )
                 env.status = EnvironmentStatus.FAILED.value
                 await self._db.flush()
