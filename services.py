@@ -27,8 +27,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.absolute()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-BACKEND_PORT = 8000
-FRONTEND_PORT = 5173
+BACKEND_PORT = 8100
+FRONTEND_PORT = 5174
 
 
 # ---------------------------------------------------------------------------
