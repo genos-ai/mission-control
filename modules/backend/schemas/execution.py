@@ -14,6 +14,7 @@ class ExecutionCreate(BaseModel):
     """Create an ad-hoc execution (not from a workflow)."""
 
     objective: str = Field(..., description="Execution objective")
+    mission_id: str | None = Field(default=None, description="Mission to run against")
     roster_ref: str = Field(default="default")
     complexity_tier: str = Field(default="simple")
     triggered_by: str = Field(default="user:anonymous")

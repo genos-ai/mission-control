@@ -13,8 +13,8 @@ import {
 import toast from 'react-hot-toast'
 import {
   useMissionWorkflows,
+  useMissionWorkflow,
   useWorkflowTemplates,
-  useWorkflowTemplate,
   useImportTemplate,
   useSchedules,
 } from '@/hooks/use-workflows'
@@ -56,6 +56,7 @@ export default function WorkflowsPage() {
     return (
       <div className="p-6">
         <WorkflowEmptyState
+          missionId={missionId!}
           onDesign={() =>
             openDrawer('architect-chat', { missionId })
           }
@@ -177,8 +178,7 @@ function WorkflowDetailPanel({
   missionId: string
 }) {
   const navigate = useNavigate()
-  // Load the full template detail if this workflow has a matching template name
-  const { data: template } = useWorkflowTemplate(workflow.name)
+  const { data: detail } = useMissionWorkflow(missionId, workflow.name)
   const { data: schedules } = useSchedules(missionId)
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
@@ -235,11 +235,11 @@ function WorkflowDetailPanel({
       </div>
 
       {/* DAG Graph */}
-      {template?.steps ? (
-        <DagGraph steps={template.steps} onStepClick={setSelectedStep} />
+      {detail?.steps?.length ? (
+        <DagGraph steps={detail.steps} onStepClick={setSelectedStep} />
       ) : (
         <div className="flex h-[200px] items-center justify-center rounded-lg border text-sm text-muted-foreground">
-          DAG visualization available for template-based workflows.
+          Loading workflow steps...
         </div>
       )}
 
@@ -310,17 +310,84 @@ function WorkflowDetailPanel({
 }
 
 function WorkflowEmptyState({
+  missionId,
   onDesign,
 }: {
+  missionId: string
   onDesign: () => void
 }) {
+  const { data: templates, isLoading } = useWorkflowTemplates()
+  const importMutation = useImportTemplate(missionId)
+
+  const handleImport = (name: string) => {
+    importMutation.mutate(name, {
+      onSuccess: () => toast.success(`Imported "${name}" — you can now customize it`),
+      onError: (err) => toast.error(err.message),
+    })
+  }
+
   return (
-    <EmptyState
-      icon={<GitBranch className="h-6 w-6 text-muted-foreground" />}
-      title="No workflows"
-      description="Start a conversation with the Architect to design one, or import a template."
-      action={{ label: 'Design with Architect', onClick: onDesign }}
-    />
+    <div className="space-y-8">
+      {/* Templates section */}
+      <div>
+        <h2 className="text-lg font-semibold">Workflow Templates</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Import a template to create a mission-specific copy you can customize.
+        </p>
+
+        {isLoading ? (
+          <div className="mt-6 flex justify-center"><Spinner /></div>
+        ) : templates?.length ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {templates.map((t) => (
+              <div key={t.workflow_name} className="rounded-lg border p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="text-sm font-medium">{t.workflow_name}</h3>
+                  <Badge variant="outline" className="text-[10px] flex-shrink-0">
+                    {t.trigger_type}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                  {t.description}
+                </p>
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span>{t.step_count} steps</span>
+                    <span>&middot;</span>
+                    <span>${t.budget_usd} budget</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleImport(t.workflow_name)}
+                    disabled={importMutation.isPending}
+                  >
+                    <Import className="mr-1 h-3 w-3" />
+                    Import
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No templates available.
+          </p>
+        )}
+      </div>
+
+      {/* Architect option */}
+      <div className="rounded-lg border border-dashed p-6 text-center">
+        <MessageSquare className="mx-auto h-6 w-6 text-muted-foreground" />
+        <p className="mt-2 text-sm font-medium">Design a custom workflow</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Describe what you want to automate and the Architect will design a workflow for you.
+        </p>
+        <Button variant="outline" size="sm" className="mt-3" onClick={onDesign}>
+          Design with Architect
+        </Button>
+      </div>
+    </div>
   )
 }
 

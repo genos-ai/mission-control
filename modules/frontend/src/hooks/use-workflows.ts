@@ -42,6 +42,30 @@ export function useWorkflowTemplate(name: string | undefined) {
 
 // ---- Mission-scoped workflows ----
 
+export function useMissionWorkflow(missionId: string | undefined, name: string | undefined) {
+  return useQuery({
+    queryKey: [...workflowKeys.missionWorkflows(missionId!), name] as const,
+    queryFn: () =>
+      api.get<{
+        id: string
+        name: string
+        description: string
+        version: number
+        enabled: boolean
+        trigger_type: string
+        step_count: number
+        designed_by: string
+        locked_at: string | null
+        steps: import('@/types').WorkflowStep[]
+        objective: Record<string, unknown>
+        budget_config: Record<string, unknown>
+        trigger_config: Record<string, unknown>
+        context: Record<string, unknown>
+      }>(`/missions/${missionId}/workflows/${name}`),
+    enabled: !!missionId && !!name,
+  })
+}
+
 export function useMissionWorkflows(missionId: string | undefined) {
   return useQuery({
     queryKey: workflowKeys.missionWorkflows(missionId!),

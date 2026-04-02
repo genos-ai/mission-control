@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Play, ChevronDown, ChevronRight, FileText, DollarSign, List, Radio } from 'lucide-react'
+import { Play, ChevronDown, ChevronRight, FileText, DollarSign, List, Radio, StopCircle } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { useExecutions, useExecution, useExecutionDecisions } from '@/hooks/use-executions'
+import toast from 'react-hot-toast'
+import { useExecutions, useExecution, useExecutionDecisions, useCancelExecution } from '@/hooks/use-executions'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -119,7 +120,7 @@ function RunRow({
 }) {
   const navigate = useNavigate()
   const badge = STATUS_BADGE[execution.status] ?? STATUS_BADGE.pending
-  const isRunning = execution.status === 'running'
+  const isRunning = execution.status === 'running' || execution.status === 'pending'
 
   return (
     <div className="border-b last:border-b-0">
@@ -159,17 +160,38 @@ function RunRow({
         <span className="flex items-center truncate text-xs text-muted-foreground">
           {execution.roster_name ?? '—'}
         </span>
-        <span className="flex items-center justify-end text-xs text-muted-foreground">
+        <span className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
           {execution.created_at
             ? formatDistanceToNow(new Date(execution.created_at), {
                 addSuffix: true,
               })
             : '—'}
+          {isRunning && <CancelButton executionId={execution.id} />}
         </span>
       </div>
 
       {expanded && <RunDetail executionId={execution.id} />}
     </div>
+  )
+}
+
+function CancelButton({ executionId }: { executionId: string }) {
+  const cancel = useCancelExecution()
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        cancel.mutate(executionId, {
+          onSuccess: () => toast.success('Cancelled'),
+          onError: (err) => toast.error(err.message),
+        })
+      }}
+      disabled={cancel.isPending}
+      className="text-destructive hover:text-destructive/80 p-0.5"
+      title="Cancel run"
+    >
+      <StopCircle className="h-3.5 w-3.5" />
+    </button>
   )
 }
 

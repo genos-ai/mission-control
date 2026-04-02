@@ -477,6 +477,44 @@ async def import_workflow_template(
     )
 
 
+@router.get(
+    "/{mission_id}/workflows/{workflow_name}",
+    response_model=ApiResponse,
+    summary="Get mission workflow detail",
+)
+async def get_mission_workflow(
+    mission_id: str,
+    workflow_name: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Get a mission workflow with full step definitions."""
+    from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+    service = WorkflowDefinitionService(db)
+    w = await service.get_workflow(mission_id, workflow_name)
+    return ApiResponse(
+        success=True,
+        data={
+            "id": w.id,
+            "name": w.name,
+            "description": w.description,
+            "version": w.version,
+            "enabled": w.enabled,
+            "trigger_type": w.trigger_type,
+            "step_count": w.step_count,
+            "designed_by": w.designed_by,
+            "locked_at": w.locked_at,
+            "steps": w.steps,
+            "objective": w.objective,
+            "budget_config": w.budget_config,
+            "trigger_config": w.trigger_config,
+            "context": w.context,
+        },
+        metadata={"request_id": request_id},
+    )
+
+
 # ---- Workflow schedules ----
 
 
@@ -610,14 +648,30 @@ async def architect_chat(
     The architect browses the agent catalog, proposes workflows,
     validates them, and saves confirmed designs.
     """
+    from pydantic_ai.exceptions import ModelHTTPError
     from modules.backend.services.workflow_architect import WorkflowArchitectService
 
     service = WorkflowArchitectService(db)
-    result = await service.chat(
-        mission_id=mission_id,
-        message=message,
-        session_id=session_id,
-    )
+    try:
+        result = await service.chat(
+            mission_id=mission_id,
+            message=message,
+            session_id=session_id,
+        )
+    except ModelHTTPError as e:
+        body = e.body if isinstance(e.body, dict) else {}
+        error_detail = body.get("error", {})
+        api_message = error_detail.get("message", str(e)) if isinstance(error_detail, dict) else str(e)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=502,
+            content=ApiResponse(
+                success=False,
+                data=None,
+                error={"code": "MODEL_ERROR", "message": api_message},
+                metadata={"request_id": request_id},
+            ).model_dump(),
+        )
 
     return ApiResponse(
         success=True,
