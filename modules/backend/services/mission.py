@@ -164,6 +164,29 @@ class MissionService(BaseService):
         mission = await self._mission_repo.get_by_id(mission_id)
         mission_name = mission.name
 
+        # Clean up containers BEFORE deleting DB records
+        # (cleanup_for_mission queries execution_environments table)
+        try:
+            from modules.backend.services.execution_environment import (
+                ExecutionEnvironmentService,
+            )
+            from modules.backend.services.container_backend import ContainerBackend
+
+            env_svc = ExecutionEnvironmentService(db_session=self._session)
+            env_svc.register_backend("container", ContainerBackend())
+            count = await env_svc.cleanup_for_mission(mission_id)
+            if count:
+                logger.info(
+                    "Cleaned up mission containers",
+                    extra={"mission_id": mission_id, "containers_removed": count},
+                )
+        except Exception:
+            # Fallback: direct Docker cleanup by label
+            try:
+                self._cleanup_mission_containers(mission_id)
+            except Exception:
+                logger.debug("Container cleanup skipped (non-fatal)", exc_info=True)
+
         # Clear current_mission_id on any users pointing to this mission
         await self._session.execute(
             text("UPDATE users SET current_mission_id = NULL WHERE current_mission_id = :mid"),
@@ -226,25 +249,6 @@ class MissionService(BaseService):
         )
 
         await self._session.flush()
-
-        # Cleanup any running containers for this mission
-        try:
-            from modules.backend.services.execution_environment import (
-                ExecutionEnvironmentService,
-            )
-            from modules.backend.services.container_backend import ContainerBackend
-
-            env_svc = ExecutionEnvironmentService(db_session=self._session)
-            env_svc.register_backend("container", ContainerBackend())
-            count = await env_svc.cleanup_for_mission(mission_id)
-            if count:
-                logger.info("Cleaned up mission containers", extra={"count": count})
-        except Exception:
-            # Fallback: direct Docker cleanup
-            try:
-                self._cleanup_mission_containers(mission_id)
-            except Exception:
-                logger.debug("Container cleanup skipped (non-fatal)", exc_info=True)
 
         self._log_operation(
             "Mission deleted",
