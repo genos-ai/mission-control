@@ -155,6 +155,10 @@ class ExecutionOutcome(BaseModel):
 
     mission_id: str
     status: ExecutionStatus
+    summary: str = Field(
+        default="",
+        description="Human-readable narrative summary generated post-dispatch",
+    )
     task_results: list[TaskResult] = Field(default_factory=list)
     total_cost_usd: float = 0.0
     total_duration_seconds: float = 0.0

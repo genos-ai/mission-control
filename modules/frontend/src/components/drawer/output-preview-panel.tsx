@@ -42,6 +42,12 @@ export function OutputPreviewPanel() {
 
 // --- Structured renderers ---
 
+interface RetryEntry {
+  attempt: number
+  failure_reason: string
+  feedback_provided?: string
+}
+
 interface TaskResult {
   task_id: string
   agent_name: string
@@ -49,6 +55,8 @@ interface TaskResult {
   summary?: string
   output_reference?: Record<string, unknown>
   findings?: Finding[]
+  retry_history?: RetryEntry[]
+  retry_count?: number
 }
 
 interface Finding {
@@ -178,15 +186,28 @@ function FindingsList({
 }
 
 function TaskResultCard({ task }: { task: TaskResult }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(task.status === 'failed')
   const statusVariant = STATUS_VARIANT[task.status] ?? 'secondary'
   const summary =
     task.summary ??
     (task.output_reference?.summary as string | undefined) ??
     null
 
+  // Extract failure reason from retry history
+  const failureReason =
+    task.retry_history?.length
+      ? task.retry_history[task.retry_history.length - 1].failure_reason
+      : null
+
+  const hasOutput =
+    task.output_reference &&
+    Object.keys(task.output_reference).length > 0
+
   return (
-    <div className="rounded-md border px-3 py-2">
+    <div className={cn(
+      'rounded-md border px-3 py-2',
+      task.status === 'failed' && 'border-destructive/20',
+    )}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center justify-between text-left"
@@ -205,12 +226,30 @@ function TaskResultCard({ task }: { task: TaskResult }) {
         )}
       </button>
       {expanded && (
-        <div className="mt-2 text-xs">
+        <div className="mt-2 text-xs space-y-2">
+          {/* Failure reason */}
+          {failureReason && (
+            <div className="flex items-start gap-2 rounded bg-destructive/10 px-2 py-1.5 border border-destructive/20">
+              <XCircle className="h-3 w-3 text-destructive flex-shrink-0 mt-0.5" />
+              <p className="text-destructive">{failureReason}</p>
+            </div>
+          )}
+
+          {/* Retry history */}
+          {task.retry_history && task.retry_history.length > 1 && (
+            <p className="text-muted-foreground">
+              Failed after {task.retry_count ?? task.retry_history.length} retries
+            </p>
+          )}
+
+          {/* Summary */}
           {summary && (
             <p className="text-muted-foreground whitespace-pre-wrap">{summary}</p>
           )}
-          {task.output_reference && !summary && (
-            <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2 text-[11px]">
+
+          {/* Output data */}
+          {hasOutput && !summary && (
+            <pre className="whitespace-pre-wrap rounded bg-muted p-2 text-[11px]">
               {JSON.stringify(task.output_reference, null, 2)}
             </pre>
           )}

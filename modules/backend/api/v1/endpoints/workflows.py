@@ -99,6 +99,7 @@ async def create_execution(
         complexity_tier=data.complexity_tier,
         cost_ceiling_usd=data.cost_ceiling_usd,
         upstream_context=data.upstream_context,
+        mission_id=data.mission_id,
     )
 
     response = ExecutionResponse.model_validate(execution)
