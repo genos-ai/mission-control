@@ -115,6 +115,7 @@ export interface MissionUpdateRequest {
   status?: MissionStatus
   budget_ceiling_usd?: number | null
   repo_url?: string
+  execution_environment?: string | null
 }
 
 // Agent Catalog types

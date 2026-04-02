@@ -110,6 +110,54 @@ async def get_mission(
     )
 
 
+@router.get(
+    "/{mission_id}/environment",
+    response_model=ApiResponse,
+    summary="Get execution environment status",
+)
+async def get_mission_environment(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Get the execution environment (container/worktree) status for a mission."""
+    from sqlalchemy import select
+    from modules.backend.models.execution_environment import ExecutionEnvironmentModel
+
+    result = await db.execute(
+        select(ExecutionEnvironmentModel).where(
+            ExecutionEnvironmentModel.mission_id == mission_id,
+        ).order_by(ExecutionEnvironmentModel.created_at.desc())
+    )
+    envs = list(result.scalars().all())
+
+    environments = []
+    for env in envs:
+        environments.append({
+            "id": str(env.id),
+            "mode": env.mode,
+            "status": env.status,
+            "container_name": env.container_name,
+            "image": env.image,
+            "execution_count": env.execution_count,
+            "last_execution_at": env.last_execution_at,
+            "created_at": str(env.created_at),
+        })
+
+    # Find the active one
+    active = next((e for e in environments if e["status"].lower() == "running"), None)
+
+    return ApiResponse(
+        success=True,
+        data={
+            "mission_id": mission_id,
+            "active_environment": active,
+            "all_environments": environments,
+        },
+        metadata={"request_id": request_id},
+    )
+
+
 @router.patch("/{mission_id}", response_model=ApiResponse, summary="Update mission")
 async def update_mission(
     mission_id: str,

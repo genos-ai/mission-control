@@ -76,6 +76,11 @@ class MissionUpdate(BaseModel):
     budget_ceiling_usd: float | None = None
     repo_url: str | None = None
     repo_root: str | None = None
+    execution_environment: str | None = Field(
+        None,
+        pattern=r"^(local|worktree|container)$",
+        description="Default execution environment. Set to 'container' for Docker isolation.",
+    )
 
 
 class MissionResponse(BaseModel):

@@ -10,6 +10,7 @@ import type {
 export const missionKeys = {
   all: ['missions'] as const,
   detail: (id: string) => ['missions', id] as const,
+  environment: (id: string) => ['missions', id, 'environment'] as const,
 }
 
 export function useMissions() {
@@ -49,5 +50,30 @@ export function useUpdateMission(id: string) {
       qc.setQueryData(missionKeys.detail(id), updated)
       qc.invalidateQueries({ queryKey: missionKeys.all })
     },
+  })
+}
+
+export interface EnvironmentInfo {
+  id: string
+  mode: string
+  status: string
+  container_name: string | null
+  image: string | null
+  execution_count: number
+  last_execution_at: string | null
+  created_at: string
+}
+
+export function useMissionEnvironment(id: string | undefined) {
+  return useQuery({
+    queryKey: missionKeys.environment(id!),
+    queryFn: () =>
+      api.get<{
+        mission_id: string
+        active_environment: EnvironmentInfo | null
+        all_environments: EnvironmentInfo[]
+      }>(`/missions/${id}/environment`),
+    enabled: !!id,
+    refetchInterval: 15000, // Poll every 15s to track container status
   })
 }

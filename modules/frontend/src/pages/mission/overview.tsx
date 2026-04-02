@@ -9,9 +9,10 @@ import {
   XCircle,
   CheckCircle,
   Circle,
+  Container,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useMission, useUpdateMission } from '@/hooks/use-missions'
+import { useMission, useUpdateMission, useMissionEnvironment } from '@/hooks/use-missions'
 import { useTeam } from '@/hooks/use-team'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { useExecutions, useExecution } from '@/hooks/use-executions'
@@ -128,6 +129,11 @@ export default function OverviewPage() {
           }
         />
       </div>
+
+      {/* Container status — shown when execution_environment is container */}
+      {mission.execution_environment === 'container' && (
+        <EnvironmentStatusCard missionId={id!} />
+      )}
 
       {/* Setup checklist — shown when mission needs configuration */}
       {needsSetup && executions.length === 0 && (
@@ -448,7 +454,7 @@ function MissionEditModal({
   missionId,
   onClose,
 }: {
-  mission: { description: string; brief: string | null; budget_ceiling_usd: number | null }
+  mission: { description: string; brief: string | null; budget_ceiling_usd: number | null; execution_environment: string | null }
   missionId: string
   onClose: () => void
 }) {
@@ -458,6 +464,7 @@ function MissionEditModal({
   const [budget, setBudget] = useState(
     mission.budget_ceiling_usd != null ? String(mission.budget_ceiling_usd) : '',
   )
+  const [execEnv, setExecEnv] = useState(mission.execution_environment ?? 'local')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -466,6 +473,7 @@ function MissionEditModal({
         description,
         brief: brief || undefined,
         budget_ceiling_usd: budget ? parseFloat(budget) : null,
+        execution_environment: execEnv === 'local' ? undefined : execEnv,
       },
       {
         onSuccess: () => {
@@ -528,6 +536,24 @@ function MissionEditModal({
             />
           </div>
 
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              Execution Environment
+            </label>
+            <select
+              value={execEnv}
+              onChange={(e) => setExecEnv(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            >
+              <option value="local">Local (in-process)</option>
+              <option value="container">Container (Docker isolation)</option>
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Container mode runs agent tasks inside Docker for full isolation.
+              The container persists across runs within this mission.
+            </p>
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" type="button" onClick={onClose}>
               Cancel
@@ -539,5 +565,60 @@ function MissionEditModal({
         </form>
       </div>
     </div>
+  )
+}
+
+
+function EnvironmentStatusCard({ missionId }: { missionId: string }) {
+  const { data: envData } = useMissionEnvironment(missionId)
+  const active = envData?.active_environment
+  const allEnvs = envData?.all_environments ?? []
+
+  const statusColor = active
+    ? 'text-green-500'
+    : allEnvs.length > 0
+      ? 'text-yellow-500'
+      : 'text-muted-foreground'
+
+  const statusText = active
+    ? 'Running'
+    : allEnvs.length > 0
+      ? 'Stopped'
+      : 'No container'
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Container className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Execution Environment</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className={`h-2 w-2 rounded-full ${active ? 'bg-green-500' : 'bg-muted'}`} />
+              <span className={`text-sm font-medium ${statusColor}`}>{statusText}</span>
+            </div>
+            {active && (
+              <div className="space-y-0.5 text-xs text-muted-foreground">
+                <p>Container: {active.container_name}</p>
+                <p>Image: {active.image ?? 'code-workspace:latest'}</p>
+                <p>Executions: {active.execution_count}</p>
+                {active.last_execution_at && (
+                  <p>Last active: {formatDistanceToNow(new Date(active.last_execution_at), { addSuffix: true })}</p>
+                )}
+              </div>
+            )}
+            {!active && allEnvs.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                A container will be created on the first run.
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
