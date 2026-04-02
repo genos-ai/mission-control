@@ -344,7 +344,10 @@ class ExecutionEnvironmentService:
             select(ExecutionEnvironmentModel).where(
                 ExecutionEnvironmentModel.mission_id == mission_id,
                 ExecutionEnvironmentModel.mode == mode,
-                ExecutionEnvironmentModel.status == EnvironmentStatus.RUNNING.value,
+                ExecutionEnvironmentModel.status.in_([
+                    EnvironmentStatus.RUNNING.value,
+                    "RUNNING",  # handle case mismatch from DB
+                ]),
             )
         )
         env = result.scalar_one_or_none()
@@ -425,7 +428,7 @@ class ExecutionEnvironmentService:
             text(
                 "UPDATE execution_environments "
                 "SET last_execution_at = :ts, execution_count = execution_count + 1 "
-                "WHERE container_name = :eid AND status = 'running'"
+                "WHERE container_name = :eid AND LOWER(status) = 'running'"
             ),
             {"ts": utc_now().isoformat(), "eid": environment_id},
         )

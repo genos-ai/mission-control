@@ -52,9 +52,23 @@ class MissionControlDispatchAdapter:
             resolve_execution_mode,
         )
 
+        # Load mission-level defaults from DB
+        mission_environment = None
+        mission_repo_root = None
+        if mission_id and self._db_session:
+            try:
+                from modules.backend.repositories.mission import MissionRepository
+                repo = MissionRepository(self._db_session)
+                mission = await repo.get_by_id_or_none(mission_id)
+                if mission:
+                    mission_environment = mission.execution_environment
+                    mission_repo_root = mission.repo_root
+            except Exception:
+                logger.debug("Could not load mission for env resolution", exc_info=True)
+
         resolved_mode = execution_mode or resolve_execution_mode(
-            mission_environment=None,  # TODO: load from mission model
-            mission_repo_root=None,    # TODO: load from mission model
+            mission_environment=mission_environment,
+            mission_repo_root=mission_repo_root,
         )
         logger.info(
             "Execution mode resolved",
