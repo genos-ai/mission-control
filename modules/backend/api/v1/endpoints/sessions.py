@@ -274,6 +274,8 @@ async def send_message_stream(
             db_session=db,
         ):
             yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+        # Commit persisted messages before closing the stream
+        await db.commit()
         yield "event: done\ndata: {}\n\n"
 
     return StreamingResponse(
