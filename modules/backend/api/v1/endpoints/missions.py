@@ -6,8 +6,8 @@ CRUD for missions, team management, and mission-scoped workflow listing.
 
 from fastapi import APIRouter, Query
 
-from modules.backend.core.dependencies import DbSession, RequestId
-from modules.backend.core.exceptions import NotFoundError
+from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission import (
     MissionCreate,
@@ -42,21 +42,22 @@ async def create_mission(
     data: MissionCreate,
     db: DbSession,
     request_id: RequestId,
+    current_user: CurrentUser,
 ) -> ApiResponse:
     """Create a new mission.
 
     Platform missions (tier='platform') require admin role.
+    The owner_id is set to the authenticated user.
     """
-    # TODO: enforce admin role for platform missions when auth middleware is wired
-    # if data.tier == "platform" and current_user.role != "admin":
-    #     raise HTTPException(403, "Platform missions require admin role")
+    if data.tier == "platform" and not current_user.has_role("admin"):
+        raise AuthorizationError("Platform missions require admin role")
 
     service = MissionService(db)
     mission = await service.create_mission(
         name=data.name,
         description=data.description,
         brief=data.brief,
-        owner_id=data.owner_id,
+        owner_id=current_user.id,
         team_id=data.team_id,
         default_roster=data.default_roster,
         budget_ceiling_usd=data.budget_ceiling_usd,
@@ -76,15 +77,24 @@ async def create_mission(
 async def list_missions(
     db: DbSession,
     request_id: RequestId,
-    owner_id: str | None = None,
+    current_user: CurrentUser,
     status: str | None = None,
     limit: int = 50,
 ) -> ApiResponse:
-    """List missions with optional filters."""
+    """List missions visible to the current user.
+
+    Admins see all missions. Users see missions they own or are members of.
+    Platform missions are only visible to admins.
+    """
     service = MissionService(db)
-    missions = await service.list_missions(
-        owner_id=owner_id, status=status, limit=limit,
-    )
+    if current_user.has_role("admin"):
+        missions = await service.list_missions(status=status, limit=limit)
+    else:
+        missions = await service.list_missions(
+            owner_id=current_user.id, status=status, limit=limit,
+        )
+        # Filter out platform missions for non-admin users
+        missions = [m for m in missions if getattr(m, 'tier', 'user') != 'platform']
     items = [MissionResponse.model_validate(m).model_dump() for m in missions]
     return ApiResponse(
         success=True,
@@ -98,10 +108,17 @@ async def get_mission(
     mission_id: str,
     db: DbSession,
     request_id: RequestId,
+    current_user: CurrentUser,
 ) -> ApiResponse:
-    """Get mission detail by ID."""
+    """Get mission detail by ID. Owner, member, or admin only."""
     service = MissionService(db)
     mission = await service.get_mission(mission_id)
+    # Admin sees everything; users must own or be a member
+    if not current_user.has_role("admin") and mission.owner_id != current_user.id:
+        # Check membership
+        is_member = any(m.user_id == current_user.id for m in mission.members)
+        if not is_member:
+            raise AuthorizationError("You don't have access to this mission")
     response = MissionResponse.model_validate(mission)
     return ApiResponse(
         success=True,
@@ -163,17 +180,17 @@ async def delete_mission(
     mission_id: str,
     db: DbSession,
     request_id: RequestId,
+    current_user: CurrentUser,
 ) -> ApiResponse:
     """Permanently delete a mission and all related data.
 
     Cascades through executions, records, team, workflows, and containers.
-    Admin can delete any mission. Users can delete their own missions.
+    Admin can delete any mission. Users can only delete their own missions.
     """
-    # TODO: enforce ownership check when auth middleware is wired
-    # if current_user.system_role != "admin" and mission.owner_id != current_user.id:
-    #     raise HTTPException(403, "Cannot delete missions you don't own")
-
     service = MissionService(db)
+    mission = await service.get_mission(mission_id)
+    if not current_user.has_role("admin") and mission.owner_id != current_user.id:
+        raise AuthorizationError("Cannot delete missions you don't own")
     name = await service.delete_mission(mission_id)
     return ApiResponse(
         success=True,
@@ -188,9 +205,13 @@ async def update_mission(
     data: MissionUpdate,
     db: DbSession,
     request_id: RequestId,
+    current_user: CurrentUser,
 ) -> ApiResponse:
-    """Update mission fields."""
+    """Update mission fields. Owner or admin only."""
     service = MissionService(db)
+    existing = await service.get_mission(mission_id)
+    if not current_user.has_role("admin") and existing.owner_id != current_user.id:
+        raise AuthorizationError("Cannot update missions you don't own")
     updates = data.model_dump(exclude_none=True)
     mission = await service.update_mission(mission_id, **updates)
     response = MissionResponse.model_validate(mission)
