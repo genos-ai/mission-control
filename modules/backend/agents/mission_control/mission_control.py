@@ -366,15 +366,29 @@ async def handle(
         output_tokens = usage.output_tokens or 0
         cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
 
-        # Always use result.output as the authoritative content —
-        # streaming chunks can miss the first token due to race timing
-        output = result.output
-        if isinstance(output, str):
-            full_content = output
-        elif hasattr(output, "model_dump_json"):
-            full_content = output.model_dump_json()
-        elif output is not None:
-            full_content = str(output)
+        # Extract complete text from the final model response message.
+        # Both result.output and streaming chunks can miss the first token
+        # due to how PydanticAI handles event_stream_handler consumption.
+        # The authoritative source is the last model text part in all_messages().
+        try:
+            from pydantic_ai.messages import ModelResponse, TextPart
+            for msg in reversed(result.all_messages()):
+                if isinstance(msg, ModelResponse):
+                    text_parts = [p.content for p in msg.parts if isinstance(p, TextPart)]
+                    if text_parts:
+                        full_content = "".join(text_parts)
+                        break
+        except Exception:
+            pass  # fall back to accumulated chunks
+
+        if not full_content:
+            output = result.output
+            if isinstance(output, str):
+                full_content = output
+            elif hasattr(output, "model_dump_json"):
+                full_content = output.model_dump_json()
+            elif output is not None:
+                full_content = str(output)
 
         # 8. Yield complete event
         metadata: dict[str, Any] = {}
