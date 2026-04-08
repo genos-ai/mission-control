@@ -141,7 +141,7 @@ The existing `modules/backend/services/compliance.py` already scans for relative
 | `api/v1/endpoints/missions.py` | 844→194 | Split into `missions_team.py` (302), `missions_workflows.py` (298), `missions_context.py` (105). Core CRUD stays in `missions.py`. | **DONE** |
 | `agents/mission_control/mission_control.py` | 761 | Extract prompt assembly and tool registration into separate modules. Keep orchestration entry point. | TODO |
 | `agents/mission_control/helpers.py` | 755 | Group helpers by concern (context helpers, formatting helpers, result helpers) into sub-files under `helpers/`. | TODO |
-| `services/pqi/dimensions.py` | 710 | One file per dimension (maintainability.py, security.py, modularity.py, etc.) with a dimensions registry. | TODO |
+| `services/pqi/dimensions.py` | 710→446+232 | Converted to `dimensions/` package: `analysis.py` (maintainability, security, modularity, testability) + `style.py` (robustness, elegance, reusability). Re-exports from `__init__.py`. | **DONE** |
 | `services/workflow_run.py` | 664 | Separate orchestration (run lifecycle) from state management (status tracking, cost aggregation). | TODO |
 | `services/execution.py` | 570 | Extract environment resolution and cost tracking into focused modules. | TODO |
 
