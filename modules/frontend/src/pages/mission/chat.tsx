@@ -285,6 +285,7 @@ function ConversationView({
       cost_usd: null,
       tool_name: null,
       tool_call_id: null,
+      thinking: null,
       created_at: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, userMsg])
@@ -351,6 +352,7 @@ function ConversationView({
                   cost_usd: event.cost_usd ?? null,
                   tool_name: null,
                   tool_call_id: null,
+                  thinking: event.metadata?.thinking ?? null,
                   created_at: new Date().toISOString(),
                 }
                 setMessages((prev) => [...prev, assistantMsg])
@@ -378,6 +380,7 @@ function ConversationView({
           cost_usd: null,
           tool_name: null,
           tool_call_id: null,
+          thinking: null,
           created_at: new Date().toISOString(),
         }
         setMessages((prev) => [...prev, fallbackMsg])
@@ -502,6 +505,16 @@ function MessageBubble({ message }: { message: SessionMessage }) {
               : 'bg-muted/50',
         )}
       >
+        {message.thinking && (
+          <details className="mb-2">
+            <summary className="text-xs font-medium text-purple-400 cursor-pointer">
+              Thinking
+            </summary>
+            <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+              {message.thinking}
+            </p>
+          </details>
+        )}
         <p className="text-sm whitespace-pre-wrap">{message.content}</p>
         <div
           className={cn(

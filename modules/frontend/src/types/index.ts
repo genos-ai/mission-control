@@ -427,6 +427,7 @@ export interface SessionMessage {
   cost_usd: number | null
   tool_name: string | null
   tool_call_id: string | null
+  thinking: string | null
   created_at: string
 }
 

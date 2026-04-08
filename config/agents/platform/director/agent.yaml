@@ -33,6 +33,9 @@ tools:
   - get_system_agent_status
   - get_platform_config
 
+thinking_budget:
+  max_thinking_tokens: 4096
+
 max_input_length: 64000
 max_budget_usd: 5.00
 

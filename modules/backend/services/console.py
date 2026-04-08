@@ -108,6 +108,7 @@ async def get_console_history(
                 "cost_usd": msg.cost_usd,
                 "tool_name": msg.tool_name,
                 "tool_call_id": msg.tool_call_id,
+                "thinking": msg.thinking,
             },
         })
 

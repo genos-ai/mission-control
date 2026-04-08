@@ -119,6 +119,7 @@ class SessionMessageCreate(BaseModel):
     cost_usd: float | None = Field(default=None, ge=0)
     tool_name: str | None = Field(default=None, max_length=200)
     tool_call_id: str | None = Field(default=None, max_length=100)
+    thinking: str | None = Field(default=None, description="Agent thinking text (assistant messages only)")
 
 
 class SessionMessageResponse(BaseModel):
@@ -135,6 +136,7 @@ class SessionMessageResponse(BaseModel):
     cost_usd: float | None
     tool_name: str | None
     tool_call_id: str | None
+    thinking: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

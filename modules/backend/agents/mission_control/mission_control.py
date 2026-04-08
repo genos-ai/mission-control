@@ -262,6 +262,13 @@ async def handle(
         deps = _build_agent_deps(agent_name, agent_config, session_id, mission_id=mission_id, db_session=db_session)
         limits = _get_usage_limits(agent_name)
 
+        # Build model settings (enables thinking when agent config has thinking_budget)
+        from pydantic_ai.settings import ModelSettings
+        model_settings: ModelSettings | None = None
+        if agent_config.thinking_budget:
+            budget_tokens = agent_config.thinking_budget.get("max_thinking_tokens", 4096)
+            model_settings = ModelSettings(thinking={"type": "enabled", "budget_tokens": budget_tokens})
+
         # Load conversation history
         history_messages, _ = await session_service.get_messages(session_id, limit=100)
         model_history = session_messages_to_model_history(history_messages)
@@ -341,6 +348,7 @@ async def handle(
                     message_history=model_history or None,
                     deps=deps,
                     usage_limits=limits,
+                    model_settings=model_settings,
                     event_stream_handler=_stream_handler,
                 )
                 return result
@@ -436,6 +444,7 @@ async def handle(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=cost_usd,
+            thinking="\n\n".join(thinking_parts) if thinking_parts else None,
         )
         await _persist_messages(session_service, session_id, [user_create, assistant_create])
 

@@ -165,6 +165,9 @@ class SessionMessage(UUIDMixin, Base):
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Agent thinking (populated for assistant messages when thinking is enabled)
+    thinking: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Tool correlation (populated for tool_call / tool_result messages)
     tool_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(100), nullable=True)

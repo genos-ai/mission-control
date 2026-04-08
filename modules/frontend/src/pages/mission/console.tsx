@@ -298,6 +298,16 @@ function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolea
             </span>
           )}
         </div>
+        {typeof d.thinking === 'string' && d.thinking && (
+          <details className="mt-0.5">
+            <summary className="text-xs font-medium text-purple-400 cursor-pointer">
+              Thinking
+            </summary>
+            <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+              {d.thinking}
+            </p>
+          </details>
+        )}
         <p className="mt-0.5 text-sm text-foreground/90 whitespace-pre-wrap break-words">
           {content.length > 500 ? content.slice(0, 500) + '…' : content}
         </p>
