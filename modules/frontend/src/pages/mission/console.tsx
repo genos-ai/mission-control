@@ -57,11 +57,11 @@ export default function ConsolePage() {
     }
   }, [missionId])
 
-  // Load history into store
+  // Load history into store (reverse: API returns newest-first, console shows oldest-first)
   useEffect(() => {
     if (history && !historyLoaded.current) {
       historyLoaded.current = true
-      addEvents(history)
+      addEvents([...history].reverse())
     }
   }, [history, addEvents])
 
