@@ -195,7 +195,7 @@ function TeamMemberCard({
               >
                 {member.enabled ? 'Active' : 'Disabled'}
               </Badge>
-              {agent?.model_config?.name && (
+              {agent?.model?.name && (
                 <Badge variant="outline" className="text-[11px] gap-1">
                   <Cpu className="h-2.5 w-2.5" />
                   {modelLabel(agent.model.name)}

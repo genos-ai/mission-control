@@ -11,6 +11,7 @@ export const ROUTES = {
   MISSION_CHAT: (id: string) => `/missions/${id}/chat`,
   MISSION_WORKFLOWS: (id: string) => `/missions/${id}/workflows`,
   MISSION_RUNS: (id: string) => `/missions/${id}/runs`,
+  MISSION_CONSOLE: (id: string) => `/missions/${id}/console`,
   MISSION_RUN_LIVE: (missionId: string, runId: string) =>
     `/missions/${missionId}/runs/${runId}`,
   MISSION_WORKSHOP: (id: string) => `/missions/${id}/workshop`,

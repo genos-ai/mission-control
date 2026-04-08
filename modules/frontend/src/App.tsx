@@ -19,6 +19,7 @@ import ChatPage from '@/pages/mission/chat'
 import WorkflowsPage from '@/pages/mission/workflows'
 import RunsPage from '@/pages/mission/runs'
 import RunLivePage from '@/pages/mission/run-live'
+import ConsolePage from '@/pages/mission/console'
 import WorkshopPage from '@/pages/mission/workshop'
 import ContextPage from '@/pages/mission/context'
 
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="runs" element={<RunsPage />} />
             <Route path="runs/:runId" element={<RunLivePage />} />
+            <Route path="console" element={<ConsolePage />} />
             <Route path="workshop" element={<WorkshopPage />} />
             <Route path="context" element={<ContextPage />} />
           </Route>

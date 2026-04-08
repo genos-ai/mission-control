@@ -2,52 +2,14 @@ import { useEffect, useRef } from 'react'
 import {
   Brain,
   Zap,
-  CheckCircle,
-  XCircle,
   AlertTriangle,
-  FileText,
-  Wrench,
   Loader2,
   Users,
   Database,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { useLiveRunStore } from '@/stores/live-run'
-
-const EVENT_ICONS: Record<string, React.ReactNode> = {
-  'plan.created': <FileText className="h-3 w-3 text-blue-400" />,
-  'plan.step.started': <Zap className="h-3 w-3 text-amber-400" />,
-  'plan.step.completed': <CheckCircle className="h-3 w-3 text-emerald-400" />,
-  'agent.thinking.started': <Brain className="h-3 w-3 text-purple-400" />,
-  'agent.response.complete': (
-    <CheckCircle className="h-3 w-3 text-emerald-400" />
-  ),
-  'agent.tool.called': <Wrench className="h-3 w-3 text-cyan-400" />,
-  'agent.tool.returned': <Wrench className="h-3 w-3 text-cyan-400" />,
-  'agent.approval.requested': <XCircle className="h-3 w-3 text-amber-400" />,
-}
-
-function eventLabel(etype: string): string {
-  const last = etype.split('.').slice(-2).join(' ')
-  return last.charAt(0).toUpperCase() + last.slice(1)
-}
-
-function eventDetail(etype: string, data: Record<string, unknown>): string {
-  if (etype === 'agent.tool.called') {
-    const tool = String(data.tool_name ?? '')
-    const detail = (data.tool_args as Record<string, unknown>)?.detail
-    return detail ? `${tool} — ${detail}` : tool
-  }
-  if (etype === 'agent.tool.returned') {
-    const tool = String(data.tool_name ?? '')
-    const result = data.result ? String(data.result).slice(0, 60) : ''
-    return result ? `${tool} → ${result}` : tool
-  }
-  if (data.agent_id) return String(data.agent_id)
-  if (data.step_id) return String(data.step_id)
-  if (data.assigned_agent) return String(data.assigned_agent)
-  return ''
-}
+import { EVENT_ICONS, eventLabel, eventDetail } from '@/lib/event-utils'
 
 const STEP_ICONS: Record<string, React.ReactNode> = {
   roster: <Users className="h-3 w-3 text-blue-400" />,

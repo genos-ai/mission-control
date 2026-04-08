@@ -15,6 +15,7 @@ from redis.asyncio import Redis as AsyncRedis
 from modules.backend.core.config import get_redis_url
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
+from modules.backend.services.console import MissionEventAggregator
 
 logger = get_logger(__name__)
 
@@ -121,6 +122,62 @@ async def stream_notifications(
         finally:
             await pubsub.unsubscribe(channel)
             await pubsub.close()
+            await redis.close()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ---- Mission console stream ----
+
+
+@router.get(
+    "/missions/{mission_id}",
+    summary="Stream mission console events via SSE",
+    description=(
+        "Subscribe to real-time events across all sessions in a mission. "
+        "Events are classified into execution, chat, and system categories."
+    ),
+)
+async def stream_mission_events(
+    mission_id: str,
+    token: str | None = None,
+) -> StreamingResponse:
+    """Stream aggregated events for a mission as SSE."""
+
+    async def generate():
+        from modules.backend.core.database import get_session_factory
+
+        redis = AsyncRedis.from_url(get_redis_url())
+        db_session = get_session_factory()()
+        aggregator = MissionEventAggregator(
+            redis=redis,
+            db_session=db_session,
+            mission_id=mission_id,
+        )
+        try:
+            await aggregator.start()
+
+            # Send initial connected event
+            yield f"event: connected\ndata: {json.dumps({'mission_id': mission_id})}\n\n"
+
+            async for event_payload in aggregator:
+                yield f"data: {json.dumps(event_payload)}\n\n"
+        except asyncio.CancelledError:
+            logger.debug(
+                "Mission console SSE stream cancelled",
+                extra={"mission_id": mission_id},
+            )
+        finally:
+            await aggregator.stop()
+            await db_session.close()
             await redis.close()
 
     return StreamingResponse(

@@ -6,6 +6,7 @@ import {
   MessageSquare,
   GitBranch,
   Play,
+  Terminal,
   FlaskConical,
   FileText,
   Pause,
@@ -30,6 +31,7 @@ const tabs = [
   { label: 'Chat', icon: MessageSquare, path: 'chat' },
   { label: 'Workflows', icon: GitBranch, path: 'workflows' },
   { label: 'Runs', icon: Play, path: 'runs' },
+  { label: 'Console', icon: Terminal, path: 'console' },
   { label: 'Workshop', icon: FlaskConical, path: 'workshop' },
   { label: 'Context', icon: FileText, path: 'context' },
 ]

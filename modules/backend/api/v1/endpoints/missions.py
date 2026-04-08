@@ -830,3 +830,129 @@ async def get_context_history(
         data={"changes": items, "total": len(items)},
         metadata={"request_id": request_id},
     )
+
+
+# ---- Mission Console History ----
+
+
+@router.get(
+    "/{mission_id}/console/history",
+    response_model=ApiResponse,
+    summary="Get mission console history",
+)
+async def get_console_history(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    limit: int = Query(200, ge=1, le=1000),
+) -> ApiResponse:
+    """Get a unified timeline of recent session messages and execution events.
+
+    Queries all sessions belonging to this mission, collects their messages
+    and execution records, and returns them as a single timeline sorted by
+    timestamp descending.
+
+    Each item has: event_id, event_type, category, timestamp, source, data.
+    """
+    from sqlalchemy import select, union_all, literal, cast, String, func
+    from modules.backend.models.session import Session, SessionMessage
+    from modules.backend.models.execution_record import ExecutionRecord
+    from modules.backend.services.console import classify_event
+
+    # 1. Get all session IDs for this mission
+    session_ids_result = await db.execute(
+        select(Session.id).where(Session.mission_id == mission_id)
+    )
+    session_ids = [row[0] for row in session_ids_result.all()]
+
+    if not session_ids:
+        return ApiResponse(
+            success=True,
+            data={"events": [], "total": 0, "mission_id": mission_id},
+            metadata={"request_id": request_id},
+        )
+
+    timeline: list[dict] = []
+
+    # 2. Fetch recent session messages
+    messages_result = await db.execute(
+        select(SessionMessage)
+        .where(SessionMessage.session_id.in_(session_ids))
+        .order_by(SessionMessage.created_at.desc())
+        .limit(limit)
+    )
+    messages = messages_result.scalars().all()
+
+    role_to_event_type = {
+        "user": "user.message.sent",
+        "assistant": "assistant.message.complete",
+        "system": "system.message",
+        "tool_call": "agent.tool.called",
+        "tool_result": "agent.tool.returned",
+    }
+
+    for msg in messages:
+        event_type = role_to_event_type.get(msg.role, f"{msg.role}.message")
+        timeline.append({
+            "event_id": str(msg.id),
+            "event_type": event_type,
+            "category": classify_event(event_type),
+            "timestamp": msg.created_at.isoformat() if msg.created_at else None,
+            "source": msg.sender_id or msg.session_id,
+            "data": {
+                "session_id": msg.session_id,
+                "role": msg.role,
+                "content": msg.content,
+                "model": msg.model,
+                "input_tokens": msg.input_tokens,
+                "output_tokens": msg.output_tokens,
+                "cost_usd": msg.cost_usd,
+                "tool_name": msg.tool_name,
+                "tool_call_id": msg.tool_call_id,
+            },
+        })
+
+    # 3. Fetch recent execution records for this mission
+    exec_result = await db.execute(
+        select(ExecutionRecord)
+        .where(ExecutionRecord.mission_id == mission_id)
+        .order_by(ExecutionRecord.created_at.desc())
+        .limit(limit)
+    )
+    records = exec_result.scalars().all()
+
+    for rec in records:
+        timeline.append({
+            "event_id": str(rec.id),
+            "event_type": "execution.record",
+            "category": "execution",
+            "timestamp": str(rec.created_at) if rec.created_at else None,
+            "source": rec.roster_name or rec.session_id,
+            "data": {
+                "session_id": rec.session_id,
+                "status": rec.status if isinstance(rec.status, str) else rec.status.value,
+                "roster_name": rec.roster_name,
+                "objective_statement": rec.objective_statement,
+                "objective_category": rec.objective_category,
+                "total_cost_usd": rec.total_cost_usd,
+                "started_at": rec.started_at,
+                "completed_at": rec.completed_at,
+            },
+        })
+
+    # 4. Sort unified timeline by timestamp descending, then truncate
+    timeline.sort(
+        key=lambda e: e["timestamp"] or "",
+        reverse=True,
+    )
+    timeline = timeline[:limit]
+
+    return ApiResponse(
+        success=True,
+        data={
+            "events": timeline,
+            "total": len(timeline),
+            "mission_id": mission_id,
+        },
+        metadata={"request_id": request_id},
+    )

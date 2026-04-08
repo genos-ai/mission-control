@@ -50,6 +50,49 @@ export function useRunStream(sessionId: string | null) {
 }
 
 /**
+ * Subscribe to a mission's SSE event stream.
+ * Returns latest events and a connected flag.
+ */
+export function useMissionStream(missionId: string | null) {
+  const [events, setEvents] = useState<SseEvent[]>([])
+  const [connected, setConnected] = useState(false)
+  const sourceRef = useRef<EventSource | null>(null)
+
+  useEffect(() => {
+    if (!missionId) return
+
+    const source = api.sse(`/streams/missions/${missionId}`)
+    sourceRef.current = source
+
+    source.addEventListener('connected', () => {
+      setConnected(true)
+    })
+
+    source.onmessage = (e) => {
+      try {
+        const parsed = JSON.parse(e.data) as SseEvent
+        setEvents((prev) => [...prev, parsed].slice(-1000))
+      } catch {
+        // skip malformed
+      }
+    }
+
+    source.onerror = () => {
+      setConnected(false)
+    }
+
+    return () => {
+      source.close()
+      sourceRef.current = null
+    }
+  }, [missionId])
+
+  const clear = useCallback(() => setEvents([]), [])
+
+  return { events, connected, clear }
+}
+
+/**
  * Subscribe to user notification SSE stream.
  * Calls onNotification for each incoming event.
  */
