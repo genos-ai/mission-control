@@ -11,6 +11,6 @@ export function useConsoleHistory(missionId: string | undefined) {
       ),
     select: (data) => data.events,
     enabled: !!missionId,
-    staleTime: Infinity, // only fetch once, SSE handles updates
+    staleTime: 30_000, // refetch after 30s to pick up completed runs
   })
 }

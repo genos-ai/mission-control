@@ -244,6 +244,11 @@ function EventRow({ event }: { event: ConsoleEvent }) {
     return <ExecutionRecordRow event={event} />
   }
 
+  // Task results show output data
+  if (event.event_type.startsWith('task.') && !event.event_type.includes('attempt')) {
+    return <TaskResultRow event={event} isError={isError} />
+  }
+
   // Default: compact log row
   return <LogRow event={event} isError={isError} />
 }
@@ -337,6 +342,105 @@ function ExecutionRecordRow({ event }: { event: ConsoleEvent }) {
       </div>
     </div>
   )
+}
+
+function TaskResultRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
+  const d = event.data
+  const agent = String(d.agent_name ?? '')
+  const taskId = String(d.task_id ?? '')
+  const status = String(d.status ?? '')
+  const cost = d.cost_usd != null ? Number(d.cost_usd) : null
+  const duration = d.duration_seconds != null ? Number(d.duration_seconds) : null
+  const attempts = d.attempt_count ? Number(d.attempt_count) : null
+  const output = d.output_data as Record<string, unknown> | null
+  const verification = d.verification_outcome as Record<string, unknown> | null
+  const ts = formatTime(event.timestamp)
+
+  // Extract meaningful content from output_data
+  const outputSummary = output ? formatOutput(output) : null
+
+  return (
+    <div className={`rounded px-2 py-1.5 ${
+      isError ? 'bg-destructive/10' : 'hover:bg-muted/20'
+    }`}>
+      <div className="flex items-center gap-2">
+        <span className="shrink-0">
+          {EVENT_ICONS[event.event_type] ?? <Zap className="h-3 w-3 text-gray-400" />}
+        </span>
+        <span className="text-xs font-medium text-foreground">{agent}</span>
+        <Badge variant="outline" className="text-[9px] h-4">{taskId}</Badge>
+        <Badge
+          variant={isError ? 'destructive' : 'success'}
+          className="text-[9px] h-4"
+        >
+          {status}
+        </Badge>
+        {cost != null && (
+          <span className="flex items-center text-[10px] text-muted-foreground">
+            <DollarSign className="h-2.5 w-2.5" />{cost.toFixed(4)}
+          </span>
+        )}
+        {duration != null && (
+          <span className="text-[10px] text-muted-foreground">{duration.toFixed(1)}s</span>
+        )}
+        {attempts != null && attempts > 1 && (
+          <span className="text-[10px] text-muted-foreground">{attempts} attempts</span>
+        )}
+        <span className="text-[10px] tabular-nums text-muted-foreground/60">{ts}</span>
+      </div>
+
+      {/* Verification errors */}
+      {verification && (verification as { errors?: string[] }).errors?.length ? (
+        <div className="mt-1 ml-5 space-y-0.5">
+          {((verification as { errors?: string[] }).errors ?? []).map((err, i) => (
+            <p key={i} className="text-xs text-destructive">{err}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Output data summary */}
+      {outputSummary && (
+        <div className="mt-1 ml-5 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+          {outputSummary}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Format output_data into a readable summary */
+function formatOutput(output: Record<string, unknown>): string | null {
+  // Skip _meta field
+  const keys = Object.keys(output).filter((k) => k !== '_meta')
+  if (keys.length === 0) return null
+
+  // If there's a 'result' string, show it directly
+  if (typeof output.result === 'string') {
+    const text = output.result
+    return text.length > 500 ? text.slice(0, 500) + '…' : text
+  }
+
+  // If there's a 'summary' string, show it
+  if (typeof output.summary === 'string') {
+    const text = output.summary
+    return text.length > 500 ? text.slice(0, 500) + '…' : text
+  }
+
+  // Otherwise show a compact JSON preview of the interesting keys
+  const preview: Record<string, unknown> = {}
+  for (const k of keys.slice(0, 5)) {
+    const v = output[k]
+    if (typeof v === 'string' && v.length > 200) {
+      preview[k] = v.slice(0, 200) + '…'
+    } else {
+      preview[k] = v
+    }
+  }
+  try {
+    return JSON.stringify(preview, null, 2)
+  } catch {
+    return null
+  }
 }
 
 function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
