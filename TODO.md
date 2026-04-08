@@ -1,2 +1,4 @@
 [ ] TODO goes here
 [ ] Newer TODO goes here
+[ ] **SSE / DB pool:** `agent_chat_stream` and `send_message_stream` still inject `DbSession` for the whole SSE response, so each of those streams holds one pool connection until it ends. If timeouts continue under heavy parallel chat streams, refactor to short-lived sessions for DB work only (same pattern as mission console SSE), not for the whole generator.
+[ ] **CLI:** Review merging `chat.py` into `mc.py` (port commands into the main user CLI) versus replacing with a fresh design—pick one path and deprecate or remove the duplicate entry point.

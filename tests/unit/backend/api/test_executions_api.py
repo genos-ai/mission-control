@@ -73,9 +73,16 @@ class TestListExecutions:
 class TestGetExecution:
     @pytest.mark.asyncio
     async def test_get_execution_not_found(self, client):
-        with patch(
-            "modules.backend.api.v1.endpoints.executions.ExecutionPersistenceService",
-        ) as MockService:
+        with (
+            patch(
+                "modules.backend.api.v1.endpoints.executions.ExecutionPersistenceService",
+            ) as MockService,
+            patch(
+                "modules.backend.services.execution.ExecutionService.get_execution_or_none",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
             instance = MockService.return_value
             instance.get_execution = AsyncMock(return_value=None)
 
