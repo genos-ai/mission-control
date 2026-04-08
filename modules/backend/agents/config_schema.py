@@ -157,6 +157,44 @@ class AgentConfigSchema(_StrictBase):
         return v
 
     @model_validator(mode="after")
+    def _validate_model_config(self) -> Self:
+        """Validate model configuration consistency."""
+        # Extract model name
+        model_name = self.model if isinstance(self.model, str) else self.model.name
+        bare_name = model_name.split(":")[-1] if ":" in model_name else model_name
+
+        # Must have a provider prefix
+        if isinstance(self.model, str) and ":" not in self.model:
+            raise ValueError(
+                f"Model '{self.model}' must have a provider prefix "
+                f"(e.g. 'anthropic:{self.model}')"
+            )
+
+        # Model name must not be empty
+        if not bare_name:
+            raise ValueError(f"Agent '{self.agent_name}' has an empty model name")
+
+        # Known provider check
+        provider = model_name.split(":")[0] if ":" in model_name else ""
+        known_providers = {"anthropic", "openai", "google", "bedrock"}
+        if provider and provider not in known_providers:
+            raise ValueError(
+                f"Unknown model provider '{provider}' for agent '{self.agent_name}'. "
+                f"Known: {', '.join(sorted(known_providers))}"
+            )
+
+        # Thinking requires temperature >= 1.0 for Anthropic
+        if self.thinking_budget and isinstance(self.model, AgentModelSchema):
+            if self.model.temperature < 1.0:
+                raise ValueError(
+                    f"Agent '{self.agent_name}' has thinking_budget but temperature "
+                    f"{self.model.temperature} < 1.0. Anthropic requires temperature=1.0 "
+                    f"when extended thinking is enabled."
+                )
+
+        return self
+
+    @model_validator(mode="after")
     def _validate_invocation_tier(self) -> Self:
         """Enforce naming ↔ tier constraints."""
         prefix = self.agent_name.split(".")[0]
