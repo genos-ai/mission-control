@@ -55,4 +55,4 @@ interface:
   input:
     message: "string"
   output:
-    response: "string"
+    result: "string"

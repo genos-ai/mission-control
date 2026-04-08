@@ -34,6 +34,6 @@ interface:
   input:
     outcome_data: dict
   output:
-    narrative: str
+    result: str
 
 version: "1.0.0"
