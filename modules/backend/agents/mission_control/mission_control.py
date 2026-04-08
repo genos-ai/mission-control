@@ -316,6 +316,14 @@ async def handle(
                     elif isinstance(delta, ThinkingPartDelta):
                         if delta.content_delta:
                             thinking_parts.append(delta.content_delta)
+                            thinking_event = AgentResponseChunkEvent(
+                                session_id=sid,
+                                source=source,
+                                agent_id=agent_name,
+                                content=delta.content_delta,
+                                metadata={"thinking": True},
+                            )
+                            await event_queue.put(thinking_event)
                 elif isinstance(event, FunctionToolCallEvent):
                     tool_event = AgentToolCallEvent(
                         session_id=sid,
@@ -362,7 +370,7 @@ async def handle(
             event = await event_queue.get()
             if event is None:
                 break
-            if isinstance(event, AgentResponseChunkEvent):
+            if isinstance(event, AgentResponseChunkEvent) and not event.metadata.get("thinking"):
                 full_content += event.content
             yield event
             await _publish(event_bus, event)

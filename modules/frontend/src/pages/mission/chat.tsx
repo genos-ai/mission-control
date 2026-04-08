@@ -10,6 +10,7 @@ import {
   Circle,
   ChevronDown,
   AlertTriangle,
+  Brain,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -228,6 +229,7 @@ function ConversationView({
   const { user } = useAuthStore()
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [streamingContent, setStreamingContent] = useState('')
+  const [streamingThinking, setStreamingThinking] = useState('')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -238,6 +240,7 @@ function ConversationView({
   useEffect(() => {
     setMessages([])
     setStreamingContent('')
+    setStreamingThinking('')
     setSending(false)
     abortRef.current?.abort()
     abortRef.current = null
@@ -262,7 +265,7 @@ function ConversationView({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, streamingContent])
+  }, [messages, streamingContent, streamingThinking])
 
   const sendMessage = useCallback(async () => {
     const content = input.trim()
@@ -271,6 +274,7 @@ function ConversationView({
     setInput('')
     setSending(true)
     setStreamingContent('')
+    setStreamingThinking('')
 
     // Optimistic user message
     const userMsg: SessionMessage = {
@@ -336,8 +340,12 @@ function ConversationView({
             try {
               const event = JSON.parse(raw)
               if (event.event_type === 'agent.response.chunk') {
-                accumulated += event.content ?? ''
-                setStreamingContent(accumulated)
+                if (event.metadata?.thinking) {
+                  setStreamingThinking((prev) => prev + (event.content ?? ''))
+                } else {
+                  accumulated += event.content ?? ''
+                  setStreamingContent(accumulated)
+                }
               } else if (event.event_type === 'agent.response.complete') {
                 const isError = event.metadata?.error === true
                 const assistantMsg: SessionMessage = {
@@ -358,6 +366,7 @@ function ConversationView({
                 setMessages((prev) => [...prev, assistantMsg])
                 accumulated = ''
                 setStreamingContent('')
+                setStreamingThinking('')
               }
             } catch {
               // skip malformed SSE data
@@ -422,20 +431,38 @@ function ConversationView({
             <MessageBubble key={msg.id} message={msg} />
           ))}
 
-        {/* Streaming indicator */}
-        {streamingContent && (
+        {/* Streaming: thinking + response as separate sections */}
+        {(streamingThinking || streamingContent) && (
           <div className="flex gap-3">
             <div className="flex-shrink-0 mt-1">
               <Bot className="h-5 w-5 text-primary" />
             </div>
-            <div className="flex-1 rounded-lg bg-muted/50 p-3">
-              <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
-              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground mt-1" />
+            <div className="flex-1 space-y-2">
+              {streamingThinking && (
+                <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Brain className="h-3 w-3 text-purple-400" />
+                    <span className="text-xs font-medium text-purple-400">Thinking</span>
+                    {!streamingContent && (
+                      <Loader2 className="h-3 w-3 animate-spin text-purple-400" />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+                    {streamingThinking.slice(-1000)}
+                  </p>
+                </div>
+              )}
+              {streamingContent && (
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground mt-1" />
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {sending && !streamingContent && (
+        {sending && !streamingContent && !streamingThinking && (
           <div className="flex gap-3">
             <Bot className="h-5 w-5 text-primary mt-1" />
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -506,11 +533,12 @@ function MessageBubble({ message }: { message: SessionMessage }) {
         )}
       >
         {message.thinking && (
-          <details className="mb-2">
-            <summary className="text-xs font-medium text-purple-400 cursor-pointer">
+          <details className="mb-3 rounded border border-purple-500/20 bg-purple-500/5 px-3 py-2">
+            <summary className="flex items-center gap-1.5 text-xs font-medium text-purple-400 cursor-pointer">
+              <Brain className="h-3 w-3" />
               Thinking
             </summary>
-            <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+            <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
               {message.thinking}
             </p>
           </details>
