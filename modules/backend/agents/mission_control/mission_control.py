@@ -427,6 +427,10 @@ async def handle(
 
         # 11. Persist messages
         user_create = SessionMessageCreate(role="user", content=message, sender_id=sender_id)
+        logger.debug(
+            "Persisting assistant message",
+            extra={"first_40": full_content[:40], "length": len(full_content)},
+        )
         assistant_create = SessionMessageCreate(
             role="assistant",
             content=full_content,
