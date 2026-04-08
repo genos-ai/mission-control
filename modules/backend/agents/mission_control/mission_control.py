@@ -263,11 +263,13 @@ async def handle(
         limits = _get_usage_limits(agent_name)
 
         # Build model settings (enables thinking when agent config has thinking_budget)
-        from pydantic_ai.settings import ModelSettings
-        model_settings: ModelSettings | None = None
+        from pydantic_ai.models.anthropic import AnthropicModelSettings
+        model_settings: AnthropicModelSettings | None = None
         if agent_config.thinking_budget:
             budget_tokens = agent_config.thinking_budget.get("max_thinking_tokens", 4096)
-            model_settings = ModelSettings(thinking={"type": "enabled", "budget_tokens": budget_tokens})
+            model_settings = AnthropicModelSettings(
+                anthropic_thinking={"type": "enabled", "budget_tokens": budget_tokens},
+            )
 
         # Load conversation history
         history_messages, _ = await session_service.get_messages(session_id, limit=100)
