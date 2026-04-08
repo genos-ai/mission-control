@@ -912,16 +912,26 @@ async def get_console_history(
             },
         })
 
-    # 3. Fetch recent execution records for this mission
+    # 3. Fetch recent execution records with task details
+    from sqlalchemy.orm import selectinload
+    from modules.backend.models.execution_record import TaskExecution, ExecutionDecision
+
     exec_result = await db.execute(
         select(ExecutionRecord)
         .where(ExecutionRecord.mission_id == mission_id)
+        .options(
+            selectinload(ExecutionRecord.task_executions)
+            .selectinload(TaskExecution.attempts),
+            selectinload(ExecutionRecord.decisions),
+        )
         .order_by(ExecutionRecord.created_at.desc())
         .limit(limit)
     )
     records = exec_result.scalars().all()
 
     for rec in records:
+        rec_status = rec.status if isinstance(rec.status, str) else rec.status.value
+        # Top-level execution record
         timeline.append({
             "event_id": str(rec.id),
             "event_type": "execution.record",
@@ -930,7 +940,7 @@ async def get_console_history(
             "source": rec.roster_name or rec.session_id,
             "data": {
                 "session_id": rec.session_id,
-                "status": rec.status if isinstance(rec.status, str) else rec.status.value,
+                "status": rec_status,
                 "roster_name": rec.roster_name,
                 "objective_statement": rec.objective_statement,
                 "objective_category": rec.objective_category,
@@ -939,6 +949,63 @@ async def get_console_history(
                 "completed_at": rec.completed_at,
             },
         })
+
+        # Expand task executions
+        for te in rec.task_executions:
+            te_status = te.status if isinstance(te.status, str) else te.status.value
+            timeline.append({
+                "event_id": str(te.id),
+                "event_type": f"task.{te_status}",
+                "category": "execution",
+                "timestamp": str(te.completed_at or te.started_at or rec.created_at),
+                "source": te.agent_name,
+                "data": {
+                    "task_id": te.task_id,
+                    "agent_name": te.agent_name,
+                    "status": te_status,
+                    "cost_usd": te.cost_usd,
+                    "duration_seconds": te.duration_seconds,
+                    "verification_outcome": te.verification_outcome,
+                    "output_data": te.output_data,
+                    "attempt_count": len(te.attempts),
+                },
+            })
+
+            # Expand failed attempts with failure details
+            for att in te.attempts:
+                att_status = att.status if isinstance(att.status, str) else att.status.value
+                if att_status == "failed":
+                    timeline.append({
+                        "event_id": str(att.id),
+                        "event_type": "task.attempt.failed",
+                        "category": "execution",
+                        "timestamp": str(att.created_at) if att.created_at else str(rec.created_at),
+                        "source": te.agent_name,
+                        "data": {
+                            "task_id": te.task_id,
+                            "agent_name": te.agent_name,
+                            "attempt_number": att.attempt_number,
+                            "failure_tier": att.failure_tier if isinstance(att.failure_tier, str) else (att.failure_tier.value if att.failure_tier else None),
+                            "failure_reason": att.failure_reason,
+                            "cost_usd": att.cost_usd,
+                        },
+                    })
+
+        # Expand decisions
+        for dec in rec.decisions:
+            dec_type = dec.decision_type if isinstance(dec.decision_type, str) else dec.decision_type.value
+            timeline.append({
+                "event_id": str(dec.id),
+                "event_type": f"decision.{dec_type}",
+                "category": "execution",
+                "timestamp": str(dec.created_at) if dec.created_at else str(rec.created_at),
+                "source": "mission_control",
+                "data": {
+                    "decision_type": dec_type,
+                    "task_id": dec.task_id,
+                    "reasoning": dec.reasoning,
+                },
+            })
 
     # 4. Sort unified timeline by timestamp descending, then truncate
     timeline.sort(
