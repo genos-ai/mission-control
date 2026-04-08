@@ -143,9 +143,9 @@ def create_agent(model: str | Model) -> Agent:
         config = get_app_config()
         return {
             "database": "connected" if config.database else "not configured",
-            "redis": "connected" if config.redis else "not configured",
-            "temporal_enabled": config.temporal.enabled if config.temporal else False,
-            "max_concurrent_missions": config.workflows.max_concurrent_missions,
+            "redis": "connected" if getattr(config.database, 'redis', None) else "not configured",
+            "temporal_enabled": config.temporal.enabled if hasattr(config, 'temporal') and config.temporal else False,
+            "max_concurrent_missions": getattr(config.workflows, 'max_concurrent_missions', 0) if hasattr(config, 'workflows') else 0,
         }
 
     return agent
