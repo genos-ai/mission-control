@@ -32,6 +32,7 @@ from modules.backend.agents.mission_control.helpers import (
     _publish,
     _resolve_agent,
     assemble_instructions,
+    build_model_settings,
     build_deps_from_config,
 )
 from modules.backend.agents.mission_control.history import (
@@ -262,15 +263,8 @@ async def handle(
         deps = _build_agent_deps(agent_name, agent_config, session_id, mission_id=mission_id, db_session=db_session)
         limits = _get_usage_limits(agent_name)
 
-        # Build model settings (enables thinking when agent config has thinking_budget)
-        from pydantic_ai.models.anthropic import AnthropicModelSettings
-        model_settings: AnthropicModelSettings | None = None
-        if agent_config.thinking_budget:
-            max_tokens = getattr(agent_config.model, 'max_tokens', None) or 16384
-            model_settings = AnthropicModelSettings(
-                anthropic_thinking={"type": "enabled", "budget_tokens": 10000},
-                max_tokens=max_tokens,
-            )
+        # Build model settings (enables thinking when agent config supports it)
+        model_settings = build_model_settings(agent_config)
 
         # Load conversation history
         history_messages, _ = await session_service.get_messages(session_id, limit=100)
