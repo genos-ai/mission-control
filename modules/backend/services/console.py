@@ -260,6 +260,19 @@ class MissionEventAggregator:
 
     async def start(self) -> None:
         """Bootstrap subscriptions and start the refresh loop."""
+        # Subscribe to mission-level channel for system events
+        mission_channel = f"mission_events:{self._mission_id}"
+        pubsub = self._redis.pubsub()
+        await pubsub.subscribe(mission_channel)
+        self._pubsubs.append(pubsub)
+        self._tasks.append(
+            asyncio.create_task(
+                self._read_pubsub(pubsub, mission_channel),
+                name=f"console-mission-{self._mission_id[:8]}",
+            )
+        )
+
+        # Subscribe to all existing session channels
         await self._refresh_sessions()
         self._tasks.append(
             asyncio.create_task(self._refresh_loop(), name="console-refresh")

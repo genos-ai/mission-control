@@ -52,6 +52,28 @@ class SessionEventBus:
             },
         )
 
+    def _mission_channel_name(self, mission_id: str) -> str:
+        """Build the Pub/Sub channel name for mission-level events."""
+        return f"mission_events:{mission_id}"
+
+    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
+        """Publish a system event to the mission-wide channel.
+
+        Used for mission-level events (execution lifecycle, budget warnings,
+        session creation) that aren't tied to a specific session's channel.
+        """
+        channel = self._mission_channel_name(mission_id)
+        payload = event.model_dump_json()
+        await self._redis.publish(channel, payload)
+        logger.debug(
+            "Mission event published",
+            extra={
+                "channel": channel,
+                "event_type": event.event_type,
+                "mission_id": mission_id,
+            },
+        )
+
     async def subscribe(self, session_id: uuid.UUID) -> AsyncIterator[SessionEvent]:
         """
         Subscribe to all events for a session.

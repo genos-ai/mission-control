@@ -325,6 +325,62 @@ class FinalVerificationEvent(SessionEvent):
 
 
 # =============================================================================
+# System / Mission-level Events
+# =============================================================================
+
+
+class SystemEvent(SessionEvent):
+    """Mission-level system event for the console."""
+
+    event_type: str = "system.info"
+    level: str = "info"  # info, warning, error
+    message: str = ""
+    mission_id: str = ""
+
+
+class SystemExecutionCreatedEvent(SessionEvent):
+    """An execution was created for a mission."""
+
+    event_type: str = "system.execution.created"
+    execution_id: str = ""
+    mission_id: str = ""
+    objective: str = ""
+    triggered_by: str = ""
+
+
+class SystemExecutionCompletedEvent(SessionEvent):
+    """An execution completed (success or failure)."""
+
+    event_type: str = "system.execution.completed"
+    execution_id: str = ""
+    mission_id: str = ""
+    status: str = ""
+    total_cost_usd: float = 0.0
+    duration_seconds: float = 0.0
+    task_count: int = 0
+
+
+class SystemBudgetWarningEvent(SessionEvent):
+    """Budget threshold exceeded."""
+
+    event_type: str = "system.budget.warning"
+    mission_id: str = ""
+    current_cost_usd: float = 0.0
+    budget_usd: float = 0.0
+    message: str = ""
+
+
+class SystemSessionCreatedEvent(SessionEvent):
+    """A new session was created in a mission."""
+
+    event_type: str = "system.session.created"
+    target_session_id: str = ""
+    mission_id: str = ""
+    agent_id: str = ""
+    goal: str = ""
+
+
+# =============================================================================
 # Event Type Registry
 # =============================================================================
 
@@ -354,6 +410,11 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "convergence.iteration": ConvergenceIterationEvent,
     "convergence.completed": ConvergenceCompletedEvent,
     "convergence.verification": FinalVerificationEvent,
+    "system.info": SystemEvent,
+    "system.execution.created": SystemExecutionCreatedEvent,
+    "system.execution.completed": SystemExecutionCompletedEvent,
+    "system.budget.warning": SystemBudgetWarningEvent,
+    "system.session.created": SystemSessionCreatedEvent,
 }
 
 

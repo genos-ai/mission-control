@@ -75,6 +75,8 @@ class EventBusProtocol(Protocol):
 
     async def publish(self, event: SessionEvent) -> None: ...
 
+    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None: ...
+
 
 class NoOpEventBus:
     """Null-object event bus — satisfies EventBusProtocol, does nothing.
@@ -84,6 +86,9 @@ class NoOpEventBus:
     """
 
     async def publish(self, event: SessionEvent) -> None:
+        pass
+
+    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
         pass
 
 

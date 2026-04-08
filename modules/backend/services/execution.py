@@ -6,6 +6,7 @@ instantiates Mission Control with the appropriate roster, tracks
 ExecutionOutcome results, and manages inter-execution data flow.
 """
 
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -239,6 +240,21 @@ class ExecutionService(BaseService):
         execution.started_at = utc_now().isoformat()
         await self._session.flush()
 
+        # Emit system event: execution started
+        if execution.mission_id:
+            from modules.backend.events.types import SystemExecutionCreatedEvent
+            await self._event_bus.publish_to_mission(
+                execution.mission_id,
+                SystemExecutionCreatedEvent(
+                    session_id=uuid.UUID(execution.session_id) if execution.session_id else uuid.uuid4(),
+                    source="execution_service",
+                    execution_id=execution_id,
+                    mission_id=execution.mission_id,
+                    objective=execution.objective or "",
+                    triggered_by=execution.triggered_by or "unknown",
+                ),
+            )
+
         if self._mission_control_dispatch is None:
             logger.warning(
                 "Mission Control dispatch not available, "
@@ -303,6 +319,31 @@ class ExecutionService(BaseService):
             execution.completed_at = utc_now().isoformat()
             await self._session.flush()
 
+            # Emit system event: execution completed
+            if execution.mission_id:
+                from modules.backend.events.types import SystemExecutionCompletedEvent
+                duration = 0.0
+                if execution.started_at and execution.completed_at:
+                    try:
+                        from datetime import datetime
+                        t0 = datetime.fromisoformat(execution.started_at)
+                        t1 = datetime.fromisoformat(execution.completed_at)
+                        duration = (t1 - t0).total_seconds()
+                    except (ValueError, TypeError):
+                        pass
+                await self._event_bus.publish_to_mission(
+                    execution.mission_id,
+                    SystemExecutionCompletedEvent(
+                        session_id=uuid.UUID(execution.session_id) if execution.session_id else uuid.uuid4(),
+                        source="execution_service",
+                        execution_id=execution_id,
+                        mission_id=execution.mission_id,
+                        status=execution.status.value if hasattr(execution.status, 'value') else str(execution.status),
+                        total_cost_usd=execution.total_cost_usd or 0.0,
+                        duration_seconds=duration,
+                    ),
+                )
+
         except (ApplicationError, OSError, RuntimeError, ValueError) as e:
             execution.status = ExecutionState.FAILED
             execution.completed_at = utc_now().isoformat()
@@ -314,6 +355,20 @@ class ExecutionService(BaseService):
                 "Execution failed",
                 extra={"execution_id": execution_id, "error": str(e)},
             )
+            # Emit system event: execution failed
+            if execution.mission_id:
+                from modules.backend.events.types import SystemExecutionCompletedEvent
+                await self._event_bus.publish_to_mission(
+                    execution.mission_id,
+                    SystemExecutionCompletedEvent(
+                        session_id=uuid.UUID(execution.session_id) if execution.session_id else uuid.uuid4(),
+                        source="execution_service",
+                        execution_id=execution_id,
+                        mission_id=execution.mission_id,
+                        status="failed",
+                        total_cost_usd=execution.total_cost_usd or 0.0,
+                    ),
+                )
 
         return execution
 

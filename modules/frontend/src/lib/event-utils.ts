@@ -9,6 +9,10 @@ import {
   RotateCcw,
   Scale,
   Play,
+  Info,
+  Activity,
+  DollarSign,
+  UserPlus,
 } from 'lucide-react'
 import { createElement } from 'react'
 
@@ -31,6 +35,12 @@ export const EVENT_ICONS: Record<string, React.ReactNode> = {
   'decision.fail': createElement(XCircle, { className: 'h-3 w-3 text-destructive' }),
   'decision.pass': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
   'decision.escalate': createElement(Scale, { className: 'h-3 w-3 text-amber-400' }),
+  // System events
+  'system.info': createElement(Info, { className: 'h-3 w-3 text-blue-400' }),
+  'system.execution.created': createElement(Activity, { className: 'h-3 w-3 text-blue-400' }),
+  'system.execution.completed': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
+  'system.budget.warning': createElement(DollarSign, { className: 'h-3 w-3 text-amber-400' }),
+  'system.session.created': createElement(UserPlus, { className: 'h-3 w-3 text-blue-400' }),
 }
 
 export function eventLabel(etype: string): string {
@@ -71,6 +81,28 @@ export function eventDetail(etype: string, data: Record<string, unknown>): strin
     const taskId = data.task_id ? ` [${data.task_id}]` : ''
     const reason = String(data.reasoning ?? '').slice(0, 80)
     return `${taskId} ${reason}`
+  }
+  if (etype === 'system.execution.created') {
+    const obj = String(data.objective ?? '').slice(0, 80)
+    const by = data.triggered_by ? ` by ${data.triggered_by}` : ''
+    return `${obj}${by}`
+  }
+  if (etype === 'system.execution.completed') {
+    const status = String(data.status ?? '')
+    const cost = data.total_cost_usd != null ? ` $${Number(data.total_cost_usd).toFixed(4)}` : ''
+    const dur = data.duration_seconds != null ? ` ${Number(data.duration_seconds).toFixed(1)}s` : ''
+    return `${status}${cost}${dur}`
+  }
+  if (etype === 'system.budget.warning') {
+    return String(data.message ?? '')
+  }
+  if (etype === 'system.session.created') {
+    const agent = String(data.agent_id ?? '')
+    const goal = String(data.goal ?? '')
+    return agent ? `${agent} — ${goal}` : goal
+  }
+  if (etype === 'system.info') {
+    return String(data.message ?? '')
   }
   if (data.agent_id) return String(data.agent_id)
   if (data.step_id) return String(data.step_id)
