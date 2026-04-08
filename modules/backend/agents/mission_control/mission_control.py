@@ -458,9 +458,9 @@ async def handle(
         logger.error(
             "Agent execution error",
             extra={"session_id": session_id, "agent_id": agent_name, "error": str(exc)},
+            exc_info=True,
         )
-        logger.debug("Agent execution traceback", exc_info=True)
-        # Yield a partial complete event so the stream always terminates cleanly
+        # Yield error event so the stream terminates cleanly
         yield AgentResponseCompleteEvent(
             session_id=sid,
             source=source,
@@ -468,6 +468,33 @@ async def handle(
             full_content=str(exc),
             metadata={"error": True},
         )
+        # Persist the error as a message so it shows in console history
+        error_create = SessionMessageCreate(
+            role="assistant",
+            content=str(exc),
+            sender_id=agent_name,
+        )
+        await _persist_messages(session_service, session_id, [error_create])
+        # Emit system error event to mission channel
+        if mission_id:
+            from modules.backend.events.types import SystemEvent
+            await _publish(event_bus, SystemEvent(
+                session_id=sid,
+                source=agent_name,
+                level="error",
+                message=f"Agent error: {str(exc)[:200]}",
+                mission_id=mission_id,
+            ))
+            try:
+                await event_bus.publish_to_mission(mission_id, SystemEvent(
+                    session_id=sid,
+                    source=agent_name,
+                    level="error",
+                    message=f"Agent error: {str(exc)[:200]}",
+                    mission_id=mission_id,
+                ))
+            except Exception:
+                pass  # best-effort
 
 
 async def collect(session_id: str, message: str, **kwargs: Any) -> CollectResult:
