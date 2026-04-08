@@ -366,21 +366,21 @@ async def handle(
         output_tokens = usage.output_tokens or 0
         cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
 
-        # Extract complete text from the final model response message.
-        # Both result.output and streaming chunks can miss the first token
-        # due to how PydanticAI handles event_stream_handler consumption.
-        # The authoritative source is the last model text part in all_messages().
-        try:
-            from pydantic_ai.messages import ModelResponse, TextPart
-            for msg in reversed(result.all_messages()):
-                if isinstance(msg, ModelResponse):
-                    text_parts = [p.content for p in msg.parts if isinstance(p, TextPart)]
-                    if text_parts:
-                        full_content = "".join(text_parts)
-                        break
-        except Exception:
-            pass  # fall back to accumulated chunks
+        # Debug: log what we have to diagnose first-token truncation
+        logger.info(
+            "Chat response debug",
+            extra={
+                "chunks_content_start": full_content[:30] if full_content else "(empty)",
+                "chunks_length": len(full_content),
+                "result_output_start": str(result.output)[:30] if result.output else "(empty)",
+                "thinking_parts": "".join(thinking_parts)[:50] if thinking_parts else "(none)",
+                "thinking_count": len(thinking_parts),
+                "agent": agent_name,
+            },
+        )
 
+        # Use result.output only if chunks produced nothing (structured output agents).
+        # Don't overwrite streamed chunks — they're the primary source for text agents.
         if not full_content:
             output = result.output
             if isinstance(output, str):
