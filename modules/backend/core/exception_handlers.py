@@ -190,6 +190,50 @@ async def http_exception_handler(
     )
 
 
+def _get_model_http_error() -> type:
+    """Lazy import to avoid hard dependency on pydantic_ai at module level."""
+    from pydantic_ai.exceptions import ModelHTTPError
+    return ModelHTTPError
+
+
+async def model_http_error_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    """Handle pydantic_ai ModelHTTPError — surface the actual API error message."""
+    request_id = _get_request_id(request)
+
+    # Extract the provider's error message
+    body = getattr(exc, "body", {})
+    if isinstance(body, dict):
+        error_info = body.get("error", {})
+        message = error_info.get("message", str(exc)) if isinstance(error_info, dict) else str(exc)
+    else:
+        message = str(exc)
+
+    logger.warning(
+        "Model API error",
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "model_error": message,
+            "request_id": request_id,
+        },
+    )
+
+    error_detail = ErrorDetail(
+        code="MODEL_ERROR",
+        message=message,
+    )
+    metadata = ResponseMetadata(request_id=request_id)
+    response = ErrorResponse(error=error_detail, metadata=metadata)
+
+    return JSONResponse(
+        status_code=502,
+        content=response.model_dump(mode="json"),
+    )
+
+
 async def unhandled_exception_handler(
     request: Request,
     exc: Exception,
@@ -246,6 +290,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     # Handle FastAPI HTTPException (must be before the Exception catch-all)
     app.add_exception_handler(HTTPException, http_exception_handler)
+
+    # Handle AI model API errors (credit limits, rate limits, etc.)
+    app.add_exception_handler(_get_model_http_error(), model_http_error_handler)
 
     # Catch-all for unexpected exceptions
     app.add_exception_handler(Exception, unhandled_exception_handler)
