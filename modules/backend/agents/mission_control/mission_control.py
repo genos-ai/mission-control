@@ -366,15 +366,15 @@ async def handle(
         output_tokens = usage.output_tokens or 0
         cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
 
-        # Extract final output if agent used structured output
-        if not full_content:
-            output = result.output
-            if isinstance(output, str):
-                full_content = output
-            elif hasattr(output, "model_dump_json"):
-                full_content = output.model_dump_json()
-            else:
-                full_content = str(output)
+        # Always use result.output as the authoritative content —
+        # streaming chunks can miss the first token due to race timing
+        output = result.output
+        if isinstance(output, str):
+            full_content = output
+        elif hasattr(output, "model_dump_json"):
+            full_content = output.model_dump_json()
+        elif output is not None:
+            full_content = str(output)
 
         # 8. Yield complete event
         metadata: dict[str, Any] = {}
@@ -427,10 +427,6 @@ async def handle(
 
         # 11. Persist messages
         user_create = SessionMessageCreate(role="user", content=message, sender_id=sender_id)
-        logger.debug(
-            "Persisting assistant message",
-            extra={"first_40": full_content[:40], "length": len(full_content)},
-        )
         assistant_create = SessionMessageCreate(
             role="assistant",
             content=full_content,
