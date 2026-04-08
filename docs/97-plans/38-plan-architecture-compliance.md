@@ -1,9 +1,9 @@
 # Architecture Compliance: Layer Violations, File Splits, Test Coverage & Idempotency
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Date:** 2026-04-08
 **Author:** Herman + Architecture Review
-**Status:** Draft — ready for implementation
+**Status:** In progress — Phase 1 complete, Phase 2 active
 **Triggered by:** Codebase audit against reference architecture (01-core-principles, 08-python-coding-standards, AGENTS.md)
 
 ---
@@ -22,8 +22,12 @@ This plan addresses each in priority order with minimal blast radius per phase.
 
 ---
 
-## 1. Phase 1 — Fix Layer Violations (Critical)
+## 1. Phase 1 — Fix Layer Violations (Critical) [DONE]
 
+> **Completed 2026-04-08** — commits `60b7afb` (code fixes) and `889575d` (plan, checker, test fix).
+>
+> All repository/model imports removed from API endpoints and client code. New service methods added to absorb the operations. `scripts/check_layer_violations.py` created as automated prevention gate. 1532 unit tests pass.
+>
 > **Goal:** Restore strict API → Service → Repository → Model layering. Remove all repository/model imports from API endpoints and client code.
 
 ### 1.1 API Endpoint Violations
@@ -126,20 +130,20 @@ The existing `modules/backend/services/compliance.py` already scans for relative
 
 ---
 
-## 2. Phase 2 — Split Oversized Files (High)
+## 2. Phase 2 — Split Oversized Files (High) [IN PROGRESS]
 
 > **Goal:** Bring all files under 500 lines. No behavior changes.
 
 ### 2.1 Backend Splits
 
-| File | Lines | Split Strategy |
-|------|-------|----------------|
-| `api/v1/endpoints/missions.py` | 832 | Extract into sub-router files: `missions_team.py` (team CRUD), `missions_schedules.py` (workflow schedules), `missions_environments.py` (execution env). Keep core CRUD in `missions.py`. |
-| `agents/mission_control/mission_control.py` | 761 | Extract prompt assembly and tool registration into separate modules. Keep orchestration entry point. |
-| `agents/mission_control/helpers.py` | 755 | Group helpers by concern (context helpers, formatting helpers, result helpers) into sub-files under `helpers/`. |
-| `services/pqi/dimensions.py` | 710 | One file per dimension (maintainability.py, security.py, modularity.py, etc.) with a dimensions registry. |
-| `services/workflow_run.py` | 664 | Separate orchestration (run lifecycle) from state management (status tracking, cost aggregation). |
-| `services/execution.py` | 553 | Extract environment resolution and cost tracking into focused modules. |
+| File | Lines | Split Strategy | Status |
+|------|-------|----------------|--------|
+| `api/v1/endpoints/missions.py` | 844→194 | Split into `missions_team.py` (302), `missions_workflows.py` (298), `missions_context.py` (105). Core CRUD stays in `missions.py`. | **DONE** |
+| `agents/mission_control/mission_control.py` | 761 | Extract prompt assembly and tool registration into separate modules. Keep orchestration entry point. | TODO |
+| `agents/mission_control/helpers.py` | 755 | Group helpers by concern (context helpers, formatting helpers, result helpers) into sub-files under `helpers/`. | TODO |
+| `services/pqi/dimensions.py` | 710 | One file per dimension (maintainability.py, security.py, modularity.py, etc.) with a dimensions registry. | TODO |
+| `services/workflow_run.py` | 664 | Separate orchestration (run lifecycle) from state management (status tracking, cost aggregation). | TODO |
+| `services/execution.py` | 570 | Extract environment resolution and cost tracking into focused modules. | TODO |
 
 ### 2.2 Frontend Splits
 
