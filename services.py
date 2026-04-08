@@ -185,7 +185,7 @@ def run_migrations() -> bool:
     """Run alembic upgrade head."""
     print("\nRunning migrations...")
     result = subprocess.run(
-        [sys.executable, "cli.py", "migrate", "upgrade", "head"],
+        [sys.executable, "admin.py", "migrate", "upgrade", "head"],
         capture_output=True, text=True, cwd=PROJECT_ROOT,
     )
     if result.returncode == 0:

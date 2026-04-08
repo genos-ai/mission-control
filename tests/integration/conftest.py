@@ -161,7 +161,8 @@ def _create_mock_app_config() -> Any:
                     "file": {
                         "enabled": False,
                         "path": "logs/test.jsonl",
-                        "max_bytes": 10485760,
+                        "rotation_when": "midnight",
+                        "rotation_interval": 1,
                         "backup_count": 5,
                     },
                 },

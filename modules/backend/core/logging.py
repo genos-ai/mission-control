@@ -34,12 +34,13 @@ Usage:
     log_with_source(logger, "telegram", "info", "Update received", chat_id=123)
 
 Log File:
-    var/logs/system.jsonl — single file, all records, filter by 'source' field
+    var/logs/system.jsonl — JSONL, rotates at interval from logging.yaml (default: local midnight);
+    dated backups (e.g. system.jsonl.2026-04-07). Filter by 'source' field.
 """
 
 import logging
 import sys
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
 
@@ -200,9 +201,10 @@ def setup_logging(
         log_path = _resolve_log_path(file_config["path"])
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        file_handler = RotatingFileHandler(
+        file_handler = TimedRotatingFileHandler(
             filename=str(log_path),
-            maxBytes=file_config["max_bytes"],
+            when=file_config["rotation_when"],
+            interval=file_config["rotation_interval"],
             backupCount=file_config["backup_count"],
             encoding="utf-8",
         )

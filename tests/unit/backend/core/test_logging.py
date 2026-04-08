@@ -42,7 +42,8 @@ class TestLoggingConfigLoading:
                 "file": {
                     "enabled": False,
                     "path": "logs/system.jsonl",
-                    "max_bytes": 5242880,
+                    "rotation_when": "midnight",
+                    "rotation_interval": 1,
                     "backup_count": 3,
                 },
             },
@@ -58,7 +59,8 @@ class TestLoggingConfigLoading:
             assert config["handlers"]["console"]["enabled"] is True
             assert config["handlers"]["file"]["enabled"] is False
             assert config["handlers"]["file"]["path"] == "logs/system.jsonl"
-            assert config["handlers"]["file"]["max_bytes"] == 5242880
+            assert config["handlers"]["file"]["rotation_when"] == "midnight"
+            assert config["handlers"]["file"]["rotation_interval"] == 1
             assert config["handlers"]["file"]["backup_count"] == 3
 
         logging_module._logging_config = None
@@ -111,7 +113,8 @@ class TestSetupLogging:
                 "file": {
                     "enabled": True,
                     "path": "logs/system.jsonl",
-                    "max_bytes": 10485760,
+                    "rotation_when": "midnight",
+                    "rotation_interval": 1,
                     "backup_count": 5,
                 },
             },
@@ -139,7 +142,7 @@ class TestSetupLogging:
             assert "StreamHandler" in handler_types
 
     def test_setup_logging_with_file_logging_enabled(self, tmp_path, mock_logging_config):
-        """Should create a single RotatingFileHandler for the JSONL file."""
+        """Should create a TimedRotatingFileHandler for the JSONL file."""
         from modules.backend.core.logging import setup_logging
 
         log_file = tmp_path / "logs" / "system.jsonl"
@@ -151,7 +154,7 @@ class TestSetupLogging:
 
             root_logger = logging.getLogger()
             handler_types = [type(h).__name__ for h in root_logger.handlers]
-            assert "RotatingFileHandler" in handler_types
+            assert "TimedRotatingFileHandler" in handler_types
 
     def test_setup_logging_uses_config_defaults(self, mock_logging_config):
         """Should use values from logging.yaml when not overridden."""

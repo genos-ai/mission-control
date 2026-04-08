@@ -144,7 +144,13 @@ def mock_app_config() -> MagicMock:
         "format": "console",
         "handlers": {
             "console": {"enabled": True},
-            "file": {"enabled": False, "max_bytes": 10485760, "backup_count": 5},
+            "file": {
+                "enabled": False,
+                "path": "var/logs/system.jsonl",
+                "rotation_when": "midnight",
+                "rotation_interval": 1,
+                "backup_count": 5,
+            },
         },
     }
     config.features = {

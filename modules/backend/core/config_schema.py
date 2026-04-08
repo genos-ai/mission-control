@@ -117,10 +117,13 @@ class ConsoleHandlerSchema(_StrictBase):
 
 
 class FileHandlerSchema(_StrictBase):
+    """File handler uses TimedRotatingFileHandler (calendar / interval rotation)."""
+
     enabled: bool
     path: str
-    max_bytes: int
-    backup_count: int
+    rotation_when: Literal["S", "M", "H", "D", "midnight", "W0", "W1", "W2", "W3", "W4", "W5", "W6"]
+    rotation_interval: int = Field(default=1, ge=1)
+    backup_count: int = Field(ge=0)
 
 
 class HandlersSchema(_StrictBase):
