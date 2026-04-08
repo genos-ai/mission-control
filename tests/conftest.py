@@ -29,8 +29,21 @@ from sqlalchemy.pool import StaticPool
 from redis.asyncio import Redis as AsyncRedis
 
 from modules.backend.models.base import Base
+import modules.backend.models.agent_catalog  # noqa: F401 — register tables
+import modules.backend.models.api_key  # noqa: F401 — register tables
+import modules.backend.models.execution  # noqa: F401 — register tables
+import modules.backend.models.execution_environment  # noqa: F401 — register tables
+import modules.backend.models.execution_record  # noqa: F401 — register tables
 import modules.backend.models.mission  # noqa: F401 — register tables
 import modules.backend.models.mission_context  # noqa: F401 — register tables
+import modules.backend.models.mission_history  # noqa: F401 — register tables
+import modules.backend.models.mission_team  # noqa: F401 — register tables
+import modules.backend.models.note  # noqa: F401 — register tables
+import modules.backend.models.prompt_version  # noqa: F401 — register tables
+import modules.backend.models.session  # noqa: F401 — register tables
+import modules.backend.models.user  # noqa: F401 — register tables
+import modules.backend.models.workflow_definition  # noqa: F401 — register tables
+import modules.backend.models.workflow_schedule  # noqa: F401 — register tables
 from tests.test_config import get_test_database_url as _get_test_database_url
 from tests.test_config import get_test_redis_url as _get_test_redis_url
 
