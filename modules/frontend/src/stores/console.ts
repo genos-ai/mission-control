@@ -13,8 +13,8 @@ interface ConsoleState {
   events: ConsoleEvent[]
 
   // Filters
+  categoryTab: 'all' | 'execution' | 'chat' | 'system'
   agentFilter: string | null
-  typeFilter: string | null
   errorsOnly: boolean
 
   // UI state
@@ -24,8 +24,8 @@ interface ConsoleState {
   // Actions
   addEvent: (event: ConsoleEvent) => void
   addEvents: (events: ConsoleEvent[]) => void
+  setCategoryTab: (tab: 'all' | 'execution' | 'chat' | 'system') => void
   setAgentFilter: (agent: string | null) => void
-  setTypeFilter: (type: string | null) => void
   setErrorsOnly: (v: boolean) => void
   toggleAutoScroll: () => void
   setConnected: (v: boolean) => void
@@ -45,8 +45,8 @@ function isErrorEvent(event: ConsoleEvent): boolean {
 
 const INITIAL_STATE = {
   events: [] as ConsoleEvent[],
+  categoryTab: 'all' as const,
   agentFilter: null as string | null,
-  typeFilter: null as string | null,
   errorsOnly: false,
   autoScroll: true,
   connected: false,
@@ -65,8 +65,8 @@ export const useConsoleStore = create<ConsoleState>((set, get) => ({
     set({ events: [...state.events, ...events].slice(-MAX_EVENTS) })
   },
 
+  setCategoryTab: (tab) => set({ categoryTab: tab }),
   setAgentFilter: (agent) => set({ agentFilter: agent }),
-  setTypeFilter: (type) => set({ typeFilter: type }),
   setErrorsOnly: (v) => set({ errorsOnly: v }),
   toggleAutoScroll: () => set({ autoScroll: !get().autoScroll }),
   setConnected: (v) => set({ connected: v }),
@@ -74,21 +74,23 @@ export const useConsoleStore = create<ConsoleState>((set, get) => ({
   reset: () => set(INITIAL_STATE),
 }))
 
-/** Select filtered events by category and active filters */
+/** Select filtered events, optionally by category. Pass null for all. */
 export function selectFilteredEvents(
   state: ConsoleState,
-  category: 'execution' | 'chat' | 'system',
+  category: 'execution' | 'chat' | 'system' | null,
 ): ConsoleEvent[] {
-  let filtered = state.events.filter((e) => e.category === category)
+  let filtered = category
+    ? state.events.filter((e) => e.category === category)
+    : state.events
 
   if (state.agentFilter) {
     const agent = state.agentFilter
-    filtered = filtered.filter((e) => e.source === agent || String(e.data.agent_id ?? '') === agent)
-  }
-
-  if (state.typeFilter) {
-    const type = state.typeFilter
-    filtered = filtered.filter((e) => e.event_type === type)
+    filtered = filtered.filter(
+      (e) =>
+        e.source === agent ||
+        String(e.data.agent_id ?? '') === agent ||
+        String(e.data.agent_name ?? '') === agent,
+    )
   }
 
   if (state.errorsOnly) {

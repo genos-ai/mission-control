@@ -7,6 +7,10 @@ import {
   Trash2,
   Radio,
   AlertCircle,
+  User,
+  Bot,
+  MessageSquare,
+  DollarSign,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +18,6 @@ import { Spinner } from '@/components/ui/spinner'
 import { useConsoleHistory } from '@/hooks/use-console'
 import { useMissionStream } from '@/hooks/use-sse'
 import { useTeam } from '@/hooks/use-team'
-import type { MissionTeamMember } from '@/types'
 import {
   useConsoleStore,
   selectFilteredEvents,
@@ -22,20 +25,23 @@ import {
 } from '@/stores/console'
 import { EVENT_ICONS, eventLabel, eventDetail } from '@/lib/event-utils'
 
+type CategoryTab = 'all' | 'execution' | 'chat' | 'system'
+
+const CATEGORY_TABS: { value: CategoryTab; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'execution', label: 'Execution' },
+  { value: 'chat', label: 'Chat' },
+  { value: 'system', label: 'System' },
+]
+
 export default function ConsolePage() {
   const { id: missionId } = useParams<{ id: string }>()
 
-  // Fetch history on mount
   const { data: history, isLoading: historyLoading } =
     useConsoleHistory(missionId)
-
-  // SSE stream
   const { events: sseEvents, connected } = useMissionStream(missionId ?? null)
-
-  // Team for agent filter dropdown
   const { data: teamMembers } = useTeam(missionId)
 
-  // Store actions
   const addEvents = useConsoleStore((s) => s.addEvents)
   const addEvent = useConsoleStore((s) => s.addEvent)
   const setConnected = useConsoleStore((s) => s.setConnected)
@@ -50,7 +56,6 @@ export default function ConsolePage() {
     }
   }, [history, addEvents])
 
-  // Sync SSE connected state
   useEffect(() => {
     setConnected(connected)
   }, [connected, setConnected])
@@ -62,19 +67,19 @@ export default function ConsolePage() {
       const newEvents = sseEvents.slice(processedCount.current)
       processedCount.current = sseEvents.length
       newEvents.forEach((ev) => {
+        const d = ev.data as Record<string, unknown>
         addEvent({
-          event_id: String((ev.data as Record<string, unknown>).event_id ?? crypto.randomUUID()),
+          event_id: String(d.event_id ?? crypto.randomUUID()),
           event_type: ev.event_type,
-          category: categorize(ev.event_type),
-          timestamp: String((ev.data as Record<string, unknown>).timestamp ?? new Date().toISOString()),
-          source: String((ev.data as Record<string, unknown>).agent_id ?? (ev.data as Record<string, unknown>).source ?? ''),
-          data: ev.data,
+          category: (d.category as ConsoleEvent['category']) ?? categorize(ev.event_type),
+          timestamp: String(d.timestamp ?? new Date().toISOString()),
+          source: String(d.agent_id ?? d.source ?? ''),
+          data: d,
         })
       })
     }
   }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cleanup on unmount
   useEffect(() => reset, [reset])
 
   if (historyLoading) {
@@ -87,73 +92,63 @@ export default function ConsolePage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Filter bar */}
-      <FilterBar missionId={missionId} teamMembers={teamMembers} />
-
-      {/* Three-column layout */}
-      <div className="flex flex-1 overflow-hidden">
-        <ConsolePanel category="execution" title="Execution Events" />
-        <ConsolePanel category="chat" title="Chat Messages" />
-        <ConsolePanel category="system" title="System Logs" />
-      </div>
-
-      {/* Status footer */}
+      <FilterBar teamMembers={teamMembers} />
+      <Timeline />
       <StatusFooter />
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Filter bar
+// Filter bar with category tabs
 // ---------------------------------------------------------------------------
 
 function FilterBar({
   teamMembers,
 }: {
-  missionId: string | undefined
-  teamMembers: MissionTeamMember[] | undefined
+  teamMembers?: { agent_catalog_id: string; agent?: { agent_name: string } | null }[]
 }) {
+  const categoryTab = useConsoleStore((s) => s.categoryTab)
   const agentFilter = useConsoleStore((s) => s.agentFilter)
-  const typeFilter = useConsoleStore((s) => s.typeFilter)
   const errorsOnly = useConsoleStore((s) => s.errorsOnly)
   const autoScroll = useConsoleStore((s) => s.autoScroll)
+  const setCategoryTab = useConsoleStore((s) => s.setCategoryTab)
   const setAgentFilter = useConsoleStore((s) => s.setAgentFilter)
-  const setTypeFilter = useConsoleStore((s) => s.setTypeFilter)
   const setErrorsOnly = useConsoleStore((s) => s.setErrorsOnly)
   const toggleAutoScroll = useConsoleStore((s) => s.toggleAutoScroll)
   const clear = useConsoleStore((s) => s.clear)
 
-  const eventTypes = useConsoleStore((s) => {
-    const types = new Set(s.events.map((e) => e.event_type))
-    return Array.from(types).sort()
-  })
-
   return (
     <div className="flex items-center gap-2 border-b px-4 py-2">
+      {/* Category tabs */}
+      <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
+        {CATEGORY_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setCategoryTab(tab.value)}
+            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              categoryTab === tab.value
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mx-1 h-4 w-px bg-border" />
+
       {/* Agent filter */}
       <select
         value={agentFilter ?? ''}
         onChange={(e) => setAgentFilter(e.target.value || null)}
-        className="h-8 rounded-md border bg-background px-2 text-xs"
+        className="h-7 rounded-md border bg-background px-2 text-xs"
       >
         <option value="">All Agents</option>
         {teamMembers?.map((m) => (
-          <option key={m.agent_catalog_id} value={m.agent_catalog_id}>
+          <option key={m.agent_catalog_id} value={m.agent?.agent_name ?? m.agent_catalog_id}>
             {m.agent?.agent_name ?? m.agent_catalog_id}
-          </option>
-        ))}
-      </select>
-
-      {/* Type filter */}
-      <select
-        value={typeFilter ?? ''}
-        onChange={(e) => setTypeFilter(e.target.value || null)}
-        className="h-8 rounded-md border bg-background px-2 text-xs"
-      >
-        <option value="">All Types</option>
-        {eventTypes.map((t) => (
-          <option key={t} value={t}>
-            {t}
           </option>
         ))}
       </select>
@@ -167,18 +162,16 @@ function FilterBar({
           className="h-3.5 w-3.5 rounded border"
         />
         <AlertCircle className="h-3 w-3" />
-        Errors only
+        Errors
       </label>
 
       <div className="flex-1" />
 
-      {/* Clear */}
       <Button variant="ghost" size="sm" onClick={clear} className="h-7 text-xs">
         <Trash2 className="mr-1 h-3 w-3" />
         Clear
       </Button>
 
-      {/* Auto-scroll toggle */}
       <Button
         variant={autoScroll ? 'secondary' : 'ghost'}
         size="sm"
@@ -197,21 +190,19 @@ function FilterBar({
 }
 
 // ---------------------------------------------------------------------------
-// Console panel (one per category)
+// Unified timeline
 // ---------------------------------------------------------------------------
 
-function ConsolePanel({
-  category,
-  title,
-}: {
-  category: 'execution' | 'chat' | 'system'
-  title: string
-}) {
+function Timeline() {
+  const categoryTab = useConsoleStore((s) => s.categoryTab)
   const autoScroll = useConsoleStore((s) => s.autoScroll)
-  const filtered = useConsoleStore((s) => selectFilteredEvents(s, category))
+  const filtered = useConsoleStore((s) =>
+    categoryTab === 'all'
+      ? selectFilteredEvents(s, null)
+      : selectFilteredEvents(s, categoryTab),
+  )
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll
   useEffect(() => {
     if (autoScroll) {
       const el = scrollRef.current
@@ -220,59 +211,152 @@ function ConsolePanel({
   }, [filtered.length, autoScroll])
 
   return (
-    <div className="flex flex-1 flex-col border-r last:border-r-0">
-      {/* Column header */}
-      <div className="border-b bg-muted/30 px-3 py-1.5">
-        <h4 className="text-xs font-semibold text-muted-foreground">
-          {title}
-          <Badge variant="secondary" className="ml-2 text-[10px]">
-            {filtered.length}
-          </Badge>
-        </h4>
-      </div>
-
-      {/* Event list */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto bg-muted/10 px-2 py-1 font-mono text-xs"
-      >
-        {filtered.length === 0 && (
-          <p className="py-4 text-center text-muted-foreground/60">
-            No events
-          </p>
-        )}
-        <div className="space-y-px">
-          {filtered.map((ev) => (
-            <ConsoleEventRow key={ev.event_id} event={ev} />
-          ))}
-        </div>
+    <div ref={scrollRef} className="flex-1 overflow-y-auto bg-zinc-950/50 px-2 py-1">
+      {filtered.length === 0 && (
+        <p className="py-12 text-center text-sm text-muted-foreground/60">
+          No events yet
+        </p>
+      )}
+      <div className="space-y-px">
+        {filtered.map((ev) => (
+          <EventRow key={ev.event_id} event={ev} />
+        ))}
       </div>
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Single event row
+// Event row — renders differently based on category/type
 // ---------------------------------------------------------------------------
 
-function ConsoleEventRow({ event }: { event: ConsoleEvent }) {
+function EventRow({ event }: { event: ConsoleEvent }) {
   const isError =
     event.data.error === true ||
     event.event_type.includes('failed') ||
     event.event_type.includes('error')
 
+  // Chat messages get a richer layout
+  if (event.category === 'chat' || event.event_type.startsWith('user.message') || event.event_type.startsWith('assistant.message')) {
+    return <ChatEventRow event={event} isError={isError} />
+  }
+
+  // Execution records get a summary layout
+  if (event.event_type === 'execution.record') {
+    return <ExecutionRecordRow event={event} />
+  }
+
+  // Default: compact log row
+  return <LogRow event={event} isError={isError} />
+}
+
+function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
+  const d = event.data
+  const role = String(d.role ?? '')
+  const content = String(d.content ?? '')
+  const isUser = role === 'user'
+  const model = d.model ? String(d.model) : null
+  const cost = d.cost_usd != null ? Number(d.cost_usd) : null
   const ts = formatTime(event.timestamp)
-  const detail = eventDetail(event.event_type, event.data)
 
   return (
-    <div
-      className={`flex items-start gap-1.5 rounded px-1.5 py-0.5 ${
-        isError
-          ? 'bg-destructive/10 text-destructive'
-          : 'text-muted-foreground hover:bg-muted/40'
-      }`}
-    >
-      <span className="shrink-0 text-[10px] tabular-nums opacity-60">
+    <div className={`flex items-start gap-2 rounded px-2 py-1.5 ${
+      isError ? 'bg-destructive/10' : 'hover:bg-muted/20'
+    }`}>
+      <span className="mt-0.5 shrink-0">
+        {isUser ? (
+          <User className="h-3.5 w-3.5 text-blue-400" />
+        ) : (
+          <Bot className="h-3.5 w-3.5 text-emerald-400" />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-foreground">
+            {isUser ? 'User' : event.source || 'Assistant'}
+          </span>
+          <span className="text-[10px] tabular-nums text-muted-foreground/60">{ts}</span>
+          {model && (
+            <Badge variant="outline" className="text-[9px] h-4">{model.split(':').pop()?.split('-').slice(0, 2).join('-')}</Badge>
+          )}
+          {cost != null && cost > 0 && (
+            <span className="flex items-center text-[10px] text-muted-foreground">
+              <DollarSign className="h-2.5 w-2.5" />
+              {cost.toFixed(4)}
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 text-sm text-foreground/90 whitespace-pre-wrap break-words">
+          {content.length > 500 ? content.slice(0, 500) + '…' : content}
+        </p>
+      </div>
+      <Badge
+        variant="outline"
+        className="shrink-0 text-[9px] h-4"
+      >
+        <MessageSquare className="mr-0.5 h-2 w-2" />
+        chat
+      </Badge>
+    </div>
+  )
+}
+
+function ExecutionRecordRow({ event }: { event: ConsoleEvent }) {
+  const d = event.data
+  const status = String(d.status ?? '')
+  const objective = String(d.objective_statement ?? '').slice(0, 120)
+  const cost = d.total_cost_usd != null ? Number(d.total_cost_usd) : null
+  const ts = formatTime(event.timestamp)
+  const isFailed = status === 'failed' || status === 'cancelled' || status === 'timed_out'
+
+  return (
+    <div className={`flex items-start gap-2 rounded px-2 py-1.5 ${
+      isFailed ? 'bg-destructive/10' : 'hover:bg-muted/20'
+    }`}>
+      <span className="mt-0.5 shrink-0">
+        {EVENT_ICONS[event.event_type] ?? <Zap className="h-3 w-3 text-gray-400" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-foreground">Run</span>
+          <Badge
+            variant={isFailed ? 'destructive' : 'success'}
+            className="text-[9px] h-4"
+          >
+            {status}
+          </Badge>
+          {cost != null && (
+            <span className="flex items-center text-[10px] text-muted-foreground">
+              <DollarSign className="h-2.5 w-2.5" />
+              {cost.toFixed(4)}
+            </span>
+          )}
+          <span className="text-[10px] tabular-nums text-muted-foreground/60">{ts}</span>
+        </div>
+        {objective && (
+          <p className="mt-0.5 text-xs text-muted-foreground">{objective}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
+  const ts = formatTime(event.timestamp)
+  const detail = eventDetail(event.event_type, event.data)
+  const categoryColor = event.category === 'execution'
+    ? 'text-blue-400'
+    : event.category === 'system'
+      ? 'text-amber-400'
+      : 'text-muted-foreground'
+
+  return (
+    <div className={`flex items-start gap-2 rounded px-2 py-0.5 font-mono text-xs ${
+      isError
+        ? 'bg-destructive/10 text-destructive'
+        : 'text-muted-foreground hover:bg-muted/20'
+    }`}>
+      <span className="shrink-0 text-[10px] tabular-nums opacity-60 mt-0.5">
         {ts}
       </span>
       <span className="mt-0.5 shrink-0">
@@ -280,11 +364,14 @@ function ConsoleEventRow({ event }: { event: ConsoleEvent }) {
           <Zap className="h-3 w-3 text-gray-400" />
         )}
       </span>
-      <span className="font-medium text-foreground">
+      <span className={`shrink-0 font-medium ${isError ? '' : categoryColor}`}>
         {eventLabel(event.event_type)}
       </span>
+      {event.source && (
+        <span className="shrink-0 text-foreground/60">{event.source}</span>
+      )}
       {detail && (
-        <span className="truncate opacity-70">{detail}</span>
+        <span className="min-w-0 break-words opacity-70">{detail}</span>
       )}
     </div>
   )
@@ -297,6 +384,12 @@ function ConsoleEventRow({ event }: { event: ConsoleEvent }) {
 function StatusFooter() {
   const connected = useConsoleStore((s) => s.connected)
   const eventCount = useConsoleStore((s) => s.events.length)
+  const categoryTab = useConsoleStore((s) => s.categoryTab)
+  const filteredCount = useConsoleStore((s) =>
+    categoryTab === 'all'
+      ? selectFilteredEvents(s, null).length
+      : selectFilteredEvents(s, categoryTab).length,
+  )
 
   return (
     <div className="flex items-center gap-4 border-t bg-muted/20 px-4 py-1.5 text-xs text-muted-foreground">
@@ -313,7 +406,11 @@ function StatusFooter() {
           </>
         )}
       </span>
-      <span>{eventCount} events</span>
+      <span>
+        {filteredCount === eventCount
+          ? `${eventCount} events`
+          : `${filteredCount} / ${eventCount} events`}
+      </span>
     </div>
   )
 }
@@ -325,15 +422,17 @@ function StatusFooter() {
 function categorize(eventType: string): 'execution' | 'chat' | 'system' {
   if (
     eventType.startsWith('plan.') ||
-    eventType.startsWith('agent.tool') ||
-    eventType.startsWith('agent.thinking') ||
-    eventType.startsWith('agent.response')
+    eventType.startsWith('agent.') ||
+    eventType.startsWith('task.') ||
+    eventType.startsWith('execution.') ||
+    eventType.startsWith('decision.') ||
+    eventType.startsWith('session.cost')
   ) {
     return 'execution'
   }
   if (
-    eventType.startsWith('chat.') ||
-    eventType.startsWith('agent.approval')
+    eventType.startsWith('user.message') ||
+    eventType.startsWith('assistant.message')
   ) {
     return 'chat'
   }
