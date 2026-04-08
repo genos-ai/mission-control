@@ -17,9 +17,9 @@ from collections.abc import AsyncIterator
 
 from redis.asyncio import Redis
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config
+from modules.backend.core.database import get_async_session
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import deserialize_event, SessionEvent
 from modules.backend.models.session import Session
@@ -70,12 +70,10 @@ class MissionEventAggregator:
     def __init__(
         self,
         redis: Redis,
-        db_session: AsyncSession,
         mission_id: str,
         refresh_interval: float = 30.0,
     ) -> None:
         self._redis = redis
-        self._db = db_session
         self._mission_id = mission_id
         self._refresh_interval = refresh_interval
 
@@ -135,11 +133,16 @@ class MissionEventAggregator:
     # ------------------------------------------------------------------
 
     async def _get_session_ids(self) -> set[str]:
-        """Query all session IDs belonging to this mission."""
-        result = await self._db.execute(
-            select(Session.id).where(Session.mission_id == self._mission_id)
-        )
-        return {row[0] for row in result.all()}
+        """Query all session IDs belonging to this mission.
+
+        Uses a short-lived session so long-running SSE streams do not hold a
+        pool connection for their entire lifetime (only while this query runs).
+        """
+        async with get_async_session() as db:
+            result = await db.execute(
+                select(Session.id).where(Session.mission_id == self._mission_id)
+            )
+            return {row[0] for row in result.all()}
 
     async def _refresh_sessions(self) -> None:
         """Subscribe to any new sessions that appeared since last check."""

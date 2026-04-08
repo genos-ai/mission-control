@@ -26,8 +26,10 @@ port: 5432
 name: "mission_control"
 user: "mission_control"
 
-pool_size: 5
-max_overflow: 10
+# Defaults sized for concurrent HTTP + several long-lived SSE streams (each stream
+# that uses Depends(get_db_session) holds one connection until disconnect).
+pool_size: 10
+max_overflow: 20
 pool_timeout: 30
 pool_recycle: 1800
 echo: false

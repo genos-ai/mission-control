@@ -153,15 +153,8 @@ async def stream_mission_events(
     """Stream aggregated events for a mission as SSE."""
 
     async def generate():
-        from modules.backend.core.database import get_session_factory
-
         redis = AsyncRedis.from_url(get_redis_url())
-        db_session = get_session_factory()()
-        aggregator = MissionEventAggregator(
-            redis=redis,
-            db_session=db_session,
-            mission_id=mission_id,
-        )
+        aggregator = MissionEventAggregator(redis=redis, mission_id=mission_id)
         try:
             await aggregator.start()
 
@@ -177,7 +170,6 @@ async def stream_mission_events(
             )
         finally:
             await aggregator.stop()
-            await db_session.close()
             await redis.close()
 
     return StreamingResponse(
