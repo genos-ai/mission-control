@@ -33,7 +33,7 @@ agent_name: software.quality.agent
 agent_type: vertical
 description: "Audits the codebase for compliance violations (read-only)"
 enabled: true
-model: anthropic:claude-sonnet-4-20250514
+model: anthropic:claude-sonnet-4-6
 max_input_length: 2000
 max_budget_usd: 2.00
 max_tokens: 500000
