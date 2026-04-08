@@ -138,39 +138,14 @@ async def get_mission_environment(
     request_id: RequestId,
 ) -> ApiResponse:
     """Get the execution environment (container/worktree) status for a mission."""
-    from sqlalchemy import select
-    from modules.backend.models.execution_environment import ExecutionEnvironmentModel
+    from modules.backend.services.execution_environment import ExecutionEnvironmentService
 
-    result = await db.execute(
-        select(ExecutionEnvironmentModel).where(
-            ExecutionEnvironmentModel.mission_id == mission_id,
-        ).order_by(ExecutionEnvironmentModel.created_at.desc())
-    )
-    envs = list(result.scalars().all())
-
-    environments = []
-    for env in envs:
-        environments.append({
-            "id": str(env.id),
-            "mode": env.mode,
-            "status": env.status,
-            "container_name": env.container_name,
-            "image": env.image,
-            "execution_count": env.execution_count,
-            "last_execution_at": env.last_execution_at,
-            "created_at": str(env.created_at),
-        })
-
-    # Find the active one
-    active = next((e for e in environments if e["status"].lower() == "running"), None)
+    service = ExecutionEnvironmentService(db_session=db)
+    data = await service.list_environments_for_mission(mission_id)
 
     return ApiResponse(
         success=True,
-        data={
-            "mission_id": mission_id,
-            "active_environment": active,
-            "all_environments": environments,
-        },
+        data=data,
         metadata={"request_id": request_id},
     )
 
@@ -854,165 +829,9 @@ async def get_console_history(
 
     Each item has: event_id, event_type, category, timestamp, source, data.
     """
-    from sqlalchemy import select, union_all, literal, cast, String, func
-    from modules.backend.models.session import Session, SessionMessage
-    from modules.backend.models.execution_record import ExecutionRecord
-    from modules.backend.services.console import classify_event
+    from modules.backend.services.console import get_console_history
 
-    # 1. Get all session IDs for this mission
-    session_ids_result = await db.execute(
-        select(Session.id).where(Session.mission_id == mission_id)
-    )
-    session_ids = [row[0] for row in session_ids_result.all()]
-
-    if not session_ids:
-        return ApiResponse(
-            success=True,
-            data={"events": [], "total": 0, "mission_id": mission_id},
-            metadata={"request_id": request_id},
-        )
-
-    timeline: list[dict] = []
-
-    # 2. Fetch recent session messages
-    messages_result = await db.execute(
-        select(SessionMessage)
-        .where(SessionMessage.session_id.in_(session_ids))
-        .order_by(SessionMessage.created_at.desc())
-        .limit(limit)
-    )
-    messages = messages_result.scalars().all()
-
-    role_to_event_type = {
-        "user": "user.message.sent",
-        "assistant": "assistant.message.complete",
-        "system": "system.message",
-        "tool_call": "agent.tool.called",
-        "tool_result": "agent.tool.returned",
-    }
-
-    for msg in messages:
-        event_type = role_to_event_type.get(msg.role, f"{msg.role}.message")
-        timeline.append({
-            "event_id": str(msg.id),
-            "event_type": event_type,
-            "category": classify_event(event_type),
-            "timestamp": msg.created_at.isoformat() if msg.created_at else None,
-            "source": msg.sender_id or msg.session_id,
-            "data": {
-                "session_id": msg.session_id,
-                "role": msg.role,
-                "content": msg.content,
-                "model": msg.model,
-                "input_tokens": msg.input_tokens,
-                "output_tokens": msg.output_tokens,
-                "cost_usd": msg.cost_usd,
-                "tool_name": msg.tool_name,
-                "tool_call_id": msg.tool_call_id,
-            },
-        })
-
-    # 3. Fetch recent execution records with task details
-    from sqlalchemy.orm import selectinload
-    from modules.backend.models.execution_record import TaskExecution, ExecutionDecision
-
-    exec_result = await db.execute(
-        select(ExecutionRecord)
-        .where(ExecutionRecord.mission_id == mission_id)
-        .options(
-            selectinload(ExecutionRecord.task_executions)
-            .selectinload(TaskExecution.attempts),
-            selectinload(ExecutionRecord.decisions),
-        )
-        .order_by(ExecutionRecord.created_at.desc())
-        .limit(limit)
-    )
-    records = exec_result.scalars().all()
-
-    for rec in records:
-        rec_status = rec.status if isinstance(rec.status, str) else rec.status.value
-        # Top-level execution record
-        timeline.append({
-            "event_id": str(rec.id),
-            "event_type": "execution.record",
-            "category": "execution",
-            "timestamp": str(rec.created_at) if rec.created_at else None,
-            "source": rec.roster_name or rec.session_id,
-            "data": {
-                "session_id": rec.session_id,
-                "status": rec_status,
-                "roster_name": rec.roster_name,
-                "objective_statement": rec.objective_statement,
-                "objective_category": rec.objective_category,
-                "total_cost_usd": rec.total_cost_usd,
-                "started_at": rec.started_at,
-                "completed_at": rec.completed_at,
-            },
-        })
-
-        # Expand task executions
-        for te in rec.task_executions:
-            te_status = te.status if isinstance(te.status, str) else te.status.value
-            timeline.append({
-                "event_id": str(te.id),
-                "event_type": f"task.{te_status}",
-                "category": "execution",
-                "timestamp": str(te.completed_at or te.started_at or rec.created_at),
-                "source": te.agent_name,
-                "data": {
-                    "task_id": te.task_id,
-                    "agent_name": te.agent_name,
-                    "status": te_status,
-                    "cost_usd": te.cost_usd,
-                    "duration_seconds": te.duration_seconds,
-                    "verification_outcome": te.verification_outcome,
-                    "output_data": te.output_data,
-                    "attempt_count": len(te.attempts),
-                },
-            })
-
-            # Expand failed attempts with failure details
-            for att in te.attempts:
-                att_status = att.status if isinstance(att.status, str) else att.status.value
-                if att_status == "failed":
-                    timeline.append({
-                        "event_id": str(att.id),
-                        "event_type": "task.attempt.failed",
-                        "category": "execution",
-                        "timestamp": str(att.created_at) if att.created_at else str(rec.created_at),
-                        "source": te.agent_name,
-                        "data": {
-                            "task_id": te.task_id,
-                            "agent_name": te.agent_name,
-                            "attempt_number": att.attempt_number,
-                            "failure_tier": att.failure_tier if isinstance(att.failure_tier, str) else (att.failure_tier.value if att.failure_tier else None),
-                            "failure_reason": att.failure_reason,
-                            "cost_usd": att.cost_usd,
-                        },
-                    })
-
-        # Expand decisions
-        for dec in rec.decisions:
-            dec_type = dec.decision_type if isinstance(dec.decision_type, str) else dec.decision_type.value
-            timeline.append({
-                "event_id": str(dec.id),
-                "event_type": f"decision.{dec_type}",
-                "category": "execution",
-                "timestamp": str(dec.created_at) if dec.created_at else str(rec.created_at),
-                "source": "mission_control",
-                "data": {
-                    "decision_type": dec_type,
-                    "task_id": dec.task_id,
-                    "reasoning": dec.reasoning,
-                },
-            })
-
-    # 4. Sort unified timeline by timestamp descending, then truncate
-    timeline.sort(
-        key=lambda e: e["timestamp"] or "",
-        reverse=True,
-    )
-    timeline = timeline[:limit]
+    timeline = await get_console_history(db, mission_id, limit=limit)
 
     return ApiResponse(
         success=True,

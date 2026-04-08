@@ -84,6 +84,24 @@ class UserService(BaseService):
         self._require_owner_or_admin(user_id, requesting_user, "view other users")
         return await self.user_repo.get_by_id(user_id)
 
+    async def get_user_by_id_or_none(self, user_id: str) -> User | None:
+        """Get a user by ID without authorization checks.
+
+        Used for internal/service-account lookups where there is no
+        requesting user context (e.g., CLI mission context resolution).
+        """
+        return await self.user_repo.get_by_id_or_none(user_id)
+
+    async def get_current_mission_id(self, user_id: str) -> str | None:
+        """Get the user's current_mission_id.
+
+        Returns None if the user does not exist or has no mission set.
+        """
+        user = await self.user_repo.get_by_id_or_none(user_id)
+        if user is None:
+            return None
+        return user.current_mission_id
+
     async def list_users(
         self,
         requesting_user: User,

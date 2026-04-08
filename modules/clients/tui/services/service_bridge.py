@@ -8,7 +8,7 @@ stateless with respect to database connections and transactions.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from modules.backend.agents.mission_control.gate import GateReviewer
 from modules.backend.agents.mission_control.mission_control import handle_mission
@@ -17,29 +17,26 @@ from modules.backend.agents.mission_control.outcome import ExecutionOutcome
 from modules.backend.agents.mission_control.roster import derive_roster_from_team, Roster
 from modules.backend.core.logging import get_logger
 
-if TYPE_CHECKING:
-    from modules.backend.models.mission import Mission
-
 logger = get_logger(__name__)
 
 CLI_USER_ID = "system:cli"
 
 
 @asynccontextmanager
-async def _cli_user_session() -> AsyncGenerator[tuple[Any, Any, Any], None]:
+async def _cli_user_session() -> AsyncGenerator[tuple[Any, Any], None]:
     """Shared context manager for operations requiring the CLI service user.
 
-    Yields (db_session, requesting_user, UserRepository) — callers create
+    Yields (db_session, requesting_user) — callers create
     their own service instance using the session.
     """
     from modules.backend.core.database import get_async_session
-    from modules.backend.repositories.user import UserRepository
+    from modules.backend.services.user import UserService
 
     async with get_async_session() as db:
-        repo = UserRepository(db)
-        # get_by_id raises NotFoundError if user doesn't exist
-        requesting_user = await repo.get_by_id(CLI_USER_ID)
-        yield db, requesting_user, repo
+        svc = UserService(db)
+        # get_by_id raises NotFoundError via the repo if user doesn't exist
+        requesting_user = await svc.user_repo.get_by_id(CLI_USER_ID)
+        yield db, requesting_user
 
 
 def _enum_str(val: Any) -> str:
@@ -92,7 +89,7 @@ class ServiceBridge:
             mission = await svc.create_mission(name=name, description=description)
             return {"id": str(mission.id), "name": mission.name}
 
-    async def get_mission(self, mission_id: str) -> Mission | None:
+    async def get_mission(self, mission_id: str) -> Any:
         """Fetch a single mission by ID."""
         from modules.backend.services.mission import MissionService
 
@@ -103,7 +100,7 @@ class ServiceBridge:
 
     async def get_current_user(self) -> dict[str, Any]:
         """Return the CLI service account's profile including current mission."""
-        async with _cli_user_session() as (db, user, _repo):
+        async with _cli_user_session() as (db, user):
             return {
                 "id": user.id,
                 "current_mission_id": user.current_mission_id,
@@ -116,7 +113,7 @@ class ServiceBridge:
         """Set the current user's active mission."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.set_current_mission(
                 user_id=CLI_USER_ID,
@@ -743,7 +740,7 @@ class ServiceBridge:
         """Wraps UserService.list_users()."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             users = await svc.list_users(
                 requesting_user, limit=limit, offset=offset,
@@ -766,7 +763,7 @@ class ServiceBridge:
         """Wraps UserService.create_user()."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             user = await svc.create_user(
                 email=data["email"],
@@ -783,7 +780,7 @@ class ServiceBridge:
         """Wraps UserService.deactivate_user()."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.deactivate_user(user_id, requesting_user)
             await db.commit()
@@ -794,7 +791,7 @@ class ServiceBridge:
         """Wraps UserService.admin_reset_password()."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.admin_reset_password(
                 user_id, new_password, requesting_user,
@@ -807,7 +804,7 @@ class ServiceBridge:
         """Get current user's profile."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             user = await svc.get_user(CLI_USER_ID, requesting_user)
             return {
@@ -825,7 +822,7 @@ class ServiceBridge:
         """Update current user's display name."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.update_user(
                 CLI_USER_ID, requesting_user,
@@ -839,7 +836,7 @@ class ServiceBridge:
         """Change current user's password."""
         from modules.backend.services.user import UserService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.change_password(
                 CLI_USER_ID, current_password,
@@ -851,7 +848,7 @@ class ServiceBridge:
         """List current user's API keys."""
         from modules.backend.services.auth import AuthService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = AuthService(db)
             keys = await svc.list_api_keys(CLI_USER_ID, requesting_user)
             return [
@@ -871,7 +868,7 @@ class ServiceBridge:
         """Create an API key for the current user."""
         from modules.backend.services.auth import AuthService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = AuthService(db)
             full_key, api_key = await svc.create_api_key(
                 CLI_USER_ID, name, expires_in_days, requesting_user,
@@ -887,7 +884,7 @@ class ServiceBridge:
         """Revoke an API key."""
         from modules.backend.services.auth import AuthService
 
-        async with _cli_user_session() as (db, requesting_user, _repo):
+        async with _cli_user_session() as (db, requesting_user):
             svc = AuthService(db)
             await svc.revoke_api_key(key_id, requesting_user)
             await db.commit()

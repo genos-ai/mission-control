@@ -58,11 +58,12 @@ async def list_executions(
     persisted = [ExecutionRecordResponse.model_validate(e) for e in executions]
 
     # Merge live executions not yet persisted
-    from modules.backend.repositories.execution import ExecutionRepository
+    from modules.backend.services.execution import ExecutionService
 
-    live_repo = ExecutionRepository(db)
-    live_all, _ = await live_repo.list_executions(mission_id=mission_id, limit=50) if mission_id else ([], 0)
-    live_runs = live_all
+    execution_svc = ExecutionService(db)
+    live_runs = await execution_svc.list_live_executions(
+        mission_id=mission_id, limit=50,
+    )
 
     persisted_ids = {str(e.id) for e in executions}
     for live in live_runs:
@@ -84,7 +85,8 @@ async def list_executions(
             except (ValueError, TypeError):
                 return None
 
-        now = _dt.utcnow()
+        from modules.backend.core.utils import utc_now
+        now = utc_now()
         persisted.append(ExecutionRecordResponse.model_validate({
             "id": str(live.id),
             "session_id": str(live.session_id),
@@ -141,10 +143,10 @@ async def get_execution(
         )
 
     # Fallback: check the live executions table
-    from modules.backend.repositories.execution import ExecutionRepository
+    from modules.backend.services.execution import ExecutionService
 
-    repo = ExecutionRepository(db)
-    live = await repo.get_by_id_or_none(execution_id)
+    execution_svc = ExecutionService(db)
+    live = await execution_svc.get_execution_or_none(execution_id)
 
     if not live:
         raise NotFoundError(f"Execution '{execution_id}' not found")
@@ -249,12 +251,12 @@ async def execute_execution(
     import asyncio
     from modules.backend.core.config import get_app_config
     from modules.backend.services.execution import ExecutionService
-    from modules.backend.repositories.execution import ExecutionRepository
 
     config = get_app_config()
 
+    service = ExecutionService(session=db)
+
     if config.temporal.enabled:
-        service = ExecutionService(session=db)
         result = await service.start_temporal_execution(execution_id)
         return ApiResponse(
             success=True,
@@ -263,8 +265,7 @@ async def execute_execution(
         )
 
     # Load execution to return data immediately
-    repo = ExecutionRepository(db)
-    execution = await repo.get_by_id(execution_id)
+    execution = await service.get_execution(execution_id)
 
     # Fire-and-forget: run dispatch in background task
     async def _run_in_background(exec_id: str) -> None:
@@ -308,11 +309,11 @@ async def cancel_execution(
     reason: str = "Cancelled by user",
 ) -> ApiResponse:
     """Cancel a pending or running execution."""
-    from modules.backend.repositories.execution import ExecutionRepository
+    from modules.backend.services.execution import ExecutionService
 
-    repo = ExecutionRepository(db)
-    execution = await repo.get_by_id_or_none(execution_id)
+    service = ExecutionService(db)
 
+    execution = await service.get_execution_or_none(execution_id)
     if not execution:
         raise NotFoundError(f"Execution '{execution_id}' not found")
 
@@ -324,11 +325,7 @@ async def cancel_execution(
             metadata={"request_id": request_id},
         )
 
-    from modules.backend.core.utils import utc_now
-    execution.status = "cancelled"
-    execution.completed_at = utc_now().isoformat()
-    execution.error_data = {"message": reason}
-    await db.commit()
+    execution = await service.cancel_execution(execution_id, reason)
 
     return ApiResponse(
         success=True,

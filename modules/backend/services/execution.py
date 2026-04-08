@@ -508,6 +508,23 @@ class ExecutionService(BaseService):
         """Get an execution by ID."""
         return await self._get_execution(execution_id)
 
+    async def get_execution_or_none(self, execution_id: str) -> Execution | None:
+        """Get an execution by ID, returning None if not found."""
+        return await self._execution_repo.get_by_id_or_none(execution_id)
+
+    async def list_live_executions(
+        self,
+        mission_id: str | None = None,
+        limit: int = 50,
+    ) -> list[Execution]:
+        """List live/in-flight executions, optionally filtered by mission."""
+        if not mission_id:
+            return []
+        executions, _ = await self._execution_repo.list_executions(
+            mission_id=mission_id, limit=limit,
+        )
+        return executions
+
     async def list_executions(
         self,
         status: str | None = None,

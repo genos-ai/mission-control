@@ -19,15 +19,10 @@ CLI_SERVICE_ACCOUNT_ID = "system:cli"
 
 async def _async_resolve_current_mission_id() -> str | None:
     """Read the CLI service account's current_mission_id from the DB (async)."""
-    from modules.backend.repositories.user import UserRepository
-    from modules.backend.core.database import get_async_session
+    from modules.backend.services.user import UserService
 
-    async with get_async_session() as db:
-        repo = UserRepository(db)
-        user = await repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
-        if user is None:
-            return None
-        return user.current_mission_id
+    async with UserService.factory() as svc:
+        return await svc.get_current_mission_id(CLI_SERVICE_ACCOUNT_ID)
 
 
 def _resolve_current_mission_id() -> str | None:

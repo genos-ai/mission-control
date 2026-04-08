@@ -282,6 +282,15 @@ class MissionService(BaseService):
         """Get a mission by name. Returns None if not found."""
         return await self._mission_repo.get_by_name(name)
 
+    async def resolve_mission(self, id_or_name: str) -> Mission:
+        """Resolve a mission by ID or name. Raises NotFoundError."""
+        mission = await self._mission_repo.get_by_id_or_none(id_or_name)
+        if mission is None:
+            mission = await self._mission_repo.get_by_name(id_or_name)
+        if mission is None:
+            raise NotFoundError(f"Mission not found: {id_or_name}")
+        return mission
+
     async def list_missions(
         self,
         owner_id: str | None = None,

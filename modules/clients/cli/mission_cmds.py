@@ -107,7 +107,6 @@ async def _action_list(cli_logger, *, output_format, **_):
 
     current_mission_id = await _async_resolve_current_mission_id()
 
-    from modules.backend.repositories.agent_catalog import AgentCatalogRepository
     from modules.backend.services.mission_team import MissionTeamService
 
     async with MissionService.factory() as svc:
@@ -120,17 +119,12 @@ async def _action_list(cli_logger, *, output_format, **_):
     # Build team summaries per mission
     team_summaries: dict[str, str] = {}
     async with MissionTeamService.factory() as team_svc:
-        catalog_repo = AgentCatalogRepository(team_svc._session)
         for m in missions:
-            members = await team_svc.list_team(m.id)
-            if not members:
+            team_info = await team_svc.list_team_with_names(m.id)
+            if not team_info:
                 team_summaries[m.id] = "[dim]none[/dim]"
                 continue
-            names = []
-            for member in members:
-                entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
-                if entry:
-                    names.append(entry.agent_name)
+            names = [t["agent_name"] for t in team_info]
             team_summaries[m.id] = "\n".join(names) if names else "[dim]none[/dim]"
 
     table = build_table("Missions", columns=[
@@ -255,40 +249,38 @@ async def _action_delete(cli_logger, *, mission_id, **_):
 
 async def _action_use(cli_logger, *, mission_id, **_):
     """Set the current mission."""
+    from modules.backend.core.exceptions import NotFoundError
+    from modules.backend.services.mission import MissionService
     from modules.backend.services.user import UserService
-    from modules.backend.repositories.mission import MissionRepository
 
     console = get_console()
     if not mission_id:
         console.print("[red]MISSION_ID is required[/red]")
         sys.exit(1)
 
+    # Resolve name to ID via MissionService
+    async with MissionService.factory() as mission_svc:
+        try:
+            mission = await mission_svc.resolve_mission(mission_id)
+        except NotFoundError:
+            console.print(f"[red]Mission not found: {mission_id}[/red]")
+            sys.exit(1)
+        resolved_id = mission.id
+        mission_name = mission.name
+
     async with UserService.factory() as svc:
-        cli_user = await svc.user_repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+        cli_user = await svc.get_user_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
         if cli_user is None:
             console.print("[red]CLI service account not found. Run 'admin bootstrap-user' first.[/red]")
             sys.exit(1)
 
-        # Resolve name to ID if needed
-        resolved_id = mission_id
-        mission_repo = MissionRepository(svc.session)
-        mission = await mission_repo.get_by_id_or_none(mission_id)
-        if mission is None:
-            # Try by name
-            mission = await mission_repo.get_by_name(mission_id)
-            if mission is None:
-                console.print(f"[red]Mission not found: {mission_id}[/red]")
-                sys.exit(1)
-            resolved_id = mission.id
-
-        user = await svc.set_current_mission(
+        await svc.set_current_mission(
             user_id=CLI_SERVICE_ACCOUNT_ID,
             mission_id=resolved_id,
             requesting_user=cli_user,
         )
 
-    mission_name = user.current_mission.name if user.current_mission else mission_id
-    console.print(f"\U0001f449 Current mission: [bold]{mission_name}[/bold] ({mission_id})")
+    console.print(f"\U0001f449 Current mission: [bold]{mission_name}[/bold] ({resolved_id})")
 
 
 async def _action_clear_mission(cli_logger, **_):
@@ -298,7 +290,7 @@ async def _action_clear_mission(cli_logger, **_):
     console = get_console()
 
     async with UserService.factory() as svc:
-        cli_user = await svc.user_repo.get_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
+        cli_user = await svc.get_user_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
         if cli_user is None:
             console.print("[red]CLI service account not found.[/red]")
             sys.exit(1)

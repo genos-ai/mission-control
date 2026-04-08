@@ -50,7 +50,8 @@ def check_health(logger, output_format: str = "human") -> None:
         logger.error("FastAPI app failed", extra={"error": str(e)})
 
     try:
-        from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
+        from modules.backend.core.database import get_engine
+        get_engine()
         checks.append(("Database models", True, None))
         logger.debug("Database models loaded")
     except Exception as e:

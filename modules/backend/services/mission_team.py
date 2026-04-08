@@ -194,6 +194,31 @@ class MissionTeamService(BaseService):
             mission_id, enabled_only=enabled_only,
         )
 
+    async def list_team_with_names(
+        self,
+        mission_id: str,
+        enabled_only: bool = True,
+    ) -> list[dict]:
+        """List team members with resolved agent names from the catalog.
+
+        Returns dicts with agent_name, enabled, created_at for each member.
+        Uses the joinedloaded agent_catalog relationship — no extra queries.
+        """
+        members = await self.list_team(mission_id, enabled_only=enabled_only)
+        result = []
+        for m in members:
+            agent_name = (
+                m.agent_catalog.agent_name
+                if m.agent_catalog else str(m.agent_catalog_id)
+            )
+            result.append({
+                "agent_catalog_id": str(m.agent_catalog_id),
+                "agent_name": agent_name,
+                "enabled": m.enabled,
+                "created_at": m.created_at,
+            })
+        return result
+
     async def get_member(self, member_id: str) -> MissionTeamMember:
         """Get a specific team member. Raises NotFoundError."""
         member = await self._team_repo.get_by_id_or_none(member_id)

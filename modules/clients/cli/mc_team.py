@@ -14,33 +14,24 @@ async def list_team(mission_id: str) -> None:
 
     console = get_console()
 
-    from modules.backend.repositories.agent_catalog import AgentCatalogRepository
-
     async with MissionTeamService.factory() as svc:
-        members = await svc.list_team(mission_id, enabled_only=False)
-        catalog_repo = AgentCatalogRepository(svc._session)
-        catalog_map = {}
-        for m in members:
-            entry = await catalog_repo.get_by_id_or_none(m.agent_catalog_id)
-            if entry:
-                catalog_map[m.agent_catalog_id] = entry.agent_name
+        team_info = await svc.list_team_with_names(mission_id, enabled_only=False)
 
-    if not members:
+    if not team_info:
         console.print("[dim]No agents assigned to this mission.[/dim]")
         console.print("[dim]  Use: mc team add <agent>[/dim]")
         return
 
-    table = build_table(f"Team ({len(members)} agents)", columns=[
+    table = build_table(f"Team ({len(team_info)} agents)", columns=[
         ("Agent", {"style": "cyan", "width": 30}),
         ("Enabled", {"width": 10}),
         ("Added", {"width": 14, "style": "dim"}),
     ])
 
-    for m in members:
-        enabled = "[green]yes[/green]" if m.enabled else "[red]no[/red]"
-        when = m.created_at.strftime("%m-%d %H:%M") if m.created_at else ""
-        agent_name = catalog_map.get(m.agent_catalog_id, m.agent_catalog_id)
-        table.add_row(agent_name, enabled, when)
+    for t in team_info:
+        enabled = "[green]yes[/green]" if t["enabled"] else "[red]no[/red]"
+        when = t["created_at"].strftime("%m-%d %H:%M") if t["created_at"] else ""
+        table.add_row(t["agent_name"], enabled, when)
 
     console.print(table)
 
