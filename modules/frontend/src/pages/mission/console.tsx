@@ -45,16 +45,16 @@ export default function ConsolePage() {
   const addEvents = useConsoleStore((s) => s.addEvents)
   const addEvent = useConsoleStore((s) => s.addEvent)
   const setConnected = useConsoleStore((s) => s.setConnected)
-  const reset = useConsoleStore((s) => s.reset)
 
-  // Load history into store
+  // Load history into store (only if store is empty — survives tab switches)
+  const existingCount = useConsoleStore((s) => s.events.length)
   const historyLoaded = useRef(false)
   useEffect(() => {
-    if (history && !historyLoaded.current) {
+    if (history && !historyLoaded.current && existingCount === 0) {
       historyLoaded.current = true
       addEvents(history)
     }
-  }, [history, addEvents])
+  }, [history, addEvents, existingCount])
 
   useEffect(() => {
     setConnected(connected)
@@ -79,8 +79,6 @@ export default function ConsolePage() {
       })
     }
   }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => reset, [reset])
 
   if (historyLoading) {
     return (
