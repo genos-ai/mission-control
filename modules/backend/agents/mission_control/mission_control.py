@@ -266,11 +266,9 @@ async def handle(
         from pydantic_ai.models.anthropic import AnthropicModelSettings
         model_settings: AnthropicModelSettings | None = None
         if agent_config.thinking_budget:
-            budget_tokens = agent_config.thinking_budget.get("max_thinking_tokens", 4096)
-            # max_tokens must be > budget_tokens; use agent config or default to budget + 8192
-            max_tokens = getattr(agent_config.model, 'max_tokens', None) or (budget_tokens + 8192)
+            max_tokens = getattr(agent_config.model, 'max_tokens', None) or 16384
             model_settings = AnthropicModelSettings(
-                anthropic_thinking={"type": "enabled", "budget_tokens": budget_tokens},
+                anthropic_thinking={"type": "enabled", "budget_tokens": 10000},
                 max_tokens=max_tokens,
             )
 
