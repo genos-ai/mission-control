@@ -46,15 +46,24 @@ export default function ConsolePage() {
   const addEvent = useConsoleStore((s) => s.addEvent)
   const setConnected = useConsoleStore((s) => s.setConnected)
 
-  // Load history into store (only if store is empty — survives tab switches)
-  const existingCount = useConsoleStore((s) => s.events.length)
+  // Reset store when mission changes
+  const storeMissionId = useRef<string | null>(null)
   const historyLoaded = useRef(false)
   useEffect(() => {
-    if (history && !historyLoaded.current && existingCount === 0) {
+    if (missionId && missionId !== storeMissionId.current) {
+      storeMissionId.current = missionId
+      historyLoaded.current = false
+      useConsoleStore.getState().clear()
+    }
+  }, [missionId])
+
+  // Load history into store
+  useEffect(() => {
+    if (history && !historyLoaded.current) {
       historyLoaded.current = true
       addEvents(history)
     }
-  }, [history, addEvents, existingCount])
+  }, [history, addEvents])
 
   useEffect(() => {
     setConnected(connected)
