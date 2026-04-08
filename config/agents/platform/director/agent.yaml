@@ -12,6 +12,7 @@ description: >-
   cross-mission visibility, cost analytics, system health status,
   and infrastructure management.
 enabled: true
+chat_enabled: true
 version: "1.0.0"
 
 model:

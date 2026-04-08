@@ -20,6 +20,7 @@ class AgentConfigSummary(BaseModel):
     tools: list[str]
     scope: dict[str, Any]
     constraints: dict[str, Any]
+    chat_enabled: bool = False
 
 
 class MissionTeamMemberResponse(BaseModel):

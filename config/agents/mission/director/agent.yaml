@@ -13,6 +13,7 @@ description: >-
   triggers runs, queries history, and resolves approval gates on behalf
   of the user.
 enabled: true
+chat_enabled: true
 version: "1.0.0"
 
 model:

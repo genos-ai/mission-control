@@ -160,6 +160,7 @@ export interface AgentConfigSummary {
     cost_ceiling_usd?: number
     retry_budget?: number
   }
+  chat_enabled: boolean
 }
 
 export interface MissionTeamMember {

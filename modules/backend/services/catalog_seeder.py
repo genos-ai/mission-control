@@ -130,6 +130,7 @@ async def seed_catalog(
                 },
                 keywords=config.keywords,
                 enabled=config.enabled,
+                chat_enabled=config.chat_enabled,
                 visibility=_infer_visibility(config.agent_type, config.agent_name),
             )
 

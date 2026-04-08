@@ -65,6 +65,10 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, index=True,
     )
+    chat_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        comment="Whether this agent supports conversational chat",
+    )
     visibility: Mapped[str] = mapped_column(
         String(20), default="public", nullable=False, index=True,
         comment="public (all users) or system (sysadmins only)",

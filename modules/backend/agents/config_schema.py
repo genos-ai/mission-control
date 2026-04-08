@@ -144,6 +144,9 @@ class AgentConfigSchema(_StrictBase):
     rules: list[ComplianceRuleSchema] | None = None
     exclusions: ExclusionsSchema | None = None
 
+    # Conversational chat support
+    chat_enabled: bool = False
+
     # Horizontal agent fields (Plan 13)
     thinking_budget: dict[str, int] | None = None
 

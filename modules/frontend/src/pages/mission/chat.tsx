@@ -17,7 +17,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useSessions, useMessages, useCreateSession, sessionKeys } from '@/hooks/use-sessions'
 import { queryClient } from '@/main'
 import { useTeam } from '@/hooks/use-team'
-import { useCatalog } from '@/hooks/use-catalog'
 import { API_BASE } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -40,20 +39,15 @@ export default function ChatPage() {
     missionId ? { mission_id: missionId } : undefined,
   )
   const { data: teamMembers } = useTeam(missionId)
-  const { data: catalog } = useCatalog()
   const createSession = useCreateSession()
 
-  // Build agent lookup: catalog_id → agent_name
-  const catalogLookup = new Map(
-    catalog?.map((a) => [a.id, a]) ?? [],
-  )
-
-  // Build selectable agents from team, planning agent first
-  const teamAgents = (teamMembers ?? [])
+  // Only show agents that support chat
+  const chatAgents = (teamMembers ?? [])
+    .filter((m) => m.agent?.chat_enabled)
     .map((m) => ({
       catalogId: m.agent_catalog_id,
-      name: catalogLookup.get(m.agent_catalog_id)?.agent_name ?? m.agent_catalog_id,
-      type: catalogLookup.get(m.agent_catalog_id)?.agent_type,
+      name: m.agent!.agent_name,
+      type: m.agent!.agent_type,
     }))
     .sort((a, b) => {
       if (a.name === DEFAULT_CHAT_AGENT) return -1
@@ -65,11 +59,11 @@ export default function ChatPage() {
 
   // Default to planning agent when team loads
   useEffect(() => {
-    if (!selectedAgent && teamAgents.length > 0) {
-      const planner = teamAgents.find((a) => a.name === DEFAULT_CHAT_AGENT)
-      setSelectedAgent(planner?.name ?? teamAgents[0].name)
+    if (!selectedAgent && chatAgents.length > 0) {
+      const planner = chatAgents.find((a) => a.name === DEFAULT_CHAT_AGENT)
+      setSelectedAgent(planner?.name ?? chatAgents[0].name)
     }
-  }, [teamAgents.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chatAgents.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-select most recent thread when navigating to /chat without threadId
   useEffect(() => {
@@ -100,7 +94,7 @@ export default function ChatPage() {
       {/* Thread list + agent selector */}
       <div className="w-64 flex-shrink-0 border-r flex flex-col">
         {/* Agent selector */}
-        {teamAgents.length > 0 && (
+        {chatAgents.length > 0 && (
           <div className="p-3 border-b">
             <label className="text-[10px] font-semibold uppercase text-muted-foreground">
               Agent
@@ -111,7 +105,7 @@ export default function ChatPage() {
                 onChange={(e) => setSelectedAgent(e.target.value)}
                 className="flex h-8 w-full appearance-none rounded-md border border-input bg-transparent pl-2 pr-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                {teamAgents.map((a) => (
+                {chatAgents.map((a) => (
                   <option key={a.name} value={a.name}>
                     {shortName(a.name)}
                     {a.name === DEFAULT_CHAT_AGENT ? ' (default)' : ''}
