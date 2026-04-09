@@ -24,6 +24,7 @@ from modules.backend.events.types import (
     AgentToolCallEvent,
     AgentToolResultEvent,
     CostUpdateEvent,
+    MissionArtifactFoundEvent,
 )
 
 from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps, _import_agent_module
@@ -153,6 +154,26 @@ def _make_agent_executor(
             output_dict = output
         else:
             output_dict = {"result": str(output)}
+
+        # Emit artifact if agent produced a meaningful textual result
+        _artifact_content: str | None = None
+        if isinstance(output_dict.get("summary"), str):
+            _artifact_content = output_dict["summary"]
+        elif isinstance(output_dict.get("result"), str):
+            _artifact_content = output_dict["result"]
+        if _artifact_content and _artifact_content.strip():
+            await _emit(
+                event_bus,
+                MissionArtifactFoundEvent,
+                session_id=session_id,
+                source=f"dispatch:{mission_id}",
+                mission_id=mission_id,
+                agent_id=agent_name,
+                artifact_type="report",
+                title=f"{agent_name} — result",
+                content=_artifact_content[:3000],
+                content_type="markdown",
+            )
 
         input_tokens = usage.input_tokens or 0
         output_tokens = usage.output_tokens or 0

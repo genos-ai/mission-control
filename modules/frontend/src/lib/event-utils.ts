@@ -13,10 +13,14 @@ import {
   Activity,
   DollarSign,
   UserPlus,
+  Radio,
+  Package,
 } from 'lucide-react'
 import { createElement } from 'react'
 
 export const EVENT_ICONS: Record<string, React.ReactNode> = {
+  'mission.narrative': createElement(Radio, { className: 'h-3 w-3 text-sky-400' }),
+  'mission.artifact.found': createElement(Package, { className: 'h-3 w-3 text-violet-400' }),
   'plan.created': createElement(FileText, { className: 'h-3 w-3 text-blue-400' }),
   'plan.step.started': createElement(Zap, { className: 'h-3 w-3 text-amber-400' }),
   'plan.step.completed': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
@@ -49,6 +53,12 @@ export function eventLabel(etype: string): string {
 }
 
 export function eventDetail(etype: string, data: Record<string, unknown>): string {
+  if (etype === 'mission.narrative') return String(data.narrative ?? '')
+  if (etype === 'mission.artifact.found') {
+    const title = String(data.title ?? '')
+    const type = String(data.artifact_type ?? '')
+    return type ? `[${type}] ${title}` : title
+  }
   if (etype === 'agent.tool.called') {
     const tool = String(data.tool_name ?? '')
     const detail = (data.tool_args as Record<string, unknown>)?.detail

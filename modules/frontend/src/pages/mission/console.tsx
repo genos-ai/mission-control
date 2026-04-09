@@ -12,6 +12,8 @@ import {
   MessageSquare,
   DollarSign,
   Brain,
+  Package,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -245,6 +247,16 @@ function EventRow({ event }: { event: ConsoleEvent }) {
     event.event_type.includes('failed') ||
     event.event_type.includes('error')
 
+  // Narrative feed events
+  if (event.event_type === 'mission.narrative') {
+    return <NarrativeRow event={event} />
+  }
+
+  // Artifact events
+  if (event.event_type === 'mission.artifact.found') {
+    return <ArtifactRow event={event} />
+  }
+
   // Chat messages get a richer layout
   if (event.category === 'chat' || event.event_type.startsWith('user.message') || event.event_type.startsWith('assistant.message')) {
     return <ChatEventRow event={event} isError={isError} />
@@ -468,6 +480,53 @@ function formatOutput(output: Record<string, unknown>): string | null {
   }
 }
 
+function NarrativeRow({ event }: { event: ConsoleEvent }) {
+  const d = event.data
+  const narrative = String(d.narrative ?? '')
+  const level = String(d.level ?? 'info')
+  const ts = formatTime(event.timestamp)
+
+  const accent =
+    level === 'success'
+      ? 'border-l-emerald-500/60 bg-emerald-500/5'
+      : level === 'warning'
+        ? 'border-l-amber-500/60 bg-amber-500/5'
+        : 'border-l-sky-500/40 bg-sky-500/5'
+
+  return (
+    <div className={`flex items-start gap-2 rounded border-l-2 px-2 py-1.5 ${accent}`}>
+      <Radio className="mt-0.5 h-3 w-3 shrink-0 text-sky-400" />
+      <div className="min-w-0 flex-1">
+        <MarkdownRenderer content={narrative} className="text-xs" />
+      </div>
+      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+    </div>
+  )
+}
+
+function ArtifactRow({ event }: { event: ConsoleEvent }) {
+  const d = event.data
+  const title = String(d.title ?? 'Artifact')
+  const content = String(d.content ?? '')
+  const artifactType = String(d.artifact_type ?? 'report')
+  const ts = formatTime(event.timestamp)
+
+  return (
+    <details className="group rounded border border-violet-500/20 bg-violet-500/5 px-2 py-1.5">
+      <summary className="flex cursor-pointer list-none items-center gap-2">
+        <Package className="h-3 w-3 shrink-0 text-violet-400" />
+        <span className="flex-1 text-xs font-medium text-foreground">{title}</span>
+        <Badge variant="outline" className="text-[9px] h-4">{artifactType}</Badge>
+        <span className="text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+        <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-2 border-t border-violet-500/20 pt-2">
+        <MarkdownRenderer content={content} />
+      </div>
+    </details>
+  )
+}
+
 function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
   const ts = formatTime(event.timestamp)
   const detail = eventDetail(event.event_type, event.data)
@@ -553,7 +612,8 @@ function categorize(eventType: string): 'execution' | 'chat' | 'system' {
     eventType.startsWith('task.') ||
     eventType.startsWith('execution.') ||
     eventType.startsWith('decision.') ||
-    eventType.startsWith('session.cost')
+    eventType.startsWith('session.cost') ||
+    eventType.startsWith('mission.')
   ) {
     return 'execution'
   }

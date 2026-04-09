@@ -25,6 +25,7 @@ from modules.backend.agents.mission_control.verification import (
     run_verification_pipeline,
 )
 from modules.backend.events.types import (
+    MissionNarrativeEvent,
     PlanStepCompletedEvent,
     PlanStepStartedEvent,
 )
@@ -116,6 +117,15 @@ async def execute_with_step_events(
         step_name=task.description or task.task_id,
         assigned_agent=task.agent,
     )
+    await _emit(event_bus, MissionNarrativeEvent,
+        session_id=session_id,
+        source=f"dispatch:{mission_id}",
+        mission_id=mission_id,
+        agent_id=task.agent,
+        narrative=f"Starting **{task.description or task.task_id}**",
+        phase="executing",
+        level="info",
+    )
 
     result = await execute_with_retry(
         task=task,
@@ -135,6 +145,20 @@ async def execute_with_step_events(
         step_id=task.task_id,
         result_summary=f"{result.agent_name}: {result.status.value}",
         status=result.status.value,
+    )
+    _is_success = result.status.value in ("success",)
+    await _emit(event_bus, MissionNarrativeEvent,
+        session_id=session_id,
+        source=f"dispatch:{mission_id}",
+        mission_id=mission_id,
+        agent_id=result.agent_name,
+        narrative=(
+            f"**{result.agent_name}** completed — {task.description or task.task_id}"
+            if _is_success
+            else f"**{result.agent_name}** failed on — {task.description or task.task_id}"
+        ),
+        phase="complete" if _is_success else "error",
+        level="success" if _is_success else "warning",
     )
 
     return result

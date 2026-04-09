@@ -325,6 +325,43 @@ class FinalVerificationEvent(SessionEvent):
 
 
 # =============================================================================
+# Mission-level Narrative & Artifact Events (platform primitives)
+# =============================================================================
+
+
+class MissionNarrativeEvent(SessionEvent):
+    """Human-readable narrative update from a mission agent.
+
+    Emitted at key execution moments (step start, tool activity, step complete).
+    These are the primary building blocks for a live mission feed.
+    """
+
+    event_type: str = "mission.narrative"
+    mission_id: str
+    agent_id: str = ""
+    narrative: str  # Short markdown string — one sentence, no headings
+    phase: str = ""  # "planning" | "executing" | "analyzing" | "complete" | "error"
+    level: str = "info"  # "info" | "success" | "warning"
+
+
+class MissionArtifactFoundEvent(SessionEvent):
+    """An agent produced or discovered a significant artifact.
+
+    Emitted when an agent completes and returns a meaningful result
+    (report summary, findings list, generated code, etc.).
+    """
+
+    event_type: str = "mission.artifact.found"
+    mission_id: str
+    agent_id: str = ""
+    artifact_type: str  # "report" | "finding" | "code" | "data" | "file"
+    title: str
+    content: str
+    content_type: str = "markdown"  # "text" | "markdown" | "json" | "code"
+    language: str = ""  # For code artifacts (python, typescript, etc.)
+
+
+# =============================================================================
 # System / Mission-level Events
 # =============================================================================
 
@@ -386,6 +423,8 @@ class SystemSessionCreatedEvent(SessionEvent):
 
 
 EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
+    "mission.narrative": MissionNarrativeEvent,
+    "mission.artifact.found": MissionArtifactFoundEvent,
     "user.message.sent": UserMessageEvent,
     "user.approval.granted": UserApprovalEvent,
     "agent.thinking.started": AgentThinkingEvent,
