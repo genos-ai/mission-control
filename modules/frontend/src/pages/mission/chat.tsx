@@ -544,7 +544,11 @@ function MessageBubble({ message }: { message: SessionMessage }) {
             </p>
           </details>
         )}
-        <MarkdownRenderer content={message.content} className="text-sm" />
+        {isUser ? (
+          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        ) : (
+          <MarkdownRenderer content={message.content} className="text-sm" />
+        )}
         <div
           className={cn(
             'flex items-center gap-2 mt-1 text-[10px]',
