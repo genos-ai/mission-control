@@ -5,7 +5,6 @@ import {
   BookOpen,
   Shield,
   Settings,
-  User,
   LogOut,
 } from 'lucide-react'
 import { NotificationDropdown } from './notification-dropdown'
@@ -26,6 +25,65 @@ export function Sidebar() {
   const isActive = (path: string) => location.pathname === path
   const isMissionActive = (id: string) =>
     location.pathname.startsWith(`/missions/${id}`)
+
+  // Collapse to icon rail inside any mission workspace
+  const isMissionRoute =
+    /^\/missions\/[^/]+/.test(location.pathname) &&
+    !location.pathname.startsWith('/missions/new')
+
+  if (isMissionRoute) {
+    return (
+      <aside className="flex h-full w-12 shrink-0 flex-col items-center border-r bg-card py-3">
+        <Link
+          to={ROUTES.DASHBOARD}
+          className="mb-4 flex h-8 w-8 items-center justify-center rounded-md text-[10px] font-bold tracking-tight hover:bg-accent"
+          title="Dashboard"
+        >
+          MC
+        </Link>
+        <Link
+          to={ROUTES.CATALOG}
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
+            isActive(ROUTES.CATALOG) && 'bg-accent text-foreground',
+          )}
+          title="Catalog"
+        >
+          <BookOpen className="h-4 w-4" />
+        </Link>
+        {isAdmin && (
+          <Link
+            to={ROUTES.ADMIN}
+            className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
+              location.pathname.startsWith(ROUTES.ADMIN) && 'bg-accent text-foreground',
+            )}
+            title="Admin"
+          >
+            <Shield className="h-4 w-4" />
+          </Link>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={() => navigate(ROUTES.PROFILE)}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          title="Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => {
+            useAuthStore.getState().logout()
+            navigate(ROUTES.LOGIN)
+          }}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive"
+          title="Logout"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+      </aside>
+    )
+  }
 
   return (
     <aside className="flex h-full w-60 flex-col border-r bg-card">
@@ -52,7 +110,7 @@ export function Sidebar() {
         {missions?.map((mission) => (
           <button
             key={mission.id}
-            onClick={() => navigate(ROUTES.MISSION_OVERVIEW(mission.id))}
+            onClick={() => navigate(ROUTES.MISSION(mission.id))}
             className={cn(
               'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent',
               isMissionActive(mission.id) && 'bg-accent text-accent-foreground',

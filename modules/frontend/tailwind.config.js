@@ -7,6 +7,10 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['JetBrains Mono', 'Menlo', 'Monaco', 'ui-monospace', 'monospace'],
+        mono: ['JetBrains Mono', 'Menlo', 'Monaco', 'ui-monospace', 'monospace'],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

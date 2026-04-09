@@ -12,6 +12,7 @@ import CatalogPage from '@/pages/catalog'
 import NotFoundPage from '@/pages/not-found'
 
 import NewMissionPage from '@/pages/mission/new'
+import MissionWorkspace from '@/pages/mission/workspace'
 import MissionLayout from '@/pages/mission/layout'
 import OverviewPage from '@/pages/mission/overview'
 import TeamPage from '@/pages/mission/team'
@@ -53,18 +54,22 @@ export default function App() {
           <Route path="missions/new" element={<NewMissionPage />} />
 
           {/* Mission workspace */}
-          <Route path="missions/:id" element={<MissionLayout />}>
-            <Route index element={<Navigate to="overview" replace />} />
-            <Route path="overview" element={<OverviewPage />} />
-            <Route path="team" element={<TeamPage />} />
-            <Route path="chat" element={<ChatPage />} />
-            <Route path="chat/:threadId" element={<ChatPage />} />
-            <Route path="workflows" element={<WorkflowsPage />} />
-            <Route path="runs" element={<RunsPage />} />
-            <Route path="runs/:runId" element={<RunLivePage />} />
-            <Route path="console" element={<ConsolePage />} />
-            <Route path="workshop" element={<WorkshopPage />} />
-            <Route path="context" element={<ContextPage />} />
+          <Route path="missions/:id">
+            {/* New 3-panel workspace is the index */}
+            <Route index element={<MissionWorkspace />} />
+            {/* Legacy tab routes — still reachable for backward compat */}
+            <Route element={<MissionLayout />}>
+              <Route path="overview" element={<OverviewPage />} />
+              <Route path="team" element={<TeamPage />} />
+              <Route path="chat" element={<ChatPage />} />
+              <Route path="chat/:threadId" element={<ChatPage />} />
+              <Route path="workflows" element={<WorkflowsPage />} />
+              <Route path="runs" element={<RunsPage />} />
+              <Route path="runs/:runId" element={<RunLivePage />} />
+              <Route path="console" element={<ConsolePage />} />
+              <Route path="workshop" element={<WorkshopPage />} />
+              <Route path="context" element={<ContextPage />} />
+            </Route>
           </Route>
 
           {/* Admin section */}

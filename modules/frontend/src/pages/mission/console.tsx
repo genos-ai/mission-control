@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { useConsoleHistory } from '@/hooks/use-console'
 import { useMissionStream } from '@/hooks/use-sse'
+import { useMissionStreamContext } from '@/context/mission-stream'
 import { useTeam } from '@/hooks/use-team'
 import {
   useConsoleStore,
@@ -43,25 +44,31 @@ export default function ConsolePage() {
 
   const { data: history, isLoading: historyLoading } =
     useConsoleHistory(missionId)
-  const { events: sseEvents, connected } = useMissionStream(missionId ?? null)
+
+  // Use shared stream from MissionWorkspace when available (avoids a second SSE connection).
+  // Falls back to its own connection when rendered as a standalone legacy tab page.
+  const streamCtx = useMissionStreamContext()
+  const ownStream = useMissionStream(streamCtx ? null : (missionId ?? null))
+  const { events: sseEvents, connected } = streamCtx ?? ownStream
+
   const { data: teamMembers } = useTeam(missionId)
 
   const addEvents = useConsoleStore((s) => s.addEvents)
   const addEvent = useConsoleStore((s) => s.addEvent)
   const setConnected = useConsoleStore((s) => s.setConnected)
 
-  // Reset store when mission changes
+  // Reset store when mission changes (only in standalone mode — workspace handles its own reset)
   const storeMissionId = useRef<string | null>(null)
   const historyLoaded = useRef(false)
   useEffect(() => {
-    if (missionId && missionId !== storeMissionId.current) {
+    if (!streamCtx && missionId && missionId !== storeMissionId.current) {
       storeMissionId.current = missionId
       historyLoaded.current = false
       useConsoleStore.getState().clear()
     }
-  }, [missionId])
+  }, [missionId, streamCtx])
 
-  // Load history into store (reverse: API returns newest-first, console shows oldest-first)
+  // Load history into store
   useEffect(() => {
     if (history && !historyLoaded.current) {
       historyLoaded.current = true
@@ -70,12 +77,14 @@ export default function ConsolePage() {
   }, [history, addEvents])
 
   useEffect(() => {
-    setConnected(connected)
-  }, [connected, setConnected])
+    // Only update connected state in standalone mode — workspace already does this
+    if (!streamCtx) setConnected(connected)
+  }, [connected, setConnected, streamCtx])
 
-  // Forward SSE events to store
+  // Forward SSE events to store — skip when workspace already handles routing
   const processedCount = useRef(0)
   useEffect(() => {
+    if (streamCtx) return  // workspace owns event routing; console store already populated
     if (sseEvents.length > processedCount.current) {
       const newEvents = sseEvents.slice(processedCount.current)
       processedCount.current = sseEvents.length
@@ -91,7 +100,7 @@ export default function ConsolePage() {
         })
       })
     }
-  }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sseEvents.length, streamCtx]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (historyLoading) {
     return (
