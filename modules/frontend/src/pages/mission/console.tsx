@@ -11,6 +11,7 @@ import {
   Bot,
   MessageSquare,
   DollarSign,
+  Brain,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -299,11 +300,12 @@ function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolea
           )}
         </div>
         {typeof d.thinking === 'string' && d.thinking && (
-          <details className="mt-0.5">
-            <summary className="text-xs font-medium text-purple-400 cursor-pointer">
+          <details open className="mt-1.5 rounded border border-purple-500/20 bg-purple-500/5 px-2.5 py-1.5">
+            <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-purple-400">
+              <Brain className="h-3 w-3" />
               Thinking
             </summary>
-            <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+            <p className="mt-1.5 text-xs text-muted-foreground whitespace-pre-wrap font-mono">
               {d.thinking}
             </p>
           </details>
