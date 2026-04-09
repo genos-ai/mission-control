@@ -25,6 +25,7 @@ import {
   type ConsoleEvent,
 } from '@/stores/console'
 import { EVENT_ICONS, eventLabel, eventDetail } from '@/lib/event-utils'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
 type CategoryTab = 'all' | 'execution' | 'chat' | 'system'
 
@@ -310,9 +311,12 @@ function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolea
             </p>
           </details>
         )}
-        <p className="mt-0.5 text-sm text-foreground/90 whitespace-pre-wrap break-words">
-          {content.length > 500 ? content.slice(0, 500) + '…' : content}
-        </p>
+        <div className="mt-0.5">
+          <MarkdownRenderer
+            content={content.length > 1000 ? content.slice(0, 1000) + '…' : content}
+            className="text-sm"
+          />
+        </div>
       </div>
       <Badge
         variant="outline"
@@ -421,8 +425,8 @@ function TaskResultRow({ event, isError }: { event: ConsoleEvent; isError: boole
 
       {/* Output data summary */}
       {outputSummary && (
-        <div className="mt-1 ml-5 text-xs text-muted-foreground whitespace-pre-wrap break-words">
-          {outputSummary}
+        <div className="mt-1 ml-5">
+          <MarkdownRenderer content={outputSummary} className="text-xs text-muted-foreground" />
         </div>
       )}
     </div>

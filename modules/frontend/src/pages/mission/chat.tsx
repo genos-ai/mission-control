@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/cn'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import type { SessionMessage } from '@/types'
 
 const DEFAULT_CHAT_AGENT = 'mission.director.agent'
@@ -454,7 +455,7 @@ function ConversationView({
               )}
               {streamingContent && (
                 <div className="rounded-lg bg-muted/50 p-3">
-                  <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
+                  <MarkdownRenderer content={streamingContent} className="text-sm" />
                   <Loader2 className="h-3 w-3 animate-spin text-muted-foreground mt-1" />
                 </div>
               )}
@@ -543,7 +544,7 @@ function MessageBubble({ message }: { message: SessionMessage }) {
             </p>
           </details>
         )}
-        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        <MarkdownRenderer content={message.content} className="text-sm" />
         <div
           className={cn(
             'flex items-center gap-2 mt-1 text-[10px]',
