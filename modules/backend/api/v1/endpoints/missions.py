@@ -13,7 +13,7 @@ from modules.backend.api.v1.endpoints import (
     missions_team,
     missions_workflows,
 )
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.dependencies import CurrentUser, DbSession, Idempotency, RequestId
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission import (
@@ -40,12 +40,20 @@ async def create_mission(
     db: DbSession,
     request_id: RequestId,
     current_user: CurrentUser,
+    idempotency: Idempotency,
 ) -> ApiResponse:
     """Create a new mission.
 
     Platform missions (tier='platform') require admin role.
     The owner_id is set to the authenticated user.
+
+    Supports Idempotency-Key header — safe to retry on network timeout.
     """
+    if idempotency:
+        cached = await idempotency.get_cached_response()
+        if cached:
+            return ApiResponse(**cached)
+
     if data.tier == "platform" and not current_user.has_role("admin"):
         raise AuthorizationError("Platform missions require admin role")
 
@@ -63,11 +71,14 @@ async def create_mission(
         tier=data.tier,
     )
     response = MissionResponse.model_validate(mission)
-    return ApiResponse(
+    result = ApiResponse(
         success=True,
         data=response.model_dump(),
         metadata={"request_id": request_id},
     )
+    if idempotency:
+        await idempotency.cache_response(result.model_dump())
+    return result
 
 
 @router.get("", response_model=ApiResponse, summary="List missions")

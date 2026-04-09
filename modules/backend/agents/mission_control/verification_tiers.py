@@ -8,7 +8,7 @@ from typing import Any
 from modules.backend.agents.mission_control.models import ExecuteAgentFn
 from modules.backend.core.logging import get_logger
 
-from .verification_models import Tier3Result, TierResult, TierStatus
+from modules.backend.agents.mission_control.verification_models import Tier3Result, TierResult, TierStatus
 
 logger = get_logger(__name__)
 

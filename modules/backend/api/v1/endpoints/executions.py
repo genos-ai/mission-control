@@ -11,7 +11,7 @@ the temporal.enabled feature flag.
 
 from fastapi import APIRouter
 
-from modules.backend.core.dependencies import DbSession, RequestId
+from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
 from modules.backend.core.exceptions import NotFoundError
 from modules.backend.core.logging import get_logger
 
@@ -242,12 +242,21 @@ async def execute_execution(
     execution_id: str,
     db: DbSession,
     request_id: RequestId,
+    idempotency: Idempotency,
 ) -> ApiResponse:
     """Start an execution — returns immediately, runs in background.
 
     The execution dispatches asynchronously. Monitor progress via
     SSE at GET /streams/runs/{session_id}.
+
+    Supports Idempotency-Key header — safe to retry on network timeout.
     """
+    # Return cached response if this execution was already started
+    if idempotency:
+        cached = await idempotency.get_cached_response()
+        if cached:
+            return ApiResponse(**cached)
+
     import asyncio
     from modules.backend.core.config import get_app_config
     from modules.backend.services.execution import ExecutionService
@@ -258,21 +267,20 @@ async def execute_execution(
 
     if config.temporal.enabled:
         result = await service.start_temporal_execution(execution_id)
-        return ApiResponse(
+        response = ApiResponse(
             success=True,
             data=result,
             metadata={"request_id": request_id},
         )
+        if idempotency:
+            await idempotency.cache_response(response.model_dump())
+        return response
 
     # Load execution to return data immediately
     execution = await service.get_execution(execution_id)
 
     # Fire-and-forget: run dispatch in background task
     async def _run_in_background(exec_id: str) -> None:
-        from modules.backend.agents.mission_control.dispatch_adapter import (
-            MissionControlDispatchAdapter,
-        )
-        from modules.backend.services.session import SessionService
         from modules.backend.events.bus import SessionEventBus
         from modules.backend.core.config import get_redis_url
         from redis.asyncio import Redis as AsyncRedis
@@ -289,12 +297,15 @@ async def execute_execution(
     asyncio.create_task(_run_in_background(execution_id))
 
     from modules.backend.schemas.execution import ExecutionResponse
-    response = ExecutionResponse.model_validate(execution)
-    return ApiResponse(
+    response_data = ExecutionResponse.model_validate(execution)
+    response = ApiResponse(
         success=True,
-        data=response.model_dump(),
+        data=response_data.model_dump(),
         metadata={"request_id": request_id},
     )
+    if idempotency:
+        await idempotency.cache_response(response.model_dump())
+    return response
 
 
 @router.post(

@@ -112,3 +112,41 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 AdminRole = Annotated[User, Depends(require_admin)]
+
+
+# ---------------------------------------------------------------------------
+# Idempotency key support
+# ---------------------------------------------------------------------------
+
+from collections.abc import AsyncIterator
+
+from modules.backend.core.idempotency import IdempotencyGuard
+
+
+async def get_idempotency(
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+) -> AsyncIterator[IdempotencyGuard | None]:
+    """FastAPI dependency for idempotency key support.
+
+    When the client sends `Idempotency-Key: <uuid>`, yields an
+    IdempotencyGuard that endpoints use to check/cache responses.
+    Yields None when the header is absent (operation proceeds normally).
+
+    See modules/backend/core/idempotency.py for usage docs.
+    """
+    if not idempotency_key:
+        yield None
+        return
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_redis_url
+
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        yield IdempotencyGuard(redis, idempotency_key)
+    finally:
+        await redis.aclose()
+
+
+Idempotency = Annotated[IdempotencyGuard | None, Depends(get_idempotency)]

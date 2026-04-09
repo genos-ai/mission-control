@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
-from modules.backend.core.dependencies import DbSession, RequestId
+from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
 from modules.backend.core.pagination import (
     PaginationParams,
     create_paginated_response,
@@ -39,11 +39,21 @@ async def create_session(
     data: SessionCreate,
     db: DbSession,
     request_id: RequestId,
+    idempotency: Idempotency,
     user_id: str | None = Query(default=None, description="Owner user ID (temporary — will come from auth context)"),
 ) -> ApiResponse[SessionResponse]:
+    """Supports Idempotency-Key header — safe to retry on network timeout."""
+    if idempotency:
+        cached = await idempotency.get_cached_response()
+        if cached:
+            return ApiResponse(**cached)
+
     service = SessionService(db)
     session = await service.create_session(data, user_id=user_id)
-    return ApiResponse(data=SessionResponse.model_validate(session))
+    result = ApiResponse(data=SessionResponse.model_validate(session))
+    if idempotency:
+        await idempotency.cache_response(result.model_dump())
+    return result
 
 
 @router.get(

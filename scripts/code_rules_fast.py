@@ -301,6 +301,69 @@ def check_os_getenv_fallback(path: Path, rel: str) -> list[Violation]:
     return violations
 
 
+def check_execution_triggers_need_idempotency(path: Path, rel: str) -> list[Violation]:
+    """009.1 — Endpoints that fire-and-forget agent work must support idempotency keys.
+
+    An endpoint that calls asyncio.create_task() or run_execution() launches
+    expensive background work. If the client retries on timeout, the work runs
+    twice. These endpoints must declare an `idempotency: Idempotency` parameter
+    so callers can safely retry with an Idempotency-Key header.
+    """
+    if not rel.startswith("modules/backend/api/"):
+        return []
+
+    violations = []
+    lines = path.read_text().splitlines()
+
+    # Patterns that indicate expensive background dispatch
+    trigger_pattern = re.compile(
+        r"\b(asyncio\.create_task|run_execution|start_temporal_execution)\b"
+    )
+    idempotency_pattern = re.compile(r"\bidempotency\b")
+
+    # Walk function by function
+    func_start = 0
+    func_name = ""
+    func_body: list[str] = []
+    in_func = False
+
+    for i, line in enumerate(lines):
+        m = re.match(r"^async def (\w+)\s*\(", line)
+        if m:
+            # Check the function we just finished collecting
+            if in_func and func_body:
+                body = "\n".join(func_body)
+                if trigger_pattern.search(body) and not idempotency_pattern.search(body):
+                    violations.append(Violation(
+                        "009.1", "error", rel, func_start,
+                        f"'{func_name}' fires background execution but lacks "
+                        "`idempotency: Idempotency` — add it to prevent duplicate runs on retry",
+                    ))
+            in_func = True
+            func_start = i + 1
+            func_name = m.group(1)
+            func_body = [line]
+        elif in_func:
+            # Stop collecting at the next top-level definition (not indented)
+            if line and not line[0].isspace() and line[0] not in ("#", "@", '"', "'"):
+                in_func = False
+                func_body = []
+            else:
+                func_body.append(line)
+
+    # Check the last function in the file
+    if in_func and func_body:
+        body = "\n".join(func_body)
+        if trigger_pattern.search(body) and not idempotency_pattern.search(body):
+            violations.append(Violation(
+                "009.1", "error", rel, func_start,
+                f"'{func_name}' fires background execution but lacks "
+                "`idempotency: Idempotency` — add it to prevent duplicate runs on retry",
+            ))
+
+    return violations
+
+
 ALL_CHECKS = [
     check_file_size,
     check_relative_imports,
@@ -317,6 +380,7 @@ ALL_CHECKS = [
     check_client_http_calls,
     check_endpoint_orchestration,
     check_endpoint_inline_transforms,
+    check_execution_triggers_need_idempotency,
 ]
 
 

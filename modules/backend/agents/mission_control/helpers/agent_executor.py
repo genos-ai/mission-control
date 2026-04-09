@@ -26,10 +26,10 @@ from modules.backend.events.types import (
     CostUpdateEvent,
 )
 
-from .agent_setup import _build_agent_deps, _import_agent_module
-from .event_emitter import _emit, _emit_tool_events
-from .model_builder import _build_model, _get_model_name
-from .prompt_builder import _build_planning_prompt, _build_roster_prompt
+from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps, _import_agent_module
+from modules.backend.agents.mission_control.helpers.event_emitter import _emit, _emit_tool_events
+from modules.backend.agents.mission_control.helpers.model_builder import _build_model, _get_model_name
+from modules.backend.agents.mission_control.helpers.prompt_builder import _build_planning_prompt, _build_roster_prompt
 
 logger = get_logger(__name__)
 

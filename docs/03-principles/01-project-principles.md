@@ -232,6 +232,24 @@ This means:
 
 ---
 
+### P16: Idempotency for Expensive Mutations
+
+**Any endpoint that triggers non-trivial work must be safe to retry.**
+
+Network requests time out. Clients retry. Without idempotency, a retry on a timed-out POST that successfully launched an agent execution starts a second execution. Agent runs consume real LLM tokens, write to the database, and are difficult to cancel mid-flight. Duplicate runs are expensive and confusing.
+
+Implementation: clients send `Idempotency-Key: <uuid>` on POST requests. The server caches the response in Redis for 24 hours. Retries with the same key return the cached response immediately.
+
+This means:
+- Any endpoint that calls `asyncio.create_task()`, `run_execution()`, or `start_temporal_execution()` must accept and honour an `Idempotency-Key` header.
+- The idempotency guard must **fail open** — a Redis outage means the key is not checked, but the endpoint still responds. Never block a request on a cache failure.
+- Cheap operations (add team member, update name) don't require idempotency — the cost of a duplicate is low enough that client-side deduplication suffices.
+- The pre-commit hook (`code_rules_fast.py` rule 009.1) will block any endpoint that fires background execution without declaring the `idempotency: Idempotency` parameter.
+
+**Test:** Can a client call `POST /executions/{id}/execute` five times with the same `Idempotency-Key` and get exactly one execution run? If not, the implementation is incomplete.
+
+---
+
 ## Temporary Principles
 
 *These principles have explicit expiration conditions and will be replaced.*
