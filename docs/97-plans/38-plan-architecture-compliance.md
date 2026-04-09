@@ -3,7 +3,7 @@
 **Version:** 1.1.0
 **Date:** 2026-04-08
 **Author:** Herman + Architecture Review
-**Status:** In progress — Phase 1 complete, Phase 2 active
+**Status:** In progress — Phases 1–4 complete, Phase 5 pending
 **Triggered by:** Codebase audit against reference architecture (01-core-principles, 08-python-coding-standards, AGENTS.md)
 
 ---
@@ -205,8 +205,12 @@ tests/integration/backend/services/
 
 ---
 
-## 4. Phase 4 — Idempotency Keys (Medium)
+## 4. Phase 4 — Idempotency Keys (Medium) [DONE]
 
+> **Completed 2026-04-09** — commit `e85c1f5`.
+>
+> `IdempotencyGuard` created in `core/idempotency.py` (Redis-backed, fail-open, 24h TTL). `Idempotency` dependency injected via `Idempotency-Key` header. Applied to `POST /executions/{id}/execute`, `POST /missions`, `POST /sessions`. Pre-commit rule 009.1 blocks future endpoints that fire background execution without idempotency. P16 added to project principles. 370 unit tests pass.
+>
 > **Goal:** Add idempotency protection to critical mutating endpoints per P6.
 
 ### 4.1 Mechanism
