@@ -353,6 +353,7 @@ class SessionService(BaseService):
                 cost_usd=data.cost_usd,
                 tool_name=data.tool_name,
                 tool_call_id=data.tool_call_id,
+                thinking=data.thinking,
             ),
         )
 

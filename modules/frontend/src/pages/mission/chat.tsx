@@ -533,7 +533,7 @@ function MessageBubble({ message }: { message: SessionMessage }) {
         )}
       >
         {message.thinking && (
-          <details className="mb-3 rounded border border-purple-500/20 bg-purple-500/5 px-3 py-2">
+          <details open className="mb-3 rounded border border-purple-500/20 bg-purple-500/5 px-3 py-2">
             <summary className="flex items-center gap-1.5 text-xs font-medium text-purple-400 cursor-pointer">
               <Brain className="h-3 w-3" />
               Thinking

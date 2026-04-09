@@ -195,6 +195,7 @@ class SessionRepository(BaseRepository[Session]):
         cost_usd: float | None = None,
         tool_name: str | None = None,
         tool_call_id: str | None = None,
+        thinking: str | None = None,
     ) -> SessionMessage:
         """Add a message to a session."""
         msg = SessionMessage(
@@ -208,6 +209,7 @@ class SessionRepository(BaseRepository[Session]):
             cost_usd=cost_usd,
             tool_name=tool_name,
             tool_call_id=tool_call_id,
+            thinking=thinking,
         )
         self.session.add(msg)
         await self.session.flush()

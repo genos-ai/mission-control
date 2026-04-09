@@ -20,7 +20,8 @@ def build_model_settings(
     """Build provider-specific model settings from agent config.
 
     Handles thinking configuration per provider:
-    - Anthropic: uses anthropic_thinking with budget_tokens, ensures max_tokens > budget
+    - Anthropic (Opus/Sonnet 4.x): uses adaptive thinking (budget_tokens deprecated)
+    - Anthropic (older models): uses enabled thinking with explicit budget_tokens
     - Other providers: logs a warning and skips (thinking not supported)
 
     Returns None if the agent has no thinking_budget configured.
@@ -42,11 +43,21 @@ def build_model_settings(
         from pydantic_ai.models.anthropic import AnthropicModelSettings
 
         max_tokens = getattr(agent_config.model, "max_tokens", None) or 16384
-        if max_tokens <= budget:
-            max_tokens = budget + 8192
+
+        # Opus 4.6 and Sonnet 4.6 use adaptive thinking (budget_tokens deprecated).
+        # Older models (e.g. claude-3-7-sonnet) require budget_tokens.
+        _adaptive_models = ("claude-opus-4", "claude-sonnet-4", "opus-4", "sonnet-4")
+        _use_adaptive = any(m in model_name for m in _adaptive_models)
+
+        if _use_adaptive:
+            thinking_config: dict = {"type": "adaptive"}
+        else:
+            if max_tokens <= budget:
+                max_tokens = budget + 8192
+            thinking_config = {"type": "enabled", "budget_tokens": budget}
 
         return AnthropicModelSettings(
-            anthropic_thinking={"type": "enabled", "budget_tokens": budget},
+            anthropic_thinking=thinking_config,
             max_tokens=max_tokens,
         )
 
