@@ -36,6 +36,7 @@ import {
   Radio,
   Zap,
   Activity,
+  Kanban,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -46,7 +47,7 @@ import { useMissionStream } from '@/hooks/use-sse'
 import { useSessions, useMessages, useCreateSession, sessionKeys } from '@/hooks/use-sessions'
 import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
-import { useWorkspaceStore } from '@/stores/workspace'
+import { useWorkspaceStore, type StreamingArtifact } from '@/stores/workspace'
 import { queryClient } from '@/main'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -60,6 +61,7 @@ import type { MissionStatus, SessionMessage } from '@/types'
 
 // Stream mode — existing console, reads from shared stream context
 import ConsolePage from '@/pages/mission/console'
+import { PlanBoard } from '@/components/workspace/plan-board'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,6 +107,12 @@ export default function MissionWorkspace() {
   const updateMission = useUpdateMission(id!)
   const { user } = useAuthStore()
   const isOwner = mission?.owner_id === user?.id
+
+  // Auto-open artifacts panel when streaming starts
+  const streaming = useWorkspaceStore((s) => s.streamingArtifact)
+  useEffect(() => {
+    if (streaming) setRightOpen(true)
+  }, [!!streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Single SSE connection, shared via context ──────────────────────────
   const { events: sseEvents, connected } = useMissionStream(id ?? null)
@@ -355,6 +363,12 @@ function RosterRow({
 // Center panel — mode toggle + Narrative | Stream
 // ---------------------------------------------------------------------------
 
+const FEED_MODES = [
+  { id: 'plan',      label: 'Plan',      icon: Kanban },
+  { id: 'narrative', label: 'Narrative', icon: Radio },
+  { id: 'stream',    label: 'Stream',    icon: Activity },
+] as const
+
 function CenterPanel({ missionId }: { missionId: string }) {
   const feedMode = useWorkspaceStore((s) => s.feedMode)
   const setFeedMode = useWorkspaceStore((s) => s.setFeedMode)
@@ -364,18 +378,19 @@ function CenterPanel({ missionId }: { missionId: string }) {
       {/* Mode toggle */}
       <div className="flex h-9 shrink-0 items-center gap-1 border-b px-3">
         <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
-          {(['narrative', 'stream'] as const).map((mode) => (
+          {FEED_MODES.map(({ id, label, icon: Icon }) => (
             <button
-              key={mode}
-              onClick={() => setFeedMode(mode)}
+              key={id}
+              onClick={() => setFeedMode(id)}
               className={cn(
-                'rounded px-3 py-1 text-xs font-medium capitalize transition-colors',
-                feedMode === mode
+                'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                feedMode === id
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {mode}
+              <Icon className="h-3 w-3" />
+              {label}
             </button>
           ))}
         </div>
@@ -383,7 +398,9 @@ function CenterPanel({ missionId }: { missionId: string }) {
 
       {/* Content */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {feedMode === 'narrative' ? (
+        {feedMode === 'plan' ? (
+          <PlanBoard missionId={missionId} />
+        ) : feedMode === 'narrative' ? (
           <NarrativeFeed missionId={missionId} />
         ) : (
           <ConsolePage />
@@ -575,11 +592,21 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
 
 function ArtifactsPanel({ onClose }: { onClose: () => void }) {
   const artifacts = useWorkspaceStore((s) => s.artifacts)
+  const streaming = useWorkspaceStore((s) => s.streamingArtifact)
+  const hasContent = streaming || artifacts.length > 0
 
   return (
     <div className="flex w-[280px] shrink-0 flex-col border-l">
       <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
-        <span className="text-xs font-medium">Artifacts</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium">Artifacts</span>
+          {streaming && (
+            <span className="flex items-center gap-1 text-[10px] text-amber-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+              live
+            </span>
+          )}
+        </div>
         <button
           onClick={onClose}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -589,7 +616,7 @@ function ArtifactsPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {artifacts.length === 0 ? (
+        {!hasContent ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-8">
             <Package className="h-6 w-6 text-muted-foreground/30" />
             <p className="text-center text-xs text-muted-foreground/60">
@@ -598,11 +625,31 @@ function ArtifactsPanel({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="space-y-px p-2">
+            {streaming && <StreamingArtifactCard streaming={streaming} />}
             {artifacts.map((a) => (
               <ArtifactCard key={a.id} artifact={a} />
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function StreamingArtifactCard({ streaming }: { streaming: StreamingArtifact }) {
+  const agentShort = streaming.agentId.endsWith('.agent')
+    ? streaming.agentId.slice(0, -6)
+    : streaming.agentId
+
+  return (
+    <div className="rounded border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs">
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+        <span className="font-medium text-amber-400">{agentShort}</span>
+        <span className="text-muted-foreground/60">writing…</span>
+      </div>
+      <div className="max-h-48 overflow-y-auto">
+        <MarkdownRenderer content={streaming.content} className="text-[11px]" />
       </div>
     </div>
   )
