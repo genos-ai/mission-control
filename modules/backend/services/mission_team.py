@@ -234,6 +234,36 @@ class MissionTeamService(BaseService):
         """Enable or disable a team member."""
         return await self._team_repo.update(member_id, enabled=enabled)
 
+    async def list_team_with_details(
+        self,
+        mission_id: str,
+        enabled_only: bool = True,
+    ) -> list[dict]:
+        """List team members with full catalog detail.
+
+        Returns dicts with agent_name, description, tools, scope, keywords
+        for each member — richer than list_team_with_names, intended for
+        context-injection paths that need full agent capabilities.
+        """
+        members = await self.list_team(mission_id, enabled_only=enabled_only)
+        result = []
+        for m in members:
+            entry = m.agent_catalog
+            if not entry:
+                continue
+            scope = entry.scope or {}
+            result.append({
+                "agent_name": entry.agent_name,
+                "description": entry.description or "",
+                "tools": list(entry.tools or []),
+                "scope": {
+                    "read": scope.get("read", []),
+                    "write": scope.get("write", []),
+                },
+                "keywords": list(entry.keywords or []),
+            })
+        return result
+
     async def get_prompt_history(
         self,
         member_id: str,

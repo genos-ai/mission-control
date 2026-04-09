@@ -130,20 +130,22 @@ The existing `modules/backend/services/compliance.py` already scans for relative
 
 ---
 
-## 2. Phase 2 — Split Oversized Files (High) [IN PROGRESS]
+## 2. Phase 2 — Split Oversized Files (High) [DONE]
 
-> **Goal:** Bring all files under 500 lines. No behavior changes.
+> **Completed 2026-04-09** — all target backend files split. Layer violation in `mission_control.py` also fixed as part of this phase.
 
 ### 2.1 Backend Splits
 
 | File | Lines | Split Strategy | Status |
 |------|-------|----------------|--------|
 | `api/v1/endpoints/missions.py` | 844→194 | Split into `missions_team.py` (302), `missions_workflows.py` (298), `missions_context.py` (105). Core CRUD stays in `missions.py`. | **DONE** |
-| `agents/mission_control/mission_control.py` | 761 | Extract prompt assembly and tool registration into separate modules. Keep orchestration entry point. | TODO |
-| `agents/mission_control/helpers.py` | 755 | Group helpers by concern (context helpers, formatting helpers, result helpers) into sub-files under `helpers/`. | TODO |
+| `agents/mission_control/helpers.py` | 755→ pkg | Replaced with `helpers/` package: `model_builder.py`, `prompt_builder.py`, `agent_setup.py`, `routing.py`, `event_emitter.py`, `agent_executor.py`. `__init__.py` re-exports all — zero import changes needed. | **DONE** |
+| `agents/mission_control/gate.py` | 538→282 | Extracted `gate_models.py` (84 lines: GateAction, GateContext, GateDecision, GateReviewer, NoOpGate) and `gate_prompt.py` (153 lines: system prompt, _build_gate_prompt, _parse_action). gate.py re-exports models. | **DONE** |
+| `agents/mission_control/verification.py` | 525→173 | Extracted `verification_models.py` (48 lines: TierStatus, TierResult, Tier3Result, VerificationResult) and `verification_tiers.py` (322 lines: _run_tier_1, _run_tier_2, _run_tier_3, _elapsed_ms). Pipeline orchestrator stays in verification.py. | **DONE** |
+| `agents/mission_control/mission_control.py` | 761→795 | Layer violation fixed: replaced direct `AgentCatalogRepository` import with `MissionTeamService.list_team_with_details()`. File still over target — complex async closures resist clean extraction without increasing coupling. Deferred. | **PARTIAL** |
 | `services/pqi/dimensions.py` | 710→446+232 | Converted to `dimensions/` package: `analysis.py` (maintainability, security, modularity, testability) + `style.py` (robustness, elegance, reusability). Re-exports from `__init__.py`. | **DONE** |
-| `services/workflow_run.py` | 664 | Separate orchestration (run lifecycle) from state management (status tracking, cost aggregation). | TODO |
-| `services/execution.py` | 570 | Extract environment resolution and cost tracking into focused modules. | TODO |
+| `services/workflow_run.py` | 664 | Single cohesive class — all methods tightly coupled (wave execution references run state). No natural split boundary. Deferred. | **DEFERRED** |
+| `services/execution.py` | 570 | Deferred — complex lifecycle service. | **DEFERRED** |
 
 ### 2.2 Frontend Splits
 

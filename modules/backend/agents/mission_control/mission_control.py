@@ -89,7 +89,6 @@ async def _prepend_mission_context(mission_id: str, message: str) -> str:
     Gives the agent awareness of the active mission (name, description,
     brief, team) so it can answer questions and plan within that scope.
     """
-    from modules.backend.core.database import get_async_session
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_team import MissionTeamService
 
@@ -108,23 +107,16 @@ async def _prepend_mission_context(mission_id: str, message: str) -> str:
 
     # Load team members with full capabilities
     try:
-        async with get_async_session() as db:
-            team_svc = MissionTeamService(db)
-            members = await team_svc.list_team(mission_id)
-            if members:
-                from modules.backend.repositories.agent_catalog import AgentCatalogRepository
-                catalog_repo = AgentCatalogRepository(db)
+        async with MissionTeamService.factory() as team_svc:
+            team_details = await team_svc.list_team_with_details(mission_id)
+            if team_details:
                 team_lines = []
-                for member in members:
-                    entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
-                    if not entry:
-                        continue
-                    line = f"  - {entry.agent_name}: {entry.description}"
-                    if entry.tools:
-                        line += f"\n    Tools: {', '.join(entry.tools)}"
-                    scope = entry.scope or {}
-                    read_paths = scope.get("read", [])
-                    write_paths = scope.get("write", [])
+                for entry in team_details:
+                    line = f"  - {entry['agent_name']}: {entry['description']}"
+                    if entry["tools"]:
+                        line += f"\n    Tools: {', '.join(entry['tools'])}"
+                    read_paths = entry["scope"].get("read", [])
+                    write_paths = entry["scope"].get("write", [])
                     if read_paths or write_paths:
                         access = []
                         if read_paths:
@@ -132,8 +124,8 @@ async def _prepend_mission_context(mission_id: str, message: str) -> str:
                         if write_paths:
                             access.append(f"write: {', '.join(write_paths)}")
                         line += f"\n    Access: {'; '.join(access)}"
-                    if entry.keywords:
-                        line += f"\n    Capabilities: {', '.join(entry.keywords)}"
+                    if entry["keywords"]:
+                        line += f"\n    Capabilities: {', '.join(entry['keywords'])}"
                     team_lines.append(line)
                 if team_lines:
                     parts.append("Team:")

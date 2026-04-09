@@ -1,0 +1,98 @@
+"""Agent setup helpers — deps construction, usage limits, module imports."""
+
+from __future__ import annotations
+
+import importlib
+from typing import Any
+
+from pydantic_ai import UsageLimits
+
+from modules.backend.agents.config_schema import AgentConfigSchema
+from modules.backend.agents.deps.base import (
+    BaseAgentDeps,
+    FileScope,
+    HealthAgentDeps,
+    QaAgentDeps,
+)
+from modules.backend.agents.mission_control.middleware import _load_mission_control_config
+from modules.backend.agents.mission_control.registry import get_registry
+from modules.backend.core.config import find_project_root, get_app_config
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+def build_deps_from_config(agent_config: AgentConfigSchema) -> dict[str, Any]:
+    """Build common dep fields from agent YAML config."""
+    scope = FileScope(
+        read_paths=agent_config.scope.read,
+        write_paths=agent_config.scope.write,
+    )
+    return {
+        "project_root": find_project_root(),
+        "scope": scope,
+        "config": agent_config,
+    }
+
+
+def _build_agent_deps(
+    agent_name: str,
+    agent_config: AgentConfigSchema,
+    session_id: str | None = None,
+    mission_id: str | None = None,
+    db_session: Any | None = None,
+) -> BaseAgentDeps:
+    """Build the appropriate deps dataclass for a given agent."""
+    common = build_deps_from_config(agent_config)
+    common["session_id"] = session_id
+    category = agent_name.split(".")[0]
+
+    if "mission.director" in agent_name:
+        from modules.backend.agents.mission.director.deps import MissionDirectorDeps
+        return MissionDirectorDeps(**common, mission_id=mission_id or "", db_session=db_session)
+    if "platform.director" in agent_name:
+        from modules.backend.agents.platform.director.deps import PlatformDirectorDeps
+        return PlatformDirectorDeps(**common, db_session=db_session)
+    if category == "platform" and "health" in agent_name:
+        return HealthAgentDeps(**common, app_config=get_app_config())
+    if category == "software":
+        return QaAgentDeps(**common)
+    if "mission.workflow" in agent_name:
+        from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
+        return ArchitectAgentDeps(**common)
+
+    return BaseAgentDeps(**common)
+
+
+def _get_usage_limits(agent_name: str | None = None) -> UsageLimits:
+    """Build UsageLimits, preferring per-agent overrides from agent.yaml.
+
+    Resolution order:
+        1. Per-agent max_tokens / max_requests from agent.yaml (if set)
+        2. System defaults from mission_control.yaml limits
+    """
+    mc_config = _load_mission_control_config()
+    system_tokens = mc_config.limits.max_tokens_per_task
+    system_requests = mc_config.limits.max_requests_per_task
+
+    if agent_name:
+        try:
+            agent_config = get_registry().get(agent_name)
+            return UsageLimits(
+                request_limit=agent_config.max_requests or system_requests,
+                total_tokens_limit=agent_config.max_tokens or system_tokens,
+            )
+        except KeyError:
+            logger.debug("Agent '%s' not in registry, using system limits", agent_name)
+
+    return UsageLimits(
+        request_limit=system_requests,
+        total_tokens_limit=system_tokens,
+    )
+
+
+def _import_agent_module(agent_name: str) -> Any:
+    """Dynamically import an agent module from the registry."""
+    registry = get_registry()
+    module_path = registry.resolve_module_path(agent_name)
+    return importlib.import_module(module_path)

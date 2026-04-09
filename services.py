@@ -6,6 +6,7 @@ Manage all development services from one script.
 
 Usage:
     python services.py start                  # Start everything (checks, migrate, seed, backend, frontend)
+    python services.py start --daemon       # Start detached; logs in var/logs/services-*.log
     python services.py start --backend-only   # Backend only
     python services.py start --no-migrate     # Skip migrations
     python services.py stop                   # Stop backend + frontend
@@ -13,12 +14,17 @@ Usage:
     python services.py restart                # Stop then start
     python services.py status                 # Show what's running
     python services.py check                  # Preflight checks only
+
+Daemon mode uses a new process session (no controlling terminal), stdin disconnected,
+stdout/stderr appended to per-service log files, and a TCP readiness check before exit.
+It cannot be combined with uvicorn --reload (multi-process supervisor).
 """
 
 import argparse
 import asyncio
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -29,6 +35,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 BACKEND_PORT = 8100
 FRONTEND_PORT = 5174
+
+# Log directory aligns with application logging (var/logs).
+SERVICE_LOG_DIR = PROJECT_ROOT / "var" / "logs"
+DAEMON_START_TIMEOUT_SEC = 90.0
+DAEMON_LOG_TAIL_BYTES = 8000
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +262,103 @@ def ensure_dev_user() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Detached (daemon) process support
+# ---------------------------------------------------------------------------
+
+
+def _connect_host_for_bind(bind_host: str) -> str:
+    """Host to use for local TCP checks when the server binds to bind_host."""
+    if bind_host in ("0.0.0.0", "", "::", "[::]"):
+        return "127.0.0.1"
+    return bind_host
+
+
+def _service_log_paths(backend_port: int) -> tuple[Path, Path]:
+    """Fixed log paths for daemon mode (no PID file required)."""
+    backend_log = SERVICE_LOG_DIR / f"services-backend-{backend_port}.log"
+    frontend_log = SERVICE_LOG_DIR / f"services-frontend-{FRONTEND_PORT}.log"
+    return backend_log, frontend_log
+
+
+def _read_log_tail(path: Path, max_bytes: int = DAEMON_LOG_TAIL_BYTES) -> str:
+    if not path.is_file():
+        return f"(no log file at {path})"
+    data = path.read_bytes()
+    if len(data) > max_bytes:
+        data = data[-max_bytes:]
+    return data.decode("utf-8", errors="replace")
+
+
+def _wait_for_tcp(host: str, port: int, *, timeout_sec: float) -> bool:
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=2.0):
+                return True
+        except OSError:
+            time.sleep(0.25)
+    return False
+
+
+def _spawn_detached(
+    cmd: list[str],
+    cwd: Path,
+    log_path: Path,
+) -> subprocess.Popen:
+    """Start a child in a new session with stdin closed and logs appended.
+
+    The parent's handle to the log file is closed after spawn so only the
+    child retains the descriptor; output is line-buffered UTF-8.
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_f = open(
+        log_path,
+        "a",
+        encoding="utf-8",
+        errors="replace",
+        buffering=1,
+    )
+    try:
+        return subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        log_f.close()
+
+
+def _verify_daemon_ready(
+    label: str,
+    proc: subprocess.Popen,
+    log_path: Path,
+    *,
+    connect_host: str,
+    port: int,
+) -> None:
+    """Ensure the process did not exit immediately and the port accepts TCP."""
+    time.sleep(0.35)
+    code = proc.poll()
+    if code is not None:
+        print(f"  {label} .......... FAIL (exited early with code {code})")
+        print(_read_log_tail(log_path))
+        sys.exit(1)
+
+    if not _wait_for_tcp(connect_host, port, timeout_sec=DAEMON_START_TIMEOUT_SEC):
+        code = proc.poll()
+        print(f"  {label} .......... FAIL (port {port} not accepting connections in time)")
+        if code is not None:
+            print(f"  Process exited with code {code}.")
+        print(_read_log_tail(log_path))
+        sys.exit(1)
+
+    print(f"  {label} .......... OK (PID {proc.pid}, log {log_path})")
+
+
+# ---------------------------------------------------------------------------
 # Process management
 # ---------------------------------------------------------------------------
 
@@ -262,16 +370,10 @@ class DevRunner:
         self._shutting_down = False
 
     def start_backend(self, host: str, port: int, reload: bool) -> subprocess.Popen:
-        cmd = [
-            sys.executable, "-m", "uvicorn",
-            "modules.backend.main:app",
-            "--host", host,
-            "--port", str(port),
-        ]
-        if reload:
-            cmd.append("--reload")
-
-        proc = subprocess.Popen(cmd, cwd=PROJECT_ROOT)
+        proc = subprocess.Popen(
+            _backend_command(host, port, reload=reload),
+            cwd=PROJECT_ROOT,
+        )
         self.procs.append(proc)
         return proc
 
@@ -326,12 +428,9 @@ class DevRunner:
 # Commands
 # ===========================================================================
 
-def cmd_start(args):
-    """Start development services."""
-    print("=" * 50)
-    print("  MISSION CONTROL — Start")
-    print("=" * 50)
 
+def _prepare_services_environment(args) -> None:
+    """Preflight, migrate, and seed. Exits the process on hard failure."""
     if not preflight(args.port, check_frontend=not args.backend_only):
         sys.exit(1)
 
@@ -349,6 +448,91 @@ def cmd_start(args):
             print(f"  Dev user seed ..... WARN ({e})")
     else:
         print("  Dev user .......... skipped")
+
+
+def _backend_command(host: str, port: int, *, reload: bool) -> list[str]:
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "modules.backend.main:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if reload:
+        cmd.append("--reload")
+    return cmd
+
+
+def cmd_start_daemon(args):
+    """Start backend (and optionally frontend) detached with log files and readiness checks."""
+    print("=" * 50)
+    print("  MISSION CONTROL — Start (daemon)")
+    print("=" * 50)
+
+    _prepare_services_environment(args)
+
+    backend_log, frontend_log = _service_log_paths(args.port)
+    connect_host = _connect_host_for_bind(args.host)
+
+    print("\nStarting services in background...")
+    proc_backend = _spawn_detached(
+        _backend_command(args.host, args.port, reload=False),
+        PROJECT_ROOT,
+        backend_log,
+    )
+    _verify_daemon_ready(
+        "Backend",
+        proc_backend,
+        backend_log,
+        connect_host=connect_host,
+        port=args.port,
+    )
+
+    if not args.backend_only:
+        frontend_dir = PROJECT_ROOT / "modules" / "frontend"
+        proc_frontend = _spawn_detached(
+            ["npm", "run", "dev"],
+            frontend_dir,
+            frontend_log,
+        )
+        _verify_daemon_ready(
+            "Frontend",
+            proc_frontend,
+            frontend_log,
+            connect_host="127.0.0.1",
+            port=FRONTEND_PORT,
+        )
+
+    print("\n" + "-" * 50)
+    print(f"  Backend API:  http://localhost:{args.port}")
+    print(f"  Swagger UI:   http://localhost:{args.port}/docs")
+    if not args.backend_only:
+        print(f"  Frontend:     http://localhost:{FRONTEND_PORT}")
+    print(f"  Login:        admin@missioncontrol.dev / admin")
+    print("  Stop:         python services.py stop")
+    print("-" * 50)
+    print("Daemon processes are running; this terminal is free.\n")
+
+
+def cmd_start(args):
+    """Start development services."""
+    if args.daemon:
+        if not args.no_reload:
+            print(
+                "Note: daemon mode always runs without uvicorn --reload "
+                "(the reloader uses an extra supervisor process and is unsuitable for detached startup).\n"
+            )
+        cmd_start_daemon(args)
+        return
+
+    print("=" * 50)
+    print("  MISSION CONTROL — Start")
+    print("=" * 50)
+
+    _prepare_services_environment(args)
 
     runner = DevRunner()
     signal.signal(signal.SIGINT, runner.shutdown)
@@ -478,6 +662,7 @@ def main():
         epilog="""
 Examples:
   python services.py start                  Start all services
+  python services.py start --daemon         Start detached (logs under var/logs/services-*.log)
   python services.py start --backend-only   Backend only (no frontend)
   python services.py start --no-migrate     Skip DB migrations
   python services.py stop                   Stop all services
@@ -492,13 +677,26 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
+    def add_start_arguments(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--host", default="0.0.0.0", help="Backend host (default: 0.0.0.0)")
+        p.add_argument(
+            "--daemon",
+            action="store_true",
+            help=(
+                "Run backend (and frontend) in the background: new session, logs appended to "
+                f"var/logs/services-backend-<backend-port>.log and "
+                f"var/logs/services-frontend-{FRONTEND_PORT}.log; "
+                "exit after TCP readiness. Implies no uvicorn --reload."
+            ),
+        )
+        p.add_argument("--no-reload", action="store_true", help="Disable backend auto-reload")
+        p.add_argument("--backend-only", action="store_true", help="Skip frontend dev server")
+        p.add_argument("--no-migrate", action="store_true", help="Skip database migrations")
+        p.add_argument("--no-seed", action="store_true", help="Skip dev user seeding")
+
     # -- start --
     p_start = subparsers.add_parser("start", help="Start development services")
-    p_start.add_argument("--host", default="0.0.0.0", help="Backend host (default: 0.0.0.0)")
-    p_start.add_argument("--no-reload", action="store_true", help="Disable backend auto-reload")
-    p_start.add_argument("--backend-only", action="store_true", help="Skip frontend dev server")
-    p_start.add_argument("--no-migrate", action="store_true", help="Skip database migrations")
-    p_start.add_argument("--no-seed", action="store_true", help="Skip dev user seeding")
+    add_start_arguments(p_start)
 
     # -- stop --
     p_stop = subparsers.add_parser("stop", help="Stop running services")
@@ -506,11 +704,7 @@ Examples:
 
     # -- restart --
     p_restart = subparsers.add_parser("restart", help="Restart services (stop + start)")
-    p_restart.add_argument("--host", default="0.0.0.0", help="Backend host")
-    p_restart.add_argument("--no-reload", action="store_true", help="Disable backend auto-reload")
-    p_restart.add_argument("--backend-only", action="store_true", help="Backend only")
-    p_restart.add_argument("--no-migrate", action="store_true", help="Skip migrations")
-    p_restart.add_argument("--no-seed", action="store_true", help="Skip dev user seeding")
+    add_start_arguments(p_restart)
 
     # -- status --
     subparsers.add_parser("status", help="Show service status")

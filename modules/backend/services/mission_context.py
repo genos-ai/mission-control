@@ -31,9 +31,19 @@ from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
 
-# MCD size limits (bytes)
-_MCD_MAX_SIZE = 20_480  # 20KB hard cap
-_MCD_TARGET_SIZE = 15_360  # 15KB target
+def _load_mcd_limits() -> tuple[int, int]:
+    """Load MCD size limits from missions config."""
+    from modules.backend.core.config import get_app_config
+    cfg = get_app_config().missions
+    return cfg.pcd_max_size_bytes, cfg.pcd_target_size_bytes
+
+
+def _get_max_size() -> int:
+    return _load_mcd_limits()[0]
+
+
+def _get_target_size() -> int:
+    return _load_mcd_limits()[1]
 
 # In-memory cache: mission_id -> (context_data, version, timestamp)
 _cache: dict[str, tuple[dict, int, float]] = {}
@@ -213,7 +223,7 @@ class MissionContextManager(BaseService):
             "size_characters": ctx.size_characters,
             "size_tokens": ctx.size_tokens,
             "version": ctx.version,
-            "pct_of_max": (ctx.size_characters / _MCD_MAX_SIZE) * 100,
+            "pct_of_max": (ctx.size_characters / _get_max_size()) * 100,
         }
 
     async def apply_updates(
@@ -302,9 +312,9 @@ class MissionContextManager(BaseService):
 
         serialized = _json.dumps(data, ensure_ascii=False)
         new_size = len(serialized)
-        if new_size > _MCD_MAX_SIZE:
+        if new_size > _get_max_size():
             return current_version, [
-                f"MCD would exceed size cap: {new_size} > {_MCD_MAX_SIZE} bytes. "
+                f"MCD would exceed size cap: {new_size} > {_get_max_size()} bytes. "
                 "Prune before applying more updates."
             ]
 

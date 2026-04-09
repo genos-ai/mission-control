@@ -30,7 +30,7 @@ def prompt_tree(tmp_path):
 class TestAssembleInstructions:
     def test_base_layers_only(self, prompt_tree):
         with patch(
-            "modules.backend.agents.mission_control.helpers.find_project_root",
+            "modules.backend.agents.mission_control.helpers.prompt_builder.find_project_root",
             return_value=prompt_tree,
         ):
             result = assemble_instructions("code", "quality")
@@ -42,7 +42,7 @@ class TestAssembleInstructions:
 
     def test_with_mission_brief(self, prompt_tree):
         with patch(
-            "modules.backend.agents.mission_control.helpers.find_project_root",
+            "modules.backend.agents.mission_control.helpers.prompt_builder.find_project_root",
             return_value=prompt_tree,
         ):
             result = assemble_instructions(
@@ -54,7 +54,7 @@ class TestAssembleInstructions:
 
     def test_with_user_prompt(self, prompt_tree):
         with patch(
-            "modules.backend.agents.mission_control.helpers.find_project_root",
+            "modules.backend.agents.mission_control.helpers.prompt_builder.find_project_root",
             return_value=prompt_tree,
         ):
             result = assemble_instructions(
@@ -66,7 +66,7 @@ class TestAssembleInstructions:
 
     def test_all_layers(self, prompt_tree):
         with patch(
-            "modules.backend.agents.mission_control.helpers.find_project_root",
+            "modules.backend.agents.mission_control.helpers.prompt_builder.find_project_root",
             return_value=prompt_tree,
         ):
             result = assemble_instructions(
@@ -82,7 +82,7 @@ class TestAssembleInstructions:
 
     def test_missing_category_and_agent(self, prompt_tree):
         with patch(
-            "modules.backend.agents.mission_control.helpers.find_project_root",
+            "modules.backend.agents.mission_control.helpers.prompt_builder.find_project_root",
             return_value=prompt_tree,
         ):
             result = assemble_instructions("nonexistent", "agent")
