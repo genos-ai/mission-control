@@ -20,6 +20,7 @@ from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.models.mission_plan import MissionPlanStatus, PlanTaskStatus
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_plan import (
+    DispatchApprovedResponse,
     MissionPlanRefineRequest,
     MissionPlanResponse,
     MissionPlanUpdate,
@@ -172,6 +173,53 @@ async def refine_plan(
     )
 
     response = MissionPlanResponse.model_validate(refined)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+# ── Dispatch ─────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{mission_id}/plan/dispatch",
+    response_model=ApiResponse,
+    summary="Dispatch all approved tasks as a single run",
+)
+async def dispatch_approved(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Start a run of every currently-approved task in the plan.
+
+    Delegates to MissionPlanService.dispatch_approved, which:
+      1. Verifies the cumulative budget ceiling has not been exhausted
+      2. Filters the current TaskPlan to the closed subset of approved
+         tasks (approve_task is transitive so the subset is always a
+         valid sub-DAG)
+      3. Marks each approved task as `queued`
+      4. Builds a GateReviewer from the plan's gate_mode (or None for
+         `off` mode)
+      5. Calls handle_mission(precomputed_plan=...) to reuse the full
+         dispatch pipeline (roster, context, environment, persistence)
+      6. Writes the per-task outcomes back to plan_task_states and
+         bumps the cumulative spent total
+
+    Returns a DispatchApprovedResponse with the ExecutionRecord id
+    (for linking to the Runs tab) and the list of task_ids whose
+    state was updated.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db)
+    plan = await service.get_or_create_plan(mission_id)
+    result = await service.dispatch_approved(plan.id, current_user.id)
+
+    response = DispatchApprovedResponse(**result)
     return ApiResponse(
         success=True,
         data=response.model_dump(),

@@ -317,6 +317,271 @@ class MissionPlanService(BaseService):
             total_after=len(new_task_ids),
         )
 
+    # ── Dispatch (Phase 1.6) ────────────────────────────────────────────
+
+    async def dispatch_approved(
+        self,
+        mission_plan_id: str,
+        user_id: str,
+        *,
+        session_id: str | None = None,
+    ) -> dict:
+        """Dispatch all currently-approved tasks as a single run.
+
+        Plan 42 §10.1 + §10.5: filters the plan's task_plan_json to the
+        approved subset, validates that the subset is a closed DAG
+        (should always be true because approve_task transitively
+        approves dependencies), and hands the derived TaskPlan to the
+        existing dispatch pipeline via handle_mission(precomputed_plan=).
+
+        After the run completes, reads outcome.task_results to update
+        each dispatched task_state row with its execution_record_id,
+        task_execution_id, completion status, and result summary.
+        plan.total_spent_usd is incremented by the run cost.
+
+        Plan 42 §10.7 cumulative budget check: before dispatch, rejects
+        if total_spent_usd >= budget_usd_ceiling (when set).
+
+        Returns a dict with:
+            outcome_status: "success" | "partial" | "failed"
+            execution_record_id: the linked ExecutionRecord row (or None)
+            dispatched_task_ids: list of task_ids that were sent to dispatch
+            updated_task_ids: list of task_ids whose state was written back
+            total_cost_usd: cost of this individual run
+            new_total_spent_usd: cumulative total after the run
+
+        Raises:
+            ValidationError: If no tasks are approved, the plan is empty,
+                the budget is exhausted, or the derived plan fails
+                validation.
+        """
+        from modules.backend.agents.mission_control.mission_control import (
+            handle_mission,
+        )
+        from modules.backend.agents.mission_control.outcome import TaskStatus
+        from modules.backend.repositories.mission import MissionRepository
+
+        plan = await self._repo.get_by_id(mission_plan_id)
+        task_plan = self._get_task_plan_or_raise(plan)
+
+        # Budget check (Plan 42 §10.7)
+        if plan.budget_usd_ceiling is not None:
+            remaining = plan.budget_usd_ceiling - plan.total_spent_usd
+            if remaining <= 0:
+                raise ValidationError(
+                    f"Plan budget exhausted: spent "
+                    f"${plan.total_spent_usd:.4f} of "
+                    f"${plan.budget_usd_ceiling:.4f} ceiling. "
+                    f"Increase budget_usd_ceiling to continue."
+                )
+
+        # Collect approved task ids
+        approved_states = await self._repo.get_task_states(
+            mission_plan_id, status=PlanTaskStatus.APPROVED,
+        )
+        if not approved_states:
+            raise ValidationError(
+                "No tasks are approved for dispatch. Approve tasks via "
+                "the Plan tab before running."
+            )
+        approved_task_ids = {s.task_id for s in approved_states}
+
+        # Derive the filtered TaskPlan. Approval is transitive (§10.2) so
+        # the closure guarantee should hold — but verify and raise if not.
+        derived_plan = self._derive_subset_task_plan(task_plan, approved_task_ids)
+
+        # Mark approved → queued (Plan 42 §2.3 state machine)
+        now = utc_now()
+        for state in approved_states:
+            state.status = PlanTaskStatus.QUEUED.value
+            state.last_attempt_at = now
+        await self._session.flush()
+
+        self._log_operation(
+            "MissionPlan dispatching",
+            plan_id=mission_plan_id,
+            user_id=user_id,
+            task_count=len(approved_task_ids),
+            task_ids=sorted(approved_task_ids),
+            gate_mode=plan.gate_mode,
+        )
+
+        # Build the gate reviewer from the plan's gate_mode (Plan 42 §10.4)
+        gate_reviewer = None
+        if plan.gate_mode and plan.gate_mode != "off":
+            from modules.backend.agents.mission_control.gate import create_gate
+            gate_reviewer = create_gate(mode_override=plan.gate_mode)
+
+        # Fetch mission for brief + session service
+        mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
+        brief = mission.brief or mission.description or mission.name
+
+        # Dispatch via the Phase 0 precomputed_plan path
+        budget = plan.budget_usd_ceiling or 10.0
+        if plan.budget_usd_ceiling is not None:
+            budget = plan.budget_usd_ceiling - plan.total_spent_usd
+
+        from modules.backend.services.session import SessionService
+        outcome = await handle_mission(
+            mission_run_id=mission_plan_id,
+            mission_brief=brief,
+            session_service=SessionService(self._session),  # type: ignore[arg-type]
+            roster_name=mission.default_roster,
+            mission_budget_usd=budget,
+            session_id=session_id,
+            mission_id=plan.mission_id,
+            db_session=self._session,
+            gate=gate_reviewer,
+            execution_mode=mission.execution_environment or "local",
+            precomputed_plan=derived_plan,
+        )
+
+        # Write back task states from outcome (Plan 42 §10.5 batch write-back)
+        updated_ids = await self._write_back_task_results(
+            plan,
+            outcome,
+            dispatched_task_ids=approved_task_ids,
+        )
+
+        # Update cumulative cost (Plan 42 §10.7)
+        plan.total_spent_usd += float(outcome.total_cost_usd or 0.0)
+        await self._session.flush()
+
+        self._log_operation(
+            "MissionPlan dispatched",
+            plan_id=mission_plan_id,
+            outcome_status=outcome.status.value if hasattr(outcome.status, 'value') else str(outcome.status),
+            execution_record_id=outcome.execution_record_id,
+            run_cost_usd=outcome.total_cost_usd,
+            total_spent_usd=plan.total_spent_usd,
+        )
+
+        return {
+            "outcome_status": (
+                outcome.status.value
+                if hasattr(outcome.status, "value")
+                else str(outcome.status)
+            ),
+            "execution_record_id": outcome.execution_record_id,
+            "dispatched_task_ids": sorted(approved_task_ids),
+            "updated_task_ids": updated_ids,
+            "total_cost_usd": float(outcome.total_cost_usd or 0.0),
+            "new_total_spent_usd": plan.total_spent_usd,
+        }
+
+    async def _write_back_task_results(
+        self,
+        plan: MissionPlan,
+        outcome,  # ExecutionOutcome
+        *,
+        dispatched_task_ids: set[str],
+    ) -> list[str]:
+        """Persist per-task outcomes back to plan_task_states.
+
+        For each task_result in the outcome, update the matching
+        plan_task_state row with status, execution linkage, result
+        summary, and failure reason. Tasks that were dispatched but
+        did not appear in outcome.task_results are marked FAILED
+        (a dispatcher bug or a mid-run abort).
+
+        Plan 42 §10.5 batch write-back — no modification to the
+        dispatch loop or persistence_bridge.
+        """
+        from modules.backend.agents.mission_control.outcome import TaskStatus
+
+        status_map = {
+            TaskStatus.SUCCESS: PlanTaskStatus.COMPLETED,
+            TaskStatus.FAILED: PlanTaskStatus.FAILED,
+            TaskStatus.TIMEOUT: PlanTaskStatus.FAILED,
+            TaskStatus.SKIPPED: PlanTaskStatus.SKIPPED,
+        }
+
+        seen_task_ids: set[str] = set()
+        updated_ids: list[str] = []
+
+        for task_result in outcome.task_results:
+            task_id = task_result.task_id
+            seen_task_ids.add(task_id)
+
+            state = await self._repo.get_task_state(plan.id, task_id)
+            if state is None:
+                continue  # task not in plan state (shouldn't happen)
+
+            new_status = status_map.get(
+                task_result.status, PlanTaskStatus.FAILED,
+            )
+            state.status = new_status.value
+            state.execution_record_id = outcome.execution_record_id
+            state.task_execution_id = getattr(task_result, "execution_id", None)
+            state.last_attempt_at = utc_now()
+
+            if new_status == PlanTaskStatus.FAILED:
+                state.failure_reason = getattr(
+                    task_result, "failure_reason", None,
+                ) or "Task failed during dispatch"
+                state.retry_count += 1
+            else:
+                state.result_summary = getattr(
+                    task_result, "result_summary", None,
+                )
+                state.failure_reason = None
+
+            updated_ids.append(task_id)
+
+        # Tasks that were dispatched but never reported a result row: mark
+        # failed so they do not get stuck in `queued` state.
+        for task_id in dispatched_task_ids - seen_task_ids:
+            state = await self._repo.get_task_state(plan.id, task_id)
+            if state is None or state.status != PlanTaskStatus.QUEUED.value:
+                continue
+            state.status = PlanTaskStatus.FAILED.value
+            state.failure_reason = (
+                "Task was dispatched but did not report a result. "
+                "This usually indicates a mid-run abort or dispatcher bug."
+            )
+            state.retry_count += 1
+            updated_ids.append(task_id)
+
+        await self._session.flush()
+        return updated_ids
+
+    def _derive_subset_task_plan(
+        self,
+        full_plan: TaskPlan,
+        approved_task_ids: set[str],
+    ) -> TaskPlan:
+        """Filter a full TaskPlan to only the approved tasks.
+
+        Raises ValidationError if the subset has dangling dependency
+        references — this should be impossible because approve_task
+        transitively closes the dependency set, but it's cheap to check
+        and the error message points to the exact inconsistency.
+        """
+        filtered_tasks = [
+            t for t in full_plan.tasks if t.task_id in approved_task_ids
+        ]
+
+        # Validate closure: every dependency must also be in the subset
+        for task in filtered_tasks:
+            for dep_id in task.dependencies:
+                if dep_id not in approved_task_ids:
+                    raise ValidationError(
+                        f"Task {task.task_id!r} depends on {dep_id!r}, "
+                        f"which is not in the approved subset. Approve the "
+                        f"dependency first (approve_task is supposed to "
+                        f"handle this automatically)."
+                    )
+
+        return TaskPlan(
+            version=full_plan.version,
+            mission_id=full_plan.mission_id,
+            summary=full_plan.summary,
+            estimated_cost_usd=full_plan.estimated_cost_usd,
+            estimated_duration_seconds=full_plan.estimated_duration_seconds,
+            tasks=filtered_tasks,
+            execution_hints=full_plan.execution_hints,
+        )
+
     # ── Task state transitions ──────────────────────────────────────────
 
     async def approve_task(

@@ -130,6 +130,40 @@ class MissionPlanResponse(BaseModel):
 # ── Task-level transitions ───────────────────────────────────────────────
 
 
+class DispatchApprovedResponse(BaseModel):
+    """Result of POST /missions/:id/plan/dispatch (Plan 42 §10.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome_status: str = Field(
+        ...,
+        description="Dispatch result: success | partial | failed",
+    )
+    execution_record_id: str | None = Field(
+        None,
+        description="ExecutionRecord row for this run (Plan 15). None on failure.",
+    )
+    dispatched_task_ids: list[str] = Field(
+        default_factory=list,
+        description="task_ids included in the derived subset TaskPlan",
+    )
+    updated_task_ids: list[str] = Field(
+        default_factory=list,
+        description="task_ids whose plan_task_state was written back post-run",
+    )
+    total_cost_usd: float = Field(
+        ...,
+        description="Cost of this individual run",
+    )
+    new_total_spent_usd: float = Field(
+        ...,
+        description=(
+            "Cumulative total across all runs dispatched from this plan, "
+            "including this one"
+        ),
+    )
+
+
 class TaskTransitionResponse(BaseModel):
     """Result of an approve / reject / retry call.
 
