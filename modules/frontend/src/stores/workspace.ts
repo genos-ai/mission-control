@@ -4,7 +4,7 @@ import { create } from 'zustand'
 // Types
 // ---------------------------------------------------------------------------
 
-export type FeedMode = 'plan' | 'narrative' | 'stream'
+export type FeedMode = 'chat' | 'plan' | 'narrative' | 'stream' | 'context' | 'runs'
 
 export type PlanTaskStatus =
   | 'pending'    // in plan, not yet dispatched
@@ -49,6 +49,19 @@ export interface StreamingArtifact {
   content: string
 }
 
+/**
+ * Transient per-task runtime overlay, populated from `plan.step.*` SSE
+ * events during an active run. Plan 42 §10.9: the Plan tab joins the
+ * authoritative plan_task_states (from GET /plan) with this overlay so
+ * users see in-flight status changes without waiting for a refetch.
+ *
+ * Keyed by TaskPlan task_id (string).
+ */
+export interface LiveTaskOverlayEntry {
+  status: 'running' | 'completed' | 'failed'
+  updatedAt: string
+}
+
 // Task agents excluded from streaming artifact display
 const SYSTEM_AGENTS = new Set(['system.planning.agent', 'mission.director.agent'])
 
@@ -70,10 +83,16 @@ interface WorkspaceState {
   artifacts: ArtifactEntry[]
   streamingArtifact: StreamingArtifact | null
 
+  // Live per-task runtime overlay (Plan 42 §10.9). Populated from
+  // plan.step.* SSE events, joined with plan_task_states on the client
+  // to render in-flight status without waiting for a refetch.
+  liveTaskOverlay: Record<string, LiveTaskOverlayEntry>
+
   // Actions
   setFeedMode: (m: FeedMode) => void
   onSseEvent: (eventType: string, data: Record<string, unknown>) => void
   reorderPlannedTasks: (fromIndex: number, toIndex: number) => void
+  clearLiveTaskOverlay: () => void
   reset: () => void
 }
 
@@ -105,12 +124,13 @@ function parseTasksFromPlan(data: Record<string, unknown>): PlanTask[] {
 // ---------------------------------------------------------------------------
 
 const INITIAL = {
-  feedMode: 'plan' as FeedMode,
+  feedMode: 'chat' as FeedMode,
   planTasks: [] as PlanTask[],
   planningPhase: 'idle' as WorkspaceState['planningPhase'],
   agentStatuses: {} as Record<string, AgentStatusEntry>,
   artifacts: [] as ArtifactEntry[],
   streamingArtifact: null as StreamingArtifact | null,
+  liveTaskOverlay: {} as Record<string, LiveTaskOverlayEntry>,
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +141,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   ...INITIAL,
 
   setFeedMode: (m) => set({ feedMode: m }),
+
+  clearLiveTaskOverlay: () => set({ liveTaskOverlay: {} }),
 
   reorderPlannedTasks: (fromIndex, toIndex) =>
     set((s) => {
@@ -159,10 +181,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     // ── Task card state machine ────────────────────────────────────────
     else if (eventType === 'plan.step.started') {
       const stepId = String(data.step_id ?? '')
+      const nowIso = new Date().toISOString()
       set((s) => ({
         planTasks: s.planTasks.map((t) =>
           t.taskId === stepId ? { ...t, status: 'running', currentTool: null } : t,
         ),
+        liveTaskOverlay: {
+          ...s.liveTaskOverlay,
+          [stepId]: { status: 'running', updatedAt: nowIso },
+        },
       }))
     }
 
@@ -190,12 +217,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     else if (eventType === 'plan.step.completed') {
       const stepId = String(data.step_id ?? '')
       const status = String(data.status ?? 'success')
+      const overlayStatus: LiveTaskOverlayEntry['status'] =
+        status === 'success' ? 'completed' : 'failed'
+      const nowIso = new Date().toISOString()
       set((s) => ({
         planTasks: s.planTasks.map((t) =>
           t.taskId === stepId
             ? { ...t, status: status === 'success' ? 'verifying' : 'failed', currentTool: null }
             : t,
         ),
+        liveTaskOverlay: {
+          ...s.liveTaskOverlay,
+          [stepId]: { status: overlayStatus, updatedAt: nowIso },
+        },
       }))
     }
 
