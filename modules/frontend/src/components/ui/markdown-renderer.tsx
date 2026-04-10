@@ -17,7 +17,10 @@ export function MarkdownRenderer({
   onCitationClick,
 }: MarkdownRendererProps) {
   return (
-    <div className={cn('text-xs leading-relaxed', className)}>
+    // Size is controlled entirely by the caller via `className`. The
+    // renderer itself only sets line-height so text/markdown inside a
+    // given container always matches the surrounding UI font size.
+    <div className={cn('leading-relaxed', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
@@ -60,19 +63,19 @@ export function MarkdownRenderer({
             const isBlock = cls?.includes('language-')
             if (isBlock) return <code className={cls}>{children}</code>
             return (
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-primary">
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em] text-primary">
                 {children}
               </code>
             )
           },
           pre: ({ children }) => (
-            <pre className="my-2 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 text-xs">
+            <pre className="my-2 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-[0.9em]">
               {children}
             </pre>
           ),
           table: ({ children }) => (
             <div className="my-2 overflow-x-auto">
-              <table className="w-full text-sm border-collapse">{children}</table>
+              <table className="w-full border-collapse">{children}</table>
             </div>
           ),
           th: ({ children }) => (

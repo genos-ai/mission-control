@@ -8,8 +8,19 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['JetBrains Mono', 'Menlo', 'Monaco', 'ui-monospace', 'monospace'],
-        mono: ['JetBrains Mono', 'Menlo', 'Monaco', 'ui-monospace', 'monospace'],
+        // UI font (used by default + `font-sans`): system stack, same as
+        // Cursor / VSCode / GitHub. Proportional, familiar, compact.
+        sans: [
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          '"Helvetica Neue"',
+          'Arial',
+          'system-ui',
+          'sans-serif',
+        ],
+        // Code / token font (used by `font-mono` + `<code>`/`<pre>`).
+        mono: ['Menlo', 'Monaco', '"Courier New"', 'ui-monospace', 'monospace'],
       },
       colors: {
         border: 'hsl(var(--border))',

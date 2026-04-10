@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import App from './App'
 import { ErrorBoundary, installGlobalErrorReporter } from '@/components/error-boundary'
+import '@fontsource/geist/400.css'
+import '@fontsource/geist/500.css'
+import '@fontsource/geist/600.css'
 import './index.css'
 
 installGlobalErrorReporter()
