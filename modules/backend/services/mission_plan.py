@@ -148,6 +148,175 @@ class MissionPlanService(BaseService):
         )
         return plan
 
+    # ── Refinement (Planning Agent delegation) ──────────────────────────
+
+    async def refine(
+        self,
+        mission_plan_id: str,
+        instructions: str,
+        user_id: str,
+        *,
+        mission_budget_usd: float = 10.0,
+    ) -> MissionPlan:
+        """Refine the plan by delegating to the Planning Agent.
+
+        Plan 42 §10.4: the Director never authors tasks directly — when a
+        user describes changes in chat, the Director calls this method
+        (via a tool) which invokes the Planning Agent in refinement mode.
+        The agent receives the current TaskPlan + the user's instructions
+        and returns a new TaskPlan that preserves task_ids where possible.
+
+        Task state reconciliation (Plan 42 §10.3 + §10.4):
+          - Tasks whose task_id survived refinement keep their state row
+            unchanged (approvals, execution links, retry counts).
+          - Tasks whose task_id no longer exists in the new plan have
+            their non-terminal state rows marked CANCELLED; terminal
+            rows (completed / failed / skipped) are preserved so the
+            audit trail survives.
+          - New task_ids get fresh `proposed` state rows.
+
+        Version is bumped on every successful refinement.
+
+        Args:
+            mission_plan_id: The plan to refine.
+            instructions: Natural-language refinement request from the user.
+            user_id: The user (via the Director) requesting the refinement.
+                Currently used for audit logging only.
+            mission_budget_usd: Budget to validate the new plan against.
+                Defaults to 10.0 — callers that have a per-plan budget
+                ceiling should pass it in explicitly.
+
+        Returns:
+            The refreshed MissionPlan with the new task_plan_json and
+            bumped version. Task states are updated in-place in the same
+            transaction.
+
+        Raises:
+            NotFoundError: If the plan does not exist.
+            ValidationError: If the Planning Agent returns an invalid
+                TaskPlan (fails plan_validator's 11 rules).
+        """
+        from modules.backend.agents.mission_control.helpers.agent_executor import (
+            _call_planning_agent,
+        )
+        from modules.backend.agents.mission_control.plan_validator import validate_plan
+        from modules.backend.agents.mission_control.roster import (
+            derive_roster_from_team,
+        )
+        from modules.backend.repositories.mission import MissionRepository
+
+        plan = await self._repo.get_by_id(mission_plan_id)
+
+        # Load mission + brief + roster — same inputs handle_mission uses
+        mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
+        roster = await derive_roster_from_team(plan.mission_id, self._session)
+
+        # The "mission brief" for refinement is the mission's own brief; the
+        # refinement instructions are layered on top inside the prompt.
+        brief = mission.brief or mission.description or mission.name
+
+        self._log_operation(
+            "MissionPlan refinement requested",
+            plan_id=mission_plan_id,
+            user_id=user_id,
+            instructions_preview=instructions[:200],
+            has_current_plan=plan.task_plan_json is not None,
+        )
+
+        planning_result = await _call_planning_agent(
+            prompt=brief,
+            roster=roster,
+            upstream_context=None,
+            mission_id=plan.mission_id,
+            current_plan=plan.task_plan_json,
+            refinement_instructions=instructions,
+        )
+
+        try:
+            new_plan = TaskPlan.model_validate(planning_result["task_plan"])
+        except Exception as e:
+            raise ValidationError(
+                f"Planning Agent returned an invalid TaskPlan: {e}"
+            ) from e
+
+        budget = plan.budget_usd_ceiling or mission_budget_usd
+        validation = validate_plan(new_plan, roster, budget)
+        if not validation.is_valid:
+            raise ValidationError(
+                "Refined TaskPlan failed validation: "
+                + "; ".join(validation.errors)
+            )
+
+        # Reconcile task states
+        await self._reconcile_task_states(plan, new_plan)
+
+        # Replace the plan body and bump version
+        plan.task_plan_json = new_plan.model_dump()
+        plan.version += 1
+
+        await self._session.flush()
+
+        self._log_operation(
+            "MissionPlan refined",
+            plan_id=mission_plan_id,
+            new_version=plan.version,
+            new_task_count=len(new_plan.tasks),
+        )
+
+        # Refetch with task_states relationship loaded
+        return await self._repo.get_by_mission_id_required(plan.mission_id)
+
+    async def _reconcile_task_states(
+        self,
+        plan: MissionPlan,
+        new_plan: TaskPlan,
+    ) -> None:
+        """Reconcile plan_task_states rows against a new TaskPlan body.
+
+        - Existing task_ids that survived: state row left as-is.
+        - Existing task_ids that disappeared:
+            * Non-terminal rows -> status = CANCELLED (soft delete)
+            * Terminal rows (completed / skipped / cancelled) -> unchanged
+              so the audit trail survives. Failed rows are also left as-is
+              so the user can still see what went wrong in a prior run.
+        - New task_ids: fresh PROPOSED state row.
+        """
+        new_task_ids: set[str] = {t.task_id for t in new_plan.tasks}
+        existing_states = await self._repo.get_task_states(plan.id)
+        existing_by_id = {s.task_id: s for s in existing_states}
+
+        cancelled_count = 0
+        new_count = 0
+
+        # Cancel non-terminal rows whose task disappeared
+        for state in existing_states:
+            if state.task_id in new_task_ids:
+                continue  # survived
+            status_enum = PlanTaskStatus(state.status)
+            if status_enum in TERMINAL_PLAN_TASK_STATUSES:
+                continue  # already terminal, leave as-is
+            if status_enum == PlanTaskStatus.FAILED:
+                continue  # preserve failed rows for audit
+            state.status = PlanTaskStatus.CANCELLED.value
+            cancelled_count += 1
+
+        # Create fresh PROPOSED rows for new task_ids
+        for new_task in new_plan.tasks:
+            if new_task.task_id in existing_by_id:
+                continue
+            await self._repo.create_task_state(plan.id, new_task.task_id)
+            new_count += 1
+
+        await self._session.flush()
+
+        self._log_debug(
+            "Task states reconciled",
+            plan_id=plan.id,
+            cancelled_count=cancelled_count,
+            new_count=new_count,
+            total_after=len(new_task_ids),
+        )
+
     # ── Task state transitions ──────────────────────────────────────────
 
     async def approve_task(

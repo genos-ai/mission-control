@@ -83,13 +83,47 @@ def _build_planning_prompt(
     code_map: dict | None = None,
     project_context: dict | None = None,
     recent_failures: list | None = None,
+    current_plan: dict | None = None,
+    refinement_instructions: str | None = None,
 ) -> str:
-    """Assemble the full prompt for the Planning Agent."""
+    """Assemble the full prompt for the Planning Agent.
+
+    When `current_plan` and `refinement_instructions` are both provided,
+    the prompt switches to refinement mode: the agent is told to produce
+    a new TaskPlan that incorporates the user's changes while preserving
+    task_id strings for semantically-unchanged tasks. This is Plan 42's
+    refinement path (§10.4) — the Director delegates here via a tool
+    call rather than authoring plans directly.
+    """
+    is_refinement = current_plan is not None and refinement_instructions
+
     parts = [
         f"## Mission Brief\n\n{mission_brief}\n",
         f"## Mission ID\n\n{mission_id}\n",
         roster_description,
     ]
+
+    if is_refinement:
+        parts.append(
+            "## Mode: REFINEMENT\n\n"
+            "You are refining an **existing TaskPlan**, not creating one from\n"
+            "scratch. The user has asked for specific changes. Produce a new\n"
+            "TaskPlan that incorporates the user's instructions while keeping\n"
+            "unrelated parts of the existing plan intact.\n\n"
+            "**Task ID preservation rules:**\n"
+            "- If a task's semantics are unchanged (same objective, same agent,\n"
+            "  same general approach), **reuse its existing `task_id` string**.\n"
+            "  This lets the user's approvals and run history survive refinement.\n"
+            "- If a task is genuinely new, generate a fresh `task_id`.\n"
+            "- Tasks that should be removed simply do not appear in the output.\n"
+            "- Dependencies that point at removed tasks must be updated or dropped.\n\n"
+            "### Current TaskPlan\n\n"
+            "```json\n"
+            f"{json.dumps(current_plan, indent=2)}\n"
+            "```\n\n"
+            "### User's Refinement Instructions\n\n"
+            f"{refinement_instructions}\n"
+        )
 
     if project_context:
         parts.append(

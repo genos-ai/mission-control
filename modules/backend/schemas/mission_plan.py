@@ -21,6 +21,28 @@ from modules.backend.models.mission_plan import (
 # ── Plan-level ───────────────────────────────────────────────────────────
 
 
+class MissionPlanRefineRequest(BaseModel):
+    """POST /missions/:id/plan/refine body.
+
+    The Director (or user) provides natural-language instructions that the
+    Planning Agent uses to revise the current TaskPlan. Plan 42 §10.4.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    instructions: str = Field(
+        ...,
+        min_length=1,
+        max_length=4000,
+        description=(
+            "Natural-language refinement instructions. The Planning Agent "
+            "receives these alongside the current TaskPlan and the mission "
+            "brief, and produces a new TaskPlan that incorporates the "
+            "requested changes while preserving task_ids where possible."
+        ),
+    )
+
+
 class MissionPlanUpdate(BaseModel):
     """Schema for PATCH /missions/:id/plan.
 

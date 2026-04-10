@@ -225,8 +225,19 @@ async def _call_planning_agent(
     upstream_context: dict | None,
     event_bus: "EventBusProtocol | None" = None,
     session_id: str | None = None,
+    *,
+    current_plan: dict | None = None,
+    refinement_instructions: str | None = None,
+    mission_id: str | None = None,
 ) -> dict:
-    """Call the Planning Agent and return the raw result."""
+    """Call the Planning Agent and return the raw result.
+
+    When `current_plan` and `refinement_instructions` are both provided,
+    the Planning Agent operates in refinement mode: it's given the
+    existing TaskPlan JSON + the user's change instructions and asked
+    to produce a new plan that preserves task_ids where possible.
+    Plan 42 §10.4 — this is the single refinement entry point.
+    """
     import uuid as _uuid
 
     from modules.backend.agents.deps.base import FileScope
@@ -251,10 +262,12 @@ async def _call_planning_agent(
     roster_desc = _build_roster_prompt(roster)
     planning_prompt = _build_planning_prompt(
         mission_brief=prompt,
-        mission_id="pending",
+        mission_id=mission_id or "pending",
         roster_description=roster_desc,
         upstream_context=upstream_context,
         code_map=code_map,
+        current_plan=current_plan,
+        refinement_instructions=refinement_instructions,
     )
 
     deps = PlanningAgentDeps(

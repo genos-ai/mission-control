@@ -20,6 +20,7 @@ from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.models.mission_plan import MissionPlanStatus, PlanTaskStatus
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_plan import (
+    MissionPlanRefineRequest,
     MissionPlanResponse,
     MissionPlanUpdate,
     PlanTaskStateResponse,
@@ -124,6 +125,53 @@ async def update_plan(
     # Refetch to include updated task_states relationship
     plan = await service.get_or_create_plan(mission_id)
     response = MissionPlanResponse.model_validate(plan)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+# ── Refinement ───────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{mission_id}/plan/refine",
+    response_model=ApiResponse,
+    summary="Refine the mission plan via the Planning Agent",
+)
+async def refine_plan(
+    mission_id: str,
+    data: MissionPlanRefineRequest,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Refine the mission's plan using the Planning Agent.
+
+    Delegates to MissionPlanService.refine, which invokes the Planning
+    Agent in refinement mode with the current TaskPlan + the user's
+    instructions. The agent returns a new TaskPlan; task states are
+    reconciled in place (surviving task_ids keep their state, missing
+    ones are cancelled, new ones start as proposed), and the plan's
+    version counter is bumped.
+
+    This is the single authoring entry point. The Director calls this
+    via a tool when the user describes changes in chat — Plan 36
+    compatibility: the Director delegates to existing code rather than
+    hand-editing tasks.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db)
+    plan = await service.get_or_create_plan(mission_id)
+    refined = await service.refine(
+        plan.id,
+        data.instructions,
+        user_id=current_user.id,
+    )
+
+    response = MissionPlanResponse.model_validate(refined)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
