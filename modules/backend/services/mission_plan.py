@@ -14,11 +14,22 @@ rejecting a task cancels all transitive dependents.
 
 from collections import defaultdict, deque
 from datetime import datetime
+import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.agents.mission_control.models import (
+    EventBusProtocol,
+    NoOpEventBus,
+)
 from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.core.utils import utc_now
+from modules.backend.events.types import (
+    MissionPlanDispatchedEvent,
+    MissionPlanGateModeChangedEvent,
+    MissionPlanRefinedEvent,
+    MissionPlanTaskStatusChangedEvent,
+)
 from modules.backend.models.mission_plan import (
     VALID_GATE_MODES,
     MissionPlan,
@@ -62,10 +73,60 @@ class MissionPlanService(BaseService):
         - `dispatch_approved()` — handle_mission integration
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        event_bus: EventBusProtocol | None = None,
+    ) -> None:
         super().__init__(session)
         self._repo = MissionPlanRepository(session)
         self._mission_repo = MissionRepository(session)
+        self._event_bus: EventBusProtocol = event_bus or NoOpEventBus()
+
+    # ── Event emission helpers ──────────────────────────────────────────
+
+    async def _emit(self, mission_id: str, event) -> None:
+        """Publish a mission_plan.* event, swallowing failures.
+
+        Event emission is best-effort — a Redis blip should never fail a
+        plan mutation. We log the failure for observability and continue.
+        """
+        try:
+            await self._event_bus.publish_to_mission(mission_id, event)
+        except Exception as e:  # noqa: BLE001
+            self._logger.warning(
+                "Failed to publish mission_plan event",
+                extra={
+                    "event_type": event.event_type,
+                    "mission_id": mission_id,
+                    "error": str(e),
+                },
+            )
+
+    async def _emit_task_transitions(
+        self,
+        mission_id: str,
+        plan_id: str,
+        transitions: list[tuple[str, str]],
+        to_status: str,
+        *,
+        actor: str,
+    ) -> None:
+        """Fan out one task.status_changed event per transitioned row."""
+        for task_id, from_status in transitions:
+            await self._emit(
+                mission_id,
+                MissionPlanTaskStatusChangedEvent(
+                    session_id=uuid.uuid4(),
+                    source="mission_plan_service",
+                    mission_id=mission_id,
+                    plan_id=plan_id,
+                    task_id=task_id,
+                    from_status=from_status,
+                    to_status=to_status,
+                    actor=actor,
+                ),
+            )
 
     # ── Read ─────────────────────────────────────────────────────────────
 
@@ -123,12 +184,24 @@ class MissionPlanService(BaseService):
                 f"Must be one of: {sorted(VALID_GATE_MODES)}"
             )
         plan = await self._repo.get_by_id(mission_plan_id)
+        previous_mode = plan.gate_mode
         plan.gate_mode = gate_mode
         await self._session.flush()
         self._log_operation(
             "MissionPlan gate_mode changed",
             plan_id=mission_plan_id,
             gate_mode=gate_mode,
+        )
+        await self._emit(
+            plan.mission_id,
+            MissionPlanGateModeChangedEvent(
+                session_id=uuid.uuid4(),
+                source="mission_plan_service",
+                mission_id=plan.mission_id,
+                plan_id=plan.id,
+                from_mode=previous_mode,
+                to_mode=gate_mode,
+            ),
         )
         return plan
 
@@ -248,7 +321,7 @@ class MissionPlanService(BaseService):
             )
 
         # Reconcile task states
-        await self._reconcile_task_states(plan, new_plan)
+        reconcile_stats = await self._reconcile_task_states(plan, new_plan)
 
         # Replace the plan body and bump version
         plan.task_plan_json = new_plan.model_dump()
@@ -263,6 +336,20 @@ class MissionPlanService(BaseService):
             new_task_count=len(new_plan.tasks),
         )
 
+        await self._emit(
+            plan.mission_id,
+            MissionPlanRefinedEvent(
+                session_id=uuid.uuid4(),
+                source="mission_plan_service",
+                mission_id=plan.mission_id,
+                plan_id=plan.id,
+                version=plan.version,
+                task_count=len(new_plan.tasks),
+                cancelled_count=reconcile_stats["cancelled"],
+                new_count=reconcile_stats["new"],
+            ),
+        )
+
         # Refetch with task_states relationship loaded
         return await self._repo.get_by_mission_id_required(plan.mission_id)
 
@@ -270,16 +357,21 @@ class MissionPlanService(BaseService):
         self,
         plan: MissionPlan,
         new_plan: TaskPlan,
-    ) -> None:
+    ) -> dict[str, int]:
         """Reconcile plan_task_states rows against a new TaskPlan body.
 
-        - Existing task_ids that survived: state row left as-is.
-        - Existing task_ids that disappeared:
-            * Non-terminal rows -> status = CANCELLED (soft delete)
-            * Terminal rows (completed / skipped / cancelled) -> unchanged
-              so the audit trail survives. Failed rows are also left as-is
-              so the user can still see what went wrong in a prior run.
-        - New task_ids: fresh PROPOSED state row.
+        Returns a stats dict: {"cancelled": N, "new": M}. The caller uses
+        these to populate MissionPlanRefinedEvent so subscribers know
+        how many rows actually changed during reconciliation.
+
+        Behaviour:
+          - Existing task_ids that survived: state row left as-is.
+          - Existing task_ids that disappeared:
+              * Non-terminal rows -> status = CANCELLED (soft delete)
+              * Terminal rows (completed / skipped / cancelled) -> unchanged
+                so the audit trail survives. Failed rows are also left as-is
+                so the user can still see what went wrong in a prior run.
+          - New task_ids: fresh PROPOSED state row.
         """
         new_task_ids: set[str] = {t.task_id for t in new_plan.tasks}
         existing_states = await self._repo.get_task_states(plan.id)
@@ -316,6 +408,7 @@ class MissionPlanService(BaseService):
             new_count=new_count,
             total_after=len(new_task_ids),
         )
+        return {"cancelled": cancelled_count, "new": new_count}
 
     # ── Dispatch (Phase 1.6) ────────────────────────────────────────────
 
@@ -454,6 +547,18 @@ class MissionPlanService(BaseService):
             execution_record_id=outcome.execution_record_id,
             run_cost_usd=outcome.total_cost_usd,
             total_spent_usd=plan.total_spent_usd,
+        )
+
+        await self._emit(
+            plan.mission_id,
+            MissionPlanDispatchedEvent(
+                session_id=uuid.uuid4(),
+                source="mission_plan_service",
+                mission_id=plan.mission_id,
+                plan_id=plan.id,
+                execution_record_id=outcome.execution_record_id,
+                dispatched_task_ids=sorted(approved_task_ids),
+            ),
         )
 
         return {
@@ -610,6 +715,7 @@ class MissionPlanService(BaseService):
         required_ids.append(task_id)
 
         transitioned: list[PlanTaskState] = []
+        transition_pairs: list[tuple[str, str]] = []  # (task_id, previous_status)
         now = utc_now()
 
         for tid in required_ids:
@@ -619,10 +725,12 @@ class MissionPlanService(BaseService):
             if state.status not in _APPROVABLE_FROM:
                 # Already approved / running / done — skip silently.
                 continue
+            previous = state.status
             state.status = PlanTaskStatus.APPROVED.value
             state.approved_by_user_id = user_id
             state.approved_at = now
             transitioned.append(state)
+            transition_pairs.append((state.task_id, previous))
 
         await self._session.flush()
         self._log_operation(
@@ -631,6 +739,12 @@ class MissionPlanService(BaseService):
             target_task_id=task_id,
             transitioned_count=len(transitioned),
             transitioned_task_ids=[s.task_id for s in transitioned],
+        )
+        await self._emit_task_transitions(
+            plan.mission_id, plan.id,
+            transition_pairs,
+            PlanTaskStatus.APPROVED.value,
+            actor=f"user:{user_id}",
         )
         return transitioned
 
@@ -659,6 +773,7 @@ class MissionPlanService(BaseService):
         )
 
         transitioned: list[PlanTaskState] = []
+        transition_pairs: list[tuple[str, str]] = []
 
         for tid in affected_ids:
             state = await self._repo.get_task_state(mission_plan_id, tid)
@@ -669,8 +784,10 @@ class MissionPlanService(BaseService):
                 # Failed tasks need an explicit retry to re-approve; we
                 # don't cancel them as a side effect of rejecting a peer.
                 continue
+            previous = state.status
             state.status = PlanTaskStatus.CANCELLED.value
             transitioned.append(state)
+            transition_pairs.append((state.task_id, previous))
 
         await self._session.flush()
         self._log_operation(
@@ -679,6 +796,12 @@ class MissionPlanService(BaseService):
             target_task_id=task_id,
             user_id=user_id,
             transitioned_count=len(transitioned),
+        )
+        await self._emit_task_transitions(
+            plan.mission_id, plan.id,
+            transition_pairs,
+            PlanTaskStatus.CANCELLED.value,
+            actor=f"user:{user_id}",
         )
         return transitioned
 
@@ -703,6 +826,7 @@ class MissionPlanService(BaseService):
                 f"Cannot retry task in state {state.status!r}. "
                 f"Only failed tasks can be retried."
             )
+        plan = await self._repo.get_by_id(mission_plan_id)
         state.status = PlanTaskStatus.APPROVED.value
         state.approved_by_user_id = user_id
         state.approved_at = utc_now()
@@ -714,6 +838,12 @@ class MissionPlanService(BaseService):
             plan_id=mission_plan_id,
             task_id=task_id,
             retry_count=state.retry_count,
+        )
+        await self._emit_task_transitions(
+            plan.mission_id, plan.id,
+            [(state.task_id, PlanTaskStatus.FAILED.value)],
+            PlanTaskStatus.APPROVED.value,
+            actor=f"user:{user_id}",
         )
         return state
 

@@ -362,6 +362,79 @@ class MissionArtifactFoundEvent(SessionEvent):
 
 
 # =============================================================================
+# Mission Plan Events (Plan 42 §3.5)
+# =============================================================================
+#
+# These events sit at the "persistent plan" semantic level, distinct from
+# the existing `plan.*` events (which are run-scoped, emitted by the
+# dispatch loop). Consumers of `mission_plan.*` should refetch the plan
+# via GET /missions/{id}/plan on receipt; the events are invalidation
+# signals, not deltas.
+
+
+class MissionPlanRefinedEvent(SessionEvent):
+    """The mission plan was refined via the Planning Agent.
+
+    Emitted after `MissionPlanService.refine` successfully replaces
+    `task_plan_json` and bumps `version`. Frontend subscribes and
+    invalidates its cached plan so the Plan tab reflects the change
+    immediately.
+    """
+
+    event_type: str = "mission_plan.refined"
+    mission_id: str
+    plan_id: str
+    version: int
+    task_count: int
+    cancelled_count: int = 0  # Task states cancelled by reconciliation
+    new_count: int = 0         # New task states created
+
+
+class MissionPlanTaskStatusChangedEvent(SessionEvent):
+    """A plan task transitioned to a new status.
+
+    Emitted on approve / reject / retry / queued / run completion. One
+    event per state transition (the backend may emit multiple for a
+    single action — e.g. approving a task with 2 transitive deps yields
+    3 events, one per affected task_id).
+    """
+
+    event_type: str = "mission_plan.task.status_changed"
+    mission_id: str
+    plan_id: str
+    task_id: str
+    from_status: str
+    to_status: str
+    actor: str = ""  # "user:<id>" | "agent:<name>" | "system"
+
+
+class MissionPlanGateModeChangedEvent(SessionEvent):
+    """The plan's autonomy mode was changed."""
+
+    event_type: str = "mission_plan.gate_mode_changed"
+    mission_id: str
+    plan_id: str
+    from_mode: str | None = None
+    to_mode: str | None = None
+
+
+class MissionPlanDispatchedEvent(SessionEvent):
+    """The plan dispatched a run of approved tasks.
+
+    Emitted by `MissionPlanService.dispatch_approved` when it starts
+    handing the derived TaskPlan to `handle_mission`. A matching
+    `system.execution.completed` arrives when the run finishes; the
+    plan tab joins the two via `execution_record_id`.
+    """
+
+    event_type: str = "mission_plan.dispatched"
+    mission_id: str
+    plan_id: str
+    execution_record_id: str | None = None
+    dispatched_task_ids: list[str] = Field(default_factory=list)
+
+
+# =============================================================================
 # System / Mission-level Events
 # =============================================================================
 
@@ -425,6 +498,10 @@ class SystemSessionCreatedEvent(SessionEvent):
 EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "mission.narrative": MissionNarrativeEvent,
     "mission.artifact.found": MissionArtifactFoundEvent,
+    "mission_plan.refined": MissionPlanRefinedEvent,
+    "mission_plan.task.status_changed": MissionPlanTaskStatusChangedEvent,
+    "mission_plan.gate_mode_changed": MissionPlanGateModeChangedEvent,
+    "mission_plan.dispatched": MissionPlanDispatchedEvent,
     "user.message.sent": UserMessageEvent,
     "user.approval.granted": UserApprovalEvent,
     "agent.thinking.started": AgentThinkingEvent,

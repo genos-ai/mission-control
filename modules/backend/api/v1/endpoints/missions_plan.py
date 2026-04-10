@@ -13,9 +13,21 @@ Phase 1.0: CRUD + state transitions only. Refinement and dispatch arrive
 in Phase 1.5 and 1.6 respectively.
 """
 
-from fastapi import APIRouter
+from typing import Annotated
 
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from fastapi import APIRouter, Depends
+
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    get_event_bus,
+)
+from modules.backend.events.bus import SessionEventBus
+
+# Plan 42 §3.5: every mutating endpoint gets an event bus so
+# MissionPlanService can publish mission_plan.* events.
+EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.models.mission_plan import MissionPlanStatus, PlanTaskStatus
 from modules.backend.schemas.base import ApiResponse
@@ -76,6 +88,7 @@ async def get_plan(
     """
     await _require_mission_access(db, mission_id, current_user)
 
+    # Read-only — no event bus needed
     service = MissionPlanService(db)
     plan = await service.get_or_create_plan(mission_id)
 
@@ -98,6 +111,7 @@ async def update_plan(
     db: DbSession,
     request_id: RequestId,
     current_user: CurrentUser,
+    event_bus: EventBus,
 ) -> ApiResponse:
     """Update gate_mode, status, budget, or veto window.
 
@@ -107,7 +121,7 @@ async def update_plan(
     """
     await _require_mission_access(db, mission_id, current_user)
 
-    service = MissionPlanService(db)
+    service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
 
     if data.gate_mode is not None:
@@ -147,6 +161,7 @@ async def refine_plan(
     db: DbSession,
     request_id: RequestId,
     current_user: CurrentUser,
+    event_bus: EventBus,
 ) -> ApiResponse:
     """Refine the mission's plan using the Planning Agent.
 
@@ -164,7 +179,7 @@ async def refine_plan(
     """
     await _require_mission_access(db, mission_id, current_user)
 
-    service = MissionPlanService(db)
+    service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     refined = await service.refine(
         plan.id,
@@ -193,6 +208,7 @@ async def dispatch_approved(
     db: DbSession,
     request_id: RequestId,
     current_user: CurrentUser,
+    event_bus: EventBus,
 ) -> ApiResponse:
     """Start a run of every currently-approved task in the plan.
 
@@ -215,7 +231,7 @@ async def dispatch_approved(
     """
     await _require_mission_access(db, mission_id, current_user)
 
-    service = MissionPlanService(db)
+    service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     result = await service.dispatch_approved(plan.id, current_user.id)
 
@@ -241,6 +257,7 @@ async def approve_task(
     db: DbSession,
     request_id: RequestId,
     current_user: CurrentUser,
+    event_bus: EventBus,
 ) -> ApiResponse:
     """Approve a task and all of its transitive dependencies.
 
@@ -251,7 +268,7 @@ async def approve_task(
     """
     await _require_mission_access(db, mission_id, current_user)
 
-    service = MissionPlanService(db)
+    service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     transitioned = await service.approve_task(plan.id, task_id, current_user.id)
 
@@ -278,6 +295,7 @@ async def reject_task(
     db: DbSession,
     request_id: RequestId,
     current_user: CurrentUser,
+    event_bus: EventBus,
 ) -> ApiResponse:
     """Reject a task and cancel all transitive dependents.
 
@@ -286,7 +304,7 @@ async def reject_task(
     """
     await _require_mission_access(db, mission_id, current_user)
 
-    service = MissionPlanService(db)
+    service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     transitioned = await service.reject_task(plan.id, task_id, current_user.id)
 
@@ -313,6 +331,7 @@ async def retry_task(
     db: DbSession,
     request_id: RequestId,
     current_user: CurrentUser,
+    event_bus: EventBus,
 ) -> ApiResponse:
     """Move a failed task back into `approved` so it can be re-dispatched.
 
@@ -322,7 +341,7 @@ async def retry_task(
     """
     await _require_mission_access(db, mission_id, current_user)
 
-    service = MissionPlanService(db)
+    service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     state = await service.retry_task(plan.id, task_id, current_user.id)
 
