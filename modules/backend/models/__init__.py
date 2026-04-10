@@ -13,6 +13,14 @@ from modules.backend.models.note import Note
 from modules.backend.models.mission import Mission, MissionMember
 from modules.backend.models.mission_context import ContextChange, ContextMilestone, MissionContext
 from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
+from modules.backend.models.mission_plan import (
+    MissionPlan,
+    MissionPlanStatus,
+    PlanTaskState,
+    PlanTaskStatus,
+    TERMINAL_PLAN_TASK_STATUSES,
+    VALID_GATE_MODES,
+)
 from modules.backend.models.prompt_version import PromptVersion
 from modules.backend.models.session import Session, SessionChannel, SessionMessage
 from modules.backend.models.workflow_definition import WorkflowDefinition
@@ -34,7 +42,13 @@ __all__ = [
     "MissionContext",
     "MissionDecision",
     "MissionMember",
+    "MissionPlan",
+    "MissionPlanStatus",
     "MissionTeamMember",
+    "PlanTaskState",
+    "PlanTaskStatus",
+    "TERMINAL_PLAN_TASK_STATUSES",
+    "VALID_GATE_MODES",
     "Note",
     "PromptVersion",
     "Session",
