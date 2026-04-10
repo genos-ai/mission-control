@@ -58,6 +58,7 @@ import { useMission, useUpdateMission } from '@/hooks/use-missions'
 import { useTeam } from '@/hooks/use-team'
 import { useMissionStream } from '@/hooks/use-sse'
 import { useSessions, useMessages, useCreateSession, sessionKeys } from '@/hooks/use-sessions'
+import { planKeys } from '@/hooks/use-mission-plan'
 import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useWorkspaceStore, type StreamingArtifact } from '@/stores/workspace'
@@ -193,6 +194,7 @@ export default function MissionWorkspace() {
     if (sseEvents.length > processedCount.current) {
       const newEvents = sseEvents.slice(processedCount.current)
       processedCount.current = sseEvents.length
+      let planInvalidated = false
       newEvents.forEach((ev) => {
         const d = ev.data as Record<string, unknown>
         // workspace store (roster, artifacts, etc.)
@@ -206,7 +208,17 @@ export default function MissionWorkspace() {
           source: String(d.agent_id ?? d.source ?? ''),
           data: d,
         })
+        // Plan 42 §3.5: mission_plan.* events are invalidation signals
+        // for the cached plan query. Coalesce to a single invalidation
+        // per batch so a burst of task.status_changed events only
+        // triggers one refetch.
+        if (ev.event_type.startsWith('mission_plan.') && id) {
+          planInvalidated = true
+        }
       })
+      if (planInvalidated && id) {
+        queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
+      }
     }
   }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
