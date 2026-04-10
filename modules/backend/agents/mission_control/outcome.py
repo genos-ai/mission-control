@@ -167,6 +167,16 @@ class ExecutionOutcome(BaseModel):
     planning_trace_reference: str | None = None
     task_plan_reference: str | None = None
     gate_decisions: list[GateDecisionRecord] = Field(default_factory=list)
+    execution_record_id: str | None = Field(
+        default=None,
+        description=(
+            "ID of the ExecutionRecord row persisted by the bridge. Set by "
+            "handle_mission after persist_mission_results returns. None on "
+            "failure or when persistence is disabled. Used by callers that "
+            "need to link back to the run record — e.g., MissionPlanService "
+            "writing plan_task_states.execution_record_id (Plan 42)."
+        ),
+    )
 
 
 def build_verification_outcome(

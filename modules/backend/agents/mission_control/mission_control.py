@@ -539,18 +539,25 @@ async def handle_mission(
     db_session: Any | None = None,
     gate: GateReviewer | None = None,
     execution_mode: str = "local",
+    precomputed_plan: TaskPlan | None = None,
 ) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
     1. Load roster
-    2. Call Planning Agent for task decomposition
+    2. Either call the Planning Agent for task decomposition OR use the
+       caller-supplied `precomputed_plan` when provided (Plan 42: MissionPlan
+       dispatch)
     3. Validate TaskPlan against all 11 rules
     4. Execute dispatch loop
     5. Return ExecutionOutcome
 
     Simple requests continue through handle() from Plan 12.
-    Complex requests (explicit mission_brief or matched workflow)
-    route here.
+    Complex requests (explicit mission_brief or matched workflow) route here.
+
+    When `precomputed_plan` is passed, the Planning Agent retry loop is
+    skipped — the caller is responsible for producing a valid TaskPlan.
+    The plan still flows through validate_plan before dispatch so the
+    same 11 rules apply.
     """
     if not mission_id or not db_session:
         raise ValueError(
@@ -625,64 +632,86 @@ async def handle_mission(
         recent_failures=recent_failures,
     )
 
-    # Call Planning Agent (with retry on validation failure)
+    # Either use the caller-supplied precomputed plan (Plan 42 dispatch path)
+    # or call the Planning Agent with a retry loop (standard path).
     plan = None
     thinking_trace = None
-    max_planning_attempts = 3
+    last_error = ""
     planning_agent_id = "system.planning.agent"
 
-    # Emit planning started event
-    await _phase("thinking", "Planning agent decomposing objective")
-    await _publish(event_bus, AgentThinkingEvent(
-        session_id=_plan_sid,
-        source="mission_control",
-        agent_id=planning_agent_id,
-    ))
-
-    last_error = ""
-    for attempt in range(max_planning_attempts):
-        try:
-            planning_result = await _call_planning_agent(
-                planning_prompt, roster, upstream_context,
-                event_bus=event_bus, session_id=session_id,
-            )
-            thinking_trace = planning_result.get("thinking_trace")
-
-            plan = TaskPlan.model_validate(planning_result["task_plan"])
-
-            validation = validate_plan(plan, roster, mission_budget_usd)
-            if validation.is_valid:
-                break
-
+    if precomputed_plan is not None:
+        # Plan 42: MissionPlanService dispatched an approved subset.
+        # The caller is responsible for producing a valid TaskPlan; we still
+        # run it through validate_plan here so roster mismatches, budget
+        # overflows, and DAG cycles are caught consistently with the
+        # Planning-Agent path.
+        await _phase("planning", "Using precomputed plan from MissionPlan")
+        plan = precomputed_plan
+        validation = validate_plan(plan, roster, mission_budget_usd)
+        if not validation.is_valid:
             last_error = "; ".join(validation.errors)
-            await _phase("error", f"Attempt {attempt + 1} failed: plan validation — {last_error}")
             logger.warning(
-                "TaskPlan validation failed, retrying Planning Agent",
+                "Precomputed plan failed validation",
                 extra={
-                    "attempt": attempt + 1,
-                    "errors": validation.errors,
                     "mission_id": mission_run_id,
+                    "errors": validation.errors,
                 },
-            )
-            planning_prompt = _append_validation_feedback(
-                planning_prompt, validation.errors,
             )
             plan = None
+    else:
+        max_planning_attempts = 3
 
-        except (ValueError, Exception) as e:
-            last_error = str(e)
-            await _phase("error", f"Attempt {attempt + 1} failed: {last_error}")
-            logger.warning(
-                "Planning Agent error, retrying",
-                extra={
-                    "attempt": attempt + 1,
-                    "error": last_error,
-                    "mission_id": mission_run_id,
-                },
-            )
-            planning_prompt = _append_validation_feedback(
-                planning_prompt, [last_error],
-            )
+        # Emit planning started event
+        await _phase("thinking", "Planning agent decomposing objective")
+        await _publish(event_bus, AgentThinkingEvent(
+            session_id=_plan_sid,
+            source="mission_control",
+            agent_id=planning_agent_id,
+        ))
+
+        for attempt in range(max_planning_attempts):
+            try:
+                planning_result = await _call_planning_agent(
+                    planning_prompt, roster, upstream_context,
+                    event_bus=event_bus, session_id=session_id,
+                )
+                thinking_trace = planning_result.get("thinking_trace")
+
+                plan = TaskPlan.model_validate(planning_result["task_plan"])
+
+                validation = validate_plan(plan, roster, mission_budget_usd)
+                if validation.is_valid:
+                    break
+
+                last_error = "; ".join(validation.errors)
+                await _phase("error", f"Attempt {attempt + 1} failed: plan validation — {last_error}")
+                logger.warning(
+                    "TaskPlan validation failed, retrying Planning Agent",
+                    extra={
+                        "attempt": attempt + 1,
+                        "errors": validation.errors,
+                        "mission_id": mission_run_id,
+                    },
+                )
+                planning_prompt = _append_validation_feedback(
+                    planning_prompt, validation.errors,
+                )
+                plan = None
+
+            except (ValueError, Exception) as e:
+                last_error = str(e)
+                await _phase("error", f"Attempt {attempt + 1} failed: {last_error}")
+                logger.warning(
+                    "Planning Agent error, retrying",
+                    extra={
+                        "attempt": attempt + 1,
+                        "error": last_error,
+                        "mission_id": mission_run_id,
+                    },
+                )
+                planning_prompt = _append_validation_feedback(
+                    planning_prompt, [last_error],
+                )
 
     # Emit planning complete event
     _sid = uuid.UUID(session_id) if session_id else uuid.uuid4()
@@ -780,9 +809,11 @@ async def handle_mission(
 
     outcome.summary = await summarize_outcome(outcome)
 
-    # Best-effort persistence — does not block or fail the mission
+    # Best-effort persistence — does not block or fail the mission.
+    # The returned id (if any) is attached to the outcome so callers like
+    # MissionPlanService (Plan 42) can link plan_task_states.execution_record_id.
     if db_session is not None:
-        await persist_mission_results(
+        record_id = await persist_mission_results(
             outcome,
             session_id=session_id or mission_run_id,
             roster_name=roster_name,
@@ -791,5 +822,6 @@ async def handle_mission(
             mission_id=mission_id,
             db_session=db_session,
         )
+        outcome.execution_record_id = record_id
 
     return outcome

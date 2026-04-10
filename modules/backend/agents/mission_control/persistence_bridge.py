@@ -31,8 +31,14 @@ async def persist_mission_results(
     thinking_trace: str | None = None,
     mission_id: str | None = None,
     db_session: AsyncSession,
-) -> None:
-    """Persist execution results. Best-effort — does not raise."""
+) -> str | None:
+    """Persist execution results. Best-effort — does not raise.
+
+    Returns the inserted ExecutionRecord id on success, or None if persistence
+    failed (best-effort semantics preserved). Callers that need to link back
+    to the run record (Plan 42: MissionPlanService) read this value; callers
+    that don't care simply ignore the return.
+    """
     try:
         service = ExecutionPersistenceService(db_session)
 
@@ -123,9 +129,11 @@ async def persist_mission_results(
                 "task_count": len(outcome.task_results),
             },
         )
+        return record.id
 
     except (OSError, ValueError, RuntimeError) as e:
         logger.error(
             "Failed to persist execution results",
             extra={"session_id": session_id, "error": str(e)},
         )
+        return None
