@@ -1,6 +1,6 @@
 # Code Map — mission-control
 
-**343 files** | **54,514 lines** | **501 classes** | **733 functions** | commit `89763b89f16f`
+**360 files** | **57,348 lines** | **516 classes** | **752 functions** | commit `b38172f4f83d`
 
 Symbols ranked by PageRank (most-connected first).
 
@@ -8,10 +8,11 @@ Symbols ranked by PageRank (most-connected first).
 
   clients.tui.app -> backend.core.logging, clients.tui.messages, clients.tui.screens.admin, clients.tui.screens.catalog, clients.tui.screens.dashboard, clients.tui.screens.profile, clients.tui.screens.workspace, clients.tui.screens.mission_picker, clients.tui.screens.mission_history, clients.tui.services.event_listener, clients.tui.services.service_bridge, clients.tui.services.state, backend.agents.mission_control.dispatch, backend.agents.mission_control.outcome, backend.schemas.task_plan, clients.tui.widgets.agent_detail, clients.tui.widgets.agent_sidebar, clients.tui.widgets.cost_bar, clients.tui.widgets.event_stream, clients.tui.services.gate_reviewer, clients.tui.widgets.gate_modal, clients.tui.widgets.mission_panel, clients.tui.widgets.notification, clients.tui.widgets.workflow_progress
   backend.agents.mission_control.mission_control -> backend.agents.mission_control.cost, backend.core.exceptions, backend.agents.mission_control.dispatch, backend.agents.mission_control.gate, backend.agents.mission_control.persistence_bridge, backend.agents.mission_control.helpers, backend.agents.mission_control.history, backend.agents.mission_control.middleware, backend.agents.mission_control.models, backend.core.protocols, backend.agents.mission_control.outcome, backend.agents.mission_control.plan_validator, backend.agents.mission_control.registry, backend.agents.mission_control.roster, backend.core.logging, backend.events.types, backend.schemas.session, backend.schemas.task_plan, backend.services.context_assembler, backend.services.context_curator, backend.services.history_query, backend.services.mission_context
+  backend.models -> backend.models.base, backend.models.agent_catalog, backend.models.execution, backend.models.execution_record, backend.models.mission_team, backend.models.note, backend.models.mission, backend.models.mission_context, backend.models.mission_history, backend.models.mission_plan, backend.models.prompt_version, backend.models.session, backend.models.workflow_definition, backend.models.user, backend.models.api_key, backend.models.workflow_schedule
   backend.migrations.env -> backend.models.base, backend.models.execution, backend.models.execution_record, backend.models.note, backend.models.mission, backend.models.mission_context, backend.models.mission_history, backend.models.session, backend.models.agent_catalog, backend.models.mission_team, backend.models.prompt_version, backend.models.workflow_definition, backend.models.workflow_schedule, backend.models.user, backend.models.api_key
-  backend.models -> backend.models.base, backend.models.agent_catalog, backend.models.execution, backend.models.execution_record, backend.models.mission_team, backend.models.note, backend.models.mission, backend.models.mission_context, backend.models.mission_history, backend.models.prompt_version, backend.models.session, backend.models.workflow_definition, backend.models.user, backend.models.api_key, backend.models.workflow_schedule
-  backend.agents.mission_control.helpers -> backend.agents.config_schema, backend.agents.deps.base, backend.agents.mission_control.middleware, backend.agents.mission_control.models, backend.core.protocols, backend.agents.mission_control.registry, backend.agents.mission_control.roster, backend.agents.mission_control.router, backend.core.config, backend.agents.mission_control.cost, backend.core.exceptions, backend.core.logging, backend.events.types, backend.schemas.session
   backend.agents.mission_control.dispatch.loop -> backend.agents.mission_control.dispatch.dag, backend.agents.mission_control.dispatch.result_builders, backend.agents.mission_control.dispatch.step_executor, backend.agents.mission_control.gate, backend.agents.mission_control.helpers, backend.agents.mission_control.models, backend.agents.mission_control.outcome, backend.agents.mission_control.roster, backend.core.logging, backend.events.types, backend.schemas.task_plan
+  backend.agents.mission_control.helpers.agent_executor -> backend.agents.mission_control.models, backend.agents.mission_control.registry, backend.agents.mission_control.cost, backend.core.config, backend.core.exceptions, backend.core.logging, backend.events.types, backend.agents.mission_control.helpers.agent_setup, backend.agents.mission_control.helpers.event_emitter, backend.agents.mission_control.helpers.model_builder, backend.agents.mission_control.helpers.prompt_builder
+  backend.api.v1.endpoints.streams -> backend.core.config, backend.core.dependencies, backend.core.exceptions, backend.core.logging, backend.events.bus, backend.models.user, backend.services.console, backend.services.mission, backend.services.session
   backend.services.auth -> backend.core, backend.core.exceptions, backend.core.logging, backend.core.utils, backend.models.api_key, backend.models.user, backend.repositories.api_key, backend.repositories.user, backend.services.base
   backend.services.execution -> backend.core.config, backend.core.exceptions, backend.agents.mission_control.models, backend.core.logging, backend.core.protocols, backend.core.utils, backend.models.execution, backend.repositories.execution, backend.services.base
   backend.services.workflow_architect -> backend.agents.deps.base, backend.agents.mission.workflow.agent, backend.agents.mission.workflow.deps, backend.agents.mission_control.helpers, backend.agents.mission_control.registry, backend.core.config, backend.core.logging, backend.events.types, backend.services.base
@@ -24,9 +25,14 @@ Symbols ranked by PageRank (most-connected first).
   backend.services.workshop -> backend.agents.mission_control.helpers, backend.agents.mission_control.cost, backend.agents.mission_control.registry, backend.core.config, backend.core.logging, backend.core.utils, backend.models.execution_record, backend.services.base
   clients.tui.screens.workspace -> clients.tui.tabs.chat, clients.tui.tabs.context, clients.tui.tabs.overview, clients.tui.tabs.runs, clients.tui.tabs.team, clients.tui.tabs.workflows, clients.tui.tabs.workshop, clients.tui.widgets.cost_bar
   backend.agents.mission_control.dispatch.retry_handler -> backend.agents.mission_control.dispatch.result_builders, backend.agents.mission_control.dispatch.step_executor, backend.agents.mission_control.gate, backend.agents.mission_control.outcome, backend.agents.mission_control.roster, backend.core.logging, backend.schemas.task_plan
+  backend.api.v1.endpoints.missions_plan -> backend.core.dependencies, backend.core.exceptions, backend.models.mission_plan, backend.schemas.base, backend.schemas.mission_plan, backend.services.mission, backend.services.mission_plan
   backend.services.execution_persistence -> backend.core.config, backend.core.logging, backend.core.utils, backend.models.execution_record, backend.repositories.execution_record, backend.schemas.execution_record, backend.services.base
+  backend.services.mission_plan -> backend.core.exceptions, backend.core.utils, backend.models.mission_plan, backend.repositories.mission, backend.repositories.mission_plan, backend.schemas.task_plan, backend.services.base
   backend.services.summarization -> backend.core.logging, backend.core.utils, backend.models.execution_record, backend.models.mission_history, backend.repositories.mission_history, backend.services.base, backend.services.mission_context
   backend.services.workflow_definition -> backend.core.exceptions, backend.core.logging, backend.models.workflow_definition, backend.repositories.mission, backend.repositories.workflow_definition, backend.schemas.workflow, backend.services.base
+  backend.agents.mission_control.helpers -> backend.agents.mission_control.helpers.model_builder, backend.agents.mission_control.helpers.prompt_builder, backend.agents.mission_control.helpers.agent_setup, backend.agents.mission_control.helpers.routing, backend.agents.mission_control.helpers.event_emitter, backend.agents.mission_control.helpers.agent_executor
+  backend.agents.mission_control.helpers.agent_setup -> backend.agents.config_schema, backend.agents.deps.base, backend.agents.mission_control.middleware, backend.agents.mission_control.registry, backend.core.config, backend.core.logging
+  backend.agents.mission_control.helpers.routing -> backend.agents.mission_control.middleware, backend.agents.mission_control.models, backend.agents.mission_control.registry, backend.agents.mission_control.router, backend.core.exceptions, backend.core.logging
   backend.api.v1.endpoints.executions -> backend.core.dependencies, backend.core.exceptions, backend.core.logging, backend.schemas.base, backend.schemas.execution_record, backend.services.execution_persistence
   backend.api.v1.endpoints.missions -> backend.api.v1.endpoints, backend.core.dependencies, backend.core.exceptions, backend.schemas.base, backend.schemas.mission, backend.services.mission
   backend.api.v1.endpoints.missions_team -> backend.core.dependencies, backend.schemas.base, backend.schemas.mission, backend.schemas.mission_team, backend.services.mission, backend.services.mission_team
@@ -39,6 +45,7 @@ Symbols ranked by PageRank (most-connected first).
   backend.agents.mission.workflow.agent -> backend.agents.mission.workflow.deps, backend.agents.mission_control.helpers, backend.agents.tools, backend.core.logging, backend.events.types
   backend.agents.mission_control.dispatch.convergence -> backend.agents.mission_control.gate, backend.agents.mission_control.helpers, backend.agents.mission_control.models, backend.agents.mission_control.outcome, backend.core.logging
   backend.agents.mission_control.dispatch_adapter -> backend.agents.mission_control.mission_control, backend.agents.mission_control.models, backend.core.config, backend.core.protocols, backend.core.logging
+  backend.agents.mission_control.helpers.event_emitter -> backend.agents.mission_control.models, backend.core.exceptions, backend.core.logging, backend.events.types, backend.schemas.session
   backend.agents.mission_control.plan_validator -> backend.agents.mission_control.check_registry, backend.agents.mission_control.roster, backend.core.logging, backend.schemas.task_plan, backend.agents.mission_control.checks.builtin
   backend.agents.platform.health.agent -> backend.agents.deps.base, backend.agents.mission_control.helpers, backend.agents.schemas, backend.agents.tools, backend.core.logging
   backend.agents.software.architecture.agent -> backend.agents.mission_control.helpers, backend.agents.deps.base, backend.agents.schemas, backend.agents.tools, backend.core.logging
@@ -51,10 +58,12 @@ Symbols ranked by PageRank (most-connected first).
   backend.services.mission -> backend.core.logging, backend.core.exceptions, backend.models.mission, backend.repositories.mission, backend.services.base
   backend.services.mission_context -> backend.core.logging, backend.core.utils, backend.models.mission_context, backend.repositories.mission_context, backend.services.base
   clients.telegram.handlers.example -> backend.core.config, backend.core.logging, clients.telegram.callbacks.common, clients.telegram.keyboards.common, clients.telegram.states.example
+  backend.agents.mission_control.helpers.model_builder -> backend.agents.config_schema, backend.core.config, backend.core.exceptions, backend.core.logging
+  backend.agents.mission_control.verification -> backend.agents.mission_control.models, backend.core.logging, backend.agents.mission_control.verification_models, backend.agents.mission_control.verification_tiers
   backend.api.v1.endpoints.admin_users -> backend.core.dependencies, backend.schemas.auth, backend.schemas.base, backend.schemas.user
   backend.api.v1.endpoints.auth -> backend.core.dependencies, backend.schemas.auth, backend.schemas.base, backend.schemas.user
   backend.api.v1.endpoints.client_errors -> backend.core.dependencies, backend.core.logging, backend.schemas.base, backend.schemas.client_error
-  backend.api.v1.endpoints.streams -> backend.core.config, backend.core.logging, backend.events.bus, backend.services.console
+  backend.core.dependencies -> backend.core.database, backend.core.exceptions, backend.models.user, backend.core.idempotency
   backend.core.security -> backend.core.config, backend.core.exceptions, backend.core.logging, backend.core.utils
   backend.events -> backend.events.bus, backend.events.publishers, backend.events.schemas, backend.events.types
   backend.services.catalog_seeder -> backend.agents.config_schema, backend.core.config, backend.core.logging, backend.services.agent_catalog
@@ -70,10 +79,12 @@ Symbols ranked by PageRank (most-connected first).
   clients.tui.tabs.overview -> clients.tui.widgets.agent_sidebar, clients.tui.widgets.chat_input, clients.tui.widgets.event_stream, clients.tui.widgets.notification
   backend.agents.mission.director.agent -> backend.agents.mission.director.deps, backend.agents.mission_control.helpers, backend.core.logging
   backend.agents.mission_control.dispatch -> backend.agents.mission_control.dispatch.dag, backend.agents.mission_control.dispatch.loop, backend.agents.mission_control.dispatch.step_executor
+  backend.agents.mission_control.gate -> backend.core.logging, backend.agents.mission_control.gate_models, backend.agents.mission_control.gate_prompt
   backend.agents.mission_control.middleware -> backend.agents.config_schema, backend.core.config, backend.core.logging
   backend.agents.mission_control.persistence_bridge -> backend.agents.mission_control.outcome, backend.core.logging, backend.services.execution_persistence
   backend.agents.mission_control.registry -> backend.agents.config_schema, backend.core.config, backend.core.logging
   backend.agents.mission_control.router -> backend.agents.mission_control.models, backend.agents.mission_control.registry, backend.core.logging
+  backend.agents.mission_control.verification_tiers -> backend.agents.mission_control.models, backend.core.logging, backend.agents.mission_control.verification_models
   backend.agents.platform.director.agent -> backend.agents.platform.director.deps, backend.agents.mission_control.helpers, backend.core.logging
   backend.agents.preflight -> backend.agents.mission_control.helpers, backend.agents.mission_control.registry, backend.core.logging
   backend.agents.system.planning.agent -> backend.agents.deps.base, backend.agents.mission_control.helpers, backend.core.logging
@@ -82,7 +93,6 @@ Symbols ranked by PageRank (most-connected first).
   backend.agents.tools.compliance -> backend.agents.config_schema, backend.agents.deps.base, backend.services.compliance
   backend.api.v1.endpoints.agents -> backend.core.dependencies, backend.core.logging, backend.schemas.base
   backend.api.v1.endpoints.missions_workflows -> backend.core.dependencies, backend.schemas.base, backend.schemas.workflow_schedule
-  backend.core.dependencies -> backend.core.database, backend.core.exceptions, backend.models.user
   backend.core.exception_handlers -> backend.core.exceptions, backend.core.logging, backend.schemas.base
   backend.events.bus -> backend.core.config, backend.core.logging, backend.events.types
   backend.gateway.adapters.telegram -> backend.core.config, backend.core.logging, backend.gateway.adapters
@@ -116,9 +126,10 @@ Symbols ranked by PageRank (most-connected first).
   backend.agents.mission_control.cost -> backend.agents.mission_control.middleware, backend.core.logging
   backend.agents.mission_control.dispatch.result_builders -> backend.agents.mission_control.outcome, backend.schemas.task_plan
   backend.agents.mission_control.escalation -> backend.core.config, backend.core.logging
+  backend.agents.mission_control.gate_prompt -> backend.agents.mission_control.gate_models, backend.core.logging
+  backend.agents.mission_control.helpers.prompt_builder -> backend.core.config, backend.core.logging
   backend.agents.mission_control.history -> backend.core.logging, backend.schemas.session
   backend.agents.mission_control.models -> backend.core.protocols, backend.events.types
-  backend.agents.mission_control.verification -> backend.agents.mission_control.models, backend.core.logging
   backend.agents.system.synthesis.agent -> backend.agents.mission_control.helpers, backend.core.logging
   backend.api.health -> backend.core.logging, backend.core.utils
   backend.api.v1.endpoints.admin -> backend.core.dependencies, backend.schemas.base
@@ -134,6 +145,7 @@ Symbols ranked by PageRank (most-connected first).
   backend.repositories.mission -> backend.models.mission, backend.repositories.base
   backend.repositories.mission_context -> backend.models.mission_context, backend.repositories.base
   backend.repositories.mission_history -> backend.models.mission_history, backend.repositories.base
+  backend.repositories.mission_plan -> backend.models.mission_plan, backend.repositories.base
   backend.repositories.mission_team -> backend.models.mission_team, backend.repositories.base
   backend.repositories.note -> backend.models.note, backend.repositories.base
   backend.repositories.prompt_version -> backend.models.prompt_version, backend.repositories.base
@@ -179,7 +191,6 @@ Symbols ranked by PageRank (most-connected first).
   backend.agents.mission_control.checks -> backend.agents.mission_control.checks.builtin
   backend.agents.mission_control.dispatch.dag -> backend.schemas.task_plan
   backend.agents.mission_control.dispatch.environment -> backend.core.logging
-  backend.agents.mission_control.gate -> backend.core.logging
   backend.agents.mission_control.roster -> backend.core.logging
   backend.agents.platform.director.deps -> backend.agents.deps.base
   backend.agents.tools.code -> backend.agents.deps.base
@@ -191,6 +202,7 @@ Symbols ranked by PageRank (most-connected first).
   backend.api.v1 -> backend.api.v1.endpoints
   backend.core.config -> backend.core.config_schema
   backend.core.database -> backend.core.logging
+  backend.core.idempotency -> backend.core.logging
   backend.core.logging -> backend.core.config
   backend.core.pagination -> backend.schemas.base
   backend.events.broker -> backend.core.logging
@@ -207,6 +219,7 @@ Symbols ranked by PageRank (most-connected first).
   backend.models.mission -> backend.models.base
   backend.models.mission_context -> backend.models.base
   backend.models.mission_history -> backend.models.base
+  backend.models.mission_plan -> backend.models.base
   backend.models.mission_team -> backend.models.base
   backend.models.note -> backend.models.base
   backend.models.prompt_version -> backend.models.base
@@ -217,6 +230,7 @@ Symbols ranked by PageRank (most-connected first).
   backend.schemas -> backend.schemas.base
   backend.schemas.auth -> backend.schemas.user
   backend.schemas.base -> backend.core.utils
+  backend.schemas.mission_plan -> backend.models.mission_plan
   backend.services.branch_manager -> backend.core.logging
   backend.services.code_map.graph -> backend.services.code_map.types
   backend.services.code_map.loader -> backend.core.logging
@@ -515,6 +529,24 @@ modules/backend/core/config_schema.py (454 lines):
 │class ChannelRateLimitSchema(_StrictBase):
 │    messages_per_minute: int
 │    messages_per_hour: int
+│class ServerSchema(_StrictBase):
+│    host: str
+│    port: int
+│class CorsSchema(_StrictBase):
+│    origins: list[str]
+│class PaginationSchema(_StrictBase):
+│    default_limit: int
+│    max_limit: int
+│class TimeoutsSchema(_StrictBase):
+│    database: int
+│    external_api: int
+│    background: int
+│class TelegramAppSchema(_StrictBase):
+│    webhook_path: str
+│    authorized_users: list[int]
+│    max_message_length: int
+│class CliSchema(_StrictBase):
+│    console_width: int
 │class JwtSchema(_StrictBase):
 │    algorithm: str
 │    access_token_expire_minutes: int
@@ -544,24 +576,6 @@ modules/backend/core/config_schema.py (454 lines):
 │class RoleSchema(_StrictBase):
 │    level: int
 │    description: str
-│class ServerSchema(_StrictBase):
-│    host: str
-│    port: int
-│class CorsSchema(_StrictBase):
-│    origins: list[str]
-│class PaginationSchema(_StrictBase):
-│    default_limit: int
-│    max_limit: int
-│class TimeoutsSchema(_StrictBase):
-│    database: int
-│    external_api: int
-│    background: int
-│class TelegramAppSchema(_StrictBase):
-│    webhook_path: str
-│    authorized_users: list[int]
-│    max_message_length: int
-│class CliSchema(_StrictBase):
-│    console_width: int
 │class _StrictBase(BaseModel):
 
 modules/backend/core/utils.py (37 lines):
@@ -590,12 +604,14 @@ modules/backend/core/exceptions.py (85 lines):
 │class DatabaseError(ApplicationError):
 │    def __init__(message: str) -> None
 
-modules/backend/core/dependencies.py (114 lines):
+modules/backend/core/dependencies.py (182 lines):
 │def get_request_id(x_request_id: str | None) -> str
 │def get_event_bus()
 │def get_current_user(db: DbSession, authorization: str | None, api_key: str | None) -> User
 │def get_optional_user(db: DbSession, authorization: str | None, api_key: str | None) -> User | None
+│def get_current_user_sse(db: DbSession, token: str | None, authorization: str | None) -> User
 │def require_admin(user: CurrentUser) -> User
+│def get_idempotency(idempotency_key: str | None) -> AsyncIterator[IdempotencyGuard | None]
 
 modules/backend/core/protocols.py (64 lines):
 │class SessionServiceProtocol(Protocol):
@@ -615,6 +631,12 @@ modules/backend/core/database.py (113 lines):
 │@asynccontextmanager
 │def get_async_session() -> AsyncGenerator[AsyncSession, None]
 │def get_db_session() -> AsyncGenerator[AsyncSession, None]
+
+modules/backend/core/idempotency.py (108 lines):
+│class IdempotencyGuard:
+│    def __init__(redis: AsyncRedis, key: str) -> None
+│    def get_cached_response() -> dict | None
+│    def cache_response(response_data: dict, ttl: int) -> None
 
 modules/backend/core/security.py (176 lines):
 │def hash_password(password: str) -> str
@@ -671,6 +693,782 @@ modules/backend/main.py (128 lines):
 │def _mount_channel_adapters(app: FastAPI, app_config) -> None
 │def get_app() -> FastAPI
 │def __getattr__(name: str) -> FastAPI
+
+
+## backend.agents
+
+modules/backend/agents/mission_control/gate.py (282 lines):
+│class LlmGateReviewer:
+│    def __init__(model: str, temperature: float, max_tokens: int)
+│    def _get_agent()
+│    def review(context: GateContext) -> GateDecision
+│class ConfigurableGate:
+│    def __init__(config: Any, console: Any, verbose: bool)
+│    def _get_llm() -> LlmGateReviewer
+│    def _get_cli()
+│    def _effective_mode(gate_type: str) -> str
+│    def _is_enabled(gate_type: str) -> bool
+│    def _should_auto_continue(context: GateContext) -> bool
+│    def review(context: GateContext) -> GateDecision
+│def create_gate(mode_override: str | None, console: Any, verbose: bool) -> GateReviewer | None
+
+modules/backend/agents/config_schema.py (310 lines):
+│class _StrictBase(BaseModel):
+│class AgentConfigSchema(_StrictBase):
+│    agent_name: str
+│    agent_type: str
+│    description: str
+│    enabled: bool
+│    model: str | AgentModelSchema
+│    keywords: list[str]
+│    tools: list[str]
+│    max_input_length: int
+│    max_budget_usd: float
+│    execution: ExecutionSchema
+│    invocation: InvocationSchema
+│    scope: FileScopeConfigSchema
+│    interface: AgentInterfaceSchema | None
+│    version: str
+│    max_tokens: int | None
+│    max_requests: int | None
+│    file_size_limit: int | None
+│    rules: list[ComplianceRuleSchema] | None
+│    exclusions: ExclusionsSchema | None
+│    chat_enabled: bool
+│    thinking_budget: dict[str, int] | None
+│    def _normalize_model(v: str | dict) -> str | dict
+│    def _validate_model_config() -> Self
+│    def _validate_invocation_tier() -> Self
+│class FileScopeConfigSchema(_StrictBase):
+│    read: list[str]
+│    write: list[str]
+│class InvocationSchema(_StrictBase):
+│    tier: Literal['user', 'platform', 'system']
+│    required_role: Literal['admin', 'user'] | None
+│class ExecutionSchema(_StrictBase):
+│    mode: str
+│    prefer: Literal['local', 'worktree', 'container'] | None
+│    template: str | None
+│class ComplianceRuleSchema(_StrictBase):
+│    id: str
+│    description: str
+│    severity: str
+│    enabled: bool
+│class ExclusionsSchema(_StrictBase):
+│    paths: list[str]
+│    patterns: list[str]
+│class AgentInterfaceSchema(_StrictBase):
+│    input: dict[str, str]
+│    output: dict[str, str]
+│class MissionControlConfigSchema(_StrictBase):
+│    model_pricing: dict[str, ModelPricingRateSchema]
+│    routing: RoutingSchema
+│    limits: MissionControlLimitsSchema
+│    guardrails: GuardrailsSchema
+│    redis_ttl: RedisTtlSchema
+│    approval: ApprovalSchema
+│    dispatch: DispatchSchema
+│    escalation: EscalationThresholdsSchema
+│class ModelPricingRateSchema(_StrictBase):
+│    input: float
+│    output: float
+│class RoutingSchema(_StrictBase):
+│    strategy: str
+│    llm_model: str
+│    complex_request_agent: str
+│    fallback_agent: str
+│    chat_agent: str
+│    max_routing_depth: int
+│class MissionControlLimitsSchema(_StrictBase):
+│    max_requests_per_task: int
+│    max_tool_calls_per_task: int
+│    max_tokens_per_task: int
+│    max_cost_per_plan: float
+│    max_cost_per_user_daily: float
+│    task_timeout_seconds: int
+│    plan_timeout_seconds: int
+│class GuardrailsSchema(_StrictBase):
+│    max_input_length: int
+│    injection_patterns: list[str]
+│class RedisTtlSchema(_StrictBase):
+│    session: int
+│    approval: int
+│    lock: int
+│    result: int
+│class ApprovalSchema(_StrictBase):
+│    poll_interval_seconds: int
+│    timeout_seconds: int
+│class DispatchSchema(_StrictBase):
+│    default_request_limit: int
+│    token_cost_factor: int
+│    context_token_budget: int
+│    history_reserve_tokens: int
+│class EscalationThresholdsSchema(_StrictBase):
+│    max_auto_approve_cost_usd: float
+│    max_medium_approve_cost_usd: float
+│    max_auto_approve_retries: int
+│class AgentModelSchema(_StrictBase):
+│    name: str
+│    temperature: float
+│    max_tokens: int
+
+modules/backend/agents/deps/base.py (90 lines):
+│class FileScope:
+│    read_paths: list[str]
+│    write_paths: list[str]
+│    def check_read(rel_path: str) -> None
+│    def check_write(rel_path: str) -> None
+│    def is_readable(rel_path: str) -> bool
+│    def _matches(rel_path: str, allowed: list[str]) -> bool
+│class BaseAgentDeps:
+│    project_root: Path
+│    scope: FileScope
+│    config: AgentConfigSchema | None
+│    session_id: str | None
+│    on_event: Any
+│    environment_handle: Any
+│class QaAgentDeps(BaseAgentDeps):
+│    on_progress: Any
+│    def emit(event: dict) -> None
+│class HealthAgentDeps(BaseAgentDeps):
+│    app_config: Any
+│class HorizontalAgentDeps(BaseAgentDeps):
+│    allowed_agents: set[str]
+│    max_delegation_depth: int
+│    mission_control: Any
+
+modules/backend/agents/mission_control/gate_models.py (84 lines):
+│class GateContext:
+│    gate_type: str
+│    mission_id: str
+│    layer_index: int
+│    total_layers: int
+│    pending_tasks: list[dict]
+│    task_id: str | None
+│    task_result: dict | None
+│    task_output: dict | None
+│    verification: dict | None
+│    completed_tasks: list[dict]
+│    total_cost_usd: float
+│    budget_usd: float
+│    current_instructions: str | None
+│    current_inputs: dict | None
+│    ai_recommendation: Any
+│class GateAction(str, Enum):
+│class GateDecision:
+│    action: GateAction
+│    reason: str | None
+│    modified_inputs: dict | None
+│    modified_instructions: str | None
+│    reviewer: str
+│class GateReviewer(Protocol):
+│    def review(context: GateContext) -> GateDecision
+│class NoOpGate:
+│    def review(context: GateContext) -> GateDecision
+
+modules/backend/agents/mission_control/helpers/__init__.py (64 lines):
+
+modules/backend/agents/mission_control/gate_prompt.py (153 lines):
+│def _build_gate_prompt(context: GateContext) -> str
+│def _parse_action(action_str: str) -> GateAction
+
+modules/backend/agents/mission_control/models.py (154 lines):
+│class EventBusProtocol(Protocol):
+│    def publish(event: SessionEvent) -> None
+│    def publish_to_mission(mission_id: str, event: SessionEvent) -> None
+│class ExecuteAgentFn(Protocol):
+│    def __call__(agent_name: str, instructions: str, inputs: dict, usage_limits: UsageLimits) -> Awaitable[dict]
+│class ContextCuratorProtocol(Protocol):
+│    def get_mission_context(mission_id: str) -> dict
+│    def apply_task_updates(mission_id: str, task_result_context_updates: list[dict]) -> tuple[int, list[str]]
+│class ContextAssemblerProtocol(Protocol):
+│    def build(mission_id: str, task_definition: dict, resolved_inputs: dict) -> dict
+│class MissionControlRequest:
+│    user_input: str
+│    agent: str | None
+│    conversation_id: str | None
+│    channel: str
+│    session_type: str
+│    tool_access_level: str
+│class CollectResult(TypedDict):
+│    agent_name: str
+│    output: str
+│    cost_usd: float
+│    session_id: str
+│    thinking: str | None
+│class MissionControlResponse:
+│    agent_name: str
+│    output: str
+│    metadata: dict[str, Any]
+│class NoOpEventBus:
+│    def publish(event: SessionEvent) -> None
+│    def publish_to_mission(mission_id: str, event: SessionEvent) -> None
+
+modules/backend/agents/mission_control/outcome.py (230 lines):
+│class TaskResult(BaseModel):
+│    task_id: str
+│    agent_name: str
+│    status: TaskStatus
+│    output_reference: dict
+│    token_usage: TaskTokenUsage
+│    cost_usd: float
+│    duration_seconds: float
+│    verification_outcome: VerificationOutcome
+│    retry_count: int
+│    retry_history: list[RetryHistoryEntry]
+│    execution_id: str
+│    context_updates: list[dict]
+│    skip_reason: str | None
+│class ExecutionOutcome(BaseModel):
+│    mission_id: str
+│    status: ExecutionStatus
+│    summary: str
+│    task_results: list[TaskResult]
+│    total_cost_usd: float
+│    total_duration_seconds: float
+│    total_tokens: TaskTokenUsage
+│    abort_reason: str | None
+│    planning_trace_reference: str | None
+│    task_plan_reference: str | None
+│    gate_decisions: list[GateDecisionRecord]
+│    execution_record_id: str | None
+│class TaskTokenUsage(BaseModel):
+│    input: int
+│    output: int
+│    thinking: int
+│class RetryHistoryEntry(BaseModel):
+│    attempt: int
+│    failure_tier: int
+│    failure_reason: str
+│    feedback_provided: str
+│class VerificationOutcome(BaseModel):
+│    tier_1: Tier1Outcome
+│    tier_2: Tier2Outcome
+│    tier_3: Tier3Outcome
+│class TaskStatus(StrEnum):
+│class FailedCheck(BaseModel):
+│    check: str
+│    reason: str
+│class GateDecisionRecord(BaseModel):
+│    gate_type: str
+│    layer_index: int
+│    task_id: str | None
+│    action: str
+│    reason: str | None
+│    reviewer: str
+│class ExecutionStatus(StrEnum):
+│class Tier1Outcome(BaseModel):
+│    status: str
+│    details: str
+│class Tier2Outcome(BaseModel):
+│    status: str
+│    checks_run: int
+│    checks_passed: int
+│    failed_checks: list[FailedCheck]
+│class Tier3Outcome(BaseModel):
+│    status: str
+│    overall_score: float
+│    criteria_results_reference: str
+│    evaluator_thinking_trace_reference: str
+│    cost_usd: float
+│def build_verification_outcome(result: VerificationResult) -> VerificationOutcome
+
+modules/backend/agents/mission_control/registry.py (189 lines):
+│class AgentRegistry:
+│    def __init__() -> None
+│    def _ensure_loaded() -> None
+│    def get(agent_name: str) -> AgentConfigSchema
+│    def has(agent_name: str) -> bool
+│    def list_all(tier: str | None) -> list[dict[str, Any]]
+│    def list_system() -> list[dict[str, Any]]
+│    def get_by_keyword(text: str) -> str | None
+│    def resolve_module_path(agent_name: str) -> str
+│    def get_instance(agent_name: str, model: Any) -> Any
+│    def reset() -> None
+│@lru_cache
+│def get_registry() -> AgentRegistry
+
+modules/backend/agents/mission_control/roster.py (187 lines):
+│class RosterAgentEntry(BaseModel):
+│    agent_name: str
+│    agent_version: str
+│    description: str
+│    model: RosterModelSchema
+│    tools: list[str]
+│    interface: RosterInterfaceSchema
+│    constraints: RosterConstraintsSchema
+│class Roster(BaseModel):
+│    agents: list[RosterAgentEntry]
+│    def get_agent(name: str, version: str) -> RosterAgentEntry | None
+│    def get_agent_by_name(name: str) -> RosterAgentEntry | None
+│    def agent_names() -> list[str]
+│class RosterModelSchema(BaseModel):
+│    name: str
+│    temperature: float
+│    max_tokens: int
+│class RosterInterfaceSchema(BaseModel):
+│    input: dict[str, str]
+│    output: dict[str, str]
+│class RosterConstraintsSchema(BaseModel):
+│    timeout_seconds: int
+│    cost_ceiling_usd: float
+│    retry_budget: int
+│    parallelism: str
+│def derive_roster_from_team(mission_id: str, session: 'AsyncSession') -> Roster
+
+modules/backend/agents/mission_control/middleware.py (74 lines):
+│@lru_cache
+│def _load_mission_control_config() -> MissionControlConfigSchema
+│def check_guardrails(user_input: str, agent_config: AgentConfigSchema | None) -> None
+│def with_guardrails(agent_config: AgentConfigSchema | None)
+
+modules/backend/agents/mission_control/mission_control.py (827 lines):
+│def list_agents() -> list[dict[str, Any]]
+│def _prepend_mission_context(mission_id: str, message: str) -> str
+│def handle(session_id: str, message: str) -> AsyncIterator[SessionEvent]
+│def collect(session_id: str, message: str) -> CollectResult
+│def handle_mission(mission_run_id: str, mission_brief: str) -> ExecutionOutcome
+
+modules/backend/agents/mission_control/check_registry.py (85 lines):
+│class CheckResult:
+│    passed: bool
+│    details: str
+│    execution_time_ms: float
+│def register_check(name: str) -> Callable[[CheckFn], CheckFn]
+│def get_check(name: str) -> CheckFn | None
+│def check_exists(name: str) -> bool
+│def list_checks() -> list[str]
+│def get_registry_snapshot() -> dict[str, CheckFn]
+
+modules/backend/agents/mission_control/checks/builtin.py (226 lines):
+│@register_check
+│def validate_json_schema(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
+│@register_check
+│def validate_field_exists(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
+│@register_check
+│def validate_field_type(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
+│@register_check
+│def validate_field_range(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
+│def _elapsed_ms(start: float) -> float
+
+modules/backend/agents/mission_control/helpers/agent_setup.py (98 lines):
+│def build_deps_from_config(agent_config: AgentConfigSchema) -> dict[str, Any]
+│def _build_agent_deps(agent_name: str, agent_config: AgentConfigSchema, session_id: str | None, ...) -> BaseAgentDeps
+│def _get_usage_limits(agent_name: str | None) -> UsageLimits
+│def _import_agent_module(agent_name: str) -> Any
+
+modules/backend/agents/mission_control/helpers/event_emitter.py (124 lines):
+│def _publish(event_bus: EventBusProtocol, event: SessionEvent) -> None
+│def _emit(event_bus: EventBusProtocol, event_cls: type[SessionEvent]) -> None
+│def _emit_tool_events(event_bus: EventBusProtocol, stream: Any) -> tuple[list[str], list[SessionEvent]]
+│def _persist_messages(session_service: 'SessionServiceProtocol', session_id: str, creates: list[SessionMessageCreate]) -> None
+
+modules/backend/agents/mission_control/helpers/model_builder.py (93 lines):
+│def build_model_settings(agent_config: AgentConfigSchema) -> 'ModelSettings | None'
+│def _build_model(config_model: str | AgentModelSchema) -> Model
+│def _get_model_name(config_model: str | AgentModelSchema) -> str
+
+modules/backend/agents/mission_control/helpers/prompt_builder.py (184 lines):
+│def assemble_instructions(category: str, name: str) -> str
+│def _build_roster_prompt(roster: 'Roster') -> str
+│def _build_planning_prompt(mission_brief: str, mission_id: str, roster_description: str, ...) -> str
+│def _append_validation_feedback(prompt: str, errors: list[str]) -> str
+
+modules/backend/agents/mission_control/helpers/agent_executor.py (313 lines):
+│def _make_agent_executor(event_bus: EventBusProtocol) -> ExecuteAgentFn
+│def _call_planning_agent(prompt: str, roster: 'Roster', upstream_context: dict | None, ...) -> dict
+
+modules/backend/agents/mission_control/helpers/routing.py (49 lines):
+│def _resolve_agent(session: 'SessionResponse', message: str) -> str
+│def get_chat_agent() -> str
+
+modules/backend/agents/tools/__init__.py (1 lines):
+
+modules/backend/agents/mission_control/verification_models.py (48 lines):
+│class TierStatus(str, Enum):
+│class TierResult:
+│    tier: int
+│    status: TierStatus
+│    details: str
+│    execution_time_ms: float
+│    check_results: list[dict[str, Any]]
+│class VerificationResult:
+│    passed: bool
+│    tier_1: TierResult | None
+│    tier_2: TierResult | None
+│    tier_3: TierResult | Tier3Result | None
+│    failed_tier: int | None
+│    total_execution_time_ms: float
+│class Tier3Result(TierResult):
+│    overall_score: float
+│    criteria_results_reference: str
+│    evaluator_thinking_trace_reference: str
+│    cost_usd: float
+
+modules/backend/agents/mission_control/dispatch/step_executor.py (164 lines):
+│def execute_task(task: TaskDefinition, roster_entry: RosterAgentEntry, resolved_inputs: dict[str, Any], ...) -> dict
+│def verify_task(task: TaskDefinition, output: dict, roster_entry: RosterAgentEntry, ...) -> VerificationResult
+│def execute_with_step_events(task: TaskDefinition, roster_entry: RosterAgentEntry, resolved_inputs: dict[str, Any], ...) -> TaskResult
+
+modules/backend/agents/schemas.py (92 lines):
+│class PqiDimensionScore(BaseModel):
+│    score: float
+│    confidence: float
+│    sub_scores: dict[str, float]
+│class PqiScore(BaseModel):
+│    composite: float
+│    quality_band: str
+│    dimensions: dict[str, PqiDimensionScore]
+│    file_count: int
+│    line_count: int
+│class ArchitectureFinding(BaseModel):
+│    principle: str
+│    file: str
+│    line: int | None
+│    message: str
+│    recommendation: str
+│    related_files: list[str]
+│class HealthFinding(BaseModel):
+│    category: str
+│    severity: str
+│    message: str
+│    details: str | None
+│class QaAuditResult(BaseModel):
+│    summary: str
+│    total_violations: int
+│    error_count: int
+│    warning_count: int
+│    violations: list[Violation]
+│    scanned_files_count: int
+│    pqi: PqiScore | None
+│class ArchitectureReviewResult(BaseModel):
+│    summary: str
+│    total_findings: int
+│    findings: list[ArchitectureFinding]
+│    files_reviewed: int
+│    new_findings: int
+│    baseline_findings: int
+│class HealthCheckResult(BaseModel):
+│    summary: str
+│    overall_status: str
+│    findings: list[HealthFinding]
+│    error_count: int
+│    warning_count: int
+│    checks_performed: list[str]
+│class Violation(BaseModel):
+│    rule_id: str
+│    file: str
+│    line: int | None
+│    message: str
+│    severity: str
+│    recommendation: str | None
+
+modules/backend/agents/mission_control/dispatch/dag.py (74 lines):
+│def topological_sort(plan: TaskPlan) -> list[list[str]]
+│def resolve_upstream_inputs(task: TaskDefinition, completed_outputs: dict[str, dict]) -> dict[str, Any]
+
+modules/backend/agents/mission_control/dispatch/loop.py (487 lines):
+│def dispatch(plan: TaskPlan, roster: Roster, execute_agent_fn: ExecuteAgentFn, ...) -> ExecutionOutcome
+│def _load_project_context(mission_id: str | None, context_curator: ContextCuratorProtocol | None) -> dict | None
+│def _execute_layer(plan: TaskPlan, layer: list[str], layer_idx: int, ...) -> dict | None
+│def _inject_context(resolved_inputs: dict[str, Any], task: Any, mission_id: str | None, ...) -> None
+│def _build_outcome(plan: TaskPlan, task_results: list[TaskResult], total_cost: float, ...) -> ExecutionOutcome
+
+modules/backend/agents/mission_control/cost.py (37 lines):
+│def compute_cost_usd(input_tokens: int, output_tokens: int, model: str | None) -> float
+│def estimate_cost(estimated_input_tokens: int, model: str | None) -> float
+
+modules/backend/agents/mission/director/deps.py (20 lines):
+│class MissionDirectorDeps(BaseAgentDeps):
+│    mission_id: str
+│    db_session: Any
+
+modules/backend/agents/platform/director/deps.py (18 lines):
+│class PlatformDirectorDeps(BaseAgentDeps):
+│    db_session: Any
+
+modules/backend/agents/mission/workflow/deps.py (22 lines):
+│class ArchitectAgentDeps(BaseAgentDeps):
+│    mission_id: str
+│    mission_brief: str
+│    team_summary: str
+│    db_session: Any
+
+modules/backend/agents/mission_control/verification_tiers.py (322 lines):
+│def _elapsed_ms(start: float) -> float
+│def _run_tier_1(output: dict[str, Any], verification_config: dict[str, Any], agent_interface: dict[str, Any] | None) -> TierResult
+│def _run_tier_2(output: dict[str, Any], verification_config: dict[str, Any]) -> TierResult
+│def _run_tier_3(output: dict[str, Any], task: dict[str, Any], verification_config: dict[str, Any], ...) -> TierResult | Tier3Result
+
+modules/backend/agents/mission_control/router.py (40 lines):
+│class RuleBasedRouter:
+│    def __init__(registry: AgentRegistry) -> None
+│    def route(request: MissionControlRequest) -> str | None
+
+modules/backend/agents/mission_control/dispatch/result_builders.py (89 lines):
+│def append_feedback(original_instructions: str, feedback: str) -> str
+│def aborted_outcome(plan: TaskPlan, reason: str | None, start_time: float, ...) -> ExecutionOutcome
+│def skipped_result(task: TaskDefinition, reason: str | None, execution_id: str) -> TaskResult
+│def failed_result(task: TaskDefinition, reason: str, retry_count: int, ...) -> TaskResult
+
+modules/backend/agents/mission_control/verification.py (173 lines):
+│def run_verification_pipeline(output: dict[str, Any], task: dict[str, Any], agent_interface: dict[str, Any] | None, ...) -> VerificationResult
+│def build_retry_feedback(verification_result: VerificationResult, attempt: int) -> dict[str, Any]
+
+modules/backend/agents/mission_control/dispatch/__init__.py (19 lines):
+
+modules/backend/agents/mission/workflow/agent.py (229 lines):
+│def create_agent(model: str | Model) -> Agent
+│def run_conversational(agent: Agent, deps: ArchitectAgentDeps, message: str) -> dict[str, Any]
+
+modules/backend/agents/mission_control/history.py (169 lines):
+│def session_messages_to_model_history(messages: list) -> list[ModelMessage]
+│def model_messages_to_session_creates(messages: list[ModelMessage], session_id: str, agent_id: str | None, ...) -> list[SessionMessageCreate]
+
+modules/backend/agents/mission_control/persistence_bridge.py (139 lines):
+│def persist_mission_results(outcome: ExecutionOutcome) -> str | None
+
+modules/backend/agents/mission_control/plan_validator.py (286 lines):
+│class ValidationResult:
+│    def __init__() -> None
+│    def is_valid() -> bool
+│    def add_error(rule: str, message: str) -> None
+│    def __repr__() -> str
+│def validate_plan(plan: TaskPlan, roster: Roster, mission_budget_usd: float) -> ValidationResult
+│def _rule_2_agent_validation(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
+│def _rule_3_dag_validation(plan: TaskPlan, result: ValidationResult) -> None
+│def _rule_4_dependency_consistency(plan: TaskPlan, result: ValidationResult) -> None
+│def _rule_5_input_compatibility(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
+│def _rule_6_check_registry(plan: TaskPlan, result: ValidationResult) -> None
+│def _rule_7_budget_validation(plan: TaskPlan, mission_budget_usd: float, result: ValidationResult) -> None
+│def _rule_8_timeout_validation(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
+│def _rule_9_critical_path_validation(plan: TaskPlan, result: ValidationResult) -> None
+│def _rule_10_tier3_completeness(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
+│def _rule_11_self_evaluation_prevention(plan: TaskPlan, result: ValidationResult) -> None
+
+modules/backend/agents/__init__.py (1 lines):
+
+modules/backend/agents/deps/__init__.py (17 lines):
+
+modules/backend/agents/mission/__init__.py (0 lines):
+
+modules/backend/agents/mission/director/__init__.py (0 lines):
+
+modules/backend/agents/mission/director/agent.py (470 lines):
+│def create_agent(model: str | Model) -> Agent
+
+modules/backend/agents/mission/workflow/__init__.py (1 lines):
+
+modules/backend/agents/mission_control/__init__.py (10 lines):
+
+modules/backend/agents/mission_control/approval.py (54 lines):
+│def request_approval(mission_id: str, task_id: str, action: str, ...) -> dict
+
+modules/backend/agents/mission_control/checks/__init__.py (7 lines):
+
+modules/backend/agents/mission_control/dispatch/convergence.py (441 lines):
+│class ConvergenceConfig:
+│    max_iterations: int
+│    convergence_condition: str
+│    convergence_threshold: float | None
+│    commit_per_cycle: bool
+│    final_verification: bool
+│    evaluation_agent: str
+│    remediation_agent: str
+│    evaluation_config: dict[str, Any]
+│    remediation_config: dict[str, Any]
+│    def from_dict(data: dict[str, Any]) -> ConvergenceConfig
+│class CycleResult:
+│    cycle_number: int
+│    findings_count: int
+│    fixes_applied: int
+│    convergence_metric: float | None
+│    converged: bool
+│    evaluation_result: TaskResult | None
+│    remediation_result: TaskResult | None
+│def execute_convergence_loop() -> TaskResult
+│def _run_final_verification() -> TaskResult
+│def _extract_findings_count(result: Any) -> int
+│def _extract_fixes_count(result: Any) -> int
+│def _extract_metric(result: Any, config: ConvergenceConfig) -> float | None
+│def _check_convergence(condition: str, findings_count: int, metric: float | None, ...) -> bool
+│def _to_task_result(task_id: str, agent_name: str, raw_result: Any) -> TaskResult
+
+modules/backend/agents/mission_control/dispatch/environment.py (110 lines):
+│def resolve_execution_mode() -> str
+│def _validate_mode(mode: str, repo_root: str | None) -> str
+
+modules/backend/agents/mission_control/dispatch/retry_handler.py (365 lines):
+│def execute_with_retry(task: TaskDefinition, roster_entry: RosterAgentEntry, resolved_inputs: dict[str, Any], ...) -> TaskResult
+│def _handle_verification_failure(task: TaskDefinition, output: dict, token_usage: TaskTokenUsage, ...) -> TaskResult | str
+│def _handle_post_task_gate(task: TaskDefinition, output: dict, token_usage: TaskTokenUsage, ...) -> TaskResult | str
+
+modules/backend/agents/mission_control/dispatch_adapter.py (122 lines):
+│class MissionControlDispatchAdapter:
+│    def __init__(session_service: SessionServiceProtocol, db_session: AsyncSession, event_bus: EventBusProtocol) -> None
+│    def execute(mission_brief: str, roster_ref: str, complexity_tier: str, upstream_context: dict | None, cost_ceiling_usd: float | None, session_id: str | None, mission_id: str | None, gate: object | None, execution_mode: str | None) -> dict
+
+modules/backend/agents/mission_control/escalation.py (231 lines):
+│class EscalationLevel:
+│    level: int
+│    responder_type: str
+│    timeout_seconds: int
+│    description: str
+│class RiskThresholds:
+│    max_auto_approve_cost_usd: float
+│    max_medium_approve_cost_usd: float
+│    max_auto_approve_retries: int
+│    allowed_retry_actions: frozenset[str]
+│def _build_escalation_chain() -> list[EscalationLevel]
+│def get_escalation_chain() -> list[EscalationLevel]
+│def get_escalation_level(current_level: int) -> EscalationLevel | None
+│def get_next_escalation(current_level: int) -> EscalationLevel | None
+│def _get_thresholds() -> RiskThresholds
+│def evaluate_automated_rules(action: str, context: dict) -> dict | None
+│def evaluate_risk_matrix(action: str, context: dict) -> dict | None
+
+modules/backend/agents/platform/__init__.py (0 lines):
+
+modules/backend/agents/platform/director/__init__.py (0 lines):
+
+modules/backend/agents/platform/director/agent.py (151 lines):
+│def create_agent(model: str | Model) -> Agent
+
+modules/backend/agents/platform/health/__init__.py (1 lines):
+
+modules/backend/agents/platform/health/agent.py (128 lines):
+│def create_agent(model: str | Model) -> Agent[HealthAgentDeps, HealthCheckResult]
+│def run_agent(user_message: str, deps: HealthAgentDeps, agent: Agent[HealthAgentDeps, HealthCheckResult], ...) -> HealthCheckResult
+│def run_agent_stream(user_message: str, deps: HealthAgentDeps, agent: Agent[HealthAgentDeps, HealthCheckResult], ...) -> AsyncGenerator[dict, None]
+
+modules/backend/agents/preflight.py (106 lines):
+│class ModelCheckResult:
+│    model_name: str
+│    ok: bool
+│    elapsed_ms: float
+│    error: str | None
+│    error_type: str | None
+│class PreflightResult:
+│    ok: bool
+│    checks: list[ModelCheckResult]
+│    def failed() -> list[ModelCheckResult]
+│def _ping_model(model_name: str) -> ModelCheckResult
+│def preflight_check(roster_name: str, models: list[str] | None) -> PreflightResult
+
+modules/backend/agents/software/__init__.py (0 lines):
+
+modules/backend/agents/software/architecture/__init__.py (1 lines):
+
+modules/backend/agents/software/architecture/agent.py (182 lines):
+│def create_agent(model: str | Model) -> Agent[QaAgentDeps, ArchitectureReviewResult]
+│def run_agent(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, ArchitectureReviewResult], ...) -> ArchitectureReviewResult
+│def run_agent_stream(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, ArchitectureReviewResult], ...) -> AsyncGenerator[dict, None]
+
+modules/backend/agents/software/quality/__init__.py (1 lines):
+
+modules/backend/agents/software/quality/agent.py (325 lines):
+│def create_agent(model: str | Model) -> Agent[QaAgentDeps, QaAuditResult]
+│def pre_execute(user_message: str, deps: QaAgentDeps) -> tuple[str, PqiScore | None]
+│def post_execute(output: QaAuditResult, hook_data: PqiScore | None) -> None
+│def _compute_pqi(deps: QaAgentDeps) -> PqiScore | None
+│def _format_pqi_for_llm(pqi: PqiScore) -> str
+│def run_agent(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, QaAuditResult], ...) -> QaAuditResult
+│def run_agent_stream(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, QaAuditResult], ...) -> AsyncGenerator[dict, None]
+
+modules/backend/agents/system/__init__.py (0 lines):
+
+modules/backend/agents/system/planning/__init__.py (1 lines):
+
+modules/backend/agents/system/planning/agent.py (108 lines):
+│class PlanningAgentDeps(BaseAgentDeps):
+│    mission_brief: str
+│    roster_description: str
+│    upstream_context: dict[str, Any] | None
+│    code_map: dict | None
+│def create_agent(model: str | Model) -> Agent
+│def run_agent(agent: Agent, deps: PlanningAgentDeps, user_prompt: str) -> dict
+│def extract_task_plan_json(text: str) -> dict
+
+modules/backend/agents/system/summarization/__init__.py (0 lines):
+
+modules/backend/agents/system/summarization/agent.py (109 lines):
+│class SummarizationOutput(BaseModel):
+│    title: str
+│    summary: str
+│    key_outcomes: list[str]
+│    domain_tags: list[str]
+│@lru_cache
+│def _get_agent() -> Agent[None, SummarizationOutput]
+│def get_agent(model: Model | None) -> Agent[None, SummarizationOutput]
+│def summarize_missions(mission_outcomes: list[dict]) -> dict[str, Any]
+
+modules/backend/agents/system/synthesis/__init__.py (0 lines):
+
+modules/backend/agents/system/synthesis/agent.py (65 lines):
+│@lru_cache
+│def _get_agent() -> Agent[None, str]
+│def synthesize(outcome_data: dict[str, Any]) -> str
+
+modules/backend/agents/system/verification/__init__.py (1 lines):
+
+modules/backend/agents/system/verification/agent.py (105 lines):
+│class CriterionResult(BaseModel):
+│    criterion: str
+│    score: float
+│    passed: bool
+│    evidence: str
+│    issues: list[str]
+│class VerificationEvaluation(BaseModel):
+│    overall_score: float
+│    passed: bool
+│    criteria_results: list[CriterionResult]
+│    blocking_issues: list[str]
+│    recommendations: list[str]
+│def create_agent(model: str | Model) -> Agent[BaseAgentDeps, VerificationEvaluation]
+│def run_agent(user_message: str, deps: BaseAgentDeps, agent: Agent[BaseAgentDeps, VerificationEvaluation], ...) -> VerificationEvaluation
+
+modules/backend/agents/tools/code.py (77 lines):
+│def apply_fix(project_root: Path, file_path: str, old_text: str, ...) -> dict
+│def run_tests(project_root: Path) -> dict
+
+modules/backend/agents/tools/codemap.py (156 lines):
+│def generate_code_map(project_root: Path, scope: FileScope) -> dict
+│def load_code_map(project_root: Path, scope: FileScope) -> dict
+│def get_dependency_analysis(project_root: Path, scope: FileScope) -> dict
+│def run_quality_score(project_root: Path, scope: FileScope) -> dict
+
+modules/backend/agents/tools/compliance.py (98 lines):
+│def _get_scanner(project_root: Path, config: AgentConfigSchema) -> ComplianceScannerService
+│def scan_imports(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
+│def scan_datetime(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
+│def scan_hardcoded(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
+│def scan_file_sizes(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
+│def scan_cli_options(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
+│def scan_config_files(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
+│def load_project_standards(project_root: Path, scope: FileScope) -> dict
+
+modules/backend/agents/tools/environment.py (116 lines):
+│def run_command(command: str) -> dict[str, Any]
+│def _run_in_environment(command: str, handle: Any, timeout_seconds: int, ...) -> dict[str, Any]
+│def _run_local(command: str, timeout_seconds: int) -> dict[str, Any]
+
+modules/backend/agents/tools/filesystem.py (66 lines):
+│def read_file(project_root: Path, file_path: str, scope: FileScope) -> str
+│def list_files(project_root: Path, scope: FileScope, exclusion_paths: set[str] | None) -> list[str]
+
+modules/backend/agents/tools/system.py (367 lines):
+│def check_system_health() -> dict
+│def get_app_info(app_config: Any) -> dict
+│def scan_log_errors(project_root: Path, scope: FileScope, max_lines: int) -> dict
+│def validate_config_files(project_root: Path, scope: FileScope) -> dict
+│def check_dependencies(project_root: Path, scope: FileScope) -> dict
+│def check_file_structure(project_root: Path, scope: FileScope) -> dict
+
+modules/backend/agents/tools/workflow_design.py (214 lines):
+│def browse_agent_catalog(session: AsyncSession) -> list[dict[str, Any]]
+│def validate_workflow_proposal(steps: list[dict[str, Any]], objective: dict[str, Any] | None) -> dict[str, Any]
+│def build_graph_structure(steps: list[dict[str, Any]]) -> dict[str, Any]
+│def persist_workflow(session: AsyncSession) -> dict[str, Any]
 
 
 ## clients
@@ -1724,759 +2522,6 @@ modules/clients/tui/widgets/catalog_browse_modal.py (150 lines):
 │    def on_agent_added(event: AgentAdded) -> None
 
 
-## backend.agents
-
-modules/backend/agents/mission_control/gate.py (538 lines):
-│class GateContext:
-│    gate_type: str
-│    mission_id: str
-│    layer_index: int
-│    total_layers: int
-│    pending_tasks: list[dict]
-│    task_id: str | None
-│    task_result: dict | None
-│    task_output: dict | None
-│    verification: dict | None
-│    completed_tasks: list[dict]
-│    total_cost_usd: float
-│    budget_usd: float
-│    current_instructions: str | None
-│    current_inputs: dict | None
-│    ai_recommendation: Any
-│class GateAction(str, Enum):
-│class GateDecision:
-│    action: GateAction
-│    reason: str | None
-│    modified_inputs: dict | None
-│    modified_instructions: str | None
-│    reviewer: str
-│class GateReviewer(Protocol):
-│    def review(context: GateContext) -> GateDecision
-│class LlmGateReviewer:
-│    def __init__(model: str, temperature: float, max_tokens: int)
-│    def _get_agent()
-│    def review(context: GateContext) -> GateDecision
-│class NoOpGate:
-│    def review(context: GateContext) -> GateDecision
-│class ConfigurableGate:
-│    def __init__(config: Any, console: Any, verbose: bool)
-│    def _get_llm() -> LlmGateReviewer
-│    def _get_cli()
-│    def _effective_mode(gate_type: str) -> str
-│    def _is_enabled(gate_type: str) -> bool
-│    def _should_auto_continue(context: GateContext) -> bool
-│    def review(context: GateContext) -> GateDecision
-│def create_gate(mode_override: str | None, console: Any, verbose: bool) -> GateReviewer | None
-│def _build_gate_prompt(context: GateContext) -> str
-│def _parse_action(action_str: str) -> GateAction
-
-modules/backend/agents/config_schema.py (272 lines):
-│class _StrictBase(BaseModel):
-│class AgentConfigSchema(_StrictBase):
-│    agent_name: str
-│    agent_type: str
-│    description: str
-│    enabled: bool
-│    model: str | AgentModelSchema
-│    keywords: list[str]
-│    tools: list[str]
-│    max_input_length: int
-│    max_budget_usd: float
-│    execution: ExecutionSchema
-│    invocation: InvocationSchema
-│    scope: FileScopeConfigSchema
-│    interface: AgentInterfaceSchema | None
-│    version: str
-│    max_tokens: int | None
-│    max_requests: int | None
-│    file_size_limit: int | None
-│    rules: list[ComplianceRuleSchema] | None
-│    exclusions: ExclusionsSchema | None
-│    chat_enabled: bool
-│    thinking_budget: dict[str, int] | None
-│    def _normalize_model(v: str | dict) -> str | dict
-│    def _validate_invocation_tier() -> Self
-│class FileScopeConfigSchema(_StrictBase):
-│    read: list[str]
-│    write: list[str]
-│class InvocationSchema(_StrictBase):
-│    tier: Literal['user', 'platform', 'system']
-│    required_role: Literal['admin', 'user'] | None
-│class ExecutionSchema(_StrictBase):
-│    mode: str
-│    prefer: Literal['local', 'worktree', 'container'] | None
-│    template: str | None
-│class ComplianceRuleSchema(_StrictBase):
-│    id: str
-│    description: str
-│    severity: str
-│    enabled: bool
-│class ExclusionsSchema(_StrictBase):
-│    paths: list[str]
-│    patterns: list[str]
-│class AgentInterfaceSchema(_StrictBase):
-│    input: dict[str, str]
-│    output: dict[str, str]
-│class MissionControlConfigSchema(_StrictBase):
-│    model_pricing: dict[str, ModelPricingRateSchema]
-│    routing: RoutingSchema
-│    limits: MissionControlLimitsSchema
-│    guardrails: GuardrailsSchema
-│    redis_ttl: RedisTtlSchema
-│    approval: ApprovalSchema
-│    dispatch: DispatchSchema
-│    escalation: EscalationThresholdsSchema
-│class ModelPricingRateSchema(_StrictBase):
-│    input: float
-│    output: float
-│class RoutingSchema(_StrictBase):
-│    strategy: str
-│    llm_model: str
-│    complex_request_agent: str
-│    fallback_agent: str
-│    chat_agent: str
-│    max_routing_depth: int
-│class MissionControlLimitsSchema(_StrictBase):
-│    max_requests_per_task: int
-│    max_tool_calls_per_task: int
-│    max_tokens_per_task: int
-│    max_cost_per_plan: float
-│    max_cost_per_user_daily: float
-│    task_timeout_seconds: int
-│    plan_timeout_seconds: int
-│class GuardrailsSchema(_StrictBase):
-│    max_input_length: int
-│    injection_patterns: list[str]
-│class RedisTtlSchema(_StrictBase):
-│    session: int
-│    approval: int
-│    lock: int
-│    result: int
-│class ApprovalSchema(_StrictBase):
-│    poll_interval_seconds: int
-│    timeout_seconds: int
-│class DispatchSchema(_StrictBase):
-│    default_request_limit: int
-│    token_cost_factor: int
-│    context_token_budget: int
-│    history_reserve_tokens: int
-│class EscalationThresholdsSchema(_StrictBase):
-│    max_auto_approve_cost_usd: float
-│    max_medium_approve_cost_usd: float
-│    max_auto_approve_retries: int
-│class AgentModelSchema(_StrictBase):
-│    name: str
-│    temperature: float
-│    max_tokens: int
-
-modules/backend/agents/deps/base.py (90 lines):
-│class FileScope:
-│    read_paths: list[str]
-│    write_paths: list[str]
-│    def check_read(rel_path: str) -> None
-│    def check_write(rel_path: str) -> None
-│    def is_readable(rel_path: str) -> bool
-│    def _matches(rel_path: str, allowed: list[str]) -> bool
-│class BaseAgentDeps:
-│    project_root: Path
-│    scope: FileScope
-│    config: AgentConfigSchema | None
-│    session_id: str | None
-│    on_event: Any
-│    environment_handle: Any
-│class QaAgentDeps(BaseAgentDeps):
-│    on_progress: Any
-│    def emit(event: dict) -> None
-│class HealthAgentDeps(BaseAgentDeps):
-│    app_config: Any
-│class HorizontalAgentDeps(BaseAgentDeps):
-│    allowed_agents: set[str]
-│    max_delegation_depth: int
-│    mission_control: Any
-
-modules/backend/agents/mission_control/helpers.py (755 lines):
-│def _build_model(config_model: str | AgentModelSchema) -> Model
-│def assemble_instructions(category: str, name: str) -> str
-│def _get_model_name(config_model: str | AgentModelSchema) -> str
-│def build_deps_from_config(agent_config: AgentConfigSchema) -> dict[str, Any]
-│def _build_agent_deps(agent_name: str, agent_config: AgentConfigSchema, session_id: str | None, ...) -> BaseAgentDeps
-│def _get_usage_limits(agent_name: str | None) -> UsageLimits
-│def _import_agent_module(agent_name: str) -> Any
-│def _resolve_agent(session: 'SessionResponse', message: str) -> str
-│def get_chat_agent() -> str
-│def _publish(event_bus: EventBusProtocol, event: SessionEvent) -> None
-│def _emit(event_bus: EventBusProtocol, event_cls: type[SessionEvent]) -> None
-│def _emit_tool_events(event_bus: EventBusProtocol, stream: Any) -> tuple[list[str], list[SessionEvent]]
-│def _persist_messages(session_service: SessionServiceProtocol, session_id: str, creates: list[SessionMessageCreate]) -> None
-│def _build_roster_prompt(roster: Roster) -> str
-│def _build_planning_prompt(mission_brief: str, mission_id: str, roster_description: str, ...) -> str
-│def _append_validation_feedback(prompt: str, errors: list[str]) -> str
-│def _make_agent_executor(event_bus: EventBusProtocol) -> ExecuteAgentFn
-│def _call_planning_agent(prompt: str, roster: Roster, upstream_context: dict | None, ...) -> dict
-
-modules/backend/agents/mission_control/models.py (154 lines):
-│class EventBusProtocol(Protocol):
-│    def publish(event: SessionEvent) -> None
-│    def publish_to_mission(mission_id: str, event: SessionEvent) -> None
-│class ExecuteAgentFn(Protocol):
-│    def __call__(agent_name: str, instructions: str, inputs: dict, usage_limits: UsageLimits) -> Awaitable[dict]
-│class ContextCuratorProtocol(Protocol):
-│    def get_mission_context(mission_id: str) -> dict
-│    def apply_task_updates(mission_id: str, task_result_context_updates: list[dict]) -> tuple[int, list[str]]
-│class ContextAssemblerProtocol(Protocol):
-│    def build(mission_id: str, task_definition: dict, resolved_inputs: dict) -> dict
-│class MissionControlRequest:
-│    user_input: str
-│    agent: str | None
-│    conversation_id: str | None
-│    channel: str
-│    session_type: str
-│    tool_access_level: str
-│class CollectResult(TypedDict):
-│    agent_name: str
-│    output: str
-│    cost_usd: float
-│    session_id: str
-│    thinking: str | None
-│class MissionControlResponse:
-│    agent_name: str
-│    output: str
-│    metadata: dict[str, Any]
-│class NoOpEventBus:
-│    def publish(event: SessionEvent) -> None
-│    def publish_to_mission(mission_id: str, event: SessionEvent) -> None
-
-modules/backend/agents/mission_control/outcome.py (220 lines):
-│class TaskResult(BaseModel):
-│    task_id: str
-│    agent_name: str
-│    status: TaskStatus
-│    output_reference: dict
-│    token_usage: TaskTokenUsage
-│    cost_usd: float
-│    duration_seconds: float
-│    verification_outcome: VerificationOutcome
-│    retry_count: int
-│    retry_history: list[RetryHistoryEntry]
-│    execution_id: str
-│    context_updates: list[dict]
-│    skip_reason: str | None
-│class ExecutionOutcome(BaseModel):
-│    mission_id: str
-│    status: ExecutionStatus
-│    summary: str
-│    task_results: list[TaskResult]
-│    total_cost_usd: float
-│    total_duration_seconds: float
-│    total_tokens: TaskTokenUsage
-│    abort_reason: str | None
-│    planning_trace_reference: str | None
-│    task_plan_reference: str | None
-│    gate_decisions: list[GateDecisionRecord]
-│class TaskTokenUsage(BaseModel):
-│    input: int
-│    output: int
-│    thinking: int
-│class RetryHistoryEntry(BaseModel):
-│    attempt: int
-│    failure_tier: int
-│    failure_reason: str
-│    feedback_provided: str
-│class VerificationOutcome(BaseModel):
-│    tier_1: Tier1Outcome
-│    tier_2: Tier2Outcome
-│    tier_3: Tier3Outcome
-│class TaskStatus(StrEnum):
-│class FailedCheck(BaseModel):
-│    check: str
-│    reason: str
-│class GateDecisionRecord(BaseModel):
-│    gate_type: str
-│    layer_index: int
-│    task_id: str | None
-│    action: str
-│    reason: str | None
-│    reviewer: str
-│class ExecutionStatus(StrEnum):
-│class Tier1Outcome(BaseModel):
-│    status: str
-│    details: str
-│class Tier2Outcome(BaseModel):
-│    status: str
-│    checks_run: int
-│    checks_passed: int
-│    failed_checks: list[FailedCheck]
-│class Tier3Outcome(BaseModel):
-│    status: str
-│    overall_score: float
-│    criteria_results_reference: str
-│    evaluator_thinking_trace_reference: str
-│    cost_usd: float
-│def build_verification_outcome(result: VerificationResult) -> VerificationOutcome
-
-modules/backend/agents/mission_control/roster.py (187 lines):
-│class RosterAgentEntry(BaseModel):
-│    agent_name: str
-│    agent_version: str
-│    description: str
-│    model: RosterModelSchema
-│    tools: list[str]
-│    interface: RosterInterfaceSchema
-│    constraints: RosterConstraintsSchema
-│class Roster(BaseModel):
-│    agents: list[RosterAgentEntry]
-│    def get_agent(name: str, version: str) -> RosterAgentEntry | None
-│    def get_agent_by_name(name: str) -> RosterAgentEntry | None
-│    def agent_names() -> list[str]
-│class RosterModelSchema(BaseModel):
-│    name: str
-│    temperature: float
-│    max_tokens: int
-│class RosterInterfaceSchema(BaseModel):
-│    input: dict[str, str]
-│    output: dict[str, str]
-│class RosterConstraintsSchema(BaseModel):
-│    timeout_seconds: int
-│    cost_ceiling_usd: float
-│    retry_budget: int
-│    parallelism: str
-│def derive_roster_from_team(mission_id: str, session: 'AsyncSession') -> Roster
-
-modules/backend/agents/mission_control/registry.py (189 lines):
-│class AgentRegistry:
-│    def __init__() -> None
-│    def _ensure_loaded() -> None
-│    def get(agent_name: str) -> AgentConfigSchema
-│    def has(agent_name: str) -> bool
-│    def list_all(tier: str | None) -> list[dict[str, Any]]
-│    def list_system() -> list[dict[str, Any]]
-│    def get_by_keyword(text: str) -> str | None
-│    def resolve_module_path(agent_name: str) -> str
-│    def get_instance(agent_name: str, model: Any) -> Any
-│    def reset() -> None
-│@lru_cache
-│def get_registry() -> AgentRegistry
-
-modules/backend/agents/mission_control/middleware.py (74 lines):
-│@lru_cache
-│def _load_mission_control_config() -> MissionControlConfigSchema
-│def check_guardrails(user_input: str, agent_config: AgentConfigSchema | None) -> None
-│def with_guardrails(agent_config: AgentConfigSchema | None)
-
-modules/backend/agents/mission_control/mission_control.py (775 lines):
-│def list_agents() -> list[dict[str, Any]]
-│def _prepend_mission_context(mission_id: str, message: str) -> str
-│def handle(session_id: str, message: str) -> AsyncIterator[SessionEvent]
-│def collect(session_id: str, message: str) -> CollectResult
-│def handle_mission(mission_run_id: str, mission_brief: str) -> ExecutionOutcome
-
-modules/backend/agents/mission_control/check_registry.py (85 lines):
-│class CheckResult:
-│    passed: bool
-│    details: str
-│    execution_time_ms: float
-│def register_check(name: str) -> Callable[[CheckFn], CheckFn]
-│def get_check(name: str) -> CheckFn | None
-│def check_exists(name: str) -> bool
-│def list_checks() -> list[str]
-│def get_registry_snapshot() -> dict[str, CheckFn]
-
-modules/backend/agents/mission_control/checks/builtin.py (226 lines):
-│@register_check
-│def validate_json_schema(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
-│@register_check
-│def validate_field_exists(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
-│@register_check
-│def validate_field_type(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
-│@register_check
-│def validate_field_range(output: dict[str, Any], params: dict[str, Any]) -> CheckResult
-│def _elapsed_ms(start: float) -> float
-
-modules/backend/agents/tools/__init__.py (1 lines):
-
-modules/backend/agents/mission_control/dispatch/step_executor.py (140 lines):
-│def execute_task(task: TaskDefinition, roster_entry: RosterAgentEntry, resolved_inputs: dict[str, Any], ...) -> dict
-│def verify_task(task: TaskDefinition, output: dict, roster_entry: RosterAgentEntry, ...) -> VerificationResult
-│def execute_with_step_events(task: TaskDefinition, roster_entry: RosterAgentEntry, resolved_inputs: dict[str, Any], ...) -> TaskResult
-
-modules/backend/agents/schemas.py (92 lines):
-│class PqiDimensionScore(BaseModel):
-│    score: float
-│    confidence: float
-│    sub_scores: dict[str, float]
-│class PqiScore(BaseModel):
-│    composite: float
-│    quality_band: str
-│    dimensions: dict[str, PqiDimensionScore]
-│    file_count: int
-│    line_count: int
-│class ArchitectureFinding(BaseModel):
-│    principle: str
-│    file: str
-│    line: int | None
-│    message: str
-│    recommendation: str
-│    related_files: list[str]
-│class HealthFinding(BaseModel):
-│    category: str
-│    severity: str
-│    message: str
-│    details: str | None
-│class QaAuditResult(BaseModel):
-│    summary: str
-│    total_violations: int
-│    error_count: int
-│    warning_count: int
-│    violations: list[Violation]
-│    scanned_files_count: int
-│    pqi: PqiScore | None
-│class ArchitectureReviewResult(BaseModel):
-│    summary: str
-│    total_findings: int
-│    findings: list[ArchitectureFinding]
-│    files_reviewed: int
-│    new_findings: int
-│    baseline_findings: int
-│class HealthCheckResult(BaseModel):
-│    summary: str
-│    overall_status: str
-│    findings: list[HealthFinding]
-│    error_count: int
-│    warning_count: int
-│    checks_performed: list[str]
-│class Violation(BaseModel):
-│    rule_id: str
-│    file: str
-│    line: int | None
-│    message: str
-│    severity: str
-│    recommendation: str | None
-
-modules/backend/agents/mission_control/cost.py (37 lines):
-│def compute_cost_usd(input_tokens: int, output_tokens: int, model: str | None) -> float
-│def estimate_cost(estimated_input_tokens: int, model: str | None) -> float
-
-modules/backend/agents/mission_control/dispatch/dag.py (74 lines):
-│def topological_sort(plan: TaskPlan) -> list[list[str]]
-│def resolve_upstream_inputs(task: TaskDefinition, completed_outputs: dict[str, dict]) -> dict[str, Any]
-
-modules/backend/agents/mission_control/dispatch/loop.py (487 lines):
-│def dispatch(plan: TaskPlan, roster: Roster, execute_agent_fn: ExecuteAgentFn, ...) -> ExecutionOutcome
-│def _load_project_context(mission_id: str | None, context_curator: ContextCuratorProtocol | None) -> dict | None
-│def _execute_layer(plan: TaskPlan, layer: list[str], layer_idx: int, ...) -> dict | None
-│def _inject_context(resolved_inputs: dict[str, Any], task: Any, mission_id: str | None, ...) -> None
-│def _build_outcome(plan: TaskPlan, task_results: list[TaskResult], total_cost: float, ...) -> ExecutionOutcome
-
-modules/backend/agents/mission_control/router.py (40 lines):
-│class RuleBasedRouter:
-│    def __init__(registry: AgentRegistry) -> None
-│    def route(request: MissionControlRequest) -> str | None
-
-modules/backend/agents/mission/director/deps.py (20 lines):
-│class MissionDirectorDeps(BaseAgentDeps):
-│    mission_id: str
-│    db_session: Any
-
-modules/backend/agents/mission/workflow/deps.py (22 lines):
-│class ArchitectAgentDeps(BaseAgentDeps):
-│    mission_id: str
-│    mission_brief: str
-│    team_summary: str
-│    db_session: Any
-
-modules/backend/agents/platform/director/deps.py (18 lines):
-│class PlatformDirectorDeps(BaseAgentDeps):
-│    db_session: Any
-
-modules/backend/agents/mission_control/dispatch/result_builders.py (89 lines):
-│def append_feedback(original_instructions: str, feedback: str) -> str
-│def aborted_outcome(plan: TaskPlan, reason: str | None, start_time: float, ...) -> ExecutionOutcome
-│def skipped_result(task: TaskDefinition, reason: str | None, execution_id: str) -> TaskResult
-│def failed_result(task: TaskDefinition, reason: str, retry_count: int, ...) -> TaskResult
-
-modules/backend/agents/mission_control/verification.py (525 lines):
-│class TierStatus(str, Enum):
-│class TierResult:
-│    tier: int
-│    status: TierStatus
-│    details: str
-│    execution_time_ms: float
-│    check_results: list[dict[str, Any]]
-│class VerificationResult:
-│    passed: bool
-│    tier_1: TierResult | None
-│    tier_2: TierResult | None
-│    tier_3: TierResult | Tier3Result | None
-│    failed_tier: int | None
-│    total_execution_time_ms: float
-│class Tier3Result(TierResult):
-│    overall_score: float
-│    criteria_results_reference: str
-│    evaluator_thinking_trace_reference: str
-│    cost_usd: float
-│def run_verification_pipeline(output: dict[str, Any], task: dict[str, Any], agent_interface: dict[str, Any] | None, ...) -> VerificationResult
-│def _run_tier_1(output: dict[str, Any], verification_config: dict[str, Any], agent_interface: dict[str, Any] | None) -> TierResult
-│def _run_tier_2(output: dict[str, Any], verification_config: dict[str, Any]) -> TierResult
-│def _run_tier_3(output: dict[str, Any], task: dict[str, Any], verification_config: dict[str, Any], ...) -> TierResult | Tier3Result
-│def build_retry_feedback(verification_result: VerificationResult, attempt: int) -> dict[str, Any]
-│def _elapsed_ms(start: float) -> float
-
-modules/backend/agents/mission_control/dispatch/__init__.py (19 lines):
-
-modules/backend/agents/mission/workflow/agent.py (229 lines):
-│def create_agent(model: str | Model) -> Agent
-│def run_conversational(agent: Agent, deps: ArchitectAgentDeps, message: str) -> dict[str, Any]
-
-modules/backend/agents/mission_control/history.py (169 lines):
-│def session_messages_to_model_history(messages: list) -> list[ModelMessage]
-│def model_messages_to_session_creates(messages: list[ModelMessage], session_id: str, agent_id: str | None, ...) -> list[SessionMessageCreate]
-
-modules/backend/agents/mission_control/persistence_bridge.py (131 lines):
-│def persist_mission_results(outcome: ExecutionOutcome) -> None
-
-modules/backend/agents/mission_control/plan_validator.py (286 lines):
-│class ValidationResult:
-│    def __init__() -> None
-│    def is_valid() -> bool
-│    def add_error(rule: str, message: str) -> None
-│    def __repr__() -> str
-│def validate_plan(plan: TaskPlan, roster: Roster, mission_budget_usd: float) -> ValidationResult
-│def _rule_2_agent_validation(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
-│def _rule_3_dag_validation(plan: TaskPlan, result: ValidationResult) -> None
-│def _rule_4_dependency_consistency(plan: TaskPlan, result: ValidationResult) -> None
-│def _rule_5_input_compatibility(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
-│def _rule_6_check_registry(plan: TaskPlan, result: ValidationResult) -> None
-│def _rule_7_budget_validation(plan: TaskPlan, mission_budget_usd: float, result: ValidationResult) -> None
-│def _rule_8_timeout_validation(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
-│def _rule_9_critical_path_validation(plan: TaskPlan, result: ValidationResult) -> None
-│def _rule_10_tier3_completeness(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None
-│def _rule_11_self_evaluation_prevention(plan: TaskPlan, result: ValidationResult) -> None
-
-modules/backend/agents/__init__.py (1 lines):
-
-modules/backend/agents/deps/__init__.py (17 lines):
-
-modules/backend/agents/mission/__init__.py (0 lines):
-
-modules/backend/agents/mission/director/__init__.py (0 lines):
-
-modules/backend/agents/mission/director/agent.py (340 lines):
-│def create_agent(model: str | Model) -> Agent
-
-modules/backend/agents/mission/workflow/__init__.py (1 lines):
-
-modules/backend/agents/mission_control/__init__.py (10 lines):
-
-modules/backend/agents/mission_control/approval.py (54 lines):
-│def request_approval(mission_id: str, task_id: str, action: str, ...) -> dict
-
-modules/backend/agents/mission_control/checks/__init__.py (7 lines):
-
-modules/backend/agents/mission_control/dispatch/convergence.py (441 lines):
-│class ConvergenceConfig:
-│    max_iterations: int
-│    convergence_condition: str
-│    convergence_threshold: float | None
-│    commit_per_cycle: bool
-│    final_verification: bool
-│    evaluation_agent: str
-│    remediation_agent: str
-│    evaluation_config: dict[str, Any]
-│    remediation_config: dict[str, Any]
-│    def from_dict(data: dict[str, Any]) -> ConvergenceConfig
-│class CycleResult:
-│    cycle_number: int
-│    findings_count: int
-│    fixes_applied: int
-│    convergence_metric: float | None
-│    converged: bool
-│    evaluation_result: TaskResult | None
-│    remediation_result: TaskResult | None
-│def execute_convergence_loop() -> TaskResult
-│def _run_final_verification() -> TaskResult
-│def _extract_findings_count(result: Any) -> int
-│def _extract_fixes_count(result: Any) -> int
-│def _extract_metric(result: Any, config: ConvergenceConfig) -> float | None
-│def _check_convergence(condition: str, findings_count: int, metric: float | None, ...) -> bool
-│def _to_task_result(task_id: str, agent_name: str, raw_result: Any) -> TaskResult
-
-modules/backend/agents/mission_control/dispatch/environment.py (110 lines):
-│def resolve_execution_mode() -> str
-│def _validate_mode(mode: str, repo_root: str | None) -> str
-
-modules/backend/agents/mission_control/dispatch/retry_handler.py (365 lines):
-│def execute_with_retry(task: TaskDefinition, roster_entry: RosterAgentEntry, resolved_inputs: dict[str, Any], ...) -> TaskResult
-│def _handle_verification_failure(task: TaskDefinition, output: dict, token_usage: TaskTokenUsage, ...) -> TaskResult | str
-│def _handle_post_task_gate(task: TaskDefinition, output: dict, token_usage: TaskTokenUsage, ...) -> TaskResult | str
-
-modules/backend/agents/mission_control/dispatch_adapter.py (122 lines):
-│class MissionControlDispatchAdapter:
-│    def __init__(session_service: SessionServiceProtocol, db_session: AsyncSession, event_bus: EventBusProtocol) -> None
-│    def execute(mission_brief: str, roster_ref: str, complexity_tier: str, upstream_context: dict | None, cost_ceiling_usd: float | None, session_id: str | None, mission_id: str | None, gate: object | None, execution_mode: str | None) -> dict
-
-modules/backend/agents/mission_control/escalation.py (231 lines):
-│class EscalationLevel:
-│    level: int
-│    responder_type: str
-│    timeout_seconds: int
-│    description: str
-│class RiskThresholds:
-│    max_auto_approve_cost_usd: float
-│    max_medium_approve_cost_usd: float
-│    max_auto_approve_retries: int
-│    allowed_retry_actions: frozenset[str]
-│def _build_escalation_chain() -> list[EscalationLevel]
-│def get_escalation_chain() -> list[EscalationLevel]
-│def get_escalation_level(current_level: int) -> EscalationLevel | None
-│def get_next_escalation(current_level: int) -> EscalationLevel | None
-│def _get_thresholds() -> RiskThresholds
-│def evaluate_automated_rules(action: str, context: dict) -> dict | None
-│def evaluate_risk_matrix(action: str, context: dict) -> dict | None
-
-modules/backend/agents/platform/__init__.py (0 lines):
-
-modules/backend/agents/platform/director/__init__.py (0 lines):
-
-modules/backend/agents/platform/director/agent.py (151 lines):
-│def create_agent(model: str | Model) -> Agent
-
-modules/backend/agents/platform/health/__init__.py (1 lines):
-
-modules/backend/agents/platform/health/agent.py (128 lines):
-│def create_agent(model: str | Model) -> Agent[HealthAgentDeps, HealthCheckResult]
-│def run_agent(user_message: str, deps: HealthAgentDeps, agent: Agent[HealthAgentDeps, HealthCheckResult], ...) -> HealthCheckResult
-│def run_agent_stream(user_message: str, deps: HealthAgentDeps, agent: Agent[HealthAgentDeps, HealthCheckResult], ...) -> AsyncGenerator[dict, None]
-
-modules/backend/agents/preflight.py (106 lines):
-│class ModelCheckResult:
-│    model_name: str
-│    ok: bool
-│    elapsed_ms: float
-│    error: str | None
-│    error_type: str | None
-│class PreflightResult:
-│    ok: bool
-│    checks: list[ModelCheckResult]
-│    def failed() -> list[ModelCheckResult]
-│def _ping_model(model_name: str) -> ModelCheckResult
-│def preflight_check(roster_name: str, models: list[str] | None) -> PreflightResult
-
-modules/backend/agents/software/__init__.py (0 lines):
-
-modules/backend/agents/software/architecture/__init__.py (1 lines):
-
-modules/backend/agents/software/architecture/agent.py (182 lines):
-│def create_agent(model: str | Model) -> Agent[QaAgentDeps, ArchitectureReviewResult]
-│def run_agent(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, ArchitectureReviewResult], ...) -> ArchitectureReviewResult
-│def run_agent_stream(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, ArchitectureReviewResult], ...) -> AsyncGenerator[dict, None]
-
-modules/backend/agents/software/quality/__init__.py (1 lines):
-
-modules/backend/agents/software/quality/agent.py (325 lines):
-│def create_agent(model: str | Model) -> Agent[QaAgentDeps, QaAuditResult]
-│def pre_execute(user_message: str, deps: QaAgentDeps) -> tuple[str, PqiScore | None]
-│def post_execute(output: QaAuditResult, hook_data: PqiScore | None) -> None
-│def _compute_pqi(deps: QaAgentDeps) -> PqiScore | None
-│def _format_pqi_for_llm(pqi: PqiScore) -> str
-│def run_agent(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, QaAuditResult], ...) -> QaAuditResult
-│def run_agent_stream(user_message: str, deps: QaAgentDeps, agent: Agent[QaAgentDeps, QaAuditResult], ...) -> AsyncGenerator[dict, None]
-
-modules/backend/agents/system/__init__.py (0 lines):
-
-modules/backend/agents/system/planning/__init__.py (1 lines):
-
-modules/backend/agents/system/planning/agent.py (108 lines):
-│class PlanningAgentDeps(BaseAgentDeps):
-│    mission_brief: str
-│    roster_description: str
-│    upstream_context: dict[str, Any] | None
-│    code_map: dict | None
-│def create_agent(model: str | Model) -> Agent
-│def run_agent(agent: Agent, deps: PlanningAgentDeps, user_prompt: str) -> dict
-│def extract_task_plan_json(text: str) -> dict
-
-modules/backend/agents/system/summarization/__init__.py (0 lines):
-
-modules/backend/agents/system/summarization/agent.py (109 lines):
-│class SummarizationOutput(BaseModel):
-│    title: str
-│    summary: str
-│    key_outcomes: list[str]
-│    domain_tags: list[str]
-│@lru_cache
-│def _get_agent() -> Agent[None, SummarizationOutput]
-│def get_agent(model: Model | None) -> Agent[None, SummarizationOutput]
-│def summarize_missions(mission_outcomes: list[dict]) -> dict[str, Any]
-
-modules/backend/agents/system/synthesis/__init__.py (0 lines):
-
-modules/backend/agents/system/synthesis/agent.py (65 lines):
-│@lru_cache
-│def _get_agent() -> Agent[None, str]
-│def synthesize(outcome_data: dict[str, Any]) -> str
-
-modules/backend/agents/system/verification/__init__.py (1 lines):
-
-modules/backend/agents/system/verification/agent.py (105 lines):
-│class CriterionResult(BaseModel):
-│    criterion: str
-│    score: float
-│    passed: bool
-│    evidence: str
-│    issues: list[str]
-│class VerificationEvaluation(BaseModel):
-│    overall_score: float
-│    passed: bool
-│    criteria_results: list[CriterionResult]
-│    blocking_issues: list[str]
-│    recommendations: list[str]
-│def create_agent(model: str | Model) -> Agent[BaseAgentDeps, VerificationEvaluation]
-│def run_agent(user_message: str, deps: BaseAgentDeps, agent: Agent[BaseAgentDeps, VerificationEvaluation], ...) -> VerificationEvaluation
-
-modules/backend/agents/tools/code.py (77 lines):
-│def apply_fix(project_root: Path, file_path: str, old_text: str, ...) -> dict
-│def run_tests(project_root: Path) -> dict
-
-modules/backend/agents/tools/codemap.py (156 lines):
-│def generate_code_map(project_root: Path, scope: FileScope) -> dict
-│def load_code_map(project_root: Path, scope: FileScope) -> dict
-│def get_dependency_analysis(project_root: Path, scope: FileScope) -> dict
-│def run_quality_score(project_root: Path, scope: FileScope) -> dict
-
-modules/backend/agents/tools/compliance.py (98 lines):
-│def _get_scanner(project_root: Path, config: AgentConfigSchema) -> ComplianceScannerService
-│def scan_imports(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
-│def scan_datetime(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
-│def scan_hardcoded(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
-│def scan_file_sizes(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
-│def scan_cli_options(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
-│def scan_config_files(project_root: Path, scope: FileScope, config: AgentConfigSchema) -> list[dict]
-│def load_project_standards(project_root: Path, scope: FileScope) -> dict
-
-modules/backend/agents/tools/environment.py (116 lines):
-│def run_command(command: str) -> dict[str, Any]
-│def _run_in_environment(command: str, handle: Any, timeout_seconds: int, ...) -> dict[str, Any]
-│def _run_local(command: str, timeout_seconds: int) -> dict[str, Any]
-
-modules/backend/agents/tools/filesystem.py (66 lines):
-│def read_file(project_root: Path, file_path: str, scope: FileScope) -> str
-│def list_files(project_root: Path, scope: FileScope, exclusion_paths: set[str] | None) -> list[str]
-
-modules/backend/agents/tools/system.py (367 lines):
-│def check_system_health() -> dict
-│def get_app_info(app_config: Any) -> dict
-│def scan_log_errors(project_root: Path, scope: FileScope, max_lines: int) -> dict
-│def validate_config_files(project_root: Path, scope: FileScope) -> dict
-│def check_dependencies(project_root: Path, scope: FileScope) -> dict
-│def check_file_structure(project_root: Path, scope: FileScope) -> dict
-
-modules/backend/agents/tools/workflow_design.py (214 lines):
-│def browse_agent_catalog(session: AsyncSession) -> list[dict[str, Any]]
-│def validate_workflow_proposal(steps: list[dict[str, Any]], objective: dict[str, Any] | None) -> dict[str, Any]
-│def build_graph_structure(steps: list[dict[str, Any]]) -> dict[str, Any]
-│def persist_workflow(session: AsyncSession) -> dict[str, Any]
-
-
 ## backend.services
 
 modules/backend/services/code_map/types.py (78 lines):
@@ -2596,7 +2641,7 @@ modules/backend/services/pqi/ast_analysis.py (296 lines):
 │def _detect_unsafe_patterns(tree: ast.Module) -> list[str]
 │def _count_naming_violations(tree: ast.Module) -> int
 
-modules/backend/services/mission_context.py (400 lines):
+modules/backend/services/mission_context.py (410 lines):
 │class MissionContextManager(BaseService):
 │    def __init__(session: AsyncSession) -> None
 │    def factory() -> AsyncGenerator['MissionContextManager', None]
@@ -2609,6 +2654,9 @@ modules/backend/services/mission_context.py (400 lines):
 │    def get_history(mission_id: str, limit: int) -> list[ContextChange]
 │    def create_milestone(mission_id: str, title: str) -> ContextMilestone
 │    def list_milestones(mission_id: str, limit: int) -> list[ContextMilestone]
+│def _load_mcd_limits() -> tuple[int, int]
+│def _get_max_size() -> int
+│def _get_target_size() -> int
 │def _get_nested(data: dict, path: str) -> Any
 │def _set_nested(data: dict, path: str, value: Any) -> None
 │def _delete_nested(data: dict, path: str) -> Any
@@ -2652,6 +2700,29 @@ modules/backend/services/pqi/dimensions/style.py (232 lines):
 │def score_robustness(project: ProjectAnalysis) -> DimensionScore
 │def score_elegance(project: ProjectAnalysis, tool_results: dict[str, ToolResult] | None) -> DimensionScore
 │def score_reusability(project: ProjectAnalysis, code_map: dict | None) -> DimensionScore
+
+modules/backend/services/mission.py (480 lines):
+│class MissionService(BaseService):
+│    def __init__(session: AsyncSession) -> None
+│    def factory() -> AsyncGenerator['MissionService', None]
+│    def create_mission() -> Mission
+│    def _auto_assign_agents(mission_id: str, tier: str) -> None
+│    def delete_mission(mission_id: str) -> str
+│    def _cleanup_mission_containers(mission_id: str) -> None
+│    def get_mission(mission_id: str) -> Mission
+│    def get_mission_by_name(name: str) -> Mission | None
+│    def resolve_mission(id_or_name: str) -> Mission
+│    def list_missions(owner_id: str | None, status: str | None, limit: int) -> list[Mission]
+│    def update_mission(mission_id: str) -> Mission
+│    def set_gate_mode(mission_id: str, mode: str) -> Mission
+│    def resolve_gate(mission_id: str, gate_override: str | None)
+│    def archive_mission(mission_id: str) -> Mission
+│    def unarchive_mission(mission_id: str) -> Mission
+│    def get_stats(mission_id: str) -> dict
+│    def list_members(mission_id: str) -> list[MissionMember]
+│    def add_member(mission_id: str, user_id: str, role: str) -> MissionMember
+│    def update_member_role(mission_id: str, user_id: str, role: str) -> MissionMember
+│    def remove_member(mission_id: str, user_id: str) -> None
 
 modules/backend/services/execution_persistence.py (399 lines):
 │class ExecutionPersistenceService(BaseService):
@@ -2762,29 +2833,6 @@ modules/backend/services/compliance.py (333 lines):
 │    def scan_config_files() -> list[dict]
 │    def scan_all() -> list[dict]
 
-modules/backend/services/mission.py (480 lines):
-│class MissionService(BaseService):
-│    def __init__(session: AsyncSession) -> None
-│    def factory() -> AsyncGenerator['MissionService', None]
-│    def create_mission() -> Mission
-│    def _auto_assign_agents(mission_id: str, tier: str) -> None
-│    def delete_mission(mission_id: str) -> str
-│    def _cleanup_mission_containers(mission_id: str) -> None
-│    def get_mission(mission_id: str) -> Mission
-│    def get_mission_by_name(name: str) -> Mission | None
-│    def resolve_mission(id_or_name: str) -> Mission
-│    def list_missions(owner_id: str | None, status: str | None, limit: int) -> list[Mission]
-│    def update_mission(mission_id: str) -> Mission
-│    def set_gate_mode(mission_id: str, mode: str) -> Mission
-│    def resolve_gate(mission_id: str, gate_override: str | None)
-│    def archive_mission(mission_id: str) -> Mission
-│    def unarchive_mission(mission_id: str) -> Mission
-│    def get_stats(mission_id: str) -> dict
-│    def list_members(mission_id: str) -> list[MissionMember]
-│    def add_member(mission_id: str, user_id: str, role: str) -> MissionMember
-│    def update_member_role(mission_id: str, user_id: str, role: str) -> MissionMember
-│    def remove_member(mission_id: str, user_id: str) -> None
-
 modules/backend/services/code_map/graph.py (288 lines):
 │def build_reference_graph(modules: list[ModuleInfo]) -> ReferenceGraph
 │def _add_symbol_references(symbol: SymbolInfo, module_qname: str, import_tables: dict[str, dict[str, str]], ...) -> None
@@ -2816,6 +2864,32 @@ modules/backend/services/code_map/parser.py (316 lines):
 
 modules/backend/services/code_map/ranker.py (85 lines):
 │def rank_symbols(graph: ReferenceGraph, damping: float, max_iterations: int, ...) -> dict[str, float]
+
+modules/backend/services/session.py (433 lines):
+│class SessionService(BaseService):
+│    def __init__(session: AsyncSession) -> None
+│    def factory() -> AsyncGenerator['SessionService', None]
+│    def create_session(data: SessionCreate, user_id: str | None) -> Session
+│    def ensure_session(session_id: str | None) -> str
+│    def get_session(session_id: str) -> Session
+│    def update_session(session_id: str, data: SessionUpdate) -> Session
+│    def list_sessions(user_id: str | None, mission_id: str | None, status_filter: str | None, limit: int, offset: int) -> tuple[list[Session], int]
+│    def _transition(session_id: str, target_status: SessionStatus, reason: str | None) -> Session
+│    def suspend_session(session_id: str, reason: str) -> Session
+│    def resume_session(session_id: str) -> Session
+│    def complete_session(session_id: str) -> Session
+│    def fail_session(session_id: str, reason: str) -> Session
+│    def expire_session(session_id: str) -> Session
+│    def update_cost(session_id: str, input_tokens: int, output_tokens: int, cost_usd: float) -> None
+│    def enforce_budget(session_id: str, estimated_cost: float) -> None
+│    def touch_activity(session_id: str) -> None
+│    def bind_channel(session_id: str, channel_type: str, channel_id: str) -> SessionChannel
+│    def unbind_channel(session_id: str, channel_type: str, channel_id: str) -> None
+│    def get_session_by_channel(channel_type: str, channel_id: str) -> Session
+│    def add_message(session_id: str, data: SessionMessageCreate) -> None
+│    def get_messages(session_id: str, limit: int, offset: int) -> tuple[list, int]
+│    def expire_inactive_sessions() -> int
+│    def _publish_session_event(event_type: str, session: Session) -> None
 
 modules/backend/services/pqi/composite.py (85 lines):
 │def compute_pqi(dimensions: dict[str, DimensionScore], profile: str, file_count: int, ...) -> PQIResult
@@ -2857,20 +2931,6 @@ modules/backend/services/workflow.py (349 lines):
 │    def to_list_item(w: WorkflowSchema) -> dict[str, Any]
 │    def to_detail(w: WorkflowSchema) -> dict[str, Any]
 
-modules/backend/services/console.py (399 lines):
-│class MissionEventAggregator:
-│    def __init__(redis: Redis, mission_id: str, refresh_interval: float) -> None
-│    def start() -> None
-│    def stop() -> None
-│    def __aiter__() -> AsyncIterator[dict]
-│    def _get_session_ids() -> set[str]
-│    def _refresh_sessions() -> None
-│    def _subscribe_session(session_id: str) -> None
-│    def _read_pubsub(pubsub, channel: str) -> None
-│    def _refresh_loop() -> None
-│def get_console_history(db_session: 'AsyncSession', mission_id: str, limit: int) -> list[dict]
-│def classify_event(event_type: str) -> str
-
 modules/backend/services/note.py (208 lines):
 │class NoteService(BaseService):
 │    def __init__(session: AsyncSession) -> None
@@ -2884,33 +2944,7 @@ modules/backend/services/note.py (208 lines):
 │    def unarchive_note(note_id: str) -> Note
 │    def search_notes(query: str, limit: int) -> list[Note]
 
-modules/backend/services/session.py (432 lines):
-│class SessionService(BaseService):
-│    def __init__(session: AsyncSession) -> None
-│    def factory() -> AsyncGenerator['SessionService', None]
-│    def create_session(data: SessionCreate, user_id: str | None) -> Session
-│    def ensure_session(session_id: str | None) -> str
-│    def get_session(session_id: str) -> Session
-│    def update_session(session_id: str, data: SessionUpdate) -> Session
-│    def list_sessions(user_id: str | None, mission_id: str | None, status_filter: str | None, limit: int, offset: int) -> tuple[list[Session], int]
-│    def _transition(session_id: str, target_status: SessionStatus, reason: str | None) -> Session
-│    def suspend_session(session_id: str, reason: str) -> Session
-│    def resume_session(session_id: str) -> Session
-│    def complete_session(session_id: str) -> Session
-│    def fail_session(session_id: str, reason: str) -> Session
-│    def expire_session(session_id: str) -> Session
-│    def update_cost(session_id: str, input_tokens: int, output_tokens: int, cost_usd: float) -> None
-│    def enforce_budget(session_id: str, estimated_cost: float) -> None
-│    def touch_activity(session_id: str) -> None
-│    def bind_channel(session_id: str, channel_type: str, channel_id: str) -> SessionChannel
-│    def unbind_channel(session_id: str, channel_type: str, channel_id: str) -> None
-│    def get_session_by_channel(channel_type: str, channel_id: str) -> Session
-│    def add_message(session_id: str, data: SessionMessageCreate) -> None
-│    def get_messages(session_id: str, limit: int, offset: int) -> tuple[list, int]
-│    def expire_inactive_sessions() -> int
-│    def _publish_session_event(event_type: str, session: Session) -> None
-
-modules/backend/services/mission_team.py (248 lines):
+modules/backend/services/mission_team.py (278 lines):
 │class MissionTeamService(BaseService):
 │    def __init__(session: AsyncSession) -> None
 │    def factory() -> AsyncGenerator['MissionTeamService', None]
@@ -2924,7 +2958,41 @@ modules/backend/services/mission_team.py (248 lines):
 │    def list_team_with_names(mission_id: str, enabled_only: bool) -> list[dict]
 │    def get_member(member_id: str) -> MissionTeamMember
 │    def toggle_enabled(member_id: str, enabled: bool) -> MissionTeamMember
+│    def list_team_with_details(mission_id: str, enabled_only: bool) -> list[dict]
 │    def get_prompt_history(member_id: str, limit: int) -> list
+
+modules/backend/services/mission_plan.py (802 lines):
+│class MissionPlanService(BaseService):
+│    def __init__(session: AsyncSession) -> None
+│    def get_or_create_plan(mission_id: str) -> MissionPlan
+│    def get_task_states(mission_plan_id: str) -> list[PlanTaskState]
+│    def set_gate_mode(mission_plan_id: str, gate_mode: str) -> MissionPlan
+│    def set_plan_status(mission_plan_id: str, status: MissionPlanStatus) -> MissionPlan
+│    def refine(mission_plan_id: str, instructions: str, user_id: str) -> MissionPlan
+│    def _reconcile_task_states(plan: MissionPlan, new_plan: TaskPlan) -> None
+│    def dispatch_approved(mission_plan_id: str, user_id: str) -> dict
+│    def _write_back_task_results(plan: MissionPlan, outcome) -> list[str]
+│    def _derive_subset_task_plan(full_plan: TaskPlan, approved_task_ids: set[str]) -> TaskPlan
+│    def approve_task(mission_plan_id: str, task_id: str, user_id: str) -> list[PlanTaskState]
+│    def reject_task(mission_plan_id: str, task_id: str, user_id: str) -> list[PlanTaskState]
+│    def retry_task(mission_plan_id: str, task_id: str, user_id: str) -> PlanTaskState
+│    def _get_task_plan_or_raise(plan: MissionPlan) -> TaskPlan
+│    def _transitive_dependencies(task_plan: TaskPlan, task_id: str) -> list[str]
+│    def _transitive_dependents(task_plan: TaskPlan, task_id: str) -> list[str]
+
+modules/backend/services/console.py (400 lines):
+│class MissionEventAggregator:
+│    def __init__(redis: Redis, mission_id: str, refresh_interval: float) -> None
+│    def start() -> None
+│    def stop() -> None
+│    def __aiter__() -> AsyncIterator[dict]
+│    def _get_session_ids() -> set[str]
+│    def _refresh_sessions() -> None
+│    def _subscribe_session(session_id: str) -> None
+│    def _read_pubsub(pubsub, channel: str) -> None
+│    def _refresh_loop() -> None
+│def get_console_history(db_session: 'AsyncSession', mission_id: str, limit: int) -> list[dict]
+│def classify_event(event_type: str) -> str
 
 modules/backend/services/context_assembler.py (212 lines):
 │class ContextAssembler:
@@ -2973,7 +3041,7 @@ modules/backend/services/branch_manager.py (265 lines):
 │def cleanup_merged_branches(repo_root: Path, base_branch: str) -> list[str]
 │def create_pull_request(repo_root: Path, branch_name: str) -> dict[str, Any]
 
-modules/backend/services/catalog_seeder.py (163 lines):
+modules/backend/services/catalog_seeder.py (186 lines):
 │def _resolve_system_prompt(agent_name: str, project_root: Path) -> str
 │def _extract_model_config(model_field: str | AgentModelSchema) -> dict
 │def _infer_visibility(agent_type: str, agent_name: str) -> str
@@ -3176,6 +3244,36 @@ modules/backend/models/user.py (84 lines):
 │    def __repr__() -> str
 │class SystemRole(str, enum.Enum):
 
+modules/backend/models/mission_plan.py (274 lines):
+│class MissionPlan(UUIDMixin, TimestampMixin, Base):
+│    mission_id: Mapped[str]
+│    task_plan_json: Mapped[dict | None]
+│    gate_mode: Mapped[str | None]
+│    status: Mapped[str]
+│    version: Mapped[int]
+│    budget_usd_ceiling: Mapped[float | None]
+│    total_spent_usd: Mapped[float]
+│    veto_window_sec: Mapped[int | None]
+│    task_states: Mapped[list['PlanTaskState']]
+│    def __repr__() -> str
+│class PlanTaskState(UUIDMixin, TimestampMixin, Base):
+│    mission_plan_id: Mapped[str]
+│    task_id: Mapped[str]
+│    status: Mapped[str]
+│    approved_by_user_id: Mapped[str | None]
+│    approved_at: Mapped[datetime | None]
+│    execution_record_id: Mapped[str | None]
+│    task_execution_id: Mapped[str | None]
+│    last_attempt_at: Mapped[datetime | None]
+│    retry_count: Mapped[int]
+│    veto_expires_at: Mapped[datetime | None]
+│    result_summary: Mapped[str | None]
+│    failure_reason: Mapped[str | None]
+│    plan: Mapped['MissionPlan']
+│    def __repr__() -> str
+│class MissionPlanStatus(str, enum.Enum):
+│class PlanTaskStatus(str, enum.Enum):
+
 modules/backend/models/execution_record.py (403 lines):
 │class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
 │    session_id: Mapped[str]
@@ -3237,6 +3335,34 @@ modules/backend/models/execution_record.py (403 lines):
 │class DecisionType(str, enum.Enum):
 │class FailureTier(str, enum.Enum):
 
+modules/backend/models/mission.py (151 lines):
+│class Mission(UUIDMixin, TimestampMixin, Base):
+│    name: Mapped[str]
+│    description: Mapped[str]
+│    brief: Mapped[str | None]
+│    status: Mapped[str]
+│    owner_id: Mapped[str]
+│    team_id: Mapped[str | None]
+│    default_roster: Mapped[str]
+│    budget_ceiling_usd: Mapped[float | None]
+│    repo_url: Mapped[str | None]
+│    repo_root: Mapped[str | None]
+│    gate_mode: Mapped[str | None]
+│    tier: Mapped[str]
+│    execution_environment: Mapped[str | None]
+│    members: Mapped[list['MissionMember']]
+│    def __repr__() -> str
+│class MissionMember(UUIDMixin, TimestampMixin, Base):
+│    mission_id: Mapped[str]
+│    user_id: Mapped[str]
+│    role: Mapped[str]
+│    mission: Mapped['Mission']
+│    user: Mapped['User']
+│    def __repr__() -> str
+│class MissionStatus(str, enum.Enum):
+│class MissionTier(str, enum.Enum):
+│class MissionMemberRole(str, enum.Enum):
+
 modules/backend/models/execution.py (215 lines):
 │class Execution(UUIDMixin, TimestampMixin, Base):
 │    workflow_run_id: Mapped[str | None]
@@ -3279,34 +3405,6 @@ modules/backend/models/execution.py (215 lines):
 │class ExecutionState(str, enum.Enum):
 │class WorkflowRunState(str, enum.Enum):
 │class ExecutionEnvironment(str, enum.Enum):
-
-modules/backend/models/mission.py (151 lines):
-│class Mission(UUIDMixin, TimestampMixin, Base):
-│    name: Mapped[str]
-│    description: Mapped[str]
-│    brief: Mapped[str | None]
-│    status: Mapped[str]
-│    owner_id: Mapped[str]
-│    team_id: Mapped[str | None]
-│    default_roster: Mapped[str]
-│    budget_ceiling_usd: Mapped[float | None]
-│    repo_url: Mapped[str | None]
-│    repo_root: Mapped[str | None]
-│    gate_mode: Mapped[str | None]
-│    tier: Mapped[str]
-│    execution_environment: Mapped[str | None]
-│    members: Mapped[list['MissionMember']]
-│    def __repr__() -> str
-│class MissionMember(UUIDMixin, TimestampMixin, Base):
-│    mission_id: Mapped[str]
-│    user_id: Mapped[str]
-│    role: Mapped[str]
-│    mission: Mapped['Mission']
-│    user: Mapped['User']
-│    def __repr__() -> str
-│class MissionStatus(str, enum.Enum):
-│class MissionTier(str, enum.Enum):
-│class MissionMemberRole(str, enum.Enum):
 
 modules/backend/models/agent_catalog.py (81 lines):
 │class AgentCatalog(UUIDMixin, TimestampMixin, Base):
@@ -3366,7 +3464,7 @@ modules/backend/models/note.py (39 lines):
 │    is_archived: Mapped[bool]
 │    def __repr__() -> str
 
-modules/backend/models/session.py (185 lines):
+modules/backend/models/session.py (188 lines):
 │class Session(UUIDMixin, TimestampMixin, Base):
 │    status: Mapped[str]
 │    user_id: Mapped[str | None]
@@ -3402,6 +3500,7 @@ modules/backend/models/session.py (185 lines):
 │    input_tokens: Mapped[int | None]
 │    output_tokens: Mapped[int | None]
 │    cost_usd: Mapped[float | None]
+│    thinking: Mapped[str | None]
 │    tool_name: Mapped[str | None]
 │    tool_call_id: Mapped[str | None]
 │    created_at: Mapped[datetime]
@@ -3505,7 +3604,7 @@ modules/backend/models/prompt_version.py (60 lines):
 │    def content_length() -> int
 │    def __repr__() -> str
 
-modules/backend/models/__init__.py (50 lines):
+modules/backend/models/__init__.py (64 lines):
 
 modules/backend/models/execution_environment.py (81 lines):
 │class EnvironmentStatus(str, enum.Enum):
@@ -3558,6 +3657,16 @@ modules/backend/schemas/base.py (86 lines):
 │    has_more: bool
 
 modules/backend/schemas/task_plan.py (204 lines):
+│class TaskPlan(BaseModel):
+│    version: str
+│    mission_id: str
+│    summary: str
+│    estimated_cost_usd: float
+│    estimated_duration_seconds: int
+│    tasks: list[TaskDefinition]
+│    execution_hints: ExecutionHints
+│    def task_ids() -> list[str]
+│    def get_task(task_id: str) -> TaskDefinition | None
 │class TaskDefinition(BaseModel):
 │    task_id: str
 │    agent: str
@@ -3569,16 +3678,6 @@ modules/backend/schemas/task_plan.py (204 lines):
 │    verification: TaskVerification
 │    constraints: TaskConstraints
 │    domain_tags: list[str]
-│class TaskPlan(BaseModel):
-│    version: str
-│    mission_id: str
-│    summary: str
-│    estimated_cost_usd: float
-│    estimated_duration_seconds: int
-│    tasks: list[TaskDefinition]
-│    execution_hints: ExecutionHints
-│    def task_ids() -> list[str]
-│    def get_task(task_id: str) -> TaskDefinition | None
 │class ExecutionHints(BaseModel):
 │    min_success_threshold: float
 │    critical_path: list[str]
@@ -3652,7 +3751,7 @@ modules/backend/schemas/user.py (93 lines):
 │    system_role: str
 │    is_service_account: bool
 
-modules/backend/schemas/session.py (170 lines):
+modules/backend/schemas/session.py (172 lines):
 │class SessionResponse(BaseModel):
 │    id: str
 │    status: str
@@ -3680,6 +3779,7 @@ modules/backend/schemas/session.py (170 lines):
 │    cost_usd: float | None
 │    tool_name: str | None
 │    tool_call_id: str | None
+│    thinking: str | None
 │class SessionCreate(BaseModel):
 │    goal: str | None
 │    mission_id: str | None
@@ -3723,6 +3823,7 @@ modules/backend/schemas/session.py (170 lines):
 │    cost_usd: float | None
 │    tool_name: str | None
 │    tool_call_id: str | None
+│    thinking: str | None
 │    created_at: datetime
 
 modules/backend/schemas/workflow.py (273 lines):
@@ -4153,6 +4254,54 @@ modules/backend/schemas/mission_team.py (68 lines):
 │    updated_at: datetime
 │    agent: AgentConfigSummary | None
 
+modules/backend/schemas/mission_plan.py (192 lines):
+│class PlanTaskStateResponse(BaseModel):
+│    id: str
+│    task_id: str
+│    status: str
+│    approved_by_user_id: str | None
+│    approved_at: datetime | None
+│    execution_record_id: str | None
+│    task_execution_id: str | None
+│    last_attempt_at: datetime | None
+│    retry_count: int
+│    veto_expires_at: datetime | None
+│    result_summary: str | None
+│    failure_reason: str | None
+│    created_at: datetime
+│    updated_at: datetime
+│class MissionPlanRefineRequest(BaseModel):
+│    instructions: str
+│class MissionPlanUpdate(BaseModel):
+│    gate_mode: str | None
+│    status: str | None
+│    budget_usd_ceiling: float | None
+│    veto_window_sec: int | None
+│class MissionPlanResponse(BaseModel):
+│    id: str
+│    mission_id: str
+│    task_plan_json: dict | None
+│    gate_mode: str | None
+│    status: str
+│    version: int
+│    budget_usd_ceiling: float | None
+│    total_spent_usd: float
+│    veto_window_sec: int | None
+│    task_states: list[PlanTaskStateResponse]
+│    created_at: datetime
+│    updated_at: datetime
+│class DispatchApprovedResponse(BaseModel):
+│    outcome_status: str
+│    execution_record_id: str | None
+│    dispatched_task_ids: list[str]
+│    updated_task_ids: list[str]
+│    total_cost_usd: float
+│    new_total_spent_usd: float
+│class TaskTransitionResponse(BaseModel):
+│    target_task_id: str
+│    transitioned_task_ids: list[str]
+│    new_status: str
+
 modules/backend/schemas/__init__.py (16 lines):
 
 modules/backend/schemas/mission_context.py (74 lines):
@@ -4269,7 +4418,18 @@ modules/backend/repositories/execution_record.py (143 lines):
 │    def get_cost_by_model(execution_id: str) -> dict[str, float]
 │    def get_replan_chain(execution_id: str) -> list[ExecutionRecord]
 
-modules/backend/repositories/session.py (240 lines):
+modules/backend/repositories/mission_plan.py (168 lines):
+│class MissionPlanRepository:
+│    def get_by_mission_id(mission_id: str) -> MissionPlan | None
+│    def get_by_mission_id_required(mission_id: str) -> MissionPlan
+│    def create_for_mission(mission_id: str) -> MissionPlan
+│    def get_task_states(mission_plan_id: str) -> list[PlanTaskState]
+│    def get_task_state(mission_plan_id: str, task_id: str) -> PlanTaskState | None
+│    def get_task_state_required(mission_plan_id: str, task_id: str) -> PlanTaskState
+│    def create_task_state(mission_plan_id: str, task_id: str) -> PlanTaskState
+│    def delete_task_states(mission_plan_id: str) -> None
+
+modules/backend/repositories/session.py (242 lines):
 │class SessionRepository:
 │    def __init__(session: AsyncSession) -> None
 │    def get_active_by_user(user_id: str, limit: int, offset: int) -> list[Session]
@@ -4280,17 +4440,9 @@ modules/backend/repositories/session.py (240 lines):
 │    def bind_channel(session_id: str, channel_type: str, channel_id: str) -> SessionChannel
 │    def unbind_channel(session_id: str, channel_type: str, channel_id: str) -> None
 │    def get_session_by_channel(channel_type: str, channel_id: str) -> Session | None
-│    def add_message(session_id: str, role: str, content: str, sender_id: str | None, model: str | None, input_tokens: int | None, output_tokens: int | None, cost_usd: float | None, tool_name: str | None, tool_call_id: str | None) -> SessionMessage
+│    def add_message(session_id: str, role: str, content: str, sender_id: str | None, model: str | None, input_tokens: int | None, output_tokens: int | None, cost_usd: float | None, tool_name: str | None, tool_call_id: str | None, thinking: str | None) -> SessionMessage
 │    def get_messages(session_id: str, limit: int, offset: int) -> list[SessionMessage]
 │    def count_messages(session_id: str) -> int
-
-modules/backend/repositories/execution.py (99 lines):
-│class ExecutionRepository:
-│    def __init__(session: AsyncSession) -> None
-│    def get_by_session(session_id: str) -> list[Execution]
-│    def get_by_workflow_run(workflow_run_id: str) -> list[Execution]
-│    def count_active() -> int
-│    def list_executions(status: ExecutionState | None, workflow_run_id: str | None, mission_id: str | None, limit: int, offset: int) -> tuple[list[Execution], int]
 
 modules/backend/repositories/mission_history.py (73 lines):
 │class MissionDecisionRepository:
@@ -4313,6 +4465,14 @@ modules/backend/repositories/prompt_version.py (89 lines):
 │    def get_latest(entity_type: str, entity_id: str) -> PromptVersion | None
 │    def _next_version(entity_type: str, entity_id: str) -> int
 │    def create_version(entity_type: str, entity_id: str, prompt_type: str, content: str, changed_by: str, change_reason: str | None) -> PromptVersion
+
+modules/backend/repositories/execution.py (99 lines):
+│class ExecutionRepository:
+│    def __init__(session: AsyncSession) -> None
+│    def get_by_session(session_id: str) -> list[Execution]
+│    def get_by_workflow_run(workflow_run_id: str) -> list[Execution]
+│    def count_active() -> int
+│    def list_executions(status: ExecutionState | None, workflow_run_id: str | None, mission_id: str | None, limit: int, offset: int) -> tuple[list[Execution], int]
 
 modules/backend/repositories/workflow_schedule.py (112 lines):
 │class WorkflowScheduleRepository:
@@ -4482,7 +4642,7 @@ modules/backend/api/v1/endpoints/client_errors.py (47 lines):
 │@router.post
 │def report_client_error(body: ClientErrorReport, request_id: RequestId) -> ApiResponse
 
-modules/backend/api/v1/endpoints/executions.py (446 lines):
+modules/backend/api/v1/endpoints/executions.py (457 lines):
 │@router.get
 │def list_executions(db: DbSession, request_id: RequestId, status: str | None, ...) -> ApiResponse
 │@router.get
@@ -4492,7 +4652,7 @@ modules/backend/api/v1/endpoints/executions.py (446 lines):
 │@router.get
 │def get_execution_cost(execution_id: str, db: DbSession, request_id: RequestId) -> ApiResponse
 │@router.post
-│def execute_execution(execution_id: str, db: DbSession, request_id: RequestId) -> ApiResponse
+│def execute_execution(execution_id: str, db: DbSession, request_id: RequestId, ...) -> ApiResponse
 │@router.post
 │def cancel_execution(execution_id: str, db: DbSession, request_id: RequestId, ...) -> ApiResponse
 │@router.post
@@ -4500,7 +4660,7 @@ modules/backend/api/v1/endpoints/executions.py (446 lines):
 │@router.get
 │def get_execution_status(execution_id: str, db: DbSession, request_id: RequestId) -> ApiResponse
 
-modules/backend/api/v1/endpoints/missions.py (194 lines):
+modules/backend/api/v1/endpoints/missions.py (207 lines):
 │@router.post
 │def create_mission(data: MissionCreate, db: DbSession, request_id: RequestId, ...) -> ApiResponse
 │@router.get
@@ -4521,6 +4681,23 @@ modules/backend/api/v1/endpoints/missions_context.py (105 lines):
 │def get_context_history(mission_id: str, db: DbSession, request_id: RequestId, ...) -> ApiResponse
 │@router.get
 │def get_console_history(mission_id: str, db: DbSession, request_id: RequestId, ...) -> ApiResponse
+
+modules/backend/api/v1/endpoints/missions_plan.py (334 lines):
+│def _require_mission_access(db, mission_id: str, current_user) -> None
+│@router.get
+│def get_plan(mission_id: str, db: DbSession, request_id: RequestId, ...) -> ApiResponse
+│@router.patch
+│def update_plan(mission_id: str, data: MissionPlanUpdate, db: DbSession, ...) -> ApiResponse
+│@router.post
+│def refine_plan(mission_id: str, data: MissionPlanRefineRequest, db: DbSession, ...) -> ApiResponse
+│@router.post
+│def dispatch_approved(mission_id: str, db: DbSession, request_id: RequestId, ...) -> ApiResponse
+│@router.post
+│def approve_task(mission_id: str, task_id: str, db: DbSession, ...) -> ApiResponse
+│@router.post
+│def reject_task(mission_id: str, task_id: str, db: DbSession, ...) -> ApiResponse
+│@router.post
+│def retry_task(mission_id: str, task_id: str, db: DbSession, ...) -> ApiResponse
 
 modules/backend/api/v1/endpoints/missions_team.py (302 lines):
 │@router.get
@@ -4580,7 +4757,7 @@ modules/backend/api/v1/endpoints/notes.py (193 lines):
 │@router.post
 │def unarchive_note(note_id: str, db: DbSession, request_id: RequestId) -> ApiResponse[NoteResponse]
 
-modules/backend/api/v1/endpoints/sessions.py (289 lines):
+modules/backend/api/v1/endpoints/sessions.py (299 lines):
 │@router.post
 │def create_session(data: SessionCreate, db: DbSession, request_id: RequestId, ...) -> ApiResponse[SessionResponse]
 │@router.get
@@ -4606,13 +4783,15 @@ modules/backend/api/v1/endpoints/sessions.py (289 lines):
 │@router.post
 │def send_message_stream(session_id: str, mission_id: str, data: SessionMessageCreate, ...) -> StreamingResponse
 
-modules/backend/api/v1/endpoints/streams.py (183 lines):
+modules/backend/api/v1/endpoints/streams.py (242 lines):
+│def _require_mission_access(db, mission_id: str, user: User) -> None
+│def _require_session_access(db, session_id: str, user: User) -> None
 │@router.get
-│def stream_run_events(session_id: str) -> StreamingResponse
+│def stream_run_events(session_id: str, user: SseUser, db: DbSession) -> StreamingResponse
 │@router.get
-│def stream_notifications(user_id: str) -> StreamingResponse
+│def stream_notifications(user: SseUser, user_id: str) -> StreamingResponse
 │@router.get
-│def stream_mission_events(mission_id: str, token: str | None) -> StreamingResponse
+│def stream_mission_events(mission_id: str, user: SseUser, db: DbSession) -> StreamingResponse
 
 modules/backend/api/v1/endpoints/workflows.py (185 lines):
 │def _get_workflow_service() -> WorkflowService
@@ -4646,7 +4825,7 @@ modules/backend/api/v1/endpoints/workshop.py (123 lines):
 
 ## backend.events
 
-modules/backend/events/types.py (448 lines):
+modules/backend/events/types.py (487 lines):
 │class SessionEvent(BaseModel):
 │    event_id: uuid.UUID
 │    event_type: str
@@ -4813,6 +4992,22 @@ modules/backend/events/types.py (448 lines):
 │    passed: bool
 │    test_summary: str
 │    environment_mode: str
+│class MissionNarrativeEvent(SessionEvent):
+│    event_type: str
+│    mission_id: str
+│    agent_id: str
+│    narrative: str
+│    phase: str
+│    level: str
+│class MissionArtifactFoundEvent(SessionEvent):
+│    event_type: str
+│    mission_id: str
+│    agent_id: str
+│    artifact_type: str
+│    title: str
+│    content: str
+│    content_type: str
+│    language: str
 │class SystemEvent(SessionEvent):
 │    event_type: str
 │    level: str
@@ -5063,6 +5258,11 @@ modules/backend/migrations/versions/20260325_phase4_current_mission.py (36 lines
 
 modules/backend/migrations/versions/20260402_phase5_mission_tier.py (86 lines):
 │def _column_names(bind: sa.Connection, table: str) -> set[str]
+│def upgrade() -> None
+│def downgrade() -> None
+
+modules/backend/migrations/versions/20260410_plan42_mission_plans.py (239 lines):
+│def _table_exists(bind: sa.Connection, table: str) -> bool
 │def upgrade() -> None
 │def downgrade() -> None
 
