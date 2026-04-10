@@ -98,8 +98,38 @@ async def get_optional_user(
         return None
 
 
+async def get_current_user_sse(
+    db: DbSession,
+    token: str | None = None,
+    authorization: str | None = Header(None),
+) -> User:
+    """Resolve the current user for SSE endpoints.
+
+    EventSource (browser) cannot set custom headers, so SSE clients pass the
+    JWT as a `?token=...` query parameter. This dependency accepts either:
+      1. `token` query parameter (EventSource / browser clients)
+      2. `Authorization: Bearer <jwt>` header (fetch-based clients, curl)
+
+    API keys are not accepted on streaming endpoints — a stolen JWT is
+    scoped by the short-lived access token expiry, while API keys are not.
+    """
+    from modules.backend.services.auth import AuthService
+
+    jwt_token: str | None = None
+    if token:
+        jwt_token = token
+    elif authorization and authorization.lower().startswith("bearer "):
+        jwt_token = authorization[7:]
+
+    if not jwt_token:
+        raise AuthenticationError("Authentication required")
+
+    return await AuthService(db).resolve_jwt(jwt_token)
+
+
 CurrentUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+SseUser = Annotated[User, Depends(get_current_user_sse)]
 
 
 async def require_admin(user: CurrentUser) -> User:

@@ -2,6 +2,12 @@
 SSE Streaming Endpoints.
 
 Server-Sent Event streams for real-time notifications and run monitoring.
+
+Auth note: browser `EventSource` cannot send custom headers, so these
+endpoints accept the JWT as a `?token=...` query parameter via the shared
+`SseUser` dependency. Ownership/membership checks live in this module so
+that an authenticated caller can only stream data for resources they can
+actually see via the REST API.
 """
 
 import asyncio
@@ -13,13 +19,56 @@ from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis as AsyncRedis
 
 from modules.backend.core.config import get_redis_url
+from modules.backend.core.dependencies import DbSession, SseUser
+from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
+from modules.backend.models.user import User
 from modules.backend.services.console import MissionEventAggregator
+from modules.backend.services.mission import MissionService
+from modules.backend.services.session import SessionService
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+# ---- Access helpers ----
+
+
+async def _require_mission_access(
+    db, mission_id: str, user: User
+) -> None:
+    """Admin, owner, or mission member. Raises AuthorizationError otherwise."""
+    if user.has_role("admin"):
+        return
+    mission = await MissionService(db).get_mission(mission_id)
+    if mission.owner_id == user.id:
+        return
+    if any(m.user_id == user.id for m in mission.members):
+        return
+    raise AuthorizationError("You don't have access to this mission")
+
+
+async def _require_session_access(
+    db, session_id: str, user: User
+) -> None:
+    """Admin, session owner, or mission member of the session's mission."""
+    if user.has_role("admin"):
+        return
+    try:
+        session = await SessionService(db).get_session(session_id)
+    except NotFoundError:
+        raise AuthorizationError("Session not found or access denied")
+    if session.user_id == user.id:
+        return
+    if session.mission_id:
+        try:
+            await _require_mission_access(db, session.mission_id, user)
+            return
+        except AuthorizationError:
+            pass
+    raise AuthorizationError("You don't have access to this session")
 
 
 # ---- Run event stream ----
@@ -36,8 +85,11 @@ router = APIRouter()
 )
 async def stream_run_events(
     session_id: str,
+    user: SseUser,
+    db: DbSession,
 ) -> StreamingResponse:
     """Stream execution events for a session as SSE."""
+    await _require_session_access(db, session_id, user)
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
@@ -79,9 +131,14 @@ NOTIFY_CHANNEL_PREFIX = "notify"
     ),
 )
 async def stream_notifications(
+    user: SseUser,
     user_id: str = Query(..., description="User ID to receive notifications for"),
 ) -> StreamingResponse:
     """Stream notifications for a user as SSE."""
+    # Admins can subscribe to any user's notifications; everyone else may
+    # only subscribe to their own.
+    if user_id != user.id and not user.has_role("admin"):
+        raise AuthorizationError("Cannot subscribe to another user's notifications")
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
@@ -148,9 +205,11 @@ async def stream_notifications(
 )
 async def stream_mission_events(
     mission_id: str,
-    token: str | None = None,
+    user: SseUser,
+    db: DbSession,
 ) -> StreamingResponse:
     """Stream aggregated events for a mission as SSE."""
+    await _require_mission_access(db, mission_id, user)
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
