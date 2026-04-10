@@ -333,6 +333,136 @@ def create_agent(model: str | Model) -> Agent:
             logger.error("run_workflow failed", exc_info=True)
             return json.dumps({"error": str(e)})
 
+    # ── Mission Plan Tools (Plan 42) ──────────────────────────────────
+
+    @agent.tool
+    async def get_plan(ctx: RunContext[MissionDirectorDeps]) -> str:
+        """Read the current mission plan — the long-lived backlog.
+
+        Returns the plan body (TaskPlan JSON), per-task status for every
+        task in the plan, the current autonomy mode, and cumulative
+        budget. Use this before calling refine_plan so you can reason
+        about what already exists rather than starting from scratch, and
+        to answer questions like "what's in the plan?" or "what tasks
+        are approved?"
+
+        The plan is created lazily — if no refinement has happened yet,
+        task_plan_json will be null and task_states will be empty.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            from modules.backend.services.mission_plan import MissionPlanService
+
+            svc = MissionPlanService(ctx.deps.db_session)
+            plan = await svc.get_or_create_plan(ctx.deps.mission_id)
+            task_states = await svc.get_task_states(plan.id)
+
+            return json.dumps({
+                "plan_id": plan.id,
+                "version": plan.version,
+                "status": plan.status,
+                "gate_mode": plan.gate_mode,
+                "budget_usd_ceiling": plan.budget_usd_ceiling,
+                "total_spent_usd": plan.total_spent_usd,
+                "veto_window_sec": plan.veto_window_sec,
+                "task_plan_json": plan.task_plan_json,
+                "task_states": [
+                    {
+                        "task_id": s.task_id,
+                        "status": s.status,
+                        "retry_count": s.retry_count,
+                        "result_summary": s.result_summary,
+                        "failure_reason": s.failure_reason,
+                        "approved_at": str(s.approved_at) if s.approved_at else None,
+                    }
+                    for s in task_states
+                ],
+            }, indent=2, default=str)
+        except Exception as e:
+            logger.error("get_plan failed", exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    @agent.tool
+    async def refine_plan(
+        ctx: RunContext[MissionDirectorDeps],
+        instructions: str,
+    ) -> str:
+        """Refine the mission plan via the Planning Agent.
+
+        Delegates to the Planning Agent — you do NOT author TaskPlans
+        yourself. The Planning Agent receives the current plan + your
+        instructions and produces a new TaskPlan that incorporates the
+        user's requested changes while preserving task_id strings for
+        unchanged tasks (so existing approvals and run history survive).
+
+        Use this when the user describes what they want to work on,
+        asks for a new plan, or asks to modify the existing plan. Pass
+        the user's instructions in their own words — the Planning Agent
+        works best with concrete, specific language.
+
+        After refinement completes, tell the user which tasks were
+        added or changed, and prompt them to review in the Plan tab.
+        The user approves tasks before they run — you do NOT dispatch
+        tasks from here. Dispatch is the user's explicit action.
+
+        Args:
+            instructions: Natural-language refinement request from the
+                user. Example: "Split the test phase into unit and
+                integration. Add a final task that posts the results
+                to Slack."
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            from modules.backend.services.mission_plan import MissionPlanService
+
+            svc = MissionPlanService(ctx.deps.db_session)
+            plan = await svc.get_or_create_plan(ctx.deps.mission_id)
+            refined = await svc.refine(
+                plan.id,
+                instructions,
+                user_id="mission.director.agent",
+            )
+            await ctx.deps.db_session.commit()
+
+            task_count = (
+                len(refined.task_plan_json.get("tasks", []))
+                if refined.task_plan_json
+                else 0
+            )
+
+            return json.dumps({
+                "plan_id": refined.id,
+                "version": refined.version,
+                "task_count": task_count,
+                "gate_mode": refined.gate_mode,
+                "tasks": [
+                    {
+                        "task_id": t.get("task_id"),
+                        "agent": t.get("agent"),
+                        "description": t.get("description"),
+                        "dependencies": t.get("dependencies", []),
+                    }
+                    for t in (refined.task_plan_json.get("tasks", []) if refined.task_plan_json else [])
+                ],
+                "message": (
+                    f"Plan refined to v{refined.version} with {task_count} tasks. "
+                    "Ask the user to review and approve in the Plan tab."
+                ),
+            }, indent=2, default=str)
+        except Exception as e:
+            logger.error("refine_plan failed", exc_info=True)
+            # Roll back the (failed) refinement transaction so the
+            # session is in a clean state for the next tool call.
+            try:
+                await ctx.deps.db_session.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            return json.dumps({"error": str(e)})
+
     # NOTE: Gate tools (approve_gate, reject_gate, get_pending_gates) are
     # deferred to Phase 2. Gates currently resolve inline during dispatch —
     # no async queue exists for out-of-band resolution.
