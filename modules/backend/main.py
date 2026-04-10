@@ -39,7 +39,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "env": app_config.application.environment,
         },
     )
+
+    # Plan 42 §10.8 — start the MissionPlanDaemon if the feature flag is
+    # on. The daemon polls autonomous/off plans and dispatches approved
+    # tasks on its own. Off by default because it spends real budget.
+    if app_config.features.experimental_mission_plan_daemon_enabled:
+        from modules.backend.services.mission_plan_daemon import start_daemon
+        await start_daemon()
+        logger.info("MissionPlanDaemon enabled")
+
     yield
+
+    # Graceful shutdown: stop the daemon first so in-flight dispatches
+    # finish before the DB/Redis pools close.
+    if app_config.features.experimental_mission_plan_daemon_enabled:
+        from modules.backend.services.mission_plan_daemon import stop_daemon
+        await stop_daemon()
+
     logger.info("Application shutting down")
 
 

@@ -165,6 +165,7 @@ class FeaturesSchema(_StrictBase):
     security_headers_enabled: bool
     security_cors_enforce_production: bool
     experimental_background_tasks_enabled: bool
+    experimental_mission_plan_daemon_enabled: bool = False
     events_publish_enabled: bool
 
 
