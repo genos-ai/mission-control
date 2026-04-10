@@ -6,28 +6,6 @@ import { create } from 'zustand'
 
 export type FeedMode = 'chat' | 'plan' | 'narrative' | 'stream' | 'context' | 'runs'
 
-export type PlanTaskStatus =
-  | 'pending'    // in plan, not yet dispatched
-  | 'running'    // dispatch loop executing
-  | 'verifying'  // verification pipeline running
-  | 'success'    // complete
-  | 'failed'     // terminal failure
-
-export interface PlanTask {
-  taskId: string
-  agentName: string
-  description: string
-  status: PlanTaskStatus
-  orderIndex: number
-  costUsd: number
-  durationSeconds: number
-  currentTool: string | null
-  retryCount: number
-  resultSummary: string | null
-  failureReason: string | null
-  artifactEmitted: boolean
-}
-
 export interface AgentStatusEntry {
   agentId: string
   status: 'idle' | 'thinking' | 'running' | 'done' | 'failed'
@@ -72,10 +50,6 @@ const SYSTEM_AGENTS = new Set(['system.planning.agent', 'mission.director.agent'
 interface WorkspaceState {
   feedMode: FeedMode
 
-  // Plan board
-  planTasks: PlanTask[]
-  planningPhase: 'idle' | 'planning' | 'ready' | 'running' | 'complete'
-
   // Live agent roster
   agentStatuses: Record<string, AgentStatusEntry>
 
@@ -91,32 +65,8 @@ interface WorkspaceState {
   // Actions
   setFeedMode: (m: FeedMode) => void
   onSseEvent: (eventType: string, data: Record<string, unknown>) => void
-  reorderPlannedTasks: (fromIndex: number, toIndex: number) => void
   clearLiveTaskOverlay: () => void
   reset: () => void
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function parseTasksFromPlan(data: Record<string, unknown>): PlanTask[] {
-  const raw = data.tasks ?? data.plan ?? data.task_plan
-  if (!Array.isArray(raw)) return []
-  return raw.map((t: Record<string, unknown>, i: number) => ({
-    taskId: String(t.task_id ?? t.id ?? `task-${i}`),
-    agentName: String(t.agent ?? t.agent_name ?? ''),
-    description: String(t.description ?? t.task_id ?? ''),
-    status: 'pending' as PlanTaskStatus,
-    orderIndex: i,
-    costUsd: 0,
-    durationSeconds: 0,
-    currentTool: null,
-    retryCount: 0,
-    resultSummary: null,
-    failureReason: null,
-    artifactEmitted: false,
-  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +75,6 @@ function parseTasksFromPlan(data: Record<string, unknown>): PlanTask[] {
 
 const INITIAL = {
   feedMode: 'chat' as FeedMode,
-  planTasks: [] as PlanTask[],
-  planningPhase: 'idle' as WorkspaceState['planningPhase'],
   agentStatuses: {} as Record<string, AgentStatusEntry>,
   artifacts: [] as ArtifactEntry[],
   streamingArtifact: null as StreamingArtifact | null,
@@ -144,73 +92,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   clearLiveTaskOverlay: () => set({ liveTaskOverlay: {} }),
 
-  reorderPlannedTasks: (fromIndex, toIndex) =>
-    set((s) => {
-      const pending = s.planTasks
-        .filter((t) => t.status === 'pending')
-        .sort((a, b) => a.orderIndex - b.orderIndex)
-      const [moved] = pending.splice(fromIndex, 1)
-      pending.splice(toIndex, 0, moved)
-      // Re-assign orderIndex
-      pending.forEach((t, i) => { t.orderIndex = i })
-      const rest = s.planTasks.filter((t) => t.status !== 'pending')
-      return { planTasks: [...rest, ...pending] }
-    }),
-
   onSseEvent: (eventType, data) => {
     const agentId = String(data.agent_id ?? data.assigned_agent ?? data.agent_name ?? '')
 
-    // ── Plan lifecycle ──────────────────────────────────────────────────
-    if (eventType === 'agent.thinking.started' && agentId === 'system.planning.agent') {
-      set({ planningPhase: 'planning' })
-    }
-
-    else if (eventType === 'plan.created') {
-      const tasks = parseTasksFromPlan(data)
-      set({ planTasks: tasks, planningPhase: 'ready' })
-    }
-
-    else if (eventType === 'system.execution.created') {
-      set({ planningPhase: 'running' })
-    }
-
-    else if (eventType === 'system.execution.completed') {
-      set({ planningPhase: 'complete' })
-    }
-
-    // ── Task card state machine ────────────────────────────────────────
-    else if (eventType === 'plan.step.started') {
+    // ── Live task overlay (Plan 42 §10.9) ─────────────────────────────
+    // Transient in-flight status for the Plan tab. The durable truth
+    // lives in plan_task_states fetched via GET /plan; this overlay
+    // only fills the gap between an SSE event and the next refetch.
+    if (eventType === 'plan.step.started') {
       const stepId = String(data.step_id ?? '')
       const nowIso = new Date().toISOString()
       set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.taskId === stepId ? { ...t, status: 'running', currentTool: null } : t,
-        ),
         liveTaskOverlay: {
           ...s.liveTaskOverlay,
           [stepId]: { status: 'running', updatedAt: nowIso },
         },
-      }))
-    }
-
-    else if (eventType === 'agent.tool.called') {
-      const tool = String(data.tool_name ?? '')
-      set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.agentName === agentId && t.status === 'running'
-            ? { ...t, currentTool: tool }
-            : t,
-        ),
-      }))
-    }
-
-    else if (eventType === 'agent.tool.returned') {
-      set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.agentName === agentId && t.status === 'running'
-            ? { ...t, currentTool: null }
-            : t,
-        ),
       }))
     }
 
@@ -221,74 +117,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         status === 'success' ? 'completed' : 'failed'
       const nowIso = new Date().toISOString()
       set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.taskId === stepId
-            ? { ...t, status: status === 'success' ? 'verifying' : 'failed', currentTool: null }
-            : t,
-        ),
         liveTaskOverlay: {
           ...s.liveTaskOverlay,
           [stepId]: { status: overlayStatus, updatedAt: nowIso },
         },
-      }))
-    }
-
-    else if (eventType === 'task.completed') {
-      const taskId = String(data.task_id ?? '')
-      const cost = data.cost_usd != null ? Number(data.cost_usd) : 0
-      const dur = data.duration_seconds != null ? Number(data.duration_seconds) : 0
-      const output = data.output_data as Record<string, unknown> | null
-      const summary =
-        typeof output?.summary === 'string' ? output.summary :
-        typeof output?.result === 'string' ? output.result : null
-      set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.taskId === taskId
-            ? { ...t, status: 'success', costUsd: cost, durationSeconds: dur,
-                resultSummary: summary ? summary.slice(0, 200) : null, currentTool: null }
-            : t,
-        ),
-      }))
-    }
-
-    else if (eventType === 'task.failed') {
-      const taskId = String(data.task_id ?? '')
-      const reason = String(data.failure_reason ?? data.error ?? '')
-      set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.taskId === taskId
-            ? { ...t, status: 'failed', failureReason: reason.slice(0, 200), currentTool: null }
-            : t,
-        ),
-      }))
-    }
-
-    else if (eventType === 'task.skipped') {
-      const taskId = String(data.task_id ?? '')
-      set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.taskId === taskId ? { ...t, status: 'success', resultSummary: 'Skipped' } : t,
-        ),
-      }))
-    }
-
-    else if (eventType === 'mission.artifact.found') {
-      // Mark the task that emitted this artifact
-      const artifactAgentId = agentId
-      set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.agentName === artifactAgentId ? { ...t, artifactEmitted: true } : t,
-        ),
-      }))
-    }
-
-    // ── Retry tracking ─────────────────────────────────────────────────
-    else if (eventType === 'task.attempt.failed') {
-      const taskId = String(data.task_id ?? '')
-      set((s) => ({
-        planTasks: s.planTasks.map((t) =>
-          t.taskId === taskId ? { ...t, retryCount: t.retryCount + 1 } : t,
-        ),
       }))
     }
 
