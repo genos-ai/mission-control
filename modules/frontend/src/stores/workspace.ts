@@ -4,7 +4,7 @@ import { create } from 'zustand'
 // Types
 // ---------------------------------------------------------------------------
 
-export type FeedMode = 'chat' | 'plan' | 'narrative' | 'stream' | 'context' | 'runs'
+export type FeedMode = 'chat' | 'plan' | 'narrative' | 'stream' | 'context' | 'runs' | 'workflows'
 
 export interface AgentStatusEntry {
   agentId: string

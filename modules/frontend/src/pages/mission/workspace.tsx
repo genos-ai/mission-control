@@ -79,6 +79,7 @@ import { PlanBoard } from '@/components/workspace/plan-board'
 import { RunsPanel } from '@/components/workspace/runs-panel'
 import { MissionSettingsDrawer } from '@/components/workspace/mission-settings-drawer'
 import { ContextPanel } from '@/components/workspace/context-panel'
+import { WorkflowsPanel } from '@/components/workspace/workflows-panel'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -277,13 +278,6 @@ export default function MissionWorkspace() {
                 )}
               </>
             )}
-            <button
-              onClick={() => navigate(ROUTES.MISSION_WORKFLOWS(id!))}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              title="Workflows"
-            >
-              <GitBranch className="h-4 w-4" />
-            </button>
             <button
               onClick={() => setSettingsOpen(true)}
               className={cn(
@@ -532,6 +526,7 @@ const FEED_MODES = [
   { id: 'stream',    label: 'Stream',    icon: Activity },
   { id: 'context',   label: 'Context',   icon: FileText },
   { id: 'runs',      label: 'Runs',      icon: ListChecks },
+  { id: 'workflows', label: 'Workflows', icon: GitBranch },
 ] as const
 
 function CenterPanel({
@@ -599,8 +594,10 @@ function CenterPanel({
           <ConsolePage />
         ) : feedMode === 'context' ? (
           <ContextPanel missionId={missionId} />
-        ) : (
+        ) : feedMode === 'runs' ? (
           <RunsPanel missionId={missionId} />
+        ) : (
+          <WorkflowsPanel missionId={missionId} />
         )}
       </div>
     </div>
