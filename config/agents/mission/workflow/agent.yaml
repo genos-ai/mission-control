@@ -11,6 +11,7 @@ agent_name: mission.workflow.agent
 agent_type: horizontal
 description: "Designs workflows conversationally from mission brief and team composition. Proposes step graphs, validates against the agent catalog, and saves confirmed designs."
 enabled: true
+chat_enabled: true
 version: "1.0.0"
 
 model:

@@ -88,6 +88,29 @@ async def seed_catalog(
         logger.warning("Agents config directory not found", extra={"path": str(agents_dir)})
         return {"seeded": 0, "skipped": 0, "errors": 0}
 
+    # TODO(catalog-db-authoritative): Promote the DB to the sole source of
+    # truth for agent catalog entries and retire the YAML-seeding flow.
+    #
+    # Current design: `config/agents/**/agent.yaml` is authoritative, seeded
+    # into the DB on first boot (or via `admin seed-catalog --force`).
+    # Problem: declarative YAML edits (e.g. `chat_enabled: true`) don't
+    # reach the DB without a manual force re-seed, because this guard
+    # short-circuits when the catalog is non-empty to avoid clobbering
+    # admin-edited fields (system prompts, tools, model config).
+    #
+    # Target design:
+    #   1. DB is authoritative. Agents are created/edited via the admin UI
+    #      or the `/admin/catalog` API endpoints — no YAML round-trip.
+    #   2. YAML files become optional bootstrap fixtures, used only for
+    #      greenfield dev environments or to restore a known-good baseline.
+    #   3. A CLI command `admin catalog export` round-trips DB → YAML for
+    #      version-control snapshots, and `admin catalog import` applies a
+    #      YAML snapshot back to the DB (with an explicit diff preview).
+    #   4. Migrations handle schema changes; data changes go through the
+    #      admin API with audit trails.
+    #
+    # Until then: either re-seed with `--force` after YAML edits, or use
+    # the admin API to edit catalog rows directly.
     if not force and not await service.is_catalog_empty():
         logger.info("Catalog already seeded, skipping")
         return {"seeded": 0, "skipped": 0, "errors": 0}

@@ -24,6 +24,7 @@ agent_name: platform.health.agent
 agent_type: vertical
 description: "Read-only platform health audit: logs, config, dependencies, file structure (P13)"
 enabled: true
+chat_enabled: true
 model: anthropic:claude-haiku-4-5-20251001
 max_input_length: 1000
 max_budget_usd: 0.10

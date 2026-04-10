@@ -31,6 +31,7 @@ agent_name: software.architecture.agent
 agent_type: vertical
 description: "Deep architectural review: evaluates code against six engineering principles (read-only)"
 enabled: true
+chat_enabled: true
 model:
   name: "anthropic:claude-opus-4-6"
   temperature: 0.0
