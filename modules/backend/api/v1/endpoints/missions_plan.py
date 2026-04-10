@@ -1,0 +1,238 @@
+"""
+Mission Plan API endpoints (Plan 42).
+
+REST surface for the long-lived mission backlog:
+
+    GET    /missions/{id}/plan                          get plan + task states
+    PATCH  /missions/{id}/plan                          update gate mode / status / budget
+    POST   /missions/{id}/plan/tasks/{task_id}/approve  approve (+ transitive deps)
+    POST   /missions/{id}/plan/tasks/{task_id}/reject   reject (+ transitive dependents)
+    POST   /missions/{id}/plan/tasks/{task_id}/retry    failed -> approved
+
+Phase 1.0: CRUD + state transitions only. Refinement and dispatch arrive
+in Phase 1.5 and 1.6 respectively.
+"""
+
+from fastapi import APIRouter
+
+from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.exceptions import AuthorizationError
+from modules.backend.models.mission_plan import MissionPlanStatus, PlanTaskStatus
+from modules.backend.schemas.base import ApiResponse
+from modules.backend.schemas.mission_plan import (
+    MissionPlanResponse,
+    MissionPlanUpdate,
+    PlanTaskStateResponse,
+    TaskTransitionResponse,
+)
+from modules.backend.services.mission import MissionService
+from modules.backend.services.mission_plan import MissionPlanService
+
+router = APIRouter()
+
+
+# ── Access control helper ────────────────────────────────────────────────
+
+
+async def _require_mission_access(
+    db, mission_id: str, current_user,
+) -> None:
+    """Admin, mission owner, or any mission member can access the plan.
+
+    Mirrors the access-check pattern used in missions.py. Extracted here
+    because every endpoint in this file needs it.
+    """
+    mission_service = MissionService(db)
+    mission = await mission_service.get_mission(mission_id)
+    if current_user.has_role("admin"):
+        return
+    if mission.owner_id == current_user.id:
+        return
+    if any(m.user_id == current_user.id for m in mission.members):
+        return
+    raise AuthorizationError("You don't have access to this mission")
+
+
+# ── Plan-level endpoints ─────────────────────────────────────────────────
+
+
+@router.get(
+    "/{mission_id}/plan",
+    response_model=ApiResponse,
+    summary="Get the mission plan",
+)
+async def get_plan(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Return the mission's plan with all task states.
+
+    The plan is created lazily on first access — every mission has a
+    plan slot even if it has never been refined.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db)
+    plan = await service.get_or_create_plan(mission_id)
+
+    response = MissionPlanResponse.model_validate(plan)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.patch(
+    "/{mission_id}/plan",
+    response_model=ApiResponse,
+    summary="Update mission plan settings",
+)
+async def update_plan(
+    mission_id: str,
+    data: MissionPlanUpdate,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Update gate_mode, status, budget, or veto window.
+
+    Only the fields present in the request body are applied — all are
+    optional. Gate mode is validated against the existing gate system's
+    supported values.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db)
+    plan = await service.get_or_create_plan(mission_id)
+
+    if data.gate_mode is not None:
+        plan = await service.set_gate_mode(plan.id, data.gate_mode)
+    if data.status is not None:
+        plan = await service.set_plan_status(
+            plan.id, MissionPlanStatus(data.status),
+        )
+    if data.budget_usd_ceiling is not None:
+        plan.budget_usd_ceiling = data.budget_usd_ceiling
+        await db.flush()
+    if data.veto_window_sec is not None:
+        plan.veto_window_sec = data.veto_window_sec
+        await db.flush()
+
+    # Refetch to include updated task_states relationship
+    plan = await service.get_or_create_plan(mission_id)
+    response = MissionPlanResponse.model_validate(plan)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+# ── Task-level state transitions ─────────────────────────────────────────
+
+
+@router.post(
+    "/{mission_id}/plan/tasks/{task_id}/approve",
+    response_model=ApiResponse,
+    summary="Approve a plan task (with transitive dependencies)",
+)
+async def approve_task(
+    mission_id: str,
+    task_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Approve a task and all of its transitive dependencies.
+
+    Only proposed tasks are transitioned — already-approved / running /
+    completed dependencies are left as-is. The response lists every
+    task_id that actually changed so the UI can visually highlight the
+    closure (e.g. "approving this task also approved 2 dependencies").
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db)
+    plan = await service.get_or_create_plan(mission_id)
+    transitioned = await service.approve_task(plan.id, task_id, current_user.id)
+
+    response = TaskTransitionResponse(
+        target_task_id=task_id,
+        transitioned_task_ids=[s.task_id for s in transitioned],
+        new_status=PlanTaskStatus.APPROVED.value,
+    )
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.post(
+    "/{mission_id}/plan/tasks/{task_id}/reject",
+    response_model=ApiResponse,
+    summary="Reject a plan task (with transitive dependents)",
+)
+async def reject_task(
+    mission_id: str,
+    task_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Reject a task and cancel all transitive dependents.
+
+    Running tasks are not affected by rejection — cancel an in-flight
+    run through the execution endpoints instead.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db)
+    plan = await service.get_or_create_plan(mission_id)
+    transitioned = await service.reject_task(plan.id, task_id, current_user.id)
+
+    response = TaskTransitionResponse(
+        target_task_id=task_id,
+        transitioned_task_ids=[s.task_id for s in transitioned],
+        new_status=PlanTaskStatus.CANCELLED.value,
+    )
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.post(
+    "/{mission_id}/plan/tasks/{task_id}/retry",
+    response_model=ApiResponse,
+    summary="Retry a failed plan task",
+)
+async def retry_task(
+    mission_id: str,
+    task_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Move a failed task back into `approved` so it can be re-dispatched.
+
+    Dependencies are NOT re-walked — they already completed successfully
+    last run. If the failure was caused by a dep, reject the dep first
+    and the cascade will cancel this task too.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db)
+    plan = await service.get_or_create_plan(mission_id)
+    state = await service.retry_task(plan.id, task_id, current_user.id)
+
+    response = PlanTaskStateResponse.model_validate(state)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
