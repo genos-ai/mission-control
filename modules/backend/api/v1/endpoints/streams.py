@@ -24,7 +24,10 @@ from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.models.user import User
-from modules.backend.services.console import MissionEventAggregator
+from modules.backend.services.console import (
+    MissionEventAggregator,
+    format_event_for_sse,
+)
 from modules.backend.services.mission import MissionService
 from modules.backend.services.session import SessionService
 
@@ -99,7 +102,7 @@ async def stream_run_events(
             yield f"event: connected\ndata: {json.dumps({'session_id': session_id})}\n\n"
 
             async for event in bus.subscribe(uuid.UUID(session_id)):
-                yield f"data: {event.model_dump_json()}\n\n"
+                yield f"data: {json.dumps(format_event_for_sse(event))}\n\n"
         except asyncio.CancelledError:
             logger.debug("Run SSE stream cancelled", extra={"session_id": session_id})
         finally:

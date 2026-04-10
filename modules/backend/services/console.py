@@ -218,6 +218,50 @@ def classify_event(event_type: str) -> str:
     return "system"
 
 
+def format_event_for_sse(event: SessionEvent) -> dict:
+    """Wrap a SessionEvent into the SSE wire format the frontend expects.
+
+    The history endpoint (``GET /missions/:id/console/history``) already
+    returns events in a wrapped shape where the event envelope lives at
+    the top level and everything else is nested under ``data``::
+
+        {
+            "event_id": "...",
+            "event_type": "...",
+            "category": "execution|chat|system",
+            "timestamp": "...",
+            "source": "...",
+            "data": {...}  # all type-specific payload fields
+        }
+
+    But the SSE endpoints used to yield ``event.model_dump_json()``
+    directly — a *flat* object with every Pydantic field (including
+    ``mission_id``, ``task_id``, ``from_status``) at the top level and
+    **no** ``data`` wrapper. That shape mismatch meant every SSE consumer
+    that reached for ``event.data.something`` hit ``undefined`` and
+    silently lost the event (or surfaced the error via whichever catch
+    site happened to run next — typically a mutation toast). The
+    symptom was exotic ("Cannot read properties of undefined (reading
+    'agent_id')" when rejecting a plan task) but the cause was that
+    literally every SSE event was getting dropped.
+
+    This helper produces the wrapped shape so SSE and history share a
+    single wire format. Callers should use this instead of
+    ``event.model_dump_json()`` when writing to an ``EventSource``
+    stream.
+    """
+    flat = json.loads(event.model_dump_json())
+    event_type = flat.pop("event_type", "")
+    return {
+        "event_id": flat.pop("event_id", str(uuid.uuid4())),
+        "event_type": event_type,
+        "category": classify_event(event_type),
+        "timestamp": flat.pop("timestamp", None),
+        "source": flat.pop("source", ""),
+        "data": flat,
+    }
+
+
 # ---------------------------------------------------------------------------
 # MissionEventAggregator
 # ---------------------------------------------------------------------------
@@ -304,9 +348,7 @@ class MissionEventAggregator:
                 event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
-            payload = json.loads(event.model_dump_json())
-            payload["category"] = classify_event(event.event_type)
-            yield payload
+            yield format_event_for_sse(event)
 
     # ------------------------------------------------------------------
     # Internal helpers
