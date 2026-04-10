@@ -417,14 +417,18 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
+            from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
+
+            mission_svc = MissionService(ctx.deps.db_session)
+            mission = await mission_svc.get_mission(ctx.deps.mission_id)
 
             svc = MissionPlanService(ctx.deps.db_session)
             plan = await svc.get_or_create_plan(ctx.deps.mission_id)
             refined = await svc.refine(
                 plan.id,
                 instructions,
-                user_id="mission.director.agent",
+                user_id=mission.owner_id,
             )
             await ctx.deps.db_session.commit()
 
@@ -457,6 +461,136 @@ def create_agent(model: str | Model) -> Agent:
             logger.error("refine_plan failed", exc_info=True)
             # Roll back the (failed) refinement transaction so the
             # session is in a clean state for the next tool call.
+            try:
+                await ctx.deps.db_session.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            return json.dumps({"error": str(e)})
+
+    @agent.tool
+    async def approve_plan_tasks(
+        ctx: RunContext[MissionDirectorDeps],
+        task_ids: list[str],
+        reason: str,
+    ) -> str:
+        """Auto-approve plan tasks on the user's behalf (ai_assisted /
+        autonomous modes only — Plan 42 §10.4).
+
+        Refuses when the plan is in `interactive` mode. In that mode the
+        user has explicitly opted into approving every task themselves,
+        and you must NOT bypass them. Tell the user to flip the plan
+        to `ai_assisted` if they want you to auto-approve.
+
+        The service's transitive dependency walk still runs — approving
+        one task auto-approves its upstream dependencies if they were
+        in `proposed` state. The returned transitioned_task_ids list
+        reflects the full closure.
+
+        When you call this tool, always explain WHY you are approving
+        these tasks in the `reason` string. In `ai_assisted` mode this
+        reason is surfaced to the user as part of the veto window UI
+        (Phase 4b will wire the window itself; for now the reason is
+        recorded in the tool log).
+
+        Args:
+            task_ids: List of task_id strings to approve. Each is
+                approved individually via the service — if any task_id
+                is not in the plan or is not in `proposed` state, it
+                is silently skipped.
+            reason: Short natural-language explanation of why you are
+                approving these tasks. Must be 1-500 characters.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            if not reason or not reason.strip():
+                return json.dumps({
+                    "error": "reason is required — explain why you are approving",
+                })
+            if len(reason) > 500:
+                return json.dumps({
+                    "error": f"reason too long ({len(reason)} chars, max 500)",
+                })
+
+            from modules.backend.services.mission import MissionService
+            from modules.backend.services.mission_plan import MissionPlanService
+
+            mission_svc = MissionService(ctx.deps.db_session)
+            mission = await mission_svc.get_mission(ctx.deps.mission_id)
+
+            svc = MissionPlanService(ctx.deps.db_session)
+            plan = await svc.get_or_create_plan(ctx.deps.mission_id)
+
+            # Gate policy: refuse in interactive mode
+            if plan.gate_mode == "interactive" or plan.gate_mode is None:
+                return json.dumps({
+                    "error": (
+                        "Plan is in interactive mode — the user approves "
+                        "tasks manually. Tell them to switch the plan to "
+                        "ai_assisted if they want you to auto-approve on "
+                        "their behalf."
+                    ),
+                    "gate_mode": plan.gate_mode,
+                })
+
+            if plan.gate_mode not in ("ai_assisted", "autonomous"):
+                return json.dumps({
+                    "error": f"Unsupported gate_mode for auto-approval: {plan.gate_mode}",
+                })
+
+            # The Director acts on behalf of the mission owner — use the
+            # owner's user id so the plan_task_states.approved_by_user_id
+            # FK is satisfied and the audit trail correctly attributes
+            # the approval to a real user (not to an agent name).
+            acting_user_id = mission.owner_id
+
+            all_transitioned: list[str] = []
+            for task_id in task_ids:
+                try:
+                    transitioned = await svc.approve_task(
+                        plan.id, task_id, user_id=acting_user_id,
+                    )
+                    all_transitioned.extend(s.task_id for s in transitioned)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "approve_plan_tasks: skipping task",
+                        extra={"task_id": task_id, "error": str(e)},
+                    )
+            await ctx.deps.db_session.commit()
+
+            # Deduplicate while preserving order
+            seen: set[str] = set()
+            unique_transitioned = [
+                t for t in all_transitioned
+                if not (t in seen or seen.add(t))
+            ]
+
+            logger.info(
+                "Director auto-approved plan tasks",
+                extra={
+                    "plan_id": plan.id,
+                    "requested_task_ids": task_ids,
+                    "transitioned_task_ids": unique_transitioned,
+                    "gate_mode": plan.gate_mode,
+                    "reason": reason,
+                },
+            )
+
+            return json.dumps({
+                "plan_id": plan.id,
+                "gate_mode": plan.gate_mode,
+                "requested_task_ids": task_ids,
+                "transitioned_task_ids": unique_transitioned,
+                "reason": reason,
+                "message": (
+                    f"Auto-approved {len(unique_transitioned)} task(s) "
+                    f"(including transitive dependencies). The user can "
+                    f"still veto by rejecting any task in the Plan tab."
+                ),
+            }, indent=2, default=str)
+        except Exception as e:
+            logger.error("approve_plan_tasks failed", exc_info=True)
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001
