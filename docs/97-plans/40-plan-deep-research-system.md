@@ -18,7 +18,7 @@ The canonical architecture for deep research agents follows a **Plan→Search→
 
 1. **Keep the Planning Agent in the loop.** Every other execution goes through the Planning Agent — bypassing it creates a special case that breaks composability (e.g., a workflow with research step 1 + code generation step 2). Instead, teach the Planning Agent to recognize research rosters and emit a single task with `type: research_loop`. The dispatch loop detects this and routes to the research executor. This is the same pattern `convergence.py` was designed for — we just wire it up.
 
-2. **5 specialized agents, each with a single clear responsibility.** Strategist (decompose + refine), searcher (search + extract), analyst (coverage evaluation + gap analysis), synthesizer (report with citations), verifier (citation verification). Clear separation makes each agent easier to test, prompt-engineer, and swap independently.
+2. **5 specialized agents, each with a single clear responsibility.** Strategist (decompose + refine), searcher (search + extract), analyst (coverage evaluation — identifies what's covered, what isn't), synthesizer (report with citations), verifier (citation verification). Clear separation makes each agent easier to test, prompt-engineer, and swap independently. The analyst does NOT generate new sub-questions — that's the strategist's job. The analyst only returns structured coverage data (covered/uncovered lists); the strategist generates refined queries from the gap list.
 
 3. **Deterministic coverage scoring.** Following P2 (Deterministic over Non-Deterministic): coverage score is computed by code from structured agent output (fraction of sub-questions with >= 2 independent sources), not an LLM-generated float.
 
@@ -27,6 +27,10 @@ The canonical architecture for deep research agents follows a **Plan→Search→
 5. **Cumulative budget enforcement.** The loop executor tracks total spend across all agent invocations (not per-agent). Per-agent cost ceilings in the roster are per-invocation limits; the loop's `budget_usd` is the hard cap for the entire research run.
 
 6. **No SourceCacheService in Phase 1.** Redis caching for extracted content is premature. Add it when redundant extraction becomes a measured bottleneck.
+
+8. **`type: research_loop` belongs in the workflow template static input, not inferred by the Planning Agent.** Adding `type: "research_loop"` to the workflow step's `inputs.static` makes dispatch routing deterministic — the Planning Agent simply sees a task with this type and passes it through. No fragile system prompt additions needed. The Planning Agent still creates the plan (one task), just doesn't need to invent the task type.
+
+9. **`AgentResponseChunkEvent` already exists — do not create `ResearchReportChunkEvent`.** The existing event already carries streaming text chunks; add `research_id` as optional metadata or use `source` field. Creating a duplicate event type for what is structurally identical data violates DRY and fragments the frontend event handling.
 
 7. **The experience IS the product.** The backend engine is necessary but not sufficient. What makes this demo-worthy is the real-time narrative: watching sub-questions appear, sources discovered live, coverage climbing, and the report writing itself. Every phase must emit human-readable narrative events alongside structured data. The synthesizer must stream its output. **This research system is the textbook example of how every future mission type should be experienced** — the event patterns, three-panel UI layout, and follow-up conversation model established here become the platform standard.
 
@@ -110,9 +114,9 @@ No Temporal changes needed — the existing `AgentMissionWorkflow` wraps executi
 
 ### 1.3 `research.analyst.agent`
 - **Type**: `vertical` | **Model**: `claude-sonnet-4`
-- **Role**: Evaluates research coverage after each search round. Identifies which sub-questions are covered (with source IDs), which have gaps, deduplicates sources, and recommends whether to continue or synthesize. Returns **structured data**, not a score — the loop executor computes coverage deterministically from the structured output.
-- **Tools**: None (pure reasoning)
-- **Output**: `CoverageAnalysisData` (covered_questions with source_ids, uncovered_questions, suggested_refinements)
+- **Role**: Evaluates research coverage after each search round. Identifies which sub-questions are covered (with source IDs) and which remain as gaps. Returns **structured data**, not a score — the loop executor computes coverage deterministically from the structured output. Does NOT generate new sub-questions (that is the strategist's job — the strategist receives the gap list and produces refined queries).
+- **Tools**: None (pure reasoning on the current findings set)
+- **Output**: `CoverageAnalysisData` (covered_questions with source_ids, uncovered_question_ids)
 - **Budget**: $2.00 per invocation
 - **Files**:
   - `config/agents/research/analyst/agent.yaml`
@@ -264,7 +268,16 @@ def should_stop(rounds: list[SearchRound], config: ResearchConfig) -> tuple[bool
 
 ### Cumulative Budget Enforcement
 
-The loop executor tracks `cumulative_cost_usd` across ALL agent invocations (strategist calls + all searcher instances + synthesizer). Before each phase, it checks `cumulative_cost_usd < config.budget_usd`. If exceeded, it skips to synthesis with whatever findings exist. Per-agent `cost_ceiling_usd` in the roster is per-invocation only.
+The loop executor tracks `cumulative_cost_usd` across ALL agent invocations (strategist calls + all searcher instances + synthesizer). Before each search batch, it:
+
+1. Checks `cumulative_cost_usd >= config.budget_usd` → skip to synthesis if exceeded
+2. Computes how many searchers the remaining budget can support: `remaining = config.budget_usd - cumulative_cost_usd; max_batch = int(remaining / per_searcher_cost_ceiling)`. Caps the batch at `min(len(gap_questions), max_batch)` to prevent a single parallel batch from overshooting the budget by `N × cost_ceiling`.
+
+Per-agent `cost_ceiling_usd` in the roster is per-invocation only.
+
+### Analyst Context Efficiency
+
+The analyst is called after each search round. Pass only the **new findings** from the current round + the **previous coverage summary** (the `CoverageAnalysisData` from the last round, if any). Do NOT pass all historical findings — the analyst's input grows unboundedly across iterations otherwise. The analyst updates its coverage view incrementally from the delta, not from the full history.
 
 ### Findings Compression (Pre-Synthesis)
 
@@ -303,51 +316,20 @@ The semaphore prevents overwhelming search API rate limits (Tavily: 100 RPM on G
 
 ### 3.1 How the Planning Agent creates the research task
 
-The Planning Agent already receives the roster. When it sees a roster with `research.strategist.agent`, `research.searcher.agent`, and `research.synthesizer.agent`, it recognizes this is a research mission and creates a **single task** with `type: research_loop` in its static inputs.
+The workflow template's step declares `type: "research_loop"` in its static `input` (see §8). The static inputs flow through `resolve_upstream_inputs()` into the task's `resolved_inputs`. The Planning Agent creates a **single task** for this step — it does NOT need to know about `type: research_loop` or produce it. The `type` key is already present in the resolved inputs before the Planning Agent is even called.
 
-Add to the Planning Agent system prompt (`config/prompts/agents/system/planning/system.md`):
+The Planning Agent only needs to know ONE thing about research missions: create a **single task** for the research step (do not decompose into multiple tasks). Add a brief note to the Planning Agent system prompt:
 
 ```markdown
-## Special Task Types
+## Single-task steps
 
-### Research Loop (`type: research_loop`)
-
-When the roster contains research agents (research.strategist.agent, research.searcher.agent,
-research.synthesizer.agent), create a SINGLE task with these properties:
-
-- `agent`: "research.strategist.agent" (the loop entry point)
-- `inputs.static.type`: "research_loop"
-- `inputs.static.query`: the research question from the mission brief
-- `inputs.static.loop_config`: research configuration from upstream context
-  (depth, max_iterations, source_types, etc.)
-
-Do NOT decompose research into multiple tasks. The research loop executor handles
-internal decomposition, parallel search, iteration, and synthesis autonomously.
-
-Example:
-```json
-{
-  "task_id": "research-001",
-  "agent": "research.strategist.agent",
-  "description": "Deep research on the given query",
-  "instructions": "Execute comprehensive research on: {query}",
-  "inputs": {
-    "static": {
-      "type": "research_loop",
-      "query": "What are the best practices for...",
-      "loop_config": {
-        "depth": "comprehensive",
-        "max_iterations": 5,
-        "source_types": ["web"],
-        "min_coverage_ratio": 0.8
-      }
-    }
-  },
-  "dependencies": [],
-  "domain_tags": ["research"]
-}
+Some workflow steps are self-managing loops (research, convergence) that handle
+their own internal decomposition. When a step has a single entry-point agent
+(e.g. research.strategist.agent), create ONE task for it — do not decompose it
+into sub-tasks. The executor handles internal parallelism.
 ```
-```
+
+This is minimal and general — it applies to convergence loops too. No research-specific pattern recognition needed in the Planning Agent prompt.
 
 ### 3.2 Dispatch loop integration point
 
@@ -442,10 +424,14 @@ class ContentExtractService:
 async def web_search(query, max_results=10, ...) -> dict
 async def fetch_and_extract(url, max_length=50000) -> dict
 async def search_codebase(query, file_patterns=None) -> dict
-async def search_confluence(query, space_key=None) -> dict
+# search_confluence: Phase 2 — delegates to Atlassian MCP (mcp__claude_ai_Atlassian__searchAtlassian)
+# Not included in Phase 1 — the Atlassian MCP is available as a direct tool for agents
+# that have it configured; a wrapper adds no value until we need custom filtering/auth.
 ```
 
 All are thin wrappers that call the service layer — following P7 (Separate Implementation from Registration) and the existing pattern in `tools/compliance.py`.
+
+**Note on Tavily content**: Tavily's search API already returns content snippets in search results. The `web_search` tool should include those snippets in its return value so the searcher agent can use them directly. Call `fetch_and_extract` only when the Tavily snippet is too short (< 500 chars) or the source is from Brave (no content included). This avoids redundant HTTP extraction on Tavily results and cuts latency per search round.
 
 ---
 
@@ -531,7 +517,7 @@ class ResearchSubQuestion(BaseModel):
     text: str
     priority: int                    # 1=highest, 5=lowest
     source_hints: list[str]          # ["web", "codebase", "confluence"]
-    depends_on: list[str]            # IDs of prerequisite sub-questions
+    # Note: no depends_on in Phase 1 — all gap sub-questions are fanned out in parallel
 
 class ResearchDecomposition(BaseModel):
     """Output from strategist 'decompose' phase."""
@@ -548,10 +534,14 @@ class CoveredQuestion(BaseModel):
     confidence_note: str             # brief note (for logging only)
 
 class CoverageAnalysisData(BaseModel):
-    """Output from strategist 'analyze' phase. Score computed by code."""
+    """Output from analyst agent. Score computed by code. No query generation here.
+
+    The analyst only classifies: which questions are covered (with >= 2 sources),
+    which are not. The strategist takes the uncovered_question_ids and generates
+    refined queries for the next iteration.
+    """
     covered_questions: list[CoveredQuestion]
-    uncovered_questions: list[str]
-    suggested_refinements: list[ResearchSubQuestion]
+    uncovered_question_ids: list[str]   # sub-question IDs with < 2 sources
 
 # --- Search findings ---
 
@@ -592,8 +582,13 @@ class CitationVerdict(BaseModel):
     verdict: str                     # supported | partially_supported | unsupported
     explanation: str
 
-class VerificationResult(BaseModel):
-    """Output from verifier agent."""
+class CitationVerificationResult(BaseModel):
+    """Output from verifier agent.
+
+    Named CitationVerificationResult (not VerificationResult) to avoid collision
+    with modules.backend.agents.mission_control.verification.VerificationResult,
+    which is used by the existing 3-tier verification pipeline in step_executor.py.
+    """
     citation_verdicts: list[CitationVerdict]
     verification_score: float        # fraction of citations that are "supported"
     total_citations: int
@@ -635,7 +630,7 @@ The research system introduces experience primitives that are designed to genera
 | `ResearchNarrativeEvent` | `MissionNarrativeEvent` | Any agent thinking out loud during any mission |
 | `ResearchSourceFoundEvent` | `MissionArtifactFoundEvent` | Code files generated, APIs discovered, test results |
 | `ResearchSubQuestionUpdatedEvent` | `TaskStatusUpdatedEvent` | Any task in any plan changing status live |
-| `ResearchReportChunkEvent` | `AgentResponseChunkEvent` (existing) | Already exists — research just uses it for the report |
+| _(use existing)_ `AgentResponseChunkEvent` | `AgentResponseChunkEvent` | Already exists — research emits it with `source="research:{id}"`. No new event needed. |
 | Follow-up via `get_research_findings` | Follow-up via mission context | Chat about any completed execution's results |
 
 For Phase 1 we implement these as research-prefixed events. In Phase 2, we extract the platform primitives and retrofit existing mission types to use them. Every mission should eventually feel this alive.
@@ -744,12 +739,11 @@ class ResearchSynthesizingEvent(SessionEvent):
     total_findings: int
     findings_after_compression: int
 
-class ResearchReportChunkEvent(SessionEvent):
-    """Streaming report chunk — the report writing itself live."""
-    event_type: str = "research.report.chunk"
-    research_id: str
-    content: str                     # markdown chunk
-    is_final: bool = False
+## NOTE: No ResearchReportChunkEvent needed.
+## Use the existing AgentResponseChunkEvent (already in types.py, line ~102).
+## The loop executor emits AgentResponseChunkEvent with source=f"research:{task_id}"
+## so the frontend can distinguish research streaming from other agent responses.
+## Adding a duplicate event type would fragment frontend event handling.
 
 class ResearchCompletedEvent(SessionEvent):
     event_type: str = "research.completed"
@@ -770,7 +764,7 @@ class ResearchFailedEvent(SessionEvent):
     cost_usd: float
 ```
 
-Register all in `EVENT_TYPE_MAP`.
+Register all in `EVENT_TYPE_MAP`. **Do not register a new event for streaming report chunks** — use the existing `AgentResponseChunkEvent` with `source=f"research:{task_id}"` to distinguish research output from other agents.
 
 ### 7.3 Streaming Synthesis — The Report Writes Itself
 
@@ -790,11 +784,33 @@ async with agent.run_stream(synthesis_prompt, deps=deps) as stream:
     result = await stream.get_output()
 ```
 
-**Note:** The synthesizer needs to produce BOTH streaming text (for the live experience) AND structured output (for persistence). Two approaches:
-- **(a)** Stream the markdown report as text, then make a second non-streaming call for the structured `ResearchReportOutput`. More expensive but simpler.
-- **(b)** Stream text only, then parse the completed text into the structured schema. Cheaper but requires reliable markdown→schema parsing.
+**Design decision — single call, split output:**
 
-Recommend **(a)** for Phase 1 — correctness over cost optimization.
+The synthesizer is called ONCE. Its output is structured as two parts:
+
+**(d) Split output (recommended):**
+- Stream the `report_markdown` field as plain text — this is what appears live in `<StreamingReport>` via `AgentResponseChunkEvent`s
+- After streaming completes, the final structured output contains the lightweight metadata: `title`, `executive_summary`, `sources`, `methodology`, `limitations`, `context_updates`
+- The `report_markdown` is the concatenation of all streamed chunks (PydanticAI makes this available via `stream.get_output()` after streaming)
+
+This means the synthesizer returns `ResearchReportOutput` with a `report_markdown` field that streams live, and all other fields are available synchronously at end. One LLM call, not two. The previous approaches (a) and (b) are rejected:
+- (a) Two calls: doubles cost (up to $10 for a $5 synthesis budget)
+- (b) Markdown→schema parsing: brittle and unnecessary
+
+```python
+# In research_loop.py, Phase 4 (streaming synthesis):
+async with synthesizer_agent.run_stream(synthesis_prompt, deps=deps) as stream:
+    async for chunk in stream.stream_text(delta=True):
+        await _emit(event_bus, AgentResponseChunkEvent,
+            session_id=session_id,
+            source=f"research:{task_id}",
+            agent_name=config.synthesizer_agent,
+            content=chunk,
+            is_complete=False,
+        )
+    result: ResearchReportOutput = await stream.get_output()
+    # result.report_markdown == "".join(all chunks) — already stored
+```
 
 ### 7.4 Follow-Up Conversation
 
@@ -893,8 +909,13 @@ steps:
     cost_ceiling_usd: 25.00
     environment: local
     input:
+      # type: research_loop is declared here — NOT inferred by the Planning Agent.
+      # This makes dispatch routing deterministic. The Planning Agent creates a
+      # single task for this step; the dispatch loop sees type=research_loop and
+      # routes to execute_research_loop() before execute_with_step_events.
+      type: "research_loop"
       query: "@context.query"
-      research_config:
+      loop_config:
         depth: "@context.research_depth"
         max_iterations: "@context.max_iterations"
         source_types: "@context.source_types"
@@ -1103,7 +1124,7 @@ This is an **overlay component** that appears within the mission workspace when 
 | `<NarrativeFeed>` | `components/live/narrative-feed.tsx` | Left panel. Scrolling text feed of `ResearchNarrativeEvent`s with auto-scroll. Each entry has a timestamp, phase icon, and message. |
 | `<SubQuestionTree>` | `components/mission/sub-question-tree.tsx` | Center panel (research-specific). Live status badges: `○` pending, `◉` searching (animated), `✓` covered, `✗` gap. Driven by `ResearchSubQuestionUpdatedEvent`. |
 | `<CoverageRing>` | `components/ui/coverage-ring.tsx` | Animated SVG progress ring 0→100%. Driven by `ResearchCoverageEvent`. Shows percentage + label. |
-| `<StreamingReport>` | `components/mission/streaming-report.tsx` | Center panel (below tree). Renders `ResearchReportChunkEvent` chunks as they arrive through `<MarkdownRenderer>`. Growing document with scroll-to-bottom. |
+| `<StreamingReport>` | `components/mission/streaming-report.tsx` | Center panel (below tree). Renders `AgentResponseChunkEvent` chunks (filtered by `source.startsWith("research:")`) through `<MarkdownRenderer>`. Growing document with scroll-to-bottom. |
 | `<ArtifactPanel>` | `components/live/artifact-panel.tsx` | Right panel. Cards appearing in real-time as `ResearchSourceFoundEvent`s arrive. Each card: title, URL, snippet preview, relevance badge. Clickable to expand full excerpt. |
 | `<CitationTooltip>` | `components/ui/citation-tooltip.tsx` | Hover/click `[N]` in report → popover showing source excerpt + link. Powered by sources stored in `useResearchStore`. |
 | `<LiveFooter>` | `components/live/live-footer.tsx` | Extend existing. Add phase indicator, iteration counter, source count alongside existing cost/task counters. |
@@ -1158,6 +1179,11 @@ The existing `useRunStream(sessionId)` hook already receives all session events.
 if (event.event_type.startsWith('research.')) {
   useResearchStore.getState().handleEvent(event);
 }
+// AgentResponseChunkEvent for streaming report (source starts with "research:")
+if (event.event_type === 'agent.response.chunk' &&
+    (event.source ?? '').startsWith('research:')) {
+  useResearchStore.getState().handleEvent(event);
+}
 ```
 
 The `<MissionLiveView>` detects that a research loop is running (first `research.started` event) and switches the workspace content from the default task view to the research-specific sub-question tree + streaming report.
@@ -1201,7 +1227,7 @@ npm install react-markdown remark-gfm rehype-highlight highlight.js
 
 ---
 
-## 12. Implementation Order (Critical Path)
+## 13. Implementation Order (Critical Path)
 
 ### Phase 1: Search Infrastructure
 1. `modules/backend/schemas/research.py` — all research schemas
@@ -1222,10 +1248,10 @@ npm install react-markdown remark-gfm rehype-highlight highlight.js
 
 ### Phase 3: Research Loop Executor + Dispatch Integration + Experience Events
 1. `modules/backend/agents/mission_control/dispatch/research_loop.py` — core loop with narrative event emission at every phase transition
-2. Task-type routing in `modules/backend/agents/mission_control/dispatch/loop.py` — detect `type: research_loop` in resolved inputs, route to `execute_research_loop()` (also wires up convergence_loop pattern at the same integration point)
-3. Planning Agent system prompt update: add research_loop task type section to `config/prompts/agents/system/planning/system.md`
-4. All research event types in `modules/backend/events/types.py` — including `ResearchNarrativeEvent`, `ResearchSourceFoundEvent`, `ResearchSubQuestionUpdatedEvent`, `ResearchReportChunkEvent`
-5. Streaming synthesis integration — loop executor captures streaming chunks and emits `ResearchReportChunkEvent`s
+2. Task-type routing in `modules/backend/agents/mission_control/dispatch/loop.py` — detect `type: research_loop` in resolved inputs (which arrive from the workflow template's static inputs, not the Planning Agent), route to `execute_research_loop()` via `_execute_research_task()` wrapper that emits PlanStepStarted/Completed events
+3. Planning Agent system prompt update: add single-task loop hint (§3.1 — minimal, general-purpose, not research-specific)
+4. All research event types in `modules/backend/events/types.py` — `ResearchNarrativeEvent`, `ResearchSourceFoundEvent`, `ResearchSubQuestionUpdatedEvent`; **do not add ResearchReportChunkEvent** — reuse existing `AgentResponseChunkEvent`
+5. Streaming synthesis integration — loop executor streams synthesizer output as `AgentResponseChunkEvent`s with `source=f"research:{task_id}"`
 
 ### Phase 4: Workflow & Integration
 1. `config/workflow_templates/research.deep-research.workflow.yaml`
@@ -1236,6 +1262,7 @@ npm install react-markdown remark-gfm rehype-highlight highlight.js
 6. End-to-end integration test
 
 ### Phase 5: Persistence & Knowledge
+0. **Prerequisite**: Move `_MCD_MAX_SIZE` and `_MCD_TARGET_SIZE` out of `modules/backend/services/mission_context.py` and into `config/settings/missions.yaml` (or equivalent config). These are currently hardcoded to 20KB/15KB — not appropriate for a research system writing potentially large context updates. Load them via `get_app_config()` instead.
 1. `modules/backend/models/research.py` — ResearchReport model
 2. Alembic migration
 3. `modules/backend/repositories/research.py`
@@ -1266,7 +1293,7 @@ npm install react-markdown remark-gfm rehype-highlight highlight.js
 
 ---
 
-## 13. Verification Plan
+## 14. Verification Plan
 
 1. **Unit tests**: Search services with mocked HTTP (httpx mock), content extraction with fixture HTML, deterministic coverage scoring
 2. **Agent tests**: PydanticAI TestModel — validate output schemas and tool calls for all 5 agents independently
@@ -1279,8 +1306,9 @@ npm install react-markdown remark-gfm rehype-highlight highlight.js
    - Gate behavior (abort between iterations)
    - Concurrency limit (semaphore prevents > N concurrent searchers)
 4. **Streaming test**: Verify synthesizer streams `ResearchReportChunkEvent`s and the final report matches the concatenated chunks
-5. **Planning Agent test**: Verify that given research_team roster, the Planning Agent creates a single `research_loop` task (TestModel with expected output fixture)
-6. **Dispatch routing test**: Verify `_execute_layer` routes `type: research_loop` tasks to `execute_research_loop()` instead of `execute_task()`
+5. **Planning Agent test**: Verify that given research_team roster, the Planning Agent creates a single task (TestModel with expected output fixture). The `type: research_loop` comes from the workflow template static inputs, not from the Planning Agent — verify the Planning Agent does NOT need to output the type.
+6. **Dispatch routing test**: Verify `_execute_layer` routes `type: research_loop` tasks (from static workflow inputs) to `execute_research_loop()` instead of `execute_task()`
+7b. **Budget batch-size test**: Verify that when remaining budget allows only 3 searchers, a batch of 8 gap questions dispatches at most 3 searchers (not all 8).
 7. **Report delivery test**: Verify ResearchReport is persisted to DB, MCD receives condensed context_updates, and report is accessible via API endpoint
 8. **Follow-up conversation test**: Verify Mission Director can retrieve research findings and answer questions about them
 9. **Demo test**: Manual end-to-end with real Tavily API key — verify the narrative event stream tells a coherent story, sources appear live, report streams in, citations are valid
