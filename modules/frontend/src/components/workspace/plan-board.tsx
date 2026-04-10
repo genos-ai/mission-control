@@ -23,7 +23,7 @@
  * Empty state: prominent CTA to chat with the Director.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Loader2,
   CheckCircle2,
@@ -36,6 +36,7 @@ import {
   Brain,
   FileText,
   Circle,
+  Clock,
   AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -480,6 +481,14 @@ function TaskRow({
 
   const statusStyles = getStatusStyles(effectiveStatus)
 
+  // Plan 42 §4.4: live countdown for ai_assisted auto-approval veto
+  // windows. Only meaningful when the task is currently in approved
+  // state and was auto-approved by the Director (has a veto_expires_at
+  // timestamp); null otherwise.
+  const veto = useVetoCountdown(state?.veto_expires_at)
+  const inVetoWindow =
+    effectiveStatus === 'approved' && veto !== null && !veto.expired
+
   async function handleApprove() {
     try {
       const result = await approve.mutateAsync(body.task_id)
@@ -546,6 +555,15 @@ function TaskRow({
                 · {body.dependencies.length} dep{body.dependencies.length > 1 ? 's' : ''}
               </span>
             )}
+            {inVetoWindow && veto && (
+              <span
+                className="flex items-center gap-0.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400"
+                title="Auto-approved by the Director — click the X to veto before the window expires"
+              >
+                <Clock className="h-2.5 w-2.5 shrink-0" />
+                Veto in {veto.remainingSec}s
+              </span>
+            )}
           </div>
 
           {state?.result_summary && effectiveStatus === 'completed' && (
@@ -592,10 +610,14 @@ function TaskRow({
           {effectiveStatus === 'approved' && (
             <IconButton
               icon={<X className="h-3 w-3" />}
-              title="Unapprove (reject)"
+              title={
+                inVetoWindow
+                  ? `Veto this auto-approval (${veto?.remainingSec ?? 0}s remaining)`
+                  : 'Unapprove (reject)'
+              }
               onClick={handleReject}
               disabled={reject.isPending}
-              tone="muted"
+              tone={inVetoWindow ? 'amber' : 'muted'}
             />
           )}
           {effectiveStatus === 'failed' && (
@@ -689,4 +711,43 @@ function IconButton({
       {icon}
     </button>
   )
+}
+
+// ── Veto-window countdown (Plan 42 §4.4) ─────────────────────────────────
+
+interface VetoState {
+  /** Whole seconds remaining until the window expires. 0 when expired. */
+  remainingSec: number
+  /** True once the timestamp has passed — veto option is no longer available. */
+  expired: boolean
+}
+
+/**
+ * Live countdown for an ai_assisted auto-approval veto window.
+ *
+ * Returns null when `vetoExpiresAt` is null/undefined (no window was set —
+ * the task is a manual approval, not a Director auto-approval). Otherwise
+ * ticks every second until expiry, then stops and returns `expired: true`.
+ *
+ * One interval per active countdown, auto-cleared on unmount or when the
+ * input timestamp changes.
+ */
+function useVetoCountdown(vetoExpiresAt: string | null | undefined): VetoState | null {
+  const [now, setNow] = useState<number>(() => Date.now())
+
+  useEffect(() => {
+    if (!vetoExpiresAt) return
+    const expiry = new Date(vetoExpiresAt).getTime()
+    if (Date.now() >= expiry) return  // already expired — no timer needed
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [vetoExpiresAt])
+
+  if (!vetoExpiresAt) return null
+  const expiry = new Date(vetoExpiresAt).getTime()
+  const remainingMs = expiry - now
+  return {
+    remainingSec: Math.max(0, Math.ceil(remainingMs / 1000)),
+    expired: remainingMs <= 0,
+  }
 }
