@@ -1,16 +1,19 @@
 /**
- * MissionWorkspace — Phase 2
+ * MissionWorkspace — conversational-first command center
  *
- * Three-panel command center:
- *   Left  (220px) — live agent roster
- *   Center (flex) — Narrative feed | Event stream  (mode toggle)
+ * Three-panel layout:
+ *   Left  (220px) — Director (pinned) + live team roster
+ *   Center (flex) — Agent chat | Plan board | Narrative feed | Event stream
  *   Right (280px) — artifact cards (collapsed by default)
+ *
+ * The Director is auto-selected on mission landing, so every new mission
+ * opens straight into a conversation — the human is greeted, can describe
+ * the goal, review the plan, and approve execution. Clicking any other
+ * agent in the roster swaps the center into that agent's chat. The Plan /
+ * Narrative / Stream feed modes are reached via the back arrow.
  *
  * One SSE connection owned here, shared via MissionStreamContext so
  * ConsolePage (Stream mode) doesn't open a second connection.
- *
- * Director Chat slides in as an overlay drawer.
- * CommandBar at the bottom of the center sends directly to the Director.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -23,7 +26,6 @@ import {
   Pause,
   Archive,
   RotateCcw,
-  X,
   Plus,
   Send,
   Loader2,
@@ -37,6 +39,17 @@ import {
   Zap,
   Activity,
   Kanban,
+  ListChecks,
+  Settings2,
+  GitBranch,
+  FileText,
+  Activity as ActivityIcon,
+  Layers,
+  Sparkles,
+  ShieldCheck,
+  CheckCircle2,
+  ListTodo,
+  type LucideIcon,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -62,12 +75,40 @@ import type { MissionStatus, SessionMessage } from '@/types'
 // Stream mode — existing console, reads from shared stream context
 import ConsolePage from '@/pages/mission/console'
 import { PlanBoard } from '@/components/workspace/plan-board'
+import { RunsPanel } from '@/components/workspace/runs-panel'
+import { MissionSettingsDrawer } from '@/components/workspace/mission-settings-drawer'
+import { ContextPanel } from '@/components/workspace/context-panel'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CHAT_AGENT = 'mission.director.agent'
+
+/**
+ * Capability icon per agent. Used as a visual shorthand in the left roster.
+ *
+ * NOTE: This mapping lives on the frontend for now. If you add a new agent
+ * to the catalog, add its icon here too. Long-term, promote `ui_icon` to a
+ * `config/agents/**​/agent.yaml` field + catalog column so adding an agent
+ * doesn't need a frontend code change.
+ */
+const AGENT_ICONS: Record<string, LucideIcon> = {
+  'mission.director.agent':       Brain,
+  'platform.director.agent':      Brain,
+  'mission.workflow.agent':       GitBranch,
+  'platform.health.agent':        ActivityIcon,
+  'software.architecture.agent':  Layers,
+  'software.quality.agent':       ShieldCheck,
+  'system.planning.agent':        ListTodo,
+  'system.summarization.agent':   FileText,
+  'system.synthesis.agent':       Sparkles,
+  'system.verification.agent':    CheckCircle2,
+}
+
+function getAgentIcon(name: string): LucideIcon {
+  return AGENT_ICONS[name] ?? Bot
+}
 
 const STATUS_VARIANT: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {
   active: 'success',
@@ -99,14 +140,23 @@ function categorize(eventType: string): ConsoleEvent['category'] {
 export default function MissionWorkspace() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [chatOpen, setChatOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
   const [showRunModal, setShowRunModal] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  // Director chat is the default landing experience on every mission.
+  const [activeAgentChat, setActiveAgentChat] = useState<string | null>(DEFAULT_CHAT_AGENT)
 
   const { data: mission } = useMission(id)
   const updateMission = useUpdateMission(id!)
   const { user } = useAuthStore()
   const isOwner = mission?.owner_id === user?.id
+
+  // Clicking an agent row swaps the current chat subject AND jumps to Chat mode.
+  const setFeedMode = useWorkspaceStore((s) => s.setFeedMode)
+  function selectAgentChat(name: string) {
+    setActiveAgentChat(name)
+    setFeedMode('chat')
+  }
 
   // Auto-open artifacts panel when streaming starts
   const streaming = useWorkspaceStore((s) => s.streamingArtifact)
@@ -124,13 +174,14 @@ export default function MissionWorkspace() {
   const resetWorkspace = useWorkspaceStore((s) => s.reset)
   const resetConsole = useConsoleStore((s) => s.reset)
 
-  // Reset stores on mission change
+  // Reset stores + land on Director chat on mission change
   const prevMissionId = useRef<string | null>(null)
   useEffect(() => {
     if (id && id !== prevMissionId.current) {
       prevMissionId.current = id
       resetWorkspace()
       resetConsole()
+      setActiveAgentChat(DEFAULT_CHAT_AGENT)
     }
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -214,6 +265,23 @@ export default function MissionWorkspace() {
                 )}
               </>
             )}
+            <button
+              onClick={() => navigate(ROUTES.MISSION_WORKFLOWS(id!))}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="Workflows"
+            >
+              <GitBranch className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className={cn(
+                'rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground',
+                settingsOpen && 'bg-accent text-foreground',
+              )}
+              title="Mission settings"
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
             <Button size="sm" className="h-7 text-xs" onClick={() => setShowRunModal(true)}>
               <Play className="mr-1.5 h-3 w-3" />Run
             </Button>
@@ -223,11 +291,19 @@ export default function MissionWorkspace() {
         {/* ── Three panels ──────────────────────────────────────────── */}
         <div className="flex flex-1 overflow-hidden">
 
-          {/* Left — live agent roster */}
-          <LeftPanel missionId={id!} onChatOpen={() => setChatOpen(true)} />
+          {/* Left — live team roster */}
+          <LeftPanel
+            missionId={id!}
+            onAgentClick={selectAgentChat}
+            activeAgent={activeAgentChat}
+          />
 
-          {/* Center — Narrative | Stream */}
-          <CenterPanel missionId={id!} />
+          {/* Center — Chat | Plan | Narrative | Stream */}
+          <CenterPanel
+            missionId={id!}
+            agentChat={activeAgentChat ?? DEFAULT_CHAT_AGENT}
+            onReturnToDirector={() => setActiveAgentChat(DEFAULT_CHAT_AGENT)}
+          />
 
           {/* Right — artifacts */}
           {rightOpen ? (
@@ -243,15 +319,18 @@ export default function MissionWorkspace() {
           )}
         </div>
 
-        {/* ── Director Chat Drawer ─────────────────────────────────── */}
-        {chatOpen && (
+        {/* ── Mission Settings Drawer ──────────────────────────────── */}
+        {settingsOpen && (
           <>
             <div
               className="absolute inset-0 z-40 bg-background/60 backdrop-blur-sm"
-              onClick={() => setChatOpen(false)}
+              onClick={() => setSettingsOpen(false)}
             />
-            <div className="absolute inset-y-0 right-0 z-50 flex w-[520px] flex-col border-l bg-card shadow-2xl">
-              <DirectorChatDrawer missionId={id!} onClose={() => setChatOpen(false)} />
+            <div className="absolute inset-y-0 right-0 z-50 flex w-[480px] flex-col border-l bg-card shadow-2xl">
+              <MissionSettingsDrawer
+                missionId={id!}
+                onClose={() => setSettingsOpen(false)}
+              />
             </div>
           </>
         )}
@@ -277,13 +356,16 @@ export default function MissionWorkspace() {
 
 function LeftPanel({
   missionId,
-  onChatOpen,
+  onAgentClick,
+  activeAgent,
 }: {
   missionId: string
-  onChatOpen: () => void
+  onAgentClick: (agentName: string) => void
+  activeAgent: string | null
 }) {
   const { data: team, isLoading } = useTeam(missionId)
   const agentStatuses = useWorkspaceStore((s) => s.agentStatuses)
+  const feedMode = useWorkspaceStore((s) => s.feedMode)
 
   return (
     <div className="flex w-[220px] shrink-0 flex-col border-r">
@@ -294,31 +376,40 @@ function LeftPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
+        {/* Director — always pinned first, whether or not it's in the team */}
+        <RosterRow
+          agentName={DEFAULT_CHAT_AGENT}
+          live={agentStatuses[DEFAULT_CHAT_AGENT]}
+          active={feedMode === 'chat' && activeAgent === DEFAULT_CHAT_AGENT}
+          chatEnabled
+          onClick={() => onAgentClick(DEFAULT_CHAT_AGENT)}
+        />
+        <div className="mx-3 my-1 border-t border-border/50" />
+
         {isLoading && (
           <div className="flex justify-center py-4"><Spinner className="h-4 w-4" /></div>
         )}
-        {team?.map((member) => {
-          const agentName = member.agent?.agent_name ?? member.agent_catalog_id
-          const live = agentStatuses[agentName]
-          return (
-            <RosterRow key={member.agent_catalog_id} agentName={agentName} live={live} />
-          )
-        })}
+        {team
+          ?.filter((m) => (m.agent?.agent_name ?? m.agent_catalog_id) !== DEFAULT_CHAT_AGENT)
+          .map((member) => {
+            const agentName = member.agent?.agent_name ?? member.agent_catalog_id
+            const live = agentStatuses[agentName]
+            // A row is "active" only when the Chat mode is actually open on it.
+            const isActive = feedMode === 'chat' && activeAgent === agentName
+            return (
+              <RosterRow
+                key={member.agent_catalog_id}
+                agentName={agentName}
+                live={live}
+                active={isActive}
+                chatEnabled={member.agent?.chat_enabled ?? false}
+                onClick={() => onAgentClick(agentName)}
+              />
+            )
+          })}
         {!isLoading && (!team || team.length === 0) && (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No agents assigned</p>
+          <p className="px-3 py-2 text-xs text-muted-foreground">No other agents assigned</p>
         )}
-      </div>
-
-      <div className="border-t p-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full h-8 justify-start gap-2 text-xs"
-          onClick={onChatOpen}
-        >
-          <MessageSquare className="h-3.5 w-3.5" />
-          Director Chat
-        </Button>
       </div>
     </div>
   )
@@ -327,35 +418,94 @@ function LeftPanel({
 function RosterRow({
   agentName,
   live,
+  active,
+  chatEnabled,
+  onClick,
 }: {
   agentName: string
   live?: { status: string; currentTool: string | null }
+  active: boolean
+  chatEnabled: boolean
+  onClick: () => void
 }) {
   const status = live?.status ?? 'idle'
+  const isBusy = status === 'thinking' || status === 'running'
 
-  const dotColor =
-    status === 'running' ? 'bg-amber-400 animate-pulse' :
-    status === 'thinking' ? 'bg-purple-400 animate-pulse' :
-    status === 'done' ? 'bg-emerald-400' :
-    status === 'failed' ? 'bg-destructive' :
-    'bg-muted-foreground/30'
+  // Capability icon, coloured by live status. Replaces the old status dot —
+  // one glance tells you (a) what the agent does and (b) what it's doing now.
+  const CapabilityIcon = getAgentIcon(agentName)
+  const capabilityIconClass =
+    status === 'running'  ? 'text-amber-400 animate-pulse' :
+    status === 'thinking' ? 'text-purple-400 animate-pulse' :
+    status === 'done'     ? 'text-emerald-400' :
+    status === 'failed'   ? 'text-destructive' :
+    chatEnabled           ? 'text-muted-foreground/60' :
+                            'text-muted-foreground/30'
 
-  const shortName = agentName.endsWith('.agent')
+  // Trailing icon on the right:
+  //  - chat-disabled rows: no icon at all (visually "read-only")
+  //  - busy (thinking/running): Zap icon in the dot's colour ("this agent is working")
+  //  - active chat subject: MessageSquare filled in primary ("you're chatting with them")
+  //  - idle chat-enabled: MessageSquare faint, brightens on hover
+  let trailingIcon: React.ReactNode = null
+  if (chatEnabled) {
+    if (isBusy) {
+      trailingIcon = (
+        <Zap
+          className={cn(
+            'ml-auto h-3 w-3 shrink-0 animate-pulse',
+            status === 'running' ? 'text-amber-400' : 'text-purple-400',
+          )}
+        />
+      )
+    } else if (active) {
+      trailingIcon = <MessageSquare className="ml-auto h-3 w-3 shrink-0 text-primary" />
+    } else {
+      trailingIcon = (
+        <MessageSquare className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60" />
+      )
+    }
+  }
+
+  const sName = agentName.endsWith('.agent')
     ? agentName.slice(0, -6)
     : agentName
 
   return (
-    <div className="flex flex-col px-3 py-1.5">
+    <button
+      onClick={onClick}
+      disabled={!chatEnabled}
+      className={cn(
+        'group flex w-full flex-col px-3 py-2 text-left transition-colors',
+        active && 'bg-primary/10',
+        chatEnabled && !active && 'hover:bg-accent/50',
+        !chatEnabled && 'cursor-default',
+      )}
+      title={
+        chatEnabled
+          ? `Chat with ${sName}`
+          : `${sName} — task agent (not chat-enabled)`
+      }
+    >
       <div className="flex items-center gap-2">
-        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotColor)} />
-        <span className="truncate text-xs" title={agentName}>{shortName}</span>
+        <CapabilityIcon className={cn('h-3.5 w-3.5 shrink-0', capabilityIconClass)} />
+        <span
+          className={cn(
+            'truncate text-[13px]',
+            chatEnabled ? 'text-foreground' : 'text-muted-foreground/60',
+          )}
+          title={agentName}
+        >
+          {sName}
+        </span>
+        {trailingIcon}
       </div>
       {live?.currentTool && (
-        <p className="ml-3.5 truncate text-[10px] text-amber-400/80">
+        <p className="ml-4 mt-0.5 truncate text-[11px] text-amber-400/80">
           ↳ {live.currentTool}
         </p>
       )}
-    </div>
+    </button>
   )
 }
 
@@ -364,14 +514,38 @@ function RosterRow({
 // ---------------------------------------------------------------------------
 
 const FEED_MODES = [
+  { id: 'chat',      label: 'Chat',      icon: Brain },
   { id: 'plan',      label: 'Plan',      icon: Kanban },
   { id: 'narrative', label: 'Narrative', icon: Radio },
   { id: 'stream',    label: 'Stream',    icon: Activity },
+  { id: 'context',   label: 'Context',   icon: FileText },
+  { id: 'runs',      label: 'Runs',      icon: ListChecks },
 ] as const
 
-function CenterPanel({ missionId }: { missionId: string }) {
+function CenterPanel({
+  missionId,
+  agentChat,
+  onReturnToDirector,
+}: {
+  missionId: string
+  /** Current chat subject — never null; defaults to the Director. */
+  agentChat: string
+  /** Resets the current chat subject back to the Director. */
+  onReturnToDirector: () => void
+}) {
   const feedMode = useWorkspaceStore((s) => s.feedMode)
   const setFeedMode = useWorkspaceStore((s) => s.setFeedMode)
+
+  // Clicking the Chat toggle while already in Chat mode jumps back to the
+  // Director. Clicking it from another mode just enters Chat mode and keeps
+  // whichever agent was previously selected.
+  function handleModeClick(id: (typeof FEED_MODES)[number]['id']) {
+    if (id === 'chat' && feedMode === 'chat') {
+      onReturnToDirector()
+      return
+    }
+    setFeedMode(id)
+  }
 
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden border-l">
@@ -381,13 +555,18 @@ function CenterPanel({ missionId }: { missionId: string }) {
           {FEED_MODES.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setFeedMode(id)}
+              onClick={() => handleModeClick(id)}
               className={cn(
                 'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
                 feedMode === id
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
+              title={
+                id === 'chat' && feedMode === 'chat'
+                  ? 'Return to Director'
+                  : undefined
+              }
             >
               <Icon className="h-3 w-3" />
               {label}
@@ -398,15 +577,145 @@ function CenterPanel({ missionId }: { missionId: string }) {
 
       {/* Content */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {feedMode === 'plan' ? (
+        {feedMode === 'chat' ? (
+          <AgentChatPanel missionId={missionId} agentName={agentChat} />
+        ) : feedMode === 'plan' ? (
           <PlanBoard missionId={missionId} />
         ) : feedMode === 'narrative' ? (
           <NarrativeFeed missionId={missionId} />
-        ) : (
+        ) : feedMode === 'stream' ? (
           <ConsolePage />
+        ) : feedMode === 'context' ? (
+          <ContextPanel missionId={missionId} />
+        ) : (
+          <RunsPanel missionId={missionId} />
         )}
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Agent chat panel — embedded in the center when an agent row is clicked
+// ---------------------------------------------------------------------------
+
+function AgentChatPanel({
+  missionId,
+  agentName,
+}: {
+  missionId: string
+  agentName: string
+}) {
+  // Re-mount the session state whenever the agent subject changes so that
+  // selected thread, draft message, and streaming buffers all reset cleanly.
+  return (
+    <AgentChatPanelInner
+      key={agentName}
+      missionId={missionId}
+      agentName={agentName}
+    />
+  )
+}
+
+function AgentChatPanelInner({
+  missionId,
+  agentName,
+}: {
+  missionId: string
+  agentName: string
+}) {
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const { user } = useAuthStore()
+  const { data: allSessions, isLoading: loadingSessions } = useSessions({ mission_id: missionId })
+  const createSession = useCreateSession()
+
+  const agentShort = agentName.endsWith('.agent') ? agentName.slice(0, -6) : agentName
+  const isDirector = agentName === DEFAULT_CHAT_AGENT
+
+  // Sessions for this specific agent only
+  const sessions = allSessions?.filter((s) => s.agent_id === agentName) ?? []
+
+  useEffect(() => {
+    if (!selectedSessionId && sessions.length > 0) {
+      setSelectedSessionId(sessions[0].id)
+    }
+  }, [sessions.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleNewChat() {
+    if (!user) return
+    try {
+      const session = await createSession.mutateAsync({
+        goal: `${agentShort} Chat`,
+        mission_id: missionId,
+        agent_id: agentName,
+      })
+      setSelectedSessionId(session.id)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create session')
+    }
+  }
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+        {isDirector ? (
+          <Brain className="h-3.5 w-3.5 text-primary" />
+        ) : (
+          <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
+        <span className="text-xs font-semibold">
+          {isDirector ? 'Director' : agentShort}
+        </span>
+
+        <div className="relative ml-auto">
+          <select
+            value={selectedSessionId ?? ''}
+            onChange={(e) => setSelectedSessionId(e.target.value || null)}
+            className="h-6 appearance-none rounded border bg-transparent pl-2 pr-6 text-[10px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="">— thread —</option>
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.goal || s.id.slice(0, 12)} ·{' '}
+                {formatDistanceToNow(new Date(s.last_activity_at), { addSuffix: true })}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-1.5 top-1 h-3 w-3 text-muted-foreground" />
+        </div>
+        <Button
+          variant="ghost" size="icon" className="h-6 w-6 shrink-0"
+          onClick={handleNewChat} disabled={createSession.isPending} title="New thread"
+        >
+          {createSession.isPending
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : <Plus className="h-3 w-3" />}
+        </Button>
+      </div>
+
+      {/* Conversation */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {loadingSessions ? (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : selectedSessionId ? (
+          <DrawerConversation sessionId={selectedSessionId} missionId={missionId} />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
+            <Bot className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-center text-sm text-muted-foreground">
+              Start a conversation with <span className="font-medium">{agentShort}</span>.
+            </p>
+            <Button variant="outline" size="sm" onClick={handleNewChat}
+              disabled={createSession.isPending}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />New Chat
+            </Button>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -678,106 +987,6 @@ function ArtifactCard({ artifact }: { artifact: import('@/stores/workspace').Art
         />
       </div>
     </details>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Director chat drawer — self-contained, no URL changes
-// ---------------------------------------------------------------------------
-
-function DirectorChatDrawer({
-  missionId,
-  onClose,
-}: {
-  missionId: string
-  onClose: () => void
-}) {
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const { user } = useAuthStore()
-
-  const { data: sessions, isLoading: loadingSessions } = useSessions({ mission_id: missionId })
-  const createSession = useCreateSession()
-
-  useEffect(() => {
-    if (!selectedSessionId && sessions && sessions.length > 0) {
-      setSelectedSessionId(sessions[0].id)
-    }
-  }, [sessions]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function handleNewChat() {
-    if (!user) return
-    try {
-      const session = await createSession.mutateAsync({
-        goal: 'Director Chat',
-        mission_id: missionId,
-        agent_id: DEFAULT_CHAT_AGENT,
-      })
-      setSelectedSessionId(session.id)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create session')
-    }
-  }
-
-  return (
-    <>
-      <div className="flex h-10 shrink-0 items-center justify-between border-b px-4">
-        <span className="text-sm font-medium">Director Chat</span>
-        <button
-          onClick={onClose}
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-        <div className="relative flex-1">
-          <select
-            value={selectedSessionId ?? ''}
-            onChange={(e) => setSelectedSessionId(e.target.value || null)}
-            className="flex h-7 w-full appearance-none rounded-md border bg-transparent pl-2 pr-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="">— select thread —</option>
-            {sessions?.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.goal || s.id.slice(0, 12)} ·{' '}
-                {formatDistanceToNow(new Date(s.last_activity_at), { addSuffix: true })}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
-        </div>
-        <Button
-          variant="ghost" size="icon" className="h-7 w-7 shrink-0"
-          onClick={handleNewChat} disabled={createSession.isPending} title="New thread"
-        >
-          {createSession.isPending
-            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            : <Plus className="h-3.5 w-3.5" />}
-        </Button>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {loadingSessions ? (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : selectedSessionId ? (
-          <DrawerConversation sessionId={selectedSessionId} missionId={missionId} />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-            <MessageSquare className="h-8 w-8 text-muted-foreground/40" />
-            <p className="text-center text-sm text-muted-foreground">
-              Select a thread or start a new conversation.
-            </p>
-            <Button variant="outline" size="sm" onClick={handleNewChat}
-              disabled={createSession.isPending}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />New Chat
-            </Button>
-          </div>
-        )}
-      </div>
-    </>
   )
 }
 
