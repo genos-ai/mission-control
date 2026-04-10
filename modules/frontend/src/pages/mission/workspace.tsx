@@ -938,10 +938,15 @@ function ArtifactsPanel({ onClose }: { onClose: () => void }) {
 
       <div className="flex-1 overflow-y-auto">
         {!hasContent ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-8">
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-5 py-8">
             <Package className="h-6 w-6 text-muted-foreground/30" />
-            <p className="text-center text-xs text-muted-foreground/60">
-              Artifacts will appear here as agents produce results.
+            <p className="text-center text-xs text-muted-foreground/70 leading-relaxed">
+              Artifacts appear here <strong>while a run is active</strong>.
+            </p>
+            <p className="text-center text-[11px] text-muted-foreground/50 leading-relaxed max-w-[220px]">
+              Post-run artifacts are not yet persisted — see the{' '}
+              <strong>Runs</strong> tab for the full agent output of
+              completed runs.
             </p>
           </div>
         ) : (
