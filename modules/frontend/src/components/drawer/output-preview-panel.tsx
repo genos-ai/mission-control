@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, AlertTriangle, XCircle, Info } from 'lucide-
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/cn'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
 const SEVERITY_ICON: Record<string, React.ReactNode> = {
   error: <XCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0" />,
@@ -246,7 +247,7 @@ function TaskResultCard({ task }: { task: TaskResult }) {
 
           {/* Summary */}
           {summary && (
-            <p className="text-muted-foreground whitespace-pre-wrap">{summary}</p>
+            <MarkdownRenderer content={summary} />
           )}
 
           {/* Output data */}

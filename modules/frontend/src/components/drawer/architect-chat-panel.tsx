@@ -5,6 +5,7 @@ import { useArchitectChat } from '@/hooks/use-workflows'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
 interface Message {
   role: 'user' | 'architect'
@@ -85,7 +86,11 @@ function ArchitectChat({ missionId }: { missionId: string }) {
             <span className="mb-1 block text-[10px] font-semibold uppercase text-muted-foreground">
               {msg.role === 'user' ? 'You' : 'Architect'}
             </span>
-            <div className="whitespace-pre-wrap">{msg.content}</div>
+            {msg.role === 'architect' ? (
+              <MarkdownRenderer content={msg.content} />
+            ) : (
+              <div className="whitespace-pre-wrap">{msg.content}</div>
+            )}
           </div>
         ))}
 

@@ -3,6 +3,7 @@ import { usePromptHistory } from '@/hooks/use-team'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
 export function PromptHistoryPanel() {
   const { context } = useDrawerStore()
@@ -37,9 +38,7 @@ export function PromptHistoryPanel() {
             </span>
           </div>
 
-          <pre className="whitespace-pre-wrap text-sm leading-relaxed">
-            {v.content}
-          </pre>
+          <MarkdownRenderer content={v.content} />
 
           {v.change_reason && (
             <p className="mt-2 text-xs text-muted-foreground italic">

@@ -27,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ActiveRunCard } from '@/components/mission/active-run-card'
 import { RunModal } from '@/components/mission/run-modal'
 import { ROUTES } from '@/lib/constants'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
 export default function OverviewPage() {
   const { id } = useParams<{ id: string }>()
@@ -162,7 +163,7 @@ export default function OverviewPage() {
         <Card>
           <CardContent className="pt-4">
             {mission.brief && (
-              <p className="whitespace-pre-wrap text-sm">{mission.brief}</p>
+              <MarkdownRenderer content={mission.brief} />
             )}
             {mission.brief && mission.description && (
               <hr className="my-3 border-muted" />
