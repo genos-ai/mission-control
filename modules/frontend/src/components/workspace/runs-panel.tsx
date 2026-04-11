@@ -25,12 +25,12 @@ import {
   useExecutionDecisions,
   useCancelExecution,
 } from '@/hooks/use-executions'
-import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { RunModal } from '@/components/mission/run-modal'
 import { ROUTES } from '@/lib/constants'
+import type { RunDetailView } from '@/components/workspace/run-detail-panel'
 import type { ExecutionRecord } from '@/types'
 
 const STATUS_BADGE: Record<
@@ -49,9 +49,13 @@ const STATUS_BADGE: Record<
 export function RunsPanel({
   missionId,
   onStartRun,
+  activeDetail,
+  onOpenDetail,
 }: {
   missionId: string
   onStartRun?: (executionId: string) => void
+  activeDetail?: RunDetailView | null
+  onOpenDetail?: (view: RunDetailView) => void
 }) {
   const navigate = useNavigate()
   const { data, isLoading } = useExecutions({ limit: 50, mission_id: missionId })
@@ -61,9 +65,9 @@ export function RunsPanel({
   const executions = data?.executions ?? []
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 min-w-0 h-full flex-col">
       {/* Status bar — run count + New Run action */}
-      <div className="flex h-7 shrink-0 items-center justify-between border-b px-4">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b px-4">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
           {data?.total != null ? `${data.total} total` : 'Runs'}
         </span>
@@ -110,6 +114,8 @@ export function RunsPanel({
                 onNavigateLive={() =>
                   navigate(ROUTES.MISSION_RUN_LIVE(missionId, exec.id))
                 }
+                activeDetail={activeDetail?.executionId === exec.id ? activeDetail : null}
+                onOpenDetail={onOpenDetail}
               />
             ))}
           </div>
@@ -142,12 +148,16 @@ function HistoryRow({
   expanded,
   onToggle,
   onNavigateLive,
+  activeDetail,
+  onOpenDetail,
 }: {
   execution: ExecutionRecord
   missionId: string
   expanded: boolean
   onToggle: () => void
   onNavigateLive: () => void
+  activeDetail?: RunDetailView | null
+  onOpenDetail?: (view: RunDetailView) => void
 }) {
   const badge = STATUS_BADGE[execution.status] ?? STATUS_BADGE.pending
   const isRunning =
@@ -199,7 +209,13 @@ function HistoryRow({
         </span>
       </div>
 
-      {expanded && <HistoryDetail executionId={execution.id} />}
+      {expanded && (
+        <HistoryDetail
+          executionId={execution.id}
+          activeDetail={activeDetail}
+          onOpenDetail={onOpenDetail}
+        />
+      )}
     </div>
   )
 }
@@ -228,10 +244,17 @@ function CancelButton({ executionId }: { executionId: string }) {
 
 // ---------------------------------------------------------------------------
 
-function HistoryDetail({ executionId }: { executionId: string }) {
+function HistoryDetail({
+  executionId,
+  activeDetail,
+  onOpenDetail,
+}: {
+  executionId: string
+  activeDetail?: RunDetailView | null
+  onOpenDetail?: (view: RunDetailView) => void
+}) {
   const { data: detail, isLoading } = useExecution(executionId)
   const { data: decisions } = useExecutionDecisions(executionId)
-  const { open: openDrawer } = useDrawerStore()
 
   if (isLoading) {
     return (
@@ -329,38 +352,24 @@ function HistoryDetail({ executionId }: { executionId: string }) {
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 px-2 text-[10px]"
-          onClick={() => openDrawer('event-log', { executionId })}
-        >
-          <List className="mr-1 h-2.5 w-2.5" />
-          Events
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 px-2 text-[10px]"
-          onClick={() =>
-            openDrawer('output-preview', {
-              executionId,
-              content: detail.execution_outcome_json,
-            })
-          }
-        >
-          <FileText className="mr-1 h-2.5 w-2.5" />
-          Output
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 px-2 text-[10px]"
-          onClick={() => openDrawer('cost-breakdown', { executionId })}
-        >
-          <DollarSign className="mr-1 h-2.5 w-2.5" />
-          Cost
-        </Button>
+        {(
+          [
+            { type: 'events', icon: <List className="mr-1 h-2.5 w-2.5" />, label: 'Events', view: { type: 'events' as const, executionId } },
+            { type: 'output', icon: <FileText className="mr-1 h-2.5 w-2.5" />, label: 'Output', view: { type: 'output' as const, executionId, content: detail.execution_outcome_json as Record<string, unknown> | undefined } },
+            { type: 'cost', icon: <DollarSign className="mr-1 h-2.5 w-2.5" />, label: 'Cost', view: { type: 'cost' as const, executionId } },
+          ] as const
+        ).map(({ type, icon, label, view }) => (
+          <Button
+            key={type}
+            variant={activeDetail?.type === type ? 'secondary' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-[10px]"
+            onClick={() => onOpenDetail?.(view)}
+          >
+            {icon}
+            {label}
+          </Button>
+        ))}
       </div>
     </div>
   )

@@ -35,7 +35,8 @@ function AgentDetail({
   missionId?: string
 }) {
   const { data: agent, isLoading } = useCatalogAgent(agentName)
-  const addMutation = missionId ? useAddToTeam(missionId) : null
+  const addToTeam = useAddToTeam(missionId ?? '')
+  const addMutation = missionId ? addToTeam : null
   const { close } = useDrawerStore()
   const [prompt, setPrompt] = useState('')
 

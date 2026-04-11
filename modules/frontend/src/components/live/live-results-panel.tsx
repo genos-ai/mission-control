@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, MinusCircle } from 'lucide-react'
+import { CheckCircle, XCircle, MinusCircle, ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { GateApproval } from '@/components/mission/gate-approval'
 import { useLiveRunStore } from '@/stores/live-run'
@@ -18,7 +18,7 @@ function agentShortName(agent: string): string {
     : agent
 }
 
-export function LiveResultsPanel() {
+export function LiveResultsPanel({ onCollapse }: { onCollapse?: () => void }) {
   const errors = useLiveRunStore((s) => s.errors)
   const taskResults = useLiveRunStore((s) => s.taskResults)
   const pendingApproval = useLiveRunStore((s) => s.pendingApproval)
@@ -26,12 +26,21 @@ export function LiveResultsPanel() {
     useLiveRunStore.setState({ pendingApproval: null })
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex w-[300px] shrink-0 h-full flex-col border-l">
       {/* Header */}
-      <div className="border-b px-4 py-2">
+      <div className="flex items-center justify-between border-b px-4 py-2">
         <h3 className="text-sm font-semibold text-muted-foreground">
           Results
         </h3>
+        {onCollapse && (
+          <button
+            onClick={onCollapse}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Collapse results panel"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">

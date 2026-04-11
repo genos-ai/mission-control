@@ -44,6 +44,7 @@ export default function TeamPage() {
   const { data: members, isLoading } = useTeam(missionId)
   const { data: mission } = useMission(missionId)
   const { open: openDrawer } = useDrawerStore()
+  const seedMutation = useSeedTeam(missionId!)
 
   if (isLoading) {
     return (
@@ -52,8 +53,6 @@ export default function TeamPage() {
       </div>
     )
   }
-
-  const seedMutation = useSeedTeam(missionId!)
 
   if (!members?.length) {
     return (

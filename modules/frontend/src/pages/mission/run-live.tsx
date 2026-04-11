@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Radio, StopCircle } from 'lucide-react'
+import { ArrowLeft, Radio, StopCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   useExecution,
@@ -83,6 +83,8 @@ export default function RunLivePage() {
   }, [isTerminal, execution, setDone])
 
   const cancelMutation = useCancelExecution()
+  const [activityOpen, setActivityOpen] = useState(true)
+  const [resultsOpen, setResultsOpen] = useState(true)
 
   // Cleanup on unmount
   useEffect(() => reset, [reset])
@@ -159,12 +161,28 @@ export default function RunLivePage() {
 
       {/* Main content: two-panel layout */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-[70%]">
-          <LiveActivityPanel />
-        </div>
-        <div className="w-[30%]">
-          <LiveResultsPanel />
-        </div>
+        {activityOpen ? (
+          <LiveActivityPanel onCollapse={() => setActivityOpen(false)} />
+        ) : (
+          <button
+            onClick={() => setActivityOpen(true)}
+            className="flex w-5 shrink-0 items-center justify-center border-r text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            title="Open activity panel"
+          >
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        )}
+        {resultsOpen ? (
+          <LiveResultsPanel onCollapse={() => setResultsOpen(false)} />
+        ) : (
+          <button
+            onClick={() => setResultsOpen(true)}
+            className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            title="Open results panel"
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
       {/* Footer */}

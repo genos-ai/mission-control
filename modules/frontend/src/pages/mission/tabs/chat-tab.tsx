@@ -3,7 +3,7 @@
  *
  * Left  (220px) — Director (pinned) + live team roster
  * Center (flex) — Agent conversation
- * Right (280px) — Artifact cards (collapsed by default, auto-opens on stream)
+ * Right (280px) — Artifact cards (expanded by default, human can collapse)
  *
  * This is the only mission tab with the full 3-panel layout. All other tabs
  * render full-width content. The SSE connection and stores are owned by
@@ -81,14 +81,8 @@ function getAgentIcon(name: string): LucideIcon {
 
 export default function ChatTab() {
   const { id: missionId } = useParams<{ id: string }>()
-  const [rightOpen, setRightOpen] = useState(false)
+  const [rightOpen, setRightOpen] = useState(true)
   const [activeAgent, setActiveAgent] = useState<string>(DEFAULT_CHAT_AGENT)
-
-  // Auto-open artifacts panel when streaming starts
-  const streaming = useWorkspaceStore((s) => s.streamingArtifact)
-  useEffect(() => {
-    if (streaming) setRightOpen(true)
-  }, [!!streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset to Director on mission change
   const prevId = useRef<string | null>(null)
@@ -152,7 +146,7 @@ function LeftPanel({
 
   return (
     <div className="flex w-[220px] shrink-0 flex-col border-r">
-      <div className="border-b px-3 py-2">
+      <div className="flex h-9 shrink-0 items-center border-b px-3">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Team
         </span>
@@ -458,6 +452,7 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
       let buffer = ''
       let accumulated = ''
 
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read()
         if (done) break

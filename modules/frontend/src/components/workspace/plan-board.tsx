@@ -491,7 +491,6 @@ function BoardArea({
   // Remeasure on every data-driven render (layout may have shifted).
   useLayoutEffect(() => {
     measure()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [byColumn])
 
   // Remeasure when the board container resizes (window resize, etc).

@@ -6,6 +6,7 @@ import {
   Loader2,
   Users,
   Database,
+  ChevronLeft,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { useLiveRunStore } from '@/stores/live-run'
@@ -18,7 +19,7 @@ const STEP_ICONS: Record<string, React.ReactNode> = {
   error: <AlertTriangle className="h-3 w-3 text-destructive" />,
 }
 
-export function LiveActivityPanel() {
+export function LiveActivityPanel({ onCollapse }: { onCollapse?: () => void }) {
   const phase = useLiveRunStore((s) => s.phase)
   const activeAgents = useLiveRunStore((s) => s.activeAgents)
   const thinkingBuffers = useLiveRunStore((s) => s.thinkingBuffers)
@@ -33,12 +34,21 @@ export function LiveActivityPanel() {
   }, [eventLog.length])
 
   return (
-    <div className="flex h-full flex-col border-r">
+    <div className="flex flex-1 h-full flex-col border-r">
       {/* Header */}
-      <div className="border-b px-4 py-2">
+      <div className="flex items-center justify-between border-b px-4 py-2">
         <h3 className="text-sm font-semibold text-muted-foreground">
           Live Activity
         </h3>
+        {onCollapse && (
+          <button
+            onClick={onCollapse}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Collapse activity panel"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Planning phase indicator */}
