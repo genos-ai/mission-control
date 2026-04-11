@@ -32,6 +32,7 @@ from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.models.mission_plan import MissionPlanStatus, PlanTaskStatus
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_plan import (
+    AddPlanTaskRequest,
     DispatchApprovedResponse,
     MissionPlanRefineRequest,
     MissionPlanResponse,
@@ -249,6 +250,45 @@ async def dispatch_approved(
     return ApiResponse(
         success=True,
         data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+# ── Manual task creation ─────────────────────────────────────────────────
+
+
+@router.post(
+    "/{mission_id}/plan/tasks",
+    response_model=ApiResponse,
+    summary="Add a single proposed task to the plan",
+)
+async def add_plan_task(
+    mission_id: str,
+    data: AddPlanTaskRequest,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+    event_bus: EventBus,
+) -> ApiResponse:
+    """Append a manually-created proposed task to the plan's task_plan_json.
+
+    Initialises task_plan_json if the plan has none yet. The task starts
+    in proposed state and follows the same approve → dispatch flow as
+    Planning-Agent-generated tasks.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+    service = MissionPlanService(db, event_bus=event_bus)
+    plan = await service.get_or_create_plan(mission_id)
+    updated = await service.add_task(
+        plan.id,
+        description=data.description,
+        agent=data.agent,
+        instructions=data.instructions,
+        dependencies=data.dependencies,
+    )
+    return ApiResponse(
+        success=True,
+        data=MissionPlanResponse.model_validate(updated).model_dump(),
         metadata={"request_id": request_id},
     )
 

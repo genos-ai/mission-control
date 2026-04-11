@@ -163,6 +163,18 @@ export function useUpdatePlan(missionId: string) {
   })
 }
 
+/** Add a single proposed task to the plan manually. */
+export function useAddPlanTask(missionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { description: string; agent: string; instructions?: string; dependencies?: string[] }) =>
+      api.post<MissionPlan>(`/missions/${missionId}/plan/tasks`, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: planKeys.plan(missionId) })
+    },
+  })
+}
+
 /** Reorder proposed tasks in the plan (drag-to-reorder, Phase 4). */
 export function useReorderTasks(missionId: string) {
   const qc = useQueryClient()

@@ -618,8 +618,23 @@ class MissionPlanService(BaseService):
             )
             state.status = new_status.value
             state.execution_record_id = outcome.execution_record_id
-            state.task_execution_id = getattr(task_result, "execution_id", None)
+            # TaskResult.execution_id defaults to "" (not None) on the
+            # Pydantic model. Normalize empty string to None so we
+            # don't violate the FK constraint on plan_task_states.
+            # task_execution_id — which only accepts valid
+            # task_executions.id values or NULL, never the empty
+            # string. Pre-existing bug caught by the Phase 2 #2
+            # write-back verification.
+            raw_exec_id = getattr(task_result, "execution_id", None)
+            state.task_execution_id = raw_exec_id if raw_exec_id else None
             state.last_attempt_at = utc_now()
+
+            # Denormalized metrics (Plan 46 Phase 2 #2). Both fields
+            # are always present on TaskResult (default 0.0), so we
+            # write unconditionally rather than guarding with getattr
+            # on a per-task basis.
+            state.cost_usd = float(task_result.cost_usd or 0.0)
+            state.duration_seconds = float(task_result.duration_seconds or 0.0)
 
             if new_status == PlanTaskStatus.FAILED:
                 state.failure_reason = getattr(
@@ -847,6 +862,56 @@ class MissionPlanService(BaseService):
             actor=f"user:{user_id}",
         )
         return state
+
+    async def add_task(
+        self,
+        mission_plan_id: str,
+        *,
+        description: str,
+        agent: str,
+        instructions: str = "",
+        dependencies: list[str] | None = None,
+    ) -> MissionPlan:
+        """Append a single proposed task to the plan's task_plan_json.
+
+        Initialises task_plan_json if the plan has none yet. The new task
+        is appended at the end with status=proposed and a fresh task_id.
+        A PlanTaskState row is created so approve/reject/dispatch all work.
+        """
+        plan = await self._repo.get_by_id(mission_plan_id)
+
+        task_id = f"task_{uuid.uuid4().hex[:12]}"
+        task_body = {
+            "task_id": task_id,
+            "agent": agent,
+            "agent_version": "latest",
+            "description": description,
+            "instructions": instructions or description,
+            "dependencies": dependencies or [],
+        }
+
+        existing: dict = plan.task_plan_json or {}
+        tasks = list(existing.get("tasks", []))
+        tasks.append(task_body)
+        plan.task_plan_json = {**existing, "tasks": tasks}
+        await self._session.flush()
+
+        task_state = PlanTaskState(
+            id=str(uuid.uuid4()),
+            mission_plan_id=plan.id,
+            task_id=task_id,
+            status=PlanTaskStatus.PROPOSED.value,
+        )
+        self._session.add(task_state)
+        await self._session.flush()
+
+        self._log_operation(
+            "MissionPlan task added manually",
+            plan_id=mission_plan_id,
+            task_id=task_id,
+            agent=agent,
+        )
+        return await self._repo.get_by_id(mission_plan_id)
 
     # ── Helpers ─────────────────────────────────────────────────────────
 

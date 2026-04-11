@@ -21,6 +21,17 @@ from modules.backend.models.mission_plan import (
 # ── Plan-level ───────────────────────────────────────────────────────────
 
 
+class AddPlanTaskRequest(BaseModel):
+    """POST /missions/:id/plan/tasks body — add a single proposed task."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(..., min_length=1, max_length=2000)
+    agent: str = Field(..., min_length=1, max_length=200)
+    instructions: str = Field(default="", max_length=4000)
+    dependencies: list[str] = Field(default_factory=list)
+
+
 class MissionPlanRefineRequest(BaseModel):
     """POST /missions/:id/plan/refine body.
 

@@ -89,12 +89,14 @@ import {
   useDispatchApproved,
   useUpdatePlan,
   useReorderTasks,
+  useAddPlanTask,
   type MissionPlan,
   type PlanTaskBody,
   type PlanTaskState,
   type PlanTaskStatus,
   type GateMode,
 } from '@/hooks/use-mission-plan'
+import { useTeam } from '@/hooks/use-team'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 // ── Types + column layout ────────────────────────────────────────────────
@@ -610,6 +612,7 @@ function Column({
 }) {
   const parallelism = def.id === 'running' && rows.length > 1
   const isProposed = def.id === 'proposed'
+  const [addingTask, setAddingTask] = useState(false)
 
   const cards = rows.map((row, index) =>
     isProposed ? (
@@ -656,27 +659,43 @@ function Column({
         )}
       </div>
       {isProposed ? (
-        <Droppable droppableId="proposed">
-          {(provided, snapshot) => (
-            <div
-              ref={provided.innerRef}
-              {...provided.droppableProps}
-              className={cn(
-                'space-y-2 rounded-lg p-2 min-h-[60px] transition-colors',
-                snapshot.isDraggingOver ? 'bg-primary/5 ring-1 ring-inset ring-primary/20' : 'bg-muted/30',
-              )}
+        <>
+          <Droppable droppableId="proposed">
+            {(provided, snapshot) => (
+              <div
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                className={cn(
+                  'space-y-2 rounded-lg p-2 min-h-[60px] transition-colors',
+                  snapshot.isDraggingOver ? 'bg-primary/5 ring-1 ring-inset ring-primary/20' : 'bg-muted/30',
+                )}
+              >
+                {showShimmer && <ShimmerCard />}
+                {cards}
+                {provided.placeholder}
+                {rows.length === 0 && !showShimmer && !addingTask && (
+                  <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
+                    empty
+                  </div>
+                )}
+              </div>
+            )}
+          </Droppable>
+          {addingTask ? (
+            <AddTaskForm
+              missionId={missionId}
+              onDone={() => setAddingTask(false)}
+            />
+          ) : (
+            <button
+              onClick={() => setAddingTask(true)}
+              className="mt-1.5 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] text-muted-foreground/50 hover:bg-muted/40 hover:text-muted-foreground transition-colors"
             >
-              {showShimmer && <ShimmerCard />}
-              {cards}
-              {provided.placeholder}
-              {rows.length === 0 && !showShimmer && (
-                <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
-                  empty
-                </div>
-              )}
-            </div>
+              <span className="text-base leading-none">+</span>
+              Add task
+            </button>
           )}
-        </Droppable>
+        </>
       ) : (
         <div className="space-y-2 rounded-lg bg-muted/30 p-2 min-h-[60px]">
           {showShimmer && <ShimmerCard />}
@@ -688,6 +707,92 @@ function Column({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Add task inline form ─────────────────────────────────────────────────
+
+function AddTaskForm({
+  missionId,
+  onDone,
+}: {
+  missionId: string
+  onDone: () => void
+}) {
+  const [description, setDescription] = useState('')
+  const [agentInput, setAgentInput] = useState('')
+  const addTask = useAddPlanTask(missionId)
+  const { data: team } = useTeam(missionId)
+
+  const agentNames = (team ?? [])
+    .filter((m) => m.enabled && m.agent?.agent_name)
+    .map((m) => m.agent!.agent_name)
+
+  async function handleSubmit() {
+    const desc = description.trim()
+    const agent = agentInput.trim()
+    if (!desc || !agent) return
+    try {
+      await addTask.mutateAsync({ description: desc, agent })
+      onDone()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add task')
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Escape') { onDone(); return }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit()
+  }
+
+  return (
+    <div className="mt-1.5 rounded-lg border bg-card p-2.5 space-y-2 shadow-sm">
+      <Textarea
+        autoFocus
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Task description…"
+        rows={2}
+        className="resize-none text-[12px]"
+        disabled={addTask.isPending}
+      />
+      {agentNames.length > 0 ? (
+        <select
+          value={agentInput}
+          onChange={(e) => setAgentInput(e.target.value)}
+          disabled={addTask.isPending}
+          className="w-full rounded border bg-transparent px-2 py-1 text-[11px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <option value="">Select agent…</option>
+          {agentNames.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          value={agentInput}
+          onChange={(e) => setAgentInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Agent name (e.g. code.agent)"
+          className="w-full rounded border bg-transparent px-2 py-1 text-[11px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          disabled={addTask.isPending}
+        />
+      )}
+      <div className="flex items-center justify-end gap-1.5">
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onDone} disabled={addTask.isPending}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="h-6 px-3 text-[11px]"
+          onClick={handleSubmit}
+          disabled={addTask.isPending || !description.trim() || !agentInput.trim()}
+        >
+          {addTask.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Add task'}
+        </Button>
+      </div>
     </div>
   )
 }
