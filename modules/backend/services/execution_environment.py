@@ -492,7 +492,7 @@ class ExecutionEnvironmentService:
             host_working_dir=host_working_dir,
             branch_name=env.branch_name,
             container_id=env.container_id,
-            created_at=env.created_at if hasattr(env.created_at, 'isoformat') else env.created_at,
+            created_at=env.created_at,
             metadata={
                 "db_id": str(env.id),
                 "execution_count": env.execution_count,

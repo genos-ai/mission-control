@@ -148,8 +148,6 @@ def check_docker(*, try_start: bool = False) -> bool:
 
     Returns True when Docker is reachable.
     """
-    import sys as _sys
-
     def _docker_alive() -> tuple[bool, str]:
         """Run ``docker info`` and return (ok, error_message)."""
         try:
@@ -172,9 +170,9 @@ def check_docker(*, try_start: bool = False) -> bool:
         print("  Docker ............ OK")
         return True
 
-    if not try_start or _sys.platform != "darwin":
+    if not try_start or sys.platform != "darwin":
         print(f"  Docker ............ FAIL ({err})")
-        if _sys.platform == "darwin":
+        if sys.platform == "darwin":
             print("    Start Docker: open -a OrbStack  OR  open -a Docker")
         else:
             print("    Start Docker: sudo systemctl start docker")

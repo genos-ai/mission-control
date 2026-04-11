@@ -144,8 +144,8 @@ class ContainerBackend:
                 },
             )
 
-        container = await asyncio.get_event_loop().run_in_executor(None, _create)
-        await asyncio.get_event_loop().run_in_executor(None, container.start)
+        container = await asyncio.get_running_loop().run_in_executor(None, _create)
+        await asyncio.get_running_loop().run_in_executor(None, container.start)
 
         handle = EnvironmentHandle(
             environment_id=container_name,
@@ -208,7 +208,7 @@ class ContainerBackend:
 
         try:
             exit_code, stdout, stderr = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, _exec),
+                asyncio.get_running_loop().run_in_executor(None, _exec),
                 timeout=timeout_seconds,
             )
         except asyncio.TimeoutError:
@@ -251,7 +251,7 @@ class ContainerBackend:
                     extra={"container_id": handle.container_id},
                 )
 
-        await asyncio.get_event_loop().run_in_executor(None, _stop_remove)
+        await asyncio.get_running_loop().run_in_executor(None, _stop_remove)
         logger.info(
             "Container stopped and removed",
             extra={"container_id": handle.container_id},
@@ -322,7 +322,7 @@ class ContainerBackend:
             )
             return result
 
-        result = await asyncio.get_event_loop().run_in_executor(None, _create_worktree)
+        result = await asyncio.get_running_loop().run_in_executor(None, _create_worktree)
 
         if result.returncode != 0:
             logger.warning(
@@ -345,7 +345,7 @@ class ContainerBackend:
                 text=True,
             )
 
-        checkout = await asyncio.get_event_loop().run_in_executor(None, _checkout)
+        checkout = await asyncio.get_running_loop().run_in_executor(None, _checkout)
         if checkout.returncode != 0:
             logger.warning(
                 "Worktree checkout failed — files may not be populated",
@@ -384,7 +384,7 @@ class ContainerBackend:
                 text=True,
             )
 
-        result = await asyncio.get_event_loop().run_in_executor(None, _remove)
+        result = await asyncio.get_running_loop().run_in_executor(None, _remove)
 
         if result.returncode != 0:
             logger.warning(
