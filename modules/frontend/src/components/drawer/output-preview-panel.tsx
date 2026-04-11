@@ -27,12 +27,14 @@ export function OutputPreviewPanel() {
     return <p className="text-sm text-muted-foreground">No output available.</p>
   }
 
-  // Try to render structured execution outcome
+  return <OutputPreviewContent content={content} />
+}
+
+export function OutputPreviewContent({ content }: { content: Record<string, unknown> }) {
   if (isExecutionOutcome(content)) {
     return <ExecutionOutcomeView data={content} />
   }
 
-  // Fallback: pretty JSON
   return (
     <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-relaxed">
       {JSON.stringify(content, null, 2)}

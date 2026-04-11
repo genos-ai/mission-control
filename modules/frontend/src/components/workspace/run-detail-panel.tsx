@@ -6,6 +6,7 @@
 import { ChevronRight, List } from 'lucide-react'
 import { useExecution, useExecutionCost } from '@/hooks/use-executions'
 import { useResizable } from '@/hooks/use-resizable'
+import { OutputPreviewContent } from '@/components/drawer/output-preview-panel'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -157,11 +158,7 @@ function OutputContent({ content }: { content: Record<string, unknown> | undefin
   if (!content || Object.keys(content).length === 0) {
     return <p className="text-xs text-muted-foreground">No output available.</p>
   }
-  return (
-    <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-[11px] leading-relaxed">
-      {JSON.stringify(content, null, 2)}
-    </pre>
-  )
+  return <OutputPreviewContent content={content} />
 }
 
 // ---------------------------------------------------------------------------
