@@ -33,7 +33,6 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { RunModal } from '@/components/mission/run-modal'
 import { ROUTES } from '@/lib/constants'
 import type { RunDetailView } from '@/components/workspace/run-detail-panel'
