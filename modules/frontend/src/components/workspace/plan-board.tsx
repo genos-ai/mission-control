@@ -790,19 +790,21 @@ function TaskCard({
     <div
       ref={(el) => { cardRef(el); dragInnerRef?.(el) }}
       {...draggableProps}
+      {...(dragHandleProps ?? {})}
       className={cn(
         'relative rounded-md border bg-card shadow-sm p-2.5 text-xs transition-colors',
         borderClass,
         dimmed && 'opacity-60',
         isDragging && 'shadow-xl ring-1 ring-primary/30 rotate-[0.5deg] opacity-95',
+        dragHandleProps && !isDragging && 'cursor-grab active:cursor-grabbing',
+        dragHandleProps && 'pl-5',
       )}
     >
-      {/* Drag grip (Proposed column only) */}
+      {/* Visual drag grip hint — pointer-events-none so it doesn't intercept clicks */}
       {dragHandleProps && (
         <span
-          {...dragHandleProps}
-          className="absolute right-1.5 top-1.5 cursor-grab rounded p-0.5 text-muted-foreground/20 hover:text-muted-foreground/50 active:cursor-grabbing"
-          title="Drag to reorder"
+          className="absolute left-0 top-0 flex h-full w-4 items-center justify-center text-muted-foreground/30 pointer-events-none"
+          aria-hidden
         >
           <GripVertical className="h-3 w-3" />
         </span>
