@@ -44,6 +44,7 @@ import {
   useState,
   type RefCallback,
 } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   Loader2,
   CheckCircle2,
@@ -145,7 +146,8 @@ interface Edge {
 export function PlanBoard({ missionId }: { missionId: string }) {
   const { data: plan, isLoading, error } = useMissionPlan(missionId)
   const liveOverlay = useWorkspaceStore((s) => s.liveTaskOverlay)
-  const setFeedMode = useWorkspaceStore((s) => s.setFeedMode)
+  const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
 
   if (isLoading) {
     return (
@@ -169,7 +171,7 @@ export function PlanBoard({ missionId }: { missionId: string }) {
 
   const tasks = plan.task_plan_json?.tasks ?? []
   if (tasks.length === 0) {
-    return <EmptyState onChat={() => setFeedMode('chat')} plan={plan} />
+    return <EmptyState onChat={() => navigate(`/missions/${id ?? missionId}/chat`)} plan={plan} />
   }
 
   // Join bodies ⋈ states ⋈ liveOverlay by task_id.

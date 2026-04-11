@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react'
+import { ChevronDown, ChevronRight, AlertTriangle, XCircle, Info } from 'lucide-react'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/cn'

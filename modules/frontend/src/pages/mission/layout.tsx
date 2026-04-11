@@ -1,5 +1,17 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useParams } from 'react-router-dom'
+/**
+ * MissionLayout — outer shell for all mission tab routes.
+ *
+ * Owns the single SSE connection for the mission and fans events into the
+ * workspace store (agent statuses, artifacts, live task overlay) and the
+ * console store (stream tab). All nine mission tabs are rendered via
+ * <Outlet /> in the center content area.
+ *
+ * The 3-panel chat layout (agent roster + chat + artifacts) lives exclusively
+ * inside the Chat tab; all other tabs are full-width content.
+ */
+
+import { useState, useRef, useEffect } from 'react'
+import { NavLink, Outlet, useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   Activity,
   Users,
@@ -14,125 +26,284 @@ import {
   Pencil,
   Check,
   X,
+  ChevronLeft,
+  Settings2,
+  Kanban,
+  Radio,
+  ListChecks,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
 import { useMission, useUpdateMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
+import { useMissionStream } from '@/hooks/use-sse'
+import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { planKeys } from '@/hooks/use-mission-plan'
+import { queryClient } from '@/main'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { RunModal } from '@/components/mission/run-modal'
+import { MissionSettingsDrawer } from '@/components/workspace/mission-settings-drawer'
+import { MissionStreamContext } from '@/context/mission-stream'
+import { ROUTES } from '@/lib/constants'
 import type { MissionStatus } from '@/types'
 
+// ---------------------------------------------------------------------------
+// Tab definition
+// ---------------------------------------------------------------------------
+
 const tabs = [
-  { label: 'Overview', icon: Activity, path: 'overview' },
-  { label: 'Team', icon: Users, path: 'team' },
-  { label: 'Chat', icon: MessageSquare, path: 'chat' },
-  { label: 'Workflows', icon: GitBranch, path: 'workflows' },
-  { label: 'Runs', icon: Play, path: 'runs' },
-  { label: 'Console', icon: Terminal, path: 'console' },
-  { label: 'Context', icon: FileText, path: 'context' },
+  { label: 'Overview',  icon: Activity,      path: 'overview' },
+  { label: 'Team',      icon: Users,         path: 'team' },
+  { label: 'Chat',      icon: MessageSquare, path: 'chat' },
+  { label: 'Plan',      icon: Kanban,        path: 'plan' },
+  { label: 'Narrative', icon: Radio,         path: 'narrative' },
+  { label: 'Stream',    icon: Terminal,      path: 'stream' },
+  { label: 'Context',   icon: FileText,      path: 'context' },
+  { label: 'Runs',      icon: ListChecks,    path: 'runs' },
+  { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
 ]
 
-const statusVariant: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {
+const STATUS_VARIANT: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {
   active: 'success',
   paused: 'warning',
   archived: 'secondary',
 }
 
+function categorize(eventType: string): ConsoleEvent['category'] {
+  if (
+    eventType.startsWith('plan.') ||
+    eventType.startsWith('agent.') ||
+    eventType.startsWith('task.') ||
+    eventType.startsWith('execution.') ||
+    eventType.startsWith('decision.') ||
+    eventType.startsWith('session.cost') ||
+    eventType.startsWith('mission.')
+  ) return 'execution'
+  if (
+    eventType.startsWith('user.message') ||
+    eventType.startsWith('assistant.message')
+  ) return 'chat'
+  return 'system'
+}
+
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
+
 export default function MissionLayout() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { data: mission, isLoading } = useMission(id)
   const updateMission = useUpdateMission(id!)
   const user = useAuthStore((s) => s.user)
-
   const isOwner = mission?.owner_id === user?.id
+
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [showRunModal, setShowRunModal] = useState(false)
+  const location = useLocation()
+
+  // Persist last-visited tab per mission for the default-tab redirect
+  useEffect(() => {
+    if (!id) return
+    const segments = location.pathname.split('/')
+    const tabIdx = segments.indexOf(id) + 1
+    const tab = segments[tabIdx]
+    if (tab && !tab.includes(':')) {
+      localStorage.setItem(`missions.lastTab.${id}`, tab)
+    }
+  }, [location.pathname, id])
+
+  // ── Single SSE connection, shared via MissionStreamContext ────────────────
+  const { events: sseEvents, connected } = useMissionStream(id ?? null)
+
+  const addEvent = useConsoleStore((s) => s.addEvent)
+  const setConnected = useConsoleStore((s) => s.setConnected)
+  const onSseEvent = useWorkspaceStore((s) => s.onSseEvent)
+  const resetWorkspace = useWorkspaceStore((s) => s.reset)
+  const resetConsole = useConsoleStore((s) => s.reset)
+
+  // Reset stores on mission change
+  const prevMissionId = useRef<string | null>(null)
+  useEffect(() => {
+    if (id && id !== prevMissionId.current) {
+      prevMissionId.current = id
+      resetWorkspace()
+      resetConsole()
+    }
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { setConnected(connected) }, [connected, setConnected])
+
+  // Forward SSE events into workspace + console stores
+  const processedCount = useRef(0)
+  useEffect(() => {
+    if (sseEvents.length > processedCount.current) {
+      const newEvents = sseEvents.slice(processedCount.current)
+      processedCount.current = sseEvents.length
+      let planInvalidated = false
+      newEvents.forEach((ev) => {
+        const d = ev.data as Record<string, unknown>
+        onSseEvent(ev.event_type, d)
+        addEvent({
+          event_id: String(d.event_id ?? crypto.randomUUID()),
+          event_type: ev.event_type,
+          category: categorize(ev.event_type),
+          timestamp: String(d.timestamp ?? new Date().toISOString()),
+          source: String(d.agent_id ?? d.source ?? ''),
+          data: d,
+        })
+        if (ev.event_type.startsWith('mission_plan.') && id) {
+          planInvalidated = true
+        }
+      })
+      if (planInvalidated && id) {
+        queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
+      }
+    }
+  }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function setStatus(status: MissionStatus) {
     updateMission.mutate({ status })
   }
 
-  return (
-    <div className="flex h-full flex-col">
-      {/* Mission header */}
-      <div className="flex items-start justify-between border-b px-6 py-4">
-        <div className="min-w-0 flex-1">
-          {isLoading ? (
-            <Spinner className="h-5 w-5" />
-          ) : mission ? (
-            <>
-              <div className="flex items-center gap-3">
-                <h1 className="truncate text-lg font-bold">{mission.name}</h1>
-                {mission.tier === 'platform' && (
-                  <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">platform</Badge>
-                )}
-                <Badge variant={statusVariant[mission.status as MissionStatus]}>
-                  {mission.status}
-                </Badge>
-              </div>
-              <InlineBrief
-                brief={mission.brief}
-                missionId={id!}
-                editable={isOwner}
-              />
-            </>
-          ) : (
-            <p className="text-muted-foreground">Mission not found</p>
-          )}
-        </div>
+  const streamValue = { events: sseEvents, connected }
 
-        {isOwner && mission && (
-          <div className="ml-4 flex shrink-0 items-center gap-2">
-            {mission.status === 'active' && (
-              <Button variant="outline" size="sm" onClick={() => setStatus('paused')}>
-                <Pause className="mr-1.5 h-3.5 w-3.5" />
-                Pause
-              </Button>
-            )}
-            {mission.status === 'paused' && (
-              <Button variant="outline" size="sm" onClick={() => setStatus('active')}>
-                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                Resume
-              </Button>
-            )}
-            {mission.status !== 'archived' && (
-              <Button variant="outline" size="sm" onClick={() => setStatus('archived')}>
-                <Archive className="mr-1.5 h-3.5 w-3.5" />
-                Archive
-              </Button>
+  return (
+    <MissionStreamContext.Provider value={streamValue}>
+      <div className="relative flex h-full flex-col">
+
+        {/* ── Mission header ─────────────────────────────────────────── */}
+        <div className="flex items-start justify-between border-b px-6 py-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3">
+              <Link
+                to={ROUTES.DASHBOARD}
+                className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                title="Back to dashboard"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Link>
+              {isLoading ? (
+                <Spinner className="h-5 w-5" />
+              ) : mission ? (
+                <>
+                  <h1 className="truncate text-lg font-bold">{mission.name}</h1>
+                  {mission.tier === 'platform' && (
+                    <Badge variant="outline" className="border-amber-500 text-[10px] text-amber-600">
+                      platform
+                    </Badge>
+                  )}
+                  <Badge variant={STATUS_VARIANT[mission.status as MissionStatus]}>
+                    {mission.status}
+                  </Badge>
+                </>
+              ) : (
+                <p className="text-muted-foreground">Mission not found</p>
+              )}
+            </div>
+            {mission && (
+              <InlineBrief brief={mission.brief} missionId={id!} editable={isOwner} />
             )}
           </div>
+
+          <div className="ml-4 flex shrink-0 items-center gap-2">
+            {isOwner && mission && (
+              <>
+                {mission.status === 'active' && (
+                  <Button variant="outline" size="sm" onClick={() => setStatus('paused')}>
+                    <Pause className="mr-1.5 h-3.5 w-3.5" />Pause
+                  </Button>
+                )}
+                {mission.status === 'paused' && (
+                  <Button variant="outline" size="sm" onClick={() => setStatus('active')}>
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />Resume
+                  </Button>
+                )}
+                {mission.status !== 'archived' && (
+                  <Button variant="outline" size="sm" onClick={() => setStatus('archived')}>
+                    <Archive className="mr-1.5 h-3.5 w-3.5" />Archive
+                  </Button>
+                )}
+              </>
+            )}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className={cn(
+                'rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground',
+                settingsOpen && 'bg-accent text-foreground',
+              )}
+              title="Mission settings"
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
+            <Button size="sm" onClick={() => setShowRunModal(true)}>
+              <Play className="mr-1.5 h-3.5 w-3.5" />Run
+            </Button>
+          </div>
+        </div>
+
+        {/* ── Tab bar ────────────────────────────────────────────────── */}
+        <div className="flex border-b px-4">
+          {tabs.map((tab) => (
+            <NavLink
+              key={tab.path}
+              to={`/missions/${id}/${tab.path}`}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )
+              }
+            >
+              <tab.icon className="h-4 w-4" />
+              {tab.label}
+            </NavLink>
+          ))}
+        </div>
+
+        {/* ── Tab content ────────────────────────────────────────────── */}
+        {/* min-h-0 + overflow-y-auto so full-page tabs scroll normally.    */}
+        {/* Chat tab opts into h-full to fill this bounded container.       */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Outlet />
+        </div>
+
+        {/* ── Mission Settings Drawer ─────────────────────────────────── */}
+        {settingsOpen && (
+          <>
+            <div
+              className="absolute inset-0 z-40 bg-background/60 backdrop-blur-sm"
+              onClick={() => setSettingsOpen(false)}
+            />
+            <div className="absolute inset-y-0 right-0 z-50 flex w-[480px] flex-col border-l bg-card shadow-2xl">
+              <MissionSettingsDrawer missionId={id!} onClose={() => setSettingsOpen(false)} />
+            </div>
+          </>
+        )}
+
+        {showRunModal && id && (
+          <RunModal
+            missionId={id}
+            onClose={() => setShowRunModal(false)}
+            onStarted={(executionId) => {
+              setShowRunModal(false)
+              navigate(ROUTES.MISSION_RUN_LIVE(id, executionId))
+            }}
+          />
         )}
       </div>
-
-      {/* Tab bar */}
-      <div className="flex border-b px-4">
-        {tabs.map((tab) => (
-          <NavLink
-            key={tab.path}
-            to={`/missions/${id}/${tab.path}`}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                isActive
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )
-            }
-          >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
-          </NavLink>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
-        <Outlet />
-      </div>
-    </div>
+    </MissionStreamContext.Provider>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Inline brief editor (shown below mission name in the header)
+// ---------------------------------------------------------------------------
 
 function InlineBrief({
   brief,
@@ -163,7 +334,7 @@ function InlineBrief({
 
   if (editing) {
     return (
-      <div className="mt-1 flex items-center gap-2">
+      <div className="ml-7 mt-1 flex items-center gap-2">
         <input
           autoFocus
           value={draft}
@@ -179,22 +350,14 @@ function InlineBrief({
           placeholder="Set mission objective / brief..."
         />
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={save}
-          disabled={updateMission.isPending}
+          variant="ghost" size="icon" className="h-7 w-7"
+          onClick={save} disabled={updateMission.isPending}
         >
           <Check className="h-3.5 w-3.5" />
         </Button>
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => {
-            setEditing(false)
-            setDraft(brief ?? '')
-          }}
+          variant="ghost" size="icon" className="h-7 w-7"
+          onClick={() => { setEditing(false); setDraft(brief ?? '') }}
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -206,7 +369,7 @@ function InlineBrief({
     return (
       <button
         onClick={() => setEditing(true)}
-        className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        className="ml-7 mt-1 flex items-center gap-1.5 text-sm text-muted-foreground/60 transition-colors hover:text-muted-foreground"
       >
         <Pencil className="h-3 w-3" />
         <span className="italic">Set mission brief...</span>
@@ -218,13 +381,13 @@ function InlineBrief({
     <button
       onClick={() => editable && setEditing(true)}
       className={cn(
-        'mt-1 flex items-center gap-1.5 text-sm text-muted-foreground group',
+        'ml-7 mt-1 flex items-center gap-1.5 text-sm text-muted-foreground group',
         editable && 'cursor-pointer hover:text-foreground',
       )}
     >
       <span className="line-clamp-1">{brief}</span>
       {editable && (
-        <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+        <Pencil className="h-3 w-3 flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
       )}
     </button>
   )

@@ -4,8 +4,6 @@ import { create } from 'zustand'
 // Types
 // ---------------------------------------------------------------------------
 
-export type FeedMode = 'chat' | 'plan' | 'narrative' | 'stream' | 'context' | 'runs' | 'workflows'
-
 export interface AgentStatusEntry {
   agentId: string
   status: 'idle' | 'thinking' | 'running' | 'done' | 'failed'
@@ -48,8 +46,6 @@ const SYSTEM_AGENTS = new Set(['system.planning.agent', 'mission.director.agent'
 // ---------------------------------------------------------------------------
 
 interface WorkspaceState {
-  feedMode: FeedMode
-
   // Live agent roster
   agentStatuses: Record<string, AgentStatusEntry>
 
@@ -63,7 +59,6 @@ interface WorkspaceState {
   liveTaskOverlay: Record<string, LiveTaskOverlayEntry>
 
   // Actions
-  setFeedMode: (m: FeedMode) => void
   onSseEvent: (eventType: string, data: Record<string, unknown>) => void
   clearLiveTaskOverlay: () => void
   reset: () => void
@@ -74,7 +69,6 @@ interface WorkspaceState {
 // ---------------------------------------------------------------------------
 
 const INITIAL = {
-  feedMode: 'chat' as FeedMode,
   agentStatuses: {} as Record<string, AgentStatusEntry>,
   artifacts: [] as ArtifactEntry[],
   streamingArtifact: null as StreamingArtifact | null,
@@ -87,8 +81,6 @@ const INITIAL = {
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   ...INITIAL,
-
-  setFeedMode: (m) => set({ feedMode: m }),
 
   clearLiveTaskOverlay: () => set({ liveTaskOverlay: {} }),
 

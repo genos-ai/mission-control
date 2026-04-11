@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 
 import { AppShell } from '@/components/layout/app-shell'
@@ -12,16 +13,19 @@ import CatalogPage from '@/pages/catalog'
 import NotFoundPage from '@/pages/not-found'
 
 import NewMissionPage from '@/pages/mission/new'
-import MissionWorkspace from '@/pages/mission/workspace'
 import MissionLayout from '@/pages/mission/layout'
 import OverviewPage from '@/pages/mission/overview'
 import TeamPage from '@/pages/mission/team'
-import ChatPage from '@/pages/mission/chat'
 import WorkflowsPage from '@/pages/mission/workflows'
-import RunsPage from '@/pages/mission/runs'
 import RunLivePage from '@/pages/mission/run-live'
-import ConsolePage from '@/pages/mission/console'
-import ContextPage from '@/pages/mission/context'
+
+import ChatTab from '@/pages/mission/tabs/chat-tab'
+import PlanTab from '@/pages/mission/tabs/plan-tab'
+import NarrativeTab from '@/pages/mission/tabs/narrative-tab'
+import StreamTab from '@/pages/mission/tabs/stream-tab'
+import ContextTab from '@/pages/mission/tabs/context-tab'
+import RunsTab from '@/pages/mission/tabs/runs-tab'
+import WorkflowsTab from '@/pages/mission/tabs/workflows-tab'
 
 import AdminLayout from '@/pages/admin/layout'
 import AdminCatalogPage from '@/pages/admin/catalog'
@@ -29,6 +33,19 @@ import AdminMetricsPage from '@/pages/admin/metrics'
 import AdminConfigPage from '@/pages/admin/config'
 import AdminHealthPage from '@/pages/admin/health'
 import AdminUsersPage from '@/pages/admin/users'
+
+// Redirects /missions/:id to the last-visited tab (or 'chat' if none stored).
+function MissionDefaultTab() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const lastTab = id ? localStorage.getItem(`missions.lastTab.${id}`) : null
+    navigate(`/missions/${id}/${lastTab ?? 'chat'}`, { replace: true })
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null
+}
 
 export default function App() {
   return (
@@ -52,22 +69,22 @@ export default function App() {
           {/* Create mission */}
           <Route path="missions/new" element={<NewMissionPage />} />
 
-          {/* Mission workspace */}
-          <Route path="missions/:id">
-            {/* New 3-panel workspace is the index */}
-            <Route index element={<MissionWorkspace />} />
-            {/* Legacy tab routes — still reachable for backward compat */}
-            <Route element={<MissionLayout />}>
-              <Route path="overview" element={<OverviewPage />} />
-              <Route path="team" element={<TeamPage />} />
-              <Route path="chat" element={<ChatPage />} />
-              <Route path="chat/:threadId" element={<ChatPage />} />
-              <Route path="workflows" element={<WorkflowsPage />} />
-              <Route path="runs" element={<RunsPage />} />
-              <Route path="runs/:runId" element={<RunLivePage />} />
-              <Route path="console" element={<ConsolePage />} />
-              <Route path="context" element={<ContextPage />} />
-            </Route>
+          {/* Mission workspace — all tabs under MissionLayout shell */}
+          <Route path="missions/:id" element={<MissionLayout />}>
+            <Route index element={<MissionDefaultTab />} />
+            <Route path="overview" element={<OverviewPage />} />
+            <Route path="team" element={<TeamPage />} />
+            <Route path="chat" element={<ChatTab />} />
+            <Route path="chat/:threadId" element={<ChatTab />} />
+            <Route path="plan" element={<PlanTab />} />
+            <Route path="narrative" element={<NarrativeTab />} />
+            <Route path="stream" element={<StreamTab />} />
+            <Route path="context" element={<ContextTab />} />
+            <Route path="runs" element={<RunsTab />} />
+            <Route path="runs/:runId" element={<RunLivePage />} />
+            <Route path="workflows" element={<WorkflowsTab />} />
+            {/* Legacy drill-in: full workflows DAG viz */}
+            <Route path="workflows/:workflowId" element={<WorkflowsPage />} />
           </Route>
 
           {/* Admin section */}

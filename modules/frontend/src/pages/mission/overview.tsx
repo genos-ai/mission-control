@@ -630,7 +630,7 @@ function EnvironmentStatusCard({ missionId }: { missionId: string }) {
 function DeleteMissionButton({ missionId, missionName }: { missionId: string; missionName: string }) {
   const navigate = useNavigate()
   const deleteMission = useDeleteMission()
-  const { isAdmin } = useAuthStore()
+  useAuthStore()
   const [confirming, setConfirming] = useState(false)
 
   // TODO: also allow owner to delete (check mission.owner_id === user.id)
