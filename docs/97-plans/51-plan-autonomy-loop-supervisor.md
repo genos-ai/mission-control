@@ -96,9 +96,11 @@ Folds in the existing TODO.md entry *"Director proactive follow-up: wake on comp
 
 ### 3.2 Convergence loop runner (Phase B)
 
-Graduates [Plan 48](48-plan-convergence-loop-and-branch-automation.md) from stub to implementation for the intra-task iteration layer. The `dispatch/convergence.py` scaffold (~441 lines) gets wired into `dispatch/loop.py`, a `convergence_loop` task type gets added to `schemas/task_plan.py`, and declarative exit conditions (`score >= threshold`, boolean predicate, max iterations) become expressible on task definitions.
+Graduates [Plan 48](48-plan-convergence-loop-and-branch-automation.md) from stub to implementation for the intra-task iteration layer. The existing [`dispatch/convergence.py`](../../modules/backend/agents/mission_control/dispatch/convergence.py) scaffold (441 lines) already implements a pair-agent eval + remediation loop (e.g. `software.quality.agent` + `software.coder.agent`) with hardcoded convergence-condition strings (`all_tests_pass`, `zero_critical_findings`, `zero_findings`, `quality_threshold`). Its `ConvergenceConfig.from_dict` expects a `loop_config` dict from the task's `input_data`.
 
-**Not** a full Plan 48 implementation — only Phase 6 of Plan 48 (the convergence loop pattern itself). Plan 48's other phases (branch strategy + PR automation, final verification) remain out of scope and stay deferred on Plan 48.
+Phase B's scope is **wiring, not redesign**: fork the dispatch path in `loop.py::_execute_layer` so tasks with `input_data['type'] == 'convergence_loop'` call `execute_convergence_loop()` instead of the standard single-agent execution. No new exit-condition DSL is invented — the existing `convergence_condition` + `convergence_threshold` fields are the shape a planner (or plan task JSON) targets. The "single measurable number" pattern maps to `quality_threshold` + `convergence_threshold`; the "till done" pattern maps to `zero_findings` / `all_tests_pass`.
+
+**Not** a full Plan 48 implementation — only Phase 6 of Plan 48 (the pair-agent convergence loop, wired into dispatch). Plan 48's other phases (branch strategy + PR automation, final verification) remain out of scope. v1 also covers only the two-agent eval+remediation pattern the scaffold was built for; single-agent till-done loops and multi-agent negotiation patterns are future work under Plan 48 follow-ups.
 
 ---
 
@@ -219,28 +221,64 @@ scope:
   write: []               # supervisor never writes files; delegates write via Planning/Director
 
 tools:
-  - get_plan_state        # existing mission_plan service read path
+  - get_plan                 # reuses the same tool name as mission.director.agent (see director/agent.py:339)
   - get_recent_run_outcomes  # new — reads last N runs from execution_records
-  - get_past_decisions    # new — reads gate_decisions for this mission
-  - evaluate_decision     # new — event-mode structured output
-  - explain_past_decision # new — chat-mode natural language response
+  - get_past_decisions       # new — reads execution_decisions filtered to post_run_supervisor
 ```
 
-Python module at `modules/backend/agents/mission/supervisor/agent.py` follows the same pattern as `mission/director/agent.py` and `mission/workflow/agent.py`:
+Python module at `modules/backend/agents/mission/supervisor/agent.py`. Because `pydantic_ai.Agent[Deps, OutputType]` is parameterised on a single output type per instance (this is how both [`director/agent.py::create_agent`](../../modules/backend/agents/mission/director/agent.py) and [`workflow/agent.py::create_agent`](../../modules/backend/agents/mission/workflow/agent.py) use it today), the supervisor needs **two Agent factories** sharing the same deps and tools but producing different output types:
 
 ```python
-def create_agent(model: str | Model) -> Agent[MissionSupervisorDeps, SupervisorDecision]:
-    """Factory for the mission supervisor agent.
+def _register_tools(agent: Agent) -> None:
+    """Register the three read-only introspection tools on a supervisor
+    Agent instance. Shared between event-mode and chat-mode factories
+    so the same tool code runs in both modes."""
+    @agent.tool
+    async def get_plan(ctx): ...
+    @agent.tool
+    async def get_recent_run_outcomes(ctx): ...
+    @agent.tool
+    async def get_past_decisions(ctx): ...
 
-    Two invocation modes share the same Agent instance with different
-    output types:
-        event_mode: output_type=SupervisorDecision (structured routing)
-        chat_mode:  output_type=str (natural language explanation)
 
-    Mode is selected at call time by the dispatcher, not by the agent
-    itself.
-    """
+def create_event_agent(
+    model: str | Model,
+) -> Agent[MissionSupervisorDeps, SupervisorDecision]:
+    """Structured-output variant called by AutonomousPostRunReviewer
+    on branch #8. Output is a SupervisorDecision pydantic model that
+    the reviewer converts into a GateDecision."""
+    system_prompt = assemble_instructions("mission", "supervisor")  # system.md
+    agent = Agent(
+        _build_model(model) if isinstance(model, str) else model,
+        system_prompt=system_prompt,
+        output_type=SupervisorDecision,
+        deps_type=MissionSupervisorDeps,
+    )
+    _register_tools(agent)
+    return agent
+
+
+def create_agent(model: str | Model) -> Agent[MissionSupervisorDeps, str]:
+    """Chat-mode variant called by the registry when the user opens a
+    chat with mission.supervisor.agent. Plain-string output — answers
+    questions about past decisions; never makes new ones. Named
+    `create_agent` (matching Director / Workflow convention) so the
+    mission-tier registry picks it up automatically."""
+    system_prompt = assemble_instructions("mission", "supervisor", variant="chat")  # chat.md
+    agent: Agent[MissionSupervisorDeps, str] = Agent(
+        _build_model(model) if isinstance(model, str) else model,
+        system_prompt=system_prompt,
+        deps_type=MissionSupervisorDeps,
+    )
+    _register_tools(agent)
+    return agent
 ```
+
+Note: `assemble_instructions` today takes `(category, name)` and resolves to `config/prompts/agents/{category}/{name}/system.md`. Adding a `variant` kwarg so the chat-mode system prompt can live at `.../supervisor/chat.md` is a small, additive change to [prompt_builder.py](../../modules/backend/agents/mission_control/helpers/prompt_builder.py) — not a breaking change to existing callers.
+
+`MissionSupervisorDeps` is a thin dataclass mirroring [`MissionDirectorDeps`](../../modules/backend/agents/mission/director/deps.py) (`mission_id: str`, `db_session: Any`). Kept separate rather than aliased so the supervisor can add supervisor-specific fields later without affecting the Director.
+
+`get_plan` duplicates the Director's tool body (~45 lines) intentionally for v1 — both agents read the same service methods. A future refactor can extract the shared implementation into `agents/tools/plan_introspection.py` and register it from both agents, but that touches Director code and is deferred.
 
 Prompt template at `config/prompts/agents/mission/supervisor/system.md`:
 
@@ -433,22 +471,18 @@ Also closes the TODO.md entry *"Director proactive follow-up: wake on completion
 
 ### Phase B — Convergence loop runner (Plan 48 graduation)
 
-**Goal:** Wire the existing `dispatch/convergence.py` scaffold so that task type `convergence_loop` runs a deterministic iteration loop with a declarative exit condition.
+**Goal:** Wire the existing `dispatch/convergence.py` pair-agent scaffold into `dispatch/loop.py` so that a plan task carrying `input_data.static["type"] == "convergence_loop"` routes to `execute_convergence_loop()` instead of the standard single-agent path.
+
+**Reuse decision:** the scaffold already defines `ConvergenceConfig` with `evaluation_agent`, `remediation_agent`, `convergence_condition` (enum of `all_tests_pass` / `zero_critical_findings` / `zero_findings` / `quality_threshold`), `convergence_threshold`, `max_iterations`, `commit_per_cycle`, `final_verification`, and provides `ConvergenceConfig.from_dict` to parse a task's `input_data["loop_config"]`. Phase B reuses all of this verbatim — no new config shape, no new exit-condition DSL, no new event class names beyond what the scaffold already emits. The triggering convention (`input_data["type"] == "convergence_loop"`) is what the scaffold's own module docstring already specifies.
 
 **Files:**
-- `modules/backend/agents/mission_control/dispatch/convergence.py` (existing — finish wiring)
-- `modules/backend/agents/mission_control/dispatch/loop.py` (extend dispatch switch)
-- `modules/backend/schemas/task_plan.py` (add `convergence_loop` task type + `convergence_condition` field)
-- `modules/backend/events/types.py` (add `ConvergenceCycleStartedEvent`, `ConvergenceCycleCompletedEvent`, `ConvergenceLoopConvergedEvent`, `ConvergenceLoopAbortedEvent`)
+- `modules/backend/agents/mission_control/dispatch/loop.py` — fork `_execute_layer` (or `execute_with_step_events`) so tasks whose `input_data.static["type"] == "convergence_loop"` call `execute_convergence_loop()` with a `ConvergenceConfig.from_dict(input_data["loop_config"])` instead of the standard agent execution path. The standard path remains the default for all other tasks.
+- `modules/backend/agents/mission_control/dispatch/convergence.py` — finish any loose ends in the scaffold (event emission hookup, `TaskResult` wiring) discovered while wiring dispatch. No interface redesign.
+- `modules/backend/events/types.py` — register whatever events the scaffold currently publishes (if not already registered in `EVENT_TYPE_REGISTRY`).
 
-**Exit condition language (v1):**
-- `score_threshold`: `{type: "score_threshold", source_field: "pqi.composite_score", threshold: 70.0, comparator: ">="}`
-- `boolean_predicate`: `{type: "boolean_predicate", source_field: "tests.passed", expected: true}`
-- `max_iterations`: `{type: "max_iterations", limit: 10}` (always combined with one of the above as a safety net)
+**No change** to `schemas/task_plan.py`. `TaskDefinition` already has `inputs.static: dict` (see [schemas/task_plan.py:58-74](../../modules/backend/schemas/task_plan.py)), and the convergence scaffold already expects to receive its config through that dict per its docstring. Adding a dedicated `task_type` discriminator to `TaskDefinition` is deferred to a later plan if/when multiple non-agent task types exist.
 
-The exit condition is evaluated after each inner iteration using the existing PQI service, the task output dict, or a simple Python expression. No LLM is used to check the condition — it's a mechanical evaluation.
-
-**Acceptance:** A synthetic convergence_loop task with `score_threshold: {source: "mock.score", threshold: 50}` runs an inner agent that returns increasing scores on each iteration. The loop terminates at the first iteration where the score meets the threshold. Verified by extending or adding to the existing Plan 47 verifier. Plan 48's close-out gets the convergence loop phase marked done; branch automation + final verification stay deferred on Plan 48 as originally scoped.
+**Acceptance:** A synthetic `convergence_loop` task with `input_data.static = {"type": "convergence_loop", "loop_config": {"evaluation_agent": "...", "remediation_agent": "...", "convergence_condition": "quality_threshold", "convergence_threshold": 70.0, "max_iterations": 3}}` dispatches through the new fork, executes via the scaffold, and returns a `TaskResult` with `status=SUCCESS` when the quality score meets the threshold. Plan 48's close-out gets Phase 6 marked done; branch automation + final verification stay deferred on Plan 48 as originally scoped.
 
 ### Phase C — Post-run Gate checkpoint
 
@@ -475,10 +509,11 @@ The exit condition is evaluated after each inner iteration using the existing PQ
 - `config/prompts/agents/mission/supervisor/system.md` (new — event-mode prompt)
 - `config/prompts/agents/mission/supervisor/chat.md` (new — chat-mode prompt)
 - `modules/backend/agents/mission/supervisor/__init__.py` (new)
-- `modules/backend/agents/mission/supervisor/agent.py` (new — `create_agent` factory, two pydantic-ai Agent instances sharing deps)
+- `modules/backend/agents/mission/supervisor/agent.py` (new — two factories: `create_event_agent` returning `Agent[Deps, SupervisorDecision]` for branch #8, and `create_agent` returning `Agent[Deps, str]` for chat mode, both sharing a `_register_tools` helper. See §4.3 for the sketch.)
+- `modules/backend/agents/mission_control/helpers/prompt_builder.py` — additive `variant` kwarg on `assemble_instructions` so the chat-mode prompt resolves to `.../supervisor/chat.md` without breaking existing two-arg callers
 - `modules/backend/agents/mission/supervisor/deps.py` (new — `MissionSupervisorDeps` dataclass)
 - `modules/backend/agents/mission/supervisor/models.py` (new — `SupervisorDecision` pydantic model for structured output)
-- `modules/backend/agents/tools/supervisor_introspection.py` (new — `get_past_decisions`, `get_recent_run_outcomes`, `get_plan_state` tools)
+- `modules/backend/agents/tools/supervisor_introspection.py` (new — `get_recent_run_outcomes` + `get_past_decisions` tool bodies; `get_plan` body is duplicated from the Director's existing tool in v1, see §4.3)
 - `modules/backend/agents/mission_control/gate_post_run.py` — wire the Haiku agent call into branch #8
 
 **Acceptance:**
@@ -617,19 +652,22 @@ Scripts:
 
 - `modules/backend/agents/mission_control/gate_models.py` — new `GateAction` values + defaulted `GateContext` fields + optional `GateDecision.model_metadata`
 - `modules/backend/agents/mission_control/gate.py` — route `post_run` gate type in `ConfigurableGate`
-- `modules/backend/agents/mission_control/dispatch/convergence.py` — wire the existing scaffold
-- `modules/backend/agents/mission_control/dispatch/loop.py` — dispatch switch for `convergence_loop` task type
+- `modules/backend/agents/mission_control/dispatch/convergence.py` — finish scaffold loose ends (event emission hookup, TaskResult wiring) — no interface redesign
+- `modules/backend/agents/mission_control/dispatch/loop.py` — fork `_execute_layer` on `input_data.static["type"] == "convergence_loop"` to call `execute_convergence_loop()`
+- `modules/backend/agents/mission_control/helpers/prompt_builder.py` — additive `variant` kwarg on `assemble_instructions` (for the supervisor's chat-mode prompt file)
 - `modules/backend/agents/mission/director/agent.py` — new `schedule_run_completion_followup` tool
-- `modules/backend/schemas/task_plan.py` — new `convergence_loop` task type + exit condition schema
 - `modules/backend/services/mission_plan.py` — emit `MissionPlanRunCompletedEvent` at the end of `dispatch_approved` + in-process call to `SessionFollowupService.fire_matching(event)`
 - `modules/backend/models/execution_record.py` — add `POST_RUN_SUPERVISOR` to `DecisionType` enum
 - `modules/backend/models/mission_plan.py` — new `supervisor_iteration_count` + `max_supervisor_iterations` columns (with migration)
-- `modules/backend/events/types.py` — new `MissionPlanRunCompletedEvent` (Phase C), `SessionFollowupFiredEvent` (Phase A), `SupervisorDecisionEmittedEvent` (Phase E) + `EVENT_TYPE_REGISTRY` entries
+- `modules/backend/events/types.py` — new `MissionPlanRunCompletedEvent` (Phase C), `SessionFollowupFiredEvent` (Phase A), `SupervisorDecisionEmittedEvent` (Phase E) + `EVENT_TYPE_REGISTRY` entries; plus registering any convergence-loop events the existing scaffold already emits if missing
 - `config/settings/gate.yaml` — `post_run` gate point config
 - `docs/97-plans/46-plan-autonomous-mission-roadmap.md` — Phase 3 reframing
 - `docs/97-plans/48-plan-convergence-loop-and-branch-automation.md` — mark Phase 6 graduated
 
-Files the plan does **not** touch: `modules/backend/services/mission_plan_daemon.py` (it calls the service, which owns emission) and `modules/backend/events/bus.py` (in-process `fire_matching` avoids needing a `subscribe_to_all_missions` method for v1).
+Files the plan deliberately does **not** touch:
+- `modules/backend/services/mission_plan_daemon.py` — the daemon calls the service, which owns emission
+- `modules/backend/events/bus.py` — in-process `fire_matching` avoids needing a `subscribe_to_all_missions` method for v1
+- `modules/backend/schemas/task_plan.py` — `TaskDefinition.inputs.static: dict` already accepts arbitrary keys; the convergence loop trigger (`"type": "convergence_loop"`) rides on this without a schema change
 
 ### TODO items closed
 
