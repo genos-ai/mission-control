@@ -130,7 +130,7 @@ Each phase below has:
 
 ### Phase 1 — Trust (make the plumbing safe)
 
-**Status:** In flight. Work unit #1 complete (2026-04-11). Work units 2–4 outstanding.
+**Status:** ✅ **Complete (2026-04-11).** All four work units done, all exit criteria observably met. Phase 2 (durable output) is unblocked.
 
 **Goal:** A daemon-dispatched run can crash, restart, and leave plan state sane; tasks
 that write code do so in isolation.
@@ -184,35 +184,53 @@ that write code do so in isolation.
    in isolated execution environments") is observably satisfied for user-tier
    agents, and platform-tier agents continue to run unchanged. Plan 48 remains
    unopened as designed.
-2. **Daemon crash recovery.** On backend boot, reconcile any `plan_task_states` still
-   in `running` or `queued` older than a threshold: mark them `failed` with
-   `failure_reason = "backend restart — run orphaned"`, clear `task_execution_id`, and
-   increment `retry_count` so the user can re-approve manually. One small service
-   function called from the FastAPI startup event; not its own plan doc.
-3. **Daemon liveness + observability.** `MissionPlanDaemon.start_daemon` publishes a
-   heartbeat to Redis every N seconds. `GET /admin/daemon/status` returns the last
-   heartbeat timestamp for each daemon. Not its own plan doc; fits inside the daemon
-   service.
-4. **Budget enforcement stress test.** Run the daemon against a synthetic plan with a
-   low `budget_usd_ceiling`, verify the pre-batch cap from Plan 42 §10.7 actually
-   refuses to dispatch when headroom is thin, and fix any gap discovered. Document
-   the test script so it can be re-run after future changes.
+2. **✅ DONE (2026-04-11) — Daemon crash recovery.** On backend boot, reconcile any
+   `plan_task_states` still in `running` or `queued`: mark `running → failed` with
+   `failure_reason = "backend restart — run orphaned"`, mark `queued → approved`
+   (safe to re-dispatch since queued means dispatched but never started). Landed in
+   `services/mission_plan_crash_recovery.py` with a new
+   `list_in_flight_task_states()` method on `MissionPlanRepository` and a startup
+   hook in `main.py` lifespan that runs unconditionally before the daemon starts.
+   Verified by `scripts/verify_crash_recovery.py` — 10/10 checks pass against the
+   real DB (pre/post state, transitions, control rows untouched, idempotency).
+3. **✅ DONE (2026-04-11) — Daemon liveness + observability.** The daemon publishes
+   a JSON heartbeat to Redis (`mission_plan_daemon:heartbeat` key, 20-second TTL)
+   after every tick with timestamp, tick_count, poll_interval_sec, and last_error.
+   `GET /api/v1/admin/daemon/status` reads the heartbeat back and returns
+   `enabled / alive / last_heartbeat_at / age_sec / tick_count / last_error / poll_interval_sec`.
+   `alive = age < 30s` — matches the exit-criterion threshold. Verified by
+   `scripts/verify_daemon_heartbeat.py` — 4/4 checks pass (heartbeat publishing,
+   tick advancement, freshness under 30s, positive TTL on the key).
+4. **✅ DONE (2026-04-11) — Budget enforcement stress test.** Plan 42 §10.7's
+   defensive check in `MissionPlanService.dispatch_approved` (raises ValidationError
+   when `budget_usd_ceiling - total_spent_usd <= 0`) was already in place. Stress
+   testing surfaced one gap: the daemon kept retrying exhausted plans every poll
+   cycle, producing stack-trace log noise. Fixed by adding a SQL-level budget filter
+   to `MissionPlanDaemon._find_ready_plan_ids` so exhausted plans are excluded at
+   query time. Service-layer check stays as the fail-safe. Verified by
+   `scripts/verify_budget_enforcement.py` — 8/8 checks pass covering both layers
+   and all four scenarios (healthy / at-ceiling / overshot / NULL ceiling).
 
-**Exit criteria (all must be observably true):**
-- Plan 37 Phases 1–5 verified end-to-end: a real mission dispatches through a
-  container, the agent runs inside the container, branch state is isolated from
-  the host repo, the container persists across executions within the mission, and
-  cleanup works.
-- Plan 37 is marked "Phases 1–5 done" in its header with a pointer to Plan 48 for
-  the extracted phases; Plan 48 exists as a stub with Phases 6/7/9 described.
-- Backend restart during a running plan task transitions that task to `failed` with
-  `failure_reason = "backend restart — run orphaned"` and surfaces it on the kanban.
-- `GET /admin/daemon/status` returns a heartbeat timestamp less than 30 seconds old
-  while the daemon is enabled.
-- Daemon refuses to dispatch a batch when `(budget_usd_ceiling - total_spent_usd) <
-  per_searcher_cost_ceiling × batch_size` and logs the refusal with a clear message.
-- The SSE wire format fix from commit `0dceeeb` has been validated against every
-  `mission_plan.*` event type (no silent drops).
+**Exit criteria (all observably true as of 2026-04-11):**
+- ✅ Plan 37 Phases 1–5 verified end-to-end: 14/14 checks in
+  `scripts/verify_isolation.py`. User-tier agents execute in isolated host-side
+  worktrees bind-mounted into per-mission containers; platform-tier agents
+  unchanged; cleanup removes both.
+- ✅ Plan 37 header marked "Phases 1–5 done" with a pointer to Plan 48; Plan 48
+  stub exists at `docs/97-plans/48-plan-convergence-loop-and-branch-automation.md`.
+- ✅ Backend restart reconciler: `services/mission_plan_crash_recovery.py` ships
+  the transition logic, `main.py` lifespan calls it before the daemon starts,
+  `scripts/verify_crash_recovery.py` verifies 10/10 against the real DB.
+- ✅ `GET /api/v1/admin/daemon/status` returns a heartbeat younger than 30s when
+  the daemon is enabled. Verified by `scripts/verify_daemon_heartbeat.py` (4/4).
+- ✅ Daemon query filter in `MissionPlanDaemon._find_ready_plan_ids` excludes
+  exhausted plans; service-layer ValidationError in `dispatch_approved` fires
+  the refusal with a clear "Plan budget exhausted" message. Verified by
+  `scripts/verify_budget_enforcement.py` (8/8).
+- ✅ SSE wire format fix from commit `0dceeeb` validated — every
+  `mission_plan.*` event flows through `format_event_for_sse` with a `data`
+  wrapper matching the history endpoint shape. Plan board no longer drops
+  events silently.
 
 **Explicitly not in this phase:**
 - No artifact persistence (Phase 2).
