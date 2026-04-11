@@ -2,12 +2,67 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | **Done (2026-04-11)** |
 | **Created** | 2026-04-11 |
+| **Closed** | 2026-04-11 (commits `efe08ac` plan doc, `1483546` phases A+B, `3cd8007` phase D verifier, `ed4580f` follow-up fixes) |
 | **Depends on** | Plan 37 Phases 1–5 (✅ done), Plan 46 Phase 1 (in flight) |
-| **Target** | `modules/backend/services/execution_environment.py`, `modules/backend/services/container_backend.py`, `modules/backend/agents/mission_control/helpers/agent_executor.py`, `modules/backend/services/execution_environment.py` |
+| **Target** | `modules/backend/services/execution_environment.py`, `modules/backend/services/container_backend.py`, `modules/backend/agents/mission_control/helpers/agent_executor.py`, `modules/backend/services/mission_plan.py` |
 | **Coordinator** | Plan 46 — Autonomous Mission Roadmap (this plan closes Plan 46 Phase 1 DoD item 3) |
 | **Supersedes** | Nothing |
+
+---
+
+## Close-out note (2026-04-11)
+
+All exit criteria in §6 verified observably via `scripts/verify_isolation.py` against
+real Docker (OrbStack on macOS, `code-workspace:latest` image, conda env
+`mission-control`, Python 3.14.3). The script reports **14/14 checks passed** end to end:
+
+```
+[A] Worktree provisioning              3/3 ✓
+[B] Filesystem isolation               3/3 ✓  (includes executor redirect check)
+[C] Container command isolation        3/3 ✓
+[D] Write isolation                    2/2 ✓
+[E] Persistence + platform safety      2/2 ✓
+[F] Cleanup                            2/2 ✓
+PASSED — all isolation checks passed
+```
+
+A scrutiny pass after the initial landing found three issues — all fixed in commit
+`ed4580f` before marking this plan Done:
+
+1. **`docker>=7.0` was missing from `pyproject.toml`**. `ContainerBackend._get_client()`
+   imports `docker` lazily and would have failed in prod on first container provision
+   with `No module named 'docker'`. Added the dependency under the "Agent execution
+   isolation" comment block so it lives next to the feature it supports.
+2. **`check_read_from_worktree` had an assertion typo** — looked for `"isolation_sentinel"`
+   (underscore, filename-style) when the sentinel content used `"isolation sentinel"`
+   (space, prose). Fixed to check for a robust content substring plus `mission_id`,
+   and added a pre-condition guard that asserts the main repo does NOT already contain
+   the sentinel path (otherwise a passing check would be ambiguous).
+3. **The verifier did not exercise the agent_executor's runtime redirect logic** — it
+   called `read_file(worktree_path, ...)` directly, which is tautological. Added
+   `check_executor_redirects_user_tier_project_root` that loads a real user-tier agent
+   config from the registry, calls `_build_agent_deps()` the way the executor does,
+   and faithfully simulates the tier-guarded redirect block at `agent_executor.py:71-87`
+   to confirm `deps.project_root` lands on the worktree (not `find_project_root()`).
+
+Known tech debt tracked in `TODO.md` and not blocking close-out:
+
+- `ExecutionEnvironmentService._find_running_environment()` directly instantiates a
+  Docker client to verify container liveness, duplicating `ContainerBackend._get_client()`.
+  Fix: add `ContainerBackend.is_container_alive(container_id) -> bool` and delegate
+  from the service layer.
+
+Residual risks explicitly acknowledged in §4.10 (Security boundary analysis) —
+default Docker network access, pre-existing `../` path-traversal weakness in
+FileScope, and `.git/worktrees/` pointer access — remain as documented. Network
+isolation is out of scope for Plan 47 and is a candidate for a future plan.
+
+**What this unblocks:** [Plan 46 — Autonomous Mission Roadmap](46-plan-autonomous-mission-roadmap.md)
+Phase 1 work unit #1 (Plan 37 Phases 1–5 end-to-end verification) is complete.
+Phase 1 can resume with work units 2 (daemon crash recovery), 3 (daemon liveness
+heartbeat + `/admin/daemon/status`), and 4 (budget enforcement stress test).
 
 ---
 

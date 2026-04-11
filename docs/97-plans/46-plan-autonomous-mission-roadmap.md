@@ -130,13 +130,15 @@ Each phase below has:
 
 ### Phase 1 — Trust (make the plumbing safe)
 
+**Status:** In flight. Work unit #1 complete (2026-04-11). Work units 2–4 outstanding.
+
 **Goal:** A daemon-dispatched run can crash, restart, and leave plan state sane; tasks
 that write code do so in isolation.
 
 **Work units:**
-1. **Finish Plan 37 Phases 1–5 end-to-end.** Land and verify the sandbox/container
-   isolation layer. Plan 37 documents nine phases internally, but on inspection the
-   phases split cleanly:
+1. **✅ DONE (2026-04-11) — Finish Plan 37 Phases 1–5 end-to-end.** Land and verify
+   the sandbox/container isolation layer. Plan 37 documents nine phases internally,
+   but on inspection the phases split cleanly:
 
    - **Phases 1–5** (*agent rename + invocation tiers / platform missions / execution
      environment model / container backend / dispatch integration*) are the
@@ -155,7 +157,7 @@ that write code do so in isolation.
      container overhead becomes a measurable bottleneck") — not extracted, just
      parked.
 
-   What this work unit actually involves:
+   What this work unit actually involved:
 
    a. Run a real mission end-to-end in container mode: plan → approve → dispatch →
       container provisions → agent runs → branch state is isolated from the host
@@ -165,6 +167,23 @@ that write code do so in isolation.
       extracted phases.
    d. Create `docs/97-plans/48-plan-convergence-loop-and-branch-automation.md` as
       the home for the extracted phases (seeded from Plan 37 §5 Phases 6/7/9).
+
+   **What actually happened (2026-04-11):** The scrutiny of Plan 37's shipped code
+   surfaced a gap that was not anticipated when Phase 1 was originally scoped — the
+   execution environments infrastructure was complete, but no agent was actually
+   *using* it. Containers were provisioned, sat idle, and were cleaned up; every
+   byte of agent work still happened on the host filesystem via host tools. This
+   turned out to be the single biggest threat to the roadmap's whole purpose, and
+   was surfaced as a critical blocker that graduated into its own plan —
+   [Plan 47 — Agent Execution Isolation](47-plan-agent-execution-isolation.md).
+   Plan 47 landed host-side git worktree + bind-mount isolation, a tier-guarded
+   `project_root` redirect in the agent executor, and a repeatable verification
+   script at [scripts/verify_isolation.py](../../scripts/verify_isolation.py) that
+   now reports 14/14 checks passing against real Docker. With Plan 47 Done, this
+   work unit is complete in fact (not just on paper) — §3 DoD item 3 ("tasks run
+   in isolated execution environments") is observably satisfied for user-tier
+   agents, and platform-tier agents continue to run unchanged. Plan 48 remains
+   unopened as designed.
 2. **Daemon crash recovery.** On backend boot, reconcile any `plan_task_states` still
    in `running` or `queued` older than a threshold: mark them `failed` with
    `failure_reason = "backend restart — run orphaned"`, clear `task_execution_id`, and
@@ -472,7 +491,8 @@ Which plan docs get marked "Done" at the end of which phase:
 
 | Plan | Closes at | Notes |
 |---|---|---|
-| Plan 37 — Execution Environments (Phases 1–5 only) | Phase 1 | Current branch. Phases 6/7/9 carved into Plan 48. Phase 8 (worktree) deferred per Plan 37 §5. |
+| Plan 37 — Execution Environments (Phases 1–5 only) | Phase 1 ✅ (2026-04-11) | Phases 6/7/9 carved into Plan 48. Phase 8 (worktree) deferred per Plan 37 §5. |
+| Plan 47 — Agent Execution Isolation | Phase 1 ✅ (2026-04-11) | Graduated mid-phase when scrutiny surfaced that Plan 37's infrastructure wasn't actually wired into agent execution. Host-side worktree + bind-mount + tier-guarded `project_root` redirect. 14/14 checks on `scripts/verify_isolation.py`. |
 | Plan 48 — Convergence Loop + Branch Automation | _out of roadmap_ | Stub created in Phase 1, implemented opportunistically after the roadmap or whenever the convergence loop becomes load-bearing for a specific mission. |
 | Plan 43 — Persistent Artifacts | Phase 2 | Graduated from TODO candidate during Phase 2. |
 | Plan 41 — Mission Workspace Redesign | Phase 4 | Kanban polish items close out the §3.5a spec. |
@@ -509,9 +529,10 @@ the roadmap:
 
 ### Plan docs this roadmap coordinates
 
-- [Plan 37 — Execution Environments](37-plan-execution-environments.md) (Phases 1–5 only)
+- [Plan 37 — Execution Environments](37-plan-execution-environments.md) (Phases 1–5 only) ✅ Done 2026-04-11
 - [Plan 41 — Mission Workspace Redesign](41-plan-mission-workspace-redesign.md)
 - [Plan 42 — Mission Backlog Model](42-plan-mission-backlog-model.md)
+- [Plan 47 — Agent Execution Isolation](47-plan-agent-execution-isolation.md) ✅ Done 2026-04-11 (graduated mid-Phase-1)
 - [Plan 48 — Convergence Loop + Branch Automation](48-plan-convergence-loop-and-branch-automation.md) — extracted from Plan 37 Phases 6/7/9, out of roadmap scope
 
 ### TODO candidates that graduate inside the roadmap
