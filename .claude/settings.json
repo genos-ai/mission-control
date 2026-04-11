@@ -392,7 +392,16 @@
       "Bash(grep -rn \"plan.*PATCH\\\\|PATCH.*plan\\\\|PUT.*plan\\\\|task_plan_json\" /Users/herman.young/development/mission-control/modules/backend/routes/*.py)",
       "Bash(grep -rn \"def.*plan\\\\|task_plan_json\\\\|gate_mode\\\\|PlanUpdatePayload\" /Users/herman.young/development/mission-control/modules/backend/routes/*.py)",
       "Bash(grep \"@radix-ui/react-dropdown-menu\\\\|DropdownMenu\" /Users/herman.young/development/mission-control/modules/frontend/package.json /Users/herman.young/development/mission-control/modules/frontend/src/components/ui/*.tsx)",
-      "Bash(PYTHONPATH=/Users/herman.young/development/mission-control conda run -n mission-control python /tmp/check_metrics_writeback.py)"
+      "Bash(PYTHONPATH=/Users/herman.young/development/mission-control conda run -n mission-control python /tmp/check_metrics_writeback.py)",
+      "Bash(awk 'NR==7,NR==25' /Users/herman.young/development/mission-control/TODO.md)",
+      "Bash(awk 'NR==9' /Users/herman.young/development/mission-control/TODO.md)",
+      "Bash(delegates\" architecture after rejecting \\(a\\) a heavyweight supervisor:*)",
+      "Bash(routing + in-app Director updates\" with a pointer to Plan 51.:*)",
+      "Bash(proactive follow-up\" entry stays open and gets marked DONE when:*)",
+      "Bash(grep -n \"get_past_decisions\\\\|get_recent_run_outcomes\\\\|get_plan_state\" /Users/herman.young/development/mission-control/modules/backend/agents/tools/*.py)",
+      "Bash(grep -n \"gate_decision\" /Users/herman.young/development/mission-control/modules/backend/models/*.py)",
+      "Bash(find /Users/herman.young/development/mission-control/modules/frontend/src -name *.ts* -type f)",
+      "Bash(find /Users/herman.young/development/mission-control/tests -name *.py -type f)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
