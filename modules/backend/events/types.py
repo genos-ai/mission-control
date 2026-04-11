@@ -490,6 +490,29 @@ class SystemSessionCreatedEvent(SessionEvent):
     goal: str = ""
 
 
+class SessionFollowupFiredEvent(SessionEvent):
+    """A ``session_followups`` row just fired (Plan 51 Phase A).
+
+    Emitted by ``SessionFollowupService.fire_matching`` after a
+    matching followup's agent turn has been spawned (successfully or
+    not). This is the audit-trail signal — subscribers (event log,
+    stall detector, cost accountant) can observe followup activity
+    without reaching into the ``session_followups`` table directly.
+
+    ``success`` distinguishes "agent turn ran" from "agent turn errored
+    and the failure is stamped on the row". Either way the row is now
+    consumed.
+    """
+
+    event_type: str = "session.followup.fired"
+    followup_id: str = ""
+    mission_id: str | None = None
+    trigger_event_type: str = ""
+    created_by_agent: str = ""
+    success: bool = True
+    failure_reason: str | None = None
+
+
 # =============================================================================
 # Event Type Registry
 # =============================================================================
@@ -531,6 +554,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "system.execution.completed": SystemExecutionCompletedEvent,
     "system.budget.warning": SystemBudgetWarningEvent,
     "system.session.created": SystemSessionCreatedEvent,
+    "session.followup.fired": SessionFollowupFiredEvent,
 }
 
 

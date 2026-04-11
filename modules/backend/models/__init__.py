@@ -30,6 +30,7 @@ from modules.backend.models.mission_plan import (
 )
 from modules.backend.models.prompt_version import PromptVersion
 from modules.backend.models.session import Session, SessionChannel, SessionMessage
+from modules.backend.models.session_followup import SessionFollowup
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.models.user import SystemRole, User
 from modules.backend.models.api_key import ApiKey
@@ -65,6 +66,7 @@ __all__ = [
     "PromptVersion",
     "Session",
     "SessionChannel",
+    "SessionFollowup",
     "SessionMessage",
     "SystemRole",
     "TaskAttempt",
