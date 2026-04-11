@@ -3,9 +3,44 @@
 **Version:** 1.3.0
 **Date:** 2026-04-01
 **Author:** Herman (Group CISO, Icarus) + Architecture Review
-**Status:** Approved for implementation
+**Status:** Phases 1–5 done (2026-04-11). Phases 6/7/9 extracted to [Plan 48](48-plan-convergence-loop-and-branch-automation.md). Phase 8 deferred per §5.
 **Target:** BFA Reference Architecture v3.5.0
 **Codebase alignment:** v1.1.0 — validated against mission-control repository 2026-04-01
+
+---
+
+## Close-out note (2026-04-11)
+
+During [Plan 46 (Autonomous Mission Roadmap)](46-plan-autonomous-mission-roadmap.md)
+Phase 1, a scope review surfaced that this plan bundled two logically separable
+concerns:
+
+1. **The execution environments foundation** (Phases 1–5): agent rename + tiers,
+   platform missions, execution environment model, container backend, dispatch
+   integration. All landed and verified on branch `plan/37-execution-environments`.
+2. **Convergence loop + branch automation** (Phases 6, 7, 9): iterative QA cycles,
+   `agent/*` branch strategy, final verification pattern. The plan itself notes
+   *"The convergence loop is environment-agnostic — it works in local, container,
+   or (later) worktree mode"* — it's a different capability riding on the same
+   backend, not part of the isolation layer.
+
+Rather than block Plan 46 Phase 1 on the convergence loop work, concerns #2 have
+been extracted into their own plan doc ([Plan 48](48-plan-convergence-loop-and-branch-automation.md))
+with the content of §5 Phases 6, 7, and 9 as its seed. Plan 48 is deliberately
+**out of Plan 46's roadmap scope** — it will be picked up opportunistically after
+the roadmap closes, or whenever the convergence loop becomes load-bearing for a
+specific mission.
+
+Phase 8 (Worktree Backend) remains deferred per §5: *"Only implement when agents
+are running frequent lightweight code-only tasks (linting, type annotations,
+config changes) and the 5–30s container overhead is a measurable bottleneck."*
+It stays parked on this plan (not moved to Plan 48) because its prerequisite is
+"agents are running enough to make it worth optimizing", not "we need the
+convergence loop working".
+
+**What this plan now owns from here forward:** Phases 1–5 as the execution
+environments foundation, plus Phase 8 as a future optimization. Everything else
+lives in Plan 48.
 
 ---
 

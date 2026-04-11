@@ -134,9 +134,37 @@ Each phase below has:
 that write code do so in isolation.
 
 **Work units:**
-1. **Finish Plan 37 — Execution Environments.** Land the sandbox/container/worktree
-   isolation layer. Merge the current `plan/37-execution-environments` branch when
-   Plan 37's own acceptance tests pass.
+1. **Finish Plan 37 Phases 1–5 end-to-end.** Land and verify the sandbox/container
+   isolation layer. Plan 37 documents nine phases internally, but on inspection the
+   phases split cleanly:
+
+   - **Phases 1–5** (*agent rename + invocation tiers / platform missions / execution
+     environment model / container backend / dispatch integration*) are the
+     "isolation foundation" — this is what §3 DoD item 3 ("tasks run in isolated
+     execution environments") actually needs. All five are already landed on the
+     current branch; this work unit is **verification** not fresh implementation.
+   - **Phases 6, 7, 9** (*convergence loop / branch + PR automation / final
+     verification pattern*) are logically separable capabilities that happen to
+     share Plan 37's plan number. Plan 37 itself says the convergence loop is
+     *"environment-agnostic — it works in local, container, or (later) worktree
+     mode"* — it's a different feature riding on Plan 37's backend. These three
+     phases are **extracted** into Plan 48 and deferred past Phase 1 of this
+     roadmap so we can actually close Phase 1 in a focused session.
+   - **Phase 8** (*worktree backend optimization*) stays deferred per Plan 37 §5
+     ("only implement when agents run frequent lightweight tasks and the 5–30s
+     container overhead becomes a measurable bottleneck") — not extracted, just
+     parked.
+
+   What this work unit actually involves:
+
+   a. Run a real mission end-to-end in container mode: plan → approve → dispatch →
+      container provisions → agent runs → branch state is isolated from the host
+      repo → container persists for the next run → cleanup works.
+   b. Fix any regressions surfaced by the end-to-end test.
+   c. Update Plan 37's header with a close-out note pointing at Plan 48 for the
+      extracted phases.
+   d. Create `docs/97-plans/48-plan-convergence-loop-and-branch-automation.md` as
+      the home for the extracted phases (seeded from Plan 37 §5 Phases 6/7/9).
 2. **Daemon crash recovery.** On backend boot, reconcile any `plan_task_states` still
    in `running` or `queued` older than a threshold: mark them `failed` with
    `failure_reason = "backend restart — run orphaned"`, clear `task_execution_id`, and
@@ -152,7 +180,12 @@ that write code do so in isolation.
    the test script so it can be re-run after future changes.
 
 **Exit criteria (all must be observably true):**
-- Plan 37's own acceptance tests pass and Plan 37 is marked "Done".
+- Plan 37 Phases 1–5 verified end-to-end: a real mission dispatches through a
+  container, the agent runs inside the container, branch state is isolated from
+  the host repo, the container persists across executions within the mission, and
+  cleanup works.
+- Plan 37 is marked "Phases 1–5 done" in its header with a pointer to Plan 48 for
+  the extracted phases; Plan 48 exists as a stub with Phases 6/7/9 described.
 - Backend restart during a running plan task transitions that task to `failed` with
   `failure_reason = "backend restart — run orphaned"` and surfaces it on the kanban.
 - `GET /admin/daemon/status` returns a heartbeat timestamp less than 30 seconds old
@@ -439,7 +472,8 @@ Which plan docs get marked "Done" at the end of which phase:
 
 | Plan | Closes at | Notes |
 |---|---|---|
-| Plan 37 — Execution Environments | Phase 1 | Current branch. |
+| Plan 37 — Execution Environments (Phases 1–5 only) | Phase 1 | Current branch. Phases 6/7/9 carved into Plan 48. Phase 8 (worktree) deferred per Plan 37 §5. |
+| Plan 48 — Convergence Loop + Branch Automation | _out of roadmap_ | Stub created in Phase 1, implemented opportunistically after the roadmap or whenever the convergence loop becomes load-bearing for a specific mission. |
 | Plan 43 — Persistent Artifacts | Phase 2 | Graduated from TODO candidate during Phase 2. |
 | Plan 41 — Mission Workspace Redesign | Phase 4 | Kanban polish items close out the §3.5a spec. |
 | Plan 45 — Rich Workflow Model | Phase 5 | Graduated from TODO candidate during Phase 5. |
@@ -475,9 +509,10 @@ the roadmap:
 
 ### Plan docs this roadmap coordinates
 
-- [Plan 37 — Execution Environments](37-plan-execution-environments.md)
+- [Plan 37 — Execution Environments](37-plan-execution-environments.md) (Phases 1–5 only)
 - [Plan 41 — Mission Workspace Redesign](41-plan-mission-workspace-redesign.md)
 - [Plan 42 — Mission Backlog Model](42-plan-mission-backlog-model.md)
+- [Plan 48 — Convergence Loop + Branch Automation](48-plan-convergence-loop-and-branch-automation.md) — extracted from Plan 37 Phases 6/7/9, out of roadmap scope
 
 ### TODO candidates that graduate inside the roadmap
 
