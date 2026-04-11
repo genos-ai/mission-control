@@ -43,6 +43,7 @@ import { useTeam } from '@/hooks/use-team'
 import { useSessions, useMessages, useCreateSession, sessionKeys } from '@/hooks/use-sessions'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore, type StreamingArtifact } from '@/stores/workspace'
+import { useResizable } from '@/hooks/use-resizable'
 import { queryClient } from '@/main'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -632,9 +633,14 @@ function ArtifactsPanel({ onClose }: { onClose: () => void }) {
   const artifacts = useWorkspaceStore((s) => s.artifacts)
   const streaming = useWorkspaceStore((s) => s.streamingArtifact)
   const hasContent = streaming || artifacts.length > 0
+  const { width, onMouseDown } = useResizable(280)
 
   return (
-    <div className="flex w-[280px] shrink-0 flex-col border-l">
+    <div className="relative flex shrink-0 flex-col border-l" style={{ width }}>
+      <div
+        onMouseDown={onMouseDown}
+        className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20 transition-colors z-10"
+      />
       <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium">Artifacts</span>

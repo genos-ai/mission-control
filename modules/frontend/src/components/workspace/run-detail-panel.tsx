@@ -5,6 +5,7 @@
 
 import { ChevronRight, List } from 'lucide-react'
 import { useExecution, useExecutionCost } from '@/hooks/use-executions'
+import { useResizable } from '@/hooks/use-resizable'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -27,8 +28,14 @@ export function RunDetailPanel({
   view: RunDetailView | null
   onClose: () => void
 }) {
+  const { width, onMouseDown } = useResizable(280)
+
   return (
-    <div className="flex w-[280px] shrink-0 flex-col border-l">
+    <div className="relative flex shrink-0 flex-col border-l" style={{ width }}>
+      <div
+        onMouseDown={onMouseDown}
+        className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20 transition-colors z-10"
+      />
       <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
         <span className="text-xs font-medium">
           {view ? TITLE[view.type] : 'Details'}
