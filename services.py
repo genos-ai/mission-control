@@ -141,10 +141,12 @@ def check_redis() -> bool:
 def check_docker(*, try_start: bool = False) -> bool:
     """Check Docker daemon connectivity. Optionally starts OrbStack on macOS.
 
-    When ``try_start=True`` and Docker is not reachable, the function tries:
-      1. ``orbctl start`` if orbctl is on PATH — blocks until OrbStack is ready.
-      2. ``open -a OrbStack`` if the app exists — then polls up to 90s.
-      3. ``open -a Docker`` for Docker Desktop — then polls up to 90s.
+    Flow when ``try_start=True`` and Docker socket is not yet reachable:
+      1. Check if OrbStack or Docker Desktop is already running as a process.
+         If so, skip launching and go straight to polling (it's initialising).
+      2. Otherwise launch: ``orbctl start`` (blocks) if available, then
+         ``open -a OrbStack``, then ``open -a Docker``.
+      3. Poll up to 30s for the socket to come up.
 
     Returns True when Docker is reachable.
     """
@@ -157,6 +159,14 @@ def check_docker(*, try_start: bool = False) -> bool:
         except Exception:
             return False
 
+    def _process_running(name: str) -> bool:
+        """Return True if any process matching ``name`` is running."""
+        result = subprocess.run(
+            ["pgrep", "-f", name],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
     if _docker_alive():
         print("  Docker ............ OK")
         return True
@@ -166,40 +176,40 @@ def check_docker(*, try_start: bool = False) -> bool:
         print("    Start Docker: open -a OrbStack  OR  open -a Docker")
         return False
 
-    # Determine what's available
-    orbctl_path = subprocess.run(["which", "orbctl"], capture_output=True, text=True)
-    has_orbctl = orbctl_path.returncode == 0
     orbstack_app = Path("/Applications/OrbStack.app")
     docker_app = Path("/Applications/Docker.app")
+    orbctl_path = subprocess.run(["which", "orbctl"], capture_output=True, text=True)
+    has_orbctl = orbctl_path.returncode == 0
 
-    if has_orbctl:
-        # orbctl start blocks until OrbStack is fully ready (Docker socket up).
+    # Check if a runtime is already running as a process (socket may still be initialising)
+    already_running = _process_running("OrbStack") or _process_running("Docker Desktop")
+
+    if already_running:
+        print("  Docker ............ already running, waiting for socket...", end="", flush=True)
+    elif has_orbctl:
+        # orbctl start blocks until the Docker socket is accepting connections.
         print("  Docker ............ starting OrbStack (orbctl start)...", flush=True)
-        result = subprocess.run(
-            ["orbctl", "start"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        result = subprocess.run(["orbctl", "start"], capture_output=True, text=True, timeout=60)
         if result.returncode == 0 and _docker_alive():
             print("  Docker ............ OK (OrbStack ready)")
             return True
-        # orbctl reported success but socket still not up — fall through to poll
+        # orbctl exited but socket not up yet — fall through to poll
+        print("  Docker ............ waiting for socket...", end="", flush=True)
     elif orbstack_app.exists():
         print("  Docker ............ starting OrbStack...", flush=True)
         subprocess.run(["open", "-a", "OrbStack"], check=False)
+        print("  Docker ............ waiting for socket...", end="", flush=True)
     elif docker_app.exists():
         print("  Docker ............ starting Docker Desktop...", flush=True)
         subprocess.run(["open", "-a", "Docker"], check=False)
+        print("  Docker ............ waiting for socket...", end="", flush=True)
     else:
         print("  Docker ............ FAIL (daemon not reachable, no launcher found)")
         print("    Install OrbStack: https://orbstack.dev  OR  Docker Desktop")
         return False
 
-    # Poll — OrbStack typically takes 15-60s from cold start; allow 90s.
-    timeout_sec = 90
-    deadline = time.time() + timeout_sec
-    print(f"  Docker ............ waiting for daemon (up to {timeout_sec}s)", end="", flush=True)
+    # Poll up to 30s.
+    deadline = time.time() + 30
     while time.time() < deadline:
         if _docker_alive():
             print(" OK")
@@ -207,8 +217,8 @@ def check_docker(*, try_start: bool = False) -> bool:
         print(".", end="", flush=True)
         time.sleep(2)
 
-    print(f" FAIL")
-    print(f"  Docker ............ FAIL (did not start within {timeout_sec}s)")
+    print(" FAIL")
+    print("  Docker ............ FAIL (socket not available within 30s)")
     return False
 
 
