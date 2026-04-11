@@ -38,6 +38,7 @@ Config gate: off by default. Explicitly enable in features.yaml:
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from redis.asyncio import Redis as AsyncRedis
@@ -46,6 +47,7 @@ from sqlalchemy import select
 from modules.backend.core.config import get_redis_url
 from modules.backend.core.database import get_session_factory
 from modules.backend.core.logging import get_logger
+from modules.backend.core.utils import utc_now
 from modules.backend.models.mission_plan import (
     MissionPlan,
     MissionPlanStatus,
@@ -71,6 +73,18 @@ _LOCK_TTL_MS = 30_000  # 30s — longer than a single dispatch cycle
 # progress promptly, high enough to avoid hammering the DB.
 _DEFAULT_POLL_INTERVAL_SEC = 5.0
 
+# Heartbeat key the daemon writes every tick (Plan 46 Phase 1 #3).
+# Any process can read this (via `get_heartbeat` below) to tell whether
+# the daemon is alive, including the `GET /api/v1/admin/daemon/status`
+# endpoint and any future per-task heartbeat extension.
+HEARTBEAT_KEY = "mission_plan_daemon:heartbeat"
+# TTL: expires the heartbeat if the daemon misses several consecutive
+# ticks. At the default 5s poll interval, 20s = 4 missed ticks before
+# the key disappears from Redis — far enough that a transient slow
+# tick doesn't trip false alarms but short enough that a truly stuck
+# daemon gets flagged within seconds of an observer checking.
+_HEARTBEAT_TTL_SEC = 20
+
 
 class MissionPlanDaemon:
     """Background asyncio task that dispatches autonomous plans.
@@ -91,6 +105,12 @@ class MissionPlanDaemon:
         self._redis: AsyncRedis | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
+
+        # Heartbeat state (Plan 46 Phase 1 #3).
+        # Incremented each tick completion; exposed via Redis so the
+        # admin daemon-status endpoint can report liveness.
+        self._tick_count: int = 0
+        self._last_tick_error: str | None = None
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
@@ -137,14 +157,28 @@ class MissionPlanDaemon:
     # ── Poll loop ──────────────────────────────────────────────────────
 
     async def _run_forever(self) -> None:
-        """Main loop: wake every poll_interval, scan plans, dispatch ready ones."""
+        """Main loop: wake every poll_interval, scan plans, dispatch ready ones.
+
+        Publishes a heartbeat to Redis after every tick (success or
+        failure) so the ``GET /admin/daemon/status`` endpoint can report
+        liveness. A tick that raises still bumps the heartbeat — the
+        daemon is alive even if this particular cycle failed — but the
+        last error is stashed in the heartbeat payload for observability.
+        """
         while not self._stop_event.is_set():
+            tick_error: str | None = None
             try:
                 await self._tick()
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                tick_error = f"{type(exc).__name__}: {exc}"
                 logger.error("MissionPlanDaemon tick failed", exc_info=True)
+
+            self._tick_count += 1
+            self._last_tick_error = tick_error
+            await self._publish_heartbeat()
+
             # Sleep with early-exit if stop signalled
             try:
                 await asyncio.wait_for(
@@ -154,6 +188,38 @@ class MissionPlanDaemon:
                 return  # stop was signalled during sleep
             except asyncio.TimeoutError:
                 continue  # normal poll cycle — loop again
+
+    async def _publish_heartbeat(self) -> None:
+        """Write the heartbeat payload to Redis with a short TTL.
+
+        Payload is a JSON object with ``timestamp``, ``tick_count``,
+        ``poll_interval_sec``, and ``last_error``. The TTL
+        (``_HEARTBEAT_TTL_SEC``) is deliberately just a few poll cycles
+        so a stuck daemon's heartbeat disappears from Redis within
+        seconds, giving observers a clear missing-key signal.
+
+        Swallows Redis errors — heartbeat publishing must never crash
+        the poll loop. A stale heartbeat is still a useful signal.
+        """
+        if self._redis is None:
+            return
+        payload = {
+            "timestamp": utc_now().isoformat(),
+            "tick_count": self._tick_count,
+            "poll_interval_sec": self._poll_interval,
+            "last_error": self._last_tick_error,
+        }
+        try:
+            await self._redis.set(
+                HEARTBEAT_KEY,
+                json.dumps(payload),
+                ex=_HEARTBEAT_TTL_SEC,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "MissionPlanDaemon heartbeat publish failed",
+                extra={"error": str(exc)},
+            )
 
     async def _tick(self) -> None:
         """One pass: find autonomous plans with work ready, dispatch each."""
@@ -305,3 +371,40 @@ async def stop_daemon() -> None:
         return
     await _daemon.stop()
     _daemon = None
+
+
+# ── Heartbeat reader (Plan 46 Phase 1 #3) ─────────────────────────────────
+
+
+async def get_heartbeat(redis: AsyncRedis) -> dict[str, Any] | None:
+    """Read the most recent daemon heartbeat payload from Redis.
+
+    Returns the parsed JSON payload (timestamp, tick_count,
+    poll_interval_sec, last_error) or None if no heartbeat is present.
+    Used by ``GET /api/v1/admin/daemon/status`` and by the
+    ``scripts/verify_daemon_heartbeat.py`` verification script — read
+    paths that don't own a daemon instance.
+
+    Passing the Redis client explicitly (rather than creating one
+    inside) keeps this function a pure read — the caller manages
+    connection lifetime.
+
+    Args:
+        redis: Async Redis client connected to the same instance the
+            daemon writes to.
+
+    Returns:
+        Dict with heartbeat fields, or None if the key is missing.
+
+    Raises:
+        json.JSONDecodeError: If the stored payload is not valid JSON
+            (shouldn't happen with the current writer — surfaced so
+            callers can spot a corrupted key early instead of
+            silently ignoring it).
+    """
+    raw = await redis.get(HEARTBEAT_KEY)
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    return json.loads(raw)

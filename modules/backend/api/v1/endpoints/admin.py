@@ -431,3 +431,105 @@ async def admin_health_check(
     )
 
 
+# ---- Daemon liveness (Plan 46 Phase 1 #3) ----
+
+
+# Seconds before a heartbeat counts as stale. Matches the Plan 46
+# Phase 1 exit criterion ("less than 30 seconds old") — looser than
+# the daemon's own 20-second heartbeat TTL so operators have a
+# definitive yes/no without race conditions around Redis key expiry.
+_DAEMON_ALIVE_THRESHOLD_SEC = 30.0
+
+
+@router.get(
+    "/daemon/status",
+    response_model=ApiResponse,
+    summary="Mission plan daemon liveness status",
+)
+async def admin_daemon_status(
+    request_id: RequestId,
+    _role: AdminRole,
+) -> ApiResponse:
+    """Return the mission plan daemon's most recent heartbeat.
+
+    The daemon (``modules/backend/services/mission_plan_daemon.py``)
+    writes a JSON heartbeat to Redis every poll cycle. This endpoint
+    reads that key back and derives three things:
+
+      - ``enabled``: whether the daemon feature flag is on. If false,
+        the rest of the fields are meaningless — the daemon isn't
+        running on this process.
+      - ``alive``: whether the heartbeat is fresh. A heartbeat older
+        than ``_DAEMON_ALIVE_THRESHOLD_SEC`` counts as stale, so the
+        daemon is considered dead even if the key still exists (the
+        key's own TTL is a shorter backup).
+      - ``last_heartbeat_at`` / ``last_heartbeat_age_sec`` /
+        ``tick_count`` / ``last_error``: raw heartbeat payload for
+        observability.
+
+    Used by ops to confirm the autonomous dispatch loop is actually
+    running, and by ``scripts/verify_daemon_heartbeat.py`` as the
+    acceptance check for Plan 46 Phase 1 work unit #3.
+    """
+    from datetime import datetime
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_app_config, get_redis_url
+    from modules.backend.core.utils import utc_now
+    from modules.backend.services.mission_plan_daemon import get_heartbeat
+
+    app_config = get_app_config()
+    enabled = app_config.features.experimental_mission_plan_daemon_enabled
+
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        heartbeat = await get_heartbeat(redis)
+    finally:
+        await redis.aclose()
+
+    if heartbeat is None:
+        return ApiResponse(
+            success=True,
+            data={
+                "enabled": enabled,
+                "alive": False,
+                "last_heartbeat_at": None,
+                "last_heartbeat_age_sec": None,
+                "tick_count": None,
+                "last_error": None,
+                "poll_interval_sec": None,
+            },
+            metadata={"request_id": request_id},
+        )
+
+    # Both `utc_now()` and the daemon's persisted timestamp are
+    # timezone-naive by codebase convention (core/utils.py::utc_now).
+    # Stay naive throughout; a direct subtraction is valid.
+    last_at_str = str(heartbeat.get("timestamp") or "")
+    try:
+        last_at = datetime.fromisoformat(last_at_str)
+    except ValueError:
+        last_at = None
+
+    age_sec: float | None = None
+    alive = False
+    if last_at is not None:
+        age_sec = (utc_now() - last_at).total_seconds()
+        alive = age_sec < _DAEMON_ALIVE_THRESHOLD_SEC
+
+    return ApiResponse(
+        success=True,
+        data={
+            "enabled": enabled,
+            "alive": alive,
+            "last_heartbeat_at": last_at_str,
+            "last_heartbeat_age_sec": age_sec,
+            "tick_count": heartbeat.get("tick_count"),
+            "poll_interval_sec": heartbeat.get("poll_interval_sec"),
+            "last_error": heartbeat.get("last_error"),
+        },
+        metadata={"request_id": request_id},
+    )
+
+
