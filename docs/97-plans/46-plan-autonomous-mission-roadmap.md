@@ -499,7 +499,18 @@ These are the rules that keep the roadmap from becoming a wishlist we never fini
 When a TODO.md candidate surfaces mid-phase, add it here with the phase it was
 deferred from:
 
-- _(none yet)_
+- **Phase 1 → (later):** *Consolidate mission navigation — legacy tab routes + new
+  workspace feed modes.* Surfaced 2026-04-11 when the user noticed that
+  `/missions/:id/*` (legacy tab bar) and `/missions/:id` (new workspace) show
+  overlapping content in parallel navigation systems. User-confirmed design: keep
+  the legacy tab-bar URL-route pattern as the outer shell, move the new 3-panel
+  workspace layout OUTWARD so every tab renders inside it, keep Overview and Team
+  as their own tabs, keep both Narrative and Stream, delete Workshop entirely.
+  Final tab order: Overview / Team / Chat / Plan / Narrative / Stream / Context /
+  Runs / Workflows. Full spec in `TODO.md` — "Consolidate mission navigation".
+  Scheduled as the first item of Phase 4 (kanban UX polish), not touched during
+  Phase 2 or Phase 3 to avoid collision with durable-output + signaling work on
+  the same pages.
 
 ---
 
