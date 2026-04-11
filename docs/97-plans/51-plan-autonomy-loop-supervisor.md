@@ -385,15 +385,47 @@ Chat mode reads this table via `get_past_decisions` to answer "why did you ..." 
 
 Four hard limits enforced *outside* the supervisor's decision logic. The supervisor cannot override them.
 
-1. **Max supervisor iterations per mission.** New column `mission_plans.max_supervisor_iterations` (default 20) + counter `mission_plans.supervisor_iteration_count`. Every supervisor wake increments. If the counter reaches max, the supervisor is bypassed entirely — the post-run handler routes directly to `ESCALATE`.
+1. **Max supervisor iterations per mission.** New columns `mission_plans.max_supervisor_iterations` (default 20) + `mission_plans.supervisor_iteration_count` (default 0). Every supervisor wake increments the counter. If the counter reaches max, the reviewer short-circuits directly to `ESCALATE` — no rules, no Haiku, no iteration increment.
 
-2. **Stall detection.** Read the last N run outcomes from execution_records. If N consecutive runs have `completed_task_count = 0` (default N=3), route directly to `ESCALATE`. Prevents runaway supervisor advancing into a no-op loop.
+    **Reset semantics (explicit):**
+    - **Resets to 0 on:** (a) user-initiated `Director.refine_plan` calls, (b) new `mission_plans` row creation (replan from scratch), (c) user clicking "reset autonomy" in UI (future).
+    - **Does NOT reset on:** pause/resume (same autonomous sequence continues), individual task retry, daemon restart, supervisor ESCALATE (the counter survives the escalation so the user can see how close to the limit the loop got).
 
-3. **Duplicate detection.** Before routing to `ADVANCE_REFINE`, check that the Planning Agent's proposed new tasks don't exactly match task_ids of tasks that failed in the most recent run. If they do, override to `ESCALATE`. Prevents the Planning Agent from retrying identical work with identical inputs — clearly not useful.
+    Rationale: the counter is a signal to the human ("the loop ran 20 times without you looking — come check"), so resetting it requires a deliberate human action, not a system event.
 
-4. **Budget headroom.** Before routing to `ADVANCE_APPROVED` or `ADVANCE_REFINE`, compute `remaining = ceiling - spent`. If remaining is less than the estimated cost of the next wave (estimated from task_plan_json `estimated_cost_usd` or a default floor), override to `ESCALATE`. The existing Plan 42 §10.7 budget check is a fallback safety net but the supervisor should escalate proactively rather than wait for dispatch to fail.
+2. **Stall detection.** For the last N execution_records belonging to this mission (default N=3, ordered by `created_at DESC`), count the number of `task_executions` rows where `status == 'completed'`. If **all N** have zero completed tasks, route directly to `ESCALATE`.
 
-All four breakers fire before the Haiku call. They never cost LLM tokens.
+    **Denormalisation for fast reads:** Phase C adds two columns to `execution_records` — `completed_task_count: int` and `failed_task_count: int` — populated at write time in `_write_back_task_results` from `outcome.task_results` (count where `status == TaskStatus.SUCCESS` and `== TaskStatus.FAILED`). The stall breaker reads these columns directly; no per-tick aggregation query. These same counts feed `MissionPlanRunCompletedEvent` (§Phase C) — one source of truth.
+
+    A single wave of full failure is NOT stall — it's transient. Three consecutive zero-completion waves is the threshold. Default N=3 is conservative; can be tuned per mission via a future `mission_plans.stall_threshold` column.
+
+3. **Duplicate-work detection.** Before routing to `ADVANCE_REFINE`, compute a content hash (SHA-256 of `normalize(description + instructions)`) over the **failed tasks in the most recent run** AND the **newly proposed tasks** the Planning Agent just generated. If any proposed task's hash matches any failed task's hash, override to `ESCALATE`.
+
+    **Why content hash, not task_id:** the Planning Agent generates fresh `task_ids` on every refinement, so ID-level comparison would always miss. The real failure mode this breaker catches is *"Planning Agent proposes the same work with a different ID and expects different results"*. Content-level comparison with a normalized hash (strip whitespace, lowercase, collapse repeated whitespace) catches that pattern without being fooled by cosmetic differences.
+
+    `normalize(text) = " ".join(text.lower().split())`. Intentionally simple — if embeddings-based similarity later proves necessary, promote to a Plan 51 follow-up.
+
+4. **Budget headroom.** Before routing to `ADVANCE_APPROVED` or `ADVANCE_REFINE`, compute `remaining = mission_plans.budget_usd_ceiling - mission_plans.total_spent_usd`. Estimate the next wave's cost via:
+
+    ```
+    if completed_task_count_so_far > 0:
+        avg_cost_per_task = total_spent_usd / completed_task_count_so_far
+        estimated_next_wave = proposed_task_count * avg_cost_per_task * SAFETY_FACTOR
+    else:
+        estimated_next_wave = proposed_task_count * DEFAULT_COST_FLOOR
+    ```
+
+    with `SAFETY_FACTOR = 1.5` (headroom for variance) and `DEFAULT_COST_FLOOR = 0.50` USD (conservative for wave 1 before any observed data). If `remaining < estimated_next_wave`, override to `ESCALATE`. No dependency on a per-task `estimated_cost_usd` field (which doesn't exist — `TaskPlan.estimated_cost_usd` is plan-level only). The existing Plan 42 §10.7 service-layer budget check stays as the final fail-safe, but this breaker catches budget pressure proactively rather than on the next dispatch attempt.
+
+All four breakers fire before the Haiku call. They never cost LLM tokens. All four consult existing fields (or simple additive ones) — none require reasoning.
+
+### 4.6a Idempotency of post-run decisions
+
+The reviewer is idempotent on `(mission_id, execution_record_id)`. On every invocation, `AutonomousPostRunReviewer.review(context)` first queries `execution_decisions` for an existing row with `decision_type = 'post_run_supervisor'` and the current `execution_record_id`. If a row exists, the reviewer reconstructs the `GateDecision` from the audit row's JSON tail and returns it **without** re-evaluating rules, calling Haiku, or incrementing the iteration counter.
+
+This closes the failure mode where a decision is computed, written to the audit trail, but the dispatch-side state change fails to apply. The next incoming `mission_plan.run.completed` event (whether from a retry or a sibling caller) will find the existing audit row, return the same action, and the caller can re-attempt the state change safely. Decisions live in the audit trail as the source of truth; the supervisor's rules are pure functions of input state and are only evaluated once per execution record.
+
+This means: if you want to force the supervisor to re-evaluate, you must delete the audit row (ops action) or wait for a new run (new `execution_record_id`). Neither is expected in normal operation; it's the escape hatch.
 
 ### 4.7 Gate mode interaction
 
@@ -412,7 +444,9 @@ This matches the existing Plan 42 §10.4 contract: the Director's `approve_plan_
 
 ### 4.8 Director integration (user-visible feedback loop)
 
-The Director uses the same Phase A session followup primitive, registering for the new `mission_plan.supervisor_decision` event (class `SupervisorDecisionEmittedEvent`, added in Phase E). When `AutonomousPostRunReviewer` writes a decision row, it constructs the event and calls `SessionFollowupService.fire_matching(event)` in-process. The Director's followup row matches, which wakes the Director in the mission owner's session with a system message:
+**How the session is identified.** Both `MissionPlanRunCompletedEvent` (Phase C) and `SupervisorDecisionEmittedEvent` (Phase E) carry an explicit `session_id` field populated at emission time. `MissionPlanService.dispatch_approved` already receives `session_id` as a parameter (it threads through from `handle_mission`), so adding it to the emitted event is trivial. `SessionFollowupService.fire_matching(event)` queries `session_followups` with `session_id = event.session_id` (plus trigger-event matching), so there is no "which session?" lookup problem — the event itself names its session of origin. If a user has multiple sessions open on the same mission (edge case, e.g., browser tab + CLI), only the originating session receives the auto-chat; the other sessions still see plan state changes via SSE but no proactive assistant message.
+
+The Director uses the Phase A session followup primitive, registering for the new `mission_plan.supervisor_decision` event (class `SupervisorDecisionEmittedEvent`, added in Phase E). When `AutonomousPostRunReviewer` writes a decision row, it constructs the event with the originating `session_id` and calls `SessionFollowupService.fire_matching(event)` in-process. The Director's followup row matches, which wakes the Director in the mission owner's session with a system message:
 
 > "Mission supervisor just decided `<action>` for run `<id>`. Reason: `<reason>`. Compose a brief user-facing update and post it to this session's chat stream."
 
@@ -489,12 +523,12 @@ Also closes the TODO.md entry *"Director proactive follow-up: wake on completion
 **Goal:** Extend the gate system to add the `post_run` checkpoint and new `GateAction` values, with `AutonomousPostRunReviewer` implementing the rules-first decision matrix. Also adds the `mission_plan.run.completed` event that the whole loop hangs off.
 
 **Files:**
-- `modules/backend/events/types.py` — new `MissionPlanRunCompletedEvent` class (`event_type = "mission_plan.run.completed"`, fields: `mission_id`, `plan_id`, `execution_record_id`, `run_status`, `run_cost_usd`, `completed_task_count`, `failed_task_count`, `total_spent_usd`) + add to `EVENT_TYPE_REGISTRY` dict
-- `modules/backend/services/mission_plan.py` — **actual emission point**. After the existing `MissionPlanDispatchedEvent` emit in `dispatch_approved`, after write-back + cost update, emit `MissionPlanRunCompletedEvent` AND call `SessionFollowupService.fire_matching(event)` in-process. (The `MissionPlanDaemon` itself needs no changes — it just calls the service.)
-- `modules/backend/models/execution_record.py` — add `POST_RUN_SUPERVISOR = "post_run_supervisor"` to the existing `DecisionType` enum (varchar-backed, no migration required)
+- `modules/backend/events/types.py` — new `MissionPlanRunCompletedEvent` class (`event_type = "mission_plan.run.completed"`, fields: `session_id`, `mission_id`, `plan_id`, `execution_record_id`, `run_status`, `run_cost_usd`, `completed_task_count`, `failed_task_count`, `total_spent_usd`) + add to `EVENT_TYPE_REGISTRY` dict. The `session_id` field is the originating session (needed for followup wake; see §4.8).
+- `modules/backend/models/execution_record.py` — (a) add `POST_RUN_SUPERVISOR = "post_run_supervisor"` to the existing `DecisionType` enum (varchar-backed, no migration required); (b) add denormalised `completed_task_count: int` and `failed_task_count: int` columns to `ExecutionRecord` (migration required — defaults 0 so existing rows backfill cleanly). These are the fields the stall breaker reads and the fields the new event carries — one source of truth.
+- `modules/backend/services/mission_plan.py` — **actual emission point**. Inside `dispatch_approved`, after write-back + cost update, compute `completed_task_count` and `failed_task_count` from `outcome.task_results` (count where `status == TaskStatus.SUCCESS` / `TaskStatus.FAILED`), persist them onto the `execution_records` row, then emit `MissionPlanRunCompletedEvent` with the same values, then call `SessionFollowupService.fire_matching(event)` in-process. (The `MissionPlanDaemon` itself needs no changes — it just calls the service.)
 - `modules/backend/agents/mission_control/gate_models.py` — new `GateAction` values (`WAIT`, `ADVANCE_APPROVED`, `ADVANCE_REFINE`, `PROPOSE_COMPLETE`, `ESCALATE`); new defaulted `GateContext` fields (`recent_run_outcomes`, `plan_task_summary`, `mission_brief`, `supervisor_iteration_count`); new optional `GateDecision.model_metadata` field. The existing `GateContext.total_cost_usd`/`budget_usd` and `GateDecision.reviewer` are reused verbatim.
-- `modules/backend/agents/mission_control/gate_post_run.py` (new — `AutonomousPostRunReviewer`)
-- `modules/backend/agents/mission_control/gate.py` (extend `ConfigurableGate` routing for `post_run` gate type)
+- `modules/backend/agents/mission_control/gate_post_run.py` (new — `AutonomousPostRunReviewer` implementing the §4.2 matrix and the §4.6/§4.6a idempotency check)
+- `modules/backend/agents/mission_control/gate.py` (extend `ConfigurableGate` routing for `post_run` gate type — single `_effective_mode` branch already exists per inspection, so this is a ~5-line addition that delegates to `AutonomousPostRunReviewer`)
 - `config/settings/gate.yaml` (add `post_run` gate point config)
 - `modules/backend/models/mission_plan.py` (new columns: `supervisor_iteration_count: int` default 0, `max_supervisor_iterations: int` default 20) + migration
 
@@ -515,19 +549,22 @@ Also closes the TODO.md entry *"Director proactive follow-up: wake on completion
 - `modules/backend/agents/mission/supervisor/models.py` (new — `SupervisorDecision` pydantic model for structured output)
 - `modules/backend/agents/tools/supervisor_introspection.py` (new — `get_recent_run_outcomes` + `get_past_decisions` tool bodies; `get_plan` body is duplicated from the Director's existing tool in v1, see §4.3)
 - `modules/backend/agents/mission_control/gate_post_run.py` — wire the Haiku agent call into branch #8
+- `modules/backend/services/mission.py` — no code change required: `_auto_assign_agents()` already discovers all `mission.*`-prefixed agents from the registry and auto-adds them to newly created missions, so the supervisor is picked up for new missions automatically once its YAML is present in `config/agents/mission/supervisor/`.
+- `modules/backend/migrations/versions/<date>_phase3_supervisor_backfill.py` (new — one-time data migration). For every existing `missions` row without a `mission_team_members` row where `agent_name = 'mission.supervisor.agent'`, insert one. Idempotent: safe to re-run. This is a data migration, not a schema migration — no columns change. Runs once on deploy to bring existing missions up to parity with new missions.
 
 **Acceptance:**
 1. Event-mode: a synthetic branch #8 situation (plan exhausted, outcomes present, ambiguous) invokes the Haiku agent and returns a valid `SupervisorDecision` JSON. Verified end-to-end against the real Haiku API.
 2. Chat-mode: opening `/missions/:id/chat` with `mission.supervisor` as the pinned agent allows asking "why did you escalate run X?" — the agent reads `get_past_decisions`, finds the decision, quotes the reason, explains in natural language.
 3. Audit trail: both event-mode and chat-mode invocations log cost to `plan.total_spent_usd` via the standard agent executor path.
 4. Chat mode does NOT make new decisions — it only explains past ones. Tested by asking "force advance" and confirming the agent refers the user to the Director instead.
+5. **Team membership:** both existing missions (via backfill migration) and new missions (via `_auto_assign_agents`) have `mission.supervisor.agent` in their `mission_team_members` table and visible in the Chat tab's agent list.
 
 ### Phase E — Director followup integration
 
 **Goal:** Director posts proactive chat messages in response to supervisor decisions, closing the user-visible feedback loop.
 
 **Files:**
-- `modules/backend/events/types.py` — new `SupervisorDecisionEmittedEvent` class (`event_type = "mission_plan.supervisor_decision"`, fields: `mission_id`, `plan_id`, `execution_record_id`, `action`, `reason`, `reviewer`) + register in `EVENT_TYPE_REGISTRY`
+- `modules/backend/events/types.py` — new `SupervisorDecisionEmittedEvent` class (`event_type = "mission_plan.supervisor_decision"`, fields: `session_id`, `mission_id`, `plan_id`, `execution_record_id`, `action`, `reason`, `reviewer`) + register in `EVENT_TYPE_REGISTRY`. `session_id` is the originating session from the triggering run, threaded from `MissionPlanRunCompletedEvent` through the reviewer (see §4.8).
 - `modules/backend/agents/mission_control/gate_post_run.py` — after writing the audit row in the reviewer, construct `SupervisorDecisionEmittedEvent` and call `SessionFollowupService.fire_matching(event)` (same in-process pattern Phase C uses for `MissionPlanRunCompletedEvent`)
 - `modules/backend/agents/mission/director/agent.py` — new tool `schedule_run_completion_followup` (wraps the Phase A primitive with a Director-specific prompt template that registers a one-shot followup on `mission_plan.supervisor_decision`)
 - `modules/backend/agents/mission/director/system.md` — prompt update: "When you dispatch a run, always schedule a followup to check back after the supervisor decides"
@@ -631,6 +668,9 @@ Backend:
 - `modules/backend/models/session_followup.py`
 - `modules/backend/repositories/session_followup.py`
 - `modules/backend/services/session_followup.py`
+- `modules/backend/migrations/versions/<date>_phase3_execution_records_task_counts.py` (Phase C — denormalised `completed_task_count` / `failed_task_count` columns on `execution_records`)
+- `modules/backend/migrations/versions/<date>_phase3_mission_plans_supervisor_counters.py` (Phase C — `supervisor_iteration_count` + `max_supervisor_iterations` on `mission_plans`)
+- `modules/backend/migrations/versions/<date>_phase3_supervisor_team_backfill.py` (Phase D — one-time data migration adding `mission.supervisor.agent` to every existing mission's `mission_team_members`)
 - `modules/backend/agents/mission/supervisor/__init__.py`
 - `modules/backend/agents/mission/supervisor/agent.py`
 - `modules/backend/agents/mission/supervisor/deps.py`
@@ -656,8 +696,8 @@ Scripts:
 - `modules/backend/agents/mission_control/dispatch/loop.py` — fork `_execute_layer` on `input_data.static["type"] == "convergence_loop"` to call `execute_convergence_loop()`
 - `modules/backend/agents/mission_control/helpers/prompt_builder.py` — additive `variant` kwarg on `assemble_instructions` (for the supervisor's chat-mode prompt file)
 - `modules/backend/agents/mission/director/agent.py` — new `schedule_run_completion_followup` tool
-- `modules/backend/services/mission_plan.py` — emit `MissionPlanRunCompletedEvent` at the end of `dispatch_approved` + in-process call to `SessionFollowupService.fire_matching(event)`
-- `modules/backend/models/execution_record.py` — add `POST_RUN_SUPERVISOR` to `DecisionType` enum
+- `modules/backend/services/mission_plan.py` — compute `completed_task_count` / `failed_task_count` from `outcome.task_results`, persist onto the `execution_records` row, emit `MissionPlanRunCompletedEvent` with the same values, and call `SessionFollowupService.fire_matching(event)` in-process — all at the end of `dispatch_approved` after write-back and cost update
+- `modules/backend/models/execution_record.py` — add `POST_RUN_SUPERVISOR` to `DecisionType` enum AND add denormalised `completed_task_count: int` + `failed_task_count: int` columns to `ExecutionRecord` (the stall breaker reads these; the event emits these — one source of truth)
 - `modules/backend/models/mission_plan.py` — new `supervisor_iteration_count` + `max_supervisor_iterations` columns (with migration)
 - `modules/backend/events/types.py` — new `MissionPlanRunCompletedEvent` (Phase C), `SessionFollowupFiredEvent` (Phase A), `SupervisorDecisionEmittedEvent` (Phase E) + `EVENT_TYPE_REGISTRY` entries; plus registering any convergence-loop events the existing scaffold already emits if missing
 - `config/settings/gate.yaml` — `post_run` gate point config
