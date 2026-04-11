@@ -42,7 +42,7 @@ import json
 from typing import Any
 
 from redis.asyncio import Redis as AsyncRedis
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from modules.backend.core.config import get_redis_url
 from modules.backend.core.database import get_session_factory
@@ -241,10 +241,17 @@ class MissionPlanDaemon:
         """Query for autonomous plans that have at least one approved task.
 
         Returns a list of mission_plan ids whose gate_mode is in
-        {autonomous, off}, status is active, and which have at least
-        one plan_task_state row in approved status. The `dispatch_approved`
-        call later verifies dep closure and budget headroom — this is
-        just a cheap pre-filter.
+        {autonomous, off}, status is active, budget ceiling is NOT yet
+        exhausted, and which have at least one plan_task_state row in
+        approved status.  ``dispatch_approved`` does its own budget
+        check as a fail-safe (Plan 42 §10.7) — this filter is a
+        performance + log-noise optimization so the daemon doesn't
+        repeatedly attempt to dispatch plans that are guaranteed to
+        be refused.
+
+        Budget filter: a plan is excluded when its ``budget_usd_ceiling``
+        is set AND ``total_spent_usd >= budget_usd_ceiling``. Plans with
+        a NULL ceiling (unlimited) are never excluded on budget grounds.
         """
         sf = get_session_factory()
         async with sf() as db:
@@ -253,6 +260,10 @@ class MissionPlanDaemon:
                 .where(
                     MissionPlan.status == MissionPlanStatus.ACTIVE.value,
                     MissionPlan.gate_mode.in_(_AUTONOMOUS_GATE_MODES),
+                    or_(
+                        MissionPlan.budget_usd_ceiling.is_(None),
+                        MissionPlan.total_spent_usd < MissionPlan.budget_usd_ceiling,
+                    ),
                 )
             )
             result = await db.execute(q)
