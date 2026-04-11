@@ -242,17 +242,27 @@ that write code do so in isolation.
 
 ### Phase 2 — Durable output
 
+**Status:** In flight. Work unit #1 complete (2026-04-11). Work units 2–4 outstanding.
+
 **Goal:** A returning user can see exactly what happened overnight — every run's
 artifacts, costs, durations, and narrative survive page refresh and backend restart.
 
 **Work units:**
-1. **Graduate Plan 43 from TODO to plan doc.** Write
-   `docs/97-plans/43-plan-persistent-mission-artifacts.md` using the existing TODO.md
-   entry as the seed. Schema: `mission_artifacts` table linked to
-   `mission_id`/`execution_record_id`/`task_execution_id`, typed variants
-   (`report`/`finding`/`code`/`data`/`file`), extraction in
-   `persistence_bridge.persist_mission_results` instead of ephemeral SSE,
-   `GET /missions/:id/artifacts` API. Implement it.
+1. **✅ DONE (2026-04-11) — Graduate Plan 43 from TODO to plan doc + implement.**
+   Plan doc landed at [docs/97-plans/43-plan-persistent-mission-artifacts.md](43-plan-persistent-mission-artifacts.md).
+   `mission_artifacts` table created via migration `plan43_001`, linked via
+   mission_id (CASCADE) + execution_record_id / task_execution_id (SET NULL) so
+   artifacts survive run archival. Typed variants ready (`report`/`finding`/`code`/
+   `data`/`file`) with `report` the only one emitted today. Extraction wired in
+   `persist_mission_results` — same `summary`/`result` heuristic the live SSE
+   emission site uses, now persisted instead of ephemeral. New `GET /api/v1/missions/
+   {id}/artifacts` endpoint returns newest-first with limit/type filters. Frontend
+   `ArtifactsPanel` rewritten to use a react-query hook; SSE `mission.artifact.found`
+   invalidates the query for live refresh; Zustand `artifacts` slice deleted. Verified
+   via `scripts/verify_artifacts_persistence.py` — 7/7 checks pass against real DB
+   including full FK-chain extraction test. Commits: `2e21874` (design doc),
+   `c42ae8c` (backend A–D + verification F), `73d5859` (frontend E). Plan 43 marked
+   Done in its own header.
 2. **Per-task cost + duration columns.** Add `cost_usd` and `duration_seconds` to
    `plan_task_states`. Wire `_write_back_task_results` to populate them from the run
    outcome. Surface on Done cards in the kanban (already sketched in the plan-board
@@ -537,7 +547,7 @@ Which plan docs get marked "Done" at the end of which phase:
 | Plan 37 — Execution Environments (Phases 1–5 only) | Phase 1 ✅ (2026-04-11) | Phases 6/7/9 carved into Plan 48. Phase 8 (worktree) deferred per Plan 37 §5. |
 | Plan 47 — Agent Execution Isolation | Phase 1 ✅ (2026-04-11) | Graduated mid-phase when scrutiny surfaced that Plan 37's infrastructure wasn't actually wired into agent execution. Host-side worktree + bind-mount + tier-guarded `project_root` redirect. 14/14 checks on `scripts/verify_isolation.py`. |
 | Plan 48 — Convergence Loop + Branch Automation | _out of roadmap_ | Stub created in Phase 1, implemented opportunistically after the roadmap or whenever the convergence loop becomes load-bearing for a specific mission. |
-| Plan 43 — Persistent Artifacts | Phase 2 | Graduated from TODO candidate during Phase 2. |
+| Plan 43 — Persistent Artifacts | Phase 2 ✅ (2026-04-11) | Graduated from TODO + implemented in a single focused session. Commits `2e21874` / `c42ae8c` / `73d5859`. `mission_artifacts` table, extraction path in `persist_mission_results`, `GET /missions/:id/artifacts` API, frontend `ArtifactsPanel` rewrite with react-query + SSE invalidation. 7/7 checks on `scripts/verify_artifacts_persistence.py`. |
 | Plan 41 — Mission Workspace Redesign | Phase 4 | Kanban polish items close out the §3.5a spec. |
 | Plan 45 — Rich Workflow Model | Phase 5 | Graduated from TODO candidate during Phase 5. |
 | Plan 44 — Plan Tasks Invoke Workflows | Phase 5 | Graduated from TODO candidate during Phase 5, depends on Plan 45. |

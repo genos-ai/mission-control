@@ -2,12 +2,39 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | **Done (2026-04-11)** |
 | **Created** | 2026-04-11 |
+| **Closed** | 2026-04-11 — commits `2e21874` (design doc), `c42ae8c` (backend phases A–D + verification), `73d5859` (frontend phase E) |
 | **Graduated from** | `TODO.md` "Persistent mission artifacts (Plan 43 candidate)" |
 | **Depends on** | Plan 15 (Plan Persistence — done), Plan 42 (Mission Backlog Model — done) |
 | **Part of** | [Plan 46 — Autonomous Mission Roadmap](46-plan-autonomous-mission-roadmap.md) Phase 2 (Durable output) |
 | **Target** | `modules/backend/models/`, `modules/backend/services/`, `modules/backend/agents/mission_control/persistence_bridge.py`, `modules/backend/api/v1/endpoints/`, `modules/frontend/src/hooks/`, `modules/frontend/src/pages/mission/tabs/chat-tab.tsx` |
+
+---
+
+## Close-out note (2026-04-11)
+
+All §5 exit criteria are observably met. `scripts/verify_artifacts_persistence.py`
+reports 7/7 checks passing against the real DB, covering direct service insert,
+enum validation, content cap, end-to-end `persist_mission_results` extraction with
+the full FK chain (mission ⋈ execution_record ⋈ task_execution), list queries, type
+filter, and invalid-filter rejection. Frontend typecheck / lint / build all clean.
+
+Landed in three commits (one design doc, one backend chain, one frontend chain):
+
+- `2e21874` — Plan 43 design doc graduated from TODO
+- `c42ae8c` — Phases A–D (migration, model, repo, service, schema, extraction
+  wiring, API endpoint) + Phase F verification script
+- `73d5859` — Phase E frontend ArtifactsPanel rewrite (react-query hook + SSE
+  invalidation + Zustand `artifacts` slice removal + empty-state copy update)
+
+What this unlocks: [Plan 46 Phase 2 DoD item 4](46-plan-autonomous-mission-roadmap.md) —
+"every run produces artifacts that survive page refresh, session end, and backend
+restart" — is now observably satisfied end-to-end. A returning user can open a
+mission after an overnight autonomous run and actually see what the agents produced.
+
+Phase 2 continues with work units 2 (per-task cost/duration columns on
+`plan_task_states`), 3 (Run History drawer), and 4 (narrative feed reconciliation).
 
 ---
 
