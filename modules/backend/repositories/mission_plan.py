@@ -107,6 +107,34 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
+    async def list_in_flight_task_states(self) -> list[PlanTaskState]:
+        """Return every task-state row currently in an in-flight status.
+
+        "In-flight" means ``running`` or ``queued``: the task was mid-run
+        (or about to start) when the query fires. At backend startup,
+        every such row is by definition orphaned — the process that
+        owned it is dead — and the crash-recovery reconciler transitions
+        them to safe states (see
+        ``services/mission_plan_crash_recovery.py``).
+
+        Eagerly loads the parent ``MissionPlan`` so callers can read
+        ``state.plan.mission_id`` for event emission without N+1
+        queries.
+        """
+        query = (
+            select(PlanTaskState)
+            .where(
+                PlanTaskState.status.in_([
+                    PlanTaskStatus.RUNNING.value,
+                    PlanTaskStatus.QUEUED.value,
+                ])
+            )
+            .options(selectinload(PlanTaskState.plan))
+            .order_by(PlanTaskState.created_at)
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def get_task_state(
         self,
         mission_plan_id: str,

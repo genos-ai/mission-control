@@ -40,6 +40,42 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         },
     )
 
+    # Plan 46 Phase 1 work unit #2 — crash recovery.
+    # Reconcile any `plan_task_states` left in `running` or `queued`
+    # from a previous process that crashed or was killed. This must
+    # run BEFORE the mission plan daemon so orphans are cleared before
+    # any new dispatch happens. Runs unconditionally (not gated on the
+    # daemon feature flag) because orphans can exist regardless of
+    # autonomy mode — a user could have dispatched manually and crashed
+    # mid-run. Swallows any failure so a flaky DB/Redis can't block
+    # startup entirely.
+    try:
+        from redis.asyncio import Redis as AsyncRedis
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.core.database import get_async_session
+        from modules.backend.events.bus import SessionEventBus
+        from modules.backend.services.mission_plan_crash_recovery import (
+            reconcile_orphaned_task_states,
+        )
+
+        redis = AsyncRedis.from_url(get_redis_url())
+        try:
+            event_bus = SessionEventBus(redis)
+            async with get_async_session() as db:
+                stats = await reconcile_orphaned_task_states(db, event_bus)
+                await db.commit()
+            logger.info(
+                "Crash recovery completed",
+                extra=stats,
+            )
+        finally:
+            await redis.close()
+    except Exception:  # noqa: BLE001
+        logger.error(
+            "Crash recovery failed — continuing startup anyway",
+            exc_info=True,
+        )
+
     # Plan 42 §10.8 — start the MissionPlanDaemon if the feature flag is
     # on. The daemon polls autonomous/off plans and dispatches approved
     # tasks on its own. Off by default because it spends real budget.
