@@ -15,6 +15,11 @@ Usage:
     python services.py status                 # Show what's running
     python services.py check                  # Preflight checks only
 
+Docker/OrbStack is checked as part of preflight. If Docker is not running,
+services.py will attempt to auto-start OrbStack (macOS) or Docker Desktop
+before continuing. Docker is not a hard requirement — local-mode missions run
+without it; only container-mode agent isolation (Plan 47) needs Docker.
+
 Daemon mode uses a new process session (no controlling terminal), stdin disconnected,
 stdout/stderr appended to per-service log files, and a TCP readiness check before exit.
 It cannot be combined with uvicorn --reload (multi-process supervisor).
@@ -133,6 +138,63 @@ def check_redis() -> bool:
         return False
 
 
+def check_docker(*, try_start: bool = False) -> bool:
+    """Check Docker daemon connectivity. Optionally starts OrbStack on macOS.
+
+    When ``try_start=True`` and Docker is not reachable, attempts to launch
+    OrbStack (the recommended local Docker runtime) if it is installed, then
+    waits up to 30 seconds for the daemon to become available.
+
+    Returns True when Docker is reachable.
+    """
+    def _docker_alive() -> bool:
+        try:
+            import docker
+            client = docker.from_env()
+            client.ping()
+            return True
+        except Exception:
+            return False
+
+    if _docker_alive():
+        print("  Docker ............ OK")
+        return True
+
+    if not try_start:
+        print("  Docker ............ FAIL (daemon not reachable)")
+        print("    Start Docker: open -a OrbStack  OR  open -a Docker")
+        return False
+
+    # Try to start OrbStack (macOS)
+    orbstack_app = Path("/Applications/OrbStack.app")
+    orbctl = subprocess.run(["which", "orbctl"], capture_output=True, text=True)
+    docker_app = Path("/Applications/Docker.app")
+
+    if orbstack_app.exists():
+        print("  Docker ............ starting OrbStack...")
+        subprocess.run(["open", "-a", "OrbStack"], check=False)
+    elif orbctl.returncode == 0:
+        subprocess.run(["orbctl", "start"], capture_output=True, check=False)
+    elif docker_app.exists():
+        print("  Docker ............ starting Docker Desktop...")
+        subprocess.run(["open", "-a", "Docker"], check=False)
+    else:
+        print("  Docker ............ FAIL (daemon not reachable, no launcher found)")
+        print("    Install OrbStack: https://orbstack.dev  OR  Docker Desktop")
+        return False
+
+    # Wait up to 30s for Docker to become available
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        if _docker_alive():
+            print("  Docker ............ OK (started)")
+            return True
+        time.sleep(1)
+
+    print("  Docker ............ FAIL (did not start within 30s)")
+    return False
+
+
 def check_postgres() -> bool:
     """Check PostgreSQL connectivity using config from database.yaml."""
     try:
@@ -175,6 +237,7 @@ def preflight(backend_port: int, check_frontend: bool = True) -> bool:
     print("\nPreflight checks...")
     redis_ok = check_redis()
     pg_ok = check_postgres()
+    docker_ok = check_docker(try_start=True)
     port_ok = check_port_free(backend_port)
     if check_frontend:
         check_port_free(FRONTEND_PORT)
@@ -185,6 +248,9 @@ def preflight(backend_port: int, check_frontend: bool = True) -> bool:
     if not port_ok:
         print(f"\nPort {backend_port} is in use. Run 'python services.py stop' first or use --port <other>.")
         return False
+    if not docker_ok:
+        print("\nWarning: Docker is not available. Container-mode agent execution will not work.")
+        print("  Continuing without Docker (local-mode missions will still run).")
     return True
 
 
@@ -616,6 +682,19 @@ def cmd_status(args):
     except Exception:
         pass
     print(f"  Redis ............. {'RUNNING' if redis_ok else 'stopped'}")
+
+    docker_ok = False
+    docker_label = "stopped"
+    try:
+        import docker as _docker
+        _client = _docker.from_env()
+        _client.ping()
+        docker_ok = True
+        _info = _client.info()
+        docker_label = f"RUNNING ({_info.get('ServerVersion', 'unknown')})"
+    except Exception:
+        pass
+    print(f"  Docker ............ {docker_label}")
 
     pg_ok = False
     try:
