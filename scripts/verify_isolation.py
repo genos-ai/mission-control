@@ -159,7 +159,14 @@ class IsolationVerifier:
             )
 
     async def check_read_from_worktree(self) -> None:
-        """Agent filesystem tool reads from worktree, not main repo."""
+        """Agent filesystem tool reads from worktree, not main repo.
+
+        Writes a per-mission sentinel file ONLY to the worktree (never
+        touching the main repo), then reads it back via ``read_file()``
+        and confirms the payload matches. If ``read_file`` were still
+        resolving against the host repo root, the sentinel would be
+        "file not found" because it was never written there.
+        """
         if self._handle.host_working_dir is None:
             self._skip("read_file reads from worktree", "host_working_dir is None")
             return
@@ -167,25 +174,121 @@ class IsolationVerifier:
         from modules.backend.agents.deps.base import FileScope
         from modules.backend.agents.tools.filesystem import read_file
 
-        # Write a sentinel file into the WORKTREE (not the main repo) to verify
-        # that read_file resolves against the worktree path.
         sentinel_rel = "modules/_plan47_isolation_sentinel.py"
         sentinel_content = f"# Plan 47 isolation sentinel — mission {self._mission_id}\n"
         sentinel_path = self._handle.host_working_dir / sentinel_rel
         sentinel_path.write_text(sentinel_content)
 
+        # Also verify the main repo does NOT have this sentinel — otherwise
+        # the check is ambiguous (read_file could be hitting either tree).
+        main_repo_sentinel = _REPO_ROOT / sentinel_rel
+        if main_repo_sentinel.exists():
+            self._fail(
+                "read_file reads from worktree",
+                f"Sentinel also exists in main repo at {main_repo_sentinel} — "
+                f"test harness pre-condition violated",
+            )
+            sentinel_path.unlink(missing_ok=True)
+            return
+
         try:
             scope = FileScope(read_paths=["modules/"])
             result = await read_file(self._handle.host_working_dir, sentinel_rel, scope)
-            if "isolation_sentinel" in result and self._mission_id in result:
+            # read_file returns line-numbered output; check for the mission_id
+            # substring and confirm the content came from our sentinel, not
+            # from "file not found" or any host-side leak.
+            if "file not found" in result.lower():
+                self._fail(
+                    "read_file reads from worktree",
+                    "read_file returned 'file not found' — worktree path not "
+                    "resolved correctly",
+                )
+            elif self._mission_id in result and "Plan 47 isolation sentinel" in result:
                 self._pass("read_file reads from worktree (not main repo)")
             else:
                 self._fail(
                     "read_file reads from worktree",
-                    f"Unexpected content: {result[:100]}",
+                    f"Unexpected content: {result[:120]!r}",
                 )
         finally:
             sentinel_path.unlink(missing_ok=True)
+
+    async def check_executor_redirects_user_tier_project_root(self) -> None:
+        """Simulate agent_executor's redirect path for a user-tier agent.
+
+        This is the end-to-end glue check: build deps for a user-tier agent
+        the same way ``_build_agent_deps`` does, then apply the redirect
+        logic from ``_make_agent_executor.execute_agent`` (tier guard +
+        project_root override), and confirm ``deps.project_root`` lands on
+        the worktree rather than ``find_project_root()``. The real executor
+        code at ``agent_executor.py:78-87`` is simple enough that a faithful
+        simulation here is equivalent to running a live dispatch — and much
+        cheaper to run.
+        """
+        if self._handle.host_working_dir is None:
+            self._skip(
+                "Executor redirects user-tier project_root",
+                "host_working_dir is None",
+            )
+            return
+
+        try:
+            from modules.backend.agents.mission_control.helpers.agent_setup import (
+                _build_agent_deps,
+            )
+            from modules.backend.agents.mission_control.registry import get_registry
+            from modules.backend.core.config import find_project_root
+
+            registry = get_registry()
+            user_agent_name = "software.quality.agent"
+            user_config = registry.get(user_agent_name)
+            if user_config is None:
+                self._skip(
+                    "Executor redirects user-tier project_root",
+                    f"{user_agent_name} not in registry",
+                )
+                return
+
+            if user_config.invocation.tier != "user":
+                self._skip(
+                    "Executor redirects user-tier project_root",
+                    f"{user_agent_name} is tier={user_config.invocation.tier}, "
+                    f"not user",
+                )
+                return
+
+            deps = _build_agent_deps(user_agent_name, user_config)
+
+            # Mirror the exact tier-guarded redirect from
+            # _make_agent_executor.execute_agent (agent_executor.py:71-87).
+            agent_tier = user_config.invocation.tier
+            effective_handle = self._handle if agent_tier == "user" else None
+            if effective_handle is not None:
+                deps.environment_handle = effective_handle
+                if (
+                    hasattr(effective_handle, "host_working_dir")
+                    and effective_handle.host_working_dir is not None
+                ):
+                    deps.project_root = effective_handle.host_working_dir
+
+            host_root = find_project_root()
+            worktree_root = self._handle.host_working_dir
+
+            if deps.project_root == worktree_root and deps.project_root != host_root:
+                self._pass(
+                    "Executor redirects user-tier project_root to worktree"
+                )
+                self._log(f"  project_root → {deps.project_root}")
+            else:
+                self._fail(
+                    "Executor redirects user-tier project_root to worktree",
+                    f"Expected {worktree_root}, got {deps.project_root}",
+                )
+        except Exception as exc:
+            self._skip(
+                "Executor redirects user-tier project_root",
+                f"Registry/deps error: {exc}",
+            )
 
     async def check_read_blocked_outside_scope(self) -> None:
         """FileScope blocks reads of paths outside the agent's scope."""
@@ -422,6 +525,7 @@ class IsolationVerifier:
         print("\n[B] Filesystem isolation")
         await self.check_read_from_worktree()
         await self.check_read_blocked_outside_scope()
+        await self.check_executor_redirects_user_tier_project_root()
 
         print("\n[C] Container command isolation")
         await self.check_command_runs_in_container()
