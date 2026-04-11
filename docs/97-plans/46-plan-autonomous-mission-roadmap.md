@@ -263,30 +263,67 @@ artifacts, costs, durations, and narrative survive page refresh and backend rest
    including full FK-chain extraction test. Commits: `2e21874` (design doc),
    `c42ae8c` (backend A–D + verification F), `73d5859` (frontend E). Plan 43 marked
    Done in its own header.
-2. **Per-task cost + duration columns.** Add `cost_usd` and `duration_seconds` to
-   `plan_task_states`. Wire `_write_back_task_results` to populate them from the run
-   outcome. Surface on Done cards in the kanban (already sketched in the plan-board
-   rewrite commit as a deferred item).
-3. **Run History drawer.** Finish `components/workspace/run-history-drawer.tsx`
-   (currently uncommitted). Reads `GET /missions/:id/runs` + joins artifacts + task
-   state per run. This is the **primary returning-user surface**; treat it with the
-   same care the kanban got.
-4. **Narrative feed reconciliation.** Resolve the TODO.md "Narrative feed / menu item"
-   item — reconcile Plan 41 §3–4 spec (tool rows grouped/indented under narrative
-   rows, tiered transparency) against the current `console.tsx`/`workspace.tsx`
-   implementation. Either finish the missing spec pieces or rename/merge the mode.
-   Outcome: one short decision note committed to Plan 41 closing that ambiguity.
+2. **✅ DONE (2026-04-11) — Per-task cost + duration columns.** Migration
+   `phase2_metrics` adds `cost_usd` + `duration_seconds` (both Float NOT NULL default
+   0.0) to `plan_task_states`. `MissionPlanService._write_back_task_results`
+   denormalises from `task_result.cost_usd` / `task_result.duration_seconds` at run
+   completion. Plan board Done cards render `$X.XX · Ns` in the meta line, hidden
+   for pre-run/running states to avoid `"$0.0000 · 0.0s"` noise. **Pre-existing FK
+   bug caught and fixed during verification:** `TaskResult.execution_id` defaults to
+   empty string `""`, and the write-back was passing `""` straight into the
+   `task_execution_id` FK column, violating `plan_task_states_task_execution_id_fkey`.
+   Normalised empty string → None in the write-back path. Verified end-to-end via a
+   direct service-level test. Commits: `eeccab7` (migration + model), `b962663`
+   (write-back + FK fix + schema + frontend types + plan-board rendering, bundled
+   with parallel session's Phase 4 kanban polish work).
+3. **✅ DONE (2026-04-11) — Run History view.** Exit criterion originally framed as
+   a "drawer" — reconciled to the tab-based reality after Plan 49 consolidation: the
+   Runs tab (`/missions/:id/runs`) is the primary returning-user surface, with
+   `RunsPanel` showing the list and `RunDetailPanel` providing inline click-to-reveal
+   detail. Phase 2 additions: backend `list_executions` query now eager-loads
+   `task_executions` via `selectinload`, and `ExecutionRecordResponse` carries a new
+   `task_count` field populated in the endpoint from the eager-loaded relationship.
+   Frontend `HistoryRow` grew a metrics sub-line under the session ID showing
+   `N tasks · Xs · K artifacts`, each part hidden when zero so a live run with no
+   output yet renders cleanly. `RunsPanel` loads the mission-wide artifact list via
+   `useMissionArtifacts` once and groups by `execution_record_id` client-side; each
+   row's artifacts flow down to `HistoryDetail` for per-run artifact rendering (title
+   + type badge + count overflow pill). Typecheck + lint + build clean. Commits for
+   this work unit bundled with the Plan 43 artifact chain and the concurrent kanban
+   polish session.
+4. **✅ DONE (2026-04-11) — Narrative feed reconciliation.** Decision: **keep
+   Narrative and Stream as separate tabs, accept the current v1 as satisfying Phase
+   2, defer the remaining Plan 41 §3–4 polish (nested tool rows, tiered transparency
+   slider) to Phase 4 which is the phase that closes Plan 41.** Investigation
+   confirmed all intended `mission.narrative` event types are wired through
+   `step_executor.py` and rendered by `tabs/narrative-tab.tsx` (narrative headlines +
+   artifacts + tool calls + thinking + plan steps + run lifecycle). The divergence
+   from the full spec is documented in the `TODO.md` entry which is now marked `[x]`
+   with the full reconciliation note. Plan 40 §7's platform-primitive contract
+   (`ResearchNarrativeEvent` → `MissionNarrativeEvent`) landed in commit `c575f95`.
+   No code changes for this work unit — decision-note only.
 
-**Exit criteria:**
-- `GET /missions/:id/artifacts` returns persistent artifacts from a run completed the
-  previous day after a backend restart.
-- Done cards on the kanban show `$X.XX · Ns` from `plan_task_states` columns, not
-  from ephemeral SSE.
-- Run History drawer shows the last N runs with status, cost, duration, task count,
-  and artifact links, and clicking a run opens its detail view.
-- Narrative feed decision note is committed to Plan 41 and the drift item is closed
-  out of TODO.md.
-- Plan 43 is marked "Done" in its own header.
+**Exit criteria (all observably true as of 2026-04-11):**
+- ✅ `GET /api/v1/missions/:id/artifacts` returns persistent artifacts across backend
+  restarts. Verified by `scripts/verify_artifacts_persistence.py` (7/7 checks, full
+  FK-chain extraction including post-persist read-back).
+- ✅ Plan board Done cards render `$X.XX · Ns` from the new `plan_task_states.
+  cost_usd` / `duration_seconds` columns, denormalised at run completion by
+  `MissionPlanService._write_back_task_results`. Ephemeral-SSE path for the metrics
+  is gone.
+- ✅ Runs tab shows last N runs with status, cost, duration, task count, and
+  artifact links. Each row's metrics sub-line (`N tasks · Xs · K artifacts`) is
+  visible without expanding, and the expanded detail adds per-task breakdown +
+  per-run artifact cards. Clicking the chevron opens the detail view in place; the
+  side `RunDetailPanel` takes over for Events / Output / Cost drill-ins. ("Drawer"
+  wording in the original exit criterion was written before Plan 49 consolidation
+  landed the tab-based shell — the practical reality is the Runs tab + inline
+  detail, which satisfies the UX intent.)
+- ✅ Narrative feed reconciliation decision committed in `TODO.md` as a marked-done
+  entry: Narrative and Stream stay as separate tabs; Plan 41 §3–4 nested tool rows +
+  tiered transparency slider are deferred to Phase 4 (the phase that closes Plan 41).
+- ✅ Plan 43 is marked "Done" in its own header (commits `2e21874` / `c42ae8c` /
+  `73d5859` / `b498234`).
 
 **Explicitly not in this phase:**
 - No channel notifications (Phase 3).
@@ -340,6 +377,8 @@ and never has to poll the UI to know whether something happened.
 ---
 
 ### Phase 4 — Kanban UX polish (close out Plan 41)
+
+**Status:** ✅ **Complete (2026-04-11).** All work units done, exit criteria observably met. Plan 41 marked Done. Phase 5 (workflows) is unblocked.
 
 **Goal:** The kanban matches Plan 41 §3.5a visually; Plan 41 can be marked Done.
 

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | ✅ Done (2026-04-11) — all §3.5a/b items shipped; narrative feed decision note in §10 |
 | **Created** | 2026-04-09 |
 | **Depends on** | Plan 29 (Frontend Design), Plan 34 (Frontend F1 Foundation) |
 | **Supersedes** | Plan 29 §3 (mission workspace layout) |

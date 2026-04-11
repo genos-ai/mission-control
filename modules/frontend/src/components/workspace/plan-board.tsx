@@ -28,12 +28,13 @@
  *
  * Empty state: CTA to chat with the Director so they can propose a plan.
  *
- * Out of scope for this rewrite (tracked as follow-ups):
- *   - Drag-to-reorder within the Proposed column (needs @dnd-kit)
- *   - Layout/slide animations between columns (needs framer-motion)
- *   - Right-click → Edit / Reassign / Cancel on cards
- *   - "+ Add task" prompt at the bottom of Proposed
- *   - Live tool-call preview on Running cards
+ * Shipped (Plan 41 §3.5a + §3.5b):
+ *   - Drag-to-reorder within the Proposed column (@hello-pangea/dnd)
+ *   - CSS card-enter animation on column transitions (tailwind keyframe)
+ *   - Right-click → Approve / Reject / Retry / Cancel card menu
+ *   - "+ Add task" inline form at bottom of Proposed column
+ *   - Color-coded domain agent badges + running card pulse bar
+ *   - Pre-run review gate modal (localStorage "don't ask again" per-mission)
  */
 
 import {
@@ -295,6 +296,8 @@ function PlanBoardInner({
 
 // ── Top bar ──────────────────────────────────────────────────────────────
 
+const PRE_RUN_GATE_KEY = (missionId: string) => `prerun_gate_dismissed:${missionId}`
+
 function PlanTopBar({
   plan,
   missionId,
@@ -310,10 +313,12 @@ function PlanTopBar({
 }) {
   const updatePlan = useUpdatePlan(missionId)
   const dispatch = useDispatchApproved(missionId)
+  const [gateOpen, setGateOpen] = useState(false)
 
-  const approvedCount = joined.filter(
+  const approvedTasks = joined.filter(
     (j) => j.effectiveStatus === 'approved' || j.effectiveStatus === 'queued',
-  ).length
+  )
+  const approvedCount = approvedTasks.length
 
   const budgetPct =
     plan.budget_usd_ceiling && plan.budget_usd_ceiling > 0
@@ -328,7 +333,7 @@ function PlanTopBar({
     }
   }
 
-  async function handleDispatch() {
+  async function doDispatch() {
     try {
       const result = await dispatch.mutateAsync()
       toast.success(
@@ -339,7 +344,17 @@ function PlanTopBar({
     }
   }
 
+  function handleDispatch() {
+    // Skip the gate if the user previously said "don't ask again".
+    if (localStorage.getItem(PRE_RUN_GATE_KEY(missionId))) {
+      void doDispatch()
+    } else {
+      setGateOpen(true)
+    }
+  }
+
   return (
+    <>
     <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
         Plan
@@ -415,6 +430,103 @@ function PlanTopBar({
           )}
           Run {approvedCount > 0 ? approvedCount : ''}
         </Button>
+      </div>
+    </div>
+
+    {gateOpen && (
+      <PreRunGateModal
+        missionId={missionId}
+        approvedTasks={approvedTasks}
+        isPending={dispatch.isPending}
+        onConfirm={(skipNextTime) => {
+          setGateOpen(false)
+          if (skipNextTime) {
+            localStorage.setItem(PRE_RUN_GATE_KEY(missionId), '1')
+          }
+          void doDispatch()
+        }}
+        onCancel={() => setGateOpen(false)}
+      />
+    )}
+    </>
+  )
+}
+
+// ── Pre-run review gate (Plan 41 §3.5b) ──────────────────────────────────
+
+function PreRunGateModal({
+  missionId: _missionId,
+  approvedTasks,
+  isPending,
+  onConfirm,
+  onCancel,
+}: {
+  missionId: string
+  approvedTasks: JoinedTask[]
+  isPending: boolean
+  onConfirm: (skipNextTime: boolean) => void
+  onCancel: () => void
+}) {
+  const [skipNextTime, setSkipNextTime] = useState(false)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-sm rounded-lg border bg-card p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-semibold">Ready to run?</h3>
+          <button
+            onClick={onCancel}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="mb-3 text-xs text-muted-foreground">
+          {approvedTasks.length} task{approvedTasks.length !== 1 ? 's' : ''} will
+          be dispatched:
+        </p>
+
+        <div className="mb-4 max-h-48 space-y-1 overflow-y-auto">
+          {approvedTasks.map((t) => (
+            <div
+              key={t.body.task_id}
+              className="rounded border px-2.5 py-1.5 text-xs"
+            >
+              <span className="font-medium">{t.body.description || t.body.task_id}</span>
+              <span className="ml-2 text-muted-foreground">{t.body.agent}</span>
+            </div>
+          ))}
+        </div>
+
+        <label className="mb-4 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={skipNextTime}
+            onChange={(e) => setSkipNextTime(e.target.checked)}
+            className="h-3 w-3 rounded"
+          />
+          Don't ask again for this mission
+        </label>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onCancel} className="h-7 text-xs">
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => onConfirm(skipNextTime)}
+            disabled={isPending}
+            className="h-7 gap-1.5 text-xs"
+          >
+            {isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="h-3 w-3" />
+            )}
+            Run {approvedTasks.length}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -898,6 +1010,7 @@ function TaskCard({
       {...(dragHandleProps ?? {})}
       className={cn(
         'relative rounded-md border bg-card shadow-sm p-2.5 text-xs transition-colors',
+        !isDragging && 'animate-card-enter',
         borderClass,
         dimmed && 'opacity-60',
         isDragging && 'shadow-xl ring-1 ring-primary/30 rotate-[0.5deg] opacity-95',
