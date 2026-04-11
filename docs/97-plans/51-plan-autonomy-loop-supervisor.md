@@ -7,7 +7,7 @@
 | **Part of** | [Plan 46 — Autonomous Mission Roadmap](46-plan-autonomous-mission-roadmap.md) Phase 3 (reframed from Signaling → Autonomy Loop) |
 | **Depends on** | Plan 22 (Step-Through Gate — done), Plan 42 (Mission Backlog Model — done), Plan 43 (Persistent Artifacts — done), Plan 48 (Convergence Loop + Branch Automation — to be graduated for Phase B below) |
 | **Supersedes** | The deferred "Director proactive follow-up" TODO entry (folded in as §5 Phase A), and the "Supervisor Agent" proposal reviewed in conversation on 2026-04-11 |
-| **Target** | `modules/backend/agents/mission/supervisor/` (new), `modules/backend/agents/mission_control/gate*` (extension), `modules/backend/services/session_followup*` (new), `modules/backend/services/mission_plan_daemon.py` (trigger emission), `config/agents/mission/supervisor/` (new), `docs/97-plans/` |
+| **Target** | `modules/backend/agents/mission/supervisor/` (new), `modules/backend/agents/mission_control/gate*` (extension), `modules/backend/services/session_followup*` (new), `modules/backend/services/mission_plan.py` (emit `MissionPlanRunCompletedEvent` + in-process followup fire), `config/agents/mission/supervisor/` (new), `docs/97-plans/` |
 
 ---
 
@@ -111,19 +111,20 @@ Graduates [Plan 48](48-plan-convergence-loop-and-branch-automation.md) from stub
                          │ MissionPlanDaemon        │
                          │ (existing, unchanged)    │
                          │                          │
-                         │ polls → dispatches       │
-                         │ approved tasks            │
+                         │ polls → dispatch_approved│
+                         │ (on MissionPlanService)  │
                          └────────────┬─────────────┘
                                       │
+                                      │ after write-back + cost update,
+                                      │ dispatch_approved emits
                                       │ mission_plan.run.completed
-                                      │ (existing event)
+                                      │ (NEW event — added in Phase C)
                                       ▼
                          ┌──────────────────────────┐
-                         │ SessionFollowupWatcher   │  ◀── Phase A
-                         │ (new)                     │
-                         │                          │
-                         │ reads session_followups, │
-                         │ wakes subscribers        │
+                         │ SessionFollowupService   │  ◀── Phase A
+                         │ .fire_matching(event)    │
+                         │ (invoked in-process,      │
+                         │ no pub/sub round-trip)   │
                          └────────────┬─────────────┘
                                       │
                                       │ (multiple subscribers possible)
@@ -292,42 +293,55 @@ user to the Director if they want to override or force action.
 
 ### 4.4 Post-run Gate checkpoint
 
-Extends the existing gate system ([gate_models.py](../../modules/backend/agents/mission_control/gate_models.py)) with a new gate type and new action values.
+Extends the existing gate system ([gate_models.py](../../modules/backend/agents/mission_control/gate_models.py)) with a new gate type and new action values. The existing `GateAction` enum has 5 values; `GateContext` already carries `mission_id`, `total_cost_usd`, `budget_usd`; `GateDecision.reviewer` already exists as a string field (values like `"human"`, `"ai:<model>"`, `"noop"`, `"config:disabled"`) and is reused verbatim here, no schema change needed.
 
 **New `gate_type` value:** `post_run`
 
-**New `GateAction` values:**
+**New `GateAction` values** (additive to the existing 5):
+- `WAIT` — no action, daemon has more approved tasks to dispatch
 - `ADVANCE_APPROVED` — proposed tasks → approved, daemon picks them up next tick
 - `ADVANCE_REFINE` — wake Planning Agent to generate new tasks based on outcomes
 - `PROPOSE_COMPLETE` — wake Director to ask user if mission is done
-- `WAIT` — no action, daemon has more approved tasks to dispatch
-- `ESCALATE` — wake Director for user attention
+- `ESCALATE` — wake Director for user attention (semantically distinct from `ABORT`: ABORT halts the mission, ESCALATE pauses pending human decision)
 
-Existing actions (`CONTINUE`, `SKIP`, `RETRY`, `ABORT`, `MODIFY`) remain unchanged — they're still valid at other checkpoints (`pre_dispatch`, `pre_layer`, `post_task`, `verification_failed`, `post_layer`). The new actions are valid only at `post_run`; other checkpoints that receive them should reject as a misconfigured call.
+Existing actions (`CONTINUE`, `SKIP`, `RETRY`, `ABORT`, `MODIFY`) remain unchanged and still valid at other checkpoints (`pre_dispatch`, `pre_layer`, `post_task`, `verification_failed`, `post_layer`). The new actions are valid only at `post_run`; other checkpoints that receive them should reject as a misconfigured call.
 
-**New `GateContext` fields** for post-run specifically:
-- `recent_run_outcomes: list[dict]` — last N run summaries
-- `plan_task_summary: dict` — counts by status (proposed/approved/running/completed/failed)
-- `mission_brief: str` — for the Haiku prompt
-- `supervisor_iteration_count: int` — for circuit breaker
-- `remaining_budget_usd: float` — for headroom check
+**New `GateContext` fields** for post-run specifically (all additive, all defaulted, so existing callers are unaffected):
+- `recent_run_outcomes: list[dict]` — last N run summaries (default `[]`)
+- `plan_task_summary: dict` — counts by status (proposed / approved / running / completed / failed) (default `{}`)
+- `mission_brief: str | None` — for the Haiku prompt (default `None`)
+- `supervisor_iteration_count: int` — for circuit breaker #1 (default `0`)
+
+Note: the existing `total_cost_usd` / `budget_usd` fields already cover the headroom check — `remaining = budget_usd - total_cost_usd` — so no separate `remaining_budget_usd` field is added.
+
+**`GateDecision` extension** — one new optional field:
+- `model_metadata: dict | None = None` — `{confidence, tokens_used, cost_usd}` when branch #8's Haiku call populates the decision. All rule-based branches leave it `None`.
 
 **New reviewer class:** `AutonomousPostRunReviewer` at `modules/backend/agents/mission_control/gate_post_run.py`. Implements `GateReviewer.review(context) -> GateDecision` per §4.2 decision matrix. Most branches return without invoking the LLM. Branch #8 calls the supervisor agent via pydantic-ai with `output_type=SupervisorDecision`.
 
 ### 4.5 Audit trail
 
-Supervisor decisions are first-class in the existing `execution_records.decisions` structure (Plan 22). Every invocation writes a row to the `execution_decisions` table with:
+Supervisor decisions are first-class in the existing `execution_records.decisions` structure (Plan 22). The existing [`ExecutionDecision` model](../../modules/backend/models/execution_record.py) already has `execution_record_id`, `decision_type`, `task_id`, and `reasoning` — the full minimum shape we need. No new columns are added; supervisor metadata is embedded in the existing text/JSON fields.
+
+**One new `DecisionType` enum value** — `POST_RUN_SUPERVISOR = "post_run_supervisor"`. Added to `modules/backend/models/execution_record.py::DecisionType` alongside the existing `RETRY`, `FAIL`, `PASS`, `RE_PLAN`, `SKIP`, `ESCALATE` values. No migration required since `DecisionType` is a string enum stored as varchar.
+
+**Encoding:** the `reasoning` field holds a short human-readable prefix followed by a machine-parseable JSON line. Example:
 
 ```
-execution_record_id: FK to the run this supervisor wake was triggered by
-decision_type: "post_run_supervisor"
-action: the GateAction chosen
-reason: short text explanation (from the Haiku output or rules message)
-reviewer: "config:rule_engine" or "ai:claude-haiku-4-5-20251001"
-model_metadata: {confidence, tokens_used, cost_usd} when LLM was invoked
+Advanced approved wave (rule #5) — 3 proposed tasks, autonomous mode, budget headroom $12.40.
+{"action": "advance_approved", "reviewer": "config:rule_engine", "iteration": 7, "model_metadata": null}
 ```
 
-The chat mode reads this table via `get_past_decisions` tool to answer "why did you ..." questions. Chat answers are *never* written back to this table — they're session messages in the session_messages table like any other chat response.
+When branch #8 invokes Haiku, the JSON line carries the full model metadata:
+
+```
+{"action": "advance_refine", "reviewer": "ai:claude-haiku-4-5-20251001", "iteration": 12,
+ "model_metadata": {"confidence": 0.82, "tokens_used": 340, "cost_usd": 0.00085}}
+```
+
+The `get_past_decisions` tool parses the JSON tail when it reads the audit trail; chat-mode answers quote the human-readable prefix for display. This keeps the schema change to a single enum value add — if we later discover we need queryable columns (for cost dashboards or agent-specific filters), we can promote the JSON fields in a follow-up migration without re-architecting the write path.
+
+Chat mode reads this table via `get_past_decisions` to answer "why did you ..." questions. Chat answers are *never* written back to this table — they're session messages in `session_messages` like any other chat response.
 
 ### 4.6 Circuit breakers (independent of the supervisor)
 
@@ -360,7 +374,7 @@ This matches the existing Plan 42 §10.4 contract: the Director's `approve_plan_
 
 ### 4.8 Director integration (user-visible feedback loop)
 
-The Director uses the same Phase A session followup primitive to subscribe to `post_run_supervisor_decision_emitted` events. When the supervisor writes a decision row, a new event is published. The Director's subscriber wakes the Director in the mission owner's session with a system message:
+The Director uses the same Phase A session followup primitive, registering for the new `mission_plan.supervisor_decision` event (class `SupervisorDecisionEmittedEvent`, added in Phase E). When `AutonomousPostRunReviewer` writes a decision row, it constructs the event and calls `SessionFollowupService.fire_matching(event)` in-process. The Director's followup row matches, which wakes the Director in the mission owner's session with a system message:
 
 > "Mission supervisor just decided `<action>` for run `<id>`. Reason: `<reason>`. Compose a brief user-facing update and post it to this session's chat stream."
 
@@ -380,15 +394,17 @@ Six phases in strict dependency order. Each phase is an independently buildable 
 
 **Goal:** Generic wake-an-agent-on-an-event-trigger mechanism. Any agent can register; any event type can be a trigger.
 
+**Transport decision.** The followup service is invoked **in-process** by event emitters (e.g. `MissionPlanService.dispatch_approved` calls `SessionFollowupService.fire_matching(event)` after emitting). No Redis Pub/Sub subscription required — the existing [`EventBus.publish_to_mission`](../../modules/backend/events/bus.py) is session/SSE transport, but the autonomy feedback loop runs inside the same process that emitted the event, so a direct method call is simpler, deterministic, and fully testable without Pub/Sub timing. If a future consumer needs cross-process delivery, a `subscribe_to_all_missions()` method using Redis `PSUBSCRIBE mission_events:*` can be added then — out of scope for v1.
+
 **Files:**
 - `modules/backend/migrations/versions/<date>_phase3_session_followups.py` (new)
 - `modules/backend/models/session_followup.py` (new)
 - `modules/backend/repositories/session_followup.py` (new)
-- `modules/backend/services/session_followup.py` (new — `SessionFollowupService`)
-- `modules/backend/services/session_followup_watcher.py` (new — background asyncio task, started from main.py lifespan)
-- `modules/backend/events/types.py` — new event `SessionFollowupFiredEvent`
-- `modules/backend/main.py` lifespan — start the watcher alongside the mission plan daemon
+- `modules/backend/services/session_followup.py` (new — `SessionFollowupService` with `fire_matching(event)` entry point)
+- `modules/backend/events/types.py` — new event `SessionFollowupFiredEvent` for audit trail
 - `modules/backend/agents/tools/followup.py` (new — `schedule_followup` tool for agents)
+
+No new background task or daemon is needed for Phase A — the service is invoked from existing emission points. `main.py` lifespan is unchanged.
 
 **Schema sketch** (full design in the TODO.md entry, not duplicated here):
 
@@ -411,7 +427,7 @@ CREATE TABLE session_followups (
 );
 ```
 
-**Acceptance:** An agent calls `schedule_followup(trigger_events=["mission_plan.run.completed"], prompt="handle run completion")`. A test fires `mission_plan.run.completed` via the event bus. The watcher detects, wakes the agent in a new turn, the agent's response streams through the existing session SSE pipeline. Verified via a new `scripts/verify_followup_primitive.py` that exercises the full loop with a synthetic agent.
+**Acceptance:** An agent calls `schedule_followup(trigger_events=["mission_plan.run.completed"], prompt="handle run completion")`. A test constructs a synthetic `MissionPlanRunCompletedEvent` and invokes `SessionFollowupService.fire_matching(event)` directly. The service finds the matching row, spawns a fresh turn for the registered agent, the agent's response streams through the existing session SSE pipeline, and the followup row's `consumed_at` is stamped. Verified via a new `scripts/verify_followup_primitive.py`. (Note: Phase A ships the service and tool but has no production emission site — Phase C wires `MissionPlanService.dispatch_approved` to call `fire_matching` as the first real consumer.)
 
 Also closes the TODO.md entry *"Director proactive follow-up: wake on completion events"* by marking it `[x] DONE` with a pointer here.
 
@@ -436,16 +452,19 @@ The exit condition is evaluated after each inner iteration using the existing PQ
 
 ### Phase C — Post-run Gate checkpoint
 
-**Goal:** Extend the gate system to add the `post_run` checkpoint and new `GateAction` values, with `AutonomousPostRunReviewer` implementing the rules-first decision matrix.
+**Goal:** Extend the gate system to add the `post_run` checkpoint and new `GateAction` values, with `AutonomousPostRunReviewer` implementing the rules-first decision matrix. Also adds the `mission_plan.run.completed` event that the whole loop hangs off.
 
 **Files:**
-- `modules/backend/agents/mission_control/gate_models.py` — new GateAction values (`ADVANCE_APPROVED`, `ADVANCE_REFINE`, `PROPOSE_COMPLETE`, `WAIT`, `ESCALATE`), new GateContext fields (`recent_run_outcomes`, `plan_task_summary`, `mission_brief`, `supervisor_iteration_count`, `remaining_budget_usd`)
+- `modules/backend/events/types.py` — new `MissionPlanRunCompletedEvent` class (`event_type = "mission_plan.run.completed"`, fields: `mission_id`, `plan_id`, `execution_record_id`, `run_status`, `run_cost_usd`, `completed_task_count`, `failed_task_count`, `total_spent_usd`) + add to `EVENT_TYPE_REGISTRY` dict
+- `modules/backend/services/mission_plan.py` — **actual emission point**. After the existing `MissionPlanDispatchedEvent` emit in `dispatch_approved`, after write-back + cost update, emit `MissionPlanRunCompletedEvent` AND call `SessionFollowupService.fire_matching(event)` in-process. (The `MissionPlanDaemon` itself needs no changes — it just calls the service.)
+- `modules/backend/models/execution_record.py` — add `POST_RUN_SUPERVISOR = "post_run_supervisor"` to the existing `DecisionType` enum (varchar-backed, no migration required)
+- `modules/backend/agents/mission_control/gate_models.py` — new `GateAction` values (`WAIT`, `ADVANCE_APPROVED`, `ADVANCE_REFINE`, `PROPOSE_COMPLETE`, `ESCALATE`); new defaulted `GateContext` fields (`recent_run_outcomes`, `plan_task_summary`, `mission_brief`, `supervisor_iteration_count`); new optional `GateDecision.model_metadata` field. The existing `GateContext.total_cost_usd`/`budget_usd` and `GateDecision.reviewer` are reused verbatim.
 - `modules/backend/agents/mission_control/gate_post_run.py` (new — `AutonomousPostRunReviewer`)
 - `modules/backend/agents/mission_control/gate.py` (extend `ConfigurableGate` routing for `post_run` gate type)
 - `config/settings/gate.yaml` (add `post_run` gate point config)
-- `modules/backend/services/mission_plan_daemon.py` — publish `mission_plan.run.completed` event after each dispatch (emission point)
+- `modules/backend/models/mission_plan.py` (new columns: `supervisor_iteration_count: int` default 0, `max_supervisor_iterations: int` default 20) + migration
 
-**Acceptance:** All 7 rule-based branches of the decision matrix return correct `GateDecision` values without any LLM invocation, verified by a unit test with synthetic GateContext inputs. Branch #8 (the LLM branch) is stubbed as `raise NotImplementedError` — that's implemented in Phase D.
+**Acceptance:** All 7 rule-based branches of the decision matrix return correct `GateDecision` values without any LLM invocation, verified by a unit test with synthetic GateContext inputs. `MissionPlanRunCompletedEvent` is emitted by `MissionPlanService.dispatch_approved` on every dispatch and routes through `AutonomousPostRunReviewer.review()`. Branch #8 (the LLM branch) is stubbed as `raise NotImplementedError` — that's implemented in Phase D.
 
 ### Phase D — mission.supervisor agent
 
@@ -473,10 +492,10 @@ The exit condition is evaluated after each inner iteration using the existing PQ
 **Goal:** Director posts proactive chat messages in response to supervisor decisions, closing the user-visible feedback loop.
 
 **Files:**
-- `modules/backend/agents/mission/director/agent.py` — new tool `schedule_run_completion_followup` (wraps the Phase A primitive with a Director-specific prompt template)
-- `modules/backend/agents/mission/director/system.md` — prompt update: "When you dispatch a run, always schedule a followup to check back after completion"
-- `modules/backend/agents/mission_control/gate_post_run.py` — emit `post_run_supervisor_decision_emitted` event after writing the decision
-- `modules/backend/services/session_followup_watcher.py` — subscribe to the new event
+- `modules/backend/events/types.py` — new `SupervisorDecisionEmittedEvent` class (`event_type = "mission_plan.supervisor_decision"`, fields: `mission_id`, `plan_id`, `execution_record_id`, `action`, `reason`, `reviewer`) + register in `EVENT_TYPE_REGISTRY`
+- `modules/backend/agents/mission_control/gate_post_run.py` — after writing the audit row in the reviewer, construct `SupervisorDecisionEmittedEvent` and call `SessionFollowupService.fire_matching(event)` (same in-process pattern Phase C uses for `MissionPlanRunCompletedEvent`)
+- `modules/backend/agents/mission/director/agent.py` — new tool `schedule_run_completion_followup` (wraps the Phase A primitive with a Director-specific prompt template that registers a one-shot followup on `mission_plan.supervisor_decision`)
+- `modules/backend/agents/mission/director/system.md` — prompt update: "When you dispatch a run, always schedule a followup to check back after the supervisor decides"
 
 **Acceptance:** A user starts a mission in autonomous mode, walks away. The daemon dispatches wave 1. Wave 1 completes. The supervisor advances. The Director's followup fires. A new assistant message appears in the user's session chat ("Wave 1 complete. Cost $X. Wave 2 started with tasks Y, Z.") without the user typing anything. Verified by running a synthetic mission through to completion.
 
@@ -577,7 +596,6 @@ Backend:
 - `modules/backend/models/session_followup.py`
 - `modules/backend/repositories/session_followup.py`
 - `modules/backend/services/session_followup.py`
-- `modules/backend/services/session_followup_watcher.py`
 - `modules/backend/agents/mission/supervisor/__init__.py`
 - `modules/backend/agents/mission/supervisor/agent.py`
 - `modules/backend/agents/mission/supervisor/deps.py`
@@ -597,18 +615,21 @@ Scripts:
 
 ### Files this plan modifies
 
-- `modules/backend/agents/mission_control/gate_models.py` — new GateAction values + GateContext fields
-- `modules/backend/agents/mission_control/gate.py` — route `post_run` gate type
+- `modules/backend/agents/mission_control/gate_models.py` — new `GateAction` values + defaulted `GateContext` fields + optional `GateDecision.model_metadata`
+- `modules/backend/agents/mission_control/gate.py` — route `post_run` gate type in `ConfigurableGate`
 - `modules/backend/agents/mission_control/dispatch/convergence.py` — wire the existing scaffold
 - `modules/backend/agents/mission_control/dispatch/loop.py` — dispatch switch for `convergence_loop` task type
 - `modules/backend/agents/mission/director/agent.py` — new `schedule_run_completion_followup` tool
 - `modules/backend/schemas/task_plan.py` — new `convergence_loop` task type + exit condition schema
-- `modules/backend/services/mission_plan_daemon.py` — emit `mission_plan.run.completed` event
-- `modules/backend/events/types.py` — new event classes
-- `modules/backend/main.py` — start the session followup watcher alongside the daemon
+- `modules/backend/services/mission_plan.py` — emit `MissionPlanRunCompletedEvent` at the end of `dispatch_approved` + in-process call to `SessionFollowupService.fire_matching(event)`
+- `modules/backend/models/execution_record.py` — add `POST_RUN_SUPERVISOR` to `DecisionType` enum
+- `modules/backend/models/mission_plan.py` — new `supervisor_iteration_count` + `max_supervisor_iterations` columns (with migration)
+- `modules/backend/events/types.py` — new `MissionPlanRunCompletedEvent` (Phase C), `SessionFollowupFiredEvent` (Phase A), `SupervisorDecisionEmittedEvent` (Phase E) + `EVENT_TYPE_REGISTRY` entries
 - `config/settings/gate.yaml` — `post_run` gate point config
 - `docs/97-plans/46-plan-autonomous-mission-roadmap.md` — Phase 3 reframing
 - `docs/97-plans/48-plan-convergence-loop-and-branch-automation.md` — mark Phase 6 graduated
+
+Files the plan does **not** touch: `modules/backend/services/mission_plan_daemon.py` (it calls the service, which owns emission) and `modules/backend/events/bus.py` (in-process `fire_matching` avoids needing a `subscribe_to_all_missions` method for v1).
 
 ### TODO items closed
 
