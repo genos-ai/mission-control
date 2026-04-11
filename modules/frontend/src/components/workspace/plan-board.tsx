@@ -585,7 +585,7 @@ function Column({
           </span>
         )}
       </div>
-      <div className="space-y-2">
+      <div className="space-y-2 rounded-lg bg-muted/30 p-2 min-h-[60px]">
         {showShimmer && <ShimmerCard />}
         {rows.map((row) => (
           <TaskCard
@@ -684,7 +684,7 @@ function TaskCard({
     <div
       ref={cardRef}
       className={cn(
-        'relative rounded-md border bg-card p-2.5 text-xs transition-colors',
+        'relative rounded-md border bg-card shadow-sm p-2.5 text-xs transition-colors',
         borderClass,
         dimmed && 'opacity-60',
       )}
@@ -835,7 +835,7 @@ function TaskCard({
 
 function ShimmerCard() {
   return (
-    <div className="rounded-md border border-primary/30 bg-card p-2.5">
+    <div className="rounded-md border border-primary/30 bg-card shadow-sm p-2.5">
       <div className="flex items-center gap-1.5">
         <Sparkles className="h-3 w-3 animate-pulse text-primary/60" />
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
