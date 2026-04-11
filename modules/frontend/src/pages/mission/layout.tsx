@@ -40,6 +40,7 @@ import { useMissionStream } from '@/hooks/use-sse'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { planKeys } from '@/hooks/use-mission-plan'
+import { artifactKeys } from '@/hooks/use-mission-artifacts'
 import { queryClient } from '@/main'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -144,6 +145,7 @@ export default function MissionLayout() {
       const newEvents = sseEvents.slice(processedCount.current)
       processedCount.current = sseEvents.length
       let planInvalidated = false
+      let artifactsInvalidated = false
       newEvents.forEach((ev) => {
         const d = ev.data as Record<string, unknown>
         onSseEvent(ev.event_type, d)
@@ -158,9 +160,18 @@ export default function MissionLayout() {
         if (ev.event_type.startsWith('mission_plan.') && id) {
           planInvalidated = true
         }
+        // Plan 43: mission.artifact.found means a new artifact has
+        // (or will shortly) land in mission_artifacts. Coalesce to a
+        // single invalidation per batch to avoid storms.
+        if (ev.event_type === 'mission.artifact.found' && id) {
+          artifactsInvalidated = true
+        }
       })
       if (planInvalidated && id) {
         queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
+      }
+      if (artifactsInvalidated && id) {
+        queryClient.invalidateQueries({ queryKey: artifactKeys.list(id) })
       }
     }
   }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps

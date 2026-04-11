@@ -11,15 +11,14 @@ export interface AgentStatusEntry {
   lastUpdated: string
 }
 
-export interface ArtifactEntry {
-  id: string
-  agentId: string
-  title: string
-  content: string
-  artifactType: string
-  timestamp: string
-}
-
+/**
+ * Live in-flight artifact preview, accumulated from
+ * `agent.response.chunk` SSE events during an active agent turn.
+ * Clears when the agent completes. This is the ONLY ephemeral
+ * artifact state left in this store — durable artifacts live in the
+ * backend `mission_artifacts` table (Plan 43) and are fetched via
+ * `useMissionArtifacts()` in the ArtifactsPanel component.
+ */
 export interface StreamingArtifact {
   agentId: string
   content: string
@@ -49,8 +48,9 @@ interface WorkspaceState {
   // Live agent roster
   agentStatuses: Record<string, AgentStatusEntry>
 
-  // Artifacts panel
-  artifacts: ArtifactEntry[]
+  // Live streaming artifact preview (cleared when the agent completes
+  // or when mission.artifact.found fires — the durable row has
+  // landed, the streaming preview's job is done).
   streamingArtifact: StreamingArtifact | null
 
   // Live per-task runtime overlay (Plan 42 §10.9). Populated from
@@ -70,7 +70,6 @@ interface WorkspaceState {
 
 const INITIAL = {
   agentStatuses: {} as Record<string, AgentStatusEntry>,
-  artifacts: [] as ArtifactEntry[],
   streamingArtifact: null as StreamingArtifact | null,
   liveTaskOverlay: {} as Record<string, LiveTaskOverlayEntry>,
 }
@@ -192,18 +191,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       }))
     }
 
-    // ── Artifacts panel ────────────────────────────────────────────────
+    // ── Artifacts panel: live preview lock ─────────────────────────────
+    // When a new artifact lands in the backend's mission_artifacts
+    // table (mission.artifact.found SSE), clear the streaming preview
+    // so the card UI flips from "writing..." to "done". The durable
+    // row itself is read via useMissionArtifacts() and invalidated
+    // by the layout-level SSE router — this store no longer holds a
+    // local copy of the artifact list (Plan 43).
     if (eventType === 'mission.artifact.found') {
-      set({ streamingArtifact: null })   // lock: streaming → completed card
-      const entry: ArtifactEntry = {
-        id: String(data.event_id ?? crypto.randomUUID()),
-        agentId,
-        title: String(data.title ?? 'Artifact'),
-        content: String(data.content ?? ''),
-        artifactType: String(data.artifact_type ?? 'report'),
-        timestamp: String(data.timestamp ?? new Date().toISOString()),
-      }
-      set((s) => ({ artifacts: [entry, ...s.artifacts].slice(0, 50) }))
+      set({ streamingArtifact: null })
     }
   },
 

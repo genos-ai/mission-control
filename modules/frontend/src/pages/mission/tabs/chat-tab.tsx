@@ -43,6 +43,7 @@ import { useTeam } from '@/hooks/use-team'
 import { useSessions, useMessages, useCreateSession, sessionKeys } from '@/hooks/use-sessions'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore, type StreamingArtifact } from '@/stores/workspace'
+import { useMissionArtifacts, type MissionArtifact } from '@/hooks/use-mission-artifacts'
 import { useResizable } from '@/hooks/use-resizable'
 import { queryClient } from '@/main'
 import { Badge } from '@/components/ui/badge'
@@ -115,7 +116,7 @@ export default function ChatTab() {
 
       {/* Right — artifacts */}
       {rightOpen ? (
-        <ArtifactsPanel onClose={() => setRightOpen(false)} />
+        <ArtifactsPanel missionId={missionId!} onClose={() => setRightOpen(false)} />
       ) : (
         <button
           onClick={() => setRightOpen(true)}
@@ -629,8 +630,11 @@ function MessageBubble({ message }: { message: SessionMessage }) {
 // Right panel — artifact cards
 // ---------------------------------------------------------------------------
 
-function ArtifactsPanel({ onClose }: { onClose: () => void }) {
-  const artifacts = useWorkspaceStore((s) => s.artifacts)
+function ArtifactsPanel({ missionId, onClose }: { missionId: string; onClose: () => void }) {
+  // Durable artifacts via react-query (Plan 43). SSE invalidation wired
+  // in layout.tsx — the query refetches when mission.artifact.found
+  // fires, so newly persisted rows appear live without a page refresh.
+  const { data: artifacts = [], isLoading } = useMissionArtifacts(missionId)
   const streaming = useWorkspaceStore((s) => s.streamingArtifact)
   const hasContent = streaming || artifacts.length > 0
   const { width, onMouseDown } = useResizable(280)
@@ -650,6 +654,11 @@ function ArtifactsPanel({ onClose }: { onClose: () => void }) {
               live
             </span>
           )}
+          {!streaming && artifacts.length > 0 && (
+            <span className="text-[10px] text-muted-foreground/60">
+              {artifacts.length}
+            </span>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -660,15 +669,18 @@ function ArtifactsPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {!hasContent ? (
+        {isLoading && !streaming ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/50" />
+          </div>
+        ) : !hasContent ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-5 py-8">
             <Package className="h-6 w-6 text-muted-foreground/30" />
             <p className="text-center text-xs leading-relaxed text-muted-foreground/70">
-              Artifacts appear here <strong>while a run is active</strong>.
+              No artifacts yet.
             </p>
             <p className="max-w-[220px] text-center text-[11px] leading-relaxed text-muted-foreground/50">
-              Post-run artifacts are not yet persisted — see the{' '}
-              <strong>Runs</strong> tab for the full agent output of completed runs.
+              Artifacts appear here when agents produce reports, findings, or code during a run. They are persisted across sessions and survive backend restarts.
             </p>
           </div>
         ) : (
@@ -702,9 +714,11 @@ function StreamingArtifactCard({ streaming }: { streaming: StreamingArtifact }) 
   )
 }
 
-function ArtifactCard({ artifact }: { artifact: import('@/stores/workspace').ArtifactEntry }) {
-  const preview = artifact.content.slice(0, 120)
-  const truncated = artifact.content.length > 120
+function ArtifactCard({ artifact }: { artifact: MissionArtifact }) {
+  const content = artifact.content_text ?? ''
+  const agentShort = artifact.agent_id.endsWith('.agent')
+    ? artifact.agent_id.slice(0, -6)
+    : artifact.agent_id
   return (
     <details className="group rounded border border-violet-500/15 bg-violet-500/5 p-2 text-xs">
       <summary className="flex cursor-pointer list-none items-start gap-1.5">
@@ -712,17 +726,14 @@ function ArtifactCard({ artifact }: { artifact: import('@/stores/workspace').Art
         <div className="min-w-0 flex-1">
           <p className="font-medium leading-snug">{artifact.title}</p>
           <p className="text-[10px] text-muted-foreground/60">
-            {artifact.agentId.endsWith('.agent') ? artifact.agentId.slice(0, -6) : artifact.agentId}
-            {' · '}{artifact.artifactType}
+            {agentShort}
+            {' · '}{artifact.artifact_type}
           </p>
         </div>
         <ChevronDown className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       <div className="mt-2 border-t border-violet-500/15 pt-2">
-        <MarkdownRenderer
-          content={truncated ? artifact.content : preview}
-          className="text-xs"
-        />
+        <MarkdownRenderer content={content} className="text-xs" />
       </div>
     </details>
   )
