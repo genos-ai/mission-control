@@ -2,15 +2,30 @@
 Container Backend.
 
 Docker-based execution backend implementing ExecutionBackend protocol.
-Provides full runtime isolation with optional git-aware worktree support
-inside the container.
+Provides full runtime isolation via per-mission git worktrees:
 
-Requires docker-py (docker) package. Falls back gracefully when Docker
-is not available.
+  1. A git worktree is created on the HOST at ``{repo_root}/var/worktrees/{name}/workspace/``.
+  2. The container is started with that host directory bind-mounted at ``/workspace:rw``.
+  3. ``EnvironmentHandle.host_working_dir`` carries the host-side path so agent filesystem
+     tools (read_file, list_files, write_file) operate on the worktree — not on the main
+     repo.  ``EnvironmentHandle.working_dir`` stays as ``/workspace`` (the container-internal
+     path used by execute()).
+
+Security boundary:
+  - The container sees ONLY ``/workspace`` from the host.  The full host repo is NOT
+    mounted inside the container.
+  - Agent commands (run_command) execute inside the container and cannot reach the host
+    filesystem beyond the bind-mounted worktree.
+  - File reads/writes by agent tools operate on the host-side worktree (fast, native I/O)
+    and never touch the main branch.
+
+Requires docker-py (docker) package. Falls back gracefully when Docker is not available.
 """
 
 from __future__ import annotations
 
+import asyncio
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -24,15 +39,14 @@ from modules.backend.services.execution_environment import (
 
 logger = get_logger(__name__)
 
+_CONTAINER_WORKSPACE = "/workspace"
+
 
 class ContainerBackend:
     """Docker container execution backend.
 
-    Implements the ExecutionBackend protocol. Creates ephemeral containers
-    for agent task execution with optional git-aware worktree support.
-
-    When git_aware is True, the container mounts the host's .git directory
-    (read-only) and creates a worktree inside for branch-isolated work.
+    Implements the ExecutionBackend protocol. Creates per-mission containers
+    with host-side git worktrees for isolated agent execution.
     """
 
     def __init__(self) -> None:
@@ -58,19 +72,31 @@ class ContainerBackend:
         name: str,
         config: dict[str, Any],
     ) -> EnvironmentHandle:
-        """Create a Docker container for agent execution.
+        """Create a Docker container with an isolated host-side git worktree.
+
+        When ``git_aware=True``, a git worktree is created on the HOST at
+        ``{repo_root}/var/worktrees/{name}/workspace/`` and bind-mounted into
+        the container at ``/workspace``.  The handle's ``host_working_dir`` is
+        set to that host path so the executor can redirect ``deps.project_root``.
 
         Config options:
             image: Docker image name (default: code-workspace:latest)
-            git_aware: Mount host .git and create worktree (default: False)
+            git_aware: Create host-side worktree + bind-mount (default: False)
             repo_root: Host repo root path (required if git_aware)
-            branch_name: Branch for worktree (required if git_aware)
+            branch_name: Git branch for the worktree (required if git_aware)
             cpu_limit: CPU limit in cores (default: 2.0)
             memory_limit_mb: Memory limit in MB (default: 2048)
-            workspace_dir: Working directory inside container (default: /workspace)
-        """
-        import asyncio
 
+        Args:
+            name: Unique name for this environment (mission_id or test name).
+            config: Backend-specific configuration dict.
+
+        Returns:
+            EnvironmentHandle with host_working_dir set when git_aware=True.
+
+        Raises:
+            RuntimeError: If Docker is unavailable or the container cannot start.
+        """
         client = self._get_client()
 
         image = config.get("image", "code-workspace:latest")
@@ -79,26 +105,38 @@ class ContainerBackend:
         branch_name = config.get("branch_name")
         cpu_limit = config.get("cpu_limit", 2.0)
         memory_limit_mb = config.get("memory_limit_mb", 2048)
-        workspace_dir = config.get("workspace_dir", "/workspace")
 
         container_name = f"mc-{name}-{uuid4().hex[:8]}"
 
-        # Build volume mounts
-        volumes = {}
-        if git_aware and repo_root:
-            # Mount entire repo (read-write for worktree/branch operations)
-            volumes[str(repo_root)] = {"bind": "/repo", "mode": "rw"}
+        # --- Host-side worktree (Plan 47 isolation model) ---
+        host_working_dir: Path | None = None
+        volumes: dict[str, Any] = {}
 
-        # Create container (non-blocking via thread pool)
+        if git_aware and repo_root and branch_name:
+            host_working_dir = await self._create_host_worktree(
+                repo_root=Path(repo_root),
+                name=name,
+                branch_name=branch_name,
+            )
+            if host_working_dir is not None:
+                # Bind-mount the worktree into the container as /workspace.
+                # The container sees ONLY this directory from the host — the
+                # full repo is NOT mounted (unlike the previous design).
+                volumes[str(host_working_dir)] = {
+                    "bind": _CONTAINER_WORKSPACE,
+                    "mode": "rw",
+                }
+
+        # --- Create and start container ---
         def _create() -> Any:
             return client.containers.create(
                 image=image,
                 name=container_name,
-                command="sleep infinity",  # Keep alive for exec commands
+                command="sleep infinity",
                 volumes=volumes,
                 mem_limit=f"{memory_limit_mb}m",
                 nano_cpus=int(cpu_limit * 1e9),
-                working_dir=workspace_dir,
+                working_dir=_CONTAINER_WORKSPACE,
                 detach=True,
                 labels={
                     "mission-control": "true",
@@ -107,14 +145,13 @@ class ContainerBackend:
             )
 
         container = await asyncio.get_event_loop().run_in_executor(None, _create)
-
-        # Start container
         await asyncio.get_event_loop().run_in_executor(None, container.start)
 
         handle = EnvironmentHandle(
             environment_id=container_name,
             mode="container",
-            working_dir=Path(workspace_dir),
+            working_dir=Path(_CONTAINER_WORKSPACE),
+            host_working_dir=host_working_dir,
             branch_name=branch_name,
             container_id=container.id,
             metadata={
@@ -125,36 +162,13 @@ class ContainerBackend:
             },
         )
 
-        # If git-aware, create worktree from the mounted repo
-        if git_aware and branch_name:
-            # Repo is mounted at /repo. Create a worktree at /workspace
-            # on a new branch from the current HEAD.
-            result = await self.execute(
-                handle,
-                [
-                    "sh", "-c",
-                    f"cd /repo && git worktree add {workspace_dir} -b {branch_name} 2>&1",
-                ],
-                timeout_seconds=30,
-            )
-            if result.exit_code != 0:
-                logger.warning(
-                    "Worktree creation failed, falling back to working in /repo",
-                    extra={
-                        "container": container_name,
-                        "stderr": result.stderr,
-                        "stdout": result.stdout,
-                    },
-                )
-                # Fallback: use /repo directly as workspace
-                handle.working_dir = Path("/repo")
-
         logger.info(
             "Container created",
             extra={
                 "container_name": container_name,
                 "image": image,
                 "git_aware": git_aware,
+                "host_working_dir": str(host_working_dir) if host_working_dir else None,
             },
         )
         return handle
@@ -166,13 +180,21 @@ class ContainerBackend:
         timeout_seconds: int = 300,
         env_vars: dict[str, str] | None = None,
     ) -> CommandResult:
-        """Execute a command inside the container via docker exec."""
-        import asyncio
+        """Execute a command inside the container via docker exec.
 
+        Args:
+            handle: Active environment handle.
+            command: Command + arguments list (e.g. ["sh", "-c", "pytest tests/"]).
+            timeout_seconds: Maximum execution time before the exec is cancelled.
+            env_vars: Optional environment variable overrides.
+
+        Returns:
+            CommandResult with exit_code, stdout, stderr, duration_seconds.
+        """
         client = self._get_client()
         start = time.monotonic()
 
-        def _exec() -> tuple[int, bytes]:
+        def _exec() -> tuple[int, bytes, bytes]:
             container = client.containers.get(handle.container_id)
             exit_code, output = container.exec_run(
                 command,
@@ -205,15 +227,20 @@ class ContainerBackend:
         )
 
     async def cleanup(self, handle: EnvironmentHandle) -> None:
-        """Stop and remove the container."""
-        import asyncio
+        """Stop and remove the container, then clean up the host-side worktree.
 
+        Worktree cleanup runs after container removal so the container cannot be
+        restarted while the worktree is being torn down.
+
+        Args:
+            handle: Active environment handle to clean up.
+        """
         if not handle.container_id:
             return
 
         client = self._get_client()
 
-        def _cleanup() -> None:
+        def _stop_remove() -> None:
             try:
                 container = client.containers.get(handle.container_id)
                 container.stop(timeout=10)
@@ -224,8 +251,151 @@ class ContainerBackend:
                     extra={"container_id": handle.container_id},
                 )
 
-        await asyncio.get_event_loop().run_in_executor(None, _cleanup)
+        await asyncio.get_event_loop().run_in_executor(None, _stop_remove)
         logger.info(
-            "Container cleaned up",
+            "Container stopped and removed",
             extra={"container_id": handle.container_id},
         )
+
+        # Remove the host-side worktree AFTER the container is gone.
+        if handle.host_working_dir and handle.host_working_dir.exists():
+            await self._remove_host_worktree(handle.host_working_dir)
+
+    # -------------------------------------------------------------------------
+    # Private helpers
+    # -------------------------------------------------------------------------
+
+    async def _create_host_worktree(
+        self,
+        repo_root: Path,
+        name: str,
+        branch_name: str,
+    ) -> Path | None:
+        """Create a git worktree on the host for the given mission/name.
+
+        The worktree is placed at ``{repo_root}/var/worktrees/{name}/workspace/``
+        and checked out from HEAD so that agent filesystem tools see a populated tree.
+
+        Returns the path to the created worktree, or None if creation fails
+        (caller falls back to no isolation — logs a warning).
+
+        Args:
+            repo_root: Host path to the git repository root.
+            name: Unique name for the worktree (mission_id or test name).
+            branch_name: Branch name for the worktree.
+
+        Returns:
+            Path to the worktree on the host, or None on failure.
+        """
+        worktree_path = repo_root / "var" / "worktrees" / name / "workspace"
+
+        # Idempotent — if the path already exists as a worktree (e.g. after a
+        # backend restart), skip creation.
+        if worktree_path.exists():
+            git_file = worktree_path / ".git"
+            if git_file.exists():
+                logger.info(
+                    "Reusing existing host worktree",
+                    extra={"worktree_path": str(worktree_path)},
+                )
+                return worktree_path
+
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def _create_worktree() -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            # Attempt 1: create with a new branch
+            result = subprocess.run(
+                ["git", "worktree", "add", "-b", branch_name, str(worktree_path)],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                return result
+
+            # Attempt 2: branch already exists — attach to it
+            result = subprocess.run(
+                ["git", "worktree", "add", str(worktree_path), branch_name],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+            )
+            return result
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _create_worktree)
+
+        if result.returncode != 0:
+            logger.warning(
+                "Host worktree creation failed — container will launch without "
+                "host-side isolation (host_working_dir will be None)",
+                extra={
+                    "worktree_path": str(worktree_path),
+                    "branch_name": branch_name,
+                    "stderr": result.stderr,
+                },
+            )
+            return None
+
+        # Populate the worktree from HEAD so agent tools see a full file tree.
+        def _checkout() -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            return subprocess.run(
+                ["git", "checkout", "HEAD", "--", "."],
+                cwd=str(worktree_path),
+                capture_output=True,
+                text=True,
+            )
+
+        checkout = await asyncio.get_event_loop().run_in_executor(None, _checkout)
+        if checkout.returncode != 0:
+            logger.warning(
+                "Worktree checkout failed — files may not be populated",
+                extra={
+                    "worktree_path": str(worktree_path),
+                    "stderr": checkout.stderr,
+                },
+            )
+            # Non-fatal: the worktree exists but may be empty. Agent can still
+            # run commands inside the container; filesystem reads will return
+            # "file not found" gracefully.
+
+        logger.info(
+            "Host worktree created",
+            extra={
+                "worktree_path": str(worktree_path),
+                "branch_name": branch_name,
+            },
+        )
+        return worktree_path
+
+    async def _remove_host_worktree(self, worktree_path: Path) -> None:
+        """Remove the host-side git worktree and its directory.
+
+        Uses ``git worktree remove --force`` which deregisters the worktree
+        from the main repo's .git metadata and removes the directory.
+
+        Args:
+            worktree_path: Path to the worktree to remove.
+        """
+        def _remove() -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            return subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree_path)],
+                cwd=str(worktree_path.parent.parent.parent),  # repo_root: 3 levels up
+                capture_output=True,
+                text=True,
+            )
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _remove)
+
+        if result.returncode != 0:
+            logger.warning(
+                "Worktree removal failed — directory may need manual cleanup",
+                extra={
+                    "worktree_path": str(worktree_path),
+                    "stderr": result.stderr,
+                },
+            )
+        else:
+            logger.info(
+                "Host worktree removed",
+                extra={"worktree_path": str(worktree_path)},
+            )

@@ -64,8 +64,27 @@ def _make_agent_executor(
         agent = module.create_agent(model)
         deps = _build_agent_deps(agent_name, agent_config)
 
-        if environment_handle is not None:
-            deps.environment_handle = environment_handle
+        # Inject environment handle and redirect project_root for user-tier agents.
+        # Platform/system agents always resolve to local mode (enforced by YAML schema
+        # validator), so environment_handle is None for them — this block is never
+        # entered.  The explicit tier check below is a second line of defence.
+        agent_tier = agent_config.invocation.tier  # "user", "platform", "system"
+        effective_handle = (
+            environment_handle
+            if environment_handle is not None and agent_tier == "user"
+            else None
+        )
+
+        if effective_handle is not None:
+            deps.environment_handle = effective_handle
+            # Redirect filesystem root to the isolated host-side worktree so that
+            # all agent tool calls (read_file, list_files, write_file) operate on
+            # the worktree and never touch the main repo.
+            if (
+                hasattr(effective_handle, "host_working_dir")
+                and effective_handle.host_working_dir is not None
+            ):
+                deps.project_root = effective_handle.host_working_dir
 
         if hasattr(deps, 'on_progress') and event_bus is not None:
             import asyncio as _asyncio

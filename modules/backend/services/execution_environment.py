@@ -28,11 +28,19 @@ logger = get_logger(__name__)
 
 @dataclass
 class EnvironmentHandle:
-    """Lightweight handle for an active execution environment."""
+    """Lightweight handle for an active execution environment.
+
+    For container mode, ``working_dir`` is the container-internal path used
+    as workdir for exec commands (always ``/workspace``). ``host_working_dir``
+    is the host-side git worktree path that agent filesystem tools should use
+    as their ``project_root``. Only non-None for container environments created
+    with ``git_aware=True`` (i.e. Plan 47 + onwards).
+    """
 
     environment_id: str
     mode: str  # "local", "worktree", "container"
-    working_dir: Path
+    working_dir: Path          # container-internal path (used by execute())
+    host_working_dir: Path | None = None  # host-side worktree (used by agent tools)
     branch_name: str | None = None
     container_id: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -471,10 +479,17 @@ class ExecutionEnvironmentService:
                 await self._db.flush()
                 return None
 
+        # Reconstruct host_working_dir from persisted config (set by ContainerBackend
+        # when git_aware=True — only present for Plan 47+ environments).
+        host_working_dir: Path | None = None
+        if env.config and env.config.get("host_working_dir"):
+            host_working_dir = Path(env.config["host_working_dir"])
+
         return EnvironmentHandle(
             environment_id=env.container_name or str(env.id),
             mode=env.mode,
             working_dir=Path(env.working_dir or "/workspace"),
+            host_working_dir=host_working_dir,
             branch_name=env.branch_name,
             container_id=env.container_id,
             created_at=env.created_at if hasattr(env.created_at, 'isoformat') else env.created_at,
@@ -498,6 +513,12 @@ class ExecutionEnvironmentService:
         )
         from modules.backend.core.utils import utc_now
 
+        # Merge host_working_dir into persisted config so it can be reconstructed
+        # from the DB on backend restart (see _find_running_environment).
+        persisted_config = dict(config) if config else {}
+        if handle.host_working_dir is not None:
+            persisted_config["host_working_dir"] = str(handle.host_working_dir)
+
         env = ExecutionEnvironmentModel(
             mission_id=mission_id,
             mode=handle.mode,
@@ -509,7 +530,7 @@ class ExecutionEnvironmentService:
             image=handle.metadata.get("image"),
             execution_count=1,
             last_execution_at=utc_now().isoformat(),
-            config=config,
+            config=persisted_config,
         )
         self._db.add(env)
         await self._db.flush()

@@ -527,6 +527,7 @@ class MissionPlanService(BaseService):
             gate=gate_reviewer,
             execution_mode=mission.execution_environment or "local",
             precomputed_plan=derived_plan,
+            mission_repo_root=mission.repo_root,
         )
 
         # Write back task states from outcome (Plan 42 §10.5 batch write-back)

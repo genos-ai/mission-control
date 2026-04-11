@@ -540,6 +540,7 @@ async def handle_mission(
     gate: GateReviewer | None = None,
     execution_mode: str = "local",
     precomputed_plan: TaskPlan | None = None,
+    mission_repo_root: str | None = None,
 ) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
@@ -750,7 +751,9 @@ async def handle_mission(
             env_service = ExecutionEnvironmentService(db_session=db_session)
             env_service.register_backend("container", ContainerBackend())
 
-            repo_root = str(find_project_root())
+            # Use the mission's own repo_root when provided (supports missions
+            # that operate on a different codebase than the platform host).
+            repo_root = mission_repo_root or str(find_project_root())
             env_handle = await env_service.get_or_create_for_mission(
                 mission_id=mission_id or mission_run_id,
                 mode=execution_mode,
