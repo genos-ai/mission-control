@@ -262,6 +262,17 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
     result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Denormalized metrics from task_executions for Done-card rendering
+    # (Plan 46 Phase 2 work unit #2). Written at run completion by
+    # MissionPlanService._write_back_task_results. Defaults to 0.0 —
+    # pre-run statuses legitimately show "no cost incurred yet".
+    cost_usd: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0", nullable=False,
+    )
+    duration_seconds: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0", nullable=False,
+    )
+
     # Relationships
     plan: Mapped["MissionPlan"] = relationship(
         "MissionPlan", back_populates="task_states",
