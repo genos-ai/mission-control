@@ -9,6 +9,7 @@ as nested routers to keep each file under the 500-line target.
 from fastapi import APIRouter
 
 from modules.backend.api.v1.endpoints import (
+    missions_artifacts,
     missions_context,
     missions_plan,
     missions_team,
@@ -31,6 +32,7 @@ router.include_router(missions_team.router)
 router.include_router(missions_workflows.router)
 router.include_router(missions_context.router)
 router.include_router(missions_plan.router)
+router.include_router(missions_artifacts.router)
 
 
 # ---- Mission CRUD ----

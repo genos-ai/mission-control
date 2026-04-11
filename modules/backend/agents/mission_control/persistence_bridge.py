@@ -15,6 +15,7 @@ from modules.backend.agents.mission_control.outcome import (
 )
 from modules.backend.core.logging import get_logger
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
+from modules.backend.services.mission_artifact import MissionArtifactService
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +42,14 @@ async def persist_mission_results(
     """
     try:
         service = ExecutionPersistenceService(db_session)
+        # Plan 43: extract durable artifacts alongside the execution
+        # persistence so overnight autonomous runs produce output that
+        # survives page refresh and backend restart. Only instantiated
+        # when mission_id is set — artifacts are mission-scoped by
+        # definition (the mission_id FK is NOT NULL).
+        artifact_svc = (
+            MissionArtifactService(db_session) if mission_id else None
+        )
 
         status_map = {
             ExecutionStatus.SUCCESS: "completed",
@@ -101,6 +110,29 @@ async def persist_mission_results(
                 execution_id=task_result.execution_id or None,
                 domain_tags=domain_tags,
             )
+
+            # Plan 43: extract artifact from this task's output. Same
+            # heuristic as the live SSE emission site
+            # (agent_executor.py) — summary field first, fall back to
+            # result. Best-effort: an extraction failure is logged and
+            # swallowed so it cannot block the ExecutionRecord save.
+            if artifact_svc is not None and mission_id is not None:
+                try:
+                    await artifact_svc.extract_from_task_result(
+                        mission_id=mission_id,
+                        execution_record_id=record.id,
+                        task_execution_id=execution.id,
+                        task_result=task_result,
+                    )
+                except Exception as artifact_exc:  # noqa: BLE001
+                    logger.warning(
+                        "Failed to extract artifact from task result",
+                        extra={
+                            "task_id": task_result.task_id,
+                            "agent": task_result.agent_name,
+                            "error": str(artifact_exc),
+                        },
+                    )
 
             for retry_entry in task_result.retry_history:
                 failure_tier_map = {

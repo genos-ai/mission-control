@@ -13,6 +13,13 @@ from modules.backend.models.note import Note
 from modules.backend.models.mission import Mission, MissionMember
 from modules.backend.models.mission_context import ContextChange, ContextMilestone, MissionContext
 from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
+from modules.backend.models.mission_artifact import (
+    ArtifactContentType,
+    ArtifactType,
+    MissionArtifact,
+    VALID_ARTIFACT_TYPES,
+    VALID_CONTENT_TYPES,
+)
 from modules.backend.models.mission_plan import (
     MissionPlan,
     MissionPlanStatus,
@@ -31,6 +38,8 @@ from modules.backend.models.workflow_schedule import WorkflowSchedule
 __all__ = [
     "AgentCatalog",
     "ApiKey",
+    "ArtifactContentType",
+    "ArtifactType",
     "Base",
     "ContextChange",
     "ContextMilestone",
@@ -39,6 +48,7 @@ __all__ = [
     "ExecutionRecord",
     "MilestoneSummary",
     "Mission",
+    "MissionArtifact",
     "MissionContext",
     "MissionDecision",
     "MissionMember",
@@ -48,6 +58,8 @@ __all__ = [
     "PlanTaskState",
     "PlanTaskStatus",
     "TERMINAL_PLAN_TASK_STATUSES",
+    "VALID_ARTIFACT_TYPES",
+    "VALID_CONTENT_TYPES",
     "VALID_GATE_MODES",
     "Note",
     "PromptVersion",
