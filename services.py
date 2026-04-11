@@ -139,100 +139,72 @@ def check_redis() -> bool:
 
 
 def check_docker(*, try_start: bool = False) -> bool:
-    """Check Docker daemon connectivity. Optionally starts OrbStack on macOS.
+    """Check Docker daemon connectivity. Optionally auto-starts a runtime on macOS.
 
-    Flow when ``try_start=True`` and Docker socket is not yet reachable:
-      1. Check if OrbStack or Docker Desktop is already running as a process.
-         If so, skip launching and go straight to polling (it's initialising).
-      2. Otherwise launch: ``orbctl start`` (blocks) if available, then
-         ``open -a OrbStack``, then ``open -a Docker``.
-      3. Poll up to 30s for the socket to come up.
+    On macOS with ``try_start=True``:
+      - Tries ``orbctl start`` (blocks until ready) if orbctl is on PATH.
+      - Otherwise launches OrbStack.app or Docker.app and polls up to 30s.
+    On Linux: reports failure only — systemd or the user manages the daemon.
 
     Returns True when Docker is reachable.
     """
-    # Known socket paths to probe in order
-    _SOCKET_CANDIDATES = [
-        Path("/var/run/docker.sock"),
-        Path.home() / ".orbstack" / "run" / "docker.sock",
-        Path.home() / "Library" / "Containers" / "com.docker.docker" / "Data" / "docker.sock",
-    ]
-
-    def _find_socket() -> Path | None:
-        """Return the first socket path that exists on disk."""
-        docker_host = os.environ.get("DOCKER_HOST", "")
-        if docker_host.startswith("unix://"):
-            p = Path(docker_host[7:])
-            if p.exists():
-                return p
-        for p in _SOCKET_CANDIDATES:
-            if p.exists():
-                return p
-        return None
+    import sys as _sys
 
     def _docker_alive() -> tuple[bool, str]:
-        """Ping Docker via CLI. Returns (ok, error_message)."""
-        result = subprocess.run(
-            ["docker", "info"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return True, ""
-        err = (result.stderr or result.stdout or "docker info failed").strip()
-        return False, err
+        """Run ``docker info`` and return (ok, error_message)."""
+        try:
+            result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return True, ""
+            return False, (result.stderr or result.stdout or "docker info failed").strip()
+        except FileNotFoundError:
+            return False, "docker CLI not found on PATH"
+        except subprocess.TimeoutExpired:
+            return False, "daemon not responding (timed out after 5s)"
 
-    def _process_running(name: str) -> bool:
-        result = subprocess.run(["pgrep", "-f", name], capture_output=True)
-        return result.returncode == 0
-
-    ok, _ = _docker_alive()
+    ok, err = _docker_alive()
     if ok:
         print("  Docker ............ OK")
         return True
 
-    if not try_start:
-        ok, err = _docker_alive()
-        sock = _find_socket()
-        print(f"  Docker ............ FAIL ({err[:80]})")
-        if sock:
-            print(f"    Socket found at {sock} but daemon is not responding")
+    if not try_start or _sys.platform != "darwin":
+        print(f"  Docker ............ FAIL ({err})")
+        if _sys.platform == "darwin":
+            print("    Start Docker: open -a OrbStack  OR  open -a Docker")
         else:
-            print(f"    No socket found at: {', '.join(str(p) for p in _SOCKET_CANDIDATES)}")
-        print("    Start Docker: open -a OrbStack  OR  open -a Docker")
+            print("    Start Docker: sudo systemctl start docker")
         return False
 
+    # macOS: attempt to launch a container runtime.
+    orbctl = subprocess.run(["which", "orbctl"], capture_output=True, text=True)
     orbstack_app = Path("/Applications/OrbStack.app")
     docker_app = Path("/Applications/Docker.app")
-    orbctl_path = subprocess.run(["which", "orbctl"], capture_output=True, text=True)
-    has_orbctl = orbctl_path.returncode == 0
 
-    already_running = _process_running("OrbStack") or _process_running("Docker Desktop")
-
-    if already_running:
-        sock = _find_socket()
-        sock_label = str(sock) if sock else "no socket file found yet"
-        print(f"  Docker ............ process running, polling socket ({sock_label})...", end="", flush=True)
-    elif has_orbctl:
-        print("  Docker ............ starting OrbStack (orbctl start)...", flush=True)
-        result = subprocess.run(["orbctl", "start"], capture_output=True, text=True, timeout=60)
+    if orbctl.returncode == 0:
+        # orbctl start blocks until the socket is ready.
+        print("  Docker ............ starting OrbStack...", flush=True)
+        subprocess.run(["orbctl", "start"], capture_output=True, timeout=60)
         ok, _ = _docker_alive()
-        if result.returncode == 0 and ok:
-            print("  Docker ............ OK (OrbStack ready)")
+        if ok:
+            print("  Docker ............ OK")
             return True
-        sock = _find_socket()
-        sock_label = str(sock) if sock else "no socket file found yet"
-        print(f"  Docker ............ polling socket ({sock_label})...", end="", flush=True)
+        # orbctl returned but socket not yet up — fall through to poll.
+        print("  Docker ............ polling...", end="", flush=True)
     elif orbstack_app.exists():
         print("  Docker ............ starting OrbStack...", flush=True)
         subprocess.run(["open", "-a", "OrbStack"], check=False)
-        print("  Docker ............ polling socket...", end="", flush=True)
+        print("  Docker ............ polling...", end="", flush=True)
     elif docker_app.exists():
         print("  Docker ............ starting Docker Desktop...", flush=True)
         subprocess.run(["open", "-a", "Docker"], check=False)
-        print("  Docker ............ polling socket...", end="", flush=True)
+        print("  Docker ............ polling...", end="", flush=True)
     else:
-        print("  Docker ............ FAIL (process not running, no launcher found)")
+        print("  Docker ............ FAIL (no container runtime found)")
         print("    Install OrbStack: https://orbstack.dev  OR  Docker Desktop")
         return False
 
@@ -246,12 +218,7 @@ def check_docker(*, try_start: bool = False) -> bool:
         print(".", end="", flush=True)
         time.sleep(2)
 
-    print(" FAIL")
-    sock = _find_socket()
-    if sock:
-        print(f"  Docker ............ FAIL — socket exists at {sock} but ping failed: {last_err[:120]}")
-    else:
-        print(f"  Docker ............ FAIL — no socket found after 30s ({last_err[:120]})")
+    print(f" FAIL ({last_err})")
     return False
 
 
