@@ -170,14 +170,17 @@ def check_docker(*, try_start: bool = False) -> bool:
         return None
 
     def _docker_alive() -> tuple[bool, str]:
-        """Ping Docker. Returns (ok, error_message)."""
-        try:
-            import docker
-            client = docker.from_env()
-            client.ping()
+        """Ping Docker via CLI. Returns (ok, error_message)."""
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
             return True, ""
-        except Exception as exc:
-            return False, str(exc)
+        err = (result.stderr or result.stdout or "docker info failed").strip()
+        return False, err
 
     def _process_running(name: str) -> bool:
         result = subprocess.run(["pgrep", "-f", name], capture_output=True)
