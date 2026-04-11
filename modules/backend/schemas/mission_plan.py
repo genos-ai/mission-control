@@ -73,6 +73,15 @@ class MissionPlanUpdate(BaseModel):
             "approved task before it queues. NULL = no veto window."
         ),
     )
+    task_order: list[str] | None = Field(
+        None,
+        description=(
+            "Desired display order for proposed tasks — list of task_ids. "
+            "Tasks in this list are sorted to match; tasks not in the list "
+            "keep their current relative position after. Used by the kanban "
+            "drag-to-reorder UI (Phase 4)."
+        ),
+    )
 
 
 class PlanTaskStateResponse(BaseModel):
@@ -92,6 +101,11 @@ class PlanTaskStateResponse(BaseModel):
     veto_expires_at: datetime | None
     result_summary: str | None
     failure_reason: str | None
+    # Plan 46 Phase 2 #2: per-task cost + duration denormalised from
+    # task_executions at run completion so the Plan tab's Done cards
+    # render "$X.XX · Ns" without a separate join.
+    cost_usd: float = 0.0
+    duration_seconds: float = 0.0
     created_at: datetime
     updated_at: datetime
 

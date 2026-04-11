@@ -40,6 +40,11 @@ export interface PlanTaskState {
   veto_expires_at: string | null
   result_summary: string | null
   failure_reason: string | null
+  // Plan 46 Phase 2 #2: per-task metrics denormalised from
+  // task_executions at run completion. Default 0.0 for pre-run
+  // states (proposed/approved/queued).
+  cost_usd: number
+  duration_seconds: number
   created_at: string
   updated_at: string
 }
@@ -138,12 +143,13 @@ export function useRefinePlan(missionId: string) {
   })
 }
 
-/** Update plan-level settings (gate_mode / status / budget / veto). */
+/** Update plan-level settings (gate_mode / status / budget / veto / task_order). */
 export interface PlanUpdatePayload {
   gate_mode?: GateMode
   status?: MissionPlanStatus
   budget_usd_ceiling?: number
   veto_window_sec?: number
+  task_order?: string[]
 }
 
 export function useUpdatePlan(missionId: string) {
@@ -151,6 +157,18 @@ export function useUpdatePlan(missionId: string) {
   return useMutation({
     mutationFn: (payload: PlanUpdatePayload) =>
       api.patch<MissionPlan>(`/missions/${missionId}/plan`, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: planKeys.plan(missionId) })
+    },
+  })
+}
+
+/** Reorder proposed tasks in the plan (drag-to-reorder, Phase 4). */
+export function useReorderTasks(missionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (taskOrder: string[]) =>
+      api.patch<MissionPlan>(`/missions/${missionId}/plan`, { task_order: taskOrder }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: planKeys.plan(missionId) })
     },

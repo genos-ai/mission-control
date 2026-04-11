@@ -113,7 +113,7 @@ async def update_plan(
     current_user: CurrentUser,
     event_bus: EventBus,
 ) -> ApiResponse:
-    """Update gate_mode, status, budget, or veto window.
+    """Update gate_mode, status, budget, veto window, or task display order.
 
     Only the fields present in the request body are applied — all are
     optional. Gate mode is validated against the existing gate system's
@@ -135,6 +135,16 @@ async def update_plan(
         await db.flush()
     if data.veto_window_sec is not None:
         plan.veto_window_sec = data.veto_window_sec
+        await db.flush()
+    if data.task_order is not None and plan.task_plan_json:
+        tasks: list[dict] = list(plan.task_plan_json.get("tasks", []))
+        order_map = {tid: i for i, tid in enumerate(data.task_order)}
+        in_order = sorted(
+            [t for t in tasks if t.get("task_id") in order_map],
+            key=lambda t: order_map[t.get("task_id", "")],
+        )
+        not_in_order = [t for t in tasks if t.get("task_id") not in order_map]
+        plan.task_plan_json = {**plan.task_plan_json, "tasks": in_order + not_in_order}
         await db.flush()
 
     # Refetch to include updated task_states relationship

@@ -46,6 +46,12 @@ import {
 } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from '@hello-pangea/dnd'
+import {
   Loader2,
   CheckCircle2,
   XCircle,
@@ -64,6 +70,8 @@ import {
   Wrench,
   ChevronDown,
   ChevronRight,
+  GripVertical,
+  MoreVertical,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
@@ -80,6 +88,7 @@ import {
   useRetryTask,
   useDispatchApproved,
   useUpdatePlan,
+  useReorderTasks,
   type MissionPlan,
   type PlanTaskBody,
   type PlanTaskState,
@@ -203,7 +212,9 @@ function PlanBoardInner({
   joined: JoinedTask[]
 }) {
   const [refineOpen, setRefineOpen] = useState(false)
+  const [proposedOrder, setProposedOrder] = useState<string[] | null>(null)
   const refine = useRefinePlan(missionId)
+  const reorderTasks = useReorderTasks(missionId)
 
   const annotated = useMemo(() => computeAnnotated(joined), [joined])
   const edges = useMemo(() => computeEdges(joined), [joined])
@@ -218,32 +229,65 @@ function PlanBoardInner({
     for (const a of annotated) {
       out[columnFor(a.effectiveStatus)].push(a)
     }
+    // Apply optimistic drag order for proposed column.
+    if (proposedOrder) {
+      const byId = new Map(out.proposed.map((t) => [t.body.task_id, t]))
+      const ordered = proposedOrder
+        .map((id) => byId.get(id))
+        .filter((t): t is AnnotatedTask => t !== undefined)
+      const orderedSet = new Set(proposedOrder)
+      for (const t of out.proposed) {
+        if (!orderedSet.has(t.body.task_id)) ordered.push(t)
+      }
+      out.proposed = ordered
+    }
     // Sort Done with most recent first (newest runs at the top).
     out.done.sort((a, b) =>
       (b.state?.last_attempt_at ?? '').localeCompare(a.state?.last_attempt_at ?? ''),
     )
     return out
-  }, [annotated])
+  }, [annotated, proposedOrder])
+
+  function handleDragEnd(result: DropResult) {
+    if (!result.destination) return
+    if (result.source.droppableId !== 'proposed' || result.destination.droppableId !== 'proposed') return
+    if (result.source.index === result.destination.index) return
+
+    const ids = byColumn.proposed.map((t) => t.body.task_id)
+    const [removed] = ids.splice(result.source.index, 1)
+    ids.splice(result.destination.index, 0, removed)
+
+    setProposedOrder(ids)
+    reorderTasks.mutate(ids, {
+      onSuccess: () => setProposedOrder(null),
+      onError: () => {
+        setProposedOrder(null)
+        toast.error('Failed to reorder tasks')
+      },
+    })
+  }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <PlanTopBar
-        plan={plan}
-        missionId={missionId}
-        joined={joined}
-        onToggleRefine={() => setRefineOpen((v) => !v)}
-        refineOpen={refineOpen}
-      />
-      {refineOpen && (
-        <RefinePanel refine={refine} onDone={() => setRefineOpen(false)} />
-      )}
-      <BoardArea
-        byColumn={byColumn}
-        edges={edges}
-        missionId={missionId}
-        isRefining={refine.isPending}
-      />
-    </div>
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <div className="flex h-full min-h-0 flex-col">
+        <PlanTopBar
+          plan={plan}
+          missionId={missionId}
+          joined={joined}
+          onToggleRefine={() => setRefineOpen((v) => !v)}
+          refineOpen={refineOpen}
+        />
+        {refineOpen && (
+          <RefinePanel refine={refine} onDone={() => setRefineOpen(false)} />
+        )}
+        <BoardArea
+          byColumn={byColumn}
+          edges={edges}
+          missionId={missionId}
+          isRefining={refine.isPending}
+        />
+      </div>
+    </DragDropContext>
   )
 }
 
@@ -565,6 +609,32 @@ function Column({
   showShimmer: boolean
 }) {
   const parallelism = def.id === 'running' && rows.length > 1
+  const isProposed = def.id === 'proposed'
+
+  const cards = rows.map((row, index) =>
+    isProposed ? (
+      <Draggable key={row.body.task_id} draggableId={row.body.task_id} index={index}>
+        {(provided, snapshot) => (
+          <TaskCard
+            row={row}
+            missionId={missionId}
+            cardRef={registerRef(row.body.task_id)}
+            dragInnerRef={provided.innerRef}
+            draggableProps={provided.draggableProps}
+            dragHandleProps={provided.dragHandleProps}
+            isDragging={snapshot.isDragging}
+          />
+        )}
+      </Draggable>
+    ) : (
+      <TaskCard
+        key={row.body.task_id}
+        row={row}
+        missionId={missionId}
+        cardRef={registerRef(row.body.task_id)}
+      />
+    ),
+  )
 
   return (
     <div className="flex min-w-[260px] max-w-[320px] flex-1 flex-col">
@@ -585,22 +655,39 @@ function Column({
           </span>
         )}
       </div>
-      <div className="space-y-2 rounded-lg bg-muted/30 p-2 min-h-[60px]">
-        {showShimmer && <ShimmerCard />}
-        {rows.map((row) => (
-          <TaskCard
-            key={row.body.task_id}
-            row={row}
-            missionId={missionId}
-            cardRef={registerRef(row.body.task_id)}
-          />
-        ))}
-        {rows.length === 0 && !showShimmer && (
-          <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
-            empty
-          </div>
-        )}
-      </div>
+      {isProposed ? (
+        <Droppable droppableId="proposed">
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className={cn(
+                'space-y-2 rounded-lg p-2 min-h-[60px] transition-colors',
+                snapshot.isDraggingOver ? 'bg-primary/5 ring-1 ring-inset ring-primary/20' : 'bg-muted/30',
+              )}
+            >
+              {showShimmer && <ShimmerCard />}
+              {cards}
+              {provided.placeholder}
+              {rows.length === 0 && !showShimmer && (
+                <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
+                  empty
+                </div>
+              )}
+            </div>
+          )}
+        </Droppable>
+      ) : (
+        <div className="space-y-2 rounded-lg bg-muted/30 p-2 min-h-[60px]">
+          {showShimmer && <ShimmerCard />}
+          {cards}
+          {rows.length === 0 && !showShimmer && (
+            <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
+              empty
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -611,15 +698,34 @@ function TaskCard({
   row,
   missionId,
   cardRef,
+  dragInnerRef,
+  draggableProps,
+  dragHandleProps,
+  isDragging,
 }: {
   row: AnnotatedTask
   missionId: string
   cardRef: RefCallback<HTMLDivElement>
+  dragInnerRef?: (el: HTMLDivElement | null) => void
+  draggableProps?: React.HTMLAttributes<HTMLDivElement>
+  dragHandleProps?: React.HTMLAttributes<HTMLSpanElement> | null
+  isDragging?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const approve = useApproveTask(missionId)
   const reject = useRejectTask(missionId)
   const retry = useRetryTask(missionId)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
 
   const { body, state, effectiveStatus, blocked, blockingDeps } = row
   const agentShort = body.agent.endsWith('.agent')
@@ -682,19 +788,32 @@ function TaskCard({
 
   return (
     <div
-      ref={cardRef}
+      ref={(el) => { cardRef(el); dragInnerRef?.(el) }}
+      {...draggableProps}
       className={cn(
         'relative rounded-md border bg-card shadow-sm p-2.5 text-xs transition-colors',
         borderClass,
         dimmed && 'opacity-60',
+        isDragging && 'shadow-xl ring-1 ring-primary/30 rotate-[0.5deg] opacity-95',
       )}
     >
-      {/* Header: agent badge (color-coded) + blocked pill ⋯ veto + status icon */}
+      {/* Drag grip (Proposed column only) */}
+      {dragHandleProps && (
+        <span
+          {...dragHandleProps}
+          className="absolute right-1.5 top-1.5 cursor-grab rounded p-0.5 text-muted-foreground/20 hover:text-muted-foreground/50 active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-3 w-3" />
+        </span>
+      )}
+
+      {/* Header: domain-colored agent badge + blocked pill + veto + status + menu */}
       <div className="mb-1.5 flex items-center gap-1.5">
         <span
           className={cn(
-            'inline-flex max-w-[140px] items-center truncate rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
-            getAgentBadgeClass(effectiveStatus),
+            'inline-flex max-w-[120px] items-center truncate rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
+            getAgentBadgeClass(effectiveStatus, body.agent),
           )}
           title={body.agent}
         >
@@ -709,7 +828,7 @@ function TaskCard({
             blocked
           </span>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1">
           {inVetoWindow && veto && (
             <span
               className="flex items-center gap-0.5 rounded bg-amber-500/10 px-1 py-0.5 text-[9px] text-amber-400"
@@ -720,6 +839,44 @@ function TaskCard({
             </span>
           )}
           <StatusIcon status={effectiveStatus} />
+          {/* ⋮ card menu */}
+          <div ref={menuRef} className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v) }}
+              className="rounded p-0.5 text-muted-foreground/25 hover:text-muted-foreground/70 hover:bg-accent"
+              title="More actions"
+            >
+              <MoreVertical className="h-3 w-3" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-5 z-50 min-w-[130px] rounded-md border bg-popover shadow-md py-0.5 text-[11px]">
+                {(effectiveStatus === 'proposed' || effectiveStatus === 'approved' || effectiveStatus === 'queued') && (
+                  <button
+                    onClick={() => { setMenuOpen(false); handleReject() }}
+                    disabled={reject.isPending}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-accent disabled:opacity-40"
+                  >
+                    <X className="h-3 w-3" />
+                    {effectiveStatus === 'proposed' ? 'Reject' : 'Cancel'}
+                  </button>
+                )}
+                {effectiveStatus === 'failed' && (
+                  <button
+                    onClick={() => { setMenuOpen(false); handleRetry() }}
+                    disabled={retry.isPending}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Retry
+                  </button>
+                )}
+                <div className="mx-2 my-0.5 border-t border-border/50" />
+                <p className="px-3 py-1 font-mono text-[10px] text-muted-foreground/50 truncate max-w-[160px]">
+                  {body.task_id}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -736,22 +893,45 @@ function TaskCard({
         </div>
       )}
 
-      {/* Meta line: retries + dep count */}
-      {(state?.retry_count || body.dependencies.length > 0) && (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground/60">
-          {state && state.retry_count > 0 && (
-            <span className="text-amber-400/70">
-              {state.retry_count} {state.retry_count === 1 ? 'retry' : 'retries'}
-            </span>
-          )}
-          {body.dependencies.length > 0 && (
-            <span title={`Depends on: ${body.dependencies.join(', ')}`}>
-              {body.dependencies.length} dep
-              {body.dependencies.length > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-      )}
+      {/* Meta line: cost/duration (terminal only) + retries + dep count.
+          Cost/duration are Plan 46 Phase 2 #2: denormalised from
+          task_executions at run completion. Hidden for pre-run and
+          running states — a proposed/queued/running task legitimately
+          shows "no cost yet" which we render as no pill rather than
+          "$0.0000 · 0.0s". */}
+      {(() => {
+        const terminal =
+          effectiveStatus === 'completed' || effectiveStatus === 'failed'
+        const showMetrics =
+          !!state &&
+          terminal &&
+          (state.cost_usd > 0 || state.duration_seconds > 0)
+        const hasMeta =
+          showMetrics ||
+          !!state?.retry_count ||
+          body.dependencies.length > 0
+        if (!hasMeta) return null
+        return (
+          <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground/60">
+            {showMetrics && state && (
+              <span className="tabular-nums" title="Cost · duration">
+                ${state.cost_usd.toFixed(4)} · {state.duration_seconds.toFixed(1)}s
+              </span>
+            )}
+            {state && state.retry_count > 0 && (
+              <span className="text-amber-400/70">
+                {state.retry_count} {state.retry_count === 1 ? 'retry' : 'retries'}
+              </span>
+            )}
+            {body.dependencies.length > 0 && (
+              <span title={`Depends on: ${body.dependencies.join(', ')}`}>
+                {body.dependencies.length} dep
+                {body.dependencies.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Result / failure preview */}
       {state?.result_summary && effectiveStatus === 'completed' && (
@@ -827,6 +1007,13 @@ function TaskCard({
           />
         )}
       </div>
+
+      {/* Indeterminate progress bar for running cards */}
+      {effectiveStatus === 'running' && (
+        <div className="mt-2 h-[2px] w-full overflow-hidden rounded-full bg-amber-500/15">
+          <div className="h-full w-1/2 animate-pulse rounded-full bg-amber-400/60" />
+        </div>
+      )}
     </div>
   )
 }
@@ -928,7 +1115,30 @@ function getBorderClass(status: PlanTaskStatus): string {
   }
 }
 
-function getAgentBadgeClass(status: PlanTaskStatus): string {
+const AGENT_DOMAIN_COLORS: Record<string, string> = {
+  code: 'bg-blue-500/10 text-blue-400 ring-1 ring-inset ring-blue-500/30',
+  software: 'bg-blue-500/10 text-blue-400 ring-1 ring-inset ring-blue-500/30',
+  dev: 'bg-blue-500/10 text-blue-400 ring-1 ring-inset ring-blue-500/30',
+  engineer: 'bg-blue-500/10 text-blue-400 ring-1 ring-inset ring-blue-500/30',
+  research: 'bg-violet-500/10 text-violet-400 ring-1 ring-inset ring-violet-500/30',
+  analyst: 'bg-violet-500/10 text-violet-400 ring-1 ring-inset ring-violet-500/30',
+  analysis: 'bg-violet-500/10 text-violet-400 ring-1 ring-inset ring-violet-500/30',
+  security: 'bg-rose-500/10 text-rose-400 ring-1 ring-inset ring-rose-500/30',
+  audit: 'bg-rose-500/10 text-rose-400 ring-1 ring-inset ring-rose-500/30',
+  writer: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/30',
+  content: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/30',
+  data: 'bg-cyan-500/10 text-cyan-400 ring-1 ring-inset ring-cyan-500/30',
+  mission: 'bg-orange-500/10 text-orange-400 ring-1 ring-inset ring-orange-500/30',
+  director: 'bg-orange-500/10 text-orange-400 ring-1 ring-inset ring-orange-500/30',
+  planning: 'bg-orange-500/10 text-orange-400 ring-1 ring-inset ring-orange-500/30',
+}
+
+function getAgentDomainClass(agentName: string): string {
+  const domain = agentName.split('.')[0].toLowerCase()
+  return AGENT_DOMAIN_COLORS[domain] ?? 'bg-muted text-muted-foreground ring-1 ring-inset ring-border/50'
+}
+
+function getAgentBadgeClass(status: PlanTaskStatus, agentName: string): string {
   switch (status) {
     case 'running':
       return 'bg-amber-500/10 text-amber-400 ring-1 ring-inset ring-amber-500/30'
@@ -936,11 +1146,9 @@ function getAgentBadgeClass(status: PlanTaskStatus): string {
       return 'bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/30'
     case 'failed':
       return 'bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/30'
-    case 'approved':
-    case 'queued':
-      return 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/30'
     default:
-      return 'bg-muted text-muted-foreground'
+      // For proposed/approved/queued/cancelled/skipped: use domain color
+      return getAgentDomainClass(agentName)
   }
 }
 
