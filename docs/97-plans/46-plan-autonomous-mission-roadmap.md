@@ -242,7 +242,7 @@ that write code do so in isolation.
 
 ### Phase 2 — Durable output
 
-**Status:** In flight. Work unit #1 complete (2026-04-11). Work units 2–4 outstanding.
+**Status:** ✅ **Complete (2026-04-11).** All four work units done, all exit criteria observably met. Phase 3 (signaling) is unblocked.
 
 **Goal:** A returning user can see exactly what happened overnight — every run's
 artifacts, costs, durations, and narrative survive page refresh and backend restart.

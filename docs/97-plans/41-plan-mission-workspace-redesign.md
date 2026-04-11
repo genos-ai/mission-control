@@ -1016,3 +1016,30 @@ already visible on every card in the board. Showing it condensed (`3 agents · 1
 running`) keeps the left panel useful (budget, nav) without wasting 80px on redundant
 status indicators. In Narrative/Stream mode — where there is no board — the full
 roster is the primary way to understand which agents are active, so it stays full.
+
+---
+
+## 10  Narrative Feed — Implementation Decision Note (2026-04-11)
+
+**Spec vs. shipped:** §3.4 specified a Narrative mode rendered within the workspace
+center panel as a toggle alongside Plan Board and Stream — with tool call rows
+*grouped and indented* under the narrative event that preceded them (Tiered
+Transparency), collapsed by default.
+
+**What shipped:** The workspace was implemented as URL-routed tabs (Plan 49 mission
+navigation consolidation, 2026-04-11). The Narrative feed exists as its own tab
+(`pages/mission/tabs/narrative-tab.tsx`) rather than a center-panel mode toggle.
+It renders a flat event feed with distinct row types per event:
+`mission.narrative`, `mission.artifact.found`, `plan.step.started/completed`,
+`agent.thinking.started`, `agent.tool.called`, `system.execution.*`.
+
+**What was not implemented:** Tool call rows are not grouped/indented under the
+narrative row that announced the step. Each event type appears as a flat row. The
+"Tiered Transparency" grouping from §3.4 was not implemented.
+
+**Decision:** The flat feed is retained as the v1 implementation. The tiered grouping
+adds meaningful UX value (reduces cognitive load during a run with many tool calls)
+but is not load-bearing for correctness. It is deferred to a future polish pass
+rather than holding up Phase 2 of the roadmap. At that point, the logical home is
+still `narrative-tab.tsx` — group consecutive `agent.tool.called` events under the
+nearest preceding `mission.narrative` row with matching `agent_id`.

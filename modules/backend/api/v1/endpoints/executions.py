@@ -55,7 +55,15 @@ async def list_executions(
         offset=offset,
     )
 
-    persisted = [ExecutionRecordResponse.model_validate(e) for e in executions]
+    # Plan 46 Phase 2 #3: task_count is populated from the eager-loaded
+    # task_executions relationship (see repositories/execution_record.py::
+    # list_executions). Model validation pulls in the rest verbatim.
+    persisted = [
+        ExecutionRecordResponse.model_validate(e).model_copy(
+            update={"task_count": len(e.task_executions or [])}
+        )
+        for e in executions
+    ]
 
     # Merge live executions not yet persisted
     from modules.backend.services.execution import ExecutionService

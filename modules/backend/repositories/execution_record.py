@@ -80,6 +80,12 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
 
         data_stmt = (
             select(ExecutionRecord)
+            # Plan 46 Phase 2 #3: eager-load task_executions so the
+            # Runs tab list row can render task_count without an N+1
+            # query. selectinload uses a single secondary IN query
+            # rather than a join, which keeps per-row select costs
+            # down at list time.
+            .options(selectinload(ExecutionRecord.task_executions))
             .order_by(ExecutionRecord.created_at.desc())
             .limit(limit)
             .offset(offset)
