@@ -14,7 +14,6 @@ export const ROUTES = {
   MISSION_CONSOLE: (id: string) => `/missions/${id}/console`,
   MISSION_RUN_LIVE: (missionId: string, runId: string) =>
     `/missions/${missionId}/runs/${runId}`,
-  MISSION_WORKSHOP: (id: string) => `/missions/${id}/workshop`,
   MISSION_CONTEXT: (id: string) => `/missions/${id}/context`,
 
   // Admin
