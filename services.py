@@ -141,9 +141,10 @@ def check_redis() -> bool:
 def check_docker(*, try_start: bool = False) -> bool:
     """Check Docker daemon connectivity. Optionally starts OrbStack on macOS.
 
-    When ``try_start=True`` and Docker is not reachable, attempts to launch
-    OrbStack (the recommended local Docker runtime) if it is installed, then
-    waits up to 30 seconds for the daemon to become available.
+    When ``try_start=True`` and Docker is not reachable, the function tries:
+      1. ``orbctl start`` if orbctl is on PATH — blocks until OrbStack is ready.
+      2. ``open -a OrbStack`` if the app exists — then polls up to 90s.
+      3. ``open -a Docker`` for Docker Desktop — then polls up to 90s.
 
     Returns True when Docker is reachable.
     """
@@ -165,33 +166,49 @@ def check_docker(*, try_start: bool = False) -> bool:
         print("    Start Docker: open -a OrbStack  OR  open -a Docker")
         return False
 
-    # Try to start OrbStack (macOS)
+    # Determine what's available
+    orbctl_path = subprocess.run(["which", "orbctl"], capture_output=True, text=True)
+    has_orbctl = orbctl_path.returncode == 0
     orbstack_app = Path("/Applications/OrbStack.app")
-    orbctl = subprocess.run(["which", "orbctl"], capture_output=True, text=True)
     docker_app = Path("/Applications/Docker.app")
 
-    if orbstack_app.exists():
-        print("  Docker ............ starting OrbStack...")
+    if has_orbctl:
+        # orbctl start blocks until OrbStack is fully ready (Docker socket up).
+        print("  Docker ............ starting OrbStack (orbctl start)...", flush=True)
+        result = subprocess.run(
+            ["orbctl", "start"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0 and _docker_alive():
+            print("  Docker ............ OK (OrbStack ready)")
+            return True
+        # orbctl reported success but socket still not up — fall through to poll
+    elif orbstack_app.exists():
+        print("  Docker ............ starting OrbStack...", flush=True)
         subprocess.run(["open", "-a", "OrbStack"], check=False)
-    elif orbctl.returncode == 0:
-        subprocess.run(["orbctl", "start"], capture_output=True, check=False)
     elif docker_app.exists():
-        print("  Docker ............ starting Docker Desktop...")
+        print("  Docker ............ starting Docker Desktop...", flush=True)
         subprocess.run(["open", "-a", "Docker"], check=False)
     else:
         print("  Docker ............ FAIL (daemon not reachable, no launcher found)")
         print("    Install OrbStack: https://orbstack.dev  OR  Docker Desktop")
         return False
 
-    # Wait up to 30s for Docker to become available
-    deadline = time.time() + 30
+    # Poll — OrbStack typically takes 15-60s from cold start; allow 90s.
+    timeout_sec = 90
+    deadline = time.time() + timeout_sec
+    print(f"  Docker ............ waiting for daemon (up to {timeout_sec}s)", end="", flush=True)
     while time.time() < deadline:
         if _docker_alive():
-            print("  Docker ............ OK (started)")
+            print(" OK")
             return True
-        time.sleep(1)
+        print(".", end="", flush=True)
+        time.sleep(2)
 
-    print("  Docker ............ FAIL (did not start within 30s)")
+    print(f" FAIL")
+    print(f"  Docker ............ FAIL (did not start within {timeout_sec}s)")
     return False
 
 
