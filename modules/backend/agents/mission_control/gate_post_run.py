@@ -368,7 +368,7 @@ class AutonomousPostRunReviewer:
             # Usage tracking
             usage = result.usage()
             tokens_used = (usage.input_tokens or 0) + (usage.output_tokens or 0)
-            from modules.backend.core.cost import compute_cost_usd
+            from modules.backend.agents.mission_control.cost import compute_cost_usd
             cost_usd = compute_cost_usd(
                 usage.input_tokens or 0,
                 usage.output_tokens or 0,
