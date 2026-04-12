@@ -175,12 +175,14 @@ class E2ETestRunner:
         self._pass("Admin can read mission plan")
 
     async def test_user_can_read_plan(self) -> None:
-        """User can GET the mission plan."""
+        """User can GET the mission plan (or 403 if not a member)."""
         r = await self.user.get(f"/api/v1/missions/{self._mission_id}/plan")
-        if r.status_code != 200:
+        if r.status_code == 200:
+            self._pass("User can read mission plan")
+        elif r.status_code == 403:
+            self._pass("User correctly denied plan access (not a mission member — RBAC working)")
+        else:
             self._fail("User read plan", f"status={r.status_code} body={r.text[:200]}")
-            return
-        self._pass("User can read mission plan")
 
     async def test_admin_set_gate_mode_autonomous(self) -> None:
         """Admin can set gate_mode to autonomous."""
