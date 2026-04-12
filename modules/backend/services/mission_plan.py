@@ -624,9 +624,58 @@ class MissionPlanService(BaseService):
         )
         await self._emit(plan.mission_id, _run_completed_event)
 
-        # Plan 52: Supervisor loop and Director followups are handled
-        # by Temporal's MissionRunWorkflow. dispatch_approved just
-        # emits the event and returns — the workflow picks it up.
+        # Plan 52: When the full Temporal path is active (MissionRunWorkflow
+        # started by ScheduledMissionCheckWorkflow), the supervisor loop runs
+        # as workflow steps. But dispatch_approved is also called directly via
+        # the API (POST /plan/dispatch) and the daemon. For these paths, run
+        # the supervisor evaluation inline so decisions are still made.
+        try:
+            from modules.backend.agents.mission_control.gate_models import GateAction, GateContext
+            from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
+            from modules.backend.agents.tools.supervisor_introspection import get_recent_run_outcomes
+            from modules.backend.events.types import SupervisorDecisionEmittedEvent
+
+            recent = await get_recent_run_outcomes(self._session, mission_id=plan.mission_id, limit=5)
+            task_states_now = await self.get_task_states(plan.id)
+            summary = {
+                "approved": sum(1 for s in task_states_now if s.status == "approved"),
+                "proposed": sum(1 for s in task_states_now if s.status == "proposed"),
+                "running": sum(1 for s in task_states_now if s.status == "running"),
+                "completed": sum(1 for s in task_states_now if s.status in ("completed", "done")),
+                "failed": sum(1 for s in task_states_now if s.status == "failed"),
+                "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
+                "execution_record_id": outcome.execution_record_id,
+                "max_supervisor_iterations": plan.max_supervisor_iterations,
+            }
+            mission_obj = await self._mission_repo.get_by_id(plan.mission_id)
+            context = GateContext(
+                gate_type="post_run", mission_id=plan.mission_id,
+                total_cost_usd=plan.total_spent_usd,
+                budget_usd=plan.budget_usd_ceiling or 0.0,
+                recent_run_outcomes=recent, plan_task_summary=summary,
+                mission_brief=mission_obj.brief or mission_obj.description or "",
+                supervisor_iteration_count=plan.supervisor_iteration_count,
+            )
+            reviewer = AutonomousPostRunReviewer(session=self._session, gate_mode=plan.gate_mode)
+            decision = await reviewer.review(context)
+            plan.supervisor_iteration_count += 1
+            # Apply ADVANCE_APPROVED inline
+            if decision.action == GateAction.ADVANCE_APPROVED:
+                from modules.backend.models.mission_plan import PlanTaskStatus as _PTS
+                for ts in await self.get_task_states(plan.id, status=_PTS.PROPOSED):
+                    await self.approve_task(plan.id, ts.task_id, "mission.supervisor.agent")
+            await self._session.flush()
+            # Emit decision event
+            await self._emit(plan.mission_id, SupervisorDecisionEmittedEvent(
+                session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+                source="mission_plan_service", mission_id=plan.mission_id,
+                plan_id=plan.id, execution_record_id=outcome.execution_record_id or "",
+                action=decision.action.value, reason=(decision.reason or "")[:500],
+                reviewer=decision.reviewer,
+            ))
+            self._log_operation("Post-run supervisor", plan_id=plan.id, action=decision.action.value)
+        except Exception:
+            self._logger.warning("Post-run supervisor evaluation failed", exc_info=True)
 
         return {
             "outcome_status": (
