@@ -189,19 +189,14 @@ class AutonomousPostRunReviewer:
                     rule=7,
                 )
 
-        # Rule #8: Plan exhausted — no approved, no proposed, outcomes present
+        # Rule #8: Plan exhausted — no approved, no proposed, outcomes present.
+        # This is the ONLY branch that consults Haiku. All other branches
+        # are deterministic Python above.
         if has_outcomes:
-            # Phase C stubs this as ESCALATE. Phase D wires the
-            # Haiku agent for ADVANCE_REFINE / PROPOSE_COMPLETE
-            # classification.
-            return self._decide(
-                GateAction.ESCALATE,
-                "Plan exhausted with outcomes present — Haiku "
-                "classification not yet wired (Phase D stub). "
-                "Escalating to Director.",
-                execution_record_id=execution_record_id,
-                rule=8,
-            )
+            haiku_decision = await self._classify_with_haiku(context)
+            if haiku_decision is not None:
+                return haiku_decision
+            # If Haiku fails, fall through to ESCALATE below.
 
         # Fall-through: unknown situation → ESCALATE (safe default)
         return self._decide(
@@ -329,6 +324,139 @@ class AutonomousPostRunReviewer:
             reviewer=meta.get("reviewer", "config:rule_engine"),
             model_metadata=meta.get("model_metadata"),
         )
+
+    async def _classify_with_haiku(
+        self,
+        context: GateContext,
+    ) -> GateDecision | None:
+        """Branch #8: invoke the Haiku supervisor agent for classification.
+
+        Returns a GateDecision on success, or None if the Haiku call
+        fails (so the caller can fall through to ESCALATE).
+
+        Confidence < 0.6 is overridden to ESCALATE regardless of the
+        agent's stated decision (§4.2 safety rule).
+        """
+        execution_record_id = context.plan_task_summary.get("execution_record_id")
+
+        try:
+            from modules.backend.agents.mission.supervisor.agent import (
+                create_event_agent,
+            )
+            from modules.backend.agents.mission.supervisor.deps import (
+                MissionSupervisorDeps,
+            )
+
+            agent = create_event_agent("anthropic:claude-haiku-4-5-20251001")
+            deps = MissionSupervisorDeps(
+                mission_id=context.mission_id,
+                db_session=self._session,
+            )
+
+            # Build the prompt with context the Haiku agent needs.
+            prompt = (
+                f"Mission brief: {context.mission_brief or 'not available'}\n\n"
+                f"Recent run outcomes:\n{json.dumps(context.recent_run_outcomes[:3], indent=2, default=str)}\n\n"
+                f"Plan task summary: {json.dumps(context.plan_task_summary, indent=2, default=str)}\n\n"
+                f"Budget: spent ${context.total_cost_usd:.4f} of ${context.budget_usd:.4f} ceiling.\n\n"
+                "Based on the above, classify this situation."
+            )
+
+            result = await agent.run(prompt, deps=deps)
+            decision = result.output  # SupervisorDecision
+
+            # Usage tracking
+            usage = result.usage()
+            tokens_used = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+            from modules.backend.core.cost import compute_cost_usd
+            cost_usd = compute_cost_usd(
+                usage.input_tokens or 0,
+                usage.output_tokens or 0,
+                "anthropic:claude-haiku-4-5-20251001",
+            )
+
+            # Confidence override: < 0.6 → ESCALATE
+            if decision.confidence < 0.6:
+                logger.info(
+                    "Haiku confidence below threshold, overriding to ESCALATE",
+                    extra={
+                        "stated_decision": decision.decision,
+                        "confidence": decision.confidence,
+                    },
+                )
+                return self._decide(
+                    GateAction.ESCALATE,
+                    f"Haiku classified as {decision.decision} but confidence "
+                    f"({decision.confidence:.2f}) is below 0.6 threshold. "
+                    f"Reason: {decision.reason}",
+                    execution_record_id=execution_record_id,
+                    rule="8-low-confidence",
+                )
+
+            # Map the decision string to a GateAction.
+            action_map = {
+                "ADVANCE_REFINE": GateAction.ADVANCE_REFINE,
+                "PROPOSE_COMPLETE": GateAction.PROPOSE_COMPLETE,
+                "ESCALATE": GateAction.ESCALATE,
+            }
+            action = action_map.get(
+                decision.decision.upper(), GateAction.ESCALATE,
+            )
+
+            metadata_json = json.dumps({
+                "action": action.value,
+                "reviewer": "ai:claude-haiku-4-5-20251001",
+                "rule": 8,
+                "model_metadata": {
+                    "confidence": decision.confidence,
+                    "tokens_used": tokens_used,
+                    "cost_usd": cost_usd,
+                },
+            })
+            full_reason = f"{decision.reason}\n{metadata_json}"
+
+            gate_decision = GateDecision(
+                action=action,
+                reason=full_reason,
+                reviewer="ai:claude-haiku-4-5-20251001",
+                model_metadata={
+                    "confidence": decision.confidence,
+                    "tokens_used": tokens_used,
+                    "cost_usd": cost_usd,
+                },
+            )
+
+            # Write audit row
+            if execution_record_id:
+                try:
+                    self._write_audit_row(
+                        execution_record_id, action, full_reason,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to write Haiku audit row",
+                        extra={"execution_record_id": execution_record_id},
+                        exc_info=True,
+                    )
+
+            logger.info(
+                "Haiku classification complete",
+                extra={
+                    "action": action.value,
+                    "confidence": decision.confidence,
+                    "cost_usd": cost_usd,
+                    "execution_record_id": execution_record_id,
+                },
+            )
+            return gate_decision
+
+        except Exception as exc:
+            logger.error(
+                "Haiku classification failed, falling through to ESCALATE",
+                extra={"error": str(exc)},
+                exc_info=True,
+            )
+            return None
 
     def _check_budget_headroom(
         self,

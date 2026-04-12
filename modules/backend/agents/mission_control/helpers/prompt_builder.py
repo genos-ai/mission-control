@@ -14,6 +14,7 @@ def assemble_instructions(
     category: str,
     name: str,
     *,
+    variant: str | None = None,
     mission_brief: str | None = None,
     user_prompt: str | None = None,
 ) -> str:
@@ -22,13 +23,20 @@ def assemble_instructions(
     Layer order:
         1. Organization prompts  (config/prompts/organization/*.md)
         2. Category prompt        (config/prompts/categories/{category}.md)
-        3. Agent system prompt    (config/prompts/agents/{category}/{name}/system.md)
+        3. Agent system prompt    (config/prompts/agents/{category}/{name}/{variant or "system"}.md)
         4. Mission brief          (from missions.brief — shared across all agents)
         5. User prompt            (from mission_team_members.user_prompt — per-agent)
 
     Layers 1-3 come from files on disk. Layers 4-5 are passed in when
     available (populated from DB at dispatch time). Missing layers are
     silently skipped.
+
+    Args:
+        variant: Optional prompt file variant. When provided, loads
+            ``{variant}.md`` instead of ``system.md`` from the agent's
+            prompt directory. Added by Plan 51 Phase D so the supervisor
+            can have separate system.md (event-mode) and chat.md
+            (chat-mode) prompts without breaking existing callers.
     """
     project_root = find_project_root()
     prompts_dir = project_root / "config" / "prompts"
@@ -43,7 +51,8 @@ def assemble_instructions(
     if cat_file.exists():
         layers.append(cat_file.read_text(encoding="utf-8").strip())
 
-    agent_file = prompts_dir / "agents" / category / name / "system.md"
+    prompt_filename = f"{variant}.md" if variant else "system.md"
+    agent_file = prompts_dir / "agents" / category / name / prompt_filename
     if agent_file.exists():
         layers.append(agent_file.read_text(encoding="utf-8").strip())
 

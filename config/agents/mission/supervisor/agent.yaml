@@ -1,0 +1,56 @@
+# Mission Supervisor Agent Configuration (Plan 51 Phase D)
+#   Thin autonomy loop router. Called automatically after each run
+#   completion via the session followup primitive; also chattable by
+#   the mission owner for troubleshooting past decisions.
+#
+#   Model: Haiku 4.5 — fast, cheap, structured output. The supervisor
+#   classifies, it does not reason. ~$0.003 per decision.
+#   Model is PINNED — no runtime override.
+
+agent_name: mission.supervisor.agent
+agent_type: supervisor
+description: >-
+  Mission-tier supervisor that routes post-run decisions. Called
+  automatically after each run completion to decide: wait, advance,
+  refine, propose-complete, or escalate. Also chattable by the
+  mission owner for troubleshooting past decisions. Haiku-class,
+  delegates to Planning Agent and Director for real work.
+enabled: true
+chat_enabled: true
+version: "1.0.0"
+
+model:
+  name: "anthropic:claude-haiku-4-5-20251001"
+  temperature: 0.0
+  max_tokens: 1000
+
+keywords:
+  - supervisor
+  - autonomy
+  - loop
+  - routing
+  - post-run
+
+tools:
+  - get_plan
+  - get_recent_run_outcomes
+  - get_past_decisions
+
+max_input_length: 16000
+max_budget_usd: 0.50
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+scope:
+  read:
+    - "docs/"
+  write: []
+
+interface:
+  input:
+    message: "string"
+  output:
+    result: "string"
