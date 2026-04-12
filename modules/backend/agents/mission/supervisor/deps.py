@@ -6,15 +6,24 @@ separate so supervisor-specific fields can be added later without
 affecting the Director.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from modules.backend.agents.deps.base import BaseAgentDeps
+from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
 
 
 @dataclass
 class MissionSupervisorDeps(BaseAgentDeps):
-    """Dependencies injected into the Mission Supervisor at runtime."""
+    """Dependencies injected into the Mission Supervisor at runtime.
 
+    The supervisor is a read-only agent — it reads plan state and
+    audit trail but never writes files. project_root and scope
+    default to safe read-only values so the reviewer can construct
+    deps without a full config lookup.
+    """
+
+    project_root: Path = field(default_factory=lambda: Path("."))
+    scope: FileScope = field(default_factory=lambda: FileScope(read_paths=["docs/"], write_paths=[]))
     mission_id: str = ""
     db_session: Any = None  # AsyncSession — required for service access
