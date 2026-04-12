@@ -55,6 +55,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 roster_name=input.roster_name,
                 mission_budget_usd=input.mission_budget_usd,
                 mission_id=input.mission_id,
+                db_session=db,
             )
 
             outcome_dict = outcome.model_dump()
@@ -81,6 +82,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             activity.logger.error(
                 "Mission execution failed",
                 extra={"mission_run_id": input.mission_run_id, "error": str(e)},
+                exc_info=True,
             )
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
