@@ -388,10 +388,19 @@ class MissionPlanService(BaseService):
         cancelled_count = 0
         new_count = 0
 
-        # Cancel non-terminal rows whose task disappeared
+        reset_count = 0
+
+        # Handle existing states
         for state in existing_states:
             if state.task_id in new_task_ids:
-                continue  # survived
+                # Task survived refinement. If its state is cancelled
+                # (from a prior refinement that removed it), reset to
+                # proposed so it's actionable again.
+                if state.status == PlanTaskStatus.CANCELLED.value:
+                    state.status = PlanTaskStatus.PROPOSED.value
+                    reset_count += 1
+                continue
+            # Task disappeared from the new plan
             status_enum = PlanTaskStatus(state.status)
             if status_enum in TERMINAL_PLAN_TASK_STATUSES:
                 continue  # already terminal, leave as-is
@@ -414,9 +423,10 @@ class MissionPlanService(BaseService):
             plan_id=plan.id,
             cancelled_count=cancelled_count,
             new_count=new_count,
+            reset_count=reset_count,
             total_after=len(new_task_ids),
         )
-        return {"cancelled": cancelled_count, "new": new_count}
+        return {"cancelled": cancelled_count, "new": new_count, "reset": reset_count}
 
     # ── Dispatch (Phase 1.6) ────────────────────────────────────────────
 
