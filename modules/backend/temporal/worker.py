@@ -74,6 +74,12 @@ async def start_worker() -> None:
 
 def main() -> None:
     """Entry point for running the worker."""
+    # Initialise the same logging pipeline as the backend so worker
+    # errors, activity logs, and workflow events all appear in
+    # var/logs/system.jsonl alongside the API server's logs.
+    from modules.backend.core.logging import setup_logging
+    setup_logging()
+
     asyncio.run(start_worker())
 
 
