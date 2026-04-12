@@ -40,6 +40,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 BACKEND_PORT = 8100
 FRONTEND_PORT = 5174
+TEMPORAL_PORT = 7233
+TEMPORAL_UI_PORT = 8233
 
 # Log directory aligns with application logging (var/logs).
 SERVICE_LOG_DIR = PROJECT_ROOT / "var" / "logs"
@@ -472,6 +474,29 @@ class DevRunner:
         self.procs.append(proc)
         return proc
 
+    def start_temporal_server(self) -> subprocess.Popen:
+        proc = subprocess.Popen(
+            [
+                "temporal", "server", "start-dev",
+                "--port", str(TEMPORAL_PORT),
+                "--ui-port", str(TEMPORAL_UI_PORT),
+                "--log-format", "pretty",
+            ],
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self.procs.append(proc)
+        return proc
+
+    def start_temporal_worker(self) -> subprocess.Popen:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "modules.backend.temporal.worker"],
+            cwd=PROJECT_ROOT,
+        )
+        self.procs.append(proc)
+        return proc
+
     def start_frontend(self) -> subprocess.Popen:
         frontend_dir = PROJECT_ROOT / "modules" / "frontend"
         proc = subprocess.Popen(
@@ -600,6 +625,25 @@ def cmd_start_daemon(args):
     backend_log, frontend_log = _service_log_paths(args.port)
     connect_host = _connect_host_for_bind(args.host)
 
+    # Start Temporal server if not already running
+    temporal_pids = get_pids_on_port(TEMPORAL_PORT)
+    if not temporal_pids:
+        temporal_log = SERVICE_LOG_DIR / "services-temporal.log"
+        print("\nStarting Temporal server in background...")
+        _spawn_detached(
+            [
+                "temporal", "server", "start-dev",
+                "--port", str(TEMPORAL_PORT),
+                "--ui-port", str(TEMPORAL_UI_PORT),
+            ],
+            PROJECT_ROOT,
+            temporal_log,
+        )
+        time.sleep(2)
+        print(f"  Temporal server: http://localhost:{TEMPORAL_UI_PORT}")
+    else:
+        print(f"\n  Temporal server already running (PID {temporal_pids[0]})")
+
     print("\nStarting services in background...")
     proc_backend = _spawn_detached(
         _backend_command(args.host, args.port, reload=False),
@@ -613,6 +657,15 @@ def cmd_start_daemon(args):
         connect_host=connect_host,
         port=args.port,
     )
+
+    # Start Temporal worker
+    worker_log = SERVICE_LOG_DIR / "services-temporal-worker.log"
+    _spawn_detached(
+        [sys.executable, "-m", "modules.backend.temporal.worker"],
+        PROJECT_ROOT,
+        worker_log,
+    )
+    print("  Temporal Worker started")
 
     if not args.backend_only:
         frontend_dir = PROJECT_ROOT / "modules" / "frontend"
@@ -630,12 +683,13 @@ def cmd_start_daemon(args):
         )
 
     print("\n" + "-" * 50)
-    print(f"  Backend API:  http://localhost:{args.port}")
-    print(f"  Swagger UI:   http://localhost:{args.port}/docs")
+    print(f"  Backend API:    http://localhost:{args.port}")
+    print(f"  Swagger UI:     http://localhost:{args.port}/docs")
+    print(f"  Temporal UI:    http://localhost:{TEMPORAL_UI_PORT}")
     if not args.backend_only:
-        print(f"  Frontend:     http://localhost:{FRONTEND_PORT}")
-    print(f"  Login:        admin@missioncontrol.dev / admin")
-    print("  Stop:         python services.py stop")
+        print(f"  Frontend:       http://localhost:{FRONTEND_PORT}")
+    print(f"  Login:          admin@missioncontrol.dev / admin")
+    print("  Stop:           python services.py stop")
     print("-" * 50)
     print("Daemon processes are running; this terminal is free.\n")
 
@@ -661,19 +715,34 @@ def cmd_start(args):
     signal.signal(signal.SIGINT, runner.shutdown)
     signal.signal(signal.SIGTERM, runner.shutdown)
 
+    # Start Temporal server (unless already running)
+    temporal_pids = get_pids_on_port(TEMPORAL_PORT)
+    if not temporal_pids:
+        print(f"\nStarting Temporal server at localhost:{TEMPORAL_PORT} ...")
+        runner.start_temporal_server()
+        time.sleep(2)  # Give server time to bind
+    else:
+        print(f"\n  Temporal server already running (PID {temporal_pids[0]})")
+
     print(f"\nStarting backend at http://localhost:{args.port} ...")
     runner.start_backend(args.host, args.port, not args.no_reload)
+
+    # Start Temporal worker (executes workflows)
+    print("Starting Temporal worker ...")
+    time.sleep(1)  # Give backend a head start for config loading
+    runner.start_temporal_worker()
 
     if not args.backend_only:
         print(f"Starting frontend at http://localhost:{FRONTEND_PORT} ...")
         runner.start_frontend()
 
     print("\n" + "-" * 50)
-    print(f"  Backend API:  http://localhost:{args.port}")
-    print(f"  Swagger UI:   http://localhost:{args.port}/docs")
+    print(f"  Backend API:    http://localhost:{args.port}")
+    print(f"  Swagger UI:     http://localhost:{args.port}/docs")
+    print(f"  Temporal UI:    http://localhost:{TEMPORAL_UI_PORT}")
     if not args.backend_only:
-        print(f"  Frontend:     http://localhost:{FRONTEND_PORT}")
-    print(f"  Login:        admin@missioncontrol.dev / admin")
+        print(f"  Frontend:       http://localhost:{FRONTEND_PORT}")
+    print(f"  Login:          admin@missioncontrol.dev / admin")
     print("-" * 50)
     print("Press Ctrl+C to stop all services\n")
 
@@ -689,14 +758,32 @@ def cmd_stop(args):
     total = 0
     total += stop_port(args.port, f"Backend (:{args.port})")
 
+    # Stop Temporal worker (find by process name)
+    try:
+        import psutil
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            cmdline = proc.info.get("cmdline") or []
+            if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
+                proc.terminate()
+                total += 1
+                print(f"  Temporal Worker: sent SIGTERM to PID {proc.pid}")
+    except ImportError:
+        pass  # psutil not available, skip worker stop
+
+    # Stop Temporal server
+    total += stop_port(TEMPORAL_PORT, f"Temporal (:{TEMPORAL_PORT})")
+
     if not args.backend_only:
         total += stop_port(FRONTEND_PORT, f"Frontend (:{FRONTEND_PORT})")
 
     if total == 0:
         print("\n  No services running.")
     else:
-        # Final verification
-        remaining = get_pids_on_port(args.port) + ([] if args.backend_only else get_pids_on_port(FRONTEND_PORT))
+        remaining = (
+            get_pids_on_port(args.port)
+            + get_pids_on_port(TEMPORAL_PORT)
+            + ([] if args.backend_only else get_pids_on_port(FRONTEND_PORT))
+        )
         if remaining:
             print(f"\n  Warning: {len(remaining)} process(es) still running. Try again or kill manually.")
         else:
@@ -722,6 +809,27 @@ def cmd_status(args):
         print(f"\n  Backend (:{args.port})  .... RUNNING (PID {', '.join(str(p) for p in backend_pids)})")
     else:
         print(f"\n  Backend (:{args.port})  .... stopped")
+
+    temporal_pids = get_pids_on_port(TEMPORAL_PORT)
+    if temporal_pids:
+        print(f"  Temporal (:{TEMPORAL_PORT})  ... RUNNING (PID {', '.join(str(p) for p in temporal_pids)})")
+    else:
+        print(f"  Temporal (:{TEMPORAL_PORT})  ... stopped")
+
+    # Check Temporal worker by process name
+    worker_running = False
+    try:
+        import psutil
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            cmdline = proc.info.get("cmdline") or []
+            if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
+                print(f"  Temporal Worker .. RUNNING (PID {proc.pid})")
+                worker_running = True
+                break
+    except ImportError:
+        pass
+    if not worker_running:
+        print("  Temporal Worker .. stopped")
 
     frontend_pids = get_pids_on_port(FRONTEND_PORT)
     if frontend_pids:
