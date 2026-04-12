@@ -97,24 +97,16 @@ async def agent_chat(
 
 @router.post(
     "/chat/stream",
-    response_model=ApiResponse,
-    summary="Chat with an agent",
-    description=(
-        "Send a message to an agent. Returns immediately — events "
-        "stream via GET /streams/runs/{session_id}."
-    ),
+    summary="Chat with an agent (streaming SSE)",
+    description="Send a message to an agent and stream progress events as SSE.",
 )
 async def agent_chat_stream(
     data: ChatRequest,
     db: DbSession,
-    request_id: RequestId,
-) -> ApiResponse:
-    """Start an agent chat turn as a background task."""
-    import asyncio
-
+):
+    """Stream agent progress events as inline SSE."""
+    from fastapi.responses import StreamingResponse
     from modules.backend.agents.mission_control.mission_control import handle
-    from modules.backend.core.config import get_redis_url
-    from modules.backend.events.bus import SessionEventBus
     from modules.backend.services.session import SessionService
 
     service = SessionService(db)
@@ -122,54 +114,33 @@ async def agent_chat_stream(
         data.session_id, agent_id=data.agent, goal=data.message,
     )
 
-    # Persist user message synchronously
+    # Persist user message before agent starts
     from modules.backend.schemas.session import SessionMessageCreate
 
-    user_msg = SessionMessageCreate(
-        role="user",
-        content=data.message,
-    )
+    user_msg = SessionMessageCreate(role="user", content=data.message)
     await service.add_message(session_id, user_msg)
     await db.commit()
 
-    # Fire agent turn in background
-    async def _run_chat_turn() -> None:
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.database import get_async_session
+    async def generate():
+        async for event in handle(
+            session_id, data.message,
+            mission_id=data.mission_id,
+            session_service=service,
+            db_session=db,
+            skip_persistence=True,
+        ):
+            yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+        await db.commit()
+        yield "event: done\ndata: {}\n\n"
 
-        redis = AsyncRedis.from_url(get_redis_url())
-        event_bus = SessionEventBus(redis)
-        try:
-            async with get_async_session() as bg_db:
-                bg_service = SessionService(bg_db)
-                async for _event in handle(
-                    session_id,
-                    data.message,
-                    mission_id=data.mission_id,
-                    session_service=bg_service,
-                    event_bus=event_bus,
-                    db_session=bg_db,
-                    skip_persistence=True,
-                ):
-                    pass
-                await bg_db.commit()
-        except Exception:
-            logger.exception(
-                "Background chat turn failed",
-                extra={"session_id": session_id},
-            )
-        finally:
-            await redis.aclose()
-
-    asyncio.create_task(_run_chat_turn())
-
-    return ApiResponse(
-        success=True,
-        data={
-            "session_id": session_id,
-            "status": "accepted",
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
-        metadata={"request_id": request_id},
     )
 
 

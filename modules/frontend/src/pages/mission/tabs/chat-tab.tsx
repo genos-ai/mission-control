@@ -432,46 +432,8 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
       },
     ])
 
-    // Open EventSource BEFORE the POST so the subscription is active
-    // when the Temporal workflow starts publishing events. Redis Pub/Sub
-    // is fire-and-forget — events published before subscription are lost.
-    const source = api.sse(`/streams/runs/${sessionId}`)
-    let accumulated = ''
-
-    source.onmessage = (e) => {
-      try {
-        const ev = JSON.parse(e.data)
-        if (ev.event_type === 'agent.response.chunk') {
-          if (ev.metadata?.thinking) setStreamingThinking((p) => p + (ev.content ?? ''))
-          else { accumulated += ev.content ?? ''; setStreamingContent(accumulated) }
-        } else if (ev.event_type === 'agent.response.complete') {
-          setMessages((p) => [
-            ...p,
-            {
-              id: `resp-${Date.now()}`, session_id: sessionId,
-              role: ev.metadata?.error ? 'error' : 'assistant',
-              content: ev.full_content ?? accumulated,
-              sender_id: ev.agent_id ?? null, model: ev.model ?? null,
-              input_tokens: ev.input_tokens ?? null, output_tokens: ev.output_tokens ?? null,
-              cost_usd: ev.cost_usd ?? null, tool_name: null, tool_call_id: null,
-              thinking: ev.metadata?.thinking ?? null, created_at: new Date().toISOString(),
-            },
-          ])
-          accumulated = ''
-          setStreamingContent('')
-          setStreamingThinking('')
-          source.close()
-          setSending(false)
-          queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
-        }
-      } catch { /* skip malformed */ }
-    }
-    source.onerror = () => {
-      source.close()
-      setSending(false)
-      queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
-    }
-    abortRef.current = { abort: () => source.close() } as AbortController
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const token = useAuthStore.getState().accessToken
@@ -481,15 +443,61 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ content, role: 'user', sender_id: user?.id }),
+          signal: controller.signal,
         },
       )
       if (!response.ok) throw new Error('Failed to send message')
-      await response.json()
+
+      // Inline SSE — read events directly from the response body
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No response body')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let accumulated = ''
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6)
+          if (raw === '{}') continue
+          try {
+            const ev = JSON.parse(raw)
+            if (ev.event_type === 'agent.response.chunk') {
+              if (ev.metadata?.thinking) setStreamingThinking((p) => p + (ev.content ?? ''))
+              else { accumulated += ev.content ?? ''; setStreamingContent(accumulated) }
+            } else if (ev.event_type === 'agent.response.complete') {
+              setMessages((p) => [
+                ...p,
+                {
+                  id: `resp-${Date.now()}`, session_id: sessionId,
+                  role: ev.metadata?.error ? 'error' : 'assistant',
+                  content: ev.full_content ?? accumulated,
+                  sender_id: ev.agent_id ?? null, model: ev.model ?? null,
+                  input_tokens: ev.input_tokens ?? null, output_tokens: ev.output_tokens ?? null,
+                  cost_usd: ev.cost_usd ?? null, tool_name: null, tool_call_id: null,
+                  thinking: ev.metadata?.thinking ?? null, created_at: new Date().toISOString(),
+                },
+              ])
+              accumulated = ''
+              setStreamingContent('')
+              setStreamingThinking('')
+            }
+          } catch { /* skip malformed SSE line */ }
+        }
+      }
     } catch (err) {
-      source.close()
       if (err instanceof DOMException && err.name === 'AbortError') return
       toast.error(err instanceof Error ? err.message : 'Send failed')
+    } finally {
+      abortRef.current = null
       setSending(false)
+      queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
     }
   }, [input, sending, sessionId, missionId, user?.id])
 

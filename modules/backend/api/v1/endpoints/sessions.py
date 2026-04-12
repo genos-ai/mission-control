@@ -259,12 +259,10 @@ async def get_messages(
 
 @router.post(
     "/{session_id}/messages",
-    response_model=ApiResponse,
-    summary="Send message to session",
+    summary="Send message and stream events",
     description=(
-        "Persist the user message and start the agent turn in the "
-        "background. Returns immediately — events stream via "
-        "GET /streams/runs/{session_id}."
+        "Persist the user message, run the agent, and stream "
+        "progress events as SSE in the response body."
     ),
 )
 async def send_message(
@@ -272,28 +270,18 @@ async def send_message(
     mission_id: str,
     data: SessionMessageCreate,
     db: DbSession,
-    request_id: RequestId,
-) -> ApiResponse:
-    """Send a message to a session.
+):
+    """Send a message and stream agent events inline.
 
-    Persists the user message synchronously so it survives any
-    subsequent failure. Then fires the agent turn as a background
-    task — handle() publishes events to Redis Pub/Sub in real-time
-    and persists the assistant response at step 11.
-
-    Chat turns are Tier 2 (interactive) — background asyncio task,
-    not Temporal. Mission execution uses Temporal (Tier 4).
+    The user message is persisted before the agent starts so it
+    survives any subsequent failure. Agent events stream directly
+    in the HTTP response — no Redis indirection, no background task.
+    The assistant response is persisted by handle() at step 11.
     """
-    import asyncio
-
+    from fastapi.responses import StreamingResponse
     from modules.backend.agents.mission_control.mission_control import handle
-    from modules.backend.core.config import get_redis_url
-    from modules.backend.core.logging import get_logger
-    from modules.backend.events.bus import SessionEventBus
 
-    logger = get_logger(__name__)
-
-    # 1. Persist user message synchronously — survives disconnect
+    # Persist user message before the agent starts
     service = SessionService(db)
     user_msg = SessionMessageCreate(
         role="user",
@@ -303,44 +291,26 @@ async def send_message(
     await service.add_message(session_id, user_msg)
     await db.commit()
 
-    # 2. Fire agent turn in background — returns immediately
-    async def _run_chat_turn() -> None:
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.database import get_async_session
+    async def generate():
+        async for event in handle(
+            session_id,
+            data.content,
+            mission_id=mission_id,
+            session_service=service,
+            sender_id=data.sender_id,
+            db_session=db,
+            skip_persistence=True,
+        ):
+            yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+        await db.commit()
+        yield "event: done\ndata: {}\n\n"
 
-        redis = AsyncRedis.from_url(get_redis_url())
-        event_bus = SessionEventBus(redis)
-        try:
-            async with get_async_session() as bg_db:
-                bg_service = SessionService(bg_db)
-                async for _event in handle(
-                    session_id,
-                    data.content,
-                    mission_id=mission_id,
-                    session_service=bg_service,
-                    event_bus=event_bus,
-                    channel="api",
-                    sender_id=data.sender_id,
-                    db_session=bg_db,
-                    skip_persistence=True,
-                ):
-                    pass  # handle() publishes events to Redis live
-                await bg_db.commit()
-        except Exception:
-            logger.exception(
-                "Background chat turn failed",
-                extra={"session_id": session_id},
-            )
-        finally:
-            await redis.aclose()
-
-    asyncio.create_task(_run_chat_turn())
-
-    return ApiResponse(
-        success=True,
-        data={
-            "session_id": session_id,
-            "status": "accepted",
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
-        metadata={"request_id": request_id},
     )
