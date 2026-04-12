@@ -919,15 +919,15 @@ class MissionPlanService(BaseService):
             )
             state.status = new_status.value
             state.execution_record_id = outcome.execution_record_id
-            # TaskResult.execution_id defaults to "" (not None) on the
-            # Pydantic model. Normalize empty string to None so we
-            # don't violate the FK constraint on plan_task_states.
-            # task_execution_id — which only accepts valid
-            # task_executions.id values or NULL, never the empty
-            # string. Pre-existing bug caught by the Phase 2 #2
-            # write-back verification.
-            raw_exec_id = getattr(task_result, "execution_id", None)
-            state.task_execution_id = raw_exec_id if raw_exec_id else None
+            # Look up the actual task_executions.id (the auto-UUID PK)
+            # by matching on execution_record_id + task_id. We cannot
+            # use TaskResult.execution_id because that's the dispatch-
+            # loop UUID stored in task_executions.execution_id (a
+            # separate column), not task_executions.id (the PK that
+            # plan_task_states.task_execution_id FK references).
+            state.task_execution_id = await self._resolve_task_execution_id(
+                outcome.execution_record_id, task_id,
+            )
             state.last_attempt_at = utc_now()
 
             # Denormalized metrics (Plan 46 Phase 2 #2). Both fields
@@ -966,6 +966,36 @@ class MissionPlanService(BaseService):
 
         await self._session.flush()
         return updated_ids
+
+    async def _resolve_task_execution_id(
+        self,
+        execution_record_id: str | None,
+        task_id: str,
+    ) -> str | None:
+        """Look up the task_executions.id PK for a given run + task.
+
+        Returns None if the execution_record is missing or the task
+        wasn't persisted (e.g. skipped). Used by _write_back_task_results
+        to set plan_task_states.task_execution_id correctly — the FK
+        references task_executions.id (auto-UUID), NOT
+        task_executions.execution_id (dispatch-loop UUID).
+        """
+        if not execution_record_id:
+            return None
+        from sqlalchemy import select
+        from modules.backend.models.execution_record import TaskExecution
+
+        stmt = (
+            select(TaskExecution.id)
+            .where(
+                TaskExecution.execution_record_id == execution_record_id,
+                TaskExecution.task_id == task_id,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        return row
 
     def _derive_subset_task_plan(
         self,
