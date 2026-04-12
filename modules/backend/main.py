@@ -51,10 +51,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             Schedule,
             ScheduleActionStartWorkflow,
             ScheduleIntervalSpec,
+            ScheduleOverlapPolicy,
             SchedulePolicy,
             ScheduleSpec,
         )
-        from temporalio.common import ScheduleOverlapPolicy
 
         from modules.backend.temporal.client import get_temporal_client
         from modules.backend.temporal.scheduled_workflow import (
