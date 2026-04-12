@@ -18,6 +18,8 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from modules.backend.core.config import get_app_config
     from modules.backend.temporal import scheduled_activities
+    from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
+    from modules.backend.temporal.models import MissionWorkflowInput
 
 
 @workflow.defn
@@ -54,9 +56,6 @@ class ScheduledMissionCheckWorkflow:
         dispatched = 0
         for plan_info in ready_plans:
             try:
-                from modules.backend.temporal.models import MissionWorkflowInput
-                from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
-
                 input_data = MissionWorkflowInput(
                     mission_run_id=plan_info["plan_id"],
                     session_id=plan_info.get("session_id", plan_info["plan_id"]),
