@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | ✅ Done (2026-04-12) — all commands implemented: run, chat, design, status, history, mission, team, context, console |
 | **Created** | 2026-03-26 |
 | **Depends on** | Plan 28 (Platform Architecture), Plan 31 (Current Mission Selection) |
 | **Target** | `mc.py`, `modules/clients/cli/mc_*.py` |

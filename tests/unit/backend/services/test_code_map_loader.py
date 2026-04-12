@@ -27,7 +27,7 @@ def loader_with_files(tmp_path, code_map_data):
     (codemap_dir / "map.json").write_text(
         json.dumps(code_map_data), encoding="utf-8",
     )
-    (tmp_path / "CODEMAP.md").write_text(
+    (codemap_dir / "map.md").write_text(
         "# Code Map\n\nSome markdown content", encoding="utf-8",
     )
     return CodeMapLoader(tmp_path)

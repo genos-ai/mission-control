@@ -36,8 +36,8 @@ repos:
         pass_filenames: false
 
       - id: codemap
-        name: regenerate CODEMAP.md
-        entry: python scripts/generate_code_map.py --scope modules/ -o CODEMAP.md
+        name: regenerate .codemap/map.md
+        entry: python scripts/code_map.py --scope modules/
         language: system
         types: [python]
         pass_filenames: false

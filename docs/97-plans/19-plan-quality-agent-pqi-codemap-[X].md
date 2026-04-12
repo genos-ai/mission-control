@@ -1,7 +1,7 @@
 # Implementation Plan: Integrate PQI & Code Map into Code Quality Agent
 
 *Created: 2026-03-13*
-*Status: Not Started*
+*Status: ✅ Done (2026-04-12) — all three tools (run_quality_score, get_dependency_analysis, load_code_map) registered in code.quality.agent with PQI pre-compute hooks and extended QaAuditResult schema*
 *Depends on: Code Map service (done), PQI service (done), Code Quality Agent (done)*
 
 ---

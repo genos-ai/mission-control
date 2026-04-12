@@ -76,7 +76,6 @@ scope:
     - "*.py"
     - "*.md"
     - "requirements.txt"
-    - "CODEMAP.md"
     - ".codemap/"
   write: []
 

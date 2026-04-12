@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | ✅ Done (2026-04-12) — Phases A-D shipped: session followup primitive, convergence loop wired, 8-branch post-run gate, Haiku supervisor agent with introspection tools. Phase E (Director followup) deferred. |
 | **Created** | 2026-04-11 |
 | **Part of** | [Plan 46 — Autonomous Mission Roadmap](46-plan-autonomous-mission-roadmap.md) Phase 3 (reframed from Signaling → Autonomy Loop) |
 | **Depends on** | Plan 22 (Step-Through Gate — done), Plan 42 (Mission Backlog Model — done), Plan 43 (Persistent Artifacts — done), Plan 48 (Convergence Loop + Branch Automation — to be graduated for Phase B below) |

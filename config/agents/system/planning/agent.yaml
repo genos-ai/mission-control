@@ -33,7 +33,6 @@ scope:
     - "modules/"
     - "config/"
     - "docs/"
-    - "CODEMAP.md"
     - ".codemap/"
   write: []
 

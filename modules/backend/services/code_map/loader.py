@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 # Default file locations relative to project root
 _JSON_PATH = Path(".codemap") / "map.json"
-_MARKDOWN_PATH = Path("CODEMAP.md")
+_MARKDOWN_PATH = Path(".codemap") / "map.md"
 
 
 class CodeMapLoader:

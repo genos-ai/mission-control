@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | ✅ Done (2026-04-12) — agent at `mission.director.agent` with 9 tools, config, prompts, and mc chat integration |
 | **Created** | 2026-03-27 |
 | **Depends on** | Plan 28 (platform), Plan 35 (mc.py CLI) |
 | **Target** | New agent: `horizontal.mission_director.agent` |
