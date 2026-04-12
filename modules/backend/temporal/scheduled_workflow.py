@@ -15,6 +15,8 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
+from temporalio.workflow import ParentClosePolicy
+
 with workflow.unsafe.imports_passed_through():
     from modules.backend.core.config import get_app_config
     from modules.backend.temporal import scheduled_activities
@@ -75,9 +77,10 @@ class ScheduledMissionCheckWorkflow:
                     input_data,
                     id=workflow_id,
                     task_queue=config.task_queue,
-                    # Don't wait — fire and forget. The child runs independently.
-                    # If a workflow with this ID already exists (previous run still
-                    # going), Temporal rejects the start — that's correct.
+                    # ABANDON: child continues after parent completes.
+                    # Without this, Temporal's default TERMINATE policy
+                    # kills the child when the scheduled workflow finishes.
+                    parent_close_policy=ParentClosePolicy.ABANDON,
                 )
                 dispatched += 1
             except Exception as exc:
