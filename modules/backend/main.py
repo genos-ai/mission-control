@@ -84,7 +84,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             logger.info("Temporal dispatch schedule registered", extra={"schedule_id": schedule_id})
         except Exception as schedule_err:
-            if "already registered" in str(schedule_err).lower() or "already exists" in str(schedule_err).lower():
+            from temporalio.client import ScheduleAlreadyRunningError
+            if isinstance(schedule_err, ScheduleAlreadyRunningError):
                 logger.info("Temporal dispatch schedule already exists")
             else:
                 raise

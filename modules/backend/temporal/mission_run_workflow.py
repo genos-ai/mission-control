@@ -22,15 +22,14 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-from modules.backend.temporal.models import (
-    MissionWorkflowInput,
-    NotificationPayload,
-)
-
 with workflow.unsafe.imports_passed_through():
     from modules.backend.core.config import get_app_config
     from modules.backend.temporal import activities
     from modules.backend.temporal import supervisor_activities as sup
+    from modules.backend.temporal.models import (
+        MissionWorkflowInput,
+        NotificationPayload,
+    )
 
 
 @workflow.defn
