@@ -166,9 +166,10 @@ async def approve_proposed_tasks(mission_id: str) -> int:
             try:
                 await svc.approve_task(plan.id, ts.task_id, "mission.supervisor.agent")
                 approved_count += 1
-            except Exception:
+            except Exception as exc:
                 activity.logger.warning(
-                    "Failed to approve task",
+                    "Failed to approve task: %s",
+                    exc,
                     extra={"task_id": ts.task_id, "mission_id": mission_id},
                 )
 

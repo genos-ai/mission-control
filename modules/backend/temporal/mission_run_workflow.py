@@ -168,7 +168,8 @@ class MissionRunWorkflow:
                     retry_policy=RetryPolicy(maximum_attempts=1),
                 )
 
-                # Poll for new proposed/approved tasks
+                # Poll for new proposed/approved tasks (reuse last counts)
+                counts = sup.PlanTaskCounts()
                 for _ in range(12):  # 60 seconds max polling
                     await workflow.sleep(timedelta(seconds=5))
                     counts = await workflow.execute_activity(
@@ -181,12 +182,6 @@ class MissionRunWorkflow:
                         break
 
                 # If proposed tasks appeared, approve them
-                counts = await workflow.execute_activity(
-                    sup.fetch_plan_task_counts,
-                    input.mission_id or input.mission_run_id,
-                    start_to_close_timeout=persist_timeout,
-                    retry_policy=persist_policy,
-                )
                 if counts.proposed > 0:
                     await workflow.execute_activity(
                         sup.approve_proposed_tasks,

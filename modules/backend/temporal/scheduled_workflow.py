@@ -81,9 +81,12 @@ class ScheduledMissionCheckWorkflow:
                     # going), Temporal rejects the start — that's correct.
                 )
                 dispatched += 1
-            except Exception:
+            except Exception as exc:
                 # Workflow already running for this plan, or other error.
                 # Don't fail the scheduled check — log and continue.
-                pass
+                workflow.logger.warning(
+                    "Failed to start MissionRunWorkflow for plan %s: %s",
+                    plan_info.get("plan_id", "?"), exc,
+                )
 
         return {"checked": True, "dispatched": dispatched}
