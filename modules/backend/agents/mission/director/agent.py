@@ -353,33 +353,12 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.agents.tools.plan_introspection import get_plan_state
 
-            svc = MissionPlanService(ctx.deps.db_session)
-            plan = await svc.get_or_create_plan(ctx.deps.mission_id)
-            task_states = await svc.get_task_states(plan.id)
-
-            return json.dumps({
-                "plan_id": plan.id,
-                "version": plan.version,
-                "status": plan.status,
-                "gate_mode": plan.gate_mode,
-                "budget_usd_ceiling": plan.budget_usd_ceiling,
-                "total_spent_usd": plan.total_spent_usd,
-                "veto_window_sec": plan.veto_window_sec,
-                "task_plan_json": plan.task_plan_json,
-                "task_states": [
-                    {
-                        "task_id": s.task_id,
-                        "status": s.status,
-                        "retry_count": s.retry_count,
-                        "result_summary": s.result_summary,
-                        "failure_reason": s.failure_reason,
-                        "approved_at": str(s.approved_at) if s.approved_at else None,
-                    }
-                    for s in task_states
-                ],
-            }, indent=2, default=str)
+            result = await get_plan_state(
+                ctx.deps.db_session, mission_id=ctx.deps.mission_id,
+            )
+            return json.dumps(result, indent=2, default=str)
         except Exception as e:
             logger.error("get_plan failed", exc_info=True)
             return json.dumps({"error": str(e)})

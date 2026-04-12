@@ -28,45 +28,9 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def get_plan(
-    session: AsyncSession,
-    *,
-    mission_id: str,
-) -> dict[str, Any]:
-    """Read the current mission plan state.
-
-    Returns plan body, per-task status, gate_mode, budget, and
-    supervisor counters. Duplicates the Director's get_plan tool
-    body — see Plan 51 §4.3 for the DRY deferral note.
-    """
-    from modules.backend.services.mission_plan import MissionPlanService
-
-    svc = MissionPlanService(session)
-    plan = await svc.get_or_create_plan(mission_id)
-    task_states = await svc.get_task_states(plan.id)
-
-    return {
-        "plan_id": plan.id,
-        "version": plan.version,
-        "status": plan.status,
-        "gate_mode": plan.gate_mode,
-        "budget_usd_ceiling": plan.budget_usd_ceiling,
-        "total_spent_usd": plan.total_spent_usd,
-        "supervisor_iteration_count": plan.supervisor_iteration_count,
-        "max_supervisor_iterations": plan.max_supervisor_iterations,
-        "task_plan_json": plan.task_plan_json,
-        "task_states": [
-            {
-                "task_id": s.task_id,
-                "status": s.status,
-                "retry_count": s.retry_count,
-                "result_summary": s.result_summary,
-                "failure_reason": s.failure_reason,
-                "approved_at": str(s.approved_at) if s.approved_at else None,
-            }
-            for s in task_states
-        ],
-    }
+# get_plan extracted to agents/tools/plan_introspection.py (shared
+# with Director). Re-export for backwards compatibility.
+from modules.backend.agents.tools.plan_introspection import get_plan_state as get_plan  # noqa: F401
 
 
 async def get_recent_run_outcomes(
@@ -147,15 +111,17 @@ async def get_past_decisions(
     decisions = []
     for row in rows:
         reasoning = row.reasoning or ""
-        # Split human-readable prefix from JSON tail
-        parts = reasoning.strip().rsplit("\n", 1)
-        human_text = parts[0] if parts else reasoning
+        # Split human-readable prefix from JSON tail (marked with __META__ prefix)
         meta: dict[str, Any] = {}
-        if len(parts) > 1:
+        if "__META__" in reasoning:
+            human_text, raw_meta = reasoning.split("__META__", 1)
+            human_text = human_text.strip()
             try:
-                meta = json.loads(parts[1])
+                meta = json.loads(raw_meta)
             except (json.JSONDecodeError, ValueError):
                 pass
+        else:
+            human_text = reasoning.strip()
 
         decisions.append({
             "decision_id": row.id,

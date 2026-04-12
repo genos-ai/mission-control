@@ -48,11 +48,9 @@ def _register_tools(agent: Agent) -> None:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.agents.tools.supervisor_introspection import (
-                get_plan as _get_plan,
-            )
+            from modules.backend.agents.tools.plan_introspection import get_plan_state
 
-            result = await _get_plan(
+            result = await get_plan_state(
                 ctx.deps.db_session, mission_id=ctx.deps.mission_id,
             )
             return json.dumps(result, indent=2, default=str)

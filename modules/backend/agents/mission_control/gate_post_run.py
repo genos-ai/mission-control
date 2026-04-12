@@ -68,10 +68,14 @@ class AutonomousPostRunReviewer:
         *,
         gate_mode: str | None = None,
         stall_threshold: int = DEFAULT_STALL_THRESHOLD,
+        budget_safety_factor: float = BUDGET_SAFETY_FACTOR,
+        cost_floor_usd: float = DEFAULT_COST_FLOOR_USD,
     ) -> None:
         self._session = session
         self._gate_mode = gate_mode or "off"
         self._stall_threshold = stall_threshold
+        self._budget_safety_factor = budget_safety_factor
+        self._cost_floor_usd = cost_floor_usd
 
     async def review(self, context: GateContext) -> GateDecision:
         """Evaluate the 8-branch decision matrix. First match wins."""
@@ -225,7 +229,7 @@ class AutonomousPostRunReviewer:
             "rule": rule,
             "model_metadata": None,
         })
-        full_reason = f"{reason}\n{metadata_json}"
+        full_reason = f"{reason}\n__META__{metadata_json}"
 
         decision = GateDecision(
             action=action,
@@ -307,16 +311,26 @@ class AutonomousPostRunReviewer:
         if row is None:
             return None
 
-        # Parse the JSON tail from the reasoning field.
+        # Parse the JSON tail from the reasoning field (marked with __META__ prefix).
         reasoning = row.reasoning or ""
         meta: dict[str, Any] = {}
-        try:
-            last_line = reasoning.strip().rsplit("\n", 1)[-1]
-            meta = json.loads(last_line)
-            action_str = meta.get("action", "escalate")
-            action = GateAction(action_str)
-        except (json.JSONDecodeError, ValueError, KeyError):
-            action = GateAction.ESCALATE
+        if "__META__" in reasoning:
+            _, raw_meta = reasoning.split("__META__", 1)
+            try:
+                meta = json.loads(raw_meta)
+                action_str = meta.get("action", "escalate")
+                action = GateAction(action_str)
+            except (json.JSONDecodeError, ValueError, KeyError):
+                action = GateAction.ESCALATE
+        else:
+            # Legacy format (no marker) — fall back to last-line parse
+            try:
+                last_line = reasoning.strip().rsplit("\n", 1)[-1]
+                meta = json.loads(last_line)
+                action_str = meta.get("action", "escalate")
+                action = GateAction(action_str)
+            except (json.JSONDecodeError, ValueError, KeyError):
+                action = GateAction.ESCALATE
 
         return GateDecision(
             action=action,
@@ -482,9 +496,9 @@ class AutonomousPostRunReviewer:
 
         if completed_so_far > 0 and total_spent > 0:
             avg_cost = total_spent / completed_so_far
-            estimated = proposed_count * avg_cost * BUDGET_SAFETY_FACTOR
+            estimated = proposed_count * avg_cost * self._budget_safety_factor
         else:
-            estimated = proposed_count * DEFAULT_COST_FLOOR_USD
+            estimated = proposed_count * self._cost_floor_usd
 
         return remaining >= estimated
 
