@@ -9,7 +9,6 @@ Multi-agent missions go through the missions API, not here.
 from pydantic import BaseModel, Field
 
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
 
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.logging import get_logger
@@ -98,40 +97,59 @@ async def agent_chat(
 
 @router.post(
     "/chat/stream",
-    summary="Chat with an agent (streaming SSE)",
-    description="Send a message to an agent and receive progress events via Server-Sent Events.",
+    response_model=ApiResponse,
+    summary="Chat with an agent",
+    description=(
+        "Send a message to an agent. The agent turn runs as a durable "
+        "Temporal workflow. Returns immediately — events stream via "
+        "GET /streams/runs/{session_id}."
+    ),
 )
 async def agent_chat_stream(
     data: ChatRequest,
     db: DbSession,
-) -> StreamingResponse:
-    """Stream agent progress events as SSE."""
-    from modules.backend.agents.mission_control.mission_control import handle
+    request_id: RequestId,
+) -> ApiResponse:
+    """Start an agent chat turn via Temporal."""
+    from modules.backend.core.config import get_app_config
     from modules.backend.services.session import SessionService
+    from modules.backend.temporal.chat_models import ChatTurnInput
+    from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
+    from modules.backend.temporal.client import get_temporal_client
 
     service = SessionService(db)
     session_id = await service.ensure_session(
         data.session_id, agent_id=data.agent, goal=data.message,
     )
 
-    async def generate():
-        async for event in handle(
-            session_id, data.message,
-            mission_id=data.mission_id,
-            session_service=service,
-            db_session=db,
-        ):
-            yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-        yield "event: done\ndata: {}\n\n"
+    temporal_config = get_app_config().temporal
+    client = await get_temporal_client()
+    input_data = ChatTurnInput(
+        session_id=session_id,
+        mission_id=data.mission_id,
+        message=data.message,
+        sender_id=None,
+        channel="api",
+    )
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
+    import uuid
+    workflow_id = f"chat-turn-{session_id}-{uuid.uuid4().hex[:8]}"
+
+    await client.start_workflow(
+        ChatTurnWorkflow.run,
+        input_data,
+        id=workflow_id,
+        task_queue=temporal_config.task_queue,
+    )
+
+    return ApiResponse(
+        success=True,
+        data={
+            "session_id": session_id,
+            "workflow_id": workflow_id,
+            "status": "accepted",
         },
+        metadata={"request_id": request_id},
     )
 
 

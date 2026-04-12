@@ -1,7 +1,6 @@
 """Session management REST endpoints."""
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import StreamingResponse
 
 from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
 from modules.backend.core.pagination import (
@@ -283,80 +282,38 @@ async def send_message(
     Events flow to the frontend via Redis Pub/Sub → /streams/runs/
     EventSource subscription. The browser can disconnect at any
     point without losing messages.
-
-    Falls back to the inline handle() path if Temporal is disabled.
     """
     from modules.backend.core.config import get_app_config
+    from modules.backend.temporal.chat_models import ChatTurnInput
+    from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
+    from modules.backend.temporal.client import get_temporal_client
 
     temporal_config = get_app_config().temporal
+    client = await get_temporal_client()
+    input_data = ChatTurnInput(
+        session_id=session_id,
+        mission_id=mission_id,
+        message=data.content,
+        sender_id=data.sender_id,
+        channel="api",
+    )
 
-    if temporal_config.enabled:
-        # Temporal path — durable, survives disconnect
-        from modules.backend.temporal.chat_models import ChatTurnInput
-        from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
-        from modules.backend.temporal.client import get_temporal_client
+    import uuid
+    workflow_id = f"chat-turn-{session_id}-{uuid.uuid4().hex[:8]}"
 
-        client = await get_temporal_client()
-        input_data = ChatTurnInput(
-            session_id=session_id,
-            mission_id=mission_id,
-            message=data.content,
-            sender_id=data.sender_id,
-            channel="api",
-        )
+    await client.start_workflow(
+        ChatTurnWorkflow.run,
+        input_data,
+        id=workflow_id,
+        task_queue=temporal_config.task_queue,
+    )
 
-        import uuid
-        workflow_id = f"chat-turn-{session_id}-{uuid.uuid4().hex[:8]}"
-
-        handle = await client.start_workflow(
-            ChatTurnWorkflow.run,
-            input_data,
-            id=workflow_id,
-            task_queue=temporal_config.task_queue,
-        )
-
-        return ApiResponse(
-            success=True,
-            data={
-                "session_id": session_id,
-                "workflow_id": workflow_id,
-                "status": "accepted",
-            },
-            metadata={"request_id": request_id},
-        )
-
-    else:
-        # Fallback — inline handle() for when Temporal is off.
-        # This is the legacy path with the navigate-away bug.
-        # Kept for backwards compatibility and CLI usage.
-        from modules.backend.agents.mission_control.mission_control import handle
-
-        service = SessionService(db)
-
-        async def generate():
-            try:
-                async for event in handle(
-                    session_id,
-                    data.content,
-                    mission_id=mission_id,
-                    session_service=service,
-                    sender_id=data.sender_id,
-                    db_session=db,
-                ):
-                    yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-            finally:
-                try:
-                    await db.commit()
-                except Exception:
-                    pass
-            yield "event: done\ndata: {}\n\n"
-
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
+    return ApiResponse(
+        success=True,
+        data={
+            "session_id": session_id,
+            "workflow_id": workflow_id,
+            "status": "accepted",
+        },
+        metadata={"request_id": request_id},
+    )

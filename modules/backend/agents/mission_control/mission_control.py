@@ -151,6 +151,7 @@ async def handle(
     sender_id: str | None = None,
     mission_brief: str | None = None,
     db_session: Any | None = None,
+    skip_persistence: bool = False,
 ) -> AsyncIterator[SessionEvent]:
     """Universal streaming mission control entry point.
 
@@ -437,19 +438,20 @@ async def handle(
         yield cost_event
         await _publish(event_bus, cost_event)
 
-        # 11. Persist messages
-        user_create = SessionMessageCreate(role="user", content=message, sender_id=sender_id)
-        assistant_create = SessionMessageCreate(
-            role="assistant",
-            content=full_content,
-            sender_id=agent_name,
-            model=model_str,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost_usd,
-            thinking="\n\n".join(thinking_parts) if thinking_parts else None,
-        )
-        await _persist_messages(session_service, session_id, [user_create, assistant_create])
+        # 11. Persist messages (skipped when Temporal activities handle persistence)
+        if not skip_persistence:
+            user_create = SessionMessageCreate(role="user", content=message, sender_id=sender_id)
+            assistant_create = SessionMessageCreate(
+                role="assistant",
+                content=full_content,
+                sender_id=agent_name,
+                model=model_str,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                thinking="\n\n".join(thinking_parts) if thinking_parts else None,
+            )
+            await _persist_messages(session_service, session_id, [user_create, assistant_create])
 
         # 12. Touch activity
         try:
@@ -472,12 +474,13 @@ async def handle(
             metadata={"error": True},
         )
         # Persist the error as a message so it shows in console history
-        error_create = SessionMessageCreate(
-            role="assistant",
-            content=str(exc),
-            sender_id=agent_name,
-        )
-        await _persist_messages(session_service, session_id, [error_create])
+        if not skip_persistence:
+            error_create = SessionMessageCreate(
+                role="assistant",
+                content=str(exc),
+                sender_id=agent_name,
+            )
+            await _persist_messages(session_service, session_id, [error_create])
         # Emit system error event to mission channel
         if mission_id:
             from modules.backend.events.types import SystemEvent

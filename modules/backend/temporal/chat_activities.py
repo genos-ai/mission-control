@@ -67,21 +67,10 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
     The frontend subscribes to /streams/runs/{sessionId} via EventSource
     and sees streaming in real-time. Same UX, different transport.
 
-    IMPORTANT: handle() persists messages at step 11. Since we already
-    persisted the user message in persist_user_message, and we'll
-    persist the assistant message in persist_assistant_message, we
-    need to prevent handle() from double-persisting. We do this by
-    passing skip_persistence=True (if supported) or by accepting the
-    duplication (add_message is idempotent on content for the same
-    session — the frontend deduplicates by message ID on refetch).
-
-    Actually, handle() persists both user + assistant at step 11 as
-    a best-effort operation wrapped in try/except. The duplication is
-    harmless — the refetch reconciliation in the frontend uses the
-    server-side message list, and duplicate entries with the same
-    content + role + timestamp are visually identical. The cost of
-    avoiding this (adding a skip flag to handle()) is higher than
-    the cost of the duplication.
+    handle() normally persists messages at step 11. Since the workflow's
+    own activities handle persistence (persist_user_message before,
+    persist_assistant_message after), we pass skip_persistence=True
+    to prevent double-writes.
     """
     from redis.asyncio import Redis as AsyncRedis
 
@@ -125,6 +114,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
                 channel=input.channel,
                 sender_id=input.sender_id,
                 db_session=db,
+                skip_persistence=True,
             ):
                 # Extract metadata from the complete event
                 if hasattr(event, "full_content") and event.full_content:
