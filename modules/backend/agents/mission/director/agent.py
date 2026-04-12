@@ -601,4 +601,48 @@ def create_agent(model: str | Model) -> Agent:
     # deferred to Phase 2. Gates currently resolve inline during dispatch —
     # no async queue exists for out-of-band resolution.
 
+    # ── Plan 51 Phase E: schedule followup on supervisor decisions ────
+
+    @agent.tool
+    async def schedule_run_completion_followup(
+        ctx: RunContext[MissionDirectorDeps],
+    ) -> str:
+        """Schedule a followup to check back after the supervisor decides.
+
+        Call this after dispatching a run or approving plan tasks so
+        you can continue the conversation when the supervisor makes
+        a routing decision (advance, refine, propose-complete, or
+        escalate). The followup fires once and is consumed — if you
+        dispatch another run, call this again.
+
+        Returns a JSON object with the followup_id on success or an
+        error message on failure.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            from modules.backend.agents.tools.followup import schedule_followup
+
+            result = await schedule_followup(
+                ctx.deps.db_session,
+                session_id=str(ctx.deps.session_id) if hasattr(ctx.deps, "session_id") else "",
+                mission_id=ctx.deps.mission_id,
+                trigger_event_types=["mission_plan.supervisor_decision"],
+                trigger_filter={"mission_id": ctx.deps.mission_id},
+                prompt_template=(
+                    "The mission supervisor just decided '{action}' for "
+                    "run {execution_record_id}. Reason: {reason}. "
+                    "Compose a brief user-facing update for the chat. "
+                    "If the action is 'advance_approved', mention which "
+                    "tasks were advanced. If 'escalate', explain why the "
+                    "user's attention is needed."
+                ),
+                created_by_agent="mission.director.agent",
+            )
+            return json.dumps(result, default=str)
+        except Exception as e:
+            logger.error("schedule_run_completion_followup failed", exc_info=True)
+            return json.dumps({"error": str(e)})
+
     return agent

@@ -105,6 +105,192 @@ class MissionPlanService(BaseService):
             },
         )
 
+    # ── Plan 51 Phase E: post-run reviewer + Director followup ────────
+
+    async def _run_post_run_reviewer(
+        self,
+        *,
+        plan: "MissionPlan",
+        outcome: Any,
+        session_id: str | None,
+        completed_count: int,
+        failed_count: int,
+    ) -> None:
+        """Invoke the AutonomousPostRunReviewer and emit the decision event.
+
+        Called by dispatch_approved after the run-completed event. The
+        reviewer evaluates the decision matrix (§4.2), writes an audit
+        row, and returns a GateDecision. This method then:
+        1. Increments supervisor_iteration_count on the plan
+        2. Emits SupervisorDecisionEmittedEvent
+        3. Calls fire_matching for Director followups
+        4. Applies the decision (advance / wait / escalate)
+        """
+        from modules.backend.agents.mission_control.gate_models import (
+            GateAction,
+            GateContext,
+        )
+        from modules.backend.agents.mission_control.gate_post_run import (
+            AutonomousPostRunReviewer,
+        )
+        from modules.backend.agents.tools.supervisor_introspection import (
+            get_recent_run_outcomes,
+        )
+        from modules.backend.events.types import SupervisorDecisionEmittedEvent
+
+        # Build the GateContext for the reviewer.
+        recent = await get_recent_run_outcomes(
+            self._session, mission_id=plan.mission_id, limit=5,
+        )
+        task_states = await self.get_task_states(plan.id)
+        summary = {
+            "approved": sum(1 for s in task_states if s.status == "approved"),
+            "proposed": sum(1 for s in task_states if s.status == "proposed"),
+            "running": sum(1 for s in task_states if s.status == "running"),
+            "completed": sum(1 for s in task_states if s.status in ("completed", "done")),
+            "failed": sum(1 for s in task_states if s.status == "failed"),
+            "total_completed": sum(
+                r.get("completed_task_count", 0) for r in recent
+            ),
+            "execution_record_id": outcome.execution_record_id,
+            "max_supervisor_iterations": plan.max_supervisor_iterations,
+        }
+
+        # Fetch mission brief for Haiku prompt (branch #8).
+        mission = await self._mission_repo.get_by_id(plan.mission_id)
+        mission_brief = mission.brief or mission.description or ""
+
+        context = GateContext(
+            gate_type="post_run",
+            mission_id=plan.mission_id,
+            total_cost_usd=plan.total_spent_usd,
+            budget_usd=plan.budget_usd_ceiling or 0.0,
+            recent_run_outcomes=recent,
+            plan_task_summary=summary,
+            mission_brief=mission_brief,
+            supervisor_iteration_count=plan.supervisor_iteration_count,
+        )
+
+        # Invoke the reviewer.
+        reviewer = AutonomousPostRunReviewer(
+            session=self._session,
+            gate_mode=plan.gate_mode,
+        )
+        decision = await reviewer.review(context)
+
+        # Increment iteration counter (idempotency check in the
+        # reviewer prevents double-increment on retries).
+        plan.supervisor_iteration_count += 1
+        await self._session.flush()
+
+        # Emit the supervisor decision event.
+        _decision_event = SupervisorDecisionEmittedEvent(
+            session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+            source="mission_plan_service",
+            mission_id=plan.mission_id,
+            plan_id=plan.id,
+            execution_record_id=outcome.execution_record_id or "",
+            action=decision.action.value,
+            reason=(decision.reason or "")[:500],
+            reviewer=decision.reviewer,
+        )
+        await self._emit(plan.mission_id, _decision_event)
+
+        # Fire Director followups on the supervisor decision event.
+        try:
+            from modules.backend.services.session_followup import (
+                SessionFollowupService,
+            )
+            _followup_svc = SessionFollowupService(
+                self._session, event_bus=self._event_bus,
+            )
+            await _followup_svc.fire_matching(
+                _decision_event,
+                agent_turn_runner=self._create_agent_turn_runner(),
+            )
+        except Exception:
+            self._logger.warning(
+                "fire_matching(supervisor_decision) failed",
+                extra={"mission_id": plan.mission_id},
+                exc_info=True,
+            )
+
+        # Apply the decision.
+        await self._apply_supervisor_decision(plan, decision)
+
+        self._log_operation(
+            "Post-run reviewer complete",
+            plan_id=plan.id,
+            action=decision.action.value,
+            reviewer=decision.reviewer,
+            supervisor_iteration=plan.supervisor_iteration_count,
+        )
+
+    async def _apply_supervisor_decision(
+        self,
+        plan: "MissionPlan",
+        decision: Any,
+    ) -> None:
+        """Apply a supervisor GateDecision to the plan state.
+
+        ADVANCE_APPROVED: flip proposed → approved so daemon picks
+        them up. ADVANCE_REFINE / PROPOSE_COMPLETE / ESCALATE: no
+        plan state change here — the Director handles these via its
+        followup (it calls refine_plan or asks the user). WAIT: no-op.
+        """
+        from modules.backend.agents.mission_control.gate_models import GateAction
+        from modules.backend.models.mission_plan import PlanTaskStatus
+
+        if decision.action == GateAction.ADVANCE_APPROVED:
+            # Approve all proposed tasks.
+            task_states = await self.get_task_states(
+                plan.id, status=PlanTaskStatus.PROPOSED,
+            )
+            for ts in task_states:
+                await self.approve_task(
+                    plan.id,
+                    ts.task_id,
+                    approved_by="mission.supervisor.agent",
+                    reason="Auto-advanced by supervisor (rule-based)",
+                )
+        # WAIT, ADVANCE_REFINE, PROPOSE_COMPLETE, ESCALATE — no
+        # plan state change. The Director's followup handles these.
+
+    def _create_agent_turn_runner(self):
+        """Create a real agent_turn_runner that spawns a Director turn.
+
+        Returns an async callable with signature
+        ``(session_id, mission_id, prompt) -> None`` that calls
+        ``mission_control.handle()`` to spawn a fresh Director turn
+        in the given session. The turn's events flow through the
+        event bus and messages are persisted by handle() itself.
+
+        Uses a fresh db session so the Director's turn doesn't
+        conflict with the dispatch_approved transaction.
+        """
+        event_bus = self._event_bus
+
+        async def _run_turn(session_id: str, mission_id: str, prompt: str) -> None:
+            from modules.backend.agents.mission_control.mission_control import handle
+            from modules.backend.core.database import get_async_session
+            from modules.backend.services.session import SessionService
+
+            async with get_async_session() as db:
+                svc = SessionService(db)
+                async for _event in handle(
+                    session_id,
+                    prompt,
+                    mission_id=mission_id,
+                    session_service=svc,
+                    event_bus=event_bus,
+                    channel="followup",
+                    sender_id="session_followup_service",
+                ):
+                    pass  # Events are published by handle() internally.
+                await db.commit()
+
+        return _run_turn
+
     # ── Event emission helpers ──────────────────────────────────────────
 
     async def _emit(self, mission_id: str, event) -> None:
@@ -635,11 +821,10 @@ class MissionPlanService(BaseService):
         )
         await self._emit(plan.mission_id, _run_completed_event)
 
-        # Fire matching session followups in-process (Plan 51 Phase A
-        # primitive). The followup service spawns agent turns for any
-        # registered followups matching this event type + mission.
-        # Best-effort — failures are logged on the followup row, not
-        # bubbled to the dispatch path.
+        # Fire matching session followups for run.completed in-process.
+        # (Currently no production consumer subscribes to this event
+        # via followups — the supervisor is called directly below.
+        # This call is here for future consumers and test harnesses.)
         try:
             from modules.backend.services.session_followup import (
                 SessionFollowupService,
@@ -653,7 +838,27 @@ class MissionPlanService(BaseService):
             )
         except Exception:
             self._logger.warning(
-                "SessionFollowupService.fire_matching failed",
+                "fire_matching(run.completed) failed",
+                extra={"mission_id": plan.mission_id},
+                exc_info=True,
+            )
+
+        # ── Plan 51 Phase E: invoke the post-run reviewer + fire
+        # Director followups on the supervisor decision. This is the
+        # autonomy loop's core feedback path: reviewer decides →
+        # emits supervisor_decision event → Director's followup
+        # fires → Director posts a chat update to the user.
+        try:
+            await self._run_post_run_reviewer(
+                plan=plan,
+                outcome=outcome,
+                session_id=session_id,
+                completed_count=_completed,
+                failed_count=_failed,
+            )
+        except Exception:
+            self._logger.warning(
+                "Post-run reviewer failed",
                 extra={"mission_id": plan.mission_id},
                 exc_info=True,
             )

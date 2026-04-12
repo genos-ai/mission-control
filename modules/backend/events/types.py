@@ -514,6 +514,24 @@ class MissionPlanRunCompletedEvent(SessionEvent):
     total_spent_usd: float = 0.0
 
 
+class SupervisorDecisionEmittedEvent(SessionEvent):
+    """The post-run supervisor just made a decision (Plan 51 Phase E).
+
+    Emitted by ``AutonomousPostRunReviewer`` in ``gate_post_run.py``
+    after writing the audit row. The Director's session followup
+    subscribes to this event type so it can wake and post a proactive
+    chat update to the user.
+    """
+
+    event_type: str = "mission_plan.supervisor_decision"
+    mission_id: str = ""
+    plan_id: str = ""
+    execution_record_id: str = ""
+    action: str = ""
+    reason: str = ""
+    reviewer: str = ""
+
+
 class SessionFollowupFiredEvent(SessionEvent):
     """A ``session_followups`` row just fired (Plan 51 Phase A).
 
@@ -579,6 +597,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "system.budget.warning": SystemBudgetWarningEvent,
     "system.session.created": SystemSessionCreatedEvent,
     "mission_plan.run.completed": MissionPlanRunCompletedEvent,
+    "mission_plan.supervisor_decision": SupervisorDecisionEmittedEvent,
     "session.followup.fired": SessionFollowupFiredEvent,
 }
 
