@@ -166,16 +166,32 @@ No more asyncio polling loop. No more Redis locking. No more heartbeat monitorin
 **Goal:** Turn on the feature flag, start a Temporal server, run the existing `AgentMissionWorkflow` end-to-end, and verify Plan 16's code works in practice.
 
 **Steps:**
-1. Start Temporal dev server: `temporal server start-dev`
-2. Set `temporal.enabled: true` and `temporal.server_url: "localhost:7233"` in `config/settings/temporal.yaml`
-3. Start the worker: `python -m modules.backend.temporal.worker`
-4. Start the backend: `python admin.py server start`
-5. Trigger an execution via `POST /api/v1/executions/{id}/execute`
-6. Verify in Temporal UI (`localhost:8233`) that the workflow ran
-7. Verify the execution result persisted in PostgreSQL
-8. Run the existing 23 Temporal test cases
 
-**Files:** Config only — `config/settings/temporal.yaml`
+1. **Install Temporal CLI** (one-time): `brew install temporal` on macOS, or `curl -sSf https://temporal.download/cli.sh | sh` on Linux. This provides the `temporal` binary for the dev server.
+
+2. **Start Temporal dev server:** `temporal server start-dev` — starts an in-memory Temporal server on port 7233 with a web UI on port 8233. No Docker required for development. For production, use the official Temporal Docker Compose or managed Temporal Cloud.
+
+3. **Set config:**
+   ```yaml
+   # config/settings/temporal.yaml
+   enabled: true
+   server_url: "localhost:7233"
+   ```
+
+4. **Start the worker** (separate terminal): `conda run -n mission-control python -m modules.backend.temporal.worker` — this process executes workflows and activities. It needs access to Redis (for event publishing) and PostgreSQL (for persistence activities). Both are resolved via the existing config (`get_redis_url()`, `get_async_session()`).
+
+5. **Start the backend:** `python admin.py server start`
+
+6. **Verify:** Trigger an execution via `POST /api/v1/executions/{id}/execute`. Check:
+   - Temporal UI at `http://localhost:8233` shows the workflow
+   - PostgreSQL has the execution record
+   - The existing 23 Temporal test cases pass
+
+**Dev experience note:** Phase A adds one extra process (the worker). A future `docker-compose.dev.yml` should start Temporal server + worker + backend + Redis + Postgres in one command. That's a follow-up, not a blocker.
+
+**Files:**
+- `config/settings/temporal.yaml` — flip `enabled: true`
+- `docker-compose.dev.yml` (new, optional) — dev stack with Temporal
 
 **Acceptance:** An `AgentMissionWorkflow` completes end-to-end via Temporal. The result is visible in the Temporal UI and persisted in the DB.
 
@@ -187,7 +203,7 @@ No more asyncio polling loop. No more Redis locking. No more heartbeat monitorin
 
 **New files:**
 - `modules/backend/temporal/chat_workflow.py` — `ChatTurnWorkflow` definition
-- `modules/backend/temporal/chat_activities.py` — `persist_user_message`, `execute_chat_turn`, `persist_assistant_message`, `publish_chat_events` activities
+- `modules/backend/temporal/chat_activities.py` — `persist_user_message`, `execute_chat_turn`, `persist_assistant_message` activities
 
 **Modified files:**
 - `modules/backend/api/v1/endpoints/sessions.py` — `send_message_stream` becomes `send_message`, returns JSON (not `StreamingResponse`), starts `ChatTurnWorkflow`
@@ -195,16 +211,52 @@ No more asyncio polling loop. No more Redis locking. No more heartbeat monitorin
 - `modules/backend/temporal/worker.py` — register new workflow + activities
 - `modules/frontend/src/pages/mission/tabs/chat-tab.tsx` — `sendMessage()` switches from inline fetch-stream to `POST` + `EventSource` on `/streams/runs/{sessionId}`
 
-**Key design decisions:**
-- `execute_chat_turn` activity wraps `handle()` — the existing function becomes an Activity body, not deleted
-- The activity publishes events to Redis Pub/Sub (via `SessionEventBus`) so the frontend sees streaming in real-time, same as today
-- `persist_user_message` and `persist_assistant_message` are separate activities with their own DB sessions — if one fails, Temporal retries it independently
-- The frontend's `sendMessage()` does `POST` → gets `202` → events arrive via the existing `EventSource` subscription to `/streams/runs/{sessionId}`
+**Critical design: how `handle()` works inside an Activity:**
+
+`handle()` is an async generator that yields `SessionEvent` objects. Activities must return a value, not yield. The solution:
+
+The `execute_chat_turn` Activity **drains** `handle()` internally — it consumes all yielded events in a loop. But `handle()` already publishes every event to the event bus via `_publish(event_bus, event)` at each step. The Activity constructs a real `SessionEventBus(redis)` and passes it as the `event_bus` parameter to `handle()`. Events flow to Redis Pub/Sub in real-time AS `handle()` yields them, not batched at the end.
+
+```python
+@activity.defn
+async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
+    """Run a chat turn via handle(), publishing events to Redis in real-time."""
+    from modules.backend.events.bus import SessionEventBus
+    redis = AsyncRedis.from_url(get_redis_url())
+    event_bus = SessionEventBus(redis)
+
+    async with get_async_session() as db:
+        session_service = SessionService(db)
+        full_content = ""
+        async for event in handle(
+            input.session_id,
+            input.message,
+            mission_id=input.mission_id,
+            session_service=session_service,
+            event_bus=event_bus,        # ← events publish to Redis LIVE
+            db_session=db,
+        ):
+            # handle() publishes internally; we just drain and accumulate
+            if hasattr(event, "full_content"):
+                full_content = event.full_content
+        await db.commit()
+    await redis.aclose()
+    return ChatTurnResult(content=full_content, ...)
+```
+
+The frontend subscribes to `/streams/runs/{sessionId}` via `EventSource` (the endpoint already exists). Events arrive in real-time — same streaming UX, but the transport is Redis Pub/Sub instead of inline SSE from the POST response.
+
+**Note:** The current `send_message_stream` endpoint does NOT pass an `event_bus` to `handle()` — it defaults to `NoOpEventBus`. This is why the Stream/Narrative tabs were empty during chat. The Activity fixes this by passing a real bus.
+
+**Persist activities** use their own DB sessions — `persist_user_message` commits the user message before the agent starts, `persist_assistant_message` commits the response after the agent finishes. If either fails, Temporal retries independently.
+
+**CLI path:** `mc.py chat` keeps the direct `handle()` call. The CLI is a blocking REPL — Temporal's crash recovery doesn't apply to a terminal session. The CLI is Tier 2 (interactive); browser + daemon paths are Tier 4 (durable). Document this as intentional.
 
 **Acceptance:**
 - Send a message, navigate away, come back — user message and assistant response both persisted
 - Kill the worker process mid-agent-call, restart — Temporal replays from last completed activity, agent re-executes, response persists
 - Two browser tabs open on same session — both see streaming events via SSE
+- Stream and Narrative tabs show events during chat (event_bus is real, not NoOp)
 
 ---
 
@@ -222,10 +274,11 @@ No more asyncio polling loop. No more Redis locking. No more heartbeat monitorin
 
 **Key design decisions:**
 - The supervisor decision is a workflow step, not an inline call. If the Haiku classification takes 10 seconds and the worker crashes at second 5, Temporal replays and retries.
-- `ADVANCE_APPROVED` loops back within the workflow — the workflow calls `approve_proposed_tasks` activity, then re-enters `execute_mission`. No daemon needed.
-- `ADVANCE_REFINE` sends a Temporal Signal to the Director's `ChatTurnWorkflow` (or starts a new one) asking it to call `refine_plan`. The mission run workflow then `workflow.wait_condition` until the plan has new proposed tasks.
-- `ESCALATE` sends a notification + Signal to wake the Director for user attention.
-- The `session_followups` primitive becomes unnecessary — Temporal Signals replace the wake-on-event pattern.
+- `ADVANCE_APPROVED` loops back within the workflow — the workflow calls `approve_proposed_tasks` activity (which flips proposed → approved in the DB, idempotent: checks status before approving), then calls `fetch_approved_task_ids` activity to get the new task list, then re-enters `execute_mission`. No daemon needed.
+- `ADVANCE_REFINE` **starts a new `ChatTurnWorkflow`** for the Director (not signals an existing one — there may be no Director workflow running for an autonomous mission). The system-generated prompt includes outcome summaries and asks the Director to call `refine_plan`. The mission run workflow then polls for new proposed tasks via a `check_plan_has_proposed_tasks` activity with `workflow.sleep` intervals, up to a configurable timeout.
+- `ESCALATE` starts a new `ChatTurnWorkflow` for the Director with an escalation prompt + sends a notification via `send_notification` activity.
+- `PROPOSE_COMPLETE` starts a new `ChatTurnWorkflow` for the Director asking it to confirm completion with the user.
+- The `session_followups` primitive becomes unnecessary — starting child workflows replaces the wake-on-event pattern. The Director is woken by being invoked, not by matching a followup row.
 
 **Acceptance:**
 - Create a plan with 2 waves. Approve wave 1. The workflow dispatches wave 1, supervisor evaluates, advances wave 2, dispatches wave 2, supervisor proposes completion. All without human intervention, all visible in the Temporal UI.
