@@ -568,6 +568,13 @@ def _backend_command(host: str, port: int, *, reload: bool) -> list[str]:
         host,
         "--port",
         str(port),
+        # SSE endpoints (streams.py) hold connections open indefinitely.
+        # Without a graceful-shutdown timeout, uvicorn hangs at
+        # "Waiting for connections to close" until every browser tab
+        # with an EventSource disconnects. 5s is enough for normal
+        # requests to drain; SSE generators catch CancelledError and
+        # clean up Redis subscriptions in their finally blocks.
+        "--timeout-graceful-shutdown", "5",
     ]
     if reload:
         cmd.extend([
