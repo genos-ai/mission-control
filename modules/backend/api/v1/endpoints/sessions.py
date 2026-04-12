@@ -275,17 +275,30 @@ async def send_message_stream(
     service = SessionService(db)
 
     async def generate():
-        async for event in handle(
-            session_id,
-            data.content,
-            mission_id=mission_id,
-            session_service=service,
-            sender_id=data.sender_id,
-            db_session=db,
-        ):
-            yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-        # Commit persisted messages before closing the stream
-        await db.commit()
+        try:
+            async for event in handle(
+                session_id,
+                data.content,
+                mission_id=mission_id,
+                session_service=service,
+                sender_id=data.sender_id,
+                db_session=db,
+            ):
+                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+        finally:
+            # Commit even if the stream was aborted (user navigated
+            # away mid-response). Without this, both user + assistant
+            # messages are lost because handle() persists at step 11
+            # but the generator's db.commit() only ran after the full
+            # stream completed. The try/finally ensures the commit
+            # fires even on abort — if handle() completed its persist
+            # step before the abort, messages survive. If it didn't
+            # (abort during tool call), at least we don't leave an
+            # uncommitted transaction hanging.
+            try:
+                await db.commit()
+            except Exception:
+                pass
         yield "event: done\ndata: {}\n\n"
 
     return StreamingResponse(
