@@ -459,6 +459,7 @@ class DevRunner:
     def __init__(self):
         self.procs: list[subprocess.Popen] = []
         self._shutting_down = False
+        self._backend_proc: subprocess.Popen | None = None
         self._reload_enabled = False
 
     def start_backend(self, host: str, port: int, reload: bool) -> subprocess.Popen:
@@ -467,6 +468,7 @@ class DevRunner:
             _backend_command(host, port, reload=reload),
             cwd=PROJECT_ROOT,
         )
+        self._backend_proc = proc
         self.procs.append(proc)
         return proc
 
@@ -507,21 +509,23 @@ class DevRunner:
         internally. If the supervisor process itself exits (e.g. code -9
         during a reload cycle), check whether something is still
         listening on the port before declaring death — the reloader may
-        have already respawned.
+        have already respawned. This check only applies to the backend
+        process; any other process exiting (e.g. frontend npm) is fatal.
         """
         try:
             while True:
-                for proc in self.procs:
+                for proc in list(self.procs):
                     ret = proc.poll()
                     if ret is not None:
                         name = " ".join(proc.args[:4]) if isinstance(proc.args, list) else str(proc.args)
-                        # With --reload, transient exits are expected.
-                        # Only shut down if the port is truly free
-                        # (nothing listening = genuinely dead).
-                        if self._reload_enabled and get_pids_on_port(BACKEND_PORT):
-                            print(f"\nProcess exited (code {ret}): {name}")
-                            print("  Port still in use — uvicorn reloader is respawning. Continuing.")
+                        # With --reload, the backend supervisor may exit
+                        # transiently. Only ignore if it's the backend
+                        # AND the port is still occupied (respawned).
+                        is_backend = proc is self._backend_proc
+                        if is_backend and self._reload_enabled and get_pids_on_port(BACKEND_PORT):
+                            print(f"\nBackend process exited (code {ret}) — reloader respawned. Continuing.")
                             self.procs.remove(proc)
+                            self._backend_proc = None
                             continue
                         print(f"\nProcess exited (code {ret}): {name}")
                         self.shutdown()
