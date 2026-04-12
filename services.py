@@ -459,8 +459,10 @@ class DevRunner:
     def __init__(self):
         self.procs: list[subprocess.Popen] = []
         self._shutting_down = False
+        self._reload_enabled = False
 
     def start_backend(self, host: str, port: int, reload: bool) -> subprocess.Popen:
+        self._reload_enabled = reload
         proc = subprocess.Popen(
             _backend_command(host, port, reload=reload),
             cwd=PROJECT_ROOT,
@@ -499,13 +501,28 @@ class DevRunner:
         print("All services stopped.")
 
     def wait(self):
-        """Block until any child exits or Ctrl-C."""
+        """Block until any child exits or Ctrl-C.
+
+        With --reload, uvicorn's reloader kills and respawns workers
+        internally. If the supervisor process itself exits (e.g. code -9
+        during a reload cycle), check whether something is still
+        listening on the port before declaring death — the reloader may
+        have already respawned.
+        """
         try:
             while True:
                 for proc in self.procs:
                     ret = proc.poll()
                     if ret is not None:
                         name = " ".join(proc.args[:4]) if isinstance(proc.args, list) else str(proc.args)
+                        # With --reload, transient exits are expected.
+                        # Only shut down if the port is truly free
+                        # (nothing listening = genuinely dead).
+                        if self._reload_enabled and get_pids_on_port(BACKEND_PORT):
+                            print(f"\nProcess exited (code {ret}): {name}")
+                            print("  Port still in use — uvicorn reloader is respawning. Continuing.")
+                            self.procs.remove(proc)
+                            continue
                         print(f"\nProcess exited (code {ret}): {name}")
                         self.shutdown()
                         return ret
