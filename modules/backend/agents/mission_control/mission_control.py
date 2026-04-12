@@ -371,16 +371,22 @@ async def handle(
         output_tokens = usage.output_tokens or 0
         cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
 
-        # Always prefer result.output — streaming chunks miss the first token.
-        # Chunks are used for live display only; result.output is authoritative.
-        output = result.output
-        if isinstance(output, str) and output:
-            full_content = output
-        elif hasattr(output, "model_dump_json"):
-            full_content = output.model_dump_json()
-        elif output is not None and str(output):
-            full_content = str(output)
-        # else: keep full_content from chunks as fallback
+        # Use accumulated chunk content as authoritative for tool-using
+        # agents (Director, Supervisor, etc.) where chunks span multiple
+        # agent turns. result.output only contains the FINAL turn's text,
+        # which throws away all intermediate content the user saw during
+        # streaming — causing the "chat overwrite" bug.
+        #
+        # Fall back to result.output only for structured-output agents
+        # that don't stream text chunks (e.g. VerificationEvaluation).
+        if not full_content:
+            output = result.output
+            if isinstance(output, str) and output:
+                full_content = output
+            elif hasattr(output, "model_dump_json"):
+                full_content = output.model_dump_json()
+            elif output is not None and str(output):
+                full_content = str(output)
 
         # 8. Yield complete event
         metadata: dict[str, Any] = {}
