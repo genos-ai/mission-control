@@ -262,9 +262,8 @@ async def get_messages(
     response_model=ApiResponse,
     summary="Send message to session",
     description=(
-        "Persist the user message and start the agent turn as a "
-        "durable Temporal workflow. Returns immediately — the agent "
-        "runs in the background. Events stream via "
+        "Persist the user message and start the agent turn in the "
+        "background. Returns immediately — events stream via "
         "GET /streams/runs/{session_id}."
     ),
 )
@@ -277,42 +276,70 @@ async def send_message(
 ) -> ApiResponse:
     """Send a message to a session.
 
-    Plan 52 Phase B: the agent turn runs as a ChatTurnWorkflow in
-    Temporal. The POST returns immediately with the workflow ID.
-    Events flow to the frontend via Redis Pub/Sub → /streams/runs/
-    EventSource subscription. The browser can disconnect at any
-    point without losing messages.
+    Persists the user message synchronously so it survives any
+    subsequent failure. Then fires the agent turn as a background
+    task — handle() publishes events to Redis Pub/Sub in real-time
+    and persists the assistant response at step 11.
+
+    Chat turns are Tier 2 (interactive) — background asyncio task,
+    not Temporal. Mission execution uses Temporal (Tier 4).
     """
-    from modules.backend.core.config import get_app_config
-    from modules.backend.temporal.chat_models import ChatTurnInput
-    from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
-    from modules.backend.temporal.client import get_temporal_client
+    import asyncio
 
-    temporal_config = get_app_config().temporal
-    client = await get_temporal_client()
-    input_data = ChatTurnInput(
-        session_id=session_id,
-        mission_id=mission_id,
-        message=data.content,
+    from modules.backend.agents.mission_control.mission_control import handle
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.core.logging import get_logger
+    from modules.backend.events.bus import SessionEventBus
+
+    logger = get_logger(__name__)
+
+    # 1. Persist user message synchronously — survives disconnect
+    service = SessionService(db)
+    user_msg = SessionMessageCreate(
+        role="user",
+        content=data.content,
         sender_id=data.sender_id,
-        channel="api",
     )
+    await service.add_message(session_id, user_msg)
+    await db.commit()
 
-    import uuid
-    workflow_id = f"chat-turn-{session_id}-{uuid.uuid4().hex[:8]}"
+    # 2. Fire agent turn in background — returns immediately
+    async def _run_chat_turn() -> None:
+        from redis.asyncio import Redis as AsyncRedis
+        from modules.backend.core.database import get_async_session
 
-    await client.start_workflow(
-        ChatTurnWorkflow.run,
-        input_data,
-        id=workflow_id,
-        task_queue=temporal_config.task_queue,
-    )
+        redis = AsyncRedis.from_url(get_redis_url())
+        event_bus = SessionEventBus(redis)
+        try:
+            async with get_async_session() as bg_db:
+                bg_service = SessionService(bg_db)
+                async for _event in handle(
+                    session_id,
+                    data.content,
+                    mission_id=mission_id,
+                    session_service=bg_service,
+                    event_bus=event_bus,
+                    channel="api",
+                    sender_id=data.sender_id,
+                    db_session=bg_db,
+                    skip_persistence=True,
+                ):
+                    pass  # handle() publishes events to Redis live
+                await bg_db.commit()
+        except Exception:
+            logger.exception(
+                "Background chat turn failed",
+                extra={"session_id": session_id},
+            )
+        finally:
+            await redis.aclose()
+
+    asyncio.create_task(_run_chat_turn())
 
     return ApiResponse(
         success=True,
         data={
             "session_id": session_id,
-            "workflow_id": workflow_id,
             "status": "accepted",
         },
         metadata={"request_id": request_id},
