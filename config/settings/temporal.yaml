@@ -1,8 +1,8 @@
 # =============================================================================
 # Temporal Configuration (Tier 4 - Durable Execution)
 # =============================================================================
-enabled: false
-server_url: "localhost:7233"
+enabled: true
+server_url: "127.0.0.1:7233"   # Explicit — validator rejects default "localhost:7233" as safety
 namespace: "default"
 task_queue: "agent-missions"
 workflow_execution_timeout_days: 30

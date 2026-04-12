@@ -14,6 +14,7 @@ Key rules:
 from datetime import timedelta
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 
 from modules.backend.temporal.models import (
     ApprovalDecision,
@@ -82,7 +83,7 @@ class AgentMissionWorkflow:
             activities.execute_mission,
             input,
             start_to_close_timeout=activity_timeout,
-            retry_policy=workflow.RetryPolicy(
+            retry_policy=RetryPolicy(
                 maximum_attempts=temporal_config.execution_retry_max_attempts,
                 initial_interval=timedelta(
                     seconds=temporal_config.execution_retry_initial_interval_seconds,
@@ -110,7 +111,7 @@ class AgentMissionWorkflow:
             start_to_close_timeout=timedelta(
                 seconds=temporal_config.persistence_timeout_seconds,
             ),
-            retry_policy=workflow.RetryPolicy(
+            retry_policy=RetryPolicy(
                 maximum_attempts=temporal_config.persistence_retry_max_attempts,
             ),
         )
@@ -152,7 +153,7 @@ class AgentMissionWorkflow:
                     activities.execute_mission,
                     input,
                     start_to_close_timeout=activity_timeout,
-                    retry_policy=workflow.RetryPolicy(maximum_attempts=1),
+                    retry_policy=RetryPolicy(maximum_attempts=1),
                 )
 
                 self._status.mission_status = retry_result.status
@@ -171,7 +172,7 @@ class AgentMissionWorkflow:
                     start_to_close_timeout=timedelta(
                         seconds=temporal_config.persistence_timeout_seconds,
                     ),
-                    retry_policy=workflow.RetryPolicy(
+                    retry_policy=RetryPolicy(
                         maximum_attempts=temporal_config.persistence_retry_max_attempts,
                     ),
                 )
