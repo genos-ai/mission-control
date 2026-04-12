@@ -23,6 +23,8 @@ from modules.backend.temporal.chat_activities import (
 from modules.backend.temporal.client import get_temporal_client, get_temporal_config
 from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
+from modules.backend.temporal.scheduled_workflow import ScheduledMissionCheckWorkflow
+from modules.backend.temporal.scheduled_activities import find_ready_plans
 from modules.backend.temporal.supervisor_activities import (
     approve_proposed_tasks,
     evaluate_post_run,
@@ -42,7 +44,7 @@ async def start_worker() -> None:
     worker = Worker(
         client,
         task_queue=config.task_queue,
-        workflows=[AgentMissionWorkflow, ChatTurnWorkflow, MissionRunWorkflow],
+        workflows=[AgentMissionWorkflow, ChatTurnWorkflow, MissionRunWorkflow, ScheduledMissionCheckWorkflow],
         activities=[
             # Mission execution (Plan 16)
             execute_mission,
@@ -57,6 +59,8 @@ async def start_worker() -> None:
             approve_proposed_tasks,
             fetch_plan_task_counts,
             start_director_turn,
+            # Scheduled dispatch (Plan 52 Phase D)
+            find_ready_plans,
         ],
     )
 
