@@ -247,6 +247,35 @@ async def _execute_layer(
         if task is None:
             continue
 
+        # ── Convergence loop fork (Plan 51 Phase B) ──────────────────
+        # If the task's static inputs declare type=convergence_loop,
+        # route to execute_convergence_loop() instead of the standard
+        # single-agent path. The convergence scaffold resolves its own
+        # eval/remediation agents internally, so we skip the roster
+        # check — it's not applicable here.
+        if task.inputs.static.get("type") == "convergence_loop":
+            try:
+                resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
+            except KeyError as e:
+                task_results.append(failed_result(task, str(e)))
+                continue
+            resolved_inputs = dict(resolved_inputs)
+            layer_tasks.append(task)
+            resolved_inputs_map[task.task_id] = resolved_inputs
+            coros.append(
+                _dispatch_convergence_loop(
+                    task_id=task.task_id,
+                    resolved_inputs=resolved_inputs,
+                    execute_agent_fn=execute_agent_fn,
+                    mission_id=plan.mission_id,
+                    gate=gate,
+                    event_bus=event_bus,
+                    session_id=session_id,
+                )
+            )
+            continue
+
+        # ── Standard agent task ──────────────────────────────────────
         roster_entry = roster.get_agent_by_name(task.agent)
         if roster_entry is None:
             task_results.append(failed_result(task, "Agent not found in roster"))
@@ -386,6 +415,80 @@ async def _execute_layer(
         "total_output_tokens": total_output_tokens,
         "total_thinking_tokens": total_thinking_tokens,
     }
+
+
+async def _dispatch_convergence_loop(
+    *,
+    task_id: str,
+    resolved_inputs: dict[str, Any],
+    execute_agent_fn: ExecuteAgentFn,
+    mission_id: str | None,
+    gate: GateReviewer,
+    event_bus: EventBusProtocol,
+    session_id: str,
+) -> TaskResult:
+    """Dispatch a convergence_loop task via the convergence scaffold.
+
+    Plan 51 Phase B: parses ``ConvergenceConfig`` from the task's
+    ``loop_config`` input, delegates to ``execute_convergence_loop()``,
+    and returns the resulting ``TaskResult`` in the same shape the
+    standard path returns — so the dispatch loop aggregates it
+    transparently alongside regular single-agent task results.
+
+    If ``loop_config`` is missing or malformed, returns a failed
+    ``TaskResult`` immediately rather than raising — matching the
+    error-result convention used by the rest of ``_execute_layer``.
+    """
+    from modules.backend.agents.mission_control.dispatch.convergence import (
+        ConvergenceConfig,
+        execute_convergence_loop,
+    )
+
+    loop_config_raw = resolved_inputs.get("loop_config")
+    if not isinstance(loop_config_raw, dict):
+        logger.warning(
+            "convergence_loop task missing loop_config in inputs",
+            extra={"task_id": task_id},
+        )
+        return TaskResult(
+            task_id=task_id,
+            agent_name="convergence",
+            status=TaskStatus.FAILED,
+            summary=(
+                "convergence_loop task requires a 'loop_config' dict "
+                "in inputs.static, but none was found."
+            ),
+            output_reference={},
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+
+    try:
+        config = ConvergenceConfig.from_dict(loop_config_raw)
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            "convergence_loop task has invalid loop_config",
+            extra={"task_id": task_id, "error": str(exc)},
+        )
+        return TaskResult(
+            task_id=task_id,
+            agent_name="convergence",
+            status=TaskStatus.FAILED,
+            summary=f"Invalid loop_config: {exc}",
+            output_reference={},
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+
+    return await execute_convergence_loop(
+        task_id=task_id,
+        config=config,
+        execute_agent_fn=execute_agent_fn,
+        mission_id=mission_id,
+        gate=gate,
+        event_bus=event_bus,
+        session_id=session_id,
+    )
 
 
 async def _inject_context(
