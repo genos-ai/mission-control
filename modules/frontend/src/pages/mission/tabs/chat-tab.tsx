@@ -448,25 +448,18 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
       )
       if (!response.ok) throw new Error('Failed to send message')
 
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No response body')
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let accumulated = ''
+      const contentType = response.headers.get('content-type') ?? ''
 
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6)
-          if (raw === '{}') continue
+      if (contentType.includes('application/json')) {
+        // Temporal path — agent runs in background, events via EventSource
+        await response.json() // consume body; workflow_id in response if needed later
+        const sseUrl = `${API_BASE}/streams/runs/${sessionId}`
+        const source = new EventSource(sseUrl)
+        let accumulated = ''
+
+        source.onmessage = (e) => {
           try {
-            const ev = JSON.parse(raw)
+            const ev = JSON.parse(e.data)
             if (ev.event_type === 'agent.response.chunk') {
               if (ev.metadata?.thinking) setStreamingThinking((p) => p + (ev.content ?? ''))
               else { accumulated += ev.content ?? ''; setStreamingContent(accumulated) }
@@ -486,20 +479,75 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
               accumulated = ''
               setStreamingContent('')
               setStreamingThinking('')
+              source.close()
+              setSending(false)
+              queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
             }
-          } catch { /* skip malformed SSE line */ }
+          } catch { /* skip malformed */ }
         }
-      }
-      if (accumulated) {
-        setMessages((p) => [
-          ...p,
-          {
-            id: `resp-${Date.now()}`, session_id: sessionId, role: 'assistant', content: accumulated,
-            sender_id: null, model: null, input_tokens: null, output_tokens: null, cost_usd: null,
-            tool_name: null, tool_call_id: null, thinking: null, created_at: new Date().toISOString(),
-          },
-        ])
-        setStreamingContent('')
+        source.onerror = () => {
+          source.close()
+          setSending(false)
+          queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
+        }
+        abortRef.current = { abort: () => source.close() } as AbortController
+        return
+
+      } else {
+        // Legacy inline SSE path (Temporal disabled)
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error('No response body')
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let accumulated = ''
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const raw = line.slice(6)
+            if (raw === '{}') continue
+            try {
+              const ev = JSON.parse(raw)
+              if (ev.event_type === 'agent.response.chunk') {
+                if (ev.metadata?.thinking) setStreamingThinking((p) => p + (ev.content ?? ''))
+                else { accumulated += ev.content ?? ''; setStreamingContent(accumulated) }
+              } else if (ev.event_type === 'agent.response.complete') {
+                setMessages((p) => [
+                  ...p,
+                  {
+                    id: `resp-${Date.now()}`, session_id: sessionId,
+                    role: ev.metadata?.error ? 'error' : 'assistant',
+                    content: ev.full_content ?? accumulated,
+                    sender_id: ev.agent_id ?? null, model: ev.model ?? null,
+                    input_tokens: ev.input_tokens ?? null, output_tokens: ev.output_tokens ?? null,
+                    cost_usd: ev.cost_usd ?? null, tool_name: null, tool_call_id: null,
+                    thinking: ev.metadata?.thinking ?? null, created_at: new Date().toISOString(),
+                  },
+                ])
+                accumulated = ''
+                setStreamingContent('')
+                setStreamingThinking('')
+              }
+            } catch { /* skip malformed SSE line */ }
+          }
+        }
+        if (accumulated) {
+          setMessages((p) => [
+            ...p,
+            {
+              id: `resp-${Date.now()}`, session_id: sessionId, role: 'assistant', content: accumulated,
+              sender_id: null, model: null, input_tokens: null, output_tokens: null, cost_usd: null,
+              tool_name: null, tool_call_id: null, thinking: null, created_at: new Date().toISOString(),
+            },
+          ])
+          setStreamingContent('')
+        }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return

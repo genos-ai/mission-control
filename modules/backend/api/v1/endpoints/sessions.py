@@ -255,58 +255,108 @@ async def get_messages(
     )
 
 
-# --- Streaming ---
+# --- Send message ---
 
 
 @router.post(
     "/{session_id}/messages",
-    summary="Send message and stream events",
-    description="Send a message to the session and stream agent progress events as SSE.",
+    response_model=ApiResponse,
+    summary="Send message to session",
+    description=(
+        "Persist the user message and start the agent turn as a "
+        "durable Temporal workflow. Returns immediately — the agent "
+        "runs in the background. Events stream via "
+        "GET /streams/runs/{session_id}."
+    ),
 )
-async def send_message_stream(
+async def send_message(
     session_id: str,
     mission_id: str,
     data: SessionMessageCreate,
     db: DbSession,
-) -> StreamingResponse:
-    """Send a message to a session and stream events as SSE."""
-    from modules.backend.agents.mission_control.mission_control import handle
+    request_id: RequestId,
+) -> ApiResponse:
+    """Send a message to a session.
 
-    service = SessionService(db)
+    Plan 52 Phase B: the agent turn runs as a ChatTurnWorkflow in
+    Temporal. The POST returns immediately with the workflow ID.
+    Events flow to the frontend via Redis Pub/Sub → /streams/runs/
+    EventSource subscription. The browser can disconnect at any
+    point without losing messages.
 
-    async def generate():
-        try:
-            async for event in handle(
-                session_id,
-                data.content,
-                mission_id=mission_id,
-                session_service=service,
-                sender_id=data.sender_id,
-                db_session=db,
-            ):
-                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-        finally:
-            # Commit even if the stream was aborted (user navigated
-            # away mid-response). Without this, both user + assistant
-            # messages are lost because handle() persists at step 11
-            # but the generator's db.commit() only ran after the full
-            # stream completed. The try/finally ensures the commit
-            # fires even on abort — if handle() completed its persist
-            # step before the abort, messages survive. If it didn't
-            # (abort during tool call), at least we don't leave an
-            # uncommitted transaction hanging.
+    Falls back to the inline handle() path if Temporal is disabled.
+    """
+    from modules.backend.core.config import get_app_config
+
+    temporal_config = get_app_config().temporal
+
+    if temporal_config.enabled:
+        # Temporal path — durable, survives disconnect
+        from modules.backend.temporal.chat_models import ChatTurnInput
+        from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
+        from modules.backend.temporal.client import get_temporal_client
+
+        client = await get_temporal_client()
+        input_data = ChatTurnInput(
+            session_id=session_id,
+            mission_id=mission_id,
+            message=data.content,
+            sender_id=data.sender_id,
+            channel="api",
+        )
+
+        import uuid
+        workflow_id = f"chat-turn-{session_id}-{uuid.uuid4().hex[:8]}"
+
+        handle = await client.start_workflow(
+            ChatTurnWorkflow.run,
+            input_data,
+            id=workflow_id,
+            task_queue=temporal_config.task_queue,
+        )
+
+        return ApiResponse(
+            success=True,
+            data={
+                "session_id": session_id,
+                "workflow_id": workflow_id,
+                "status": "accepted",
+            },
+            metadata={"request_id": request_id},
+        )
+
+    else:
+        # Fallback — inline handle() for when Temporal is off.
+        # This is the legacy path with the navigate-away bug.
+        # Kept for backwards compatibility and CLI usage.
+        from modules.backend.agents.mission_control.mission_control import handle
+
+        service = SessionService(db)
+
+        async def generate():
             try:
-                await db.commit()
-            except Exception:
-                pass
-        yield "event: done\ndata: {}\n\n"
+                async for event in handle(
+                    session_id,
+                    data.content,
+                    mission_id=mission_id,
+                    session_service=service,
+                    sender_id=data.sender_id,
+                    db_session=db,
+                ):
+                    yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+            finally:
+                try:
+                    await db.commit()
+                except Exception:
+                    pass
+            yield "event: done\ndata: {}\n\n"
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )

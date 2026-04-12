@@ -15,7 +15,13 @@ from modules.backend.temporal.activities import (
     persist_mission_outcome,
     send_notification,
 )
+from modules.backend.temporal.chat_activities import (
+    execute_chat_turn,
+    persist_assistant_message,
+    persist_user_message,
+)
 from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
 from modules.backend.temporal.workflow import AgentMissionWorkflow
 
 logger = get_logger(__name__)
@@ -29,11 +35,14 @@ async def start_worker() -> None:
     worker = Worker(
         client,
         task_queue=config.task_queue,
-        workflows=[AgentMissionWorkflow],
+        workflows=[AgentMissionWorkflow, ChatTurnWorkflow],
         activities=[
             execute_mission,
             persist_mission_outcome,
             send_notification,
+            persist_user_message,
+            execute_chat_turn,
+            persist_assistant_message,
         ],
     )
 
