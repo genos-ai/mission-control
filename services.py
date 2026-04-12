@@ -570,7 +570,15 @@ def _backend_command(host: str, port: int, *, reload: bool) -> list[str]:
         str(port),
     ]
     if reload:
-        cmd.append("--reload")
+        cmd.extend([
+            "--reload",
+            "--reload-include", "modules/**/*.py",
+            "--reload-include", "config/**/*.yaml",
+            "--reload-exclude", "scripts/*",
+            "--reload-exclude", "tests/*",
+            "--reload-exclude", "docs/*",
+            "--reload-exclude", ".codemap/*",
+        ])
     return cmd
 
 
