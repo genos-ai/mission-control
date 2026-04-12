@@ -22,6 +22,13 @@ from modules.backend.temporal.chat_activities import (
 )
 from modules.backend.temporal.client import get_temporal_client, get_temporal_config
 from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
+from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
+from modules.backend.temporal.supervisor_activities import (
+    approve_proposed_tasks,
+    evaluate_post_run,
+    fetch_plan_task_counts,
+    start_director_turn,
+)
 from modules.backend.temporal.workflow import AgentMissionWorkflow
 
 logger = get_logger(__name__)
@@ -35,14 +42,21 @@ async def start_worker() -> None:
     worker = Worker(
         client,
         task_queue=config.task_queue,
-        workflows=[AgentMissionWorkflow, ChatTurnWorkflow],
+        workflows=[AgentMissionWorkflow, ChatTurnWorkflow, MissionRunWorkflow],
         activities=[
+            # Mission execution (Plan 16)
             execute_mission,
             persist_mission_outcome,
             send_notification,
+            # Chat turn (Plan 52 Phase B)
             persist_user_message,
             execute_chat_turn,
             persist_assistant_message,
+            # Supervisor loop (Plan 52 Phase C)
+            evaluate_post_run,
+            approve_proposed_tasks,
+            fetch_plan_task_counts,
+            start_director_turn,
         ],
     )
 
