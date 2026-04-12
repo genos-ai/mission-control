@@ -30,31 +30,18 @@ logger = get_logger(__name__)
 
 
 async def _publish(event_bus: EventBusProtocol, event: SessionEvent) -> None:
-    """Publish event to session channel + mission channel (if applicable).
-
-    Events go to session:{session_id} for the session-level stream.
-    If the event carries a mission_id, also publish to
-    mission_events:{mission_id} so the mission Stream/Narrative tabs
-    see live progress during autonomous execution.
-    """
+    """Publish event to bus. Non-critical — NoOpEventBus silently drops."""
     try:
         await event_bus.publish(event)
     except Exception:
         logger.debug("Event bus publish failed", exc_info=True)
-    # Also publish to mission channel if available
-    mission_id = getattr(event, "mission_id", None)
-    if mission_id:
-        try:
-            await event_bus.publish_to_mission(mission_id, event)
-        except Exception:
-            logger.debug("Mission event bus publish failed", exc_info=True)
 
 
 async def _emit(event_bus: EventBusProtocol, event_cls: type[SessionEvent], **kwargs: Any) -> None:
-    """Construct and publish an event to both session and mission channels."""
+    """Construct and publish an event, catching construction and publish errors."""
     try:
         event = event_cls(**kwargs)
-        await _publish(event_bus, event)
+        await event_bus.publish(event)
     except Exception:
         logger.debug("Event emission failed for %s", event_cls.__name__, exc_info=True)
 

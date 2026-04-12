@@ -581,6 +581,13 @@ async def handle_mission(
             "mission_id and db_session are required for dispatch. "
             "Agents are resolved from the mission team in the database."
         )
+
+    # Wrap the event bus so ALL events (agent thinking, chunks, tool
+    # calls, cost updates — not just dispatch-level events) publish
+    # to the mission channel for the Stream/Narrative tabs.
+    from modules.backend.agents.mission_control.models import MissionAwareEventBus
+    event_bus = MissionAwareEventBus(event_bus, mission_id)
+
     _plan_sid = uuid.UUID(session_id) if session_id else uuid.uuid4()
 
     async def _phase(step: str, message: str) -> None:
