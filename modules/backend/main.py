@@ -40,14 +40,81 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         },
     )
 
-    # Plan 52: Temporal owns orchestration. Crash recovery is handled
-    # by Temporal's durable execution (automatic replay on worker restart).
-    # The MissionPlanDaemon is replaced by ScheduledMissionCheckWorkflow.
-    # Start the worker: python -m modules.backend.temporal.worker
-    logger.info(
-        "Temporal is the execution backbone. "
-        "Ensure the worker is running: python -m modules.backend.temporal.worker"
-    )
+    # Register Temporal schedule for autonomous plan dispatch.
+    # Replaces MissionPlanDaemon — Temporal handles timing, dedup,
+    # and worker coordination. Idempotent: silently skips if the
+    # schedule already exists from a prior boot.
+    try:
+        from datetime import timedelta as _td
+
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleIntervalSpec,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
+        from temporalio.common import ScheduleOverlapPolicy
+
+        from modules.backend.temporal.client import get_temporal_client
+        from modules.backend.temporal.scheduled_workflow import (
+            ScheduledMissionCheckWorkflow,
+        )
+
+        temporal_client = await get_temporal_client()
+        temporal_config = app_config.temporal
+        schedule_id = "mission-plan-dispatch-schedule"
+
+        try:
+            await temporal_client.create_schedule(
+                schedule_id,
+                Schedule(
+                    action=ScheduleActionStartWorkflow(
+                        ScheduledMissionCheckWorkflow.run,
+                        id="scheduled-mission-check",
+                        task_queue=temporal_config.task_queue,
+                    ),
+                    spec=ScheduleSpec(
+                        intervals=[ScheduleIntervalSpec(every=_td(seconds=5))],
+                    ),
+                    policy=SchedulePolicy(
+                        overlap=ScheduleOverlapPolicy.SKIP,
+                    ),
+                ),
+            )
+            logger.info("Temporal dispatch schedule registered", extra={"schedule_id": schedule_id})
+        except Exception as schedule_err:
+            if "already registered" in str(schedule_err).lower() or "already exists" in str(schedule_err).lower():
+                logger.info("Temporal dispatch schedule already exists")
+            else:
+                raise
+    except Exception:  # noqa: BLE001
+        logger.error("Failed to register Temporal dispatch schedule", exc_info=True)
+
+    # Crash recovery: reconcile orphaned task states from prior crash.
+    # Temporal's durable execution handles most cases, but tasks that
+    # were mid-run when the BACKEND (not the worker) crashed still
+    # need reconciliation.
+    try:
+        from redis.asyncio import Redis as AsyncRedis
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.core.database import get_async_session
+        from modules.backend.events.bus import SessionEventBus
+        from modules.backend.services.mission_plan_crash_recovery import (
+            reconcile_orphaned_task_states,
+        )
+
+        redis = AsyncRedis.from_url(get_redis_url())
+        try:
+            event_bus = SessionEventBus(redis)
+            async with get_async_session() as db:
+                stats = await reconcile_orphaned_task_states(db, event_bus)
+                await db.commit()
+            logger.info("Crash recovery completed", extra=stats)
+        finally:
+            await redis.close()
+    except Exception:  # noqa: BLE001
+        logger.error("Crash recovery failed — continuing startup", exc_info=True)
 
     yield
 
