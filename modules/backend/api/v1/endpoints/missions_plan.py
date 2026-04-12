@@ -56,14 +56,28 @@ async def _require_mission_access(
 
     Mirrors the access-check pattern used in missions.py. Extracted here
     because every endpoint in this file needs it.
+
+    Uses a direct query for member check instead of the Mission.members
+    lazy relationship, which triggers a MissingGreenlet error when
+    accessed outside the original query's greenlet context.
     """
+    from sqlalchemy import select
+
     mission_service = MissionService(db)
     mission = await mission_service.get_mission(mission_id)
     if current_user.has_role("admin"):
         return
     if mission.owner_id == current_user.id:
         return
-    if any(m.user_id == current_user.id for m in mission.members):
+    # Direct query instead of mission.members to avoid lazy-load greenlet issue
+    from modules.backend.models.mission import MissionMember
+    result = await db.execute(
+        select(MissionMember.id).where(
+            MissionMember.mission_id == mission_id,
+            MissionMember.user_id == current_user.id,
+        ).limit(1)
+    )
+    if result.scalar_one_or_none() is not None:
         return
     raise AuthorizationError("You don't have access to this mission")
 

@@ -25,9 +25,15 @@ import sys
 import time
 from pathlib import Path
 
+import os
+
 import httpx
 
-BASE_URL = "http://127.0.0.1:8100"
+BASE_URL = os.environ.get("MC_BASE_URL", "http://127.0.0.1:8100")
+ADMIN_EMAIL = os.environ.get("MC_ADMIN_EMAIL", "admin@missioncontrol.dev")
+ADMIN_PASSWORD = os.environ.get("MC_ADMIN_PASSWORD", "admin")
+USER_EMAIL = os.environ.get("MC_USER_EMAIL", "user@missioncontrol.dev")
+USER_PASSWORD = os.environ.get("MC_USER_PASSWORD", "user")
 PASS = "✓"
 FAIL = "✗"
 SKIP = "⚠"
@@ -111,8 +117,8 @@ class E2ETestRunner:
         self._failures: list[str] = []
         self._mission_id: str | None = None
         self._session_id: str | None = None
-        self.admin = ApiClient("admin@missioncontrol.dev", "admin", "admin")
-        self.user = ApiClient("user@missioncontrol.dev", "user", "user")
+        self.admin = ApiClient(ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
+        self.user = ApiClient(USER_EMAIL, USER_PASSWORD, "user")
 
     def _log(self, msg: str) -> None:
         if self.verbose:
@@ -172,7 +178,7 @@ class E2ETestRunner:
         """User can GET the mission plan."""
         r = await self.user.get(f"/api/v1/missions/{self._mission_id}/plan")
         if r.status_code != 200:
-            self._fail("User read plan", f"status={r.status_code}")
+            self._fail("User read plan", f"status={r.status_code} body={r.text[:200]}")
             return
         self._pass("User can read mission plan")
 
@@ -193,12 +199,12 @@ class E2ETestRunner:
 
     async def test_admin_create_session_and_chat_with_supervisor(self) -> None:
         """Admin creates a session and chats with the supervisor."""
-        # Create session (POST /api/v1/sessions, not /missions/{id}/sessions)
+        # Create session (POST /api/v1/sessions)
         r = await self.admin.post(
             "/api/v1/sessions",
             json={"goal": "e2e test", "agent_id": "mission.supervisor.agent", "mission_id": self._mission_id},
         )
-        if r.status_code != 200:
+        if r.status_code not in (200, 201):
             self._fail("Create session", f"status={r.status_code} body={r.text[:200]}")
             return
         session_data = r.json().get("data", {})
@@ -240,7 +246,7 @@ class E2ETestRunner:
             "/api/v1/sessions",
             json={"goal": "e2e director test", "agent_id": "mission.director.agent", "mission_id": self._mission_id},
         )
-        if r.status_code != 200:
+        if r.status_code not in (200, 201):
             self._fail("User create session", f"status={r.status_code}")
             return
         session_id = r.json().get("data", {}).get("id")
