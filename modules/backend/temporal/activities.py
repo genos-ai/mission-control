@@ -31,8 +31,12 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     This is acceptable because missions are idempotent at the outcome level —
     re-running produces equivalent results (possibly different cost).
     """
+    from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.agents.mission_control.mission_control import handle_mission
+    from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
+    from modules.backend.events.bus import SessionEventBus
     from modules.backend.services.session import SessionService
 
     activity.logger.info(
@@ -44,6 +48,9 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
         },
     )
 
+    redis = AsyncRedis.from_url(get_redis_url())
+    event_bus = SessionEventBus(redis)
+
     async with get_async_session() as db:
         session_service = SessionService(db)
 
@@ -52,6 +59,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 mission_run_id=input.mission_run_id,
                 mission_brief=input.mission_brief,
                 session_service=session_service,
+                event_bus=event_bus,
                 roster_name=input.roster_name,
                 mission_budget_usd=input.mission_budget_usd,
                 mission_id=input.mission_id,
@@ -89,6 +97,8 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 status="failed",
                 outcome_json={"error": str(e)},
             )
+        finally:
+            await redis.aclose()
 
 
 @activity.defn
