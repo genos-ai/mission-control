@@ -438,10 +438,17 @@ async def handle(
         yield cost_event
         await _publish(event_bus, cost_event)
 
-        # 11. Persist messages (skipped when Temporal activities handle persistence)
+        # 11. Persist messages
+        # When skip_persistence is True (Temporal path), the user message
+        # was already persisted by persist_user_message activity — only
+        # persist the assistant response here.
+        messages_to_persist = []
         if not skip_persistence:
-            user_create = SessionMessageCreate(role="user", content=message, sender_id=sender_id)
-            assistant_create = SessionMessageCreate(
+            messages_to_persist.append(
+                SessionMessageCreate(role="user", content=message, sender_id=sender_id)
+            )
+        messages_to_persist.append(
+            SessionMessageCreate(
                 role="assistant",
                 content=full_content,
                 sender_id=agent_name,
@@ -451,7 +458,8 @@ async def handle(
                 cost_usd=cost_usd,
                 thinking="\n\n".join(thinking_parts) if thinking_parts else None,
             )
-            await _persist_messages(session_service, session_id, [user_create, assistant_create])
+        )
+        await _persist_messages(session_service, session_id, messages_to_persist)
 
         # 12. Touch activity
         try:
@@ -474,13 +482,12 @@ async def handle(
             metadata={"error": True},
         )
         # Persist the error as a message so it shows in console history
-        if not skip_persistence:
-            error_create = SessionMessageCreate(
-                role="assistant",
-                content=str(exc),
-                sender_id=agent_name,
-            )
-            await _persist_messages(session_service, session_id, [error_create])
+        error_create = SessionMessageCreate(
+            role="assistant",
+            content=str(exc),
+            sender_id=agent_name,
+        )
+        await _persist_messages(session_service, session_id, [error_create])
         # Emit system error event to mission channel
         if mission_id:
             from modules.backend.events.types import SystemEvent

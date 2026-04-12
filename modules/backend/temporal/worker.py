@@ -17,7 +17,6 @@ from modules.backend.temporal.activities import (
 )
 from modules.backend.temporal.chat_activities import (
     execute_chat_turn,
-    persist_assistant_message,
     persist_user_message,
 )
 from modules.backend.temporal.client import get_temporal_client, get_temporal_config
@@ -53,7 +52,6 @@ async def start_worker() -> None:
             # Chat turn (Plan 52 Phase B)
             persist_user_message,
             execute_chat_turn,
-            persist_assistant_message,
             # Supervisor loop (Plan 52 Phase C)
             evaluate_post_run,
             approve_proposed_tasks,

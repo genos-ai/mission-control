@@ -67,10 +67,11 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
     The frontend subscribes to /streams/runs/{sessionId} via EventSource
     and sees streaming in real-time. Same UX, different transport.
 
-    handle() normally persists messages at step 11. Since the workflow's
-    own activities handle persistence (persist_user_message before,
-    persist_assistant_message after), we pass skip_persistence=True
-    to prevent double-writes.
+    handle() persists messages at step 11. The user message is already
+    persisted by persist_user_message (activity 1), so we pass
+    skip_persistence=True — handle() skips the user message write
+    but still persists the assistant response inline. No separate
+    persist_assistant_message activity needed.
     """
     from redis.asyncio import Redis as AsyncRedis
 

@@ -4,14 +4,14 @@ Chat Turn Workflow (Plan 52 Phase B).
 Temporal Workflow that executes a single chat turn with durable
 guarantees:
 
-1. Persist user message (Activity — own DB commit)
-2. Execute agent turn (Activity — drains handle(), publishes events
-   to Redis Pub/Sub in real-time)
-3. Persist assistant response (Activity — own DB commit)
+1. Persist user message (Activity — own DB commit, survives agent crash)
+2. Execute agent turn (Activity — runs handle() which persists the
+   assistant response at step 11 and publishes events to Redis
+   Pub/Sub in real-time)
 
-The browser can disconnect at any point. The workflow completes
-regardless. Events flow through Redis Pub/Sub to any connected
-SSE subscriber.
+Two activities, not three: the agent turn persists its own response
+inline via handle(). This avoids a third Temporal dispatch round-trip
+that added ~100-200ms of latency per chat turn.
 
 Key rules (same as AgentMissionWorkflow):
 - Workflow code is deterministic — no I/O, no random, no datetime.now()
@@ -37,13 +37,9 @@ class ChatTurnWorkflow:
 
     Flow:
     1. Persist user message (survives any subsequent failure)
-    2. Execute agent turn (publishes events to Redis Pub/Sub live)
-    3. Persist assistant response (retried independently if it fails)
+    2. Execute agent turn (publishes events live, persists response)
 
-    The workflow is short-lived (seconds to minutes, depending on
-    agent execution time). It's NOT a long-running workflow — it
-    completes after one turn. Multi-turn conversations start a new
-    workflow per message.
+    Short-lived (seconds to minutes). One workflow per message.
     """
 
     def __init__(self) -> None:
@@ -74,9 +70,10 @@ class ChatTurnWorkflow:
         )
 
         # Step 2: Execute agent turn
-        # This is the expensive step — runs the LLM, tool calls, etc.
-        # Events publish to Redis Pub/Sub in real-time via the event bus
-        # passed to handle(). The frontend sees streaming via EventSource.
+        # Runs handle() with skip_persistence=False so it persists
+        # the assistant response at step 11 within the same activity.
+        # Events publish to Redis Pub/Sub in real-time via the event
+        # bus. No separate persist_assistant_message activity needed.
         activity_timeout = timedelta(
             seconds=max(
                 temporal_config.min_activity_timeout_seconds,
@@ -94,21 +91,4 @@ class ChatTurnWorkflow:
         )
 
         self._result = result
-
-        # Step 3: Persist assistant response
-        # Separate activity so Temporal retries it independently of
-        # the agent execution. If the agent completed but persistence
-        # failed (DB blip), Temporal retries ONLY the persistence —
-        # the agent doesn't re-execute.
-        await workflow.execute_activity(
-            chat_activities.persist_assistant_message,
-            args=[input.session_id, result],
-            start_to_close_timeout=timedelta(
-                seconds=temporal_config.persistence_timeout_seconds,
-            ),
-            retry_policy=RetryPolicy(
-                maximum_attempts=temporal_config.persistence_retry_max_attempts,
-            ),
-        )
-
         return result
