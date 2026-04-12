@@ -147,6 +147,8 @@ class MissionPlanResponse(BaseModel):
     budget_usd_ceiling: float | None
     total_spent_usd: float
     veto_window_sec: int | None
+    supervisor_iteration_count: int = 0
+    max_supervisor_iterations: int = 20
     task_states: list[PlanTaskStateResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
