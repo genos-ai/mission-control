@@ -60,6 +60,9 @@ def _build_agent_deps(
     if "mission.workflow" in agent_name:
         from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
         return ArchitectAgentDeps(**common)
+    if "mission.supervisor" in agent_name:
+        from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
+        return MissionSupervisorDeps(**common, mission_id=mission_id or "", db_session=db_session)
 
     return BaseAgentDeps(**common)
 
