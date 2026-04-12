@@ -83,6 +83,7 @@ class AgentCatalogService(BaseService):
         constraints: dict[str, Any] | None = None,
         keywords: list[str] | None = None,
         enabled: bool = True,
+        chat_enabled: bool = False,
         visibility: str = "public",
     ) -> AgentCatalog:
         """Create a new agent catalog entry."""
@@ -103,6 +104,7 @@ class AgentCatalogService(BaseService):
             constraints=constraints or {"timeout_seconds": 120, "cost_ceiling_usd": 1.0, "retry_budget": 2},
             keywords=keywords or [],
             enabled=enabled,
+            chat_enabled=chat_enabled,
             visibility=visibility,
         )
 
