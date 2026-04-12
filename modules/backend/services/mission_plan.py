@@ -28,6 +28,7 @@ from modules.backend.events.types import (
     MissionPlanDispatchedEvent,
     MissionPlanGateModeChangedEvent,
     MissionPlanRefinedEvent,
+    MissionPlanRunCompletedEvent,
     MissionPlanTaskStatusChangedEvent,
 )
 from modules.backend.models.mission_plan import (
@@ -82,6 +83,27 @@ class MissionPlanService(BaseService):
         self._repo = MissionPlanRepository(session)
         self._mission_repo = MissionRepository(session)
         self._event_bus: EventBusProtocol = event_bus or NoOpEventBus()
+
+    # ── Plan 51 Phase C: no-op agent turn runner ──────────────────────
+    # In Phase C, fire_matching runs but no agent actually wakes — the
+    # real runner gets plugged in by Phase E (Director followup). This
+    # no-op logs the fire so the audit trail is visible even before
+    # the Director consumer is wired.
+
+    @staticmethod
+    async def _noop_agent_turn_runner(
+        session_id: str, mission_id: str, prompt: str,
+    ) -> None:
+        """Placeholder agent turn runner — logs and returns."""
+        from modules.backend.core.logging import get_logger as _gl
+        _gl(__name__).info(
+            "Post-run followup fired (no agent runner wired yet — Phase E)",
+            extra={
+                "session_id": session_id,
+                "mission_id": mission_id,
+                "prompt_preview": prompt[:200],
+            },
+        )
 
     # ── Event emission helpers ──────────────────────────────────────────
 
@@ -561,6 +583,80 @@ class MissionPlanService(BaseService):
                 dispatched_task_ids=sorted(approved_task_ids),
             ),
         )
+
+        # ── Plan 51 Phase C: post-run event + followup fire ─────────
+        # Compute denormalised task counts from the outcome, persist
+        # them on the execution_records row, emit the run-completed
+        # event, and fire any matching session followups in-process.
+        from modules.backend.agents.mission_control.outcome import TaskStatus as _TS
+
+        _task_results = getattr(outcome, "task_results", []) or []
+        _completed = sum(1 for r in _task_results if r.status == _TS.SUCCESS)
+        _failed = sum(1 for r in _task_results if r.status == _TS.FAILED)
+
+        # Persist denormalised counts on the execution_records row.
+        if outcome.execution_record_id:
+            try:
+                from modules.backend.repositories.execution_record import (
+                    ExecutionRecordRepository,
+                )
+                _exec_repo = ExecutionRecordRepository(self._session)
+                _exec_row = await _exec_repo.get_by_id_or_none(
+                    outcome.execution_record_id,
+                )
+                if _exec_row is not None:
+                    _exec_row.completed_task_count = _completed
+                    _exec_row.failed_task_count = _failed
+                    await self._session.flush()
+            except Exception:
+                self._logger.warning(
+                    "Failed to persist task counts on execution_record",
+                    extra={"execution_record_id": outcome.execution_record_id},
+                    exc_info=True,
+                )
+
+        _run_status = (
+            outcome.status.value
+            if hasattr(outcome.status, "value")
+            else str(outcome.status)
+        )
+
+        _run_completed_event = MissionPlanRunCompletedEvent(
+            session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+            source="mission_plan_service",
+            mission_id=plan.mission_id,
+            plan_id=plan.id,
+            execution_record_id=outcome.execution_record_id or "",
+            run_status=_run_status,
+            run_cost_usd=float(outcome.total_cost_usd or 0.0),
+            completed_task_count=_completed,
+            failed_task_count=_failed,
+            total_spent_usd=plan.total_spent_usd,
+        )
+        await self._emit(plan.mission_id, _run_completed_event)
+
+        # Fire matching session followups in-process (Plan 51 Phase A
+        # primitive). The followup service spawns agent turns for any
+        # registered followups matching this event type + mission.
+        # Best-effort — failures are logged on the followup row, not
+        # bubbled to the dispatch path.
+        try:
+            from modules.backend.services.session_followup import (
+                SessionFollowupService,
+            )
+            _followup_svc = SessionFollowupService(
+                self._session, event_bus=self._event_bus,
+            )
+            await _followup_svc.fire_matching(
+                _run_completed_event,
+                agent_turn_runner=self._noop_agent_turn_runner,
+            )
+        except Exception:
+            self._logger.warning(
+                "SessionFollowupService.fire_matching failed",
+                extra={"mission_id": plan.mission_id},
+                exc_info=True,
+            )
 
         return {
             "outcome_status": (

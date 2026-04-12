@@ -47,6 +47,15 @@ points:
   post_layer:
     enabled: true
     mode: null
+  # Plan 51 Phase C: post-run autonomy loop checkpoint. Unlike the
+  # standard gate types above, post_run is NOT routed through
+  # ConfigurableGate — it's handled directly by
+  # AutonomousPostRunReviewer in dispatch_approved, which owns the
+  # db session the reviewer needs for idempotency and audit. This
+  # entry exists for documentation/discovery only.
+  post_run:
+    enabled: true
+    mode: null                # gate_mode is read from mission_plans.gate_mode, not here
 
 # ---------------------------------------------------------------------------
 # Auto-continue rules (for autonomous mode)

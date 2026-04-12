@@ -218,7 +218,16 @@ class ConfigurableGate:
         return False
 
     async def review(self, context: GateContext) -> GateDecision:
-        """Route to the appropriate reviewer based on config."""
+        """Route to the appropriate reviewer based on config.
+
+        Note: ``post_run`` gate type (Plan 51 Phase C) is NOT routed
+        through ConfigurableGate — it's called directly via
+        ``AutonomousPostRunReviewer`` from ``MissionPlanService.
+        dispatch_approved`` which owns the db session and mission
+        context the reviewer needs. ConfigurableGate only handles
+        the standard gate types (pre_dispatch, pre_layer, post_task,
+        verification_failed, post_layer).
+        """
         gate_type = context.gate_type
 
         if not self._is_enabled(gate_type):

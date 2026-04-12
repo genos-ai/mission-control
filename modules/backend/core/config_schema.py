@@ -429,13 +429,17 @@ class GatePointSchema(_StrictBase):
 
 
 class GatePointsSchema(_StrictBase):
-    """All five gate points with per-point overrides."""
+    """All six gate points with per-point overrides."""
 
     pre_dispatch: GatePointSchema = Field(default_factory=GatePointSchema)
     pre_layer: GatePointSchema = Field(default_factory=GatePointSchema)
     post_task: GatePointSchema = Field(default_factory=GatePointSchema)
     verification_failed: GatePointSchema = Field(default_factory=GatePointSchema)
     post_layer: GatePointSchema = Field(default_factory=GatePointSchema)
+    # Plan 51 Phase C: post-run autonomy loop checkpoint. Called
+    # directly from MissionPlanService.dispatch_approved, not routed
+    # through ConfigurableGate. Config entry for discovery/enable flag.
+    post_run: GatePointSchema = Field(default_factory=GatePointSchema)
 
 
 class GateAutoRulesSchema(_StrictBase):

@@ -52,6 +52,7 @@ class DecisionType(str, enum.Enum):
     RE_PLAN = "re_plan"
     SKIP = "skip"
     ESCALATE = "escalate"
+    POST_RUN_SUPERVISOR = "post_run_supervisor"  # Plan 51 Phase C
 
 
 class FailureTier(str, enum.Enum):
@@ -160,6 +161,24 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
         comment="If this execution was a re-plan, link to the original",
+    )
+
+    # Denormalised task counts (Plan 51 Phase C) — populated at
+    # write-back time from outcome.task_results so the stall breaker
+    # and MissionPlanRunCompletedEvent don't need to re-aggregate.
+    completed_task_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        comment="Count of tasks with status SUCCESS in this run.",
+    )
+    failed_task_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        comment="Count of tasks with status FAILED in this run.",
     )
 
     task_executions: Mapped[list["TaskExecution"]] = relationship(

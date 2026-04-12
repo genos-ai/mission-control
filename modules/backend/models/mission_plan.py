@@ -166,6 +166,29 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         ),
     )
 
+    # Supervisor autonomy loop counters (Plan 51 Phase C).
+    supervisor_iteration_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        comment=(
+            "How many times the post-run supervisor has been invoked. "
+            "Resets on user-initiated refine_plan or new plan creation."
+        ),
+    )
+    max_supervisor_iterations: Mapped[int] = mapped_column(
+        Integer,
+        default=20,
+        server_default="20",
+        nullable=False,
+        comment=(
+            "Circuit breaker: if supervisor_iteration_count >= this, "
+            "the supervisor short-circuits to ESCALATE without "
+            "evaluating rules or calling Haiku."
+        ),
+    )
+
     # Relationships
     task_states: Mapped[list["PlanTaskState"]] = relationship(
         "PlanTaskState",
