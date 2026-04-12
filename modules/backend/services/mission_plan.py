@@ -689,7 +689,10 @@ class MissionPlanService(BaseService):
 
         # Derive the filtered TaskPlan. Approval is transitive (§10.2) so
         # the closure guarantee should hold — but verify and raise if not.
-        derived_plan = self._derive_subset_task_plan(task_plan, approved_task_ids)
+        # Dependencies that completed in prior runs are treated as satisfied.
+        derived_plan = await self._derive_subset_task_plan(
+            task_plan, approved_task_ids, mission_plan_id,
+        )
 
         # Mark approved → queued (Plan 42 §2.3 state machine)
         now = utc_now()
@@ -997,31 +1000,43 @@ class MissionPlanService(BaseService):
         row = result.scalar_one_or_none()
         return row
 
-    def _derive_subset_task_plan(
+    async def _derive_subset_task_plan(
         self,
         full_plan: TaskPlan,
         approved_task_ids: set[str],
+        mission_plan_id: str,
     ) -> TaskPlan:
         """Filter a full TaskPlan to only the approved tasks.
 
-        Raises ValidationError if the subset has dangling dependency
-        references — this should be impossible because approve_task
-        transitively closes the dependency set, but it's cheap to check
-        and the error message points to the exact inconsistency.
+        Dependencies that already completed or were skipped in a prior
+        run are considered satisfied — they don't need to be in the
+        approved subset because they already ran. Only dependencies that
+        are still pending/proposed and NOT approved are flagged as
+        dangling.
         """
         filtered_tasks = [
             t for t in full_plan.tasks if t.task_id in approved_task_ids
         ]
 
-        # Validate closure: every dependency must also be in the subset
+        # Build the set of task_ids whose dependencies are already
+        # satisfied (completed, skipped — they ran in a prior wave).
+        all_states = await self._repo.get_task_states(mission_plan_id)
+        satisfied_ids = {
+            s.task_id for s in all_states
+            if s.status in ("completed", "skipped")
+        }
+
+        # The "safe" set is: tasks being dispatched now + already done.
+        safe_ids = approved_task_ids | satisfied_ids
+
+        # Validate closure: every dependency must be safe
         for task in filtered_tasks:
             for dep_id in task.dependencies:
-                if dep_id not in approved_task_ids:
+                if dep_id not in safe_ids:
                     raise ValidationError(
                         f"Task {task.task_id!r} depends on {dep_id!r}, "
-                        f"which is not in the approved subset. Approve the "
-                        f"dependency first (approve_task is supposed to "
-                        f"handle this automatically)."
+                        f"which is neither approved nor completed. "
+                        f"Approve the dependency first."
                     )
 
         return TaskPlan(
