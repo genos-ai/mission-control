@@ -77,35 +77,85 @@ class ApiClient:
             return await c.patch(path, **kwargs)
 
     async def post_stream(self, path: str, **kwargs) -> list[dict]:
-        """POST with SSE streaming — collects all events and returns them."""
+        """POST with SSE streaming OR JSON + poll (Temporal path).
+
+        Detects the response content-type:
+        - text/event-stream: parse SSE inline (legacy path)
+        - application/json: Temporal started a workflow, poll messages
+        """
         events = []
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=120, headers=self.headers) as c:
-            async with c.stream("POST", path, **kwargs) as response:
-                if response.status_code != 200:
-                    await response.aread()
-                    return [{"error": response.text, "status": response.status_code}]
-                buffer = ""
-                async for chunk in response.aiter_text():
-                    buffer += chunk
-                    while "\n\n" in buffer:
-                        raw, buffer = buffer.split("\n\n", 1)
-                        lines = raw.strip().split("\n")
-                        event_type = ""
-                        data_str = ""
-                        for line in lines:
-                            if line.startswith("event: "):
-                                event_type = line[7:]
-                            elif line.startswith("data: "):
-                                data_str = line[6:]
-                        if event_type == "done":
+            # First try a normal POST (not streaming) to check content type
+            response = await c.post(path, **kwargs)
+
+            if response.status_code not in (200, 201, 202):
+                return [{"error": response.text, "status": response.status_code}]
+
+            content_type = response.headers.get("content-type", "")
+
+            if "application/json" in content_type:
+                # Temporal path — workflow started, poll for completion.
+                # Extract session_id from the URL path to poll messages.
+                import re
+                match = re.search(r"/sessions/([^/]+)/messages", path)
+                session_id = match.group(1) if match else ""
+
+                if not session_id:
+                    return [{"_event_type": "agent.response.complete", "full_content": "(temporal workflow started)"}]
+
+                # Poll session messages until assistant response appears
+                import asyncio as aio
+                for _ in range(30):  # 60 seconds max
+                    await aio.sleep(2)
+                    msg_resp = await c.get(f"/sessions/{session_id}/messages")
+                    if msg_resp.status_code == 200:
+                        msg_data = msg_resp.json().get("data", [])
+                        messages = msg_data if isinstance(msg_data, list) else msg_data.get("messages", []) if isinstance(msg_data, dict) else []
+                        assistant_msgs = [m for m in messages if m.get("role") == "assistant"]
+                        if assistant_msgs:
+                            latest = assistant_msgs[-1]
+                            events.append({
+                                "_event_type": "agent.response.complete",
+                                "full_content": latest.get("content", ""),
+                                "agent_id": latest.get("sender_id"),
+                                "model": latest.get("model"),
+                                "input_tokens": latest.get("input_tokens"),
+                                "output_tokens": latest.get("output_tokens"),
+                                "cost_usd": latest.get("cost_usd"),
+                                "metadata": {"thinking": latest.get("thinking")},
+                            })
                             break
-                        if data_str:
-                            try:
-                                parsed = json.loads(data_str)
-                                parsed["_event_type"] = event_type
-                                events.append(parsed)
-                            except json.JSONDecodeError:
-                                pass
+                return events
+
+            else:
+                # Legacy SSE path — parse inline stream
+                # Re-do the request as a stream since we already consumed it
+                async with c.stream("POST", path, **kwargs) as stream_response:
+                    if stream_response.status_code not in (200, 201):
+                        await stream_response.aread()
+                        return [{"error": stream_response.text, "status": stream_response.status_code}]
+                    buffer = ""
+                    async for chunk in stream_response.aiter_text():
+                        buffer += chunk
+                        while "\n\n" in buffer:
+                            raw, buffer = buffer.split("\n\n", 1)
+                            lines = raw.strip().split("\n")
+                            event_type = ""
+                            data_str = ""
+                            for line in lines:
+                                if line.startswith("event: "):
+                                    event_type = line[7:]
+                                elif line.startswith("data: "):
+                                    data_str = line[6:]
+                            if event_type == "done":
+                                break
+                            if data_str:
+                                try:
+                                    parsed = json.loads(data_str)
+                                    parsed["_event_type"] = event_type
+                                    events.append(parsed)
+                                except json.JSONDecodeError:
+                                    pass
         return events
 
 
