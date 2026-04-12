@@ -319,7 +319,13 @@ class MissionPlanDaemon:
                 mission_svc = MissionService(db)
                 mission = await mission_svc.get_mission(plan.mission_id)
 
-                svc = MissionPlanService(db)
+                # Pass a real event bus so execution events (agent
+                # thinking, tool calls, narrative, artifacts) flow
+                # to the frontend via SSE — not just plan_task_states.
+                from modules.backend.events.bus import SessionEventBus
+                event_bus = SessionEventBus(self._redis)
+
+                svc = MissionPlanService(db, event_bus=event_bus)
                 result = await svc.dispatch_approved(
                     plan_id, user_id=mission.owner_id,
                 )
