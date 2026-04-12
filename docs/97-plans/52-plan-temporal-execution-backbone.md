@@ -89,7 +89,6 @@ We're building Tier 4 features (7-day unattended missions, supervisor autonomy l
     │    evaluate_post_run     (new — supervisor)       │
     │    notify_director       (new — followup)         │
     │    send_notification     (existing — stub)        │
-    │    publish_events        (new — Redis bus bridge) │
     └──────────────────────────────────────────────────┘
 
 Frontend:
@@ -118,8 +117,7 @@ execute_mission(plan_id, task_ids)            ← Activity (existing)
       ADVANCE_APPROVED → approve tasks, loop back to execute_mission
       ADVANCE_REFINE → Signal to ChatTurnWorkflow (Director refines plan)
       PROPOSE_COMPLETE → Signal to ChatTurnWorkflow (Director asks user)
-      ESCALATE → send_notification + Signal to ChatTurnWorkflow
-  → publish_events(decision_event)            ← Activity (new — Redis bus bridge)
+      ESCALATE → send_notification + start ChatTurnWorkflow for Director
 ```
 This is the autonomy loop as a Temporal workflow. The supervisor decision becomes a workflow step, not an inline call. The loop is durable — if the worker crashes between `execute_mission` and `evaluate_post_run`, Temporal replays from the last completed activity.
 
@@ -364,7 +362,7 @@ Plan 52 is Done when:
 ## 6  What this plan does NOT do
 
 - **No Temporal Cloud.** Uses self-hosted Temporal for dev and staging. Cloud migration is a separate ops decision.
-- **No workflow versioning strategy.** Document separately when workflows need schema evolution.
+- **No workflow versioning strategy.** Long-running workflows (MissionRunWorkflow, potentially days) will break if workflow code changes between replays. Use Temporal's `workflow.patched()` for backward-compatible changes and `workflow.deprecate_patch()` for cleanup. Document the versioning protocol separately when the first schema evolution is needed.
 - **No multi-tenancy in Temporal.** Single namespace, single task queue. Multi-tenant isolation is a future concern.
 - **No replacement of Redis Pub/Sub for SSE.** Redis Pub/Sub remains the real-time transport to the frontend. Temporal is the orchestration layer, not the event bus.
 
