@@ -147,14 +147,15 @@ export default function MissionLayout() {
       let planInvalidated = false
       let artifactsInvalidated = false
       newEvents.forEach((ev) => {
-        const d = ev.data as Record<string, unknown>
+        const top = ev.data as Record<string, unknown>
+        const d = (top.data ?? top) as Record<string, unknown>
         onSseEvent(ev.event_type, d)
         addEvent({
-          event_id: String(d.event_id ?? crypto.randomUUID()),
+          event_id: String(top.event_id ?? d.event_id ?? crypto.randomUUID()),
           event_type: ev.event_type,
           category: categorize(ev.event_type),
-          timestamp: String(d.timestamp ?? new Date().toISOString()),
-          source: String(d.agent_id ?? d.source ?? ''),
+          timestamp: String(top.timestamp ?? d.timestamp ?? new Date().toISOString()),
+          source: String(d.agent_id ?? top.source ?? d.source ?? ''),
           data: d,
         })
         if (ev.event_type.startsWith('mission_plan.') && id) {
