@@ -279,7 +279,10 @@ async def send_message(
     The assistant response is persisted by handle() at step 11.
     """
     from fastapi.responses import StreamingResponse
+    from redis.asyncio import Redis as AsyncRedis
     from modules.backend.agents.mission_control.mission_control import handle
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.events.bus import SessionEventBus
 
     # Persist user message before the agent starts
     service = SessionService(db)
@@ -292,18 +295,26 @@ async def send_message(
     await db.commit()
 
     async def generate():
-        async for event in handle(
-            session_id,
-            data.content,
-            mission_id=mission_id,
-            session_service=service,
-            sender_id=data.sender_id,
-            db_session=db,
-            skip_persistence=True,
-        ):
-            yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-        await db.commit()
-        yield "event: done\ndata: {}\n\n"
+        # Real event bus so watchers on the Stream/Narrative tabs
+        # see chat activity — not just the user who sent the message.
+        redis = AsyncRedis.from_url(get_redis_url())
+        event_bus = SessionEventBus(redis, mission_id=mission_id)
+        try:
+            async for event in handle(
+                session_id,
+                data.content,
+                mission_id=mission_id,
+                session_service=service,
+                event_bus=event_bus,
+                sender_id=data.sender_id,
+                db_session=db,
+                skip_persistence=True,
+            ):
+                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+            await db.commit()
+            yield "event: done\ndata: {}\n\n"
+        finally:
+            await redis.aclose()
 
     return StreamingResponse(
         generate(),

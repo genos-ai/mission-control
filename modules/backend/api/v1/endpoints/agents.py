@@ -122,16 +122,26 @@ async def agent_chat_stream(
     await db.commit()
 
     async def generate():
-        async for event in handle(
-            session_id, data.message,
-            mission_id=data.mission_id,
-            session_service=service,
-            db_session=db,
-            skip_persistence=True,
-        ):
-            yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-        await db.commit()
-        yield "event: done\ndata: {}\n\n"
+        from redis.asyncio import Redis as AsyncRedis
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.events.bus import SessionEventBus
+
+        redis = AsyncRedis.from_url(get_redis_url())
+        event_bus = SessionEventBus(redis, mission_id=data.mission_id)
+        try:
+            async for event in handle(
+                session_id, data.message,
+                mission_id=data.mission_id,
+                session_service=service,
+                event_bus=event_bus,
+                db_session=db,
+                skip_persistence=True,
+            ):
+                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+            await db.commit()
+            yield "event: done\ndata: {}\n\n"
+        finally:
+            await redis.aclose()
 
     return StreamingResponse(
         generate(),

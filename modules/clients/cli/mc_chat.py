@@ -82,21 +82,31 @@ async def chat_repl(
         if not verbose:
             console.print()
         try:
-            async with get_async_session() as db:
-                session_svc = SessionService(db)
-                async for event in handle(
-                    session_id=session_id,
-                    message=user_input,
-                    session_service=session_svc,
-                    channel="mc",
-                    mission_id=mission_id,
-                    db_session=db,
-                ):
-                    if verbose:
-                        _render_chat_event_verbose(event)
-                    else:
-                        _render_chat_event(console, event)
-                await db.commit()
+            from redis.asyncio import Redis as AsyncRedis
+            from modules.backend.core.config import get_redis_url
+            from modules.backend.events.bus import SessionEventBus
+
+            redis = AsyncRedis.from_url(get_redis_url())
+            event_bus = SessionEventBus(redis, mission_id=mission_id)
+            try:
+                async with get_async_session() as db:
+                    session_svc = SessionService(db)
+                    async for event in handle(
+                        session_id=session_id,
+                        message=user_input,
+                        session_service=session_svc,
+                        event_bus=event_bus,
+                        channel="mc",
+                        mission_id=mission_id,
+                        db_session=db,
+                    ):
+                        if verbose:
+                            _render_chat_event_verbose(event)
+                        else:
+                            _render_chat_event(console, event)
+                    await db.commit()
+            finally:
+                await redis.aclose()
         except KeyboardInterrupt:
             click.echo("\nCancelled.")
 
