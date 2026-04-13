@@ -89,9 +89,10 @@ async def find_ready_plans() -> list[dict]:
             "session_id": plan.id,  # Use plan ID as session reference
         })
 
-    activity.logger.info(
-        "Found ready plans",
-        extra={"count": len(plans), "plan_ids": [p["plan_id"] for p in plans]},
-    )
+    if plans:
+        activity.logger.info(
+            "Found ready plans",
+            extra={"count": len(plans), "plan_ids": [p["plan_id"] for p in plans]},
+        )
 
     return plans
