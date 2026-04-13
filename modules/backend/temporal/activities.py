@@ -20,30 +20,31 @@ logger = get_logger(__name__)
 
 @activity.defn
 async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult:
-    """Execute a full mission via handle_mission().
+    """Execute approved plan tasks via dispatch_approved().
 
-    This is the critical Activity — it bridges Temporal and Mission Control.
-    The dispatch loop (Plan 13) runs inside this Activity with full middleware:
-    topological DAG execution, retry-with-feedback, 3-tier verification,
-    cost tracking, and budget enforcement.
+    Uses MissionPlanService.dispatch_approved() which:
+    1. Collects approved task_ids from plan_task_states
+    2. Derives the subset TaskPlan
+    3. Marks tasks as queued
+    4. Calls handle_mission(precomputed_plan=...)
+    5. Writes back task states (completed/failed) after execution
+    6. Updates plan cost totals
 
-    On Temporal retry (worker crash), the entire mission re-executes.
-    This is acceptable because missions are idempotent at the outcome level —
-    re-running produces equivalent results (possibly different cost).
+    This ensures plan_task_states stay in sync with execution results.
     """
     from redis.asyncio import Redis as AsyncRedis
 
-    from modules.backend.agents.mission_control.mission_control import handle_mission
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
-    from modules.backend.services.session import SessionService
+    from modules.backend.services.mission import MissionService
+    from modules.backend.services.mission_plan import MissionPlanService
 
     activity.logger.info(
         "Starting mission execution",
         extra={
             "mission_run_id": input.mission_run_id,
-            "roster": input.roster_name,
+            "mission_id": input.mission_id,
             "budget": input.mission_budget_usd,
         },
     )
@@ -52,38 +53,25 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     event_bus = SessionEventBus(redis, mission_id=input.mission_id)
 
     async with get_async_session() as db:
-        session_service = SessionService(db)
-
         try:
-            outcome = await handle_mission(
-                mission_run_id=input.mission_run_id,
-                mission_brief=input.mission_brief,
-                session_service=session_service,
-                event_bus=event_bus,
-                roster_name=input.roster_name,
-                mission_budget_usd=input.mission_budget_usd,
-                mission_id=input.mission_id,
-                db_session=db,
-            )
+            # Look up mission owner for audit trail
+            mission = await MissionService(db).get_mission(input.mission_id)
 
-            outcome_dict = outcome.model_dump()
-
-            success_count = sum(
-                1 for r in outcome.task_results if r.status.value == "success"
+            svc = MissionPlanService(db, event_bus=event_bus)
+            result = await svc.dispatch_approved(
+                input.mission_run_id,
+                user_id=mission.owner_id,
             )
-            failed_count = sum(
-                1 for r in outcome.task_results if r.status.value != "success"
-            )
+            await db.commit()
 
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
-                status=outcome.status.value,
-                total_cost_usd=outcome.total_cost_usd,
-                total_duration_seconds=outcome.total_duration_seconds,
-                task_count=len(outcome.task_results),
-                success_count=success_count,
-                failed_count=failed_count,
-                outcome_json=outcome_dict,
+                status=result.get("outcome_status", "completed"),
+                total_cost_usd=result.get("total_cost_usd", 0.0),
+                task_count=len(result.get("dispatched_task_ids", [])),
+                success_count=len(result.get("updated_task_ids", [])),
+                failed_count=0,
+                outcome_json=result,
             )
 
         except Exception as e:
