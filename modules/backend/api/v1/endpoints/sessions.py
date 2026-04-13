@@ -271,20 +271,29 @@ async def send_message(
     data: SessionMessageCreate,
     db: DbSession,
 ):
-    """Send a message and stream agent events inline.
+    """Send a message and stream agent events.
 
-    The user message is persisted before the agent starts so it
-    survives any subsequent failure. Agent events stream directly
-    in the HTTP response — no Redis indirection, no background task.
-    The assistant response is persisted by handle() at step 11.
+    The agent runs in a background task that survives browser
+    disconnect. Events flow through an asyncio.Queue to the SSE
+    response AND to Redis for other watchers. If the client
+    disconnects mid-stream, the background task continues —
+    handle() completes, persists the response, and publishes
+    to Redis. When the user comes back, the response is in the DB.
     """
+    import asyncio
+
     from fastapi.responses import StreamingResponse
     from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.agents.mission_control.mission_control import handle
     from modules.backend.core.config import get_redis_url
+    from modules.backend.core.database import get_async_session
+    from modules.backend.core.logging import get_logger
     from modules.backend.events.bus import SessionEventBus
 
-    # Persist user message before the agent starts
+    logger = get_logger(__name__)
+
+    # 1. Persist user message (request DB session, synchronous)
     service = SessionService(db)
     user_msg = SessionMessageCreate(
         role="user",
@@ -294,27 +303,53 @@ async def send_message(
     await service.add_message(session_id, user_msg)
     await db.commit()
 
-    async def generate():
-        # Real event bus so watchers on the Stream/Narrative tabs
-        # see chat activity — not just the user who sent the message.
+    # 2. Shared queue bridges background task → SSE response
+    queue: asyncio.Queue = asyncio.Queue()
+
+    # 3. Background task — runs handle() with its own DB session,
+    #    drains events into the queue, survives client disconnect.
+    async def _run_agent() -> None:
         redis = AsyncRedis.from_url(get_redis_url())
         event_bus = SessionEventBus(redis, mission_id=mission_id)
         try:
-            async for event in handle(
-                session_id,
-                data.content,
-                mission_id=mission_id,
-                session_service=service,
-                event_bus=event_bus,
-                sender_id=data.sender_id,
-                db_session=db,
-                skip_persistence=True,
-            ):
-                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-            await db.commit()
-            yield "event: done\ndata: {}\n\n"
+            async with get_async_session() as bg_db:
+                bg_service = SessionService(bg_db)
+                async for event in handle(
+                    session_id,
+                    data.content,
+                    mission_id=mission_id,
+                    session_service=bg_service,
+                    event_bus=event_bus,
+                    sender_id=data.sender_id,
+                    db_session=bg_db,
+                    skip_persistence=True,
+                ):
+                    await queue.put(event)
+                await bg_db.commit()
+        except Exception:
+            logger.exception(
+                "Background agent task failed",
+                extra={"session_id": session_id},
+            )
         finally:
             await redis.aclose()
+            await queue.put(None)  # sentinel — closes the SSE stream
+
+    asyncio.create_task(_run_agent())
+
+    # 4. SSE generator — reads from queue, yields to client.
+    #    If client disconnects, this generator is cancelled but
+    #    the background task continues independently.
+    async def generate():
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+            yield "event: done\ndata: {}\n\n"
+        except asyncio.CancelledError:
+            pass  # client disconnected — background task continues
 
     return StreamingResponse(
         generate(),

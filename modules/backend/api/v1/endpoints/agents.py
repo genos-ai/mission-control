@@ -104,9 +104,17 @@ async def agent_chat_stream(
     data: ChatRequest,
     db: DbSession,
 ):
-    """Stream agent progress events as inline SSE."""
+    """Stream agent events. Agent runs in background task that survives disconnect."""
+    import asyncio
+
     from fastapi.responses import StreamingResponse
+    from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.agents.mission_control.mission_control import handle
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.core.database import get_async_session
+    from modules.backend.events.bus import SessionEventBus
+    from modules.backend.schemas.session import SessionMessageCreate
     from modules.backend.services.session import SessionService
 
     service = SessionService(db)
@@ -114,34 +122,49 @@ async def agent_chat_stream(
         data.session_id, agent_id=data.agent, goal=data.message,
     )
 
-    # Persist user message before agent starts
-    from modules.backend.schemas.session import SessionMessageCreate
-
     user_msg = SessionMessageCreate(role="user", content=data.message)
     await service.add_message(session_id, user_msg)
     await db.commit()
 
-    async def generate():
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
+    queue: asyncio.Queue = asyncio.Queue()
 
+    async def _run_agent() -> None:
         redis = AsyncRedis.from_url(get_redis_url())
         event_bus = SessionEventBus(redis, mission_id=data.mission_id)
         try:
-            async for event in handle(
-                session_id, data.message,
-                mission_id=data.mission_id,
-                session_service=service,
-                event_bus=event_bus,
-                db_session=db,
-                skip_persistence=True,
-            ):
-                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
-            await db.commit()
-            yield "event: done\ndata: {}\n\n"
+            async with get_async_session() as bg_db:
+                bg_service = SessionService(bg_db)
+                async for event in handle(
+                    session_id, data.message,
+                    mission_id=data.mission_id,
+                    session_service=bg_service,
+                    event_bus=event_bus,
+                    db_session=bg_db,
+                    skip_persistence=True,
+                ):
+                    await queue.put(event)
+                await bg_db.commit()
+        except Exception:
+            logger.exception(
+                "Background agent task failed",
+                extra={"session_id": session_id},
+            )
         finally:
             await redis.aclose()
+            await queue.put(None)
+
+    asyncio.create_task(_run_agent())
+
+    async def generate():
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+            yield "event: done\ndata: {}\n\n"
+        except asyncio.CancelledError:
+            pass
 
     return StreamingResponse(
         generate(),
