@@ -188,7 +188,7 @@ async def handle(
                 metadata={"mission_status": outcome.status},
             )
         except Exception as exc:
-            logger.error("Mission dispatch error", exc_info=True)
+            logger.error("Mission dispatch error", extra={"mission_id": mission_id}, exc_info=True)
             yield AgentResponseCompleteEvent(
                 session_id=sid,
                 source=source,
@@ -481,7 +481,7 @@ async def handle(
     except Exception as exc:
         logger.error(
             "Agent execution error",
-            extra={"session_id": session_id, "agent_id": agent_name, "error": str(exc)},
+            extra={"session_id": session_id, "agent_id": agent_name, "error": str(exc), "mission_id": mission_id},
             exc_info=True,
         )
         # Yield error event so the stream terminates cleanly
@@ -680,20 +680,13 @@ async def handle_mission(
         if not validation.is_valid:
             last_error = "; ".join(validation.errors)
             logger.warning(
-                "Precomputed plan failed validation",
+                "Precomputed plan failed validation: %s",
+                last_error,
                 extra={
-                    "mission_id": mission_run_id,
+                    "mission_id": mission_id or mission_run_id,
                     "errors": validation.errors,
                 },
             )
-            from modules.backend.events.types import SystemEvent
-            await _publish(event_bus, SystemEvent(
-                session_id=_plan_sid,
-                source="mission_control",
-                level="error",
-                message=f"Plan validation failed: {last_error}",
-                mission_id=mission_id or mission_run_id,
-            ))
             plan = None
     else:
         max_planning_attempts = 3

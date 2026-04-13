@@ -177,6 +177,7 @@ async def dispatch(
                 extra={
                     "cumulative_cost": total_cost,
                     "budget": mission_budget_usd,
+                    "mission_id": mission_id,
                 },
             )
             break
@@ -570,7 +571,7 @@ async def _dispatch_workflow_task(
     except Exception as e:
         logger.error(
             "Workflow task dispatch failed",
-            extra={"task_id": task.task_id, "workflow": workflow_name, "error": str(e)},
+            extra={"task_id": task.task_id, "workflow": workflow_name, "error": str(e), "mission_id": mission_id},
             exc_info=True,
         )
         result = TaskResult(

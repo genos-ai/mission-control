@@ -18,48 +18,6 @@ from modules.backend.temporal.models import (
 logger = get_logger(__name__)
 
 
-async def emit_system_event(
-    mission_id: str,
-    message: str,
-    *,
-    level: str = "error",
-    source: str = "temporal",
-    event_bus: object | None = None,
-) -> None:
-    """Best-effort: emit a SystemEvent to the mission's event stream.
-
-    Uses an existing event_bus if provided, otherwise creates a fresh
-    Redis connection. Every Temporal activity can call this — no shared
-    state required.
-    """
-    try:
-        from modules.backend.events.types import SystemEvent
-
-        event = SystemEvent(
-            session_id="",
-            source=source,
-            level=level,
-            message=message,
-            mission_id=mission_id,
-        )
-
-        if event_bus is not None:
-            await event_bus.publish_to_mission(mission_id, event)
-            return
-
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
-
-        redis = AsyncRedis.from_url(get_redis_url())
-        try:
-            bus = SessionEventBus(redis, mission_id=mission_id)
-            await bus.publish_to_mission(mission_id, event)
-        finally:
-            await redis.aclose()
-    except Exception:
-        logger.debug("Failed to emit system event", exc_info=True)
-
 
 @activity.defn
 async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult:
@@ -121,14 +79,8 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
         except Exception as e:
             activity.logger.error(
                 "Mission execution failed",
-                extra={"mission_run_id": input.mission_run_id, "error": str(e)},
+                extra={"mission_run_id": input.mission_run_id, "error": str(e), "mission_id": input.mission_id},
                 exc_info=True,
-            )
-            await emit_system_event(
-                input.mission_id or input.mission_run_id,
-                f"Mission execution failed: {e}",
-                source="temporal:execute_mission",
-                event_bus=event_bus,
             )
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
@@ -171,14 +123,8 @@ async def persist_mission_outcome(
     except (OSError, ValueError, RuntimeError) as e:
         activity.logger.error(
             "Failed to persist mission results",
-            extra={"mission_run_id": mission_run_id, "error": str(e)},
+            extra={"mission_run_id": mission_run_id, "error": str(e), "mission_id": mission_id},
         )
-        if mission_id:
-            await emit_system_event(
-                mission_id,
-                f"Failed to persist execution results: {e}",
-                source="temporal:persist_outcome",
-            )
         return False
 
 

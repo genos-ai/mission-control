@@ -221,7 +221,7 @@ class WorkflowRunService(BaseService):
             run.result_summary = f"Workflow failed: {e}"
             logger.error(
                 "DB workflow run failed",
-                extra={"run_id": run.id, "error": str(e)},
+                extra={"run_id": run.id, "error": str(e), "mission_id": mission_id},
             )
 
         await self._session.flush()

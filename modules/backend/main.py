@@ -26,7 +26,7 @@ _app: FastAPI | None = None
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     app_config = get_app_config()
-    setup_logging(level=app_config.logging.level)
+    setup_logging(level=app_config.logging.level, enable_mission_events=True)
 
     if app_config.features.security_startup_checks_enabled:
         from modules.backend.gateway.security.startup_checks import run_startup_checks

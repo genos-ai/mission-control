@@ -38,6 +38,7 @@ Log File:
     dated backups (e.g. system.jsonl.2026-04-07). Filter by 'source' field.
 """
 
+import asyncio
 import logging
 import sys
 from logging.handlers import TimedRotatingFileHandler
@@ -108,11 +109,91 @@ def _resolve_log_path(configured_path: str) -> Path:
     return project_root / configured_path
 
 
+class MissionEventHandler(logging.Handler):
+    """Bridges the logger to the mission event stream.
+
+    Any log record at WARNING or above that carries ``mission_id`` in its
+    ``extra`` dict is automatically published as a ``SystemEvent`` to the
+    mission's Redis Pub/Sub channel. This makes errors visible in the
+    console, narrative, and SSE streams without requiring manual
+    ``event_bus.publish()`` calls at every error site.
+
+    The handler is async-safe: it schedules a fire-and-forget coroutine
+    on the running event loop. If no loop is running (CLI, tests), the
+    record is silently skipped — the file/console handlers still capture it.
+
+    Registered by ``setup_logging()`` when ``enable_mission_events`` is True
+    (default for the backend; off for CLI/TUI which have no Redis).
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # structlog stores extra fields directly on the record
+        mission_id = getattr(record, "mission_id", None)
+        if not mission_id:
+            # Also check the extra dict (standard logging pattern)
+            extra = getattr(record, "_extra", None) or {}
+            mission_id = extra.get("mission_id")
+        if not mission_id:
+            return
+
+        level = record.levelname.lower()
+        if level not in ("warning", "error", "critical"):
+            return
+
+        message = record.getMessage()
+        source = getattr(record, "source", None) or record.name
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # No event loop — CLI/test context, skip silently
+
+        loop.create_task(
+            _publish_mission_event(str(mission_id), message, level=level, source=source)
+        )
+
+
+async def _publish_mission_event(
+    mission_id: str,
+    message: str,
+    *,
+    level: str = "error",
+    source: str = "logger",
+) -> None:
+    """Fire-and-forget: publish a SystemEvent to the mission's stream."""
+    try:
+        from redis.asyncio import Redis as AsyncRedis
+
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.events.bus import SessionEventBus
+        from modules.backend.events.types import SystemEvent
+
+        redis = AsyncRedis.from_url(get_redis_url())
+        try:
+            bus = SessionEventBus(redis, mission_id=mission_id)
+            await bus.publish_to_mission(
+                mission_id,
+                SystemEvent(
+                    session_id="",
+                    source=source,
+                    level=level,
+                    message=message,
+                    mission_id=mission_id,
+                ),
+            )
+        finally:
+            await redis.aclose()
+    except Exception:
+        # Never let event emission break the application
+        pass
+
+
 def setup_logging(
     level: str | None = None,
     format_type: str | None = None,
     enable_console: bool | None = None,
     enable_file_logging: bool | None = None,
+    enable_mission_events: bool = False,
 ) -> None:
     """
     Configure structured logging for the application.
@@ -125,6 +206,9 @@ def setup_logging(
         format_type: Output format ('json' or 'console'). Overrides config.
         enable_console: Whether to enable console output. Overrides config.
         enable_file_logging: Whether to write to JSONL file. Overrides config.
+        enable_mission_events: Whether to bridge WARNING+ logs with mission_id
+            to the mission event stream via Redis. True for backend server,
+            False for CLI/TUI (no Redis available).
     """
     config = _get_logging_config()
 
@@ -210,6 +294,11 @@ def setup_logging(
         )
         file_handler.setFormatter(json_formatter)
         root_logger.addHandler(file_handler)
+
+    if enable_mission_events:
+        mission_handler = MissionEventHandler()
+        mission_handler.setLevel(logging.WARNING)
+        root_logger.addHandler(mission_handler)
 
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

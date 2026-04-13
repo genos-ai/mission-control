@@ -34,5 +34,6 @@ persist_event_types:
   - plan.step.completed
   - system.execution.created
   - system.execution.completed
+  - system.info              # SystemEvent — errors/warnings bridged from logger
   - mission.artifact.found
   - mission.narrative
