@@ -209,6 +209,28 @@ async def update_mission(
     )
 
 
+def _duration_seconds(
+    started: object, completed: object,
+) -> float | None:
+    """Compute duration from started/completed values that may be str or datetime."""
+    if not started or not completed:
+        return None
+    from datetime import datetime
+
+    def _parse(v: object) -> datetime | None:
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(str(v).replace(" ", "T"))
+        except (ValueError, TypeError):
+            return None
+
+    s, c = _parse(started), _parse(completed)
+    if s and c:
+        return (c - s).total_seconds()
+    return None
+
+
 # ---- Narrative timeline ----
 
 
@@ -271,7 +293,7 @@ async def get_narrative(
                 "data": {
                     "status": rec.status,
                     "total_cost_usd": rec.total_cost_usd,
-                    "duration_seconds": None,
+                    "duration_seconds": _duration_seconds(rec.started_at, rec.completed_at),
                 },
             })
 
