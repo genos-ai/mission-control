@@ -18,12 +18,18 @@ async def chat_repl(
     initial_message: str | None = None,
     mission_id: str = "",
     verbose: bool = False,
+    new_thread: bool = False,
 ) -> None:
     """Interactive chat with the coordinator or a specific agent.
 
     Uses the simple-agent path in handle() with conversation history.
     The agent is pinned on the session so _resolve_agent picks it up
     on every turn — no keyword routing ambiguity.
+
+    By default, reuses the most recent active session for the agent
+    on this mission — so the web frontend and CLI share the same
+    conversation thread. Pass new_thread=True (--new flag) to force
+    a fresh session.
     """
     from modules.backend.agents.mission_control.helpers import get_chat_agent
     from modules.backend.agents.mission_control.mission_control import handle
@@ -43,14 +49,30 @@ async def chat_repl(
     # Resolve which agent to chat with
     target_agent = agent_name or get_chat_agent()
 
-    # Create a session pinned to the target agent
+    # Reuse the most recent session for this agent + mission, or create new
     async with get_async_session() as db:
         session_svc = SessionService(db)
-        session = await session_svc.create_session(
-            SessionCreate(goal="mc chat", agent_id=target_agent),
-        )
-        session_id = str(session.id)
-        await db.commit()
+        session_id = None
+
+        if not new_thread:
+            existing, _ = await session_svc.list_sessions(
+                mission_id=mission_id,
+                agent_id=target_agent,
+                limit=1,
+            )
+            if existing:
+                session_id = str(existing[0].id)
+
+        if not session_id:
+            session = await session_svc.create_session(
+                SessionCreate(
+                    goal=f"{target_agent.split('.')[-2]} Chat",
+                    agent_id=target_agent,
+                    mission_id=mission_id,
+                ),
+            )
+            session_id = str(session.id)
+            await db.commit()
 
     # Load mission name for display
     async with MissionService.factory() as svc:

@@ -132,13 +132,15 @@ class SessionService(BaseService):
         user_id: str | None = None,
         mission_id: str | None = None,
         status_filter: str | None = None,
+        agent_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Session], int]:
-        """List sessions with optional user, mission, and status filters."""
+        """List sessions with optional user, mission, agent, and status filters."""
         sessions = await self.repo.get_by_user(
             user_id=user_id, mission_id=mission_id,
-            status_filter=status_filter, limit=limit, offset=offset,
+            status_filter=status_filter, agent_id=agent_id,
+            limit=limit, offset=offset,
         )
         total = await self.repo.count_by_user(
             user_id=user_id, mission_id=mission_id, status_filter=status_filter,

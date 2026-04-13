@@ -333,9 +333,16 @@ def mission_unarchive(ctx, name_or_id):
 @click.argument("message", required=False)
 @click.option("--agent", "-a", "agent_name", default=None,
               help="Target a specific agent (default: mission director).")
+@click.option("--new", "new_thread", is_flag=True,
+              help="Start a new conversation thread instead of resuming.")
 @click.pass_obj
-def chat(ctx, message, agent_name):
-    """Talk to your AI team. Interactive REPL or single-shot."""
+def chat(ctx, message, agent_name, new_thread):
+    """Talk to your AI team. Interactive REPL or single-shot.
+
+    Resumes the most recent conversation by default. Use --new to
+    start a fresh thread. The web frontend and CLI share the same
+    threads — both see the same conversation history.
+    """
     from modules.clients.cli.mc_chat import chat_repl
 
     async def _run():
@@ -343,6 +350,7 @@ def chat(ctx, message, agent_name):
         await chat_repl(
             agent_name=agent_name, initial_message=message,
             mission_id=mid, verbose=ctx.verbose,
+            new_thread=new_thread,
         )
 
     asyncio.run(_run())
