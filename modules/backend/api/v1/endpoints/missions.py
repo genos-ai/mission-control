@@ -271,10 +271,7 @@ async def get_narrative(
                 "data": {
                     "status": rec.status,
                     "total_cost_usd": rec.total_cost_usd,
-                    "duration_seconds": (
-                        (rec.completed_at - rec.started_at).total_seconds()
-                        if rec.started_at and rec.completed_at else None
-                    ),
+                    "duration_seconds": None,
                 },
             })
 
