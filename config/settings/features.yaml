@@ -84,4 +84,4 @@ experimental_background_tasks_enabled: true
 # plans in autonomous/off gate_mode and dispatches approved tasks
 # without user intervention. Off by default because it actively spends
 # budget on behalf of autonomous plans — explicitly opt in per env.
-experimental_mission_plan_daemon_enabled: false
+experimental_mission_plan_daemon_enabled: true

@@ -1,5 +1,7 @@
 # AGENTS.md — AI Assistant Instructions
 
+#NO HACKS, NO WORKAROUNDS
+
 Read `.codemap/map.md` for a structural overview of the codebase ranked by importance. Machine-readable version in `.codemap/map.json`.
 
 This file tells AI coding assistants how to work with this codebase.
