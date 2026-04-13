@@ -686,6 +686,14 @@ async def handle_mission(
                     "errors": validation.errors,
                 },
             )
+            from modules.backend.events.types import SystemEvent
+            await _publish(event_bus, SystemEvent(
+                session_id=_plan_sid,
+                source="mission_control",
+                level="error",
+                message=f"Plan validation failed: {last_error}",
+                mission_id=mission_id or mission_run_id,
+            ))
             plan = None
     else:
         max_planning_attempts = 3
