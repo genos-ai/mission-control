@@ -10,6 +10,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
+  AlertTriangle,
   Radio,
   Package,
   Brain,
@@ -33,6 +34,7 @@ const NARRATIVE_TYPES = new Set([
   'plan.step.completed',
   'agent.thinking.started',
   'agent.tool.called',
+  'agent.tool.returned',
   'system.execution.created',
   'system.execution.completed',
 ])
@@ -158,6 +160,23 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
         <span className="text-muted-foreground/40">→</span>
         <span className="font-medium text-amber-400/90">{tool}</span>
         <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'agent.tool.returned') {
+    const tool = String(d.tool_name ?? '')
+    const status = String(d.status ?? 'success')
+    const result = String(d.result ?? '')
+    if (status !== 'error') return null
+    return (
+      <div className="flex items-start gap-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-xs">
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-destructive">{tool} failed</span>
+          <p className="mt-0.5 truncate text-muted-foreground">{result}</p>
+        </div>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
       </div>
     )
   }

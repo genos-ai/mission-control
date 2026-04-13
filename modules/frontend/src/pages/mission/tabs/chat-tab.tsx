@@ -393,6 +393,7 @@ function AgentChatPanel({
 const INLINE_NARRATIVE_TYPES = new Set([
   'agent.thinking.started',
   'agent.tool.called',
+  'agent.tool.returned',
   'plan.step.started',
   'plan.step.completed',
   'system.execution.created',
@@ -665,6 +666,24 @@ function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
         <span className="text-muted-foreground/30">→</span>
         <span className="font-medium text-amber-400/80">{tool}</span>
         <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'agent.tool.returned') {
+    const tool = String(d.tool_name ?? '')
+    const status = String(d.status ?? 'success')
+    const result = String(d.result ?? '')
+    const isError = status === 'error'
+    if (!isError) return null // only show errors — success is noise
+    return (
+      <div className="mx-8 flex items-start gap-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-xs">
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-destructive">{tool} failed</span>
+          <p className="mt-0.5 truncate text-muted-foreground">{result}</p>
+        </div>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
       </div>
     )
   }
