@@ -173,13 +173,14 @@ async def _publish_mission_event(
         from modules.backend.events.bus import SessionEventBus
         from modules.backend.events.types import SystemEvent
 
+        import uuid as _uuid
         redis = AsyncRedis.from_url(get_redis_url())
         try:
             bus = SessionEventBus(redis, mission_id=mission_id)
             await bus.publish_to_mission(
                 mission_id,
                 SystemEvent(
-                    session_id="",
+                    session_id=_uuid.uuid4(),
                     source=source,
                     level=level,
                     message=message,
