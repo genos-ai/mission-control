@@ -267,7 +267,7 @@ def create_agent(model: str | Model) -> Agent:
                     async with ExecutionService.factory() as svc:
                         await svc.run_execution(execution_id)
                 except Exception:
-                    logger.error("Background execution failed", extra={"execution_id": execution_id})
+                    logger.error("Background execution failed", extra={"execution_id": execution_id}, exc_info=True)
 
             asyncio.create_task(_run_in_background())
 
@@ -319,7 +319,7 @@ def create_agent(model: str | Model) -> Agent:
                             mission_name=mission_name,
                         )
                 except Exception:
-                    logger.error("Background workflow failed", extra={"workflow": workflow_name})
+                    logger.error("Background workflow failed", extra={"workflow": workflow_name}, exc_info=True)
 
             asyncio.create_task(_run_in_background())
 
