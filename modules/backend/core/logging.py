@@ -110,6 +110,7 @@ def _resolve_log_path(configured_path: str) -> Path:
 
 
 _mission_events_enabled = False
+_background_tasks: set[asyncio.Task] = set()  # prevent GC of fire-and-forget tasks
 
 
 def mission_event_processor(
@@ -151,9 +152,11 @@ def mission_event_processor(
     except RuntimeError:
         return event_dict  # No event loop — CLI/test context
 
-    loop.create_task(
+    task = loop.create_task(
         _publish_mission_event(str(mission_id), str(message), level=level, source=str(source))
     )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
     return event_dict
 
