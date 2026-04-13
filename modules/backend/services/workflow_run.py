@@ -106,12 +106,9 @@ class WorkflowRunService(BaseService):
 
         # Try mission-scoped first, then system template
         defn = None
-        if mission_id:
-            try:
-                defn = await defn_svc.get_workflow(mission_id, workflow_name)
-            except NotFoundError:
-                pass
-        if defn is None:
+        try:
+            defn = await defn_svc.get_workflow(mission_id, workflow_name)
+        except NotFoundError:
             try:
                 defn = await defn_svc.get_workflow(None, workflow_name)
             except NotFoundError:

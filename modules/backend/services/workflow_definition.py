@@ -170,9 +170,9 @@ class WorkflowDefinitionService(BaseService):
             designed_by="import:yaml_template",
         )
 
-    async def list_templates(self) -> list[WorkflowDefinition]:
+    async def list_templates(self, enabled_only: bool = True) -> list[WorkflowDefinition]:
         """List system workflow templates (mission_id=NULL)."""
-        return await self._repo.list_templates()
+        return await self._repo.list_templates(enabled_only=enabled_only)
 
     def _validate_steps(self, steps: list[dict[str, Any]]) -> None:
         """Validate step structure using WorkflowSchema's step validator."""

@@ -511,7 +511,7 @@ async def _dispatch_convergence_loop(
 
 async def _dispatch_workflow_task(
     *,
-    task: Any,
+    task: Any,  # TaskDefinition — imported locally in _execute_layer
     workflow_name: str,
     mission_id: str | None,
     event_bus: EventBusProtocol,
@@ -524,7 +524,10 @@ async def _dispatch_workflow_task(
     workflow name against mission-scoped definitions then system templates.
     Returns a TaskResult in the same shape as standard agent tasks.
     """
+    from datetime import datetime
+
     from modules.backend.events.types import PlanStepCompletedEvent, PlanStepStartedEvent
+    from modules.backend.services.workflow_run import WorkflowRunService
 
     await _emit(event_bus, PlanStepStartedEvent,
         session_id=session_id,
@@ -537,8 +540,6 @@ async def _dispatch_workflow_task(
 
     status = TaskStatus.FAILED
     try:
-        from modules.backend.services.workflow_run import WorkflowRunService
-
         async with WorkflowRunService.factory() as svc:
             run = await svc.run_workflow(
                 workflow_name=workflow_name,
@@ -552,7 +553,6 @@ async def _dispatch_workflow_task(
 
         duration = 0.0
         if run.completed_at and run.started_at:
-            from datetime import datetime
             started = run.started_at if isinstance(run.started_at, datetime) else datetime.fromisoformat(str(run.started_at))
             completed = run.completed_at if isinstance(run.completed_at, datetime) else datetime.fromisoformat(str(run.completed_at))
             duration = (completed - started).total_seconds()

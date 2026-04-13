@@ -54,18 +54,15 @@ async def seed_workflows(
         return {"seeded": 0, "skipped": 0, "errors": 0}
 
     # Guard: skip if system templates already exist (unless force)
-    if not force:
-        existing = await service.list_templates()
-        if existing:
-            logger.info(
-                "Workflow templates already seeded, skipping",
-                extra={"existing_count": len(existing)},
-            )
-            return {"seeded": 0, "skipped": 0, "errors": 0}
+    existing = await service.list_templates(enabled_only=False)
+    if existing and not force:
+        logger.info(
+            "Workflow templates already seeded, skipping",
+            extra={"existing_count": len(existing)},
+        )
+        return {"seeded": 0, "skipped": 0, "errors": 0}
 
-    if force:
-        # Delete existing system templates before re-seeding
-        existing = await service.list_templates()
+    if force and existing:  # existing already fetched above
         for defn in existing:
             await service.delete_workflow(defn.id)
         logger.info(
@@ -103,16 +100,17 @@ async def seed_workflows(
                 name = name[: -len(".workflow")]
 
             # Check for existing (shouldn't exist after force delete, but safety net)
+            from modules.backend.core.exceptions import NotFoundError
             try:
-                existing = await service.get_workflow(None, name)
+                await service.get_workflow(None, name)
                 logger.debug(
                     "System template already exists, skipping",
                     extra={"name": name},
                 )
                 counts["skipped"] += 1
                 continue
-            except Exception:
-                pass  # NotFoundError expected — proceed to create
+            except NotFoundError:
+                pass  # Expected — proceed to create
 
             await service.create_workflow(
                 mission_id=None,
