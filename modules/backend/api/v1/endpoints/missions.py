@@ -15,7 +15,7 @@ from modules.backend.api.v1.endpoints import (
     missions_team,
     missions_workflows,
 )
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.dependencies import CurrentUser, DbSession, Idempotency, RequestId
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission import (
