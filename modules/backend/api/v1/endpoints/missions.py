@@ -243,9 +243,13 @@ async def get_narrative(
     events: list[dict] = []
 
     # 1. Execution runs → system.execution.created / completed
+    # Filter out failed/empty runs (schedule noise from prior bugs)
     exec_rows = await db.execute(
         select(ExecutionRecord)
-        .where(ExecutionRecord.mission_id == mission_id)
+        .where(
+            ExecutionRecord.mission_id == mission_id,
+            ExecutionRecord.total_cost_usd > 0,
+        )
         .order_by(ExecutionRecord.created_at.desc())
         .limit(limit)
     )
