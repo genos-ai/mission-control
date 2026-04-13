@@ -15,7 +15,7 @@ from modules.backend.api.v1.endpoints import (
     missions_team,
     missions_workflows,
 )
-from modules.backend.core.dependencies import CurrentUser, DbSession, Idempotency, RequestId
+from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission import (
@@ -205,5 +205,133 @@ async def update_mission(
     return ApiResponse(
         success=True,
         data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+# ---- Narrative timeline ----
+
+
+@router.get(
+    "/{mission_id}/narrative",
+    response_model=ApiResponse,
+    summary="Get narrative timeline from DB",
+)
+async def get_narrative(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+    limit: int = 100,
+) -> ApiResponse:
+    """Reconstruct narrative events from persisted data.
+
+    Combines execution records, plan task states, and artifacts into
+    a timeline the Narrative tab can render on mount — before any
+    live SSE events arrive. Returns the same event shapes the
+    Narrative tab already handles.
+    """
+    from sqlalchemy import select
+
+    from modules.backend.models.execution_record import ExecutionRecord
+    from modules.backend.models.mission_artifact import MissionArtifact
+    from modules.backend.models.mission_plan import (
+        MissionPlan,
+        PlanTaskState,
+    )
+
+    events: list[dict] = []
+
+    # 1. Execution runs → system.execution.created / completed
+    exec_rows = await db.execute(
+        select(ExecutionRecord)
+        .where(ExecutionRecord.mission_id == mission_id)
+        .order_by(ExecutionRecord.created_at.desc())
+        .limit(limit)
+    )
+    for rec in exec_rows.scalars().all():
+        events.append({
+            "event_id": str(rec.id) + "-created",
+            "event_type": "system.execution.created",
+            "category": "execution",
+            "timestamp": str(rec.started_at or rec.created_at),
+            "source": rec.roster_name or "dispatch",
+            "data": {
+                "objective": rec.objective_statement,
+                "roster_name": rec.roster_name,
+            },
+        })
+        if rec.completed_at:
+            events.append({
+                "event_id": str(rec.id) + "-completed",
+                "event_type": "system.execution.completed",
+                "category": "execution",
+                "timestamp": str(rec.completed_at),
+                "source": rec.roster_name or "dispatch",
+                "data": {
+                    "status": rec.status,
+                    "total_cost_usd": rec.total_cost_usd,
+                    "duration_seconds": (
+                        (rec.completed_at - rec.started_at).total_seconds()
+                        if rec.started_at and rec.completed_at else None
+                    ),
+                },
+            })
+
+    # 2. Plan task states → plan.step.completed
+    plan_rows = await db.execute(
+        select(MissionPlan).where(MissionPlan.mission_id == mission_id)
+    )
+    for plan in plan_rows.scalars().all():
+        task_rows = await db.execute(
+            select(PlanTaskState)
+            .where(PlanTaskState.mission_plan_id == plan.id)
+            .order_by(PlanTaskState.updated_at)
+        )
+        for ts in task_rows.scalars().all():
+            if ts.status in ("completed", "failed", "skipped", "cancelled"):
+                events.append({
+                    "event_id": str(ts.id),
+                    "event_type": "plan.step.completed",
+                    "category": "execution",
+                    "timestamp": str(ts.updated_at),
+                    "source": f"dispatch:{mission_id}",
+                    "data": {
+                        "step_id": ts.task_id,
+                        "status": "success" if ts.status == "completed" else ts.status,
+                        "result_summary": ts.result_summary,
+                        "cost_usd": ts.cost_usd,
+                        "duration_seconds": ts.duration_seconds,
+                    },
+                })
+
+    # 3. Artifacts → mission.artifact.found
+    artifact_rows = await db.execute(
+        select(MissionArtifact)
+        .where(MissionArtifact.mission_id == mission_id)
+        .order_by(MissionArtifact.created_at)
+        .limit(limit)
+    )
+    for art in artifact_rows.scalars().all():
+        events.append({
+            "event_id": str(art.id),
+            "event_type": "mission.artifact.found",
+            "category": "execution",
+            "timestamp": str(art.created_at),
+            "source": art.agent_id or "agent",
+            "data": {
+                "title": art.title,
+                "artifact_type": art.artifact_type,
+                "content": art.content[:500] if art.content else "",
+            },
+        })
+
+    # Sort by timestamp ascending
+    events.sort(key=lambda e: e["timestamp"])
+    events = events[-limit:]
+
+    return ApiResponse(
+        success=True,
+        data={"events": events, "count": len(events)},
         metadata={"request_id": request_id},
     )

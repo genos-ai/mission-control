@@ -1,13 +1,14 @@
 /**
  * NarrativeTab — curated human-readable mission event feed.
  *
- * Reads from the console store (populated by MissionLayout's SSE fan-out)
- * and filters to narrative-relevant event types. This is a different lens
- * from the Stream tab (raw firehose) — Narrative shows opinionated,
- * grouped summaries of what the agents are doing.
+ * On mount, loads historical events from GET /missions/{id}/narrative
+ * (execution records, task states, artifacts reconstructed from DB).
+ * Then live SSE events arrive via the console store. Both are merged
+ * and deduplicated by event_id.
  */
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import {
   Radio,
   Package,
@@ -18,6 +19,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { api } from '@/lib/api'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { Badge } from '@/components/ui/badge'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
@@ -38,11 +40,33 @@ const NARRATIVE_TYPES = new Set([
 // ---------------------------------------------------------------------------
 
 export default function NarrativeTab() {
-  const events = useConsoleStore((s) =>
+  const { id: missionId } = useParams<{ id: string }>()
+  const [historical, setHistorical] = useState<ConsoleEvent[]>([])
+  const liveEvents = useConsoleStore((s) =>
     s.events.filter((e) => NARRATIVE_TYPES.has(e.event_type)),
   )
   const autoScroll = useConsoleStore((s) => s.autoScroll)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Load historical events from DB on mount
+  useEffect(() => {
+    if (!missionId) return
+    api.get<{ events: ConsoleEvent[]; count: number }>(`/missions/${missionId}/narrative`)
+      .then((data) => {
+        setHistorical(data.events.filter((e) => NARRATIVE_TYPES.has(e.event_type)))
+      })
+      .catch(() => {})
+  }, [missionId])
+
+  // Merge historical + live, deduplicate by event_id
+  const seen = new Set<string>()
+  const events: ConsoleEvent[] = []
+  for (const ev of [...historical, ...liveEvents]) {
+    if (!seen.has(ev.event_id)) {
+      seen.add(ev.event_id)
+      events.push(ev)
+    }
+  }
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
