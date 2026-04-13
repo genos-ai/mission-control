@@ -413,14 +413,21 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Historical narrative events from DB
+  // Historical narrative events from DB — only events within this
+  // session's timespan so they appear near the messages that triggered them.
   const [historicalEvents, setHistoricalEvents] = useState<ConsoleEvent[]>([])
+  const sessionStartTime = messages.length > 0 ? messages[0].created_at : null
   useEffect(() => {
-    if (!missionId) return
+    if (!missionId || !sessionStartTime) return
     api.get<{ events: ConsoleEvent[]; count: number }>(`/missions/${missionId}/narrative`)
-      .then((data) => setHistoricalEvents(data.events.filter((e) => INLINE_NARRATIVE_TYPES.has(e.event_type))))
+      .then((data) => {
+        const filtered = data.events.filter(
+          (e) => INLINE_NARRATIVE_TYPES.has(e.event_type) && e.timestamp >= sessionStartTime,
+        )
+        setHistoricalEvents(filtered)
+      })
       .catch(() => {})
-  }, [missionId])
+  }, [missionId, sessionStartTime])
 
   // Live narrative events from SSE
   const liveEvents = useConsoleStore((s) =>
