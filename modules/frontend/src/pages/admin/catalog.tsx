@@ -328,6 +328,12 @@ export default function AdminCatalogPage() {
   )
 }
 
+const AVAILABLE_MODELS = [
+  'anthropic:claude-sonnet-4-6',
+  'anthropic:claude-opus-4-6',
+  'anthropic:claude-haiku-4-5-20251001',
+]
+
 function AgentEditor({
   agent,
   onSave,
@@ -383,12 +389,16 @@ function AgentEditor({
       <CardContent className="space-y-3">
         <div>
           <label className="text-xs font-medium text-muted-foreground">Model</label>
-          <input
+          <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="e.g. anthropic:claude-sonnet-4-6"
             className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
-          />
+          >
+            <option value="">— select model —</option>
+            {AVAILABLE_MODELS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
