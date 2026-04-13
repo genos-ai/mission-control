@@ -10,7 +10,7 @@
  * MissionLayout; this tab only reads from them.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   MessageSquare,
@@ -38,10 +38,12 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { useTeam } from '@/hooks/use-team'
 import { useSessions, useMessages, useCreateSession, sessionKeys } from '@/hooks/use-sessions'
 import { useAuthStore } from '@/stores/auth'
+import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useWorkspaceStore, type StreamingArtifact } from '@/stores/workspace'
 import { useMissionArtifacts, type MissionArtifact } from '@/hooks/use-mission-artifacts'
 import { useResizable } from '@/hooks/use-resizable'
@@ -387,6 +389,19 @@ function AgentChatPanel({
 // Conversation view
 // ---------------------------------------------------------------------------
 
+// Narrative event types to show inline in chat
+const INLINE_NARRATIVE_TYPES = new Set([
+  'plan.step.started',
+  'plan.step.completed',
+  'system.execution.created',
+  'system.execution.completed',
+  'mission.artifact.found',
+])
+
+type TimelineEntry =
+  | { kind: 'message'; ts: string; data: SessionMessage }
+  | { kind: 'event'; ts: string; data: ConsoleEvent }
+
 function Conversation({ sessionId, missionId }: { sessionId: string; missionId: string }) {
   const { data: history, isLoading } = useMessages(sessionId)
   const { user } = useAuthStore()
@@ -397,6 +412,20 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Historical narrative events from DB
+  const [historicalEvents, setHistoricalEvents] = useState<ConsoleEvent[]>([])
+  useEffect(() => {
+    if (!missionId) return
+    api.get<{ events: ConsoleEvent[]; count: number }>(`/missions/${missionId}/narrative`)
+      .then((data) => setHistoricalEvents(data.events.filter((e) => INLINE_NARRATIVE_TYPES.has(e.event_type))))
+      .catch(() => {})
+  }, [missionId])
+
+  // Live narrative events from SSE
+  const liveEvents = useConsoleStore((s) =>
+    s.events.filter((e) => INLINE_NARRATIVE_TYPES.has(e.event_type)),
+  )
 
   useEffect(() => {
     setMessages([])
@@ -412,7 +441,7 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages, streamingContent, streamingThinking])
+  }, [messages, streamingContent, streamingThinking, liveEvents.length])
 
   const sendMessage = useCallback(async () => {
     const content = input.trim()
@@ -511,12 +540,38 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
     </div>
   )
 
+  // Build unified timeline: messages + narrative events, sorted by timestamp
+  const timeline = useMemo(() => {
+    const entries: TimelineEntry[] = []
+
+    // Chat messages
+    for (const msg of messages) {
+      if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'error') {
+        entries.push({ kind: 'message', ts: msg.created_at, data: msg })
+      }
+    }
+
+    // Narrative events (historical + live, deduplicated)
+    const seen = new Set<string>()
+    for (const ev of [...historicalEvents, ...liveEvents]) {
+      if (!seen.has(ev.event_id)) {
+        seen.add(ev.event_id)
+        entries.push({ kind: 'event', ts: ev.timestamp, data: ev })
+      }
+    }
+
+    entries.sort((a, b) => a.ts.localeCompare(b.ts))
+    return entries
+  }, [messages, historicalEvents, liveEvents])
+
   return (
     <>
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
-        {messages
-          .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'error')
-          .map((msg) => <MessageBubble key={msg.id} message={msg} />)}
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+        {timeline.map((entry) =>
+          entry.kind === 'message'
+            ? <MessageBubble key={entry.data.id} message={entry.data} />
+            : <InlineNarrativeRow key={entry.data.event_id} event={entry.data} />,
+        )}
 
         {(streamingThinking || streamingContent) && (
           <div className="flex gap-3">
@@ -571,6 +626,86 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
       </div>
     </>
   )
+}
+
+function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
+  const d = event.data
+  const ts = new Date(event.timestamp).toLocaleTimeString('en-US', {
+    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+
+  if (event.event_type === 'plan.step.started') {
+    return (
+      <div className="mx-8 flex items-center gap-2 rounded bg-blue-500/5 px-3 py-1.5 text-xs">
+        <Activity className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+        <span className="font-medium">Starting</span>
+        <span className="text-muted-foreground">{String(d.step_name ?? d.step_id ?? '')}</span>
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'plan.step.completed') {
+    const status = String(d.status ?? 'success')
+    const ok = status === 'success'
+    const cost = d.cost_usd != null ? `$${Number(d.cost_usd).toFixed(4)}` : ''
+    return (
+      <div className={cn(
+        'mx-8 flex items-center gap-2 rounded px-3 py-1.5 text-xs',
+        ok ? 'bg-emerald-500/5' : 'bg-destructive/5',
+      )}>
+        <Activity className={cn('h-3.5 w-3.5 shrink-0', ok ? 'text-emerald-400' : 'text-destructive')} />
+        <span className="font-medium">{ok ? 'Completed' : 'Failed'}</span>
+        <span className="text-muted-foreground">{String(d.step_id ?? '')}</span>
+        {cost && <span className="text-muted-foreground/70">{cost}</span>}
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'system.execution.created') {
+    return (
+      <div className="mx-8 flex items-center gap-2 rounded bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+        <Activity className="h-3 w-3 shrink-0 text-blue-400" />
+        <span className="font-medium">Run started</span>
+        <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'system.execution.completed') {
+    const status = String(d.status ?? '')
+    const cost = d.total_cost_usd != null ? `$${Number(d.total_cost_usd).toFixed(4)}` : ''
+    const dur = d.duration_seconds != null ? `${Number(d.duration_seconds).toFixed(1)}s` : ''
+    const ok = status === 'completed'
+    return (
+      <div className={cn(
+        'mx-8 flex items-center gap-2 rounded px-3 py-1.5 text-xs',
+        ok ? 'bg-emerald-500/5 text-emerald-300' : 'bg-destructive/5 text-destructive',
+      )}>
+        <Activity className="h-3 w-3 shrink-0" />
+        <span className="font-medium">Run {status}</span>
+        {cost && <span>{cost}</span>}
+        {dur && <span>{dur}</span>}
+        <span className="ml-auto text-[10px] tabular-nums opacity-60">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'mission.artifact.found') {
+    const title = String(d.title ?? 'Artifact')
+    const artifactType = String(d.artifact_type ?? 'report')
+    return (
+      <div className="mx-8 flex items-center gap-2 rounded border border-violet-500/20 bg-violet-500/5 px-3 py-1.5 text-xs">
+        <Package className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+        <span className="font-medium">{title}</span>
+        <Badge variant="outline" className="h-4 text-[9px]">{artifactType}</Badge>
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  return null
 }
 
 function MessageBubble({ message }: { message: SessionMessage }) {
