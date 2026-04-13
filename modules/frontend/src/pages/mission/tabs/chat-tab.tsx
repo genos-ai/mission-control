@@ -534,24 +534,17 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendMessage() }
   }
 
-  if (isLoading) return (
-    <div className="flex flex-1 items-center justify-center">
-      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-    </div>
-  )
-
   // Build unified timeline: messages + narrative events, sorted by timestamp
+  // Must be above the isLoading return — hooks can't be after early returns.
   const timeline = useMemo(() => {
     const entries: TimelineEntry[] = []
 
-    // Chat messages
     for (const msg of messages) {
       if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'error') {
         entries.push({ kind: 'message', ts: msg.created_at, data: msg })
       }
     }
 
-    // Narrative events (historical + live, deduplicated)
     const seen = new Set<string>()
     for (const ev of [...historicalEvents, ...liveEvents]) {
       if (!seen.has(ev.event_id)) {
@@ -563,6 +556,12 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
     entries.sort((a, b) => a.ts.localeCompare(b.ts))
     return entries
   }, [messages, historicalEvents, liveEvents])
+
+  if (isLoading) return (
+    <div className="flex flex-1 items-center justify-center">
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  )
 
   return (
     <>
