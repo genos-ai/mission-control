@@ -49,7 +49,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     )
 
     redis = AsyncRedis.from_url(get_redis_url())
-    event_bus = SessionEventBus(redis)
+    event_bus = SessionEventBus(redis, mission_id=input.mission_id)
 
     async with get_async_session() as db:
         session_service = SessionService(db)

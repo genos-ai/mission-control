@@ -1,95 +1,83 @@
 """
-Session Event Bus.
+Mission Event Bus.
 
-Redis Pub/Sub wrapper for real-time session event delivery. This is NOT
-FastStream Streams — it uses Redis Pub/Sub for ephemeral, sub-millisecond
-event delivery to connected channels (TUI, WebSocket, etc.).
+Redis Pub/Sub wrapper for real-time event delivery. All events for a
+mission publish to a single channel: mission_events:{mission_id}.
 
-Channel naming: {prefix}:{session_id} (e.g. session:<uuid>)
+One channel per mission. No per-session channels. The frontend
+Stream/Narrative/Runs tabs all subscribe to the mission channel.
+Session-scoped views filter by session_id client-side or server-side.
 """
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator
 
 from redis.asyncio import Redis
 
-from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
-
 from modules.backend.events.types import SessionEvent, deserialize_event
 
 logger = get_logger(__name__)
 
 
 class SessionEventBus:
-    """Publish and subscribe to real-time session events via Redis Pub/Sub."""
+    """Publish and subscribe to real-time mission events via Redis Pub/Sub.
 
-    def __init__(self, redis: Redis) -> None:
+    All events go to mission_events:{mission_id}. The bus requires a
+    mission_id at construction time so every publish() call knows which
+    channel to use.
+
+    For callers that don't have a mission_id (e.g. crash recovery
+    publishing to a known mission), use publish_to_mission() directly.
+    """
+
+    def __init__(self, redis: Redis, mission_id: str | None = None) -> None:
         self._redis = redis
-        self._prefix = get_app_config().events.channel_prefix
+        self._mission_id = mission_id
 
-    def _channel_name(self, session_id: uuid.UUID) -> str:
-        """Build the Pub/Sub channel name for a session."""
-        return f"{self._prefix}:{session_id}"
-
-    async def publish(self, event: SessionEvent) -> None:
-        """
-        Publish an event to the session's Pub/Sub channel.
-
-        Args:
-            event: Session event to publish.
-        """
-        channel = self._channel_name(event.session_id)
-        payload = event.model_dump_json()
-        await self._redis.publish(channel, payload)
-        logger.debug(
-            "Session event published",
-            extra={
-                "channel": channel,
-                "event_type": event.event_type,
-                "event_id": str(event.event_id),
-            },
-        )
-
-    def _mission_channel_name(self, mission_id: str) -> str:
-        """Build the Pub/Sub channel name for mission-level events."""
+    def _channel(self, mission_id: str) -> str:
         return f"mission_events:{mission_id}"
 
-    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
-        """Publish a system event to the mission-wide channel.
+    async def publish(self, event: SessionEvent) -> None:
+        """Publish an event to the mission channel.
 
-        Used for mission-level events (execution lifecycle, budget warnings,
-        session creation) that aren't tied to a specific session's channel.
+        Uses the mission_id set at construction. Falls back to a
+        session-specific channel if no mission_id was set (shouldn't
+        happen in normal operation — log a warning).
         """
-        channel = self._mission_channel_name(mission_id)
+        if not self._mission_id:
+            logger.warning(
+                "SessionEventBus.publish() called without mission_id — event dropped",
+                extra={"event_type": event.event_type},
+            )
+            return
+
+        channel = self._channel(self._mission_id)
         payload = event.model_dump_json()
         await self._redis.publish(channel, payload)
-        logger.debug(
-            "Mission event published",
-            extra={
-                "channel": channel,
-                "event_type": event.event_type,
-                "mission_id": mission_id,
-            },
-        )
 
-    async def subscribe(self, session_id: uuid.UUID) -> AsyncIterator[SessionEvent]:
+    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
+        """Publish an event to a specific mission's channel.
+
+        Use this when you know the mission_id but it differs from the
+        one set at construction (e.g. crash recovery iterating over
+        multiple missions).
         """
-        Subscribe to all events for a session.
+        channel = self._channel(mission_id)
+        payload = event.model_dump_json()
+        await self._redis.publish(channel, payload)
+
+    async def subscribe_mission(self, mission_id: str) -> AsyncIterator[SessionEvent]:
+        """Subscribe to all events for a mission.
 
         Yields events as they arrive. Cleans up the subscription on exit.
-
-        Args:
-            session_id: Session to subscribe to.
-
-        Yields:
-            Deserialized SessionEvent instances.
         """
-        channel = self._channel_name(session_id)
+        channel = self._channel(mission_id)
         pubsub = self._redis.pubsub()
         await pubsub.subscribe(channel)
-        logger.debug("Subscribed to session channel", extra={"channel": channel})
+        logger.debug("Subscribed to mission channel", extra={"channel": channel})
 
         try:
             while True:
@@ -104,11 +92,10 @@ class SessionEventBus:
                 if message["type"] != "message":
                     continue
 
-                import json
                 try:
                     data = json.loads(message["data"])
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning("Invalid JSON in session event", extra={"channel": channel})
+                    logger.warning("Invalid JSON in event", extra={"channel": channel})
                     continue
 
                 event = deserialize_event(data)
@@ -117,4 +104,13 @@ class SessionEventBus:
         finally:
             await pubsub.unsubscribe(channel)
             await pubsub.close()
-            logger.debug("Unsubscribed from session channel", extra={"channel": channel})
+            logger.debug("Unsubscribed from mission channel", extra={"channel": channel})
+
+    async def subscribe_mission_filtered(
+        self, mission_id: str, session_id: uuid.UUID,
+    ) -> AsyncIterator[SessionEvent]:
+        """Subscribe to a mission channel, yielding only events for one session."""
+        target = str(session_id)
+        async for event in self.subscribe_mission(mission_id):
+            if str(event.session_id) == target:
+                yield event

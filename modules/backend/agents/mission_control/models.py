@@ -92,28 +92,6 @@ class NoOpEventBus:
         pass
 
 
-class MissionAwareEventBus:
-    """Wraps an EventBusProtocol to dual-publish all events to the mission channel.
-
-    Every call to publish() also publishes to mission_events:{mission_id},
-    so ALL events (agent thinking, chunks, tool calls, cost updates) appear
-    in the mission Stream/Narrative tabs — not just dispatch-level events.
-    """
-
-    def __init__(self, inner: EventBusProtocol, mission_id: str) -> None:
-        self._inner = inner
-        self._mission_id = mission_id
-
-    async def publish(self, event: SessionEvent) -> None:
-        await self._inner.publish(event)
-        try:
-            await self._inner.publish_to_mission(self._mission_id, event)
-        except Exception:
-            pass  # best-effort
-
-    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
-        await self._inner.publish_to_mission(mission_id, event)
-
 
 class ExecuteAgentFn(Protocol):
     """Callable protocol for agent execution used by dispatch and verification.

@@ -24,10 +24,7 @@ from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.models.user import User
-from modules.backend.services.console import (
-    MissionEventAggregator,
-    format_event_for_sse,
-)
+from modules.backend.services.console import format_event_for_sse
 from modules.backend.services.mission import MissionService
 from modules.backend.services.session import SessionService
 
@@ -91,18 +88,33 @@ async def stream_run_events(
     user: SseUser,
     db: DbSession,
 ) -> StreamingResponse:
-    """Stream execution events for a session as SSE."""
+    """Stream execution events for a session as SSE.
+
+    Subscribes to the mission channel and filters by session_id.
+    All events go through one channel per mission.
+    """
     await _require_session_access(db, session_id, user)
+
+    # Look up mission_id from the session
+    session = await SessionService(db).get_session(session_id)
+    mission_id = session.mission_id
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
         bus = SessionEventBus(redis)
         try:
-            # Send initial connected event (named so onmessage ignores it)
             yield f"event: connected\ndata: {json.dumps({'session_id': session_id})}\n\n"
 
-            async for event in bus.subscribe(uuid.UUID(session_id)):
-                yield f"data: {json.dumps(format_event_for_sse(event))}\n\n"
+            if mission_id:
+                async for event in bus.subscribe_mission_filtered(
+                    mission_id, uuid.UUID(session_id),
+                ):
+                    yield f"data: {json.dumps(format_event_for_sse(event))}\n\n"
+            else:
+                # No mission — nothing to subscribe to
+                while True:
+                    yield ": keepalive\n\n"
+                    await asyncio.sleep(5)
         except asyncio.CancelledError:
             logger.debug("Run SSE stream cancelled", extra={"session_id": session_id})
         finally:
@@ -211,27 +223,28 @@ async def stream_mission_events(
     user: SseUser,
     db: DbSession,
 ) -> StreamingResponse:
-    """Stream aggregated events for a mission as SSE."""
+    """Stream all events for a mission as SSE.
+
+    Single channel subscription — no multi-session aggregation needed.
+    All events publish to mission_events:{mission_id}.
+    """
     await _require_mission_access(db, mission_id, user)
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
-        aggregator = MissionEventAggregator(redis=redis, mission_id=mission_id)
+        bus = SessionEventBus(redis)
         try:
-            await aggregator.start()
-
-            # Send initial connected event
             yield f"event: connected\ndata: {json.dumps({'mission_id': mission_id})}\n\n"
 
-            async for event_payload in aggregator:
-                yield f"data: {json.dumps(event_payload)}\n\n"
+            async for event in bus.subscribe_mission(mission_id):
+                yield f"data: {json.dumps(format_event_for_sse(event))}\n\n"
         except asyncio.CancelledError:
             logger.debug(
                 "Mission console SSE stream cancelled",
                 extra={"mission_id": mission_id},
             )
         finally:
-            await aggregator.stop()
+            await redis.close()
             await redis.close()
 
     return StreamingResponse(

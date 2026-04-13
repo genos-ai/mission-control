@@ -91,7 +91,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
     )
 
     redis = AsyncRedis.from_url(get_redis_url())
-    event_bus = SessionEventBus(redis)
+    event_bus = SessionEventBus(redis, mission_id=input.mission_id)
 
     full_content = ""
     agent_name = ""
