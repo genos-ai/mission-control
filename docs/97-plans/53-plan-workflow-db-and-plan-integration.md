@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Ready |
+| **Status** | Ready (audited 2026-04-13 — corrections applied) |
 | **Created** | 2026-04-13 |
 | **Depends on** | Plan 42 (Mission Backlog Model — done), Plan 52 (Temporal Backbone — done) |
 | **Target** | Workflow service layer, plan dispatch, frontend plan board |
@@ -397,7 +397,54 @@ Update to read from the DB-backed API instead of YAML templates. Show both missi
 
 | Phase | Scope | Effort |
 |-------|-------|--------|
-| A | Seeder + DB runner + Director fix | ~3-4 hours |
+| A | Seeder + DB runner + Director fix | ~2-3 hours |
 | B | Dispatch loop + validator + frontend | ~2-3 hours |
-| C | CLI + list tool + frontend polish | ~1-2 hours |
-| **Total** | | **~6-9 hours** |
+| C | CLI + list tool + frontend polish | ~1 hour |
+| **Total** | | **~5-7 hours** |
+
+---
+
+## 8  Audit Corrections (2026-04-13)
+
+The following was found to **already exist** in the codebase. Implementors must use these, not recreate them:
+
+### Already implemented — DO NOT rebuild
+
+| Item | File | Line | What exists |
+|------|------|------|-------------|
+| `WorkflowDefinitionService` | `services/workflow_definition.py` | Full file | CRUD, import, list, lock — all exist |
+| `run_workflow_from_definition()` | `services/workflow_run.py` | ~225-335 | Reads from DB, executes workflow — **this is the method to use** |
+| `_definition_to_schema()` | `services/workflow_run.py` | ~337-365 | Converts `WorkflowDefinition` → `WorkflowSchema` |
+| `import_from_template()` | `services/workflow_definition.py` | ~127-160 | Imports YAML template to DB (mission-scoped) |
+| `list_templates()` | `services/workflow_definition.py` | ~162-164 | Lists system templates (mission_id=NULL) |
+| Frontend hooks (DB-backed) | `hooks/use-workflows.ts` | Full file | `useMissionWorkflows()`, `useImportTemplate()` already read from DB |
+| Mission workflows API | `api/v1/endpoints/missions_workflows.py` | Lines 25-92 | `GET /missions/{id}/workflows` and `POST .../import` already DB-backed |
+
+### What actually needs building
+
+| Item | Details |
+|------|---------|
+| **Workflow seeder** (`workflow_seeder.py`) | New file. Seeds YAML → `workflow_definitions` with `mission_id=NULL`. Same pattern as `catalog_seeder.py`. Use existing `import_from_template()` internally or direct insert. |
+| **Lifespan seed call** | Add `seed_workflows()` to `main.py` lifespan. Currently no seeding happens there. |
+| **Deprecate `run_workflow()` YAML path** | Make `run_workflow()` delegate to `run_workflow_from_definition()`. The YAML method should only be used by the seeder. |
+| **Director `run_workflow` fix** | Pass `mission_id` (not `mission_name`) to `run_workflow_from_definition()`. Current signature uses `mission_name` — needs updating. |
+| **Director `list_workflows` tool** | Currently reads from YAML via `WorkflowService`. Must switch to `WorkflowDefinitionService.list_workflows()` + `list_templates()`. |
+| **`list_workflows()` signature** | Currently requires `mission_id: str` (not optional). Must change to `mission_id: str \| None` to support system template listing. |
+| **Dispatch loop workflow fork** | New `_dispatch_workflow_task()` function, placed between convergence check (line 276) and standard agent path (line 278). |
+| **Plan validator exemption** | `_rule_2_agent_validation()` must skip `workflow:` prefix agents. |
+| **Frontend plan board** | `TaskCard` in `plan-board.tsx` must detect `workflow:` prefix and render with workflow icon. |
+| **Admin CLI** | `admin seed-workflows` command. |
+
+### Signature mismatches to fix
+
+1. **`WorkflowRunService.run_workflow()`** takes `mission_name: str` at line 83. The Director passes `mission_name`. The plan proposes `mission_id: str | None`. Decision: update to `mission_id` and resolve mission internally, OR keep `mission_name` and have the Director resolve it (current behavior). **Recommendation:** switch to `mission_id` for consistency — the Director already has it.
+
+2. **`WorkflowDefinitionService.list_workflows(mission_id: str)`** — parameter is required. Must change to `mission_id: str | None = None` to support listing system templates.
+
+### Edge cases to handle
+
+1. **Workflow task in plan + workflow not found** — `_dispatch_workflow_task()` must return a `FAILED` TaskResult with a clear error, not crash the dispatch loop.
+2. **Workflow task cost rollup** — `WorkflowRun.total_cost_usd` is the source. Handle `None` (workflow never started) vs `0.0` (ran but free).
+3. **Workflow task duration** — compute from `WorkflowRun.completed_at - started_at`. Both are nullable; handle gracefully.
+4. **Convergence loop inside workflow task** — not supported initially. Document as out of scope.
+5. **Non-roster validation** — the `workflow:` prefix exemption is specific. Don't make it generic (e.g. `if not roster.has(agent): skip`) — other non-roster agents should still fail validation.
