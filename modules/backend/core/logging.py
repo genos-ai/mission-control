@@ -109,48 +109,53 @@ def _resolve_log_path(configured_path: str) -> Path:
     return project_root / configured_path
 
 
-class MissionEventHandler(logging.Handler):
-    """Bridges the logger to the mission event stream.
+_mission_events_enabled = False
 
-    Any log record at WARNING or above that carries ``mission_id`` in its
-    ``extra`` dict is automatically published as a ``SystemEvent`` to the
-    mission's Redis Pub/Sub channel. This makes errors visible in the
-    console, narrative, and SSE streams without requiring manual
-    ``event_bus.publish()`` calls at every error site.
 
-    The handler is async-safe: it schedules a fire-and-forget coroutine
-    on the running event loop. If no loop is running (CLI, tests), the
-    record is silently skipped — the file/console handlers still capture it.
+def mission_event_processor(
+    logger: Any, method_name: str, event_dict: dict[str, Any],
+) -> dict[str, Any]:
+    """Structlog processor that bridges WARNING+ logs to the mission event stream.
 
-    Registered by ``setup_logging()`` when ``enable_mission_events`` is True
-    (default for the backend; off for CLI/TUI which have no Redis).
+    If the event_dict contains ``mission_id`` and the log level is WARNING
+    or above, schedules a fire-and-forget ``SystemEvent`` publish to Redis.
+    This makes errors visible in the console, narrative, and SSE streams
+    without requiring manual ``event_bus.publish()`` calls at every error site.
+
+    Runs inside the structlog processor chain where all extra fields are
+    available as dict keys (unlike a logging.Handler, which can't see them).
+
+    Enabled by ``setup_logging(enable_mission_events=True)`` — default for
+    the backend server and Temporal worker; off for CLI/TUI.
     """
+    if not _mission_events_enabled:
+        return event_dict
 
-    def emit(self, record: logging.LogRecord) -> None:
-        # structlog stores extra fields directly on the record
-        mission_id = getattr(record, "mission_id", None)
-        if not mission_id:
-            # Also check the extra dict (standard logging pattern)
-            extra = getattr(record, "_extra", None) or {}
+    mission_id = event_dict.get("mission_id")
+    if not mission_id:
+        extra = event_dict.get("extra")
+        if isinstance(extra, dict):
             mission_id = extra.get("mission_id")
-        if not mission_id:
-            return
+    if not mission_id:
+        return event_dict
 
-        level = record.levelname.lower()
-        if level not in ("warning", "error", "critical"):
-            return
+    level = event_dict.get("level", method_name)
+    if level not in ("warning", "error", "critical"):
+        return event_dict
 
-        message = record.getMessage()
-        source = getattr(record, "source", None) or record.name
+    message = event_dict.get("event", "")
+    source = event_dict.get("source") or event_dict.get("logger", "logger")
 
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return  # No event loop — CLI/test context, skip silently
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return event_dict  # No event loop — CLI/test context
 
-        loop.create_task(
-            _publish_mission_event(str(mission_id), message, level=level, source=source)
-        )
+    loop.create_task(
+        _publish_mission_event(str(mission_id), str(message), level=level, source=str(source))
+    )
+
+    return event_dict
 
 
 async def _publish_mission_event(
@@ -254,6 +259,7 @@ def setup_logging(
 
     structlog.configure(
         processors=shared_processors + [
+            mission_event_processor,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
@@ -295,10 +301,8 @@ def setup_logging(
         file_handler.setFormatter(json_formatter)
         root_logger.addHandler(file_handler)
 
-    if enable_mission_events:
-        mission_handler = MissionEventHandler()
-        mission_handler.setLevel(logging.WARNING)
-        root_logger.addHandler(mission_handler)
+    global _mission_events_enabled
+    _mission_events_enabled = enable_mission_events
 
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
