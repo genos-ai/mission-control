@@ -110,7 +110,7 @@ class MissionRunWorkflow:
             eval_input = sup.PostRunEvalInput(
                 mission_id=input.mission_id or input.mission_run_id,
                 plan_id=input.mission_run_id,
-                execution_record_id=result.mission_id,
+                execution_record_id=result.execution_record_id or "",
                 gate_mode=input.execution_mode or "autonomous",
                 supervisor_iteration_count=self._iteration - 1,
                 max_supervisor_iterations=max_loop_iterations,

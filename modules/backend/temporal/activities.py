@@ -114,6 +114,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 task_count=len(result.get("dispatched_task_ids", [])),
                 success_count=len(result.get("updated_task_ids", [])),
                 failed_count=0,
+                execution_record_id=result.get("execution_record_id"),
                 outcome_json=result,
             )
 

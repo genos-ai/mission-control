@@ -39,6 +39,7 @@ class MissionExecutionResult:
     task_count: int = 0
     success_count: int = 0
     failed_count: int = 0
+    execution_record_id: str | None = None
     outcome_json: dict = field(default_factory=dict)
 
 
