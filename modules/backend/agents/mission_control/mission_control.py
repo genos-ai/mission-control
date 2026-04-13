@@ -372,22 +372,19 @@ async def handle(
         output_tokens = usage.output_tokens or 0
         cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
 
-        # Use accumulated chunk content as authoritative for tool-using
-        # agents (Director, Supervisor, etc.) where chunks span multiple
-        # agent turns. result.output only contains the FINAL turn's text,
-        # which throws away all intermediate content the user saw during
-        # streaming — causing the "chat overwrite" bug.
-        #
-        # Fall back to result.output only for structured-output agents
-        # that don't stream text chunks (e.g. VerificationEvaluation).
-        if not full_content:
-            output = result.output
-            if isinstance(output, str) and output:
-                full_content = output
-            elif hasattr(output, "model_dump_json"):
-                full_content = output.model_dump_json()
-            elif output is not None and str(output):
-                full_content = str(output)
+        # Always prefer result.output — PydanticAI's streaming drops the
+        # first token of the final turn for tool-using agents (the token
+        # arrives as FinalResultEvent, not TextPartDelta). Accumulated
+        # chunks are used only for live display; result.output is the
+        # authoritative complete text.
+        output = result.output
+        if isinstance(output, str) and output:
+            full_content = output
+        elif hasattr(output, "model_dump_json"):
+            full_content = output.model_dump_json()
+        elif output is not None and str(output):
+            full_content = str(output)
+        # else: keep full_content from chunks as fallback
 
         # 8. Yield complete event
         metadata: dict[str, Any] = {}
