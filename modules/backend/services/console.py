@@ -193,7 +193,31 @@ async def get_console_history(
                 },
             })
 
-    # 4. Sort unified timeline by timestamp descending, then truncate
+    # 4. Fetch persisted mission events (narrative, system errors, etc.)
+    from sqlalchemy import text
+
+    me_result = await db_session.execute(
+        text(
+            """SELECT id, event_type, source, created_at, data
+               FROM mission_events
+               WHERE mission_id = :mid
+               ORDER BY created_at DESC
+               LIMIT :lim"""
+        ),
+        {"mid": mission_id, "lim": limit},
+    )
+    for row in me_result.fetchall():
+        event_data = json.loads(row[4]) if isinstance(row[4], str) else (row[4] or {})
+        timeline.append({
+            "event_id": str(row[0]),
+            "event_type": row[1],
+            "category": classify_event(row[1]),
+            "timestamp": row[3].isoformat() if row[3] else None,
+            "source": row[2] or "",
+            "data": event_data,
+        })
+
+    # 5. Sort unified timeline by timestamp descending, then truncate
     timeline.sort(key=lambda e: e["timestamp"] or "", reverse=True)
     return timeline[:limit]
 

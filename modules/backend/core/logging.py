@@ -110,7 +110,8 @@ def _resolve_log_path(configured_path: str) -> Path:
 
 
 _mission_events_enabled = False
-_background_tasks: set[asyncio.Task] = set()  # prevent GC of fire-and-forget tasks
+_event_queue: asyncio.Queue | None = None
+_drain_task: asyncio.Task | None = None
 
 
 def mission_event_processor(
@@ -119,17 +120,17 @@ def mission_event_processor(
     """Structlog processor that bridges WARNING+ logs to the mission event stream.
 
     If the event_dict contains ``mission_id`` and the log level is WARNING
-    or above, schedules a fire-and-forget ``SystemEvent`` publish to Redis.
-    This makes errors visible in the console, narrative, and SSE streams
-    without requiring manual ``event_bus.publish()`` calls at every error site.
+    or above, enqueues a ``(mission_id, message, level, source)`` tuple
+    for the background drain task to publish. The processor itself does
+    zero async work — it just pushes to an in-memory queue.
 
-    Runs inside the structlog processor chain where all extra fields are
-    available as dict keys (unlike a logging.Handler, which can't see them).
+    A single long-lived ``_drain_mission_event_queue`` task reads from
+    the queue and publishes to Redis using one persistent connection.
 
     Enabled by ``setup_logging(enable_mission_events=True)`` — default for
     the backend server and Temporal worker; off for CLI/TUI.
     """
-    if not _mission_events_enabled:
+    if not _mission_events_enabled or _event_queue is None:
         return event_dict
 
     mission_id = event_dict.get("mission_id")
@@ -148,37 +149,34 @@ def mission_event_processor(
     source = event_dict.get("source") or event_dict.get("logger", "logger")
 
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return event_dict  # No event loop — CLI/test context
-
-    task = loop.create_task(
-        _publish_mission_event(str(mission_id), str(message), level=level, source=str(source))
-    )
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+        _event_queue.put_nowait((str(mission_id), str(message), level, str(source)))
+    except asyncio.QueueFull:
+        pass  # Drop under backpressure — logging must never block
 
     return event_dict
 
 
-async def _publish_mission_event(
-    mission_id: str,
-    message: str,
-    *,
-    level: str = "error",
-    source: str = "logger",
-) -> None:
-    """Fire-and-forget: publish a SystemEvent to the mission's stream."""
-    try:
-        from redis.asyncio import Redis as AsyncRedis
+async def _drain_mission_event_queue(queue: asyncio.Queue) -> None:
+    """Background task: drain the event queue and publish to Redis.
 
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.events.types import SystemEvent
+    Uses a single persistent Redis connection. Reconnects on failure.
+    Runs for the lifetime of the process.
+    """
+    import uuid as _uuid
 
-        import uuid as _uuid
-        redis = AsyncRedis.from_url(get_redis_url())
+    redis = None
+
+    while True:
+        mission_id, message, level, source = await queue.get()
         try:
+            if redis is None:
+                from redis.asyncio import Redis as AsyncRedis
+                from modules.backend.core.config import get_redis_url
+                redis = AsyncRedis.from_url(get_redis_url())
+
+            from modules.backend.events.bus import SessionEventBus
+            from modules.backend.events.types import SystemEvent
+
             bus = SessionEventBus(redis, mission_id=mission_id)
             await bus.publish_to_mission(
                 mission_id,
@@ -190,11 +188,34 @@ async def _publish_mission_event(
                     mission_id=mission_id,
                 ),
             )
+        except Exception:
+            # Connection lost — reset so next iteration reconnects
+            try:
+                if redis is not None:
+                    await redis.aclose()
+            except Exception:
+                pass
+            redis = None
         finally:
-            await redis.aclose()
-    except Exception:
-        # Never let event emission break the application
-        pass
+            queue.task_done()
+
+
+def start_mission_event_drain() -> None:
+    """Start the background drain task. Call once from an async context.
+
+    Safe to call multiple times — only starts one drain task.
+    """
+    global _event_queue, _drain_task
+    if _drain_task is not None:
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return  # No event loop — skip
+
+    _event_queue = asyncio.Queue(maxsize=1000)
+    _drain_task = loop.create_task(_drain_mission_event_queue(_event_queue))
 
 
 def setup_logging(

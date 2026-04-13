@@ -62,6 +62,9 @@ async def start_worker() -> None:
         ],
     )
 
+    from modules.backend.core.logging import start_mission_event_drain
+    start_mission_event_drain()
+
     logger.info(
         "Temporal worker starting",
         extra={"task_queue": config.task_queue},
