@@ -447,6 +447,77 @@ def create_agent(model: str | Model) -> Agent:
             return json.dumps({"error": str(e)})
 
     @agent.tool
+    async def design_workflow(
+        ctx: RunContext[MissionDirectorDeps],
+        name: str,
+        description: str,
+        instructions: str,
+    ) -> str:
+        """Delegate workflow design to the Workflow Architect agent.
+
+        The architect will design the workflow steps, validate them,
+        and save the workflow to the database. The user can then run
+        it anytime via run_workflow or the Workflows tab.
+
+        Args:
+            name: Workflow name (e.g. 'ops.health-check').
+            description: What the workflow does.
+            instructions: Detailed instructions for the architect — what
+                agents to use, what steps to include, what to check.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            from modules.backend.agents.mission_control.helpers import (
+                _build_model,
+                assemble_instructions,
+            )
+            from modules.backend.agents.mission_control.registry import get_registry
+            from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
+            from modules.backend.agents.deps.base import FileScope
+
+            registry = get_registry()
+            agent_config = registry.get("mission.workflow.agent")
+            model = _build_model(agent_config.model)
+            architect = registry.get_instance("mission.workflow.agent", model)
+
+            scope = FileScope(
+                read_paths=agent_config.scope.read,
+                write_paths=agent_config.scope.write,
+            )
+            from modules.backend.core.config import find_project_root
+            deps = ArchitectAgentDeps(
+                project_root=find_project_root(),
+                scope=scope,
+                config=agent_config,
+                session_id=ctx.deps.session_id,
+                mission_id=ctx.deps.mission_id,
+                db_session=ctx.deps.db_session,
+            )
+
+            prompt = (
+                f"Design and save a workflow with these specifications:\n\n"
+                f"Name: {name}\n"
+                f"Description: {description}\n\n"
+                f"Instructions:\n{instructions}\n\n"
+                f"Use browse_catalog to check available agents, then "
+                f"design the steps, validate with validate_workflow, "
+                f"and save with save_workflow. Do NOT ask for confirmation — "
+                f"the user already confirmed by requesting this."
+            )
+
+            result = await architect.run(prompt, deps=deps)
+            return json.dumps({
+                "status": "success",
+                "workflow_name": name,
+                "architect_response": str(result.output)[:500],
+            })
+        except Exception as e:
+            logger.error("design_workflow failed", exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    @agent.tool
     async def approve_plan_tasks(
         ctx: RunContext[MissionDirectorDeps],
         task_ids: list[str],
