@@ -40,6 +40,7 @@ export default function AdminCatalogPage() {
     agentName: string
     content: string
   } | null>(null)
+  const [editingAgent, setEditingAgent] = useState<AgentCatalogItem | null>(null)
   const [creating, setCreating] = useState(false)
   const [newAgent, setNewAgent] = useState({
     agent_name: '',
@@ -228,6 +229,27 @@ export default function AdminCatalogPage() {
         />
       )}
 
+      {/* Agent editor */}
+      {editingAgent && (
+        <AgentEditor
+          agent={editingAgent}
+          onSave={async (data) => {
+            try {
+              await updateAgent.mutateAsync({
+                agentName: editingAgent.agent_name,
+                data,
+              })
+              toast.success(`${editingAgent.agent_name} updated`)
+              setEditingAgent(null)
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : 'Update failed')
+            }
+          }}
+          saving={updateAgent.isPending}
+          onClose={() => setEditingAgent(null)}
+        />
+      )}
+
       {/* Agent list */}
       <div className="space-y-2">
         {filtered?.map((agent) => (
@@ -253,6 +275,11 @@ export default function AdminCatalogPage() {
                     <Badge variant="outline" className="text-[9px]">
                       v{agent.version}
                     </Badge>
+                    {agent.model_config_json?.name && (
+                      <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400">
+                        {agent.model_config_json.name}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
                     {agent.description}
@@ -278,6 +305,7 @@ export default function AdminCatalogPage() {
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
+                  onClick={() => setEditingAgent(agent)}
                   title="Edit agent"
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -297,6 +325,115 @@ export default function AdminCatalogPage() {
         ))}
       </div>
     </div>
+  )
+}
+
+function AgentEditor({
+  agent,
+  onSave,
+  saving,
+  onClose,
+}: {
+  agent: AgentCatalogItem
+  onSave: (data: Partial<AgentCatalogItem>) => void
+  saving: boolean
+  onClose: () => void
+}) {
+  const [model, setModel] = useState(agent.model_config_json?.name ?? '')
+  const [temperature, setTemperature] = useState(
+    String(agent.model_config_json?.temperature ?? ''),
+  )
+  const [maxTokens, setMaxTokens] = useState(
+    String(agent.model_config_json?.max_tokens ?? ''),
+  )
+  const [description, setDescription] = useState(agent.description)
+  const [version, setVersion] = useState(agent.version)
+
+  return (
+    <Card className="border-primary/30">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm">Edit — {agent.agent_name}</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() =>
+                onSave({
+                  description,
+                  version,
+                  model_config_json: {
+                    ...agent.model_config_json,
+                    name: model || undefined,
+                    temperature: temperature ? parseFloat(temperature) : undefined,
+                    max_tokens: maxTokens ? parseInt(maxTokens, 10) : undefined,
+                  },
+                })
+              }
+              disabled={saving}
+            >
+              {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Save
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Model</label>
+          <input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="e.g. anthropic:claude-sonnet-4-6"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Temperature</label>
+            <input
+              value={temperature}
+              onChange={(e) => setTemperature(e.target.value)}
+              placeholder="0.0 - 1.0"
+              type="number"
+              step="0.1"
+              min="0"
+              max="1"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Max Tokens</label>
+            <input
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(e.target.value)}
+              placeholder="e.g. 4096"
+              type="number"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Description</label>
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            className="text-sm mt-1"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Version</label>
+          <input
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+          />
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
