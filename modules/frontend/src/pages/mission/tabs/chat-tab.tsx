@@ -591,7 +591,7 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
               )}
               {streamingContent && (
                 <div className="rounded-lg bg-muted/50 p-3">
-                  <MarkdownRenderer content={streamingContent} className="text-sm" />
+                  <MarkdownRenderer content={streamingContent} className="text-[13px]" />
                   <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
                 </div>
               )}
@@ -735,8 +735,8 @@ function MessageBubble({ message }: { message: SessionMessage }) {
           </details>
         )}
         {isUser
-          ? <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-          : <MarkdownRenderer content={message.content} className="text-sm" />}
+          ? <p className="whitespace-pre-wrap text-[13px]">{message.content}</p>
+          : <MarkdownRenderer content={message.content} className="text-[13px]" />}
         <div className={cn(
           'mt-1 flex items-center gap-2 text-[10px]',
           isUser ? 'text-primary-foreground/60' : 'text-muted-foreground',
