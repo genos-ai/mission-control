@@ -538,7 +538,20 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_definition.py''\\).read\\(\\)\\); print\\(''workflow_definition.py OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_run.py''\\).read\\(\\)\\); print\\(''workflow_run.py OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/main.py''\\).read\\(\\)\\); print\\(''main.py OK''\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/agents/mission_control/dispatch/loop.py''\\).read\\(\\)\\); print\\(''loop.py OK''\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/agents/mission_control/dispatch/loop.py''\\).read\\(\\)\\); print\\(''loop.py OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_seeder.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_run.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/agents/mission_control/dispatch/loop.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_definition.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(python /Users/herman.young/development/mission-control/services.py status)",
+      "Bash(python /Users/herman.young/development/mission-control/services.py restart --backend-only --no-seed)",
+      "Bash(curl -s http://localhost:8100/health)",
+      "Bash(python admin.py admin seed-workflows --force)",
+      "Bash(python mc.py chat --new \"Add the platform health check workflow as a plan task and execute it. Use agent: workflow:system.platform-audit for the task.\")",
+      "Bash(python mc.py chat --new \"Check the plan status — did the platform-audit-c1 task get dispatched? Show me the current task states.\")",
+      "Bash(grep -i \"workflow.*dispatch\\\\|_dispatch_workflow\\\\|plan_dispatch\\\\|workflow.*failed\\\\|workflow.*task\" /Users/herman.young/development/mission-control/var/logs/*.log)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/temporal/activities.py''\\).read\\(\\)\\); print\\(''activities.py OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/temporal/supervisor_activities.py''\\).read\\(\\)\\); print\\(''supervisor_activities.py OK''\\)\")"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

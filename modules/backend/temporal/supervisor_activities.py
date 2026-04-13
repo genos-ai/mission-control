@@ -66,16 +66,10 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     Creates its own DB session for the idempotency check and audit
     row write. The reviewer is the same Plan 51 code — just wrapped
     as a Temporal Activity for durability.
-    """
-    from modules.backend.agents.mission_control.gate_models import GateContext
-    from modules.backend.agents.mission_control.gate_post_run import (
-        AutonomousPostRunReviewer,
-    )
-    from modules.backend.agents.tools.supervisor_introspection import (
-        get_recent_run_outcomes,
-    )
-    from modules.backend.core.database import get_async_session
 
+    Errors are emitted as SystemEvent to the mission's event stream
+    before re-raising, so failures are visible in the console/narrative.
+    """
     activity.logger.info(
         "Evaluating post-run",
         extra={
@@ -84,6 +78,34 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             "gate_mode": input.gate_mode,
         },
     )
+
+    try:
+        return await _do_evaluate_post_run(input)
+    except Exception as e:
+        activity.logger.error(
+            "evaluate_post_run failed",
+            extra={"plan_id": input.plan_id, "error": str(e)},
+            exc_info=True,
+        )
+        from modules.backend.temporal.activities import emit_system_event
+        await emit_system_event(
+            input.mission_id,
+            f"Supervisor evaluate_post_run failed: {e}",
+            source="temporal:evaluate_post_run",
+        )
+        raise
+
+
+async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
+    """Inner logic for evaluate_post_run — separated for error wrapping."""
+    from modules.backend.agents.mission_control.gate_models import GateContext
+    from modules.backend.agents.mission_control.gate_post_run import (
+        AutonomousPostRunReviewer,
+    )
+    from modules.backend.agents.tools.supervisor_introspection import (
+        get_recent_run_outcomes,
+    )
+    from modules.backend.core.database import get_async_session
 
     async with get_async_session() as db:
         recent = await get_recent_run_outcomes(
