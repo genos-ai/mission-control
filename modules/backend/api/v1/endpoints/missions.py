@@ -209,6 +209,15 @@ async def update_mission(
     )
 
 
+def _iso(ts: object) -> str:
+    """Normalize any timestamp to ISO 8601 format."""
+    if ts is None:
+        return ""
+    if hasattr(ts, "isoformat"):
+        return ts.isoformat()
+    return str(ts).replace(" ", "T")
+
+
 # ---- Narrative timeline ----
 
 
@@ -258,7 +267,7 @@ async def get_narrative(
             "event_id": str(rec.id) + "-created",
             "event_type": "system.execution.created",
             "category": "execution",
-            "timestamp": str(rec.started_at or rec.created_at),
+            "timestamp": _iso(rec.started_at or rec.created_at),
             "source": rec.roster_name or "dispatch",
             "data": {
                 "objective": rec.objective_statement,
@@ -270,7 +279,7 @@ async def get_narrative(
                 "event_id": str(rec.id) + "-completed",
                 "event_type": "system.execution.completed",
                 "category": "execution",
-                "timestamp": str(rec.completed_at),
+                "timestamp": _iso(rec.completed_at),
                 "source": rec.roster_name or "dispatch",
                 "data": {
                     "status": rec.status,
@@ -298,7 +307,7 @@ async def get_narrative(
                     "event_id": str(ts.id),
                     "event_type": "plan.step.completed",
                     "category": "execution",
-                    "timestamp": str(ts.updated_at),
+                    "timestamp": _iso(ts.updated_at),
                     "source": f"dispatch:{mission_id}",
                     "data": {
                         "step_id": ts.task_id,
@@ -321,7 +330,7 @@ async def get_narrative(
             "event_id": str(art.id),
             "event_type": "mission.artifact.found",
             "category": "execution",
-            "timestamp": str(art.created_at),
+            "timestamp": _iso(art.created_at),
             "source": art.agent_id or "agent",
             "data": {
                 "title": art.title,
