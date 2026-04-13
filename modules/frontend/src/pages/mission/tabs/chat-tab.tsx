@@ -391,6 +391,8 @@ function AgentChatPanel({
 
 // Narrative event types to show inline in chat
 const INLINE_NARRATIVE_TYPES = new Set([
+  'agent.thinking.started',
+  'agent.tool.called',
   'plan.step.started',
   'plan.step.completed',
   'system.execution.created',
@@ -639,6 +641,33 @@ function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
   const ts = new Date(event.timestamp).toLocaleTimeString('en-US', {
     hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
   })
+
+  if (event.event_type === 'agent.thinking.started') {
+    const agent = String(d.agent_id ?? event.source ?? '')
+    const short = agent.endsWith('.agent') ? agent.slice(0, -6) : agent
+    return (
+      <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/60">
+        <Brain className="h-3 w-3 text-purple-400" />
+        <span>{short} is thinking…</span>
+        <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'agent.tool.called') {
+    const agent = String(d.agent_id ?? event.source ?? '')
+    const short = agent.endsWith('.agent') ? agent.slice(0, -6) : agent
+    const tool = String(d.tool_name ?? '')
+    return (
+      <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/60">
+        <Zap className="h-3 w-3 text-amber-400" />
+        <span>{short}</span>
+        <span className="text-muted-foreground/30">→</span>
+        <span className="font-medium text-amber-400/80">{tool}</span>
+        <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
 
   if (event.event_type === 'plan.step.started') {
     return (
