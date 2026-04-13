@@ -204,22 +204,44 @@ def create_agent(model: str | Model) -> Agent:
 
     @agent.tool
     async def list_workflows(ctx: RunContext[MissionDirectorDeps]) -> str:
-        """List available workflows that can be run against this mission."""
+        """List available workflows (mission-scoped + system templates)."""
         try:
-            from modules.backend.services.workflow import WorkflowService
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
 
-            svc = WorkflowService()
-            workflows = svc.list_workflows(enabled_only=True)
+            from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+            svc = WorkflowDefinitionService(ctx.deps.db_session)
+
+            # Mission-scoped workflows
+            mission_wfs = await svc.list_workflows(ctx.deps.mission_id, enabled_only=True)
+            # System templates
+            system_wfs = await svc.list_workflows(None, enabled_only=True)
 
             results = []
-            for wf in workflows:
+            seen_names: set[str] = set()
+
+            for wf in mission_wfs:
+                seen_names.add(wf.name)
                 results.append({
-                    "workflow_name": wf.workflow_name,
+                    "name": wf.name,
                     "description": wf.description,
                     "version": wf.version,
-                    "trigger_type": wf.trigger.type if wf.trigger else None,
-                    "budget_max_cost_usd": wf.budget.max_cost_usd if wf.budget else None,
-                    "steps": len(wf.steps),
+                    "trigger_type": wf.trigger_type,
+                    "step_count": wf.step_count,
+                    "scope": "mission",
+                })
+
+            for wf in system_wfs:
+                if wf.name in seen_names:
+                    continue  # Mission-scoped takes precedence
+                results.append({
+                    "name": wf.name,
+                    "description": wf.description,
+                    "version": wf.version,
+                    "trigger_type": wf.trigger_type,
+                    "step_count": wf.step_count,
+                    "scope": "system",
                 })
 
             return json.dumps(results, indent=2, default=str)
@@ -292,8 +314,12 @@ def create_agent(model: str | Model) -> Agent:
         Creates the workflow run and starts it in the background. Returns
         immediately — use get_execution_history to check progress.
 
+        Resolves workflow_name against mission-scoped workflows first,
+        then system templates. Strips '.workflow' suffix if present.
+
         Args:
-            workflow_name: The workflow identifier (e.g., "system.platform-audit.workflow").
+            workflow_name: The workflow identifier (e.g., "system.platform-audit" or
+                          "system.platform-audit.workflow").
         """
         try:
             if ctx.deps.db_session is None:
@@ -301,12 +327,12 @@ def create_agent(model: str | Model) -> Agent:
 
             import asyncio
 
-            # Resolve mission_id -> mission.name (WorkflowRunService needs mission_name)
-            from modules.backend.services.mission import MissionService
+            mission_id = ctx.deps.mission_id
 
-            mission_svc = MissionService(ctx.deps.db_session)
-            mission = await mission_svc.get_mission(ctx.deps.mission_id)
-            mission_name = mission.name
+            # Strip .workflow suffix — DB stores names without it
+            clean_name = workflow_name
+            if clean_name.endswith(".workflow"):
+                clean_name = clean_name[: -len(".workflow")]
 
             # Run in background — don't block the chat
             async def _run_in_background():
@@ -314,9 +340,9 @@ def create_agent(model: str | Model) -> Agent:
                     from modules.backend.services.workflow_run import WorkflowRunService
                     async with WorkflowRunService.factory() as svc:
                         await svc.run_workflow(
-                            workflow_name=workflow_name,
+                            workflow_name=clean_name,
                             triggered_by="mission_director",
-                            mission_name=mission_name,
+                            mission_id=mission_id,
                         )
                 except Exception:
                     logger.error("Background workflow failed", extra={"workflow": workflow_name}, exc_info=True)
@@ -324,8 +350,8 @@ def create_agent(model: str | Model) -> Agent:
             asyncio.create_task(_run_in_background())
 
             return json.dumps({
-                "workflow_name": workflow_name,
-                "mission": mission_name,
+                "workflow_name": clean_name,
+                "mission_id": mission_id,
                 "status": "started",
                 "message": "Workflow started in background. Use get_execution_history to check progress.",
             }, indent=2, default=str)

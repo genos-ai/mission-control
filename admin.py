@@ -960,6 +960,25 @@ def admin_seed_catalog(ctx, force):
     run_admin(ctx.logger, "seed-catalog", force=force, output_format=ctx.output_format)
 
 
+@admin.command("seed-workflows")
+@click.option("--force", is_flag=True, help="Delete and re-seed system workflow templates.")
+@click.pass_obj
+def admin_seed_workflows(ctx, force):
+    """Seed workflow_definitions from config/workflow_templates/ YAML files."""
+    import asyncio
+
+    async def _run():
+        from modules.backend.services.workflow_definition import WorkflowDefinitionService
+        from modules.backend.services.workflow_seeder import seed_workflows
+
+        async with WorkflowDefinitionService.factory() as svc:
+            result = await seed_workflows(svc, force=force)
+        ctx.logger.info(f"Workflow seeding: {result}")
+        click.echo(f"Seeded: {result['seeded']}, Skipped: {result['skipped']}, Errors: {result['errors']}")
+
+    asyncio.run(_run())
+
+
 @admin.command("metrics")
 @click.pass_obj
 def admin_metrics(ctx):

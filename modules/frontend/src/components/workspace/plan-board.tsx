@@ -73,6 +73,7 @@ import {
   ChevronRight,
   GripVertical,
   MoreVertical,
+  GitBranch,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
@@ -945,9 +946,13 @@ function TaskCard({
   }, [menuOpen])
 
   const { body, state, effectiveStatus, blocked, blockingDeps } = row
-  const agentShort = body.agent.endsWith('.agent')
-    ? body.agent.slice(0, -6)
-    : body.agent
+  const isWorkflow = body.agent.startsWith('workflow:')
+  const workflowName = isWorkflow ? body.agent.slice(9) : null
+  const agentShort = isWorkflow
+    ? workflowName!
+    : body.agent.endsWith('.agent')
+      ? body.agent.slice(0, -6)
+      : body.agent
 
   // Live tool call for this task's agent, only when running. Zustand
   // selector returns a single string so re-renders stay scoped to the
@@ -1032,11 +1037,14 @@ function TaskCard({
       <div className="mb-1.5 flex items-center gap-1.5">
         <span
           className={cn(
-            'inline-flex max-w-[120px] items-center truncate rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
-            getAgentBadgeClass(effectiveStatus, body.agent),
+            'inline-flex max-w-[120px] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
+            isWorkflow
+              ? 'bg-violet-500/10 text-violet-400 ring-1 ring-inset ring-violet-500/30'
+              : getAgentBadgeClass(effectiveStatus, body.agent),
           )}
           title={body.agent}
         >
+          {isWorkflow && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
           {agentShort}
         </span>
         {blocked && (

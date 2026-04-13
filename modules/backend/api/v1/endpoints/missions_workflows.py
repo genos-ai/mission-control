@@ -130,6 +130,42 @@ async def get_mission_workflow(
     )
 
 
+@router.post(
+    "/{mission_id}/workflows/{workflow_name}/run",
+    response_model=ApiResponse,
+    summary="Run a workflow by name",
+)
+async def run_mission_workflow(
+    mission_id: str,
+    workflow_name: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Run a workflow by name against a mission.
+
+    Resolves the workflow from mission-scoped definitions first,
+    then falls back to system templates.
+    """
+    from modules.backend.services.workflow_run import WorkflowRunService
+
+    async with WorkflowRunService.factory() as svc:
+        run = await svc.run_workflow(
+            workflow_name=workflow_name,
+            triggered_by="user:api",
+            mission_id=mission_id,
+        )
+    return ApiResponse(
+        success=True,
+        data={
+            "run_id": run.id,
+            "workflow_name": run.workflow_name,
+            "status": run.status.value if hasattr(run.status, "value") else str(run.status),
+            "total_cost_usd": run.total_cost_usd,
+        },
+        metadata={"request_id": request_id},
+    )
+
+
 # ---- Workflow schedules ----
 
 

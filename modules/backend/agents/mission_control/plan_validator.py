@@ -83,6 +83,9 @@ def validate_plan(
 def _rule_2_agent_validation(plan: TaskPlan, roster: Roster, result: ValidationResult) -> None:
     """Every agent+version in the plan must exist in the roster."""
     for task in plan.tasks:
+        # Plan 53: workflow tasks resolve at dispatch time, not via roster
+        if task.agent.startswith("workflow:"):
+            continue
         entry = roster.get_agent(task.agent, task.agent_version)
         if entry is None:
             result.add_error(
@@ -160,6 +163,9 @@ def _rule_5_input_compatibility(
     task_agent_map = {t.task_id: t.agent for t in plan.tasks}
 
     for task in plan.tasks:
+        # Plan 53: workflow tasks don't have roster output contracts
+        if task.agent.startswith("workflow:"):
+            continue
         for field_name, ref in task.inputs.from_upstream.items():
             source_agent_name = task_agent_map.get(ref.source_task)
             if source_agent_name is None:
@@ -212,6 +218,9 @@ def _rule_8_timeout_validation(
 ) -> None:
     """Timeout overrides must not exceed roster maximums."""
     for task in plan.tasks:
+        # Plan 53: workflow tasks don't have roster timeout constraints
+        if task.agent.startswith("workflow:"):
+            continue
         override = task.constraints.timeout_override_seconds
         if override is None:
             continue

@@ -532,12 +532,19 @@
       "Bash(1 __NEW_LINE_d5e0da54298aa87a__ sleep 15)",
       "Bash(find /Users/herman.young/development/mission-control -name admin.py -o -name admin*.py)",
       "Bash(ls -la /Users/herman.young/development/mission-control/modules/backend/repositories/workflow*)",
-      "Bash(grep -E \"\\\\.\\(py|yaml\\)$\")"
+      "Bash(grep -E \"\\\\.\\(py|yaml\\)$\")",
+      "Bash(find /Users/herman.young/development/mission-control/modules/backend -type f -name \"*.py\" -exec wc -l {} +)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_seeder.py''\\).read\\(\\)\\); print\\(''workflow_seeder.py OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_definition.py''\\).read\\(\\)\\); print\\(''workflow_definition.py OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workflow_run.py''\\).read\\(\\)\\); print\\(''workflow_run.py OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/main.py''\\).read\\(\\)\\); print\\(''main.py OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/agents/mission_control/dispatch/loop.py''\\).read\\(\\)\\); print\\(''loop.py OK''\\)\")"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
       "/Users/herman.young/development/mission-control/docs/97-plans",
-      "/tmp"
+      "/tmp",
+      "/Users/herman.young/development/mission-control/.claude"
     ]
   }
 }

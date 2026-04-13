@@ -275,6 +275,24 @@ async def _execute_layer(
             )
             continue
 
+        # ── Workflow task fork (Plan 53 Phase B) ──────────────────────
+        # If the task's agent field starts with "workflow:", delegate to
+        # WorkflowRunService instead of the standard single-agent path.
+        if task.agent.startswith("workflow:"):
+            workflow_name = task.agent.split(":", 1)[1]
+            layer_tasks.append(task)
+            coros.append(
+                _dispatch_workflow_task(
+                    task=task,
+                    workflow_name=workflow_name,
+                    mission_id=plan.mission_id,
+                    event_bus=event_bus,
+                    session_id=session_id,
+                    gate=gate,
+                )
+            )
+            continue
+
         # ── Standard agent task ──────────────────────────────────────
         roster_entry = roster.get_agent_by_name(task.agent)
         if roster_entry is None:
@@ -489,6 +507,93 @@ async def _dispatch_convergence_loop(
         event_bus=event_bus,
         session_id=session_id,
     )
+
+
+async def _dispatch_workflow_task(
+    *,
+    task: Any,
+    workflow_name: str,
+    mission_id: str | None,
+    event_bus: EventBusProtocol,
+    session_id: str,
+    gate: GateReviewer,
+) -> TaskResult:
+    """Execute a workflow as a plan task (Plan 53 Phase B).
+
+    Delegates to WorkflowRunService.run_workflow() which resolves the
+    workflow name against mission-scoped definitions then system templates.
+    Returns a TaskResult in the same shape as standard agent tasks.
+    """
+    from modules.backend.events.types import PlanStepCompletedEvent, PlanStepStartedEvent
+
+    await _emit(event_bus, PlanStepStartedEvent,
+        session_id=session_id,
+        source=f"dispatch:{mission_id}",
+        plan_id=mission_id or "",
+        step_id=task.task_id,
+        step_name=task.description or task.task_id,
+        assigned_agent=f"workflow:{workflow_name}",
+    )
+
+    status = TaskStatus.FAILED
+    try:
+        from modules.backend.services.workflow_run import WorkflowRunService
+
+        async with WorkflowRunService.factory() as svc:
+            run = await svc.run_workflow(
+                workflow_name=workflow_name,
+                triggered_by="plan_dispatch",
+                mission_id=mission_id or "",
+                gate=gate,
+            )
+
+        run_status = run.status if isinstance(run.status, str) else run.status.value
+        status = TaskStatus.SUCCESS if run_status == "completed" else TaskStatus.FAILED
+
+        duration = 0.0
+        if run.completed_at and run.started_at:
+            from datetime import datetime
+            started = run.started_at if isinstance(run.started_at, datetime) else datetime.fromisoformat(str(run.started_at))
+            completed = run.completed_at if isinstance(run.completed_at, datetime) else datetime.fromisoformat(str(run.completed_at))
+            duration = (completed - started).total_seconds()
+
+        result = TaskResult(
+            task_id=task.task_id,
+            agent_name=f"workflow:{workflow_name}",
+            status=status,
+            summary=run.result_summary or f"Workflow {run_status}",
+            output_reference={"workflow_run_id": str(run.id), "status": run_status},
+            cost_usd=run.total_cost_usd or 0.0,
+            duration_seconds=duration,
+            token_usage=TaskTokenUsage(),
+        )
+    except Exception as e:
+        logger.error(
+            "Workflow task dispatch failed",
+            extra={"task_id": task.task_id, "workflow": workflow_name, "error": str(e)},
+            exc_info=True,
+        )
+        result = TaskResult(
+            task_id=task.task_id,
+            agent_name=f"workflow:{workflow_name}",
+            status=TaskStatus.FAILED,
+            summary=f"Workflow dispatch failed: {e}",
+            output_reference={"error": str(e)},
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+    finally:
+        status_str = "success" if status == TaskStatus.SUCCESS else "failed"
+        await _emit(event_bus, PlanStepCompletedEvent,
+            session_id=session_id,
+            source=f"dispatch:{mission_id}",
+            plan_id=mission_id or "",
+            step_id=task.task_id,
+            result_summary=f"workflow:{workflow_name} — {status_str}",
+            status=status_str,
+        )
+
+    return result
 
 
 async def _inject_context(

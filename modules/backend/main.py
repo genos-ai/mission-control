@@ -92,6 +92,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:  # noqa: BLE001
         logger.error("Failed to register Temporal dispatch schedule", exc_info=True)
 
+    # Seed workflow templates from YAML on first boot.
+    # System templates (mission_id=NULL) are global. Skips if
+    # templates already exist. Use `admin seed-workflows --force` to reseed.
+    try:
+        from modules.backend.core.database import get_async_session as _get_session
+        from modules.backend.services.workflow_definition import WorkflowDefinitionService
+        from modules.backend.services.workflow_seeder import seed_workflows
+
+        async with _get_session() as db:
+            svc = WorkflowDefinitionService(db)
+            seed_result = await seed_workflows(svc)
+            await db.commit()
+        logger.info("Workflow template seeding done", extra=seed_result)
+    except Exception:  # noqa: BLE001
+        logger.error("Workflow template seeding failed — continuing startup", exc_info=True)
+
     # Crash recovery: reconcile orphaned task states from prior crash.
     # Temporal's durable execution handles most cases, but tasks that
     # were mid-run when the BACKEND (not the worker) crashed still

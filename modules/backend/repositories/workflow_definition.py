@@ -37,24 +37,37 @@ class WorkflowDefinitionRepository(BaseRepository[WorkflowDefinition]):
 
     async def get_by_mission_and_name(
         self,
-        mission_id: str,
+        mission_id: str | None,
         name: str,
     ) -> WorkflowDefinition | None:
-        """Get a workflow by mission + name (unique pair)."""
-        result = await self.session.execute(
-            select(WorkflowDefinition)
-            .where(
+        """Get a workflow by mission + name (unique pair).
+
+        When mission_id is None, matches system templates (mission_id IS NULL).
+        """
+        if mission_id is None:
+            stmt = select(WorkflowDefinition).where(
+                WorkflowDefinition.mission_id.is_(None),
+                WorkflowDefinition.name == name,
+            )
+        else:
+            stmt = select(WorkflowDefinition).where(
                 WorkflowDefinition.mission_id == mission_id,
                 WorkflowDefinition.name == name,
             )
-        )
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_templates(self) -> list[WorkflowDefinition]:
+    async def list_templates(
+        self,
+        enabled_only: bool = True,
+    ) -> list[WorkflowDefinition]:
         """List system templates (mission_id IS NULL)."""
-        result = await self.session.execute(
+        stmt = (
             select(WorkflowDefinition)
             .where(WorkflowDefinition.mission_id.is_(None))
             .order_by(WorkflowDefinition.name)
         )
+        if enabled_only:
+            stmt = stmt.where(WorkflowDefinition.enabled.is_(True))
+        result = await self.session.execute(stmt)
         return list(result.scalars().all())

@@ -45,7 +45,7 @@ class WorkflowDefinitionService(BaseService):
 
     async def create_workflow(
         self,
-        mission_id: str,
+        mission_id: str | None,
         name: str,
         description: str,
         objective: dict[str, Any],
@@ -56,8 +56,9 @@ class WorkflowDefinitionService(BaseService):
         context: dict[str, Any] | None = None,
         designed_by: str | None = None,
     ) -> WorkflowDefinition:
-        """Create a new workflow definition for a mission."""
-        await self._mission_repo.get_by_id(mission_id)
+        """Create a new workflow definition for a mission (or system template when None)."""
+        if mission_id is not None:
+            await self._mission_repo.get_by_id(mission_id)
 
         existing = await self._repo.get_by_mission_and_name(mission_id, name)
         if existing:
@@ -88,23 +89,29 @@ class WorkflowDefinitionService(BaseService):
 
     async def get_workflow(
         self,
-        mission_id: str,
+        mission_id: str | None,
         name: str,
     ) -> WorkflowDefinition:
-        """Get a workflow by mission + name. Raises NotFoundError."""
+        """Get a workflow by mission + name. Raises NotFoundError.
+
+        When mission_id is None, looks up system templates (mission_id IS NULL).
+        """
         workflow = await self._repo.get_by_mission_and_name(mission_id, name)
         if not workflow:
+            scope = f"mission '{mission_id}'" if mission_id else "system templates"
             raise NotFoundError(
-                f"Workflow '{name}' not found for mission '{mission_id}'"
+                f"Workflow '{name}' not found in {scope}"
             )
         return workflow
 
     async def list_workflows(
         self,
-        mission_id: str,
+        mission_id: str | None = None,
         enabled_only: bool = True,
     ) -> list[WorkflowDefinition]:
-        """List workflow definitions for a mission."""
+        """List workflow definitions for a mission, or system templates when None."""
+        if mission_id is None:
+            return await self._repo.list_templates(enabled_only=enabled_only)
         return await self._repo.list_by_mission(mission_id, enabled_only=enabled_only)
 
     async def update_workflow(
@@ -116,6 +123,10 @@ class WorkflowDefinitionService(BaseService):
         if "steps" in updates:
             self._validate_steps(updates["steps"])
         return await self._repo.update(workflow_id, **updates)
+
+    async def delete_workflow(self, workflow_id: str) -> None:
+        """Delete a workflow definition by ID."""
+        await self._repo.delete(workflow_id)
 
     async def lock_workflow(self, workflow_id: str) -> WorkflowDefinition:
         """Lock a workflow (user confirmed the design)."""

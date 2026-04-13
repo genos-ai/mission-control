@@ -1,5 +1,5 @@
 """
-Workflow Service.
+Workflow Service (YAML loader — seeder and utility use only).
 
 Loads workflow YAML files from config/workflow_templates/, validates against
 WorkflowSchema, resolves capability references to agent names, and
@@ -7,6 +7,13 @@ generates Mission briefs from workflow steps.
 
 This service is stateless — it reads from the filesystem and agent
 registry. It does not touch the database.
+
+DEPRECATION NOTE (Plan 53): This service is no longer used at runtime for
+workflow execution. The DB-backed WorkflowDefinitionService + WorkflowRunService
+pipeline is the authoritative runtime path. This service is retained for:
+  - The workflow_seeder.py (YAML → DB seeding on first boot)
+  - Capability resolution (resolve_capability, validate_workflow_capabilities)
+  - Upstream context resolution (resolve_upstream_context)
 """
 
 from pathlib import Path

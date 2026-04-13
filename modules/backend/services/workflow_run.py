@@ -80,147 +80,54 @@ class WorkflowRunService(BaseService):
         triggered_by: str = "system:cli",
         context_overrides: dict[str, Any] | None = None,
         on_progress: Any | None = None,
-        mission_name: str | None = None,
+        mission_id: str | None = None,
         gate: object | None = None,
     ) -> WorkflowRun:
-        """Execute a workflow end-to-end.
+        """Execute a workflow by name from the DB.
 
-        1. Load and validate the workflow YAML
-        2. Create a WorkflowRun record (PENDING -> RUNNING)
-        3. Topologically sort steps by dependencies
-        4. Execute steps in waves (parallel within each wave)
-        5. Chain outputs between steps via output_mapping
-        6. Update WorkflowRun with final status and cost
+        Resolution order:
+        1. Mission-scoped workflow (mission_id + workflow_name)
+        2. System template (mission_id IS NULL + workflow_name)
+        3. Raise ValueError
+
+        Delegates to run_workflow_from_definition() once the definition
+        is resolved.
         """
-        # Load workflow
-        workflow = self._workflow_service.get_workflow(workflow_name)
-        if not workflow:
-            raise ValueError(f"Workflow '{workflow_name}' not found")
-        if not workflow.enabled:
-            raise ValueError(f"Workflow '{workflow_name}' is disabled")
+        from modules.backend.core.exceptions import NotFoundError
+        from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
-        # Validate capabilities resolve to real agents
-        errors = self._workflow_service.validate_workflow_capabilities(workflow)
-        if errors:
+        if not mission_id:
             raise ValueError(
-                f"Workflow capability errors: {'; '.join(errors)}"
-            )
-
-        if not mission_name:
-            raise ValueError(
-                "Mission name is required. Use --mission <name> to specify "
+                "mission_id is required. Use --mission <name> to specify "
                 "the target mission."
             )
 
-        mission_id = await self._resolve_mission(mission_name, workflow)
+        defn_svc = WorkflowDefinitionService(self._session)
 
-        # Create session for the workflow run
-        from modules.backend.services.session import SessionService
-        from modules.backend.schemas.session import SessionCreate
+        # Try mission-scoped first, then system template
+        defn = None
+        if mission_id:
+            try:
+                defn = await defn_svc.get_workflow(mission_id, workflow_name)
+            except NotFoundError:
+                pass
+        if defn is None:
+            try:
+                defn = await defn_svc.get_workflow(None, workflow_name)
+            except NotFoundError:
+                raise ValueError(
+                    f"Workflow '{workflow_name}' not found (checked mission "
+                    f"'{mission_id}' and system templates)"
+                )
 
-        session_service = SessionService(self._session)
-        session = await session_service.create_session(
-            SessionCreate(
-                agent_id=None,
-                goal=f"Workflow: {workflow.description[:200]}",
-            ),
-        )
-
-        # Create WorkflowRun record
-        run = WorkflowRun(
-            workflow_name=workflow.workflow_name,
-            workflow_version=workflow.version,
-            status=WorkflowRunState.RUNNING,
-            session_id=session.id,
-            trigger_type=workflow.trigger.type,
-            triggered_by=triggered_by,
-            context=dict(workflow.context),
-            total_cost_usd=0.0,
-            budget_usd=workflow.budget.max_cost_usd,
-            started_at=utc_now().isoformat(),
+        return await self.run_workflow_from_definition(
+            workflow_definition_id=defn.id,
             mission_id=mission_id,
+            triggered_by=triggered_by,
+            context_overrides=context_overrides,
+            on_progress=on_progress,
+            gate=gate,
         )
-        if context_overrides:
-            run.context.update(context_overrides)
-
-        self._session.add(run)
-        await self._session.flush()
-        await self._session.refresh(run)
-
-        logger.info(
-            "Workflow run started",
-            extra={
-                "run_id": run.id,
-                "workflow": workflow_name,
-                "version": workflow.version,
-                "steps": len(workflow.steps),
-                "budget_usd": run.budget_usd,
-            },
-        )
-
-        try:
-            await self._execute_steps(run, workflow, session.id, on_progress, gate=gate)
-
-            run.status = WorkflowRunState.COMPLETED
-            run.completed_at = utc_now().isoformat()
-            run.result_summary = (
-                f"Workflow completed: {len(workflow.steps)} steps, "
-                f"${run.total_cost_usd:.4f}"
-            )
-
-        except (RuntimeError, ValueError, OSError) as e:
-            run.status = WorkflowRunState.FAILED
-            run.completed_at = utc_now().isoformat()
-            run.error_data = {"message": str(e), "type": type(e).__name__}
-            run.result_summary = f"Workflow failed: {e}"
-            logger.error(
-                "Workflow run failed",
-                extra={"run_id": run.id, "error": str(e)},
-            )
-
-        await self._session.flush()
-        await self._notify_run_outcome(run, len(workflow.steps))
-
-        logger.info(
-            "Workflow run finished",
-            extra={
-                "run_id": run.id,
-                "status": run.status,
-                "cost": run.total_cost_usd,
-            },
-        )
-
-        return run
-
-    async def _resolve_mission(
-        self,
-        mission_name: str,
-        workflow: WorkflowSchema,
-    ) -> str:
-        """Resolve a mission name to a UUID, creating the mission if needed.
-
-        Returns the mission UUID.
-        """
-        from modules.backend.services.mission import MissionService
-
-        mission_service = MissionService(self._session)
-        mission = await mission_service.get_mission_by_name(mission_name)
-
-        if mission:
-            return mission.id
-
-        mission = await mission_service.create_mission(
-            name=mission_name,
-            description=f"Auto-created for workflow: {workflow.description[:200]}",
-            owner_id="system:workflow",
-        )
-        # Commit so parallel step sessions can see the mission
-        await self._session.commit()
-        logger.info(
-            "Auto-created mission",
-            extra={"mission_name": mission_name, "mission_id": mission.id},
-        )
-        return mission.id
 
     async def run_workflow_from_definition(
         self,
