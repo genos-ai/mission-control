@@ -1,13 +1,18 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Rocket } from 'lucide-react'
-import { useMissions } from '@/hooks/use-missions'
+import { Archive, Plus, Rocket, Trash2 } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { useMissions, useDeleteMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/lib/api'
 import { ROUTES } from '@/lib/constants'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
 import type { MissionListItem, MissionStatus } from '@/types'
+import { useQueryClient } from '@tanstack/react-query'
+import { missionKeys } from '@/hooks/use-missions'
 
 const statusVariant: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {
   active: 'success',
@@ -15,8 +20,36 @@ const statusVariant: Record<MissionStatus, 'success' | 'warning' | 'secondary'> 
   archived: 'secondary',
 }
 
-function MissionCard({ mission }: { mission: MissionListItem }) {
+function MissionCard({ mission, isAdmin }: { mission: MissionListItem; isAdmin: boolean }) {
   const navigate = useNavigate()
+  const deleteMission = useDeleteMission()
+  const queryClient = useQueryClient()
+  const [confirming, setConfirming] = useState<'delete' | 'archive' | null>(null)
+
+  async function handleArchive(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (confirming !== 'archive') { setConfirming('archive'); return }
+    try {
+      await api.patch(`/missions/${mission.id}`, { status: 'archived' })
+      toast.success(`${mission.name} archived`)
+      queryClient.invalidateQueries({ queryKey: missionKeys.all })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Archive failed')
+    }
+    setConfirming(null)
+  }
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (confirming !== 'delete') { setConfirming('delete'); return }
+    try {
+      await deleteMission.mutateAsync(mission.id)
+      toast.success(`${mission.name} deleted`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed')
+    }
+    setConfirming(null)
+  }
 
   return (
     <Card
@@ -38,11 +71,43 @@ function MissionCard({ mission }: { mission: MissionListItem }) {
         <p className="line-clamp-2 text-sm text-muted-foreground">
           {mission.description}
         </p>
-        <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
-          {mission.budget_ceiling_usd != null && (
-            <span>Budget: ${mission.budget_ceiling_usd.toLocaleString()}</span>
+        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center gap-4">
+            {mission.budget_ceiling_usd != null && (
+              <span>Budget: ${mission.budget_ceiling_usd.toLocaleString()}</span>
+            )}
+            <span>Created {new Date(mission.created_at).toLocaleDateString()}</span>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              {mission.status !== 'archived' && (
+                <button
+                  onClick={handleArchive}
+                  className={`rounded p-1 transition-colors ${
+                    confirming === 'archive'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'text-muted-foreground/50 hover:text-amber-600'
+                  }`}
+                  title={confirming === 'archive' ? 'Click again to confirm' : 'Archive mission'}
+                  onBlur={() => setConfirming(null)}
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                onClick={handleDelete}
+                className={`rounded p-1 transition-colors ${
+                  confirming === 'delete'
+                    ? 'bg-red-100 text-red-700'
+                    : 'text-muted-foreground/50 hover:text-red-600'
+                }`}
+                title={confirming === 'delete' ? 'Click again to confirm' : 'Delete mission'}
+                onBlur={() => setConfirming(null)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
-          <span>Created {new Date(mission.created_at).toLocaleDateString()}</span>
         </div>
       </CardContent>
     </Card>
@@ -74,6 +139,7 @@ function EmptyDashboard() {
 export default function DashboardPage() {
   const { data: missions, isLoading } = useMissions()
   const user = useAuthStore((s) => s.user)
+  const isAdmin = useAuthStore((s) => s.isAdmin)
   const navigate = useNavigate()
 
   if (isLoading) {
@@ -109,7 +175,7 @@ export default function DashboardPage() {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {missions.map((mission) => (
-          <MissionCard key={mission.id} mission={mission} />
+          <MissionCard key={mission.id} mission={mission} isAdmin={isAdmin} />
         ))}
       </div>
     </div>
