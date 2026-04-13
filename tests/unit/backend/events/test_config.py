@@ -26,10 +26,6 @@ class TestEventsSchemaDefaults:
         schema = EventsSchema()
         assert schema.transport == "redis"
 
-    def test_channel_prefix_defaults_to_session(self):
-        schema = EventsSchema()
-        assert schema.channel_prefix == "session"
-
     def test_dlq_enabled_defaults_to_true(self):
         schema = EventsSchema()
         assert schema.dlq_enabled is True
@@ -54,7 +50,6 @@ class TestEventsSchemaFromYaml:
         data = load_yaml_config("events.yaml")
         schema = EventsSchema(**data)
         assert schema.transport == "redis"
-        assert schema.channel_prefix == "session"
         assert "default" in schema.streams
 
     def test_stream_schema_from_yaml(self):

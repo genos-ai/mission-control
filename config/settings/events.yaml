@@ -9,10 +9,9 @@
 #     Session events (Redis Pub/Sub): ephemeral, real-time agent lifecycle
 #
 #   Stream naming: {domain}:{entity}-{action} (e.g. notes:note-created)
-#   Channel naming: {channel_prefix}:{session_id} (e.g. session:<uuid>)
+#   Channel naming: mission_events:{mission_id} (one channel per mission)
 
 transport: redis
-channel_prefix: session
 
 streams:
   default:

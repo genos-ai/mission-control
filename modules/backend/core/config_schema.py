@@ -264,7 +264,6 @@ class EventsStreamSchema(_StrictBase):
 
 class EventsSchema(_StrictBase):
     transport: str = "redis"
-    channel_prefix: str = "session"
     streams: dict[str, EventsStreamSchema] = Field(default_factory=dict)
     consumer_timeout_ms: int = 5000
     dlq_enabled: bool = True
