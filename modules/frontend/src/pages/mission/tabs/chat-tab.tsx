@@ -528,7 +528,12 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
     } finally {
       abortRef.current = null
       setSending(false)
-      queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
+      // Delay refetch to let React finish rendering the locally-added
+      // message. Immediate invalidation causes a DOM reconciliation
+      // error when the array is replaced mid-render.
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
+      }, 500)
     }
   }, [input, sending, sessionId, missionId, user?.id])
 
