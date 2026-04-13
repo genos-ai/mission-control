@@ -154,8 +154,12 @@ class MissionService(BaseService):
     async def delete_mission(self, mission_id: str) -> str:
         """Permanently delete a mission and all related data.
 
-        Cascades through all FK dependencies in the correct order.
-        Also cleans up any running containers for this mission.
+        Cleanup order:
+        1. Cancel any running Temporal workflows for this mission
+        2. Remove Docker containers
+        3. Clear user.current_mission_id references
+        4. Delete all DB records in FK order (deepest children first)
+        5. Delete the mission itself
 
         Returns the mission name for confirmation output.
         """
@@ -163,6 +167,22 @@ class MissionService(BaseService):
 
         mission = await self._mission_repo.get_by_id(mission_id)
         mission_name = mission.name
+
+        # Cancel running Temporal workflows for this mission
+        try:
+            from modules.backend.temporal.client import get_temporal_client
+            client = await get_temporal_client()
+
+            # Cancel MissionRunWorkflow if running
+            for plan in (mission.plans if hasattr(mission, "plans") else []):
+                workflow_id = f"mission-run-{plan.id}"
+                try:
+                    handle = client.get_workflow_handle(workflow_id)
+                    await handle.terminate(reason=f"Mission {mission_name} deleted")
+                except Exception:
+                    pass  # workflow not running or already completed
+        except Exception:
+            logger.debug("Temporal cleanup skipped (non-fatal)", exc_info=True)
 
         # Clean up containers BEFORE deleting DB records
         # (cleanup_for_mission queries execution_environments table)
@@ -193,59 +213,80 @@ class MissionService(BaseService):
             {"mid": mission_id},
         )
 
-        # Delete in FK order (deepest children first)
-        cascade_tables = [
-            # Deepest children: task_attempts → task_executions → execution_records
-            ("task_attempts", "task_execution_id", "task_executions", "execution_record_id",
-             "execution_records", "mission_id"),
-            # Children of execution_records
-            ("execution_decisions", "execution_record_id", "execution_records", "mission_id"),
-            ("task_executions", "execution_record_id", "execution_records", "mission_id"),
-            # execution_records themselves
-            ("execution_records", "mission_id", None, None),
-            # Direct children of missions
-            ("executions", "mission_id", None, None),
-            ("milestone_summaries", "mission_id", None, None),
-            ("mission_contexts", "mission_id", None, None),
-            ("mission_decisions", "mission_id", None, None),
-            ("mission_members", "mission_id", None, None),
-            ("mission_team_members", "mission_id", None, None),
-            # Workflow chain
-            ("workflow_schedules", "mission_id", None, None),
-            ("workflow_runs", "mission_id", None, None),
-            ("workflow_definitions", "mission_id", None, None),
-            # Execution environments
-            ("execution_environments", "mission_id", None, None),
+        # Delete in FK order (deepest children first).
+        # Each tuple: (table_name, fk_column, mission_id_value)
+        # For nested FKs, use subqueries to resolve the parent chain.
+        mid = mission_id
+
+        # ── Level 3: deepest children (FK → FK → mission_id) ──
+        # task_attempts → task_executions → execution_records
+        await self._session.execute(
+            text("DELETE FROM task_attempts WHERE task_execution_id IN "
+                 "(SELECT id FROM task_executions WHERE execution_record_id IN "
+                 "(SELECT id FROM execution_records WHERE mission_id = :mid))"),
+            {"mid": mid},
+        )
+        # session_messages / session_channels → sessions → mission_id
+        await self._session.execute(
+            text("DELETE FROM session_messages WHERE session_id IN "
+                 "(SELECT id FROM sessions WHERE mission_id = :mid)"),
+            {"mid": mid},
+        )
+        await self._session.execute(
+            text("DELETE FROM session_channels WHERE session_id IN "
+                 "(SELECT id FROM sessions WHERE mission_id = :mid)"),
+            {"mid": mid},
+        )
+
+        # ── Level 2: children of mission-scoped parents ──
+        # Children of execution_records
+        await self._session.execute(
+            text("DELETE FROM execution_decisions WHERE execution_record_id IN "
+                 "(SELECT id FROM execution_records WHERE mission_id = :mid)"),
+            {"mid": mid},
+        )
+        await self._session.execute(
+            text("DELETE FROM task_executions WHERE execution_record_id IN "
+                 "(SELECT id FROM execution_records WHERE mission_id = :mid)"),
+            {"mid": mid},
+        )
+        # Children of mission_plans
+        await self._session.execute(
+            text("DELETE FROM plan_task_states WHERE mission_plan_id IN "
+                 "(SELECT id FROM mission_plans WHERE mission_id = :mid)"),
+            {"mid": mid},
+        )
+
+        # ── Level 1: direct children of missions ──
+        direct_tables = [
+            "execution_records",
+            "executions",
+            "mission_plans",
+            "mission_artifacts",
+            "mission_contexts",
+            "context_milestones",
+            "context_changes",
+            "mission_decisions",
+            "milestone_summaries",
+            "mission_members",
+            "mission_team_members",
+            "sessions",
+            "session_followups",
+            "workflow_schedules",
+            "workflow_runs",
+            "workflow_definitions",
+            "execution_environments",
         ]
+        for table in direct_tables:
+            await self._session.execute(
+                text(f"DELETE FROM {table} WHERE mission_id = :mid"),
+                {"mid": mid},
+            )
 
-        for entry in cascade_tables:
-            if len(entry) == 6:
-                # 3-level deep: table → parent → grandparent → mission
-                table, fk_col, parent, parent_fk, grandparent, gp_fk = entry
-                await self._session.execute(
-                    text(f"DELETE FROM {table} WHERE {fk_col} IN "
-                         f"(SELECT id FROM {parent} WHERE {parent_fk} IN "
-                         f"(SELECT id FROM {grandparent} WHERE {gp_fk} = :mid))"),
-                    {"mid": mission_id},
-                )
-            elif len(entry) == 4:
-                table, fk_col, parent_table, parent_fk = entry
-                if parent_table:
-                    await self._session.execute(
-                        text(f"DELETE FROM {table} WHERE {fk_col} IN "
-                             f"(SELECT id FROM {parent_table} WHERE {parent_fk} = :mid)"),
-                        {"mid": mission_id},
-                    )
-                else:
-                    await self._session.execute(
-                        text(f"DELETE FROM {table} WHERE {fk_col} = :mid"),
-                        {"mid": mission_id},
-                    )
-
-        # Delete the mission itself
+        # ── Delete the mission itself ──
         await self._session.execute(
             text("DELETE FROM missions WHERE id = :mid"),
-            {"mid": mission_id},
+            {"mid": mid},
         )
 
         await self._session.flush()
