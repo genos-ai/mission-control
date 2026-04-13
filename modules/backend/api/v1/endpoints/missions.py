@@ -322,7 +322,7 @@ async def get_narrative(
             "data": {
                 "title": art.title,
                 "artifact_type": art.artifact_type,
-                "content": art.content[:500] if art.content else "",
+                "content": art.content_text[:500] if art.content_text else "",
             },
         })
 
