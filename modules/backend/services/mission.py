@@ -344,7 +344,7 @@ class MissionService(BaseService):
             return await self._mission_repo.list_by_owner(
                 owner_id, status=status_enum, limit=limit,
             )
-        return await self._mission_repo.list_active(limit=limit)
+        return await self._mission_repo.list_all(limit=limit)
 
     async def update_mission(
         self,

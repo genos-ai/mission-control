@@ -42,15 +42,14 @@ class MissionRepository(BaseRepository[Mission]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def list_active(
+    async def list_all(
         self,
         limit: int = 50,
         offset: int = 0,
     ) -> list[Mission]:
-        """List all active missions."""
+        """List all missions regardless of status."""
         result = await self.session.execute(
             select(Mission)
-            .where(Mission.status == MissionStatus.ACTIVE)
             .order_by(Mission.created_at.desc())
             .limit(limit)
             .offset(offset)

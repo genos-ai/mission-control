@@ -54,6 +54,8 @@ async def find_ready_plans() -> list[dict]:
             select(MissionPlan, Mission)
             .join(Mission, MissionPlan.mission_id == Mission.id)
             .where(
+                # Only dispatch for active missions — paused/archived skip
+                Mission.status == "active",
                 MissionPlan.status == MissionPlanStatus.ACTIVE.value,
                 or_(
                     MissionPlan.gate_mode == "autonomous",

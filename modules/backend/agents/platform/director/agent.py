@@ -52,7 +52,7 @@ def create_agent(model: str | Model) -> Agent:
         mission_repo = MissionRepository(db)
         exec_repo = ExecutionRepository(db)
 
-        missions = await mission_repo.list_active()
+        missions = await mission_repo.list_all()
         active_execs, _ = await exec_repo.list_executions(limit=10)
 
         return {
@@ -76,7 +76,7 @@ def create_agent(model: str | Model) -> Agent:
         from modules.backend.repositories.mission import MissionRepository
 
         repo = MissionRepository(db)
-        missions = await repo.list_active(limit=50)
+        missions = await repo.list_all(limit=50)
 
         return [
             {
