@@ -10,6 +10,10 @@
 #
 #   Stream naming: {domain}:{entity}-{action} (e.g. notes:note-created)
 #   Channel naming: mission_events:{mission_id} (one channel per mission)
+#
+#   persist_event_types: event types written to the mission_events DB table
+#   for historical narrative display. High-volume types (response chunks,
+#   cost updates) are excluded to avoid DB bloat.
 
 transport: redis
 
@@ -21,3 +25,14 @@ streams:
 consumer_timeout_ms: 5000
 dlq_enabled: true
 dlq_prefix: dlq
+
+persist_event_types:
+  - agent.thinking.started
+  - agent.tool.called
+  - agent.tool.returned
+  - plan.step.started
+  - plan.step.completed
+  - system.execution.created
+  - system.execution.completed
+  - mission.artifact.found
+  - mission.narrative

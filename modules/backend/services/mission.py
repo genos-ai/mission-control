@@ -263,6 +263,7 @@ class MissionService(BaseService):
             "executions",
             "mission_plans",
             "mission_artifacts",
+            "mission_events",
             "mission_contexts",
             "context_milestones",
             "context_changes",
