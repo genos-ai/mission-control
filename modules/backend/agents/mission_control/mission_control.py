@@ -277,6 +277,8 @@ async def handle(
         import asyncio as _asyncio
         from pydantic_ai.messages import (
             PartDeltaEvent,
+            PartStartEvent,
+            TextPart,
             FunctionToolCallEvent,
             FunctionToolResultEvent,
             TextPartDelta,
@@ -293,7 +295,20 @@ async def handle(
         async def _stream_handler(ctx, events):
             """Callback for agent.run() — pushes SessionEvents to queue."""
             async for event in events:
-                if isinstance(event, PartDeltaEvent):
+                if isinstance(event, PartStartEvent):
+                    # PartStartEvent carries the first chunk of a text
+                    # part — PydanticAI does not emit it as a
+                    # PartDeltaEvent, so we capture it here.
+                    part = event.part
+                    if isinstance(part, TextPart) and part.content:
+                        chunk_event = AgentResponseChunkEvent(
+                            session_id=sid,
+                            source=source,
+                            agent_id=agent_name,
+                            content=part.content,
+                        )
+                        await event_queue.put(chunk_event)
+                elif isinstance(event, PartDeltaEvent):
                     delta = event.delta
                     if isinstance(delta, TextPartDelta):
                         chunk_event = AgentResponseChunkEvent(
@@ -372,19 +387,18 @@ async def handle(
         output_tokens = usage.output_tokens or 0
         cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
 
-        # Always prefer result.output — PydanticAI's streaming drops the
-        # first token of the final turn for tool-using agents (the token
-        # arrives as FinalResultEvent, not TextPartDelta). Accumulated
-        # chunks are used only for live display; result.output is the
-        # authoritative complete text.
-        output = result.output
-        if isinstance(output, str) and output:
-            full_content = output
-        elif hasattr(output, "model_dump_json"):
-            full_content = output.model_dump_json()
-        elif output is not None and str(output):
-            full_content = str(output)
-        # else: keep full_content from chunks as fallback
+        # Chunks are authoritative — they capture all text across all
+        # turns (including the first token from PartStartEvent). Only
+        # fall back to result.output for structured-output agents that
+        # don't stream text chunks (e.g. VerificationEvaluation).
+        if not full_content:
+            output = result.output
+            if isinstance(output, str) and output:
+                full_content = output
+            elif hasattr(output, "model_dump_json"):
+                full_content = output.model_dump_json()
+            elif output is not None and str(output):
+                full_content = str(output)
 
         # 8. Yield complete event
         metadata: dict[str, Any] = {}
