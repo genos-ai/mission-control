@@ -88,37 +88,65 @@ async def seed_workflows(
 - Call `seed_workflows()` in `modules/backend/main.py` lifespan, after agent catalog seeding
 - Add `admin seed-workflows` CLI command (or extend `admin seed-catalog` to do both)
 
-#### 3.2 WorkflowRunService Reads from DB
+#### 3.2 WorkflowRunService: Deprecate YAML Path
 
 **Modified file:** `modules/backend/services/workflow_run.py`
 
-Change `run_workflow()` to read from `workflow_definitions` table instead of YAML:
+**IMPORTANT: `run_workflow_from_definition()` (~line 225) and `_definition_to_schema()` (~line 337) already exist.** Do NOT recreate them.
+
+The change: make `run_workflow()` delegate to `run_workflow_from_definition()` instead of reading YAML. Add a name→ID resolution step:
 
 ```python
 async def run_workflow(
     self,
     workflow_name: str,
     triggered_by: str = "system:cli",
-    mission_id: str | None = None,  # NEW — scope to mission
+    mission_id: str | None = None,
     context_overrides: dict | None = None,
     on_progress: Any = None,
     gate: object | None = None,
 ) -> WorkflowRun:
-    """Run a workflow from the DB.
+    """Run a workflow by name from the DB.
 
     Resolution order:
     1. Mission-scoped workflow (mission_id + workflow_name)
     2. System template (mission_id IS NULL + workflow_name)
     3. Raise NotFoundError
     """
+    from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+    defn_svc = WorkflowDefinitionService(self._session)
+    # Try mission-scoped first, then system template
+    defn = None
+    if mission_id:
+        try:
+            defn = await defn_svc.get_workflow(mission_id, workflow_name)
+        except NotFoundError:
+            pass
+    if defn is None:
+        defn = await defn_svc.get_workflow(None, workflow_name)  # system template
+
+    return await self.run_workflow_from_definition(
+        workflow_definition_id=defn.id,
+        mission_id=mission_id or defn.mission_id or "",
+        triggered_by=triggered_by,
+        context_overrides=context_overrides,
+        on_progress=on_progress,
+        gate=gate,
+    )
 ```
 
-**Changes:**
-1. Replace `WorkflowService.get_workflow(workflow_name)` with `WorkflowDefinitionService.get_workflow(mission_id, workflow_name)` (falling back to `get_workflow(None, workflow_name)` for system templates)
-2. Convert `WorkflowDefinition` DB model to the internal `WorkflowSchema` format that the execution engine expects. Add a `_definition_to_schema(defn: WorkflowDefinition) -> WorkflowSchema` converter method.
-3. The rest of the execution pipeline (topological sort, wave execution, output chaining) stays the same — it operates on `WorkflowSchema` internally.
+**Note:** `WorkflowDefinitionService.get_workflow()` currently requires `mission_id: str` — must change signature to `mission_id: str | None` (see §3.2a below).
 
-**Migration path:** The old `WorkflowService` (YAML loader) becomes a utility used only by the seeder. `WorkflowRunService` no longer imports it.
+**Note:** `run_workflow_from_definition()` takes `workflow_definition_id: str` (UUID), not a name. The resolution step above handles name→ID.
+
+#### 3.2a Fix `list_workflows` Signature
+
+**Modified file:** `modules/backend/services/workflow_definition.py`
+
+Change `list_workflows(mission_id: str, ...)` to `list_workflows(mission_id: str | None = None, ...)`. When `mission_id` is `None`, query where `mission_id IS NULL` (system templates). Same change needed for `get_workflow()`.
+
+**Migration path:** The old `WorkflowService` (YAML loader) becomes a utility used only by the seeder. `WorkflowRunService` no longer imports it at runtime.
 
 #### 3.3 Director `run_workflow` Tool Fix
 
@@ -140,10 +168,10 @@ async def _run_in_background():
 
 **Modified file:** `modules/backend/api/v1/endpoints/missions_workflows.py`
 
-The existing workflow list/import endpoints read from YAML. Update them:
-- `GET /missions/{id}/workflows` — read from `workflow_definitions` where `mission_id = {id}` OR `mission_id IS NULL`
-- `POST /missions/{id}/workflows/import` — copy a system template (mission_id=NULL) into a mission-scoped copy (mission_id={id})
-- `POST /missions/{id}/workflows/{name}/run` — NEW endpoint to run a workflow by name
+**IMPORTANT: `GET /missions/{id}/workflows` and `POST .../import` are already DB-backed.** Do NOT rewrite them.
+
+Only change needed:
+- `POST /missions/{id}/workflows/{name}/run` — **NEW** endpoint to run a workflow by name. Calls `WorkflowRunService.run_workflow(workflow_name, mission_id=mission_id)`.
 
 #### 3.5 Delete Old YAML Loading from Runtime
 
@@ -155,9 +183,14 @@ Do NOT delete the file yet — the seeder uses it to parse YAML.
 
 #### 3.6 Migration
 
-**New file:** `modules/backend/migrations/versions/20260414_seed_workflows.py`
+**Schema migration:** Add a partial unique index on `(name)` where `mission_id IS NULL` to prevent duplicate system templates. PostgreSQL's standard `UNIQUE(mission_id, name)` allows multiple NULLs:
 
-No schema change needed — `workflow_definitions` table already exists with all required columns. The migration is a data migration that seeds existing YAML templates if the table has no system templates (mission_id IS NULL).
+```sql
+CREATE UNIQUE INDEX uq_workflow_definitions_system_name
+    ON workflow_definitions (name) WHERE mission_id IS NULL;
+```
+
+**No data migration needed.** The lifespan seed call (§3.1) handles initial data. Alembic is for schema, not data.
 
 #### 3.7 Tests
 
@@ -220,11 +253,20 @@ async def _dispatch_workflow_task(
     session_id: str,
     gate: Any,
 ) -> TaskResult:
-    """Execute a workflow as a plan task."""
+    """Execute a workflow as a plan task.
+
+    Uses run_workflow() which resolves name → definition_id internally
+    and delegates to run_workflow_from_definition().
+    """
     from modules.backend.agents.mission_control.helpers import _emit
     from modules.backend.events.types import PlanStepStartedEvent, PlanStepCompletedEvent
 
-    await _emit(event_bus, PlanStepStartedEvent, ...)
+    await _emit(event_bus, PlanStepStartedEvent,
+        session_id=session_id, source=f"dispatch:{mission_id}",
+        plan_id=mission_id, step_id=task.task_id,
+        step_name=task.description or task.task_id,
+        assigned_agent=f"workflow:{workflow_name}",
+    )
 
     try:
         async with WorkflowRunService.factory() as svc:
@@ -236,13 +278,17 @@ async def _dispatch_workflow_task(
             )
 
         status = TaskStatus.SUCCESS if run.status == "COMPLETED" else TaskStatus.FAILED
+        duration = 0.0
+        if run.completed_at and run.started_at:
+            duration = (run.completed_at - run.started_at).total_seconds()
+
         return TaskResult(
             task_id=task.task_id,
             agent_name=f"workflow:{workflow_name}",
             status=status,
             output={"workflow_run_id": str(run.id), "status": run.status},
             cost_usd=run.total_cost_usd or 0.0,
-            duration_seconds=...,
+            duration_seconds=duration,
             token_usage=TokenUsage(),
         )
     except Exception as e:
@@ -251,9 +297,17 @@ async def _dispatch_workflow_task(
             agent_name=f"workflow:{workflow_name}",
             status=TaskStatus.FAILED,
             output={"error": str(e)},
+            cost_usd=0.0,
+            duration_seconds=0.0,
+            token_usage=TokenUsage(),
         )
     finally:
-        await _emit(event_bus, PlanStepCompletedEvent, ...)
+        await _emit(event_bus, PlanStepCompletedEvent,
+            session_id=session_id, source=f"dispatch:{mission_id}",
+            plan_id=mission_id, step_id=task.task_id,
+            result_summary=f"workflow:{workflow_name}",
+            status="success" if status == TaskStatus.SUCCESS else "failed",
+        )
 ```
 
 #### 3.10 Director: Create Plan Tasks That Run Workflows
@@ -316,7 +370,15 @@ No changes needed — `PlanTaskBody.agent` is already a string. The `workflow:` 
 
 ### Phase C — Polish
 
-#### 3.14 Workflow Seeder CLI
+#### 3.14 CLI `mc run` Transition
+
+**Modified file:** `modules/clients/cli/mc_run.py`
+
+`mc run ops.health-check` currently calls `WorkflowRunService.run_workflow(workflow_name)` which reads from YAML. After Phase A, `run_workflow()` delegates to DB. **No CLI code change needed** — the method signature stays the same, only the internal resolution changes.
+
+Verify: `mc run ops.health-check` works after Phase A without CLI changes.
+
+#### 3.15 Workflow Seeder CLI
 
 **Modified file:** `admin.py`
 
@@ -360,17 +422,19 @@ Update to read from the DB-backed API instead of YAML templates. Show both missi
 | Phase | File | Action |
 |-------|------|--------|
 | A | `modules/backend/services/workflow_seeder.py` | **New** — YAML→DB seeder |
-| A | `modules/backend/services/workflow_run.py` | **Modify** — read from DB, add `_definition_to_schema()` |
+| A | `modules/backend/services/workflow_run.py` | **Modify** — `run_workflow()` delegates to existing `run_workflow_from_definition()` |
+| A | `modules/backend/services/workflow_definition.py` | **Modify** — `list_workflows` and `get_workflow` accept `mission_id: str \| None` |
 | A | `modules/backend/services/workflow.py` | **Modify** — deprecation comment, used only by seeder |
 | A | `modules/backend/main.py` | **Modify** — call `seed_workflows()` in lifespan |
 | A | `modules/backend/agents/mission/director/agent.py` | **Modify** — pass `mission_id` to `run_workflow` |
-| A | `modules/backend/api/v1/endpoints/missions_workflows.py` | **Modify** — read from DB |
+| A | `modules/backend/api/v1/endpoints/missions_workflows.py` | **Modify** — add `POST .../run` endpoint (list/import already DB-backed) |
+| A | `modules/backend/migrations/versions/` | **New** — partial unique index for system templates |
 | B | `modules/backend/agents/mission_control/dispatch/loop.py` | **Modify** — add `_dispatch_workflow_task()` |
 | B | `modules/backend/agents/mission_control/plan_validator.py` | **Modify** — skip roster check for `workflow:` |
 | B | `modules/frontend/src/components/workspace/plan-board.tsx` | **Modify** — workflow task rendering |
+| C | `modules/clients/cli/mc_run.py` | **Verify** — no change needed, `run_workflow()` signature unchanged |
 | C | `admin.py` | **Modify** — add `seed-workflows` command |
 | C | `modules/backend/agents/mission/director/agent.py` | **Modify** — `list_workflows` reads DB |
-| C | Frontend workflows panel | **Modify** — read from DB API |
 
 ---
 
