@@ -11,8 +11,9 @@ are persisted here.
 """
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -139,12 +140,12 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         comment="Total cost across all task executions",
     )
 
-    started_at: Mapped[str | None] = mapped_column(
-        String(30),
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
         nullable=True,
     )
-    completed_at: Mapped[str | None] = mapped_column(
-        String(30),
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
         nullable=True,
     )
 
@@ -261,12 +262,12 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
         comment="Tier 1/2/3 verification result from Plan 14",
     )
 
-    started_at: Mapped[str | None] = mapped_column(
-        String(30),
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
         nullable=True,
     )
-    completed_at: Mapped[str | None] = mapped_column(
-        String(30),
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
         nullable=True,
     )
 
