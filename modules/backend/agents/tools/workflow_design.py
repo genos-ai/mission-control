@@ -20,11 +20,13 @@ async def browse_agent_catalog(
     *,
     agent_type: str | None = None,
     keyword: str | None = None,
+    mission_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Query the agent catalog and return summaries.
+    """Query the agent catalog and return full agent profiles.
 
-    Filters by agent_type and/or keyword. Returns a list of dicts
-    with the fields the Architect needs to make design decisions.
+    Filters by agent_type and/or keyword. When mission_id is provided,
+    each entry includes an ``on_team`` boolean indicating whether the
+    agent is assigned to the mission.
     """
     from modules.backend.services.agent_catalog import AgentCatalogService
 
@@ -36,6 +38,20 @@ async def browse_agent_catalog(
         agents = await svc.list_by_type(agent_type, enabled_only=True)
     else:
         agents = await svc.list_catalog(enabled_only=True, visibility="public")
+
+    # Resolve team membership if mission_id is available
+    team_names: set[str] = set()
+    if mission_id:
+        from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+        from modules.backend.services.mission_team import MissionTeamService
+
+        team_svc = MissionTeamService(session)
+        catalog_repo = AgentCatalogRepository(session)
+        members = await team_svc.list_team(mission_id)
+        for m in members:
+            entry = await catalog_repo.get_by_id_or_none(m.agent_catalog_id)
+            if entry:
+                team_names.add(entry.agent_name)
 
     return [
         {
@@ -50,6 +66,7 @@ async def browse_agent_catalog(
             "constraints": a.constraints or {},
             "enabled": a.enabled,
             "chat_enabled": a.chat_enabled,
+            "on_team": a.agent_name in team_names,
         }
         for a in agents
     ]

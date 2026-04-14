@@ -72,6 +72,7 @@ def create_agent(model: str | Model) -> Agent:
             ctx.deps.db_session,
             agent_type=agent_type,
             keyword=keyword,
+            mission_id=ctx.deps.mission_id or None,
         )
         return json.dumps(agents, indent=2, default=str)
 
