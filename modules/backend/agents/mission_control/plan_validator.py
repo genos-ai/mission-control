@@ -254,6 +254,9 @@ def _rule_10_tier3_completeness(
 ) -> None:
     """When Tier 3 is required, criteria+evaluator+threshold must all be present."""
     for task in plan.tasks:
+        # Plan 53: workflow tasks don't have roster-based evaluators
+        if task.agent.startswith("workflow:"):
+            continue
         t3 = task.verification.tier_3
         if not t3.requires_ai_evaluation:
             continue
@@ -286,6 +289,9 @@ def _rule_11_self_evaluation_prevention(
 ) -> None:
     """No task may specify itself (its own agent) as the evaluator."""
     for task in plan.tasks:
+        # Plan 53: workflow tasks don't have agent-based evaluators
+        if task.agent.startswith("workflow:"):
+            continue
         t3 = task.verification.tier_3
         if t3.requires_ai_evaluation and t3.evaluator_agent == task.agent:
             result.add_error(

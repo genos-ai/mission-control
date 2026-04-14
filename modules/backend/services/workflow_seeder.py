@@ -15,6 +15,7 @@ import yaml
 from pydantic import ValidationError
 
 from modules.backend.core.config import find_project_root, get_app_config
+from modules.backend.core.exceptions import NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.workflow import WorkflowSchema
 from modules.backend.services.workflow_definition import WorkflowDefinitionService
@@ -100,7 +101,6 @@ async def seed_workflows(
                 name = name[: -len(".workflow")]
 
             # Check for existing (shouldn't exist after force delete, but safety net)
-            from modules.backend.core.exceptions import NotFoundError
             try:
                 await service.get_workflow(None, name)
                 logger.debug(

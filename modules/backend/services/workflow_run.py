@@ -191,7 +191,7 @@ class WorkflowRunService(BaseService):
             roster_name=f"workflow:{defn.name}",
             objective_statement=defn.description[:500] if defn.description else defn.name,
             objective_category=defn.objective.get("category") if defn.objective else None,
-            status=ExecutionRecordStatus.COMPLETED,  # updated to actual outcome at end
+            status=ExecutionRecordStatus.FAILED,  # safe default if process crashes; updated on completion
             total_cost_usd=0.0,
             started_at=now,
         )

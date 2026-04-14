@@ -188,8 +188,13 @@ async def _drain_mission_event_queue(queue: asyncio.Queue) -> None:
                     mission_id=mission_id,
                 ),
             )
-        except Exception:
-            # Connection lost — reset so next iteration reconnects
+        except Exception as drain_exc:
+            # Connection lost — reset so next iteration reconnects.
+            # Use stdlib logger (not structlog) to avoid re-entrant
+            # processor calls that would loop back into this queue.
+            logging.getLogger("mission_event_drain").debug(
+                "Mission event drain error: %s", drain_exc, exc_info=True,
+            )
             try:
                 if redis is not None:
                     await redis.aclose()

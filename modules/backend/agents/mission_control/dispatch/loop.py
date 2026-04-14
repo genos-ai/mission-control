@@ -522,6 +522,16 @@ async def _dispatch_workflow_task(
     Delegates to WorkflowRunService.run_workflow() which resolves the
     workflow name against mission-scoped definitions then system templates.
     Returns a TaskResult in the same shape as standard agent tasks.
+
+    Cross-session note: the workflow runs in its own DB session (via
+    factory()) — same model as WorkflowRunService._execute_wave() which
+    opens per-step sessions. The ExecutionRecord created here commits
+    independently. If the outer dispatch session rolls back (e.g. budget
+    exceeded after this task), the ExecutionRecord persists as an orphan
+    but plan_task_states won't link to it (the link was never committed).
+    This is acceptable: orphan records are benign audit data, and the
+    alternative (sharing the outer session) would conflict with the
+    workflow's internal parallel step sessions.
     """
     from datetime import datetime
 

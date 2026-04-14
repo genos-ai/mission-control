@@ -193,18 +193,31 @@ async def get_console_history(
                 },
             })
 
-    # 4. Fetch persisted mission events (narrative, system errors, etc.)
+    # 4. Fetch persisted mission events that aren't already covered by
+    #    session messages (chat) or execution records (runs/tasks).
+    #    Only include event types unique to mission_events: system.info,
+    #    mission.narrative, mission.artifact.found, and plan step events.
     from sqlalchemy import text
 
+    _mission_event_types = (
+        "system.info",
+        "mission.narrative",
+        "mission.artifact.found",
+        "plan.step.started",
+        "plan.step.completed",
+        "system.execution.created",
+        "system.execution.completed",
+    )
     me_result = await db_session.execute(
         text(
             """SELECT id, event_type, source, created_at, data
                FROM mission_events
                WHERE mission_id = :mid
+                 AND event_type = ANY(:types)
                ORDER BY created_at DESC
                LIMIT :lim"""
         ),
-        {"mid": mission_id, "lim": limit},
+        {"mid": mission_id, "types": list(_mission_event_types), "lim": limit},
     )
     for row in me_result.fetchall():
         event_data = json.loads(row[4]) if isinstance(row[4], str) else (row[4] or {})
