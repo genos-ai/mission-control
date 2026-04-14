@@ -37,6 +37,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { formatUtc } from '@/lib/format-date'
+import { useBackgroundTasks } from '@/hooks/use-executions'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
@@ -408,6 +409,7 @@ type TimelineEntry =
 function Conversation({ sessionId, missionId }: { sessionId: string; missionId: string }) {
   const { data: history, isLoading } = useMessages(sessionId)
   const { user } = useAuthStore()
+  const { activeCount: bgTaskCount, activeTasks: bgTasks } = useBackgroundTasks(missionId)
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingThinking, setStreamingThinking] = useState('')
@@ -615,6 +617,16 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
             <Bot className="mt-1 h-5 w-5 text-primary" />
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />Thinking...
+            </div>
+          </div>
+        )}
+
+        {!sending && bgTaskCount > 0 && (
+          <div className="flex gap-3">
+            <Bot className="mt-1 h-5 w-5 text-primary/50" />
+            <div className="flex items-center gap-2 rounded-lg border border-primary/10 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin text-primary/60" />
+              <span>Working in background: {bgTasks.map((t) => t.task_type?.replace('_', ' ')).join(', ')}</span>
             </div>
           </div>
         )}
