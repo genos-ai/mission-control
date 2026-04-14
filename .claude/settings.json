@@ -599,7 +599,8 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/execution_persistence.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''scripts/code_rules_fast.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/execution.py''\\).read\\(\\)\\); print\\(''exec svc OK''\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workshop.py''\\).read\\(\\)\\); print\\(''workshop OK''\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''modules/backend/services/workshop.py''\\).read\\(\\)\\); print\\(''workshop OK''\\)\")",
+      "Bash(find /Users/herman.young/development/mission-control -name *plan*56* -o -name *56*plan*)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
