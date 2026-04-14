@@ -128,6 +128,14 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         Text, nullable=True,
     )
 
+    execution_record_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("execution_records.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Parent ExecutionRecord — makes workflow runs visible in Runs tab",
+    )
+
     def __repr__(self) -> str:
         return (
             f"<WorkflowRun(id={self.id}, workflow={self.workflow_name!r}, "

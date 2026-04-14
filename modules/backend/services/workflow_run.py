@@ -174,6 +174,28 @@ class WorkflowRunService(BaseService):
             ),
         )
 
+        # Create a parent ExecutionRecord so the workflow run appears in
+        # the Runs tab alongside single-agent executions.
+        from modules.backend.models.execution_record import (
+            ExecutionRecord,
+            ExecutionRecordStatus,
+        )
+
+        now = utc_now()
+        exec_record = ExecutionRecord(
+            session_id=session.id,
+            mission_id=mission_id,
+            roster_name=f"workflow:{defn.name}",
+            objective_statement=defn.description[:500] if defn.description else defn.name,
+            objective_category=defn.objective.get("category") if defn.objective else None,
+            status=ExecutionRecordStatus.COMPLETED,  # updated at end
+            total_cost_usd=0.0,
+            started_at=now,
+        )
+        self._session.add(exec_record)
+        await self._session.flush()
+        await self._session.refresh(exec_record)
+
         run = WorkflowRun(
             workflow_name=defn.name,
             workflow_version=defn.version,
@@ -184,8 +206,9 @@ class WorkflowRunService(BaseService):
             context=dict(defn.context),
             total_cost_usd=0.0,
             budget_usd=effective_budget,
-            started_at=utc_now().isoformat(),
+            started_at=now.isoformat(),
             mission_id=mission_id,
+            execution_record_id=exec_record.id,
         )
         if context_overrides:
             run.context.update(context_overrides)
@@ -198,6 +221,7 @@ class WorkflowRunService(BaseService):
             "DB workflow run started",
             extra={
                 "run_id": run.id,
+                "execution_record_id": exec_record.id,
                 "workflow_definition_id": workflow_definition_id,
                 "steps": len(workflow.steps),
                 "budget_usd": run.budget_usd,
@@ -214,15 +238,23 @@ class WorkflowRunService(BaseService):
                 f"Workflow completed: {len(workflow.steps)} steps, "
                 f"${run.total_cost_usd:.4f}"
             )
+            exec_record.status = ExecutionRecordStatus.COMPLETED
         except (RuntimeError, ValueError, OSError) as e:
             run.status = WorkflowRunState.FAILED
             run.completed_at = utc_now().isoformat()
             run.error_data = {"message": str(e), "type": type(e).__name__}
             run.result_summary = f"Workflow failed: {e}"
+            exec_record.status = ExecutionRecordStatus.FAILED
             logger.error(
                 "DB workflow run failed",
                 extra={"run_id": run.id, "error": str(e), "mission_id": mission_id},
             )
+
+        # Sync the parent ExecutionRecord with workflow outcome
+        exec_record.total_cost_usd = run.total_cost_usd
+        exec_record.completed_at = utc_now()
+        exec_record.completed_task_count = len(workflow.steps) if run.status == WorkflowRunState.COMPLETED else 0
+        exec_record.failed_task_count = 0 if run.status == WorkflowRunState.COMPLETED else len(workflow.steps)
 
         await self._session.flush()
         await self._notify_run_outcome(run, len(workflow.steps))
@@ -231,6 +263,7 @@ class WorkflowRunService(BaseService):
             "DB workflow run finished",
             extra={
                 "run_id": run.id,
+                "execution_record_id": exec_record.id,
                 "status": run.status,
                 "cost": run.total_cost_usd,
             },

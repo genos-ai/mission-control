@@ -563,7 +563,11 @@ async def _dispatch_workflow_task(
             agent_name=f"workflow:{workflow_name}",
             status=status,
             summary=run.result_summary or f"Workflow {run_status}",
-            output_reference={"workflow_run_id": str(run.id), "status": run_status},
+            output_reference={
+                "workflow_run_id": str(run.id),
+                "execution_record_id": run.execution_record_id,
+                "status": run_status,
+            },
             cost_usd=run.total_cost_usd or 0.0,
             duration_seconds=duration,
             token_usage=TaskTokenUsage(),
