@@ -1,10 +1,11 @@
 /**
- * UTC date formatting utility.
+ * Date formatting utility.
  *
- * All backend timestamps are stored in UTC. This utility ensures
- * the frontend always displays UTC — no local timezone conversion.
+ * All backend timestamps are stored in UTC. The browser converts
+ * to the user's local timezone for display. No timezone suffix —
+ * each user sees their own local time naturally.
  *
- * Standard format: "Apr 14 12:55 UTC"
+ * Standard format: "Apr 14 16:55"
  */
 
 const MONTHS = [
@@ -13,32 +14,32 @@ const MONTHS = [
 ]
 
 /**
- * Format a UTC timestamp as "MMM d HH:mm UTC".
- * Input: ISO string or Date. Always displays in UTC.
+ * Format a timestamp as "MMM d HH:mm" in the user's local timezone.
+ * Input: ISO string or Date from the backend (always UTC).
  */
 export function formatUtc(value: string | Date | null | undefined): string {
   if (!value) return '—'
   const d = typeof value === 'string' ? new Date(value) : value
   if (isNaN(d.getTime())) return '—'
 
-  const mon = MONTHS[d.getUTCMonth()]
-  const day = d.getUTCDate()
-  const h = String(d.getUTCHours()).padStart(2, '0')
-  const m = String(d.getUTCMinutes()).padStart(2, '0')
+  const mon = MONTHS[d.getMonth()]
+  const day = d.getDate()
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
 
-  return `${mon} ${day} ${h}:${m} UTC`
+  return `${mon} ${day} ${h}:${m}`
 }
 
 /**
- * Format a UTC timestamp as "HH:mm UTC" (time only, for compact views).
+ * Format a timestamp as "HH:mm" in the user's local timezone (compact).
  */
 export function formatUtcTime(value: string | Date | null | undefined): string {
   if (!value) return '—'
   const d = typeof value === 'string' ? new Date(value) : value
   if (isNaN(d.getTime())) return '—'
 
-  const h = String(d.getUTCHours()).padStart(2, '0')
-  const m = String(d.getUTCMinutes()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
 
-  return `${h}:${m} UTC`
+  return `${h}:${m}`
 }
