@@ -63,7 +63,7 @@ def create_agent(model: str | Model) -> Agent:
                 "created_at": str(mission.created_at),
             }, indent=2, default=str)
         except Exception as e:
-            logger.error("get_mission_info failed", exc_info=True)
+            logger.error("get_mission_info failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -100,7 +100,7 @@ def create_agent(model: str | Model) -> Agent:
 
             return json.dumps(team_list, indent=2, default=str)
         except Exception as e:
-            logger.error("list_team failed", exc_info=True)
+            logger.error("list_team failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -166,7 +166,7 @@ def create_agent(model: str | Model) -> Agent:
 
             return json.dumps(results, indent=2, default=str)
         except Exception as e:
-            logger.error("browse_catalog failed", exc_info=True)
+            logger.error("browse_catalog failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -209,7 +209,7 @@ def create_agent(model: str | Model) -> Agent:
                 "total": total,
             }, indent=2, default=str)
         except Exception as e:
-            logger.error("get_execution_history failed", exc_info=True)
+            logger.error("get_execution_history failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -248,7 +248,7 @@ def create_agent(model: str | Model) -> Agent:
                 "error_data": ex.error_data,
             }, indent=2, default=str)
         except Exception as e:
-            logger.error("get_execution_detail failed", exc_info=True)
+            logger.error("get_execution_detail failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -268,7 +268,7 @@ def create_agent(model: str | Model) -> Agent:
 
             return json.dumps(context, indent=2, default=str)
         except Exception as e:
-            logger.error("get_mission_context failed", exc_info=True)
+            logger.error("get_mission_context failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -315,7 +315,7 @@ def create_agent(model: str | Model) -> Agent:
 
             return json.dumps(results, indent=2, default=str)
         except Exception as e:
-            logger.error("list_workflows failed", exc_info=True)
+            logger.error("list_workflows failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     # ── Action Tools ──────────────────────────────────────
@@ -358,7 +358,7 @@ def create_agent(model: str | Model) -> Agent:
                     async with ExecutionService.factory() as svc:
                         await svc.run_execution(execution_id)
                 except Exception:
-                    logger.error("Background execution failed", extra={"execution_id": execution_id}, exc_info=True)
+                    logger.error("Background execution failed", extra={"execution_id": execution_id, "mission_id": ctx.deps.mission_id}, exc_info=True)
 
             asyncio.create_task(_run_in_background())
 
@@ -370,7 +370,7 @@ def create_agent(model: str | Model) -> Agent:
                 "message": "Execution started in background. Use get_execution_detail to check progress.",
             }, indent=2, default=str)
         except Exception as e:
-            logger.error("run_objective failed", exc_info=True)
+            logger.error("run_objective failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -414,7 +414,7 @@ def create_agent(model: str | Model) -> Agent:
                             mission_id=mission_id,
                         )
                 except Exception:
-                    logger.error("Background workflow failed", extra={"workflow": workflow_name}, exc_info=True)
+                    logger.error("Background workflow failed", extra={"workflow": workflow_name, "mission_id": mission_id}, exc_info=True)
 
             asyncio.create_task(_run_in_background())
 
@@ -425,7 +425,7 @@ def create_agent(model: str | Model) -> Agent:
                 "message": "Workflow started in background. Use get_execution_history to check progress.",
             }, indent=2, default=str)
         except Exception as e:
-            logger.error("run_workflow failed", exc_info=True)
+            logger.error("run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     # ── Mission Plan Tools (Plan 42) ──────────────────────────────────
@@ -455,7 +455,7 @@ def create_agent(model: str | Model) -> Agent:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("get_plan failed", exc_info=True)
+            logger.error("get_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -532,7 +532,7 @@ def create_agent(model: str | Model) -> Agent:
                 ),
             }, indent=2, default=str)
         except Exception as e:
-            logger.error("refine_plan failed", exc_info=True)
+            logger.error("refine_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             # Roll back the (failed) refinement transaction so the
             # session is in a clean state for the next tool call.
             try:
@@ -609,7 +609,7 @@ def create_agent(model: str | Model) -> Agent:
                 "architect_response": str(result.output)[:500],
             })
         except Exception as e:
-            logger.error("design_workflow failed", exc_info=True)
+            logger.error("design_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -700,7 +700,7 @@ def create_agent(model: str | Model) -> Agent:
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
                         "approve_plan_tasks: skipping task",
-                        extra={"task_id": task_id, "error": str(e)},
+                        extra={"task_id": task_id, "error": str(e), "mission_id": ctx.deps.mission_id},
                     )
             await ctx.deps.db_session.commit()
 
@@ -735,7 +735,7 @@ def create_agent(model: str | Model) -> Agent:
                 ),
             }, indent=2, default=str)
         except Exception as e:
-            logger.error("approve_plan_tasks failed", exc_info=True)
+            logger.error("approve_plan_tasks failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001

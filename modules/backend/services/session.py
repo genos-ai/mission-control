@@ -431,5 +431,5 @@ class SessionService(BaseService):
             # Event publishing is non-critical — log and continue
             logger.warning(
                 "Failed to publish session event",
-                extra={"event_type": event_type, "session_id": session.id, "error": str(e)},
+                extra={"event_type": event_type, "session_id": session.id, "error": str(e), "mission_id": session.mission_id},
             )

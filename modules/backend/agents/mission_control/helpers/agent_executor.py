@@ -165,7 +165,7 @@ def _make_agent_executor(
             try:
                 module.post_execute(output, hook_data)
             except Exception:
-                logger.warning("post_execute hook failed for %s", agent_name, exc_info=True)
+                logger.warning("post_execute hook failed for %s", agent_name, extra={"mission_id": mission_id}, exc_info=True)
 
         if hasattr(output, "model_dump"):
             output_dict = output.model_dump()

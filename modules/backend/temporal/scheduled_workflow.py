@@ -87,8 +87,10 @@ class ScheduledMissionCheckWorkflow:
                 # Workflow already running for this plan, or other error.
                 # Don't fail the scheduled check — log and continue.
                 workflow.logger.warning(
-                    "Failed to start MissionRunWorkflow for plan %s: %s",
-                    plan_info.get("plan_id", "?"), exc,
+                    "Failed to start MissionRunWorkflow for plan %s (mission %s): %s",
+                    plan_info.get("plan_id", "?"),
+                    plan_info.get("mission_id", "?"),
+                    exc,
                 )
 
         return {"checked": True, "dispatched": dispatched}

@@ -95,7 +95,7 @@ class ExecutionService(BaseService):
         except (OSError, RuntimeError):
             logger.warning(
                 "Failed to publish execution event",
-                extra={"event_type": getattr(event, "event_type", "unknown")},
+                extra={"event_type": getattr(event, "event_type", "unknown"), "mission_id": getattr(event, "mission_id", None)},
             )
 
     # ---- Execution creation ----
@@ -259,7 +259,7 @@ class ExecutionService(BaseService):
             logger.warning(
                 "Mission Control dispatch not available, "
                 "execution stays in RUNNING",
-                extra={"execution_id": execution_id},
+                extra={"execution_id": execution_id, "mission_id": execution.mission_id},
             )
             return execution
 
@@ -300,6 +300,7 @@ class ExecutionService(BaseService):
                         "execution_id": execution_id,
                         "cost": execution.total_cost_usd,
                         "ceiling": execution.cost_ceiling_usd,
+                        "mission_id": execution.mission_id,
                     },
                 )
 
@@ -353,7 +354,7 @@ class ExecutionService(BaseService):
             await self._session.flush()
             logger.error(
                 "Execution failed",
-                extra={"execution_id": execution_id, "error": str(e)},
+                extra={"execution_id": execution_id, "error": str(e), "mission_id": execution.mission_id},
             )
             # Emit system event: execution failed
             if execution.mission_id:
@@ -482,7 +483,7 @@ class ExecutionService(BaseService):
         if not execution.execution_outcome:
             logger.warning(
                 "Execution has no outcome for output extraction",
-                extra={"execution_id": execution.id},
+                extra={"execution_id": execution.id, "mission_id": execution.mission_id},
             )
             return {}
 
@@ -542,6 +543,7 @@ class ExecutionService(BaseService):
                                 list(task_output.keys())
                                 if isinstance(task_output, dict) else None
                             ),
+                            "mission_id": execution.mission_id,
                         },
                     )
             else:
@@ -552,6 +554,7 @@ class ExecutionService(BaseService):
                         "source_task": source_task,
                         "available_task_ids": list(by_task_id.keys()),
                         "available_agents": list(by_agent.keys()),
+                        "mission_id": execution.mission_id,
                     },
                 )
 

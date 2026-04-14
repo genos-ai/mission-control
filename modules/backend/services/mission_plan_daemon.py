@@ -302,6 +302,7 @@ class MissionPlanDaemon:
             )
             return
 
+        _mission_id: str | None = None
         try:
             sf = get_session_factory()
             async with sf() as db:
@@ -315,6 +316,7 @@ class MissionPlanDaemon:
 
                 repo = MissionPlanRepository(db)
                 plan = await repo.get_by_id(plan_id)
+                _mission_id = plan.mission_id
 
                 mission_svc = MissionService(db)
                 mission = await mission_svc.get_mission(plan.mission_id)
@@ -334,6 +336,7 @@ class MissionPlanDaemon:
                     "MissionPlanDaemon dispatched plan",
                     extra={
                         "plan_id": plan_id,
+                        "mission_id": _mission_id,
                         "outcome_status": result.get("outcome_status"),
                         "execution_record_id": result.get("execution_record_id"),
                         "dispatched_task_count": len(result.get("dispatched_task_ids") or []),
@@ -343,7 +346,11 @@ class MissionPlanDaemon:
         except Exception as e:  # noqa: BLE001
             logger.error(
                 "MissionPlanDaemon dispatch failed",
-                extra={"plan_id": plan_id, "error": str(e)},
+                extra={
+                    "plan_id": plan_id,
+                    "error": str(e),
+                    "mission_id": _mission_id,
+                },
                 exc_info=True,
             )
         finally:

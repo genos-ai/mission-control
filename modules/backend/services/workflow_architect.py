@@ -162,6 +162,7 @@ class WorkflowArchitectService(BaseService):
         except json.JSONDecodeError:
             logger.warning("Failed to parse recommendation response", extra={
                 "response": response_text[:200],
+                "mission_id": mission_id,
             })
             recommendations = []
 

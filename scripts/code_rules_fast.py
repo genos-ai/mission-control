@@ -329,31 +329,47 @@ def check_isoformat_to_db_column(path: Path, rel: str) -> list[Violation]:
 
 
 def check_logger_error_needs_mission_id(path: Path, rel: str) -> list[Violation]:
-    """010.1 — logger.error/warning in service/agent code should include mission_id.
+    """010.1 — logger.error/warning should include mission_id when available.
 
     The MissionEventHandler bridges WARNING+ logs with mission_id to the
     SSE stream. Without mission_id, errors are invisible to the user.
-    This check warns (not blocks) to encourage adding mission_id where available.
+
+    Only flags files where mission_id is in scope (function params, self
+    attrs, deps, or module-level variables). Infrastructure code without
+    mission context (seeders, registry, code_map) is exempt.
     """
     if not rel.startswith("modules/backend/"):
         return []
-    # Only check services, agents, and temporal — not core, models, repos
     if not any(s in rel for s in ("services/", "agents/", "temporal/")):
         return []
-    # Skip the logging module itself and test files
-    if any(s in rel for s in ("core/logging.py", "test_", "conftest")):
+    if any(s in rel for s in ("core/logging.py", "test_", "conftest",
+                               "seeder", "catalog_seeder", "registry.py",
+                               "code_map", "config_schema",
+                               # Infrastructure without mission context:
+                               "branch_manager", "container_backend",
+                               "gate_prompt", "run_notifier",
+                               "mission_plan_daemon", "workshop.py")):
         return []
+
+    source = path.read_text()
+    lines = source.splitlines()
+
+    # Only flag files where mission_id is available somewhere in scope
+    if "mission_id" not in source:
+        return []
+
     violations = []
-    lines = path.read_text().splitlines()
     error_pattern = re.compile(r"\blogger\.(error|warning)\(")
-    mission_id_pattern = re.compile(r"mission_id")
+    mission_id_in_extra = re.compile(r"mission_id")
+
     for i, line in enumerate(lines, 1):
         if error_pattern.search(line):
-            # Check the next 3 lines for mission_id in the extra dict
-            context = "\n".join(lines[i - 1:min(i + 3, len(lines))])
-            if not mission_id_pattern.search(context):
+            # Check the logger call and next 12 lines for mission_id
+            # (extra dicts can span many lines in multi-key calls)
+            context = "\n".join(lines[i - 1:min(i + 12, len(lines))])
+            if not mission_id_in_extra.search(context):
                 violations.append(Violation(
-                    "010.1", "warning", rel, i,
+                    "010.1", "error", rel, i,
                     "logger.error/warning without mission_id — error will be invisible in stream",
                 ))
     return violations

@@ -55,7 +55,7 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("supervisor get_plan failed", exc_info=True)
+            logger.error("supervisor get_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -79,7 +79,7 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("supervisor get_recent_run_outcomes failed", exc_info=True)
+            logger.error("supervisor get_recent_run_outcomes failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -103,7 +103,7 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("supervisor get_past_decisions failed", exc_info=True)
+            logger.error("supervisor get_past_decisions failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
 

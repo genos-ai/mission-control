@@ -428,7 +428,7 @@ async def handle(
                 cost_usd=cost_usd,
             )
         except (SQLAlchemyError, ApplicationError):
-            logger.warning("Failed to update session cost", exc_info=True)
+            logger.warning("Failed to update session cost", extra={"mission_id": mission_id}, exc_info=True)
 
         # 10. Yield cost update event
         updated_session = await session_service.get_session(session_id)
@@ -804,6 +804,7 @@ async def handle_mission(
         except Exception:
             logger.warning(
                 "Failed to provision execution environment, falling back to local",
+                extra={"mission_id": mission_id},
                 exc_info=True,
             )
             env_handle = None

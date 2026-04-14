@@ -445,6 +445,7 @@ class ExecutionEnvironmentService:
                             "container_status": container.status,
                             "executions_lost": env.execution_count,
                             "last_execution_at": env.last_execution_at,
+                            "mission_id": mission_id,
                         },
                     )
                     env.status = EnvironmentStatus.FAILED.value
@@ -459,6 +460,7 @@ class ExecutionEnvironmentService:
                         "container_id": env.container_id,
                         "executions_lost": env.execution_count,
                         "last_execution_at": env.last_execution_at,
+                        "mission_id": mission_id,
                     },
                 )
                 env.status = EnvironmentStatus.FAILED.value
@@ -473,6 +475,7 @@ class ExecutionEnvironmentService:
                         "container_id": env.container_id,
                         "executions_at_risk": env.execution_count,
                         "error": str(e),
+                        "mission_id": mission_id,
                     },
                 )
                 env.status = EnvironmentStatus.FAILED.value

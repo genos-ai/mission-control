@@ -251,7 +251,7 @@ async def execute_convergence_loop(
         if not verification_passed:
             logger.warning(
                 "Final verification failed — branch may not be deployable",
-                extra={"task_id": task_id},
+                extra={"task_id": task_id, "mission_id": mission_id},
             )
 
     # --- Build final result ---

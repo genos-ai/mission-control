@@ -286,7 +286,7 @@ class SessionFollowupService(BaseService):
         if not event_type:
             logger.warning(
                 "fire_matching called with event lacking event_type",
-                extra={"event_type": type(event).__name__},
+                extra={"event_type": type(event).__name__, "mission_id": getattr(event, "mission_id", None)},
             )
             return []
 
@@ -301,7 +301,7 @@ class SessionFollowupService(BaseService):
         else:
             logger.warning(
                 "fire_matching called with non-dict, non-model event",
-                extra={"event_type": event_type},
+                extra={"event_type": event_type, "mission_id": getattr(event, "mission_id", None)},
             )
             return []
 
@@ -339,7 +339,7 @@ class SessionFollowupService(BaseService):
             except Exception as exc:
                 logger.warning(
                     "Followup prompt template render failed",
-                    extra={"followup_id": row.id, "error": str(exc)},
+                    extra={"followup_id": row.id, "error": str(exc), "mission_id": row.mission_id},
                 )
                 failed_row = await self._repo.mark_failed(
                     row.id, reason=f"template render error: {exc}",
@@ -370,6 +370,7 @@ class SessionFollowupService(BaseService):
                         "session_id": row.session_id,
                         "agent": row.created_by_agent,
                         "error": str(exc),
+                        "mission_id": row.mission_id,
                     },
                     exc_info=True,
                 )

@@ -131,6 +131,7 @@ async def persist_mission_results(
                             "task_id": task_result.task_id,
                             "agent": task_result.agent_name,
                             "error": str(artifact_exc),
+                            "mission_id": mission_id,
                         },
                     )
 
@@ -166,6 +167,6 @@ async def persist_mission_results(
     except (OSError, ValueError, RuntimeError) as e:
         logger.error(
             "Failed to persist execution results",
-            extra={"session_id": session_id, "error": str(e)},
+            extra={"session_id": session_id, "error": str(e), "mission_id": mission_id},
         )
         return None

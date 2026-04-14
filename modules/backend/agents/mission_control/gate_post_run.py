@@ -79,6 +79,7 @@ class AutonomousPostRunReviewer:
 
     async def review(self, context: GateContext) -> GateDecision:
         """Evaluate the 8-branch decision matrix. First match wins."""
+        self._mission_id = context.mission_id
 
         execution_record_id = context.plan_task_summary.get("execution_record_id")
 
@@ -247,7 +248,10 @@ class AutonomousPostRunReviewer:
             except Exception:
                 logger.warning(
                     "Failed to write post-run audit row",
-                    extra={"execution_record_id": execution_record_id},
+                    extra={
+                        "execution_record_id": execution_record_id,
+                        "mission_id": self._mission_id,
+                    },
                     exc_info=True,
                 )
 
@@ -257,6 +261,7 @@ class AutonomousPostRunReviewer:
                 "action": action.value,
                 "rule": rule,
                 "execution_record_id": execution_record_id,
+                "mission_id": self._mission_id,
             },
         )
         return decision
@@ -449,7 +454,7 @@ class AutonomousPostRunReviewer:
                 except Exception:
                     logger.warning(
                         "Failed to write Haiku audit row",
-                        extra={"execution_record_id": execution_record_id},
+                        extra={"execution_record_id": execution_record_id, "mission_id": context.mission_id},
                         exc_info=True,
                     )
 
@@ -467,7 +472,7 @@ class AutonomousPostRunReviewer:
         except Exception as exc:
             logger.error(
                 "Haiku classification failed, falling through to ESCALATE",
-                extra={"error": str(exc)},
+                extra={"error": str(exc), "mission_id": context.mission_id},
                 exc_info=True,
             )
             return None

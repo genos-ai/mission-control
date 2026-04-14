@@ -109,6 +109,7 @@ async def execute_with_retry(
                     "error": str(e),
                     "attempt": attempt,
                     "token_limit_exceeded": is_token_limit,
+                    "mission_id": mission_id,
                 },
             )
             if attempt < retry_budget and not is_token_limit:

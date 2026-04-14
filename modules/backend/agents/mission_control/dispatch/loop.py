@@ -401,7 +401,7 @@ async def _execute_layer(
                 except (OSError, ValueError, RuntimeError):
                     logger.warning(
                         "Context update failed (non-fatal)",
-                        extra={"task_id": task_result.task_id},
+                        extra={"task_id": task_result.task_id, "mission_id": mission_id},
                         exc_info=True,
                     )
 
@@ -467,7 +467,7 @@ async def _dispatch_convergence_loop(
     if not isinstance(loop_config_raw, dict):
         logger.warning(
             "convergence_loop task missing loop_config in inputs",
-            extra={"task_id": task_id},
+            extra={"task_id": task_id, "mission_id": mission_id},
         )
         return TaskResult(
             task_id=task_id,
@@ -486,7 +486,7 @@ async def _dispatch_convergence_loop(
     except (TypeError, ValueError) as exc:
         logger.warning(
             "convergence_loop task has invalid loop_config",
-            extra={"task_id": task_id, "error": str(exc)},
+            extra={"task_id": task_id, "error": str(exc), "mission_id": mission_id},
         )
         return TaskResult(
             task_id=task_id,

@@ -94,6 +94,7 @@ async def schedule_followup(
                 "session_id": session_id,
                 "agent": created_by_agent,
                 "error": str(exc),
+                "mission_id": mission_id,
             },
             exc_info=True,
         )
