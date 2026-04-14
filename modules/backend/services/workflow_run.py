@@ -159,9 +159,9 @@ class WorkflowRunService(BaseService):
 
         errors = self._workflow_service.validate_workflow_capabilities(workflow)
         if errors:
-            raise ValueError(
-                f"Workflow capability errors: {'; '.join(errors)}"
-            )
+            msg = f"Workflow capability errors: {'; '.join(errors)}"
+            logger.warning(msg, mission_id=mission_id)
+            raise ValueError(msg)
 
         from modules.backend.services.session import SessionService
         from modules.backend.schemas.session import SessionCreate
