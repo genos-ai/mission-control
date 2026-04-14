@@ -38,10 +38,12 @@ async def _create_background_record(
 ) -> Any:
     """Create an ExecutionRecord for a background task. Returns the record."""
     from modules.backend.core.database import get_async_session
-    from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
+    from modules.backend.models.execution_record import ExecutionRecordStatus
+    from modules.backend.repositories.execution_record import ExecutionRecordRepository
 
     async with get_async_session() as db:
-        record = ExecutionRecord(
+        repo = ExecutionRecordRepository(db)
+        record = await repo.create(
             session_id=session_id,
             mission_id=mission_id,
             status=ExecutionRecordStatus.PENDING,
@@ -50,13 +52,10 @@ async def _create_background_record(
             objective_statement=objective,
             total_cost_usd=0.0,
         )
-        db.add(record)
-        await db.flush()
-        await db.refresh(record)
         record_id = record.id
         await db.commit()
 
-    # Return a lightweight object with just the id
+    # Return a lightweight ref — the ORM instance is detached after commit
     class _Ref:
         def __init__(self, id: str):
             self.id = id

@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "20260414_bg_task"
-down_revision = None
+down_revision = "20260414_msg_status"
 branch_labels = None
 depends_on = None
 

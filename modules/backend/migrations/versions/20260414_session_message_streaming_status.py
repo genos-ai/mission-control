@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision = "20260414_msg_status"
-down_revision = None
+down_revision = "standardise_timestamps"
 branch_labels = None
 depends_on = None
 

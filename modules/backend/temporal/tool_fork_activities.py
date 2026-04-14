@@ -32,22 +32,17 @@ async def update_execution_record_status(
     """Update an ExecutionRecord's status. Used at start and end of forked work."""
     from modules.backend.core.database import get_async_session
     from modules.backend.core.utils import utc_now
-    from modules.backend.models.execution_record import ExecutionRecord
-
-    from sqlalchemy import select
+    from modules.backend.repositories.execution_record import ExecutionRecordRepository
 
     async with get_async_session() as db:
-        result = await db.execute(
-            select(ExecutionRecord).where(ExecutionRecord.id == execution_record_id)
-        )
-        record = result.scalar_one_or_none()
-        if record is not None:
-            record.status = status
-            if status == "running" and record.started_at is None:
-                record.started_at = utc_now()
-            if status in ("completed", "failed", "cancelled"):
-                record.completed_at = utc_now()
-            await db.commit()
+        repo = ExecutionRecordRepository(db)
+        update_kwargs: dict = {"status": status}
+        if status == "running":
+            update_kwargs["started_at"] = utc_now()
+        if status in ("completed", "failed", "cancelled"):
+            update_kwargs["completed_at"] = utc_now()
+        await repo.update(execution_record_id, **update_kwargs)
+        await db.commit()
 
     activity.logger.info(
         "ExecutionRecord status updated",
