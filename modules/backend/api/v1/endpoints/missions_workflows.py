@@ -8,7 +8,8 @@ Split from missions.py for file size compliance.
 
 from fastapi import APIRouter, Query
 
-from modules.backend.core.dependencies import DbSession, RequestId
+from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.workflow_schedule import (
     WorkflowScheduleCreateRequest,
@@ -168,6 +169,33 @@ async def run_mission_workflow(
             "status": run.status.value if hasattr(run.status, "value") else str(run.status),
             "total_cost_usd": run.total_cost_usd,
         },
+        metadata={"request_id": request_id},
+    )
+
+
+@router.delete(
+    "/{mission_id}/workflows/{workflow_id}",
+    response_model=ApiResponse,
+    summary="Delete a workflow definition",
+)
+async def delete_mission_workflow(
+    mission_id: str,
+    workflow_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+) -> ApiResponse:
+    """Delete a workflow definition. Requires admin role."""
+    if not current_user.has_role("admin"):
+        raise AuthorizationError("Deleting workflows requires admin role")
+
+    from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+    service = WorkflowDefinitionService(db)
+    await service.delete_workflow(workflow_id)
+    return ApiResponse(
+        success=True,
+        data={"deleted": workflow_id},
         metadata={"request_id": request_id},
     )
 

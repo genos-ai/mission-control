@@ -113,6 +113,21 @@ export function useRunWorkflow(missionId: string) {
   })
 }
 
+// ---- Delete workflow ----
+
+export function useDeleteWorkflow(missionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (workflowId: string) =>
+      api.del(`/missions/${missionId}/workflows/${workflowId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: workflowKeys.missionWorkflows(missionId),
+      })
+    },
+  })
+}
+
 // ---- Schedules ----
 
 export function useSchedules(missionId: string | undefined) {

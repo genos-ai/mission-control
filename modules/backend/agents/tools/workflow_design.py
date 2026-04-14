@@ -232,3 +232,99 @@ async def persist_workflow(
         "locked_at": locked.locked_at,
         "step_count": len(steps),
     }
+
+
+async def update_workflow(
+    session: AsyncSession,
+    *,
+    mission_id: str,
+    name: str,
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate, update, bump version, and re-lock an existing workflow.
+
+    Looks up the workflow by mission + name, applies the provided field
+    updates (steps, description, objective, etc.), re-validates the
+    step graph, increments version, and re-locks.
+
+    Returns the updated workflow summary, or raises on failure.
+    """
+    from modules.backend.core.utils import utc_now
+    from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+    svc = WorkflowDefinitionService(session)
+    workflow = await svc.get_workflow(mission_id, name)
+
+    # Merge steps: use new steps if provided, else keep existing
+    steps = updates.get("steps", workflow.steps)
+    objective = updates.get("objective", workflow.objective)
+
+    # Validate the resulting step graph
+    validation = validate_workflow_proposal(steps, objective)
+    if not validation["valid"]:
+        return {
+            "error": "Workflow validation failed",
+            "details": validation["errors"],
+        }
+
+    # Build update payload: only include fields that were provided
+    payload: dict[str, Any] = {}
+    for field in ("description", "objective", "steps", "trigger_config", "budget_config", "context"):
+        if field in updates:
+            payload[field] = updates[field]
+
+    # Bump version and re-lock
+    payload["version"] = workflow.version + 1
+    payload["locked_at"] = utc_now().isoformat()
+
+    updated = await svc.update_workflow(workflow.id, **payload)
+
+    logger.info(
+        "Workflow updated by architect",
+        extra={
+            "workflow_id": updated.id,
+            "workflow_name": updated.name,
+            "mission_id": mission_id,
+            "new_version": updated.version,
+        },
+    )
+
+    return {
+        "id": updated.id,
+        "name": updated.name,
+        "mission_id": updated.mission_id,
+        "version": updated.version,
+        "locked_at": updated.locked_at,
+        "step_count": len(updated.steps),
+    }
+
+
+async def list_mission_workflows(
+    session: AsyncSession,
+    *,
+    mission_id: str,
+) -> list[dict[str, Any]]:
+    """List all workflow definitions for a mission.
+
+    Returns a summary list with id, name, version, step_count,
+    enabled, locked_at, and designed_by.
+    """
+    from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+    svc = WorkflowDefinitionService(session)
+    workflows = await svc.list_workflows(mission_id, enabled_only=False)
+
+    return [
+        {
+            "id": w.id,
+            "name": w.name,
+            "description": w.description,
+            "version": w.version,
+            "step_count": w.step_count,
+            "enabled": w.enabled,
+            "locked_at": w.locked_at,
+            "designed_by": w.designed_by,
+            "trigger_type": w.trigger_type,
+        }
+        for w in workflows
+    ]

@@ -140,6 +140,32 @@ def create_agent(model: str | Model) -> Agent:
             "edges": len(graph.get("edges", [])),
         })
 
+    # -- Tool: list_workflows ------------------------------------------------
+
+    @agent.tool
+    async def list_workflows(
+        ctx: RunContext[ArchitectAgentDeps],
+    ) -> str:
+        """List all workflow definitions in the current mission.
+
+        Use this to see what workflows already exist before creating
+        or updating one.
+
+        Returns:
+            JSON array of workflow summaries with id, name, version,
+            step_count, enabled, locked_at, and designed_by.
+        """
+        if ctx.deps.db_session is None:
+            return json.dumps({"error": "No database session available"})
+        if not ctx.deps.mission_id:
+            return json.dumps({"error": "No mission_id in context"})
+
+        workflows = await workflow_design.list_mission_workflows(
+            ctx.deps.db_session,
+            mission_id=ctx.deps.mission_id,
+        )
+        return json.dumps(workflows, indent=2, default=str)
+
     # -- Tool: save_workflow -------------------------------------------------
 
     @agent.tool
@@ -196,6 +222,71 @@ def create_agent(model: str | Model) -> Agent:
         except Exception as e:
             logger.error(
                 "Failed to save workflow",
+                extra={"error": str(e), "mission_id": ctx.deps.mission_id},
+            )
+            return json.dumps({"error": str(e)})
+
+    # -- Tool: update_workflow -----------------------------------------------
+
+    @agent.tool
+    async def update_workflow(
+        ctx: RunContext[ArchitectAgentDeps],
+        name: str,
+        description: str | None = None,
+        objective: dict[str, Any] | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        trigger_type: str | None = None,
+        max_cost_usd: float | None = None,
+    ) -> str:
+        """Update an existing workflow definition.
+
+        Looks up the workflow by name in the current mission, applies
+        the provided changes, re-validates the step graph, bumps the
+        version, and re-locks. Only call this when the user has
+        explicitly confirmed the changes.
+
+        Args:
+            name: Name of the existing workflow to update.
+            description: New description (omit to keep current).
+            objective: New objective dict (omit to keep current).
+            steps: New step array (omit to keep current).
+            trigger_type: New trigger type (omit to keep current).
+            max_cost_usd: New budget ceiling (omit to keep current).
+
+        Returns:
+            JSON with updated workflow id, name, version, and confirmation.
+        """
+        if ctx.deps.db_session is None:
+            return json.dumps({"error": "No database session available"})
+        if not ctx.deps.mission_id:
+            return json.dumps({"error": "No mission_id in context"})
+
+        updates: dict[str, Any] = {}
+        if description is not None:
+            updates["description"] = description
+        if objective is not None:
+            updates["objective"] = objective
+        if steps is not None:
+            updates["steps"] = steps
+        if trigger_type is not None:
+            updates["trigger_config"] = {"type": trigger_type}
+        if max_cost_usd is not None:
+            updates["budget_config"] = {"max_cost_usd": max_cost_usd}
+
+        if not updates:
+            return json.dumps({"error": "No changes provided"})
+
+        try:
+            result = await workflow_design.update_workflow(
+                ctx.deps.db_session,
+                mission_id=ctx.deps.mission_id,
+                name=name,
+                updates=updates,
+            )
+            return json.dumps(result, default=str)
+        except Exception as e:
+            logger.error(
+                "Failed to update workflow",
                 extra={"error": str(e), "mission_id": ctx.deps.mission_id},
             )
             return json.dumps({"error": str(e)})

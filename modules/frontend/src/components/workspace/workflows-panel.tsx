@@ -21,6 +21,7 @@
  */
 
 import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import {
   GitBranch,
   Play,
@@ -31,6 +32,7 @@ import {
   CheckCircle2,
   Circle,
   Loader2,
+  Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'
@@ -41,7 +43,9 @@ import {
   useWorkflowTemplates,
   useImportTemplate,
   useRunWorkflow,
+  useDeleteWorkflow,
 } from '@/hooks/use-workflows'
+import { useAuthStore } from '@/stores/auth'
 import { ROUTES } from '@/lib/constants'
 import type { MissionWorkflow, WorkflowListItem } from '@/types'
 
@@ -154,6 +158,9 @@ function MissionWorkflowRow({
 }) {
   const navigate = useNavigate()
   const runMutation = useRunWorkflow(missionId)
+  const deleteMutation = useDeleteWorkflow(missionId)
+  const isAdmin = useAuthStore((s) => s.isAdmin)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function handleRun() {
     try {
@@ -166,8 +173,22 @@ function MissionWorkflowRow({
     }
   }
 
+  async function handleDelete() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    try {
+      await deleteMutation.mutateAsync(workflow.id)
+      toast.success(`Deleted workflow "${workflow.name}"`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed')
+    }
+    setConfirmDelete(false)
+  }
+
   return (
-    <div className="group flex items-center gap-3 rounded-md border bg-card px-3 py-2.5">
+    <div
+      className="group flex items-center gap-3 rounded-md border bg-card px-3 py-2.5"
+      onMouseLeave={() => setConfirmDelete(false)}
+    >
       {workflow.enabled ? (
         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
       ) : (
@@ -219,6 +240,19 @@ function MissionWorkflowRow({
           }}
           tone="muted"
         />
+        {isAdmin && (
+          <IconButton
+            icon={
+              deleteMutation.isPending
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Trash2 className="h-3 w-3" />
+            }
+            title={confirmDelete ? 'Click again to confirm delete' : 'Delete workflow'}
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+            tone={confirmDelete ? 'red' : 'muted'}
+          />
+        )}
       </div>
     </div>
   )
@@ -359,12 +393,14 @@ function IconButton({
   title: string
   onClick: () => void
   disabled?: boolean
-  tone: 'emerald' | 'muted'
+  tone: 'emerald' | 'muted' | 'red'
 }) {
   const toneClass =
     tone === 'emerald'
       ? 'text-emerald-400 hover:bg-emerald-500/10'
-      : 'text-muted-foreground hover:bg-accent'
+      : tone === 'red'
+        ? 'text-red-500 bg-red-100/10 hover:bg-red-500/20'
+        : 'text-muted-foreground hover:bg-accent'
   return (
     <button
       onClick={onClick}
