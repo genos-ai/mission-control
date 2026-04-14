@@ -36,24 +36,18 @@ async def _create_background_record(
     objective: str,
     params: dict,
 ) -> Any:
-    """Create an ExecutionRecord for a background task. Returns the record."""
-    from modules.backend.core.database import get_async_session
-    from modules.backend.models.execution_record import ExecutionRecordStatus
-    from modules.backend.repositories.execution_record import ExecutionRecordRepository
+    """Create an ExecutionRecord for a background task via the service layer."""
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    async with get_async_session() as db:
-        repo = ExecutionRecordRepository(db)
-        record = await repo.create(
-            session_id=session_id,
+    async with ExecutionPersistenceService.factory() as svc:
+        record = await svc.create_background_record(
             mission_id=mission_id,
-            status=ExecutionRecordStatus.PENDING,
+            session_id=session_id,
             task_type=task_type,
-            task_params=params,
-            objective_statement=objective,
-            total_cost_usd=0.0,
+            objective=objective,
+            params=params,
         )
         record_id = record.id
-        await db.commit()
 
     # Return a lightweight ref — the ORM instance is detached after commit
     class _Ref:
@@ -95,19 +89,13 @@ async def _start_tool_fork_workflow(
         task_queue=config.task_queue,
     )
 
-    # Update the record with the workflow ID
-    from modules.backend.core.database import get_async_session
-    from modules.backend.models.execution_record import ExecutionRecord
-    from sqlalchemy import select
+    # Update the record with the temporal workflow ID
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    async with get_async_session() as db:
-        result = await db.execute(
-            select(ExecutionRecord).where(ExecutionRecord.id == record_id)
-        )
-        record = result.scalar_one_or_none()
+    async with ExecutionPersistenceService.factory() as svc:
+        record = await svc.get_execution(record_id)
         if record is not None:
             record.temporal_workflow_id = workflow_id
-            await db.commit()
 
     return workflow_id
 
@@ -533,21 +521,10 @@ def create_agent(model: str | Model) -> Agent:
         tasks for this mission.
         """
         try:
-            from modules.backend.core.database import get_async_session
-            from modules.backend.models.execution_record import ExecutionRecord
-            from sqlalchemy import select, or_
+            from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-            async with get_async_session() as db:
-                result = await db.execute(
-                    select(ExecutionRecord)
-                    .where(
-                        ExecutionRecord.mission_id == ctx.deps.mission_id,
-                        ExecutionRecord.task_type.isnot(None),
-                    )
-                    .order_by(ExecutionRecord.created_at.desc())
-                    .limit(10)
-                )
-                records = list(result.scalars().all())
+            async with ExecutionPersistenceService.factory() as svc:
+                records = await svc.list_background_tasks(ctx.deps.mission_id)
 
             if not records:
                 return json.dumps({"tasks": [], "message": "No background tasks found."})

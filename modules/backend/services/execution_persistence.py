@@ -409,3 +409,44 @@ class ExecutionPersistenceService(BaseService):
     async def get_replan_chain(self, execution_id: str) -> list[ExecutionRecord]:
         """Get the full re-plan lineage for an execution."""
         return await self._repo.get_replan_chain(execution_id)
+
+    # ---- Background task operations (Plan 56 Phase B) ----
+
+    async def create_background_record(
+        self,
+        *,
+        mission_id: str,
+        session_id: str,
+        task_type: str,
+        objective: str,
+        params: dict,
+    ) -> ExecutionRecord:
+        """Create an ExecutionRecord for a background task forked from a Director tool."""
+        return await self._repo.create(
+            session_id=session_id,
+            mission_id=mission_id,
+            status=ExecutionRecordStatus.PENDING,
+            task_type=task_type,
+            task_params=params,
+            objective_statement=objective,
+            total_cost_usd=0.0,
+        )
+
+    async def list_background_tasks(
+        self,
+        mission_id: str,
+        limit: int = 10,
+    ) -> list[ExecutionRecord]:
+        """List recent background tasks (execution records with task_type set)."""
+        from sqlalchemy import select
+
+        result = await self._session.execute(
+            select(ExecutionRecord)
+            .where(
+                ExecutionRecord.mission_id == mission_id,
+                ExecutionRecord.task_type.isnot(None),
+            )
+            .order_by(ExecutionRecord.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
