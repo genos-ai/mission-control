@@ -187,8 +187,11 @@ export default function MissionLayout() {
       // Plan 56: When a Director followup (ChatTurnWorkflow) completes,
       // its agent.response.complete event arrives via the mission SSE stream.
       // Invalidate session messages so the chat tab picks it up without refresh.
+      // Delay to avoid DOM reconciliation error (same pattern as send_message).
       if (newEvents.some((ev) => ev.event_type === 'agent.response.complete')) {
-        queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        }, 500)
       }
     }
   }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
