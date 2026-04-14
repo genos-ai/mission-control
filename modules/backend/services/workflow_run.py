@@ -180,10 +180,7 @@ class WorkflowRunService(BaseService):
         # the service is designed for post-execution persistence and
         # defaults completed_at to "now" — we need it NULL until the
         # workflow finishes.
-        from modules.backend.models.execution_record import (
-            ExecutionRecord,
-            ExecutionRecordStatus,
-        )
+        from modules.backend.models.execution_record import ExecutionRecordStatus
         from modules.backend.repositories.execution_record import ExecutionRecordRepository
 
         now = utc_now()

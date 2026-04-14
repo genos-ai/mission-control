@@ -473,11 +473,10 @@ async def _dispatch_convergence_loop(
             task_id=task_id,
             agent_name="convergence",
             status=TaskStatus.FAILED,
-            summary=(
-                "convergence_loop task requires a 'loop_config' dict "
-                "in inputs.static, but none was found."
-            ),
-            output_reference={},
+            output_reference={
+                "error": "convergence_loop task requires a 'loop_config' dict "
+                "in inputs.static, but none was found.",
+            },
             cost_usd=0.0,
             token_usage=TaskTokenUsage(),
         )
@@ -493,8 +492,7 @@ async def _dispatch_convergence_loop(
             task_id=task_id,
             agent_name="convergence",
             status=TaskStatus.FAILED,
-            summary=f"Invalid loop_config: {exc}",
-            output_reference={},
+            output_reference={"error": f"Invalid loop_config: {exc}"},
             cost_usd=0.0,
             token_usage=TaskTokenUsage(),
         )
@@ -562,11 +560,11 @@ async def _dispatch_workflow_task(
             task_id=task.task_id,
             agent_name=f"workflow:{workflow_name}",
             status=status,
-            summary=run.result_summary or f"Workflow {run_status}",
             output_reference={
                 "workflow_run_id": str(run.id),
                 "execution_record_id": run.execution_record_id,
                 "status": run_status,
+                "result": run.result_summary or f"Workflow {run_status}",
             },
             cost_usd=run.total_cost_usd or 0.0,
             duration_seconds=duration,
@@ -582,7 +580,6 @@ async def _dispatch_workflow_task(
             task_id=task.task_id,
             agent_name=f"workflow:{workflow_name}",
             status=TaskStatus.FAILED,
-            summary=f"Workflow dispatch failed: {e}",
             output_reference={"error": str(e)},
             cost_usd=0.0,
             token_usage=TaskTokenUsage(),

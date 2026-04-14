@@ -67,8 +67,8 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     row write. The reviewer is the same Plan 51 code — just wrapped
     as a Temporal Activity for durability.
 
-    Errors are emitted as SystemEvent to the mission's event stream
-    before re-raising, so failures are visible in the console/narrative.
+    Errors include mission_id in the logger extra so the centralised
+    MissionEventHandler bridges them to the SSE stream automatically.
     """
     activity.logger.info(
         "Evaluating post-run",

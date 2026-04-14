@@ -164,18 +164,18 @@ async def _drain_mission_event_queue(queue: asyncio.Queue) -> None:
     """
     import uuid as _uuid
 
+    from redis.asyncio import Redis as AsyncRedis
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.events.bus import SessionEventBus
+    from modules.backend.events.types import SystemEvent
+
     redis = None
 
     while True:
         mission_id, message, level, source = await queue.get()
         try:
             if redis is None:
-                from redis.asyncio import Redis as AsyncRedis
-                from modules.backend.core.config import get_redis_url
                 redis = AsyncRedis.from_url(get_redis_url())
-
-            from modules.backend.events.bus import SessionEventBus
-            from modules.backend.events.types import SystemEvent
 
             bus = SessionEventBus(redis, mission_id=mission_id)
             await bus.publish_to_mission(
