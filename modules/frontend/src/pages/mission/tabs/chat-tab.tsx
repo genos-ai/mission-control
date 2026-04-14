@@ -806,7 +806,7 @@ function MessageBubble({ message }: { message: SessionMessage }) {
           'mt-1 flex items-center gap-2 text-[10px]',
           isUser ? 'text-primary-foreground/60' : 'text-muted-foreground',
         )}>
-          <span>{formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}</span>
+          <span>{format(new Date(message.created_at), 'MMM d HH:mm')}</span>
           {message.cost_usd != null && (
             <Badge variant="secondary" className="text-[9px]">${message.cost_usd.toFixed(4)}</Badge>
           )}
