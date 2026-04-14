@@ -18,7 +18,7 @@ import {
   Radio,
   StopCircle,
 } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import {
   useExecutions,
@@ -72,7 +72,13 @@ export function RunsPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showRunModal, setShowRunModal] = useState(false)
 
-  const executions = data?.executions ?? []
+  const executions = useMemo(
+    () =>
+      [...(data?.executions ?? [])].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      ),
+    [data?.executions],
+  )
 
   // Group artifacts by execution_record_id once so HistoryRow and
   // HistoryDetail can read a row's artifacts in O(1).
@@ -121,7 +127,7 @@ export function RunsPanel({
         ) : (
           <div>
             {/* Column headers */}
-            <div className="grid grid-cols-[1.5rem_1fr_5rem_4rem_6rem] gap-2 border-b px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="grid grid-cols-[1.5rem_1fr_5rem_4rem_7.5rem] gap-2 border-b px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               <span />
               <span>Session</span>
               <span>Status</span>
@@ -204,7 +210,7 @@ function HistoryRow({
 
   return (
     <div className="border-b last:border-b-0">
-      <div className="grid grid-cols-[1.5rem_1fr_5rem_4rem_6rem] items-center gap-2 px-4 py-2.5 text-xs">
+      <div className="grid grid-cols-[1.5rem_1fr_5rem_4rem_7.5rem] items-center gap-2 px-4 py-2.5 text-xs">
         <button onClick={onToggle} className="flex items-center text-muted-foreground">
           {expanded ? (
             <ChevronDown className="h-3.5 w-3.5" />
@@ -251,9 +257,9 @@ function HistoryRow({
         </span>
 
         <span className="flex items-center justify-end gap-1.5 text-muted-foreground">
-          <span className="truncate">
+          <span className="truncate" title={execution.created_at}>
             {execution.created_at
-              ? formatDistanceToNow(new Date(execution.created_at), { addSuffix: true })
+              ? format(new Date(execution.created_at), 'MMM d HH:mm')
               : '—'}
           </span>
           {isRunning && <CancelButton executionId={execution.id} />}
