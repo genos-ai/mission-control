@@ -101,6 +101,66 @@ def create_agent(model: str | Model) -> Agent:
             return json.dumps({"error": str(e)})
 
     @agent.tool
+    async def browse_catalog(
+        ctx: RunContext[MissionDirectorDeps],
+        keyword: str | None = None,
+    ) -> str:
+        """Browse the full agent catalog to see what agents are available.
+
+        Use this to discover agents that are NOT on the current mission
+        team. If a needed agent is in the catalog but not on the team,
+        suggest the user adds it via the Team tab or 'mc team add'.
+
+        Args:
+            keyword: Optional search keyword to filter by capabilities.
+
+        Returns:
+            JSON array of all catalog agents with name, type, description,
+            enabled status, and whether they're on the current team.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+            from modules.backend.services.mission_team import MissionTeamService
+
+            catalog_repo = AgentCatalogRepository(ctx.deps.db_session)
+            team_svc = MissionTeamService(ctx.deps.db_session)
+
+            # Get all catalog entries
+            all_agents = await catalog_repo.get_all(limit=200)
+            # Get current team for comparison
+            members = await team_svc.list_team(ctx.deps.mission_id)
+            team_names = set()
+            for m in members:
+                entry = await catalog_repo.get_by_id_or_none(m.agent_catalog_id)
+                if entry:
+                    team_names.add(entry.agent_name)
+
+            results = []
+            for agent in all_agents:
+                if keyword and keyword.lower() not in (
+                    (agent.description or "").lower()
+                    + " ".join(agent.keywords or []).lower()
+                    + (agent.agent_name or "").lower()
+                ):
+                    continue
+                results.append({
+                    "agent_name": agent.agent_name,
+                    "description": agent.description,
+                    "agent_type": agent.agent_type,
+                    "enabled": agent.enabled,
+                    "on_team": agent.agent_name in team_names,
+                    "keywords": agent.keywords or [],
+                })
+
+            return json.dumps(results, indent=2, default=str)
+        except Exception as e:
+            logger.error("browse_catalog failed", exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    @agent.tool
     async def get_execution_history(
         ctx: RunContext[MissionDirectorDeps],
         limit: int = 10,
