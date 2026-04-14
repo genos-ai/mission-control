@@ -301,6 +301,64 @@ def check_os_getenv_fallback(path: Path, rel: str) -> list[Violation]:
     return violations
 
 
+def check_isoformat_to_db_column(path: Path, rel: str) -> list[Violation]:
+    """004.5 — No .isoformat() passed to model constructors or repo.create().
+
+    DateTime columns require datetime objects. ISO strings cause asyncpg
+    DataError at runtime. Use utc_now() directly, not utc_now().isoformat().
+    """
+    if not rel.startswith("modules/backend/"):
+        return []
+    # Only check services and persistence code — models/schemas are fine
+    if not any(s in rel for s in ("services/", "persistence", "agents/")):
+        return []
+    violations = []
+    # Match: field_name=something.isoformat() or field_name=utc_now().isoformat()
+    # in contexts that look like model construction or repo calls
+    pattern = re.compile(r"(started_at|completed_at|created_at|updated_at)\s*=.*\.isoformat\(\)")
+    for i, line in enumerate(path.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith(("#", "//", '"""', "'''")):
+            continue
+        if pattern.search(line):
+            violations.append(Violation(
+                "004.5", "warning", rel, i,
+                ".isoformat() on a timestamp field — verify the column accepts strings; DateTime columns need datetime objects",
+            ))
+    return violations
+
+
+def check_logger_error_needs_mission_id(path: Path, rel: str) -> list[Violation]:
+    """010.1 — logger.error/warning in service/agent code should include mission_id.
+
+    The MissionEventHandler bridges WARNING+ logs with mission_id to the
+    SSE stream. Without mission_id, errors are invisible to the user.
+    This check warns (not blocks) to encourage adding mission_id where available.
+    """
+    if not rel.startswith("modules/backend/"):
+        return []
+    # Only check services, agents, and temporal — not core, models, repos
+    if not any(s in rel for s in ("services/", "agents/", "temporal/")):
+        return []
+    # Skip the logging module itself and test files
+    if any(s in rel for s in ("core/logging.py", "test_", "conftest")):
+        return []
+    violations = []
+    lines = path.read_text().splitlines()
+    error_pattern = re.compile(r"\blogger\.(error|warning)\(")
+    mission_id_pattern = re.compile(r"mission_id")
+    for i, line in enumerate(lines, 1):
+        if error_pattern.search(line):
+            # Check the next 3 lines for mission_id in the extra dict
+            context = "\n".join(lines[i - 1:min(i + 3, len(lines))])
+            if not mission_id_pattern.search(context):
+                violations.append(Violation(
+                    "010.1", "warning", rel, i,
+                    "logger.error/warning without mission_id — error will be invisible in stream",
+                ))
+    return violations
+
+
 def check_execution_triggers_need_idempotency(path: Path, rel: str) -> list[Violation]:
     """009.1 — Endpoints that fire-and-forget agent work must support idempotency keys.
 
@@ -371,6 +429,7 @@ ALL_CHECKS = [
     check_bare_except,
     check_swallowed_exception,
     check_datetime_violations,
+    check_isoformat_to_db_column,
     check_hardcoded_secrets,
     check_os_getenv_fallback,
     check_api_imports_repositories,
@@ -381,6 +440,7 @@ ALL_CHECKS = [
     check_endpoint_orchestration,
     check_endpoint_inline_transforms,
     check_execution_triggers_need_idempotency,
+    check_logger_error_needs_mission_id,
 ]
 
 
