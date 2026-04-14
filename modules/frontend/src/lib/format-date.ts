@@ -19,7 +19,12 @@ const MONTHS = [
  */
 export function formatUtc(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  const d = typeof value === 'string' ? new Date(value) : value
+  // Backend timestamps are UTC but may lack the Z suffix.
+  // Append Z if missing so the browser converts to local time correctly.
+  const raw = typeof value === 'string'
+    ? (value.endsWith('Z') || value.includes('+') ? value : value + 'Z')
+    : value
+  const d = typeof raw === 'string' ? new Date(raw) : raw
   if (isNaN(d.getTime())) return '—'
 
   const mon = MONTHS[d.getMonth()]
@@ -35,7 +40,10 @@ export function formatUtc(value: string | Date | null | undefined): string {
  */
 export function formatUtcTime(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  const d = typeof value === 'string' ? new Date(value) : value
+  const raw = typeof value === 'string'
+    ? (value.endsWith('Z') || value.includes('+') ? value : value + 'Z')
+    : value
+  const d = typeof raw === 'string' ? new Date(raw) : raw
   if (isNaN(d.getTime())) return '—'
 
   const h = String(d.getHours()).padStart(2, '0')

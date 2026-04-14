@@ -641,7 +641,12 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
 
 function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
   const d = event.data
-  const ts = new Date(event.timestamp).toLocaleTimeString('en-US', {
+  // Backend timestamps are UTC but may lack the Z suffix.
+  // Append Z if missing so the browser converts to local time correctly.
+  const raw = event.timestamp.endsWith('Z') || event.timestamp.includes('+')
+    ? event.timestamp
+    : event.timestamp + 'Z'
+  const ts = new Date(raw).toLocaleTimeString('en-US', {
     hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
   })
 
