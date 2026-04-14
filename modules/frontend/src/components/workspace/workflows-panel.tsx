@@ -40,6 +40,7 @@ import {
   useMissionWorkflows,
   useWorkflowTemplates,
   useImportTemplate,
+  useRunWorkflow,
 } from '@/hooks/use-workflows'
 import { ROUTES } from '@/lib/constants'
 import type { MissionWorkflow, WorkflowListItem } from '@/types'
@@ -152,6 +153,18 @@ function MissionWorkflowRow({
   missionId: string
 }) {
   const navigate = useNavigate()
+  const runMutation = useRunWorkflow(missionId)
+
+  async function handleRun() {
+    try {
+      const result = await runMutation.mutateAsync(workflow.name)
+      toast.success(
+        `Workflow started — ${result.workflow_name} (${result.status})`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to run workflow')
+    }
+  }
 
   return (
     <div className="group flex items-center gap-3 rounded-md border bg-card px-3 py-2.5">
@@ -188,21 +201,20 @@ function MissionWorkflowRow({
 
       <div className="flex shrink-0 items-center gap-1">
         <IconButton
-          icon={<Play className="h-3 w-3" />}
-          title="Run workflow (Plan 45 Phase 5 + Plan 44 integration)"
-          onClick={() =>
-            toast("Running workflows from the Plan tab arrives with Plan 44", {
-              icon: 'ℹ️',
-            })
+          icon={
+            runMutation.isPending
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <Play className="h-3 w-3" />
           }
+          title="Run workflow"
+          onClick={handleRun}
+          disabled={runMutation.isPending || !workflow.enabled}
           tone="emerald"
         />
         <IconButton
           icon={<Pencil className="h-3 w-3" />}
           title="Edit workflow — opens the visual editor (Plan 45 Phase 4)"
           onClick={() => {
-            // Deep-link to the legacy DAG page for now — read-only
-            // view until the new editor lands.
             navigate(ROUTES.MISSION_WORKFLOWS(missionId))
           }}
           tone="muted"
@@ -321,20 +333,14 @@ function PlaceholderNote() {
       <div className="mb-1 flex items-center gap-1.5">
         <AlertCircle className="h-3 w-3 text-amber-400" />
         <span className="text-[11px] font-semibold text-amber-400">
-          Placeholder — visual editor coming in Plan 45
+          Visual editor coming in Plan 45
         </span>
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground/70">
-        This feed mode is a list view today. The React Flow visual editor
-        (drag-drop node palette, conditionals, human-in-the-loop steps,
-        inline LLM calls, run history drawer) lands in Plan 45 §Phase 4.
-        Cloning templates works now via the <span className="font-mono">Use template</span>{' '}
-        button. The <span className="font-mono">Edit</span> icon drops you into the
-        legacy read-only DAG view until the new editor ships.
-      </p>
-      <p className="mt-1.5 text-[10px] text-muted-foreground/50">
-        Running workflows from a mission plan task is Plan 44 (depends on
-        Plan 45 shipping the node schema first).
+        Run workflows directly with the <span className="font-mono">▶</span> button,
+        or add them as plan tasks via chat (<span className="font-mono">agent: workflow:name</span>).
+        Results appear in the Runs tab. The React Flow visual editor
+        (drag-drop node palette, conditionals, run history drawer) lands in Plan 45.
       </p>
     </div>
   )

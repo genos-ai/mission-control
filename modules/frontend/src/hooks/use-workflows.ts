@@ -93,6 +93,26 @@ export function useImportTemplate(missionId: string) {
   })
 }
 
+// ---- Run workflow ----
+
+export function useRunWorkflow(missionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (workflowName: string) =>
+      api.post<{
+        run_id: string
+        workflow_name: string
+        status: string
+        total_cost_usd: number
+      }>(`/missions/${missionId}/workflows/${encodeURIComponent(workflowName)}/run`),
+    onSuccess: () => {
+      // Invalidate executions so the Runs tab picks up the new run
+      qc.invalidateQueries({ queryKey: ['executions'] })
+      qc.invalidateQueries({ queryKey: ['missions', missionId] })
+    },
+  })
+}
+
 // ---- Schedules ----
 
 export function useSchedules(missionId: string | undefined) {
