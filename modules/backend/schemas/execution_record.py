@@ -82,6 +82,11 @@ class ExecutionRecordResponse(BaseModel):
     # detail fetch. Populated in the endpoint layer from the
     # eager-loaded task_executions relationship.
     task_count: int = 0
+    # Plan 56 Phase B: background task tracking
+    task_type: str | None = None
+    task_params: dict | None = None
+    temporal_workflow_id: str | None = None
+    mission_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
