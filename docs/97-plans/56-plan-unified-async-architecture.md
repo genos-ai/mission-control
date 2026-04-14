@@ -275,9 +275,21 @@ async def check_background_tasks(ctx) -> str:
 - Remove TaskIQ CLI commands from `admin.py`
 - Verify no runtime code depends on it
 
-#### 3.12 Remove asyncio.create_task for Tool Calls
+#### 3.12 Remove asyncio.create_task for Background Work
 
-After Phase B, all long-running tool calls use Temporal. Remove any remaining `asyncio.create_task` calls in agent tool handlers. Replace with the fork pattern from Phase B.
+After Phase B, all long-running background work uses Temporal. Migrate all 9 `asyncio.create_task` call sites:
+
+| File | Line | Context | Migration |
+|------|------|---------|-----------|
+| `agents/mission/director/agent.py` | 363 | run_objective tool | Tier 4 fork (Phase B) |
+| `agents/mission/director/agent.py` | 419 | run_workflow tool | Tier 4 fork (Phase B) |
+| `api/v1/endpoints/sessions.py` | 338 | Chat send_message | Tier 3 persist-first (Phase A) |
+| `api/v1/endpoints/agents.py` | 156 | Agent dispatch | Tier 4 fork |
+| `api/v1/endpoints/executions.py` | 305 | Execution start | Tier 4 fork |
+| `agents/mission_control/mission_control.py` | 372 | handle() agent run | Tier 3 persist-first (Phase A) |
+| `agents/software/architecture/agent.py` | 163 | Status polling | Keep (short-lived, in-request) |
+| `agents/software/quality/agent.py` | 304 | Status polling | Keep (short-lived, in-request) |
+| `services/mission_plan_daemon.py` | 124 | Daemon startup | Keep (process lifecycle) |
 
 #### 3.13 Update Reference Architecture
 
@@ -382,3 +394,39 @@ For any new feature, ask one question:
 - **Yes** → Tier 4. Temporal workflow. Redis Pub/Sub for events.
 
 No other async technologies. No decision trees. One question, one answer.
+
+---
+
+## 9  Audit Notes (2026-04-14)
+
+### Already exists — DO NOT rebuild
+
+| Item | File | What exists |
+|------|------|-------------|
+| `ChatTurnWorkflow` | `temporal/chat_workflow.py` | Two-activity workflow: persist_user_message + execute_chat_turn. Build on this, don't duplicate. |
+| SSE disconnect handling | `api/v1/endpoints/sessions.py:338-352` | Background task already continues after SSE cancel. Needs incremental persistence added. |
+| User message persistence | `api/v1/endpoints/sessions.py:303` | User message persisted synchronously before background task starts. |
+| MissionEventHandler | `core/logging.py` | Plan 53 — logger→Redis→SSE bridge. All Tier 4 activities already emit via this. |
+
+### Needs building (verified not present)
+
+| Item | Details |
+|------|---------|
+| `partial_response` column | Not on `session_messages`. New migration needed. |
+| `background_tasks` table | No generic task tracker exists. New model + migration. |
+| `DesignWorkflowWorkflow` | No Temporal workflow for Architect delegation. Currently uses `asyncio.create_task`. |
+| `RunObjectiveWorkflow` | No Temporal workflow for execution dispatch from tools. Currently uses `asyncio.create_task`. |
+
+### asyncio.create_task inventory (9 call sites)
+
+| Call site | Tier | Migration |
+|-----------|------|-----------|
+| Director: run_objective | 4 | New Temporal workflow |
+| Director: run_workflow | 4 | New Temporal workflow |
+| sessions.py: send_message | 3 | Persist-first pattern (Phase A) |
+| agents.py: agent dispatch | 4 | New Temporal workflow |
+| executions.py: start execution | 4 | New Temporal workflow |
+| mission_control.py: handle() | 3 | Persist-first pattern (Phase A) |
+| architecture agent: polling | Keep | Short-lived, in-request |
+| quality agent: polling | Keep | Short-lived, in-request |
+| mission_plan_daemon: startup | Keep | Process lifecycle |
