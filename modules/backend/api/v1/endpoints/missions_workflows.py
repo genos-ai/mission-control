@@ -148,6 +148,8 @@ async def run_mission_workflow(
     """
     from modules.backend.services.workflow_run import WorkflowRunService
 
+    from fastapi import HTTPException
+
     try:
         async with WorkflowRunService.factory() as svc:
             run = await svc.run_workflow(
@@ -156,12 +158,7 @@ async def run_mission_workflow(
                 mission_id=mission_id,
             )
     except ValueError as e:
-        return ApiResponse(
-            success=False,
-            data=None,
-            error={"code": "WORKFLOW_ERROR", "message": str(e)},
-            metadata={"request_id": request_id},
-        )
+        raise HTTPException(status_code=422, detail=str(e))
 
     return ApiResponse(
         success=True,
