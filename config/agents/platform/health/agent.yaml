@@ -56,6 +56,17 @@ tools:
   - system.get_app_info
   - system.check_services
 
+interface:
+  input:
+    message: string
+  output:
+    summary: string
+    overall_status: string
+    findings: array
+    error_count: number
+    warning_count: number
+    checks_performed: array
+
 scope:
   read:
     - "var/logs/"
