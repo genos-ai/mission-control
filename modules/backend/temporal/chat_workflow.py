@@ -55,13 +55,13 @@ class ChatTurnWorkflow:
         """Execute a single chat turn with durable persistence."""
         temporal_config = get_app_config().temporal
 
-        # Step 1: Persist user message
+        # Step 1: Persist user message (local activity — no scheduling hop)
         # Fast, retryable, own DB commit. After this, the user message
         # is safely in session_messages regardless of what happens next.
-        await workflow.execute_activity(
+        await workflow.execute_local_activity(
             chat_activities.persist_user_message,
             input,
-            start_to_close_timeout=timedelta(
+            schedule_to_close_timeout=timedelta(
                 seconds=temporal_config.persistence_timeout_seconds,
             ),
             retry_policy=RetryPolicy(

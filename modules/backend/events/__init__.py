@@ -1,8 +1,6 @@
-"""Event architecture — FastStream with Redis Streams."""
+"""Event architecture — Redis Pub/Sub for real-time session events."""
 
 from modules.backend.events.bus import SessionEventBus
-from modules.backend.events.publishers import EventPublisher
-from modules.backend.events.schemas import EventEnvelope
 from modules.backend.events.types import (
     EVENT_TYPE_MAP,
     AgentResponseChunkEvent,
@@ -30,8 +28,6 @@ from modules.backend.events.types import (
 
 __all__ = [
     "SessionEventBus",
-    "EventPublisher",
-    "EventEnvelope",
     "SessionEvent",
     "UserMessageEvent",
     "UserApprovalEvent",

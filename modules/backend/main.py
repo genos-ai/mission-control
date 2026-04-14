@@ -63,35 +63,98 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from modules.backend.temporal.scheduled_workflow import (
             ScheduledMissionCheckWorkflow,
         )
+        from modules.backend.temporal.maintenance_workflow import (
+            DailyCleanupWorkflow,
+            HourlyHealthCheckWorkflow,
+            WeeklyReportWorkflow,
+            MetricsAggregationWorkflow,
+            CleanupEnvironmentsWorkflow,
+            EvaluateWorkflowSchedulesWorkflow,
+        )
 
         temporal_client = await get_temporal_client()
         temporal_config = app_config.temporal
-        schedule_id = "mission-plan-dispatch-schedule"
 
-        try:
-            await temporal_client.create_schedule(
-                schedule_id,
-                Schedule(
-                    action=ScheduleActionStartWorkflow(
-                        ScheduledMissionCheckWorkflow.run,
-                        id="scheduled-mission-check",
-                        task_queue=temporal_config.task_queue,
-                    ),
-                    spec=ScheduleSpec(
-                        intervals=[ScheduleIntervalSpec(every=_td(seconds=5))],
-                    ),
-                    policy=SchedulePolicy(
-                        overlap=ScheduleOverlapPolicy.SKIP,
-                    ),
-                ),
-            )
-            logger.info("Temporal dispatch schedule registered", extra={"schedule_id": schedule_id})
-        except Exception as schedule_err:
+        # Helper to register a schedule idempotently
+        async def _register_schedule(
+            sid: str,
+            workflow_run,
+            workflow_id: str,
+            *,
+            intervals=None,
+            cron_expressions=None,
+        ):
             from temporalio.client import ScheduleAlreadyRunningError
-            if isinstance(schedule_err, ScheduleAlreadyRunningError):
-                logger.info("Temporal dispatch schedule already exists")
-            else:
-                raise
+            try:
+                spec_kwargs = {}
+                if intervals:
+                    spec_kwargs["intervals"] = intervals
+                if cron_expressions:
+                    spec_kwargs["cron_expressions"] = cron_expressions
+
+                await temporal_client.create_schedule(
+                    sid,
+                    Schedule(
+                        action=ScheduleActionStartWorkflow(
+                            workflow_run,
+                            id=workflow_id,
+                            task_queue=temporal_config.task_queue,
+                        ),
+                        spec=ScheduleSpec(**spec_kwargs),
+                        policy=SchedulePolicy(
+                            overlap=ScheduleOverlapPolicy.SKIP,
+                        ),
+                    ),
+                )
+                logger.info("Temporal schedule registered", extra={"schedule_id": sid})
+            except ScheduleAlreadyRunningError:
+                pass  # Already exists — normal on restart
+
+        # Plan dispatch — every 5 seconds
+        await _register_schedule(
+            "mission-plan-dispatch-schedule",
+            ScheduledMissionCheckWorkflow.run,
+            "scheduled-mission-check",
+            intervals=[ScheduleIntervalSpec(every=_td(seconds=5))],
+        )
+
+        # Plan 56 Phase C: Maintenance schedules (replaces TaskIQ cron)
+        await _register_schedule(
+            "maintenance-daily-cleanup",
+            DailyCleanupWorkflow.run,
+            "daily-cleanup",
+            cron_expressions=["0 2 * * *"],
+        )
+        await _register_schedule(
+            "maintenance-hourly-health-check",
+            HourlyHealthCheckWorkflow.run,
+            "hourly-health-check",
+            cron_expressions=["0 * * * *"],
+        )
+        await _register_schedule(
+            "maintenance-weekly-report",
+            WeeklyReportWorkflow.run,
+            "weekly-report",
+            cron_expressions=["0 6 * * 0"],
+        )
+        await _register_schedule(
+            "maintenance-metrics-aggregation",
+            MetricsAggregationWorkflow.run,
+            "metrics-aggregation",
+            cron_expressions=["*/15 * * * *"],
+        )
+        await _register_schedule(
+            "maintenance-cleanup-environments",
+            CleanupEnvironmentsWorkflow.run,
+            "cleanup-environments",
+            cron_expressions=["0 * * * *"],
+        )
+        await _register_schedule(
+            "maintenance-workflow-schedules",
+            EvaluateWorkflowSchedulesWorkflow.run,
+            "evaluate-workflow-schedules",
+            cron_expressions=["* * * * *"],
+        )
     except Exception:  # noqa: BLE001
         logger.error("Failed to register Temporal dispatch schedule", exc_info=True)
 

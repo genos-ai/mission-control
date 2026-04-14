@@ -98,8 +98,8 @@ class AgentMissionWorkflow:
         self._status.mission_status = result.status
         self._status.total_cost_usd = result.total_cost_usd
 
-        # Step 2: Persist results (best-effort)
-        await workflow.execute_activity(
+        # Step 2: Persist results (local activity — no scheduling hop)
+        await workflow.execute_local_activity(
             activities.persist_mission_outcome,
             args=[
                 input.mission_run_id,
@@ -108,7 +108,7 @@ class AgentMissionWorkflow:
                 result.outcome_json,
                 input.mission_id,
             ],
-            start_to_close_timeout=timedelta(
+            schedule_to_close_timeout=timedelta(
                 seconds=temporal_config.persistence_timeout_seconds,
             ),
             retry_policy=RetryPolicy(
@@ -122,7 +122,7 @@ class AgentMissionWorkflow:
             self._status.waiting_for_approval = True
 
             # Notify about failure
-            await workflow.execute_activity(
+            await workflow.execute_local_activity(
                 activities.send_notification,
                 NotificationPayload(
                     channel="webhook",
@@ -136,7 +136,7 @@ class AgentMissionWorkflow:
                     action_url=f"/api/v1/missions/{input.mission_run_id}",
                     urgency="high",
                 ),
-                start_to_close_timeout=notification_timeout,
+                schedule_to_close_timeout=notification_timeout,
             )
 
             # Wait for approval with escalation
@@ -159,8 +159,8 @@ class AgentMissionWorkflow:
                 self._status.mission_status = retry_result.status
                 self._status.total_cost_usd += retry_result.total_cost_usd
 
-                # Persist retry results
-                await workflow.execute_activity(
+                # Persist retry results (local activity)
+                await workflow.execute_local_activity(
                     activities.persist_mission_outcome,
                     args=[
                         input.mission_run_id,
@@ -169,7 +169,7 @@ class AgentMissionWorkflow:
                         retry_result.outcome_json,
                         input.mission_id,
                     ],
-                    start_to_close_timeout=timedelta(
+                    schedule_to_close_timeout=timedelta(
                         seconds=temporal_config.persistence_timeout_seconds,
                     ),
                     retry_policy=RetryPolicy(
@@ -218,7 +218,7 @@ class AgentMissionWorkflow:
             pass
 
         # Escalate: re-notify with critical urgency
-        await workflow.execute_activity(
+        await workflow.execute_local_activity(
             activities.send_notification,
             NotificationPayload(
                 channel="webhook",
@@ -232,7 +232,7 @@ class AgentMissionWorkflow:
                 action_url=f"/api/v1/missions/{input.mission_run_id}",
                 urgency="critical",
             ),
-            start_to_close_timeout=notification_timeout,
+            schedule_to_close_timeout=notification_timeout,
         )
 
         # Phase 2: wait remaining time up to total escalation timeout

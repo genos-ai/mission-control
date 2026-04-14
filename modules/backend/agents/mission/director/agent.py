@@ -25,6 +25,94 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+# ── Plan 56 Phase B: Tool Fork Helpers ──────────────────────────────────
+
+
+async def _create_background_record(
+    *,
+    mission_id: str,
+    session_id: str,
+    task_type: str,
+    objective: str,
+    params: dict,
+) -> Any:
+    """Create an ExecutionRecord for a background task. Returns the record."""
+    from modules.backend.core.database import get_async_session
+    from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
+
+    async with get_async_session() as db:
+        record = ExecutionRecord(
+            session_id=session_id,
+            mission_id=mission_id,
+            status=ExecutionRecordStatus.PENDING,
+            task_type=task_type,
+            task_params=params,
+            objective_statement=objective,
+            total_cost_usd=0.0,
+        )
+        db.add(record)
+        await db.flush()
+        await db.refresh(record)
+        record_id = record.id
+        await db.commit()
+
+    # Return a lightweight object with just the id
+    class _Ref:
+        def __init__(self, id: str):
+            self.id = id
+    return _Ref(record_id)
+
+
+async def _start_tool_fork_workflow(
+    *,
+    workflow_name: str,
+    input_data: Any,
+    record_id: str,
+) -> str:
+    """Start a Temporal workflow for a forked tool call. Returns workflow ID."""
+    import uuid
+    from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+    from modules.backend.temporal.tool_fork_workflow import (
+        DesignWorkflowWorkflow,
+        RunObjectiveWorkflow,
+        RunWorkflowWorkflow,
+    )
+
+    workflow_map = {
+        "DesignWorkflowWorkflow": DesignWorkflowWorkflow.run,
+        "RunObjectiveWorkflow": RunObjectiveWorkflow.run,
+        "RunWorkflowWorkflow": RunWorkflowWorkflow.run,
+    }
+
+    run_method = workflow_map[workflow_name]
+    client = await get_temporal_client()
+    config = get_temporal_config()
+
+    workflow_id = f"tool-fork-{workflow_name.lower()}-{record_id[:12]}-{uuid.uuid4().hex[:8]}"
+    await client.start_workflow(
+        run_method,
+        input_data,
+        id=workflow_id,
+        task_queue=config.task_queue,
+    )
+
+    # Update the record with the workflow ID
+    from modules.backend.core.database import get_async_session
+    from modules.backend.models.execution_record import ExecutionRecord
+    from sqlalchemy import select
+
+    async with get_async_session() as db:
+        result = await db.execute(
+            select(ExecutionRecord).where(ExecutionRecord.id == record_id)
+        )
+        record = result.scalar_one_or_none()
+        if record is not None:
+            record.temporal_workflow_id = workflow_id
+            await db.commit()
+
+    return workflow_id
+
+
 def create_agent(model: str | Model) -> Agent:
     """Create the Mission Director agent with all tools registered."""
     if isinstance(model, str):
@@ -328,9 +416,9 @@ def create_agent(model: str | Model) -> Agent:
     ) -> str:
         """Start an ad-hoc execution with the given objective.
 
-        Creates the execution and starts it in the background. Returns
-        the execution ID immediately — use get_execution_detail to
-        check progress and results.
+        Creates an execution record and starts a durable Temporal workflow
+        in the background. Returns immediately — use get_execution_detail
+        or check_background_tasks to check progress.
 
         Args:
             objective: What to accomplish (e.g., "run a health check").
@@ -340,34 +428,34 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            import asyncio
-            from modules.backend.services.execution import ExecutionService
+            record = await _create_background_record(
+                mission_id=ctx.deps.mission_id,
+                session_id=ctx.deps.session_id,
+                task_type="run_objective",
+                objective=objective,
+                params={"objective": objective, "budget_usd": budget_usd},
+            )
 
-            async with ExecutionService.factory() as svc:
-                execution = await svc.create_adhoc_execution(
-                    objective=objective,
-                    triggered_by="mission_director",
-                    cost_ceiling_usd=budget_usd,
+            from modules.backend.temporal.tool_fork_models import RunObjectiveInput
+            workflow_id = await _start_tool_fork_workflow(
+                workflow_name="RunObjectiveWorkflow",
+                input_data=RunObjectiveInput(
                     mission_id=ctx.deps.mission_id,
-                )
-                execution_id = str(execution.id)
-
-            # Run in background — don't block the chat
-            async def _run_in_background():
-                try:
-                    async with ExecutionService.factory() as svc:
-                        await svc.run_execution(execution_id)
-                except Exception:
-                    logger.error("Background execution failed", extra={"execution_id": execution_id, "mission_id": ctx.deps.mission_id}, exc_info=True)
-
-            asyncio.create_task(_run_in_background())
+                    session_id=ctx.deps.session_id,
+                    execution_record_id=record.id,
+                    objective=objective,
+                    budget_usd=budget_usd,
+                ),
+                record_id=record.id,
+            )
 
             return json.dumps({
-                "execution_id": execution_id,
-                "status": "started",
+                "execution_record_id": record.id,
+                "temporal_workflow_id": workflow_id,
+                "status": "started_in_background",
                 "objective": objective,
                 "budget_usd": budget_usd,
-                "message": "Execution started in background. Use get_execution_detail to check progress.",
+                "message": "Execution started in background. Check progress via get_execution_detail or check_background_tasks.",
             }, indent=2, default=str)
         except Exception as e:
             logger.error("run_objective failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
@@ -380,8 +468,9 @@ def create_agent(model: str | Model) -> Agent:
     ) -> str:
         """Start a named workflow against the current mission.
 
-        Creates the workflow run and starts it in the background. Returns
-        immediately — use get_execution_history to check progress.
+        Creates an execution record and starts a durable Temporal workflow
+        in the background. Returns immediately — use check_background_tasks
+        to check progress.
 
         Resolves workflow_name against mission-scoped workflows first,
         then system templates. Strips '.workflow' suffix if present.
@@ -394,8 +483,6 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            import asyncio
-
             mission_id = ctx.deps.mission_id
 
             # Strip .workflow suffix — DB stores names without it
@@ -403,29 +490,85 @@ def create_agent(model: str | Model) -> Agent:
             if clean_name.endswith(".workflow"):
                 clean_name = clean_name[: -len(".workflow")]
 
-            # Run in background — don't block the chat
-            async def _run_in_background():
-                try:
-                    from modules.backend.services.workflow_run import WorkflowRunService
-                    async with WorkflowRunService.factory() as svc:
-                        await svc.run_workflow(
-                            workflow_name=clean_name,
-                            triggered_by="mission_director",
-                            mission_id=mission_id,
-                        )
-                except Exception:
-                    logger.error("Background workflow failed", extra={"workflow": workflow_name, "mission_id": mission_id}, exc_info=True)
+            record = await _create_background_record(
+                mission_id=mission_id,
+                session_id=ctx.deps.session_id,
+                task_type="run_workflow",
+                objective=f"Run workflow: {clean_name}",
+                params={"workflow_name": clean_name},
+            )
 
-            asyncio.create_task(_run_in_background())
+            from modules.backend.temporal.tool_fork_models import RunWorkflowInput
+            workflow_id = await _start_tool_fork_workflow(
+                workflow_name="RunWorkflowWorkflow",
+                input_data=RunWorkflowInput(
+                    mission_id=mission_id,
+                    session_id=ctx.deps.session_id,
+                    execution_record_id=record.id,
+                    workflow_name=clean_name,
+                ),
+                record_id=record.id,
+            )
 
             return json.dumps({
+                "execution_record_id": record.id,
+                "temporal_workflow_id": workflow_id,
                 "workflow_name": clean_name,
                 "mission_id": mission_id,
-                "status": "started",
-                "message": "Workflow started in background. Use get_execution_history to check progress.",
+                "status": "started_in_background",
+                "message": "Workflow started in background. Check progress via check_background_tasks.",
             }, indent=2, default=str)
         except Exception as e:
             logger.error("run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    # ── Background Task Tracking (Plan 56 Phase B) ─────────────────────
+
+    @agent.tool
+    async def check_background_tasks(
+        ctx: RunContext[MissionDirectorDeps],
+    ) -> str:
+        """Check the status of background work (workflow design, executions, etc.).
+
+        Returns all active (pending/running) and recently completed background
+        tasks for this mission.
+        """
+        try:
+            from modules.backend.core.database import get_async_session
+            from modules.backend.models.execution_record import ExecutionRecord
+            from sqlalchemy import select, or_
+
+            async with get_async_session() as db:
+                result = await db.execute(
+                    select(ExecutionRecord)
+                    .where(
+                        ExecutionRecord.mission_id == ctx.deps.mission_id,
+                        ExecutionRecord.task_type.isnot(None),
+                    )
+                    .order_by(ExecutionRecord.created_at.desc())
+                    .limit(10)
+                )
+                records = list(result.scalars().all())
+
+            if not records:
+                return json.dumps({"tasks": [], "message": "No background tasks found."})
+
+            tasks = []
+            for r in records:
+                tasks.append({
+                    "execution_record_id": r.id,
+                    "task_type": r.task_type,
+                    "status": r.status if isinstance(r.status, str) else r.status.value,
+                    "objective": r.objective_statement,
+                    "temporal_workflow_id": r.temporal_workflow_id,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "started_at": r.started_at.isoformat() if r.started_at else None,
+                    "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                })
+
+            return json.dumps({"tasks": tasks, "count": len(tasks)}, indent=2, default=str)
+        except Exception as e:
+            logger.error("check_background_tasks failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     # ── Mission Plan Tools (Plan 42) ──────────────────────────────────
@@ -550,9 +693,9 @@ def create_agent(model: str | Model) -> Agent:
     ) -> str:
         """Delegate workflow design to the Workflow Architect agent.
 
-        The architect will design the workflow steps, validate them,
-        and save the workflow to the database. The user can then run
-        it anytime via run_workflow or the Workflows tab.
+        Starts the Architect in a durable Temporal workflow and returns
+        immediately. The user sees progress in the stream tab. Use
+        check_background_tasks to check completion.
 
         Args:
             name: Workflow name (e.g. 'ops.health-check').
@@ -564,50 +707,37 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.agents.mission_control.helpers import (
-                _build_model,
-                assemble_instructions,
-            )
-            from modules.backend.agents.mission_control.registry import get_registry
-            from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
-            from modules.backend.agents.deps.base import FileScope
-
-            registry = get_registry()
-            agent_config = registry.get("mission.workflow.agent")
-            model = _build_model(agent_config.model)
-            architect = registry.get_instance("mission.workflow.agent", model)
-
-            scope = FileScope(
-                read_paths=agent_config.scope.read,
-                write_paths=agent_config.scope.write,
-            )
-            from modules.backend.core.config import find_project_root
-            deps = ArchitectAgentDeps(
-                project_root=find_project_root(),
-                scope=scope,
-                config=agent_config,
-                session_id=ctx.deps.session_id,
+            record = await _create_background_record(
                 mission_id=ctx.deps.mission_id,
-                db_session=ctx.deps.db_session,
+                session_id=ctx.deps.session_id,
+                task_type="design_workflow",
+                objective=f"Design workflow: {name}",
+                params={"name": name, "description": description, "instructions": instructions},
             )
 
-            prompt = (
-                f"Design and save a workflow with these specifications:\n\n"
-                f"Name: {name}\n"
-                f"Description: {description}\n\n"
-                f"Instructions:\n{instructions}\n\n"
-                f"Use browse_catalog to check available agents, then "
-                f"design the steps, validate with validate_workflow, "
-                f"and save with save_workflow. Do NOT ask for confirmation — "
-                f"the user already confirmed by requesting this."
+            from modules.backend.temporal.tool_fork_models import DesignWorkflowInput
+            workflow_id = await _start_tool_fork_workflow(
+                workflow_name="DesignWorkflowWorkflow",
+                input_data=DesignWorkflowInput(
+                    mission_id=ctx.deps.mission_id,
+                    session_id=ctx.deps.session_id,
+                    execution_record_id=record.id,
+                    workflow_name=name,
+                    description=description,
+                    instructions=instructions,
+                ),
+                record_id=record.id,
             )
 
-            result = await architect.run(prompt, deps=deps)
             return json.dumps({
-                "status": "success",
+                "execution_record_id": record.id,
+                "temporal_workflow_id": workflow_id,
+                "status": "started_in_background",
                 "workflow_name": name,
-                "architect_response": str(result.output)[:500],
-            })
+                "message": f"The Workflow Architect is designing '{name}'. "
+                           "You'll see progress in the stream tab. "
+                           "Use check_background_tasks to check completion.",
+            }, indent=2, default=str)
         except Exception as e:
             logger.error("design_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})

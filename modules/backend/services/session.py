@@ -83,7 +83,6 @@ class SessionService(BaseService):
             cost_budget=cost_budget,
         )
 
-        await self._publish_session_event("session.created", session)
         return session
 
     async def ensure_session(
@@ -184,7 +183,6 @@ class SessionService(BaseService):
             reason=reason,
         )
 
-        await self._publish_session_event(f"session.{target_status.value}", session)
         return session
 
     async def suspend_session(self, session_id: str, reason: str) -> Session:
@@ -240,7 +238,7 @@ class SessionService(BaseService):
             new_total = session.total_cost_usd + cost_usd
             config = get_app_config().sessions
             if new_total >= session.cost_budget_usd * config.budget_warning_threshold:
-                await self._publish_session_event("session.cost.budget_warning", session)
+                pass  # Budget warning — future: emit via SessionEventBus
 
     async def enforce_budget(
         self,
@@ -359,6 +357,61 @@ class SessionService(BaseService):
             ),
         )
 
+    async def create_streaming_message(
+        self,
+        session_id: str,
+        sender_id: str | None = None,
+    ) -> str:
+        """Create a placeholder message with status='streaming'. Returns message ID."""
+        msg = await self._execute_db_operation(
+            "create_streaming_message",
+            self.repo.create_streaming_message(
+                session_id=session_id,
+                role="assistant",
+                content="",
+                sender_id=sender_id,
+            ),
+        )
+        return msg.id
+
+    async def update_streaming_content(
+        self,
+        message_id: str,
+        content: str,
+    ) -> None:
+        """Flush accumulated content to a streaming message."""
+        await self._execute_db_operation(
+            "update_streaming_content",
+            self.repo.update_message_content(message_id, content),
+        )
+
+    async def finalize_streaming_message(
+        self,
+        message_id: str,
+        content: str,
+        *,
+        status: str = "complete",
+        model: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        cost_usd: float | None = None,
+        thinking: str | None = None,
+    ) -> None:
+        """Finalize a streaming message with final content and metadata."""
+        await self._execute_db_operation(
+            "finalize_streaming_message",
+            self.repo.finalize_message(
+                message_id,
+                content,
+                status=status,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                thinking=thinking,
+            ),
+        )
+
     async def get_messages(
         self,
         session_id: str,
@@ -391,45 +444,7 @@ class SessionService(BaseService):
         return count
 
     # --- Event Publishing ---
-
-    async def _publish_session_event(self, event_type: str, session: Session) -> None:
-        """Publish a session lifecycle domain event via the event bus (Phase 1).
-
-        Feature-flag gated via events_publish_enabled. If the event bus is not
-        available or disabled, this is a no-op.
-        """
-        try:
-            from modules.backend.core.config import get_app_config
-
-            if not get_app_config().features.events_publish_enabled:
-                return
-
-            from modules.backend.events.publishers import EventPublisher
-            from modules.backend.events.schemas import EventEnvelope
-
-            envelope = EventEnvelope(
-                event_type=event_type,
-                source="session-service",
-                correlation_id=session.id,
-                session_id=session.id,
-                payload={
-                    "session_id": session.id,
-                    "status": session.status,
-                    "user_id": session.user_id,
-                    "goal": session.goal,
-                    "total_cost_usd": session.total_cost_usd,
-                    "cost_budget_usd": session.cost_budget_usd,
-                },
-            )
-
-            publisher = EventPublisher()
-            await publisher.publish(
-                stream=f"sessions:session-{event_type.split('.')[-1]}",
-                event=envelope,
-            )
-        except (OSError, RuntimeError) as e:
-            # Event publishing is non-critical — log and continue
-            logger.warning(
-                "Failed to publish session event",
-                extra={"event_type": event_type, "session_id": session.id, "error": str(e), "mission_id": session.mission_id},
-            )
+    # Domain event publishing via FastStream was removed in Plan 56.
+    # Session lifecycle events are now emitted via Redis Pub/Sub through
+    # SessionEventBus (for real-time SSE) and persisted to mission_events
+    # (for console history). See ADR-004.

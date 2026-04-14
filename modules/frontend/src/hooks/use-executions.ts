@@ -33,6 +33,14 @@ export function useExecutions(filters?: { status?: string; limit?: number; missi
         page_size: number
         offset: number
       }>(`/executions${qs ? `?${qs}` : ''}`),
+    enabled: filters !== undefined,
+    // Auto-poll when active tasks exist (Plan 56 Phase D)
+    refetchInterval: (query) => {
+      const execs = query.state.data?.executions
+      if (execs?.some((e) => e.status === 'pending' || e.status === 'running'))
+        return 3000
+      return false
+    },
   })
 }
 
@@ -63,6 +71,28 @@ export function useExecutionCost(id: string | undefined) {
       api.get<ExecutionCostBreakdown>(`/executions/${id}/cost`),
     enabled: !!id,
   })
+}
+
+/**
+ * Background tasks for a mission — execution records with task_type set.
+ * Auto-polls every 3s when any task is pending/running.
+ */
+export function useBackgroundTasks(missionId: string | undefined) {
+  const query = useExecutions(missionId ? { mission_id: missionId, limit: 20 } : undefined)
+
+  const tasks = (query.data?.executions ?? []).filter(
+    (e) => e.task_type != null,
+  )
+  const activeTasks = tasks.filter(
+    (e) => e.status === 'pending' || e.status === 'running',
+  )
+
+  return {
+    ...query,
+    tasks,
+    activeTasks,
+    activeCount: activeTasks.length,
+  }
 }
 
 export function useCreateExecution() {

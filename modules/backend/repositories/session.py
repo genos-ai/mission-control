@@ -235,6 +235,73 @@ class SessionRepository(BaseRepository[Session]):
         )
         return list(result.scalars().all())
 
+    async def create_streaming_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        sender_id: str | None = None,
+    ) -> SessionMessage:
+        """Create a message with status='streaming' for incremental persistence."""
+        msg = SessionMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            sender_id=sender_id,
+            status="streaming",
+        )
+        self.session.add(msg)
+        await self.session.flush()
+        await self.session.refresh(msg)
+        return msg
+
+    async def update_message_content(
+        self,
+        message_id: str,
+        content: str,
+    ) -> None:
+        """Update the content of a streaming message (incremental flush)."""
+        from modules.backend.core.utils import utc_now
+
+        result = await self.session.execute(
+            select(SessionMessage).where(SessionMessage.id == message_id)
+        )
+        msg = result.scalar_one_or_none()
+        if msg is not None:
+            msg.content = content
+            msg.updated_at = utc_now()
+            await self.session.flush()
+
+    async def finalize_message(
+        self,
+        message_id: str,
+        content: str,
+        *,
+        status: str = "complete",
+        model: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        cost_usd: float | None = None,
+        thinking: str | None = None,
+    ) -> None:
+        """Finalize a streaming message — set final content, metadata, and status."""
+        from modules.backend.core.utils import utc_now
+
+        result = await self.session.execute(
+            select(SessionMessage).where(SessionMessage.id == message_id)
+        )
+        msg = result.scalar_one_or_none()
+        if msg is not None:
+            msg.content = content
+            msg.status = status
+            msg.model = model
+            msg.input_tokens = input_tokens
+            msg.output_tokens = output_tokens
+            msg.cost_usd = cost_usd
+            msg.thinking = thinking
+            msg.updated_at = utc_now()
+            await self.session.flush()
+
     async def count_messages(self, session_id: str) -> int:
         """Count messages in a session."""
         result = await self.session.execute(

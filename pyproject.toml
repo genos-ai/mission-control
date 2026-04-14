@@ -21,11 +21,8 @@ dependencies = [
     "asyncpg>=0.29.0",
     "greenlet>=3.0.0",
     "alembic>=1.13.0",
-    # Redis & Background Tasks
+    # Redis
     "redis>=5.0.0",
-    "taskiq>=0.11.0",
-    "taskiq-redis>=1.0.0",
-    "faststream[redis]>=0.5.0",
     # HTTP Client
     "httpx>=0.26.0",
     # Telegram Bot
@@ -105,9 +102,6 @@ strict_equality = true
 # Third-party libraries without type stubs
 [[tool.mypy.overrides]]
 module = [
-    "faststream.*",
-    "taskiq.*",
-    "taskiq_redis.*",
     "temporalio.*",
     "aiogram.*",
     "aiobreaker.*",

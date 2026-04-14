@@ -1,23 +1,12 @@
 """
 Scheduled Background Tasks.
 
-Tasks that run on a schedule (cron-based).
-Registered with the broker including schedule metadata that
-the TaskiqScheduler reads via LabelScheduleSource.
+Plain async functions for maintenance cron jobs. These are called by
+Temporal maintenance activities (Plan 56 Phase C) — no TaskIQ dependency.
 
-Schedule Format:
-    schedule=[{"cron": "* * * * *", "args": [...], "kwargs": {...}}]
-
-Cron Format:
-    minute hour day_of_month month day_of_week
-    "0 2 * * *"     - Daily at 2:00 AM UTC
-    "*/15 * * * *"  - Every 15 minutes
-    "0 0 * * 0"     - Weekly on Sunday at midnight
-    "0 6 1 * *"     - Monthly on 1st at 6:00 AM
-
-Usage:
-    from modules.backend.tasks.scheduled import register_scheduled_tasks
-    register_scheduled_tasks()
+Previously registered with TaskIQ via register_scheduled_tasks().
+Now wrapped as Temporal activities in temporal/maintenance_activities.py
+and triggered by Temporal Schedules registered in main.py lifespan.
 """
 
 from typing import Any
@@ -240,79 +229,3 @@ def _container_has_recent_activity(container: Any) -> bool:
         return False
 
 
-SCHEDULED_TASKS = {
-    "daily_cleanup": {
-        "function": daily_cleanup,
-        "schedule": [{"cron": "0 2 * * *", "kwargs": {"older_than_days": 30}}],
-        "retry_on_error": False,
-        "description": "Clean up expired records daily at 2:00 AM UTC",
-    },
-    "hourly_health_check": {
-        "function": hourly_health_check,
-        "schedule": [{"cron": "0 * * * *"}],
-        "retry_on_error": False,
-        "description": "Check external service health every hour",
-    },
-    "weekly_report_generation": {
-        "function": weekly_report_generation,
-        "schedule": [{"cron": "0 6 * * 0"}],
-        "retry_on_error": True,
-        "max_retries": 2,
-        "description": "Generate weekly summary reports on Sunday",
-    },
-    "metrics_aggregation": {
-        "function": metrics_aggregation,
-        "schedule": [{"cron": "*/15 * * * *", "kwargs": {"interval_minutes": 15}}],
-        "retry_on_error": False,
-        "description": "Aggregate metrics every 15 minutes",
-    },
-    "cleanup_stale_environments": {
-        "function": cleanup_stale_environments,
-        "schedule": [{"cron": "0 * * * *"}],
-        "retry_on_error": False,
-        "description": "Clean up stale execution environment containers every hour",
-    },
-}
-
-
-def register_scheduled_tasks() -> dict[str, Any]:
-    """
-    Register scheduled task functions with the Taskiq broker.
-
-    Wraps plain async functions with broker.task decorators
-    including their schedule configuration.
-
-    Returns:
-        Dict mapping task names to registered task objects
-    """
-    from modules.backend.tasks.broker import get_broker
-
-    broker = get_broker()
-    registered = {}
-
-    for task_name, config in SCHEDULED_TASKS.items():
-        task_kwargs = {
-            "task_name": task_name,
-            "schedule": config["schedule"],
-            "retry_on_error": config["retry_on_error"],
-        }
-
-        if "max_retries" in config:
-            task_kwargs["max_retries"] = config["max_retries"]
-
-        registered[task_name] = broker.task(**task_kwargs)(config["function"])
-
-    from modules.backend.tasks.workflow_scheduler import evaluate_workflow_schedules
-
-    registered["evaluate_workflow_schedules"] = broker.task(
-        task_name="evaluate_workflow_schedules",
-        schedule=[{"cron": "* * * * *"}],
-        retry_on_error=False,
-    )(evaluate_workflow_schedules)
-
-    logger.info(
-        "Scheduled tasks registered",
-        extra={"task_count": len(registered), "tasks": list(registered.keys())},
-    )
-
-    return registered

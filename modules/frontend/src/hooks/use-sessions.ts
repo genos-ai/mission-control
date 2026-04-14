@@ -42,6 +42,13 @@ export function useMessages(sessionId: string | undefined) {
     queryFn: () =>
       api.get<SessionMessage[]>(`/sessions/${sessionId}/messages?limit=200`),
     enabled: !!sessionId,
+    // Poll every 2s when any message is still streaming (Plan 56 Phase A).
+    // Stops polling once all messages are complete or failed.
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (data?.some((m) => m.status === 'streaming')) return 2000
+      return false
+    },
   })
 }
 

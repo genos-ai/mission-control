@@ -42,6 +42,27 @@ class SessionServiceProtocol(Protocol):
 
     async def add_message(self, session_id: str, data: Any) -> None: ...
 
+    async def create_streaming_message(
+        self, session_id: str, sender_id: str | None = ...,
+    ) -> str: ...
+
+    async def update_streaming_content(
+        self, message_id: str, content: str,
+    ) -> None: ...
+
+    async def finalize_streaming_message(
+        self,
+        message_id: str,
+        content: str,
+        *,
+        status: str = ...,
+        model: str | None = ...,
+        input_tokens: int | None = ...,
+        output_tokens: int | None = ...,
+        cost_usd: float | None = ...,
+        thinking: str | None = ...,
+    ) -> None: ...
+
 
 class ExecutionDispatchProtocol(Protocol):
     """Interface for execution dispatch used by ExecutionService.

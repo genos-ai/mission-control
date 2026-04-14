@@ -138,10 +138,10 @@ class MissionRunWorkflow:
 
             elif eval_result.action == "advance_approved":
                 # Flip proposed → approved, loop back to execute
-                await workflow.execute_activity(
+                await workflow.execute_local_activity(
                     sup.approve_proposed_tasks,
                     input.mission_id or input.mission_run_id,
-                    start_to_close_timeout=persist_timeout,
+                    schedule_to_close_timeout=persist_timeout,
                     retry_policy=persist_policy,
                 )
                 continue
@@ -171,10 +171,10 @@ class MissionRunWorkflow:
                 counts = sup.PlanTaskCounts()
                 for _ in range(12):  # 60 seconds max polling
                     await workflow.sleep(timedelta(seconds=5))
-                    counts = await workflow.execute_activity(
+                    counts = await workflow.execute_local_activity(
                         sup.fetch_plan_task_counts,
                         input.mission_id or input.mission_run_id,
-                        start_to_close_timeout=persist_timeout,
+                        schedule_to_close_timeout=persist_timeout,
                         retry_policy=persist_policy,
                     )
                     if counts.approved > 0 or counts.proposed > 0:

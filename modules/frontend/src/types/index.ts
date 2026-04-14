@@ -331,6 +331,11 @@ export interface ExecutionRecord {
   // Plan 46 Phase 2 #3: task count denormalised from the eager-
   // loaded task_executions relationship for Run History row rendering.
   task_count: number
+  // Plan 56 Phase B: background task tracking
+  task_type: string | null
+  task_params: Record<string, unknown> | null
+  temporal_workflow_id: string | null
+  mission_id: string | null
   created_at: string
   updated_at: string
 }
@@ -431,7 +436,9 @@ export interface SessionMessage {
   tool_name: string | null
   tool_call_id: string | null
   thinking: string | null
+  status: 'streaming' | 'complete' | 'failed'
   created_at: string
+  updated_at: string | null
 }
 
 export interface SessionMessageCreateRequest {

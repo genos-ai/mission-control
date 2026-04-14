@@ -291,7 +291,6 @@ def get_sanitized_config_view() -> dict:
             "gateway_enabled": config.features.gateway_enabled,
             "agent_coordinator_enabled": config.features.agent_coordinator_enabled,
             "mcp_enabled": config.features.mcp_enabled,
-            "events_publish_enabled": config.features.events_publish_enabled,
         },
     }
 

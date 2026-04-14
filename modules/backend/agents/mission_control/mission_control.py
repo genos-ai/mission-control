@@ -292,6 +292,18 @@ async def handle(
         thinking_parts: list[str] = []
         event_queue: _asyncio.Queue[SessionEvent | None] = _asyncio.Queue()
 
+        # Plan 56 Phase A: Create a streaming message placeholder so content
+        # is persisted incrementally. If the SSE drops, the data is in the DB.
+        streaming_msg_id: str | None = None
+        _last_flush_len = 0
+        _FLUSH_INTERVAL = 500  # flush every 500 chars
+        try:
+            streaming_msg_id = await session_service.create_streaming_message(
+                session_id, sender_id=agent_name,
+            )
+        except Exception:
+            logger.debug("Failed to create streaming message placeholder", exc_info=True)
+
         async def _stream_handler(ctx, events):
             """Callback for agent.run() — pushes SessionEvents to queue."""
             async for event in events:
@@ -377,6 +389,18 @@ async def handle(
                 break
             if isinstance(event, AgentResponseChunkEvent) and not event.metadata.get("thinking"):
                 full_content += event.content
+                # Incremental flush — persist every _FLUSH_INTERVAL chars
+                if (
+                    streaming_msg_id
+                    and len(full_content) - _last_flush_len >= _FLUSH_INTERVAL
+                ):
+                    try:
+                        await session_service.update_streaming_content(
+                            streaming_msg_id, full_content,
+                        )
+                        _last_flush_len = len(full_content)
+                    except Exception:
+                        pass  # best-effort flush
             yield event
             await _publish(event_bus, event)
 
@@ -453,24 +477,41 @@ async def handle(
         # When skip_persistence is True (Temporal path), the user message
         # was already persisted by persist_user_message activity — only
         # persist the assistant response here.
-        messages_to_persist = []
         if not skip_persistence:
-            messages_to_persist.append(
-                SessionMessageCreate(role="user", content=message, sender_id=sender_id)
+            await _persist_messages(
+                session_service, session_id,
+                [SessionMessageCreate(role="user", content=message, sender_id=sender_id)],
             )
-        messages_to_persist.append(
-            SessionMessageCreate(
-                role="assistant",
-                content=full_content,
-                sender_id=agent_name,
-                model=model_str,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=cost_usd,
-                thinking="\n\n".join(thinking_parts) if thinking_parts else None,
+
+        # Finalize the streaming message with final content and LLM metadata,
+        # or fall back to creating a new message if streaming wasn't set up.
+        if streaming_msg_id:
+            try:
+                await session_service.finalize_streaming_message(
+                    streaming_msg_id,
+                    full_content,
+                    model=model_str,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost_usd,
+                    thinking="\n\n".join(thinking_parts) if thinking_parts else None,
+                )
+            except Exception:
+                logger.warning("Failed to finalize streaming message", extra={"mission_id": mission_id}, exc_info=True)
+        else:
+            await _persist_messages(
+                session_service, session_id,
+                [SessionMessageCreate(
+                    role="assistant",
+                    content=full_content,
+                    sender_id=agent_name,
+                    model=model_str,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost_usd,
+                    thinking="\n\n".join(thinking_parts) if thinking_parts else None,
+                )],
             )
-        )
-        await _persist_messages(session_service, session_id, messages_to_persist)
 
         # 12. Touch activity
         try:
@@ -492,13 +533,24 @@ async def handle(
             full_content=str(exc),
             metadata={"error": True},
         )
-        # Persist the error as a message so it shows in console history
-        error_create = SessionMessageCreate(
-            role="assistant",
-            content=str(exc),
-            sender_id=agent_name,
-        )
-        await _persist_messages(session_service, session_id, [error_create])
+        # Persist the error — finalize the streaming message as failed,
+        # or create a new error message if streaming wasn't set up.
+        if streaming_msg_id:
+            try:
+                await session_service.finalize_streaming_message(
+                    streaming_msg_id,
+                    full_content or str(exc),
+                    status="failed",
+                )
+            except Exception:
+                pass  # best-effort
+        else:
+            error_create = SessionMessageCreate(
+                role="assistant",
+                content=str(exc),
+                sender_id=agent_name,
+            )
+            await _persist_messages(session_service, session_id, [error_create])
         # Emit system error event to mission channel
         if mission_id:
             from modules.backend.events.types import SystemEvent

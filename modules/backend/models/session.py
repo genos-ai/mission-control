@@ -172,9 +172,19 @@ class SessionMessage(UUIDMixin, Base):
     tool_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    # Timestamp (no updated_at — messages are immutable)
+    # Streaming state — supports persist-first SSE (Plan 56 Phase A).
+    # 'streaming' while the agent is generating, 'complete' when done,
+    # 'failed' if the agent errored mid-stream.
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="complete"
+    )
+
+    # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, default=None
     )
 
     # Relationship

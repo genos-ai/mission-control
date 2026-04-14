@@ -45,9 +45,9 @@ class ScheduledMissionCheckWorkflow:
         config = get_app_config().temporal
 
         # Find missions with approved tasks ready to dispatch
-        ready_plans = await workflow.execute_activity(
+        ready_plans = await workflow.execute_local_activity(
             scheduled_activities.find_ready_plans,
-            start_to_close_timeout=timedelta(seconds=30),
+            schedule_to_close_timeout=timedelta(seconds=30),
             retry_policy=RetryPolicy(maximum_attempts=2),
         )
 

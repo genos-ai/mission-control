@@ -46,7 +46,7 @@ def admin_cli(ctx, verbose: bool, debug: bool, output_format: str):
     """Mission Control — Admin CLI.
 
     \b
-    Infrastructure:  server, worker, scheduler, telegram, event-worker
+    Infrastructure:  server, telegram
     Diagnostics:     health, config, info, credits, context
     Development:     test, migrate, db
     Agents:          agent, execution, workflow
@@ -192,33 +192,6 @@ def restart(ctx, host, port, reload):
 
 
 # =============================================================================
-# Worker
-# =============================================================================
-
-
-@admin_cli.command()
-@click.option("--workers", default=1, type=int, help="Number of worker processes.")
-@click.pass_obj
-def worker(ctx, workers: int):
-    """Start the background task worker."""
-    from modules.clients.cli.worker import run_worker
-    run_worker(ctx.logger, workers)
-
-
-# =============================================================================
-# Scheduler
-# =============================================================================
-
-
-@admin_cli.command()
-@click.pass_obj
-def scheduler(ctx):
-    """Start the cron-based task scheduler."""
-    from modules.clients.cli.scheduler import run_scheduler
-    run_scheduler(ctx.logger)
-
-
-# =============================================================================
 # Telegram
 # =============================================================================
 
@@ -229,19 +202,6 @@ def telegram(ctx):
     """Start the Telegram bot in polling mode."""
     from modules.clients.cli.telegram import run_telegram_poll
     run_telegram_poll(ctx.logger)
-
-
-# =============================================================================
-# Event worker
-# =============================================================================
-
-
-@admin_cli.command("event-worker")
-@click.pass_obj
-def event_worker(ctx):
-    """Start the event bus consumer worker."""
-    from modules.clients.cli.event_worker import run_event_worker
-    run_event_worker(ctx.logger)
 
 
 # =============================================================================

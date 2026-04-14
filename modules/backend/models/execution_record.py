@@ -21,8 +21,10 @@ from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class ExecutionRecordStatus(str, enum.Enum):
-    """Terminal status of a completed execution record."""
+    """Execution record lifecycle status."""
 
+    PENDING = "pending"
+    RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -180,6 +182,26 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         server_default="0",
         nullable=False,
         comment="Count of tasks with status FAILED in this run.",
+    )
+
+    # Plan 56 Phase B: Background task tracking fields.
+    # Enables ExecutionRecord to serve as the universal "something ran" tracker
+    # for both mission dispatches and tool-forked background work.
+    task_type: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+        comment="Background task discriminator (design_workflow, run_objective, etc.)",
+    )
+    task_params: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Input parameters for background task (JSON-serializable)",
+    )
+    temporal_workflow_id: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+        comment="Temporal workflow ID for tracking durable background work",
     )
 
     task_executions: Mapped[list["TaskExecution"]] = relationship(

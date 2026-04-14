@@ -31,6 +31,7 @@ import {
   Kanban,
   Radio,
   ListChecks,
+  Loader2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
@@ -45,6 +46,7 @@ import { queryClient } from '@/main'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { useBackgroundTasks } from '@/hooks/use-executions'
 import { RunModal } from '@/components/mission/run-modal'
 import { MissionSettingsDrawer } from '@/components/workspace/mission-settings-drawer'
 import { MissionStreamContext } from '@/context/mission-stream'
@@ -104,6 +106,7 @@ export default function MissionLayout() {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showRunModal, setShowRunModal] = useState(false)
+  const { activeCount: bgTaskCount, activeTasks: bgTasks } = useBackgroundTasks(id)
   const location = useLocation()
 
   // Persist last-visited tab per mission for the default-tab redirect
@@ -173,6 +176,13 @@ export default function MissionLayout() {
       }
       if (artifactsInvalidated && id) {
         queryClient.invalidateQueries({ queryKey: artifactKeys.list(id) })
+      }
+      // Plan 56 Phase D: invalidate execution queries when background
+      // tasks complete, so the header indicator updates immediately
+      if (newEvents.some((ev) =>
+        ev.event_type === 'system.info' || ev.event_type === 'execution.record'
+      ) && id) {
+        queryClient.invalidateQueries({ queryKey: ['executions'] })
       }
     }
   }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -251,6 +261,15 @@ export default function MissionLayout() {
             >
               <Settings2 className="h-4 w-4" />
             </button>
+            {bgTaskCount > 0 && (
+              <div
+                className="flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1 text-[11px] text-primary"
+                title={bgTasks.map((t) => `${t.task_type}: ${t.status}`).join('\n')}
+              >
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>{bgTaskCount} background {bgTaskCount === 1 ? 'task' : 'tasks'}</span>
+              </div>
+            )}
             <Button size="sm" onClick={() => setShowRunModal(true)}>
               <Play className="mr-1.5 h-3.5 w-3.5" />Run
             </Button>

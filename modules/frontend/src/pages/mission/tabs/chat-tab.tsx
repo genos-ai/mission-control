@@ -462,7 +462,8 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
         id: `temp-${Date.now()}`, session_id: sessionId, role: 'user', content,
         sender_id: user?.id ?? null, model: null, input_tokens: null,
         output_tokens: null, cost_usd: null, tool_name: null, tool_call_id: null,
-        thinking: null, created_at: new Date().toISOString(),
+        thinking: null, status: 'complete' as const, created_at: new Date().toISOString(),
+        updated_at: null,
       },
     ])
 
@@ -515,7 +516,8 @@ function Conversation({ sessionId, missionId }: { sessionId: string; missionId: 
                   sender_id: ev.agent_id ?? null, model: ev.model ?? null,
                   input_tokens: ev.input_tokens ?? null, output_tokens: ev.output_tokens ?? null,
                   cost_usd: ev.cost_usd ?? null, tool_name: null, tool_call_id: null,
-                  thinking: ev.metadata?.thinking ?? null, created_at: new Date().toISOString(),
+                  thinking: ev.metadata?.thinking ?? null, status: 'complete' as const,
+                  created_at: new Date().toISOString(), updated_at: null,
                 },
               ])
               accumulated = ''
@@ -765,17 +767,20 @@ function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
 function MessageBubble({ message }: { message: SessionMessage }) {
   const isUser = message.role === 'user'
   const isError = message.role === 'error'
+  const isStreaming = message.status === 'streaming'
+  const isFailed = message.status === 'failed'
   return (
     <div className={cn('flex gap-3', isUser && 'flex-row-reverse')}>
       <div className="mt-1 shrink-0">
         {isUser ? <User className="h-5 w-5 text-muted-foreground" />
-          : isError ? <AlertTriangle className="h-5 w-5 text-destructive" />
+          : isError || isFailed ? <AlertTriangle className="h-5 w-5 text-destructive" />
           : <Bot className="h-5 w-5 text-primary" />}
       </div>
       <div className={cn(
         'max-w-[75%] rounded-lg p-3',
         isUser ? 'bg-primary text-primary-foreground'
-          : isError ? 'border border-destructive/20 bg-destructive/10'
+          : isError || isFailed ? 'border border-destructive/20 bg-destructive/10'
+          : isStreaming ? 'border border-primary/20 bg-muted/50'
           : 'bg-muted/50',
       )}>
         {message.thinking && (
@@ -791,6 +796,12 @@ function MessageBubble({ message }: { message: SessionMessage }) {
         {isUser
           ? <p className="whitespace-pre-wrap text-[13px]">{message.content}</p>
           : <MarkdownRenderer content={message.content} className="text-[13px]" />}
+        {isStreaming && (
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Still generating...</span>
+          </div>
+        )}
         <div className={cn(
           'mt-1 flex items-center gap-2 text-[10px]',
           isUser ? 'text-primary-foreground/60' : 'text-muted-foreground',

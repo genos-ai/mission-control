@@ -30,6 +30,33 @@ from modules.backend.temporal.supervisor_activities import (
     fetch_plan_task_counts,
     start_director_turn,
 )
+from modules.backend.temporal.tool_fork_activities import (
+    execute_design_workflow,
+    execute_run_objective,
+    execute_run_workflow,
+    update_execution_record_status,
+)
+from modules.backend.temporal.tool_fork_workflow import (
+    DesignWorkflowWorkflow,
+    RunObjectiveWorkflow,
+    RunWorkflowWorkflow,
+)
+from modules.backend.temporal.maintenance_activities import (
+    run_daily_cleanup,
+    run_hourly_health_check,
+    run_weekly_report_generation,
+    run_metrics_aggregation,
+    run_cleanup_stale_environments,
+    run_evaluate_workflow_schedules,
+)
+from modules.backend.temporal.maintenance_workflow import (
+    DailyCleanupWorkflow,
+    HourlyHealthCheckWorkflow,
+    WeeklyReportWorkflow,
+    MetricsAggregationWorkflow,
+    CleanupEnvironmentsWorkflow,
+    EvaluateWorkflowSchedulesWorkflow,
+)
 from modules.backend.temporal.workflow import AgentMissionWorkflow
 
 logger = get_logger(__name__)
@@ -43,7 +70,22 @@ async def start_worker() -> None:
     worker = Worker(
         client,
         task_queue=config.task_queue,
-        workflows=[AgentMissionWorkflow, ChatTurnWorkflow, MissionRunWorkflow, ScheduledMissionCheckWorkflow],
+        workflows=[
+            AgentMissionWorkflow,
+            ChatTurnWorkflow,
+            MissionRunWorkflow,
+            ScheduledMissionCheckWorkflow,
+            DesignWorkflowWorkflow,
+            RunObjectiveWorkflow,
+            RunWorkflowWorkflow,
+            # Maintenance (Plan 56 Phase C — replaces TaskIQ cron)
+            DailyCleanupWorkflow,
+            HourlyHealthCheckWorkflow,
+            WeeklyReportWorkflow,
+            MetricsAggregationWorkflow,
+            CleanupEnvironmentsWorkflow,
+            EvaluateWorkflowSchedulesWorkflow,
+        ],
         activities=[
             # Mission execution (Plan 16)
             execute_mission,
@@ -59,6 +101,18 @@ async def start_worker() -> None:
             start_director_turn,
             # Scheduled dispatch (Plan 52 Phase D)
             find_ready_plans,
+            # Tool fork (Plan 56 Phase B)
+            execute_design_workflow,
+            execute_run_objective,
+            execute_run_workflow,
+            update_execution_record_status,
+            # Maintenance (Plan 56 Phase C — replaces TaskIQ cron)
+            run_daily_cleanup,
+            run_hourly_health_check,
+            run_weekly_report_generation,
+            run_metrics_aggregation,
+            run_cleanup_stale_environments,
+            run_evaluate_workflow_schedules,
         ],
     )
 
