@@ -1,14 +1,12 @@
 """
 Mission Supervisor Agent Dependencies (Plan 51 Phase D).
 
-Mirrors MissionDirectorDeps — mission_id + db_session. Kept
-separate so supervisor-specific fields can be added later without
-affecting the Director.
+Inherits mission_id and db_session from BaseAgentDeps.
+Overrides project_root and scope with safe read-only defaults.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
 
@@ -25,5 +23,3 @@ class MissionSupervisorDeps(BaseAgentDeps):
 
     project_root: Path = field(default_factory=lambda: Path("."))
     scope: FileScope = field(default_factory=lambda: FileScope(read_paths=["docs/"], write_paths=[]))
-    mission_id: str = ""
-    db_session: Any = None  # AsyncSession — required for service access
