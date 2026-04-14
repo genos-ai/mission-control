@@ -148,12 +148,21 @@ async def run_mission_workflow(
     """
     from modules.backend.services.workflow_run import WorkflowRunService
 
-    async with WorkflowRunService.factory() as svc:
-        run = await svc.run_workflow(
-            workflow_name=workflow_name,
-            triggered_by="user:api",
-            mission_id=mission_id,
+    try:
+        async with WorkflowRunService.factory() as svc:
+            run = await svc.run_workflow(
+                workflow_name=workflow_name,
+                triggered_by="user:api",
+                mission_id=mission_id,
+            )
+    except ValueError as e:
+        return ApiResponse(
+            success=False,
+            data=None,
+            error={"code": "WORKFLOW_ERROR", "message": str(e)},
+            metadata={"request_id": request_id},
         )
+
     return ApiResponse(
         success=True,
         data={
