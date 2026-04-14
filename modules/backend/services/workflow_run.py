@@ -206,7 +206,7 @@ class WorkflowRunService(BaseService):
             context=dict(defn.context),
             total_cost_usd=0.0,
             budget_usd=effective_budget,
-            started_at=now.isoformat(),
+            started_at=now,
             mission_id=mission_id,
             execution_record_id=exec_record.id,
         )
@@ -233,7 +233,7 @@ class WorkflowRunService(BaseService):
                 run, workflow, session.id, on_progress, gate=gate,
             )
             run.status = WorkflowRunState.COMPLETED
-            run.completed_at = utc_now().isoformat()
+            run.completed_at = utc_now()
             run.result_summary = (
                 f"Workflow completed: {len(workflow.steps)} steps, "
                 f"${run.total_cost_usd:.4f}"
@@ -241,7 +241,7 @@ class WorkflowRunService(BaseService):
             exec_record.status = ExecutionRecordStatus.COMPLETED
         except (RuntimeError, ValueError, OSError) as e:
             run.status = WorkflowRunState.FAILED
-            run.completed_at = utc_now().isoformat()
+            run.completed_at = utc_now()
             run.error_data = {"message": str(e), "type": type(e).__name__}
             run.result_summary = f"Workflow failed: {e}"
             exec_record.status = ExecutionRecordStatus.FAILED

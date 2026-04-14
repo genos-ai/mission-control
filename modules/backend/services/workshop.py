@@ -169,8 +169,8 @@ class WorkshopService(BaseService):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=cost_usd,
-            started_at=started_at.isoformat(),
-            completed_at=completed_at.isoformat(),
+            started_at=started_at,
+            completed_at=completed_at,
             inputs=inputs,
             had_prompt_override=prompt_override is not None,
         )
@@ -302,8 +302,8 @@ class WorkshopService(BaseService):
         input_tokens: int,
         output_tokens: int,
         cost_usd: float,
-        started_at: str,
-        completed_at: str,
+        started_at: Any,  # datetime — passed directly to ExecutionRecord.started_at (DateTime column)
+        completed_at: Any,  # datetime
         inputs: dict | None,
         had_prompt_override: bool,
     ) -> ExecutionRecord:

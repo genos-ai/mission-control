@@ -12,7 +12,9 @@ no workflow_run_id.
 
 import enum
 
-from sqlalchemy import Enum, Float, ForeignKey, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -115,11 +117,11 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
     budget_usd: Mapped[float | None] = mapped_column(
         Float, nullable=True,
     )
-    started_at: Mapped[str | None] = mapped_column(
-        String(30), nullable=True,
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
     )
-    completed_at: Mapped[str | None] = mapped_column(
-        String(30), nullable=True,
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
     )
     error_data: Mapped[dict | None] = mapped_column(
         JSON, nullable=True,
@@ -196,11 +198,11 @@ class Execution(UUIDMixin, TimestampMixin, Base):
     cost_ceiling_usd: Mapped[float | None] = mapped_column(
         Float, nullable=True,
     )
-    started_at: Mapped[str | None] = mapped_column(
-        String(30), nullable=True,
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
     )
-    completed_at: Mapped[str | None] = mapped_column(
-        String(30), nullable=True,
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
     )
     error_data: Mapped[dict | None] = mapped_column(
         JSON, nullable=True,

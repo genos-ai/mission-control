@@ -533,8 +533,6 @@ async def _dispatch_workflow_task(
     alternative (sharing the outer session) would conflict with the
     workflow's internal parallel step sessions.
     """
-    from datetime import datetime
-
     from modules.backend.events.types import PlanStepCompletedEvent, PlanStepStartedEvent
     from modules.backend.services.workflow_run import WorkflowRunService
 
@@ -562,9 +560,7 @@ async def _dispatch_workflow_task(
 
         duration = 0.0
         if run.completed_at and run.started_at:
-            started = run.started_at if isinstance(run.started_at, datetime) else datetime.fromisoformat(str(run.started_at))
-            completed = run.completed_at if isinstance(run.completed_at, datetime) else datetime.fromisoformat(str(run.completed_at))
-            duration = (completed - started).total_seconds()
+            duration = (run.completed_at - run.started_at).total_seconds()
 
         result = TaskResult(
             task_id=task.task_id,

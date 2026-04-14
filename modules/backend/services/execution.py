@@ -237,7 +237,7 @@ class ExecutionService(BaseService):
         self._validate_transition(execution, ExecutionState.RUNNING)
 
         execution.status = ExecutionState.RUNNING
-        execution.started_at = utc_now().isoformat()
+        execution.started_at = utc_now()
         await self._session.flush()
 
         # Emit system event: execution started
@@ -316,7 +316,7 @@ class ExecutionService(BaseService):
                     "message": "Mission Control dispatch returned failure",
                 }
 
-            execution.completed_at = utc_now().isoformat()
+            execution.completed_at = utc_now()
             await self._session.flush()
 
             # Emit system event: execution completed
@@ -346,7 +346,7 @@ class ExecutionService(BaseService):
 
         except (ApplicationError, OSError, RuntimeError, ValueError) as e:
             execution.status = ExecutionState.FAILED
-            execution.completed_at = utc_now().isoformat()
+            execution.completed_at = utc_now()
             execution.error_data = {
                 "message": str(e), "type": type(e).__name__,
             }
@@ -430,7 +430,7 @@ class ExecutionService(BaseService):
         self._validate_transition(execution, ExecutionState.COMPLETED)
 
         execution.status = ExecutionState.COMPLETED
-        execution.completed_at = utc_now().isoformat()
+        execution.completed_at = utc_now()
         await self._session.flush()
         return execution
 
@@ -443,7 +443,7 @@ class ExecutionService(BaseService):
         self._validate_transition(execution, ExecutionState.FAILED)
 
         execution.status = ExecutionState.FAILED
-        execution.completed_at = utc_now().isoformat()
+        execution.completed_at = utc_now()
         execution.error_data = error_data or {"message": error}
         await self._session.flush()
         return execution
@@ -454,7 +454,7 @@ class ExecutionService(BaseService):
         self._validate_transition(execution, ExecutionState.CANCELLED)
 
         execution.status = ExecutionState.CANCELLED
-        execution.completed_at = utc_now().isoformat()
+        execution.completed_at = utc_now()
         execution.error_data = {"cancelled_reason": reason}
         await self._session.flush()
         return execution
