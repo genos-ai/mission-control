@@ -92,7 +92,10 @@ def create_agent(model: str | Model) -> Agent:
                     "tools": entry.tools or [],
                     "keywords": entry.keywords or [],
                     "scope": entry.scope or {},
+                    "interface": entry.interface,
+                    "constraints": entry.constraints or {},
                     "enabled": entry.enabled,
+                    "chat_enabled": entry.chat_enabled,
                 })
 
             return json.dumps(team_list, indent=2, default=str)
@@ -140,11 +143,12 @@ def create_agent(model: str | Model) -> Agent:
 
             results = []
             for agent in all_agents:
-                if keyword and keyword.lower() not in (
+                searchable = (
                     (agent.description or "").lower()
                     + " ".join(agent.keywords or []).lower()
                     + (agent.agent_name or "").lower()
-                ):
+                )
+                if keyword and keyword.lower() not in searchable:
                     continue
                 results.append({
                     "agent_name": agent.agent_name,
@@ -153,6 +157,11 @@ def create_agent(model: str | Model) -> Agent:
                     "enabled": agent.enabled,
                     "on_team": agent.agent_name in team_names,
                     "keywords": agent.keywords or [],
+                    "tools": agent.tools or [],
+                    "scope": agent.scope or {},
+                    "interface": agent.interface,
+                    "constraints": agent.constraints or {},
+                    "chat_enabled": agent.chat_enabled,
                 })
 
             return json.dumps(results, indent=2, default=str)

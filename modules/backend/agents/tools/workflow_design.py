@@ -45,8 +45,11 @@ async def browse_agent_catalog(
             "version": a.version,
             "tools": a.tools or [],
             "keywords": a.keywords or [],
+            "scope": a.scope or {},
             "interface": a.interface,
-            "constraints": a.constraints,
+            "constraints": a.constraints or {},
+            "enabled": a.enabled,
+            "chat_enabled": a.chat_enabled,
         }
         for a in agents
     ]
