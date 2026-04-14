@@ -176,25 +176,28 @@ class WorkflowRunService(BaseService):
 
         # Create a parent ExecutionRecord so the workflow run appears in
         # the Runs tab alongside single-agent executions.
+        # Created via repository (not ExecutionPersistenceService) because
+        # the service is designed for post-execution persistence and
+        # defaults completed_at to "now" — we need it NULL until the
+        # workflow finishes.
         from modules.backend.models.execution_record import (
             ExecutionRecord,
             ExecutionRecordStatus,
         )
+        from modules.backend.repositories.execution_record import ExecutionRecordRepository
 
         now = utc_now()
-        exec_record = ExecutionRecord(
+        exec_repo = ExecutionRecordRepository(self._session)
+        exec_record = await exec_repo.create(
             session_id=session.id,
             mission_id=mission_id,
             roster_name=f"workflow:{defn.name}",
             objective_statement=defn.description[:500] if defn.description else defn.name,
             objective_category=defn.objective.get("category") if defn.objective else None,
-            status=ExecutionRecordStatus.COMPLETED,  # updated at end
+            status=ExecutionRecordStatus.COMPLETED,  # updated to actual outcome at end
             total_cost_usd=0.0,
             started_at=now,
         )
-        self._session.add(exec_record)
-        await self._session.flush()
-        await self._session.refresh(exec_record)
 
         run = WorkflowRun(
             workflow_name=defn.name,
@@ -253,8 +256,13 @@ class WorkflowRunService(BaseService):
         # Sync the parent ExecutionRecord with workflow outcome
         exec_record.total_cost_usd = run.total_cost_usd
         exec_record.completed_at = utc_now()
-        exec_record.completed_task_count = len(workflow.steps) if run.status == WorkflowRunState.COMPLETED else 0
-        exec_record.failed_task_count = 0 if run.status == WorkflowRunState.COMPLETED else len(workflow.steps)
+        exec_record.execution_outcome_json = {
+            "workflow_run_id": run.id,
+            "workflow_name": run.workflow_name,
+            "status": run.status.value if hasattr(run.status, "value") else str(run.status),
+            "result_summary": run.result_summary,
+            "step_count": len(workflow.steps),
+        }
 
         await self._session.flush()
         await self._notify_run_outcome(run, len(workflow.steps))
