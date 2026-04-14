@@ -36,7 +36,7 @@ import {
   ListTodo,
   type LucideIcon,
 } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
@@ -918,6 +918,7 @@ function ArtifactCard({ artifact }: { artifact: MissionArtifact }) {
           <p className="text-[10px] text-muted-foreground/60">
             {agentShort}
             {' · '}{artifact.artifact_type}
+            {' · '}{artifact.created_at ? format(new Date(artifact.created_at), 'MMM d HH:mm') : ''}
           </p>
         </div>
         <ChevronDown className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
