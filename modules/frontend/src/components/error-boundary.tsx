@@ -16,13 +16,14 @@ function reportError(payload: {
   component_stack?: string
   url: string
 }) {
+  const body = JSON.stringify({
+    ...payload,
+    user_agent: navigator.userAgent,
+    timestamp: new Date().toISOString(),
+  })
   navigator.sendBeacon(
     `${API_BASE}/client-errors`,
-    JSON.stringify({
-      ...payload,
-      user_agent: navigator.userAgent,
-      timestamp: new Date().toISOString(),
-    }),
+    new Blob([body], { type: 'application/json' }),
   )
 }
 
