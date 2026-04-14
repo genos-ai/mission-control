@@ -58,6 +58,8 @@ class BaseAgentDeps:
     scope: FileScope
     config: AgentConfigSchema | None = None
     session_id: str | None = None       # Set when running within a session
+    mission_id: str | None = None       # Mission context — available to all agents
+    db_session: Any = None              # AsyncSession — available to all agents
     on_event: Any = None                # Callable[[SessionEvent], Awaitable[None]] | None
     environment_handle: Any = None      # EnvironmentHandle when running in container/worktree mode
 
