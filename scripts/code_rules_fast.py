@@ -438,6 +438,37 @@ def check_execution_triggers_need_idempotency(path: Path, rel: str) -> list[Viol
     return violations
 
 
+def check_agent_imports_models_repos(path: Path, rel: str) -> list[Violation]:
+    """011.1 — Agent files must not import models or repositories directly.
+
+    Agents are thin clients — all DB access goes through the service layer.
+    This prevents agents from bypassing business rules, transaction
+    boundaries, and audit logic that services enforce.
+    """
+    if not rel.startswith("modules/backend/agents/"):
+        return []
+    # deps files define dataclasses that may reference model types for type hints
+    if "/deps/" in rel or rel.endswith("/deps.py"):
+        return []
+    violations = []
+    patterns = [
+        (re.compile(r"from modules\.backend\.models\."), "models"),
+        (re.compile(r"from modules\.backend\.repositories\."), "repositories"),
+        (re.compile(r"from sqlalchemy"), "sqlalchemy"),
+    ]
+    for i, line in enumerate(path.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith(("#", '"""', "'''")):
+            continue
+        for pat, kind in patterns:
+            if pat.search(line):
+                violations.append(Violation(
+                    "011.1", "warning", rel, i,
+                    f"Agent imports {kind} directly — use a service",
+                ))
+    return violations
+
+
 ALL_CHECKS = [
     check_file_size,
     check_relative_imports,
@@ -457,6 +488,7 @@ ALL_CHECKS = [
     check_endpoint_inline_transforms,
     check_execution_triggers_need_idempotency,
     check_logger_error_needs_mission_id,
+    check_agent_imports_models_repos,
 ]
 
 
