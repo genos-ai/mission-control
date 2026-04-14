@@ -21,7 +21,7 @@ import {
   Target,
   GitBranch,
 } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { formatUtc } from '@/lib/format-date'
 import { useMCD, useContextHistory } from '@/hooks/use-context'
 import type { ContextChange } from '@/hooks/use-context'
 import { Badge } from '@/components/ui/badge'
@@ -415,7 +415,7 @@ function ChangeEntry({ change }: { change: ContextChange }) {
         )}
         <span className="flex items-center gap-0.5">
           <Clock className="h-2 w-2" />
-          {formatDistanceToNow(new Date(change.created_at), { addSuffix: true })}
+          {formatUtc(change.created_at)}
         </span>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { formatDistanceToNow } from 'date-fns'
+import { formatUtc } from '@/lib/format-date'
 import {
   Play,
   AlertTriangle,
@@ -244,9 +244,7 @@ export default function OverviewPage() {
                       <span>${run.total_cost_usd.toFixed(4)}</span>
                       {run.created_at && (
                         <span>
-                          {formatDistanceToNow(new Date(run.created_at), {
-                            addSuffix: true,
-                          })}
+                          {formatUtc(run.created_at)}
                         </span>
                       )}
                     </div>
@@ -322,9 +320,7 @@ function RecentErrors({
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium">{err.agent}</span>
                 <span className="text-[10px] text-muted-foreground">
-                  {formatDistanceToNow(new Date(err.when), {
-                    addSuffix: true,
-                  })}
+                  {formatUtc(err.when)}
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground truncate">
@@ -611,7 +607,7 @@ function EnvironmentStatusCard({ missionId }: { missionId: string }) {
                 <p>Image: {active.image ?? 'code-workspace:latest'}</p>
                 <p>Executions: {active.execution_count}</p>
                 {active.last_execution_at && (
-                  <p>Last active: {formatDistanceToNow(new Date(active.last_execution_at), { addSuffix: true })}</p>
+                  <p>Last active: {formatUtc(active.last_execution_at)}</p>
                 )}
               </div>
             )}

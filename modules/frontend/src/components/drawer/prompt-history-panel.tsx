@@ -1,4 +1,4 @@
-import { formatDistanceToNow } from 'date-fns'
+import { formatUtc } from '@/lib/format-date'
 import { usePromptHistory } from '@/hooks/use-team'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +34,7 @@ export function PromptHistoryPanel() {
           <div className="mb-2 flex items-center justify-between">
             <Badge variant="outline">v{v.version}</Badge>
             <span className="text-[11px] text-muted-foreground">
-              {formatDistanceToNow(new Date(v.created_at), { addSuffix: true })}
+              {formatUtc(v.created_at)}
             </span>
           </div>
 

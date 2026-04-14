@@ -36,7 +36,7 @@ import {
   ListTodo,
   type LucideIcon,
 } from 'lucide-react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatUtc } from '@/lib/format-date'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
@@ -344,7 +344,7 @@ function AgentChatPanel({
             {sessions.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.goal || s.id.slice(0, 12)} ·{' '}
-                {formatDistanceToNow(new Date(s.last_activity_at), { addSuffix: true })}
+                {formatUtc(s.last_activity_at)}
               </option>
             ))}
           </select>
@@ -806,7 +806,7 @@ function MessageBubble({ message }: { message: SessionMessage }) {
           'mt-1 flex items-center gap-2 text-[10px]',
           isUser ? 'text-primary-foreground/60' : 'text-muted-foreground',
         )}>
-          <span>{format(new Date(message.created_at), 'MMM d HH:mm')}</span>
+          <span>{formatUtc(message.created_at)}</span>
           {message.cost_usd != null && (
             <Badge variant="secondary" className="text-[9px]">${message.cost_usd.toFixed(4)}</Badge>
           )}
@@ -918,7 +918,7 @@ function ArtifactCard({ artifact }: { artifact: MissionArtifact }) {
           <p className="text-[10px] text-muted-foreground/60">
             {agentShort}
             {' · '}{artifact.artifact_type}
-            {' · '}{artifact.created_at ? format(new Date(artifact.created_at), 'MMM d HH:mm') : ''}
+            {' · '}{formatUtc(artifact.created_at)}
           </p>
         </div>
         <ChevronDown className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />

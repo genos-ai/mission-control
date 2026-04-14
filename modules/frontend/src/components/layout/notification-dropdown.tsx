@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Bell } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { formatUtc } from '@/lib/format-date'
 import { useNotificationStore } from '@/stores/notifications'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -88,9 +88,7 @@ export function NotificationDropdown() {
                     {n.body}
                   </p>
                   <span className="text-[10px] text-muted-foreground">
-                    {formatDistanceToNow(new Date(n.created_at), {
-                      addSuffix: true,
-                    })}
+                    {formatUtc(n.created_at)}
                   </span>
                 </button>
               ))

@@ -18,7 +18,7 @@ import {
   Radio,
   StopCircle,
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { formatUtc } from '@/lib/format-date'
 import toast from 'react-hot-toast'
 import {
   useExecutions,
@@ -259,7 +259,7 @@ function HistoryRow({
         <span className="flex items-center justify-end gap-1.5 text-muted-foreground">
           <span className="truncate" title={execution.created_at}>
             {execution.created_at
-              ? format(new Date(execution.created_at), 'MMM d HH:mm')
+              ? formatUtc(execution.created_at)
               : '—'}
           </span>
           {isRunning && <CancelButton executionId={execution.id} />}
