@@ -11,6 +11,7 @@ This service is write-heavy during execution and read-heavy afterward.
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +19,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
+
+
+def _to_datetime(value: str | datetime | None) -> datetime | None:
+    """Coerce a string or datetime to a datetime. Returns None if empty."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value:
+        return datetime.fromisoformat(value)
+    return None
 from modules.backend.models.execution_record import (
     DecisionType,
     FailureTier,
@@ -99,8 +111,8 @@ class ExecutionPersistenceService(BaseService):
             execution_outcome_json=execution_outcome_json,
             planning_thinking_trace=planning_thinking_trace,
             total_cost_usd=total_cost_usd,
-            started_at=started_at or utc_now().isoformat(),
-            completed_at=completed_at or utc_now().isoformat(),
+            started_at=_to_datetime(started_at) or utc_now(),
+            completed_at=_to_datetime(completed_at) or utc_now(),
             parent_execution_record_id=parent_execution_record_id,
             objective_statement=objective_statement,
             objective_category=objective_category,
