@@ -147,12 +147,17 @@ async def run_mission_workflow(
     Resolves the workflow from mission-scoped definitions first,
     then falls back to system templates.
     """
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.events.bus import SessionEventBus
     from modules.backend.services.workflow_run import WorkflowRunService
+    from redis.asyncio import Redis as AsyncRedis
 
     from fastapi import HTTPException
 
+    redis = AsyncRedis.from_url(get_redis_url())
+    event_bus = SessionEventBus(redis, mission_id=mission_id)
     try:
-        async with WorkflowRunService.factory() as svc:
+        async with WorkflowRunService.factory(event_bus=event_bus) as svc:
             run = await svc.run_workflow(
                 workflow_name=workflow_name,
                 triggered_by="user:api",
@@ -160,6 +165,8 @@ async def run_mission_workflow(
             )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    finally:
+        await redis.aclose()
 
     return ApiResponse(
         success=True,

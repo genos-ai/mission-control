@@ -547,7 +547,7 @@ async def _dispatch_workflow_task(
 
     status = TaskStatus.FAILED
     try:
-        async with WorkflowRunService.factory() as svc:
+        async with WorkflowRunService.factory(event_bus=event_bus) as svc:
             run = await svc.run_workflow(
                 workflow_name=workflow_name,
                 triggered_by="plan_dispatch",
