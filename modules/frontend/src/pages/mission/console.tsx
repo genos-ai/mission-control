@@ -310,7 +310,7 @@ function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolea
           )}
         </span>
         <span className="text-xs font-medium text-foreground shrink-0">
-          {isUser ? 'User' : shortAgent}
+          {isUser ? 'Human' : shortAgent}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {preview || '(empty)'}
