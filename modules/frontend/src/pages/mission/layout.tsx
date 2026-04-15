@@ -63,10 +63,10 @@ const tabs = [
   { label: 'Chat',      icon: MessageSquare, path: 'chat' },
   { label: 'Plan',      icon: Kanban,        path: 'plan' },
   { label: 'Narrative', icon: Radio,         path: 'narrative' },
-  { label: 'Console',   icon: Terminal,      path: 'stream' },
   { label: 'Context',   icon: FileText,      path: 'context' },
   { label: 'Runs',      icon: ListChecks,    path: 'runs' },
   { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
+  { label: 'Console',   icon: Terminal,      path: 'stream' },
 ]
 
 const STATUS_VARIANT: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {
