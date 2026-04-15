@@ -66,7 +66,7 @@ const tabs = [
   { label: 'Context',   icon: FileText,      path: 'context' },
   { label: 'Runs',      icon: ListChecks,    path: 'runs' },
   { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
-  { label: 'Console',   icon: Terminal,      path: 'stream' },
+  { label: 'Console',   icon: Terminal,      path: 'console' },
 ]
 
 const STATUS_VARIANT: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {

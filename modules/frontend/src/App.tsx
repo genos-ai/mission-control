@@ -78,7 +78,7 @@ export default function App() {
             <Route path="chat/:threadId" element={<ChatTab />} />
             <Route path="plan" element={<PlanTab />} />
             <Route path="narrative" element={<NarrativeTab />} />
-            <Route path="stream" element={<StreamTab />} />
+            <Route path="console" element={<StreamTab />} />
             <Route path="context" element={<ContextTab />} />
             <Route path="runs" element={<RunsTab />} />
             <Route path="runs/:runId" element={<RunLivePage />} />
