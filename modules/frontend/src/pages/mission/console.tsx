@@ -9,7 +9,6 @@ import {
   AlertCircle,
   User,
   Bot,
-  MessageSquare,
   DollarSign,
   Brain,
   Package,
@@ -287,66 +286,65 @@ function EventRow({ event }: { event: ConsoleEvent }) {
 
 function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
   const d = event.data
-  const role = String(d.role ?? '')
-  const content = String(d.content ?? '')
-  const isUser = role === 'user'
+  // Handle both session message shape (role/content) and SSE event shape (agent_id/full_content)
+  const role = String(d.role ?? (event.event_type === 'user.message.sent' ? 'user' : 'assistant'))
+  const content = String(d.content ?? d.full_content ?? '')
+  const isUser = role === 'user' || event.event_type === 'user.message.sent'
   const model = d.model ? String(d.model) : null
   const cost = d.cost_usd != null ? Number(d.cost_usd) : null
   const ts = formatTime(event.timestamp)
+  const preview = content.slice(0, 120).replace(/\n/g, ' ')
+  const agentName = String(d.agent_id ?? d.sender_id ?? event.source ?? 'assistant')
+  const shortAgent = agentName.endsWith('.agent') ? agentName.slice(0, -6) : agentName
 
   return (
-    <div className={`flex items-start gap-2 rounded px-2 py-1.5 ${
+    <details className={`group rounded px-2 py-1.5 ${
       isError ? 'bg-destructive/10' : 'hover:bg-muted/20'
     }`}>
-      <span className="mt-0.5 shrink-0">
-        {isUser ? (
-          <User className="h-3.5 w-3.5 text-blue-400" />
-        ) : (
-          <Bot className="h-3.5 w-3.5 text-emerald-400" />
+      <summary className="flex cursor-pointer list-none items-center gap-2">
+        <span className="shrink-0">
+          {isUser ? (
+            <User className="h-3.5 w-3.5 text-blue-400" />
+          ) : (
+            <Bot className="h-3.5 w-3.5 text-emerald-400" />
+          )}
+        </span>
+        <span className="text-xs font-medium text-foreground shrink-0">
+          {isUser ? 'User' : shortAgent}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {preview || '(empty)'}
+        </span>
+        {model && (
+          <Badge variant="outline" className="text-[9px] h-4 shrink-0">{model.split(':').pop()?.split('-').slice(0, 2).join('-')}</Badge>
         )}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-foreground">
-            {isUser ? 'User' : event.source || 'Assistant'}
+        {cost != null && cost > 0 && (
+          <span className="flex items-center text-[10px] text-muted-foreground shrink-0">
+            <DollarSign className="h-2.5 w-2.5" />
+            {cost.toFixed(4)}
           </span>
-          <span className="text-[10px] tabular-nums text-muted-foreground/60">{ts}</span>
-          {model && (
-            <Badge variant="outline" className="text-[9px] h-4">{model.split(':').pop()?.split('-').slice(0, 2).join('-')}</Badge>
-          )}
-          {cost != null && cost > 0 && (
-            <span className="flex items-center text-[10px] text-muted-foreground">
-              <DollarSign className="h-2.5 w-2.5" />
-              {cost.toFixed(4)}
-            </span>
-          )}
-        </div>
+        )}
+        <span className="text-[10px] tabular-nums text-muted-foreground/60 shrink-0">{ts}</span>
+        <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/40 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-1.5 ml-5 border-l-2 border-muted pl-3">
         {typeof d.thinking === 'string' && d.thinking && (
-          <details open className="mt-1.5 rounded border border-purple-500/20 bg-purple-500/5 px-2.5 py-1.5">
+          <details className="mb-2 rounded border border-purple-500/20 bg-purple-500/5 px-2.5 py-1.5">
             <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-purple-400">
               <Brain className="h-3 w-3" />
               Thinking
             </summary>
-            <p className="mt-1.5 text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+            <p className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
               {d.thinking}
             </p>
           </details>
         )}
-        <div className="mt-0.5">
-          <MarkdownRenderer
-            content={content.length > 1000 ? content.slice(0, 1000) + '…' : content}
-            className="text-sm"
-          />
-        </div>
+        <MarkdownRenderer
+          content={content.length > 2000 ? content.slice(0, 2000) + '…' : content}
+          className="text-xs"
+        />
       </div>
-      <Badge
-        variant="outline"
-        className="shrink-0 text-[9px] h-4"
-      >
-        <MessageSquare className="mr-0.5 h-2 w-2" />
-        chat
-      </Badge>
-    </div>
+    </details>
   )
 }
 
