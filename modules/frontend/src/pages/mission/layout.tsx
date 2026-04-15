@@ -63,7 +63,7 @@ const tabs = [
   { label: 'Chat',      icon: MessageSquare, path: 'chat' },
   { label: 'Plan',      icon: Kanban,        path: 'plan' },
   { label: 'Narrative', icon: Radio,         path: 'narrative' },
-  { label: 'Stream',    icon: Terminal,      path: 'stream' },
+  { label: 'Console',   icon: Terminal,      path: 'stream' },
   { label: 'Context',   icon: FileText,      path: 'context' },
   { label: 'Runs',      icon: ListChecks,    path: 'runs' },
   { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
