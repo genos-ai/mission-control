@@ -140,19 +140,27 @@ async def execute_run_objective(input: RunObjectiveInput) -> ToolForkResult:
     )
 
     try:
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.events.bus import SessionEventBus
         from modules.backend.services.execution import ExecutionService
+        from redis.asyncio import Redis as AsyncRedis
 
-        async with ExecutionService.factory() as svc:
-            execution = await svc.create_adhoc_execution(
-                objective=input.objective,
-                triggered_by="mission_director",
-                cost_ceiling_usd=input.budget_usd,
-                mission_id=input.mission_id,
-            )
-            execution_id = str(execution.id)
+        redis = AsyncRedis.from_url(get_redis_url())
+        event_bus = SessionEventBus(redis, mission_id=input.mission_id)
+        try:
+            async with ExecutionService.factory(event_bus=event_bus) as svc:
+                execution = await svc.create_adhoc_execution(
+                    objective=input.objective,
+                    triggered_by="mission_director",
+                    cost_ceiling_usd=input.budget_usd,
+                    mission_id=input.mission_id,
+                )
+                execution_id = str(execution.id)
 
-        async with ExecutionService.factory() as svc:
-            await svc.run_execution(execution_id)
+            async with ExecutionService.factory(event_bus=event_bus) as svc:
+                await svc.run_execution(execution_id)
+        finally:
+            await redis.aclose()
 
         return ToolForkResult(
             execution_record_id=input.execution_record_id,
@@ -184,14 +192,22 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
     )
 
     try:
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.events.bus import SessionEventBus
         from modules.backend.services.workflow_run import WorkflowRunService
+        from redis.asyncio import Redis as AsyncRedis
 
-        async with WorkflowRunService.factory() as svc:
-            await svc.run_workflow(
-                workflow_name=input.workflow_name,
-                triggered_by="mission_director",
-                mission_id=input.mission_id,
-            )
+        redis = AsyncRedis.from_url(get_redis_url())
+        event_bus = SessionEventBus(redis, mission_id=input.mission_id)
+        try:
+            async with WorkflowRunService.factory(event_bus=event_bus) as svc:
+                await svc.run_workflow(
+                    workflow_name=input.workflow_name,
+                    triggered_by="mission_director",
+                    mission_id=input.mission_id,
+                )
+        finally:
+            await redis.aclose()
 
         return ToolForkResult(
             execution_record_id=input.execution_record_id,
