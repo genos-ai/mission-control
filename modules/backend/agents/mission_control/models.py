@@ -79,17 +79,31 @@ class EventBusProtocol(Protocol):
 
 
 class NoOpEventBus:
-    """Null-object event bus — satisfies EventBusProtocol, does nothing.
+    """Null-object event bus — satisfies EventBusProtocol, drops all events.
 
-    Use as the default instead of None to eliminate None-checks at
-    every publish call site.
+    Logs a warning on first use so silent event loss is visible.
+    Use explicitly in tests. Production code should pass a real SessionEventBus.
     """
 
+    _warned = False
+
     async def publish(self, event: SessionEvent) -> None:
-        pass
+        if not NoOpEventBus._warned:
+            import logging
+            logging.getLogger(__name__).warning(
+                "NoOpEventBus in use — events are being silently dropped. "
+                "Pass a real SessionEventBus for production visibility.",
+            )
+            NoOpEventBus._warned = True
 
     async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
-        pass
+        if not NoOpEventBus._warned:
+            import logging
+            logging.getLogger(__name__).warning(
+                "NoOpEventBus in use — events are being silently dropped. "
+                "Pass a real SessionEventBus for production visibility.",
+            )
+            NoOpEventBus._warned = True
 
 
 

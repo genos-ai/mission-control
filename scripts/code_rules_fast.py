@@ -469,6 +469,34 @@ def check_agent_imports_models_repos(path: Path, rel: str) -> list[Violation]:
     return violations
 
 
+def check_noopbus_in_production(path: Path, rel: str) -> list[Violation]:
+    """012.1 — NoOpEventBus should not be used in production code paths.
+
+    NoOpEventBus silently drops all events. Production code should pass
+    a real SessionEventBus so events reach the Console and SSE stream.
+    Acceptable in: tests, models.py (definition), and explicit test helpers.
+    """
+    if not rel.startswith("modules/backend/"):
+        return []
+    # Allow in test files, the definition itself, and models
+    if "test_" in rel or "conftest" in rel:
+        return []
+    if rel.endswith("models.py"):
+        return []
+    violations = []
+    pattern = re.compile(r"NoOpEventBus\(\)")
+    for i, line in enumerate(path.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith(("#", '"""', "'''")):
+            continue
+        if pattern.search(line):
+            violations.append(Violation(
+                "012.1", "warning", rel, i,
+                "NoOpEventBus() — events will be silently dropped. Pass a real SessionEventBus.",
+            ))
+    return violations
+
+
 ALL_CHECKS = [
     check_file_size,
     check_relative_imports,
@@ -489,6 +517,7 @@ ALL_CHECKS = [
     check_execution_triggers_need_idempotency,
     check_logger_error_needs_mission_id,
     check_agent_imports_models_repos,
+    check_noopbus_in_production,
 ]
 
 
