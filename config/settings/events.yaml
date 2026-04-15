@@ -1,19 +1,14 @@
 # =============================================================================
-# Event Bus Configuration
+# Event Configuration
 # =============================================================================
-#   Controls the FastStream event bus, stream sizing, and consumer behavior.
-#   Transport: "redis" for production, "memory" for testing.
+#   Session events use Redis Pub/Sub for real-time delivery (SSE to browser).
+#   Configured event types are also persisted to the mission_events DB table,
+#   which serves as the single source of truth for the Console timeline.
 #
-#   Two event systems:
-#     Domain events (FastStream + Redis Streams): durable, consumer groups, DLQ
-#     Session events (Redis Pub/Sub): ephemeral, real-time agent lifecycle
-#
-#   Stream naming: {domain}:{entity}-{action} (e.g. notes:note-created)
 #   Channel naming: mission_events:{mission_id} (one channel per mission)
 #
-#   persist_event_types: event types written to the mission_events DB table
-#   for historical narrative display. High-volume types (response chunks,
-#   cost updates) are excluded to avoid DB bloat.
+#   persist_event_types: event types written to mission_events for the Console.
+#   Adding a type here = it appears in Console history. Nothing else needed.
 
 transport: redis
 
@@ -26,14 +21,42 @@ consumer_timeout_ms: 5000
 dlq_enabled: true
 dlq_prefix: dlq
 
+# persist_event_types: event types written to mission_events for the Console.
+# mission_events is the single source of truth for the Console timeline.
+# To add a new event type to the Console, add it here. Nothing else needed.
+#
+# Excluded: agent.response.chunk (high-volume streaming deltas),
+#           session.cost.update (noise — cost is on the response event).
 persist_event_types:
+  # Chat
+  - user.message.sent
+  - agent.response.complete
+  # Agent lifecycle
   - agent.thinking.started
   - agent.tool.called
   - agent.tool.returned
+  # Planning
+  - plan.created
+  - plan.revised
+  - planning.phase
   - plan.step.started
   - plan.step.completed
+  # Execution
   - system.execution.created
   - system.execution.completed
-  - system.info              # SystemEvent — errors/warnings bridged from logger
+  # Workflow
+  - workflow.run.started
+  - workflow.run.completed
+  - workflow.run.failed
+  - workflow.execution.started
+  - workflow.execution.completed
+  # System
+  - system.info
   - mission.artifact.found
   - mission.narrative
+  # Convergence
+  - convergence.iteration
+  - convergence.completed
+  # Approvals
+  - approval.requested
+  - approval.response
