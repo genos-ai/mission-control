@@ -37,7 +37,7 @@ chat_enabled: true
 model: anthropic:claude-sonnet-4-6
 max_input_length: 2000
 max_budget_usd: 2.00
-max_tokens: 500000
+max_tokens: 2000000
 max_requests: 25
 file_size_limit: 1000
 
