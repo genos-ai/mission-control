@@ -613,6 +613,14 @@ function StatusFooter() {
 // ---------------------------------------------------------------------------
 
 function categorize(eventType: string): 'execution' | 'chat' | 'system' {
+  // Chat events first (more specific match before agent.* catches them)
+  if (
+    eventType.startsWith('user.message') ||
+    eventType.startsWith('assistant.message') ||
+    eventType === 'agent.response.complete'
+  ) {
+    return 'chat'
+  }
   if (
     eventType.startsWith('plan.') ||
     eventType.startsWith('agent.') ||
@@ -623,12 +631,6 @@ function categorize(eventType: string): 'execution' | 'chat' | 'system' {
     eventType.startsWith('mission.')
   ) {
     return 'execution'
-  }
-  if (
-    eventType.startsWith('user.message') ||
-    eventType.startsWith('assistant.message')
-  ) {
-    return 'chat'
   }
   return 'system'
 }
