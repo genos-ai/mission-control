@@ -68,6 +68,17 @@ tools:
   - codemap.get_dependency_analysis
   - codemap.run_quality_score
 
+interface:
+  input:
+    message: string
+  output:
+    summary: string
+    total_violations: number
+    error_count: number
+    warning_count: number
+    violations: array
+    scanned_files_count: number
+
 scope:
   read:
     - "modules/"

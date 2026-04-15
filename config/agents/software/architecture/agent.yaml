@@ -55,6 +55,17 @@ tools:
   - filesystem.read_file
   - filesystem.list_files
 
+interface:
+  input:
+    message: string
+  output:
+    summary: string
+    total_findings: number
+    findings: array
+    files_reviewed: number
+    new_findings: number
+    baseline_findings: number
+
 scope:
   read:
     - "modules/"
