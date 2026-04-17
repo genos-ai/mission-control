@@ -171,6 +171,11 @@ class ExecutionPersistenceService(BaseService):
                 "tier": verification_outcome.get("tier"),
             }
 
+        # Validate domain tags (Plan 57 §4.2 — log and drop invalid, never block)
+        if domain_tags:
+            from modules.backend.core.domain_tags import validate_tags
+            domain_tags, _ = validate_tags(domain_tags)
+
         execution = TaskExecution(
             execution_record_id=execution_record_id,
             task_id=task_id,

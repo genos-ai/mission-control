@@ -47,6 +47,12 @@ class ContextCurator:
         if not task_result_context_updates:
             return 0, []
 
+        # Validate domain_tags in any update that writes to a tags path (Plan 57 §4.2)
+        mcd = await self._manager.get_context(mission_id)
+        task_result_context_updates = self._validate_domain_tags_in_updates(
+            task_result_context_updates, mcd,
+        )
+
         new_version, errors = await self._manager.apply_updates(
             mission_id,
             task_result_context_updates,
@@ -66,3 +72,34 @@ class ContextCurator:
             )
 
         return new_version, errors
+
+    @staticmethod
+    def _validate_domain_tags_in_updates(
+        updates: list[dict],
+        mcd: dict,
+    ) -> list[dict]:
+        """Validate and normalize domain_tags in context updates.
+
+        Invalid tags are logged and dropped (per Plan 57 §4.2 —
+        never block the parent write). Returns the cleaned updates list.
+        """
+        from modules.backend.core.domain_tags import validate_tags
+
+        cleaned = []
+        for update in updates:
+            path = update.get("path", "")
+            value = update.get("value")
+
+            # Check if this update writes domain_tags
+            if "domain_tags" in path and isinstance(value, list):
+                valid, invalid = validate_tags(value, mcd)
+                if invalid:
+                    logger.debug(
+                        "Domain tags dropped from context update",
+                        extra={"path": path, "invalid": invalid, "valid": valid},
+                    )
+                update = {**update, "value": valid}
+
+            cleaned.append(update)
+
+        return cleaned
