@@ -9,20 +9,20 @@ created via a separate script after initial data population to
 avoid slow builds on bulk backfill.
 
 Revision ID: plan57_001
-Revises: 20260414_session_message_streaming_status
+Revises: 20260414_bg_task
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "plan57_001"
-down_revision = "20260414_session_message_streaming_status"
+down_revision = "20260414_bg_task"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    # ---- pgvector extension (Postgres only, no-op on SQLite) ----
+    # ---- pgvector extension (required for Postgres) ----
     conn = op.get_bind()
     if conn.dialect.name == "postgresql":
         op.execute("CREATE EXTENSION IF NOT EXISTS vector")
@@ -103,11 +103,11 @@ def upgrade() -> None:
         ["kind", "status"],
     )
 
-    # GIN index on domain_tags (Postgres only)
+    # GIN index on domain_tags (Postgres only — cast to jsonb for GIN support)
     if conn.dialect.name == "postgresql":
         op.execute(
             "CREATE INDEX ix_mission_learnings_tags "
-            "ON mission_learnings USING GIN (domain_tags)"
+            "ON mission_learnings USING GIN ((domain_tags::jsonb))"
         )
 
     # ---- embeddings (generic, cross-type) ----
@@ -126,14 +126,13 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
     ]
 
-    # Add the vector column only on Postgres
+    # Add the vector column — pgvector required on Postgres, text on SQLite
     if conn.dialect.name == "postgresql":
         from pgvector.sqlalchemy import Vector
         embedding_columns.append(
             sa.Column("embedding_data", Vector(1536), nullable=True),
         )
     else:
-        # SQLite: plain text placeholder (not used for queries)
         embedding_columns.append(
             sa.Column("embedding_data", sa.Text, nullable=True),
         )
@@ -159,7 +158,7 @@ def upgrade() -> None:
         # milestone_summaries.domain_tags
         op.execute(
             "CREATE INDEX IF NOT EXISTS ix_milestone_summaries_tags "
-            "ON milestone_summaries USING GIN (domain_tags)"
+            "ON milestone_summaries USING GIN ((domain_tags::jsonb))"
         )
 
 
