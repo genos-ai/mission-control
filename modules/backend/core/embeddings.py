@@ -211,5 +211,8 @@ def get_embedder() -> Embedder:
             return FailOpenEmbedder(inner)
         return inner
     except Exception:
-        logger.debug("Embedding config unavailable, using FakeEmbedder")
+        logger.warning(
+            "Embedding config unavailable — falling back to FakeEmbedder. "
+            "Set knowledge.embedding.* in missions.yaml for real embeddings.",
+        )
         return FailOpenEmbedder(FakeEmbedder())

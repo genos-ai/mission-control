@@ -373,6 +373,11 @@ class KnowledgeService(BaseService):
                     created_at=str(l.created_at),
                 )
             except Exception:
+                logger.warning(
+                    "Failed to fetch learning entry",
+                    extra={"source_table": source_table, "source_id": source_id},
+                    exc_info=True,
+                )
                 return None
 
         elif source_table == "mission_decisions":
@@ -391,6 +396,11 @@ class KnowledgeService(BaseService):
                     created_at=str(d.created_at),
                 )
             except Exception:
+                logger.warning(
+                    "Failed to fetch decision entry",
+                    extra={"source_table": source_table, "source_id": source_id},
+                    exc_info=True,
+                )
                 return None
 
         elif source_table == "milestone_summaries":
@@ -409,6 +419,11 @@ class KnowledgeService(BaseService):
                     created_at=str(m.created_at),
                 )
             except Exception:
+                logger.warning(
+                    "Failed to fetch milestone entry",
+                    extra={"source_table": source_table, "source_id": source_id},
+                    exc_info=True,
+                )
                 return None
 
         return None
@@ -420,6 +435,7 @@ class KnowledgeService(BaseService):
             from modules.backend.core.config import get_app_config
             return get_app_config().missions.knowledge.embedding.version
         except Exception:
+            logger.debug("Embedding version config unavailable, defaulting to 1")
             return 1
 
 
@@ -431,4 +447,9 @@ def _parse_vector(vec_str: str | None) -> list[float] | None:
         cleaned = vec_str.strip("[]")
         return [float(x) for x in cleaned.split(",")]
     except Exception:
+        logger.warning(
+            "Failed to parse vector string",
+            extra={"vec_preview": vec_str[:50] if vec_str else None},
+            exc_info=True,
+        )
         return None
