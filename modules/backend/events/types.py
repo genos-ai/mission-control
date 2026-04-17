@@ -533,6 +533,49 @@ class SupervisorDecisionEmittedEvent(SessionEvent):
 
 
 # =============================================================================
+# Knowledge Events (Plan 57)
+# =============================================================================
+
+
+class MissionIntentRevisedEvent(SessionEvent):
+    """A mission's intent was revised (user or Director)."""
+
+    event_type: str = "knowledge.intent.revised"
+    intent_id: str = ""
+    old_intent_summary: str = ""
+    new_intent_summary: str = ""
+    reason: str = ""
+    intent_source: str = ""  # user_chat | user_cli | director_inferred | system
+
+
+class MissionLearningExtractedEvent(SessionEvent):
+    """A new learning was extracted from execution history."""
+
+    event_type: str = "knowledge.learning.extracted"
+    learning_id: str = ""
+    kind: str = ""
+    title: str = ""
+    domain_tags: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+
+
+class PlatformLearningPromotedEvent(SessionEvent):
+    """A mission learning was promoted to platform scope."""
+
+    event_type: str = "knowledge.learning.promoted"
+    learning_id: str = ""
+    promoted_by: str = ""
+
+
+class LearningContradictionFlaggedEvent(SessionEvent):
+    """Two learnings were flagged as contradictory by the Officer."""
+
+    event_type: str = "knowledge.contradiction.flagged"
+    learning_ids: list[str] = Field(default_factory=list)
+    reason: str = ""
+
+
+# =============================================================================
 # Event Type Registry
 # =============================================================================
 
@@ -575,6 +618,10 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "system.session.created": SystemSessionCreatedEvent,
     "mission_plan.run.completed": MissionPlanRunCompletedEvent,
     "mission_plan.supervisor_decision": SupervisorDecisionEmittedEvent,
+    "knowledge.intent.revised": MissionIntentRevisedEvent,
+    "knowledge.learning.extracted": MissionLearningExtractedEvent,
+    "knowledge.learning.promoted": PlatformLearningPromotedEvent,
+    "knowledge.contradiction.flagged": LearningContradictionFlaggedEvent,
 }
 
 

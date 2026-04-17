@@ -43,6 +43,19 @@ def _get_dispatch_config() -> tuple[int, int]:
 # Fallback used only when config is unavailable (e.g. unit tests).
 DEFAULT_TOKEN_BUDGET = 50_000
 
+
+def _get_learnings_config() -> dict:
+    """Load knowledge.learnings config for assembler budget."""
+    try:
+        from modules.backend.core.config import get_app_config
+        cfg = get_app_config().missions.knowledge.learnings
+        return {
+            "reserve_tokens": cfg.context_assembler_reserve_tokens,
+            "max_entries": cfg.context_assembler_max_entries,
+        }
+    except Exception:
+        return {"reserve_tokens": 1500, "max_entries": 5}
+
 # Domain tags that indicate a task needs codebase structural context
 _CODING_TAGS = frozenset({
     "code", "implementation", "refactor", "bugfix",
@@ -133,6 +146,17 @@ class ContextAssembler:
                 packet["code_map"] = code_map_content
                 remaining_budget -= estimate_tokens(code_map_content)
 
+        # Layer 2.5: Learnings (Plan 57 — reusable strategy from past failures)
+        if remaining_budget > 300 and domain_tags:
+            learnings = await self._assemble_learnings(
+                mission_id, domain_tags, remaining_budget,
+            )
+            if learnings:
+                learnings_tokens = estimate_tokens(learnings)
+                if learnings_tokens <= remaining_budget:
+                    packet["learnings"] = learnings
+                    remaining_budget -= learnings_tokens
+
         # Layer 2: History (optional, trimmed first)
         if remaining_budget > 500 and domain_tags:
             history = await self._assemble_history(
@@ -179,6 +203,59 @@ class ContextAssembler:
                     content = render_for_agent(code_map_json, max_tokens)
 
         return content
+
+    async def _assemble_learnings(
+        self,
+        mission_id: str,
+        domain_tags: list[str],
+        remaining_budget: int,
+    ) -> list[dict] | None:
+        """Assemble Layer 2.5 learnings within budget (Plan 57)."""
+        try:
+            from modules.backend.repositories.mission_learning import MissionLearningRepository
+
+            repo = MissionLearningRepository(self._context_manager._context_repo.session)
+            learnings_cfg = _get_learnings_config()
+            max_entries = learnings_cfg.get("max_entries", 5)
+
+            # Mission-scoped learnings with matching domain tags
+            learnings = await repo.list_by_mission(
+                mission_id,
+                domain_tags=domain_tags,
+                limit=max_entries,
+            )
+
+            # Also include platform-promoted learnings with overlapping tags
+            platform = await repo.list_platform_promoted(
+                domain_tags=domain_tags,
+                limit=max_entries,
+            )
+
+            # Merge, dedup by id, sort by confidence desc
+            seen: set[str] = set()
+            merged: list[dict] = []
+            for l in sorted(
+                learnings + platform,
+                key=lambda x: x.confidence,
+                reverse=True,
+            ):
+                if l.id in seen:
+                    continue
+                seen.add(l.id)
+                merged.append({
+                    "kind": l.kind,
+                    "title": l.title,
+                    "recommendation": l.recommendation,
+                    "confidence": l.confidence,
+                    "domain_tags": l.domain_tags,
+                })
+                if len(merged) >= max_entries:
+                    break
+
+            return merged if merged else None
+        except Exception:
+            logger.debug("Learnings assembly skipped (not available)")
+            return None
 
     async def _assemble_history(
         self,

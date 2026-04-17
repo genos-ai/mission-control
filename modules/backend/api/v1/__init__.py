@@ -14,6 +14,8 @@ from modules.backend.api.v1.endpoints import (
     catalog,
     client_errors,
     executions,
+    knowledge,
+    mission_knowledge,
     missions,
     notes,
     sessions,
@@ -62,3 +64,9 @@ router.include_router(streams.router, prefix="/streams", tags=["streams"])
 
 # Client error reporting (frontend → server logs)
 router.include_router(client_errors.router, prefix="/client-errors", tags=["client-errors"])
+
+# Knowledge platform (Plan 57) — mission-scoped endpoints (mounted at root for /missions/{id}/... paths)
+router.include_router(mission_knowledge.router, tags=["knowledge"])
+
+# Knowledge platform (Plan 57) — platform-scoped endpoints (admin only)
+router.include_router(knowledge.router, tags=["knowledge"])
