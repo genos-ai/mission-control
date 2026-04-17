@@ -1,0 +1,46 @@
+# Knowledge Officer Agent Configuration (Plan 57 Phase E)
+#   Governance agent for the knowledge platform.
+#   Runs daily via Temporal schedule. Flags contradictions,
+#   promotes learnings to platform scope, retracts stale entries.
+#
+#   Haiku model — cheap governance, not deep reasoning.
+#   Budget capped at $0.10/run.
+
+agent_name: system.knowledge.officer.agent
+agent_type: horizontal
+description: "Curates the knowledge platform: flags contradictions, promotes cross-mission learnings, retracts stale entries."
+enabled: true
+version: "1.0.0"
+
+model:
+  name: "anthropic:claude-haiku-4-5-20251001"
+  temperature: 0.0
+  max_tokens: 4096
+
+keywords:
+  - knowledge
+  - curation
+  - contradiction
+  - promotion
+
+tools: []
+
+max_input_length: 32000
+max_budget_usd: 0.10
+
+execution:
+  mode: local
+invocation:
+  tier: system
+
+scope:
+  read:
+    - "modules/"
+    - "config/"
+  write: []
+
+interface:
+  input:
+    mission_id: string
+  output:
+    report: object
