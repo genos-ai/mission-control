@@ -498,6 +498,239 @@ def console_monitor(ctx, view, refresh):
 
 
 # =============================================================================
+# Intent commands (Plan 57)
+# =============================================================================
+
+
+@mc.group("intent", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def intent(ctx):
+    """View and manage mission intent."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@intent.command("show")
+@click.pass_obj
+def intent_show(ctx):
+    """Show the current mission intent."""
+
+    async def _run():
+        mid = await _async_require_mission()
+        from modules.clients.common.display import get_console
+        from modules.clients.common.knowledge_rendering import render_intent
+        from modules.backend.services.knowledge import KnowledgeService
+
+        async with KnowledgeService.factory() as svc:
+            data = await svc.get_current_intent(mid)
+
+        console_obj = get_console()
+        if data:
+            console_obj.print(render_intent(data))
+        else:
+            console_obj.print("[dim]No intent set for this mission.[/dim]")
+
+    asyncio.run(_run())
+
+
+@intent.command("history")
+@click.option("--limit", "-n", default=20, help="Max revisions to show")
+@click.pass_obj
+def intent_history(ctx, limit):
+    """Show intent revision timeline."""
+
+    async def _run():
+        mid = await _async_require_mission()
+        from modules.clients.common.display import get_console
+        from modules.clients.common.knowledge_rendering import render_intent_history
+        from modules.backend.services.mission_intent import MissionIntentService
+
+        async with MissionIntentService.factory() as svc:
+            revisions = await svc.list_revisions(mid, limit=limit)
+
+        console_obj = get_console()
+        if revisions:
+            data = [
+                {
+                    "intent_summary": r.intent_summary,
+                    "source": r.source,
+                    "reason": r.reason,
+                    "created_at": str(r.created_at),
+                }
+                for r in revisions
+            ]
+            console_obj.print(render_intent_history(data))
+        else:
+            console_obj.print("[dim]No intent revisions yet.[/dim]")
+
+    asyncio.run(_run())
+
+
+@intent.command("set")
+@click.argument("intent_text")
+@click.option("--reason", "-r", default="User-set via CLI", help="Reason for change")
+@click.pass_obj
+def intent_set(ctx, intent_text, reason):
+    """Set a new mission intent."""
+
+    async def _run():
+        mid = await _async_require_mission()
+        from modules.clients.common.display import get_console
+        from modules.backend.services.mission_intent import MissionIntentService
+
+        async with MissionIntentService.factory() as svc:
+            result = await svc.create_intent(
+                mid, intent_text, source="user_cli", reason=reason,
+            )
+
+        console_obj = get_console()
+        if result:
+            console_obj.print(f"[green]Intent updated:[/green] {result.intent_summary}")
+        else:
+            console_obj.print("[dim]Intent unchanged (identical to current).[/dim]")
+
+    asyncio.run(_run())
+
+
+# =============================================================================
+# Learnings commands (Plan 57)
+# =============================================================================
+
+
+@mc.group("learnings", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def learnings(ctx):
+    """View mission learnings."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@learnings.command("list")
+@click.option("--kind", "-k", default=None, help="Filter by kind")
+@click.option("--domain", "-d", default=None, help="Filter by domain tag")
+@click.pass_obj
+def learnings_list(ctx, kind, domain):
+    """List learnings for the current mission."""
+
+    async def _run():
+        mid = await _async_require_mission()
+        from modules.clients.common.display import get_console
+        from modules.clients.common.knowledge_rendering import render_learning_list
+        from modules.backend.services.mission_learning import MissionLearningService
+
+        tags = [domain] if domain else None
+        async with MissionLearningService.factory() as svc:
+            items = await svc.list_by_mission(mid, kind=kind, domain_tags=tags)
+
+        console_obj = get_console()
+        if items:
+            data = [
+                {
+                    "kind": l.kind,
+                    "title": l.title,
+                    "confidence": l.confidence,
+                    "occurrence_count": l.occurrence_count,
+                    "domain_tags": l.domain_tags,
+                    "platform_promoted": l.platform_promoted,
+                    "status": l.status,
+                }
+                for l in items
+            ]
+            console_obj.print(render_learning_list(data))
+        else:
+            console_obj.print("[dim]No learnings extracted yet.[/dim]")
+
+    asyncio.run(_run())
+
+
+@learnings.command("show")
+@click.argument("learning_id")
+@click.pass_obj
+def learnings_show(ctx, learning_id):
+    """Show a specific learning in detail."""
+
+    async def _run():
+        from modules.clients.common.display import get_console
+        from modules.clients.common.knowledge_rendering import render_learning_card
+        from modules.backend.repositories.mission_learning import MissionLearningRepository
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            repo = MissionLearningRepository(db)
+            learning = await repo.get_by_id(learning_id)
+
+        console_obj = get_console()
+        console_obj.print(render_learning_card({
+            "kind": learning.kind,
+            "title": learning.title,
+            "body": learning.body,
+            "recommendation": learning.recommendation,
+            "confidence": learning.confidence,
+            "occurrence_count": learning.occurrence_count,
+            "domain_tags": learning.domain_tags,
+            "agent_names": learning.agent_names,
+            "platform_promoted": learning.platform_promoted,
+            "created_at": str(learning.created_at),
+        }))
+
+    asyncio.run(_run())
+
+
+# =============================================================================
+# Knowledge platform commands (Plan 57 — sysadmin)
+# =============================================================================
+
+
+@mc.group("knowledge", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def knowledge(ctx):
+    """Platform knowledge (sysadmin)."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@knowledge.command("search")
+@click.argument("query")
+@click.option("--tags", "-t", default=None, help="Comma-separated domain tags")
+@click.option("--kinds", "-k", default=None, help="Comma-separated kinds")
+@click.option("--mode", "-m", default="hybrid", type=click.Choice(["structured", "hybrid", "semantic"]))
+@click.pass_obj
+def knowledge_search(ctx, query, tags, kinds, mode):
+    """Search the knowledge platform."""
+
+    async def _run():
+        from modules.clients.common.display import get_console
+        from modules.clients.common.knowledge_rendering import render_knowledge_search_results
+        from modules.backend.services.knowledge import KnowledgeService
+
+        tag_list = [t.strip() for t in tags.split(",")] if tags else None
+        kind_list = [k.strip() for k in kinds.split(",")] if kinds else None
+
+        async with KnowledgeService.factory() as svc:
+            entries = await svc.search(
+                query, domain_tags=tag_list, kinds=kind_list, mode=mode,
+            )
+
+        console_obj = get_console()
+        if entries:
+            data = [
+                {
+                    "kind": e.kind,
+                    "title": e.title,
+                    "domain_tags": e.domain_tags,
+                    "confidence": e.confidence,
+                    "distance": e.distance,
+                }
+                for e in entries
+            ]
+            console_obj.print(render_knowledge_search_results(data))
+        else:
+            console_obj.print("[dim]No matching knowledge entries found.[/dim]")
+
+    asyncio.run(_run())
+
+
+# =============================================================================
 # Tree command
 # =============================================================================
 
