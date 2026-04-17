@@ -77,6 +77,17 @@ class Session(UUIDMixin, TimestampMixin, Base):
         Float, nullable=True
     )  # None = unlimited
 
+    # Rolling summary — anchored compression for long sessions (Plan 57 Phase C)
+    rolling_summary: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )
+    rolling_summary_anchor: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    rolling_summary_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+
     # Activity tracking
     last_activity_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utc_now

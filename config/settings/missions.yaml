@@ -20,3 +20,42 @@ pcd_prune_threshold_pct: 80
 pcd_alert_threshold_pct: 90
 history_summarize_after_days: 30
 enable_context_assembly: true
+
+# =============================================================================
+# Knowledge Platform (Plan 57)
+# =============================================================================
+knowledge:
+  enabled: true
+
+  embedding:
+    provider: openai                    # openai | voyage | local
+    model: text-embedding-3-small       # 1536 dims
+    dimensions: 1536
+    version: 1                          # bumps trigger backfill
+    backfill_batch_size: 50
+    backfill_schedule_cron: "15 4 * * *"  # daily 04:15 UTC
+    default_search_mode: hybrid
+    fail_open: true                     # provider outage → structured-only fallback
+
+  learnings:
+    min_occurrence_for_extraction: 2
+    promotion_confidence_threshold: 0.7
+    promotion_min_missions: 2
+    context_assembler_reserve_tokens: 1500
+    context_assembler_max_entries: 5
+    dedup_similarity_threshold: 0.92    # cosine; above = increment, not create
+    evidence_render_limit: 20           # UI pagination only
+
+  intent:
+    auto_capture: true
+    summary_max_chars: 160
+    dedup_similarity_threshold: 0.95
+
+  session_memory:
+    compression_threshold_messages: 50
+    summary_max_tokens: 8000
+
+  officer:
+    schedule_cron: "0 4 * * *"          # daily 04:00 UTC
+    budget_usd_per_run: 0.10
+    model: haiku

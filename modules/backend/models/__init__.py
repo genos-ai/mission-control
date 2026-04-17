@@ -13,6 +13,9 @@ from modules.backend.models.note import Note
 from modules.backend.models.mission import Mission, MissionMember
 from modules.backend.models.mission_context import ContextChange, ContextMilestone, MissionContext
 from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
+from modules.backend.models.mission_intent import IntentSource, MissionIntent
+from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
+from modules.backend.models.embedding import Embedding
 from modules.backend.models.mission_artifact import (
     ArtifactContentType,
     ArtifactType,
@@ -43,14 +46,20 @@ __all__ = [
     "Base",
     "ContextChange",
     "ContextMilestone",
+    "Embedding",
     "Execution",
     "ExecutionDecision",
     "ExecutionRecord",
+    "IntentSource",
+    "LearningKind",
+    "LearningStatus",
     "MilestoneSummary",
     "Mission",
     "MissionArtifact",
     "MissionContext",
     "MissionDecision",
+    "MissionIntent",
+    "MissionLearning",
     "MissionMember",
     "MissionPlan",
     "MissionPlanStatus",

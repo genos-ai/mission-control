@@ -383,6 +383,65 @@ class NotificationsSchema(_StrictBase):
 # =============================================================================
 
 
+class KnowledgeEmbeddingSchema(_StrictBase):
+    """Embedding provider configuration."""
+
+    provider: str = "openai"  # openai | voyage | local
+    model: str = "text-embedding-3-small"
+    dimensions: int = 1536
+    version: int = 1  # bumps trigger backfill
+    backfill_batch_size: int = 50
+    backfill_schedule_cron: str = "15 4 * * *"
+    default_search_mode: str = "hybrid"
+    fail_open: bool = True
+
+
+class KnowledgeLearningsSchema(_StrictBase):
+    """Learnings extraction and promotion configuration."""
+
+    min_occurrence_for_extraction: int = 2
+    promotion_confidence_threshold: float = 0.7
+    promotion_min_missions: int = 2
+    context_assembler_reserve_tokens: int = 1500
+    context_assembler_max_entries: int = 5
+    dedup_similarity_threshold: float = 0.92
+    evidence_render_limit: int = 20
+
+
+class KnowledgeIntentSchema(_StrictBase):
+    """Intent capture configuration."""
+
+    auto_capture: bool = True
+    summary_max_chars: int = 160
+    dedup_similarity_threshold: float = 0.95
+
+
+class KnowledgeSessionMemorySchema(_StrictBase):
+    """Session rolling summary configuration."""
+
+    compression_threshold_messages: int = 50
+    summary_max_tokens: int = 8000
+
+
+class KnowledgeOfficerSchema(_StrictBase):
+    """Knowledge Officer agent configuration."""
+
+    schedule_cron: str = "0 4 * * *"
+    budget_usd_per_run: float = 0.10
+    model: str = "haiku"
+
+
+class KnowledgeSchema(_StrictBase):
+    """Knowledge platform configuration (Plan 57)."""
+
+    enabled: bool = True
+    embedding: KnowledgeEmbeddingSchema = Field(default_factory=KnowledgeEmbeddingSchema)
+    learnings: KnowledgeLearningsSchema = Field(default_factory=KnowledgeLearningsSchema)
+    intent: KnowledgeIntentSchema = Field(default_factory=KnowledgeIntentSchema)
+    session_memory: KnowledgeSessionMemorySchema = Field(default_factory=KnowledgeSessionMemorySchema)
+    officer: KnowledgeOfficerSchema = Field(default_factory=KnowledgeOfficerSchema)
+
+
 class MissionsSchema(_StrictBase):
     """Mission system configuration."""
 
@@ -394,6 +453,7 @@ class MissionsSchema(_StrictBase):
     pcd_alert_threshold_pct: int = 90
     history_summarize_after_days: int = 30
     enable_context_assembly: bool = True
+    knowledge: KnowledgeSchema = Field(default_factory=KnowledgeSchema)
 
 
 # =============================================================================
