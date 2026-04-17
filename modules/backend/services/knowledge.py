@@ -431,12 +431,8 @@ class KnowledgeService(BaseService):
     @staticmethod
     def _get_embedding_version() -> int:
         """Get current embedding version from config."""
-        try:
-            from modules.backend.core.config import get_app_config
-            return get_app_config().missions.knowledge.embedding.version
-        except Exception:
-            logger.debug("Embedding version config unavailable, defaulting to 1")
-            return 1
+        from modules.backend.services.knowledge_helpers import get_embedding_version
+        return get_embedding_version()
 
 
 def _parse_vector(vec_str: str | None) -> list[float] | None:

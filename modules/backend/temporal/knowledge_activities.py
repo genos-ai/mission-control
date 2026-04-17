@@ -3,6 +3,9 @@ Knowledge Platform Temporal Activities (Plan 57).
 
 Local activities for learning extraction and embedding generation.
 Scheduled via Temporal: daily extraction + daily sweep for missing embeddings.
+
+Uses shared helpers from services/knowledge_helpers.py to avoid
+duplicating source-row loading and config resolution.
 """
 
 from temporalio import activity
@@ -46,24 +49,25 @@ async def embed_source(source_table: str, source_id: str) -> dict:
     from modules.backend.core.database import get_async_session
     from modules.backend.core.embeddings import content_hash, get_embedder
     from modules.backend.repositories.embedding import EmbeddingRepository
+    from modules.backend.services.knowledge_helpers import (
+        get_embed_text,
+        get_embedding_version,
+        get_source_mission_id,
+    )
 
     embedder = get_embedder()
-    version = _get_embedding_version()
+    version = get_embedding_version()
 
-    # Load the source row's embed text
-    embed_text = await _get_embed_text(source_table, source_id)
+    embed_text = await get_embed_text(source_table, source_id)
     if not embed_text:
         return {"status": "skipped", "reason": "no embed text"}
 
-    # Generate embedding
     vec = await embedder.embed(embed_text)
     if not vec:
         return {"status": "skipped", "reason": "provider returned empty"}
 
-    # Get mission_id for cascade
-    mission_id = await _get_mission_id(source_table, source_id)
+    mission_id = await get_source_mission_id(source_table, source_id)
 
-    # Upsert
     async with get_async_session() as db:
         repo = EmbeddingRepository(db)
         await repo.upsert(
@@ -98,9 +102,14 @@ async def backfill_embeddings(
     from modules.backend.core.database import get_async_session
     from modules.backend.core.embeddings import content_hash, get_embedder
     from modules.backend.repositories.embedding import EmbeddingRepository
+    from modules.backend.services.knowledge_helpers import (
+        get_embed_text,
+        get_embedding_version,
+        get_source_mission_id,
+    )
 
     embedder = get_embedder()
-    version = to_version or _get_embedding_version()
+    version = to_version or get_embedding_version()
     tables = [source_table] if source_table else [
         "mission_learnings",
         "mission_intents",
@@ -115,14 +124,14 @@ async def backfill_embeddings(
             missing = await repo.list_missing(table, version, limit=50)
 
             for row in missing:
-                embed_text = await _get_embed_text(table, row["source_id"])
+                embed_text = await get_embed_text(table, row["source_id"])
                 if not embed_text:
                     continue
                 vec = await embedder.embed(embed_text)
                 if not vec:
                     continue
 
-                mission_id = await _get_mission_id(table, row["source_id"])
+                mission_id = await get_source_mission_id(table, row["source_id"])
                 await repo.upsert(
                     source_table=table,
                     source_id=row["source_id"],
@@ -139,76 +148,3 @@ async def backfill_embeddings(
     result = {"total_embedded": total_embedded, "version": version}
     logger.info("Embedding backfill complete", extra=result)
     return result
-
-
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
-
-
-def _get_embedding_version() -> int:
-    """Get current embedding version from config."""
-    try:
-        from modules.backend.core.config import get_app_config
-        return get_app_config().missions.knowledge.embedding.version
-    except Exception:
-        return 1
-
-
-async def _get_embed_text(source_table: str, source_id: str) -> str | None:
-    """Load the text to embed from a source row."""
-    from modules.backend.core.database import get_async_session
-
-    async with get_async_session() as db:
-        if source_table == "mission_learnings":
-            from modules.backend.repositories.mission_learning import MissionLearningRepository
-            repo = MissionLearningRepository(db)
-            try:
-                row = await repo.get_by_id(source_id)
-                return row.embed_text
-            except Exception:
-                return None
-
-        elif source_table == "mission_intents":
-            from modules.backend.repositories.mission_intent import MissionIntentRepository
-            repo = MissionIntentRepository(db)
-            try:
-                row = await repo.get_by_id(source_id)
-                return f"{row.intent_summary}\n{row.intent}"
-            except Exception:
-                return None
-
-        elif source_table == "mission_decisions":
-            from modules.backend.repositories.mission_history import MissionDecisionRepository
-            repo = MissionDecisionRepository(db)
-            try:
-                row = await repo.get_by_id(source_id)
-                return f"{row.decision}\n{row.rationale}"
-            except Exception:
-                return None
-
-        elif source_table == "milestone_summaries":
-            from modules.backend.repositories.mission_history import MilestoneSummaryRepository
-            repo = MilestoneSummaryRepository(db)
-            try:
-                row = await repo.get_by_id(source_id)
-                return f"{row.title}\n{row.summary}"
-            except Exception:
-                return None
-
-    return None
-
-
-async def _get_mission_id(source_table: str, source_id: str) -> str | None:
-    """Get mission_id from a source row for embedding CASCADE."""
-    from modules.backend.core.database import get_async_session
-
-    async with get_async_session() as db:
-        if source_table in ("mission_learnings", "mission_intents", "mission_decisions", "milestone_summaries"):
-            from sqlalchemy import select, text
-            result = await db.execute(
-                text(f"SELECT mission_id FROM {source_table} WHERE id = :id").bindparams(id=source_id)
-            )
-            row = result.first()
-            return row[0] if row else None
-    return None

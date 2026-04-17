@@ -6,12 +6,14 @@ Current intent = most recent row for a mission_id.
 """
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
-from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
+from modules.backend.core.utils import utc_now
+from modules.backend.models.base import Base, UUIDMixin
 
 
 class IntentSource(str, enum.Enum):
@@ -26,8 +28,8 @@ class IntentSource(str, enum.Enum):
 class MissionIntent(UUIDMixin, Base):
     """A single intent revision for a mission.
 
-    The table is append-only. Current intent is the most recent row
-    (ORDER BY created_at DESC LIMIT 1) for a given mission_id.
+    Append-only — does not inherit TimestampMixin (no updated_at needed).
+    Current intent is the most recent row (ORDER BY created_at DESC LIMIT 1).
 
     The ``scope`` field captures what's in/out of scope as a structured
     JSON object: ``{"in": ["auth refactor", "tests"], "out": ["frontend"]}``.
@@ -69,17 +71,12 @@ class MissionIntent(UUIDMixin, Base):
         ForeignKey("sessions.id", ondelete="SET NULL"),
         nullable=True,
     )
-
-    # created_at from TimestampMixin — no updated_at needed (append-only)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now,
+    )
 
     def __repr__(self) -> str:
         return (
             f"<MissionIntent(mission={self.mission_id}, "
             f"source={self.source}, summary={self.intent_summary!r:.40})>"
         )
-
-
-# Override TimestampMixin's updated_at — intents are append-only
-MissionIntent.updated_at = mapped_column(  # type: ignore[assignment]
-    nullable=True, default=None, use_existing_column=True,
-)
