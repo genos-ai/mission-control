@@ -241,7 +241,7 @@ class KnowledgeService(BaseService):
             if mission_id:
                 from modules.backend.repositories.mission_history import MissionDecisionRepository
                 decision_repo = MissionDecisionRepository(self.session)
-                decisions = await decision_repo.list_by_mission(mission_id, limit=limit)
+                decisions = await decision_repo.list_active(mission_id, limit=limit)
                 for d in decisions:
                     if query and query.lower() not in f"{d.decision} {d.rationale}".lower():
                         continue

@@ -58,7 +58,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
             # Update in place
             await self.session.execute(
                 text(
-                    "UPDATE embeddings SET embedding_data = :vec, "
+                    "UPDATE embeddings SET embedding_data = CAST(:vec AS vector), "
                     "model = :model, content_hash = :hash "
                     "WHERE id = :id"
                 ).bindparams(
@@ -81,7 +81,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
                     "(id, source_table, source_id, mission_id, "
                     "embedding_data, model, version, content_hash, created_at) "
                     "VALUES (:id, :src_table, :src_id, :mission_id, "
-                    ":vec, :model, :version, :hash, :created_at)"
+                    "CAST(:vec AS vector), :model, :version, :hash, :created_at)"
                 ).bindparams(
                     id=new_id,
                     src_table=source_table,
@@ -154,10 +154,10 @@ class EmbeddingRepository(BaseRepository[Embedding]):
 
         sql = text(
             f"SELECT source_table, source_id, "
-            f"embedding_data <=> :vec AS distance "
+            f"embedding_data <=> CAST(:vec AS vector) AS distance "
             f"FROM embeddings "
             f"WHERE embedding_data IS NOT NULL{where_sql} "
-            f"ORDER BY embedding_data <=> :vec "
+            f"ORDER BY embedding_data <=> CAST(:vec AS vector) "
             f"LIMIT :limit"
         ).bindparams(**params)
 
@@ -213,10 +213,10 @@ class EmbeddingRepository(BaseRepository[Embedding]):
 
         sql = text(
             f"SELECT source_table, source_id, "
-            f"embedding_data <=> :vec AS distance "
+            f"embedding_data <=> CAST(:vec AS vector) AS distance "
             f"FROM embeddings "
             f"WHERE embedding_data IS NOT NULL AND ({where_sql}) "
-            f"ORDER BY embedding_data <=> :vec "
+            f"ORDER BY embedding_data <=> CAST(:vec AS vector) "
             f"LIMIT :limit"
         ).bindparams(**params)
 

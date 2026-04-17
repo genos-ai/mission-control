@@ -14,7 +14,7 @@ All endpoints require admin role.
 from fastapi import APIRouter, Query
 
 from modules.backend.core.dependencies import AdminRole, DbSession
-from modules.backend.schemas.base import SuccessResponse
+from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_learning import MissionLearningListResponse, MissionLearningResponse
 from modules.backend.services.knowledge import KnowledgeService
 from modules.backend.services.mission_learning import MissionLearningService
@@ -33,7 +33,7 @@ async def search_knowledge(
     platform_only: bool = Query(False),
     mode: str = Query("hybrid", description="structured | hybrid | semantic"),
     limit: int = Query(20, ge=1, le=100),
-) -> SuccessResponse:
+) -> ApiResponse:
     """Search across all knowledge surfaces."""
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
     kind_list = [k.strip() for k in kinds.split(",")] if kinds else None
@@ -43,7 +43,7 @@ async def search_knowledge(
         q, mission_id=mission_id, platform_only=platform_only,
         kinds=kind_list, domain_tags=tag_list, mode=mode, limit=limit,
     )
-    return SuccessResponse(data=[e.model_dump() for e in entries])
+    return ApiResponse(data=[e.model_dump() for e in entries])
 
 
 @router.get("/knowledge/similar/{source_table}/{source_id}")
@@ -53,11 +53,11 @@ async def get_similar_entries(
     db: DbSession,
     admin: AdminRole,
     limit: int = Query(10, ge=1, le=50),
-) -> SuccessResponse:
+) -> ApiResponse:
     """Find entries similar to the given one by vector distance."""
     svc = KnowledgeService(db)
     entries = await svc.similar(source_table, source_id, limit=limit)
-    return SuccessResponse(data=[e.model_dump() for e in entries])
+    return ApiResponse(data=[e.model_dump() for e in entries])
 
 
 @router.get("/knowledge/learnings")
@@ -86,7 +86,7 @@ async def list_platform_decisions(
     domain: str | None = Query(None),
     mission_id: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
-) -> SuccessResponse:
+) -> ApiResponse:
     """List archived decisions across missions."""
     from sqlalchemy import desc, select
     from modules.backend.models.mission_history import MissionDecision
@@ -100,7 +100,7 @@ async def list_platform_decisions(
 
     result = await db.execute(query)
     decisions = result.scalars().all()
-    return SuccessResponse(data=[
+    return ApiResponse(data=[
         {
             "id": d.id,
             "mission_id": d.mission_id,
@@ -122,7 +122,7 @@ async def list_platform_milestones(
     admin: AdminRole,
     mission_id: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
-) -> SuccessResponse:
+) -> ApiResponse:
     """List milestone summaries across missions."""
     from sqlalchemy import desc, select
     from modules.backend.models.mission_history import MilestoneSummary
@@ -134,7 +134,7 @@ async def list_platform_milestones(
 
     result = await db.execute(query)
     milestones = result.scalars().all()
-    return SuccessResponse(data=[
+    return ApiResponse(data=[
         {
             "id": m.id,
             "mission_id": m.mission_id,
@@ -152,10 +152,10 @@ async def list_platform_milestones(
 async def list_knowledge_tags(
     db: DbSession,
     admin: AdminRole,
-) -> SuccessResponse:
+) -> ApiResponse:
     """List the current domain tag taxonomy."""
     from modules.backend.core.domain_tags import CROSS_CUTTING_TAGS
-    return SuccessResponse(data={
+    return ApiResponse(data={
         "cross_cutting_tags": sorted(CROSS_CUTTING_TAGS),
         "total": len(CROSS_CUTTING_TAGS),
     })

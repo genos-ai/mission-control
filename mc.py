@@ -694,8 +694,10 @@ def knowledge(ctx):
 @click.option("--tags", "-t", default=None, help="Comma-separated domain tags")
 @click.option("--kinds", "-k", default=None, help="Comma-separated kinds")
 @click.option("--mode", "-m", default="hybrid", type=click.Choice(["structured", "hybrid", "semantic"]))
+@click.option("--mission", default=None, help="Mission ID (uses current if omitted)")
+@click.option("--platform-only", is_flag=True, help="Only platform-promoted entries")
 @click.pass_obj
-def knowledge_search(ctx, query, tags, kinds, mode):
+def knowledge_search(ctx, query, tags, kinds, mode, mission, platform_only):
     """Search the knowledge platform."""
 
     async def _run():
@@ -703,12 +705,21 @@ def knowledge_search(ctx, query, tags, kinds, mode):
         from modules.clients.common.knowledge_rendering import render_knowledge_search_results
         from modules.backend.services.knowledge import KnowledgeService
 
+        # Use current mission if not specified
+        mid = mission
+        if not mid and not platform_only:
+            try:
+                mid = await _async_require_mission()
+            except SystemExit:
+                mid = None
+
         tag_list = [t.strip() for t in tags.split(",")] if tags else None
         kind_list = [k.strip() for k in kinds.split(",")] if kinds else None
 
         async with KnowledgeService.factory() as svc:
             entries = await svc.search(
-                query, domain_tags=tag_list, kinds=kind_list, mode=mode,
+                query, mission_id=mid, platform_only=platform_only,
+                domain_tags=tag_list, kinds=kind_list, mode=mode,
             )
 
         console_obj = get_console()

@@ -14,7 +14,7 @@ POST /missions/{id}/intent         — create intent revision
 from fastapi import APIRouter, Query
 
 from modules.backend.core.dependencies import CurrentUser, DbSession
-from modules.backend.schemas.base import SuccessResponse
+from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_intent import (
     MissionIntentCreate,
     MissionIntentListResponse,
@@ -42,12 +42,12 @@ async def get_mission_knowledge(
     db: DbSession,
     user: CurrentUser,
     domain_tags: str | None = Query(None, description="Comma-separated domain tags"),
-) -> SuccessResponse:
+) -> ApiResponse:
     """Unified knowledge view for a mission."""
     tags = [t.strip() for t in domain_tags.split(",")] if domain_tags else None
     svc = KnowledgeService(db)
     result = await svc.get_mission_knowledge(mission_id, domain_tags=tags)
-    return SuccessResponse(data=result)
+    return ApiResponse(data=result)
 
 
 # ------------------------------------------------------------------
@@ -84,12 +84,12 @@ async def get_learning_detail(
     learning_id: str,
     db: DbSession,
     user: CurrentUser,
-) -> SuccessResponse:
+) -> ApiResponse:
     """Get a single learning with evidence."""
     from modules.backend.repositories.mission_learning import MissionLearningRepository
     repo = MissionLearningRepository(db)
     learning = await repo.get_by_id(learning_id)
-    return SuccessResponse(data=MissionLearningResponse.model_validate(learning))
+    return ApiResponse(data=MissionLearningResponse.model_validate(learning))
 
 
 @router.get("/missions/{mission_id}/learnings/{learning_id}/evidence")
@@ -100,7 +100,7 @@ async def get_learning_evidence(
     user: CurrentUser,
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-) -> SuccessResponse:
+) -> ApiResponse:
     """Paged evidence for a learning entry."""
     from modules.backend.repositories.mission_learning import MissionLearningRepository
     repo = MissionLearningRepository(db)
@@ -117,7 +117,7 @@ async def get_learning_evidence(
         else:
             paginated[key] = ids
 
-    return SuccessResponse(data={
+    return ApiResponse(data={
         "evidence": paginated,
         "evidence_total": total,
         "offset": offset,
@@ -132,11 +132,11 @@ async def get_similar_learnings(
     db: DbSession,
     user: CurrentUser,
     limit: int = Query(10, ge=1, le=50),
-) -> SuccessResponse:
+) -> ApiResponse:
     """Find vector-similar entries to this learning."""
     svc = KnowledgeService(db)
     entries = await svc.similar("mission_learnings", learning_id, limit=limit)
-    return SuccessResponse(data=[e.model_dump() for e in entries])
+    return ApiResponse(data=[e.model_dump() for e in entries])
 
 
 # ------------------------------------------------------------------
@@ -149,11 +149,11 @@ async def get_current_intent(
     mission_id: str,
     db: DbSession,
     user: CurrentUser,
-) -> SuccessResponse:
+) -> ApiResponse:
     """Get the current intent for a mission."""
     svc = KnowledgeService(db)
     intent = await svc.get_current_intent(mission_id)
-    return SuccessResponse(data=intent)
+    return ApiResponse(data=intent)
 
 
 @router.get("/missions/{mission_id}/intent/history")
@@ -180,7 +180,7 @@ async def create_intent_revision(
     body: MissionIntentCreate,
     db: DbSession,
     user: CurrentUser,
-) -> SuccessResponse:
+) -> ApiResponse:
     """Create a new intent revision."""
     svc = MissionIntentService(db)
     intent = await svc.create_intent(
@@ -195,6 +195,6 @@ async def create_intent_revision(
     await db.commit()
 
     if intent is None:
-        return SuccessResponse(data={"status": "dedup", "message": "Identical to current intent"})
+        return ApiResponse(data={"status": "dedup", "message": "Identical to current intent"})
 
-    return SuccessResponse(data=MissionIntentResponse.model_validate(intent))
+    return ApiResponse(data=MissionIntentResponse.model_validate(intent))
