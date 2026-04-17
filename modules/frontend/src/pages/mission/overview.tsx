@@ -28,6 +28,7 @@ import { ActiveRunCard } from '@/components/mission/active-run-card'
 import { RunModal } from '@/components/mission/run-modal'
 import { ROUTES } from '@/lib/constants'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
+import { IntentStrip } from '@/components/knowledge/intent-strip'
 
 export default function OverviewPage() {
   const { id } = useParams<{ id: string }>()
@@ -61,6 +62,9 @@ export default function OverviewPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Current intent strip */}
+      <IntentStrip missionId={id!} />
+
       {/* Action bar */}
       <div className="flex items-center justify-end gap-2">
         <DeleteMissionButton missionId={id!} missionName={mission.name} />

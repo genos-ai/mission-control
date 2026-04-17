@@ -30,6 +30,7 @@ import {
   Settings2,
   Kanban,
   Radio,
+  Lightbulb,
   ListChecks,
   Loader2,
 } from 'lucide-react'
@@ -64,6 +65,7 @@ const tabs = [
   { label: 'Plan',      icon: Kanban,        path: 'plan' },
   { label: 'Narrative', icon: Radio,         path: 'narrative' },
   { label: 'Context',   icon: FileText,      path: 'context' },
+  { label: 'Knowledge', icon: Lightbulb,     path: 'knowledge' },
   { label: 'Runs',      icon: ListChecks,    path: 'runs' },
   { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
   { label: 'Console',   icon: Terminal,      path: 'console' },
@@ -76,6 +78,7 @@ const STATUS_VARIANT: Record<MissionStatus, 'success' | 'warning' | 'secondary'>
 }
 
 function categorize(eventType: string): ConsoleEvent['category'] {
+  if (eventType.startsWith('knowledge.')) return 'system'
   if (
     eventType.startsWith('plan.') ||
     eventType.startsWith('agent.') ||
