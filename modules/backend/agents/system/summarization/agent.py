@@ -40,6 +40,18 @@ class SummarizationOutput(BaseModel):
     )
 
 
+class SessionSpanSummary(BaseModel):
+    """Structured output from session span compression (Plan 57 Phase C).
+
+    Factory.ai 4-category anchored rolling summary.
+    """
+
+    intent: str = Field(..., description="Current session goals and objectives")
+    play_by_play: str = Field(..., description="Sequence of major actions and outcomes")
+    artifact_trail: str = Field(..., description="Files created/modified, resources produced")
+    breadcrumbs: str = Field(..., description="IDs, URLs, keys needed for continuity")
+
+
 @lru_cache(maxsize=1)
 def _get_agent() -> Agent[None, SummarizationOutput]:
     """Cached summarization agent instance. Model loaded from agent.yaml."""
@@ -107,3 +119,79 @@ async def summarize_missions(
         "key_outcomes": output.key_outcomes,
         "domain_tags": output.domain_tags,
     }
+
+
+async def summarize_session_span(
+    messages: list[dict],
+    existing_summary: str | None = None,
+    *,
+    model: Model | None = None,
+) -> str:
+    """Compress a span of session messages into an anchored rolling summary.
+
+    Uses the Factory.ai 4-category pattern:
+    1. SESSION INTENT — goals and current objectives
+    2. PLAY-BY-PLAY — sequence of actions and outcomes
+    3. ARTIFACT TRAIL — files, paths, resources created/modified
+    4. BREADCRUMBS — IDs, URLs, keys needed for continuity
+
+    Only summarizes the new span. Merges with existing summary if present.
+    Uses Haiku for cost efficiency.
+
+    Args:
+        messages: New messages to compress (dicts with 'role' and 'content').
+        existing_summary: Previous rolling summary to merge with (not re-summarized).
+        model: Optional model override.
+
+    Returns:
+        Formatted rolling summary string.
+    """
+    if not messages:
+        return existing_summary or ""
+
+    # Build a session-specific agent (different output type from milestone agent)
+    agent_config = get_registry().get(_AGENT_NAME)
+    m = model or _build_model(agent_config.model)
+    session_agent: Agent[None, SessionSpanSummary] = Agent(
+        m,
+        system_prompt=(
+            "You compress conversation spans into structured summaries. "
+            "Preserve factual detail. Never fabricate information."
+        ),
+        output_type=SessionSpanSummary,
+    )
+
+    formatted_messages = "\n".join(
+        f"[{msg.get('role', 'unknown')}] {msg.get('content', '')[:500]}"
+        for msg in messages
+    )
+
+    prompt = (
+        "Summarize the following conversation span. Preserve:\n"
+        "1. SESSION INTENT: goals and current objectives\n"
+        "2. PLAY-BY-PLAY: sequence of actions and outcomes\n"
+        "3. ARTIFACT TRAIL: files, paths, resources created/modified\n"
+        "4. BREADCRUMBS: IDs, URLs, keys needed for continuity\n\n"
+    )
+    if existing_summary:
+        prompt += (
+            f"Previous summary (DO NOT re-summarize this, only merge):\n"
+            f"{existing_summary}\n\n"
+        )
+    prompt += f"New messages to summarize:\n{formatted_messages}"
+
+    result = await session_agent.run(prompt)
+    output = result.output
+
+    # Format as a readable summary
+    parts = []
+    if output.intent:
+        parts.append(f"**Intent:** {output.intent}")
+    if output.play_by_play:
+        parts.append(f"**Progress:** {output.play_by_play}")
+    if output.artifact_trail:
+        parts.append(f"**Artifacts:** {output.artifact_trail}")
+    if output.breadcrumbs:
+        parts.append(f"**Breadcrumbs:** {output.breadcrumbs}")
+
+    return "\n\n".join(parts)

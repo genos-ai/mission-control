@@ -103,6 +103,20 @@ class MissionService(BaseService):
         # Auto-assign default agents based on tier
         await self._auto_assign_agents(mission.id, tier)
 
+        # Seed initial intent from brief (Plan 57 Phase C)
+        if brief:
+            try:
+                from modules.backend.services.mission_intent import MissionIntentService
+                intent_svc = MissionIntentService(self._session)
+                await intent_svc.create_intent(
+                    mission.id,
+                    brief,
+                    source="system",
+                    reason="Initial intent from mission brief",
+                )
+            except Exception:
+                logger.debug("Intent seeding skipped", extra={"mission_id": mission.id})
+
         self._log_operation(
             "Mission created",
             mission_id=mission.id,

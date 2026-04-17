@@ -857,4 +857,64 @@ def create_agent(model: str | Model) -> Agent:
     # when the supervisor decides ADVANCE_REFINE, PROPOSE_COMPLETE,
     # or ESCALATE. No schedule_followup tool needed.
 
+    # ── Intent Tools (Plan 57 Phase C) ─────────────────────
+
+    @agent.tool
+    async def capture_mission_intent(
+        ctx: RunContext[MissionDirectorDeps],
+        intent: str,
+        scope_in: list[str] | None = None,
+        scope_out: list[str] | None = None,
+        reason: str = "Scope change detected in conversation",
+    ) -> str:
+        """Capture a revised intent when the user's goals or scope change.
+
+        Call this when the user narrows, expands, or reprioritises
+        the mission scope. Not for every message — only when scope
+        actually shifts.
+
+        Args:
+            intent: The full current intent text.
+            scope_in: What's in scope (optional list of items).
+            scope_out: What's out of scope (optional list of items).
+            reason: Why the intent changed.
+        """
+        from modules.backend.agents.tools.intent import capture_intent
+        scope = {}
+        if scope_in:
+            scope["in"] = scope_in
+        if scope_out:
+            scope["out"] = scope_out
+        return await capture_intent(
+            mission_id=ctx.deps.mission_id,
+            intent=intent,
+            scope=scope,
+            reason=reason,
+            session_id=ctx.deps.session_id,
+        )
+
+    @agent.tool
+    async def get_current_mission_intent(
+        ctx: RunContext[MissionDirectorDeps],
+    ) -> str:
+        """Retrieve the current mission intent and scope."""
+        from modules.backend.agents.tools.intent import restate_current_intent
+        return await restate_current_intent(ctx.deps.mission_id)
+
+    # ── Runtime Context Injection (Plan 57 Phase C) ────────
+
+    @agent.instructions
+    async def inject_current_intent(
+        ctx: RunContext[MissionDirectorDeps],
+    ) -> str:
+        """Inject the current intent into every Director turn."""
+        from modules.backend.agents.tools.intent import restate_current_intent
+        try:
+            intent_text = await restate_current_intent(ctx.deps.mission_id)
+            if intent_text and "No intent set" not in intent_text:
+                return f"\n[Mission Intent]\n{intent_text}\n"
+        except Exception:
+            pass
+        return ""
+
     return agent
