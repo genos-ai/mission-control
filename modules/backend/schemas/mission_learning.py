@@ -1,5 +1,7 @@
 """Pydantic schemas for mission learnings — create, response, list, filter."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from modules.backend.schemas.knowledge import Evidence
@@ -49,12 +51,12 @@ class MissionLearningResponse(BaseModel):
     confidence: float
     occurrence_count: int
     platform_promoted: bool
-    promoted_at: str | None
-    promoted_by: str | None
-    contradicts_id: str | None
+    promoted_at: str | datetime | None = None
+    promoted_by: str | None = None
+    contradicts_id: str | None = None
     status: str
-    created_at: str
-    updated_at: str
+    created_at: str | datetime
+    updated_at: str | datetime
 
 
 class MissionLearningListResponse(BaseModel):

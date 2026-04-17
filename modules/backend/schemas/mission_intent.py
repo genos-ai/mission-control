@@ -1,5 +1,7 @@
 """Pydantic schemas for mission intents — create, response, list."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -45,11 +47,11 @@ class MissionIntentResponse(BaseModel):
     intent_summary: str
     scope: dict
     source: str
-    revised_from: str | None
+    revised_from: str | None = None
     reason: str
-    agent_id: str | None
-    session_id: str | None
-    created_at: str
+    agent_id: str | None = None
+    session_id: str | None = None
+    created_at: str | datetime
 
 
 class MissionIntentListResponse(BaseModel):
