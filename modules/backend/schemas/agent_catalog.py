@@ -26,6 +26,8 @@ class AgentCatalogResponse(BaseModel):
     tools: list[str]
     model_config_json: dict[str, Any]
     scope: dict[str, Any]
+    engine: str = "pydantic_ai"
+    effort: str | None = None
 
 
 class AgentCatalogDetailResponse(BaseModel):
@@ -47,6 +49,8 @@ class AgentCatalogDetailResponse(BaseModel):
     keywords: list[str]
     enabled: bool
     visibility: str
+    engine: str = "pydantic_ai"
+    effort: str | None = None
     created_at: datetime
     updated_at: datetime
 

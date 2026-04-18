@@ -21,6 +21,8 @@ class AgentConfigSummary(BaseModel):
     scope: dict[str, Any]
     constraints: dict[str, Any]
     chat_enabled: bool = False
+    engine: str = "pydantic_ai"
+    effort: str | None = None
 
 
 class MissionTeamMemberResponse(BaseModel):

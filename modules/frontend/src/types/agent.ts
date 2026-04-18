@@ -47,4 +47,6 @@ export interface AgentConfigSummary {
     retry_budget?: number
   }
   chat_enabled: boolean
+  engine?: 'pydantic_ai' | 'claude_code' | 'codex' | 'copilot'
+  effort?: 'low' | 'medium' | 'high' | null
 }

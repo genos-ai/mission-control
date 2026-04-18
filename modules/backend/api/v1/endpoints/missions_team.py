@@ -56,6 +56,8 @@ async def list_mission_team(
                 scope=m.agent_catalog.scope,
                 constraints=m.agent_catalog.constraints,
                 chat_enabled=m.agent_catalog.chat_enabled,
+                engine=m.agent_catalog.engine,
+                effort=m.agent_catalog.effort,
             )
         items.append(resp.model_dump())
     return ApiResponse(
