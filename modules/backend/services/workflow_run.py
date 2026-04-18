@@ -10,25 +10,27 @@ each with its own DB session to avoid SQLAlchemy async flush conflicts.
 
 This is the bridge between the stateless WorkflowService (YAML loading)
 and the stateful ExecutionService (execution lifecycle).
+
+Wave-execution methods (_execute_steps, _execute_wave, _execute_step,
+_build_step_objective, _compute_waves) live in workflow_run_waves.py
+and are mixed in via WorkflowRunWavesMixin.
 """
 
-import asyncio
-from collections import defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.execution import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
-from modules.backend.schemas.workflow import WorkflowSchema, WorkflowStepSchema
+from modules.backend.schemas.workflow import WorkflowSchema
 from modules.backend.services.base import BaseService
 from modules.backend.services.execution import ExecutionService
 from modules.backend.services.workflow import WorkflowService
+from modules.backend.services.workflow_run_waves import WorkflowRunWavesMixin
 
 # Factory that returns an async context manager yielding an ExecutionService.
 # Default implementation: ExecutionService.factory
@@ -37,7 +39,7 @@ ExecutionServiceFactory = Callable[[], AbstractAsyncContextManager[ExecutionServ
 logger = get_logger(__name__)
 
 
-class WorkflowRunService(BaseService):
+class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
     """Orchestrates workflow execution."""
 
     def __init__(
@@ -321,209 +323,6 @@ class WorkflowRunService(BaseService):
         """Get a workflow run by ID."""
         return await self._run_repo.get_by_id_or_none(run_id)
 
-    # ---- Internal orchestration ----
-
-    async def _execute_steps(
-        self,
-        run: WorkflowRun,
-        workflow: WorkflowSchema,
-        session_id: str,
-        on_progress: Any | None = None,
-        gate: object | None = None,
-    ) -> None:
-        """Execute steps in topological wave order.
-
-        Steps within a wave have no mutual dependencies and run in
-        parallel via asyncio.gather. Each step gets its own DB session
-        (via execution_service_factory) to avoid SQLAlchemy flush conflicts.
-        Falls back to sequential execution when no factory is provided.
-        """
-        waves = self._compute_waves(workflow.steps)
-        completed_outcomes: dict[str, dict] = {}
-        step_map = {step.id: step for step in workflow.steps}
-        total_steps = len(workflow.steps)
-
-        def _emit(event: dict) -> None:
-            if on_progress:
-                on_progress(event)
-
-        _emit({"type": "workflow_start", "workflow": workflow.workflow_name, "total_steps": total_steps})
-
-        for wave_num, wave_step_ids in enumerate(waves):
-            logger.info(
-                "Executing wave",
-                extra={
-                    "run_id": run.id,
-                    "wave": wave_num + 1,
-                    "steps": wave_step_ids,
-                },
-            )
-
-            # Check budget before each wave
-            if run.budget_usd and run.total_cost_usd >= run.budget_usd:
-                raise RuntimeError(
-                    f"Budget exceeded: ${run.total_cost_usd:.4f} >= "
-                    f"${run.budget_usd:.2f}"
-                )
-
-            # Emit step_start for all steps in wave
-            for step_id in wave_step_ids:
-                step = step_map[step_id]
-                _emit({
-                    "type": "step_start",
-                    "step_id": step_id,
-                    "capability": step.capability,
-                    "description": step.description or step_id,
-                })
-
-            # Execute all steps in this wave concurrently
-            wave_steps = [step_map[sid] for sid in wave_step_ids]
-            results = await self._execute_wave(
-                run, wave_steps, session_id, completed_outcomes, gate=gate,
-            )
-
-            # Collect results sequentially (cost, outcomes, events)
-            for step, (execution, extracted_outputs) in zip(wave_steps, results):
-                completed_outcomes[step.id] = extracted_outputs
-                run.total_cost_usd += execution.total_cost_usd
-                status_str = execution.status if isinstance(execution.status, str) else execution.status.value
-                _emit({
-                    "type": "step_done",
-                    "step_id": step.id,
-                    "status": status_str,
-                    "cost_usd": execution.total_cost_usd,
-                    "completed_steps": len(completed_outcomes),
-                    "total_steps": total_steps,
-                })
-
-    async def _execute_wave(
-        self,
-        run: WorkflowRun,
-        steps: list[WorkflowStepSchema],
-        session_id: str,
-        completed_outcomes: dict[str, dict],
-        gate: object | None = None,
-    ) -> list[tuple[Any, dict]]:
-        """Execute all steps in a wave concurrently.
-
-        Each step gets its own DB session via the factory to avoid
-        SQLAlchemy async flush conflicts.
-        """
-        if self._execution_service_factory is None:
-            raise RuntimeError(
-                "execution_service_factory is required to execute workflows"
-            )
-
-        async def _run_step(step: WorkflowStepSchema) -> tuple[Any, dict]:
-            async with self._execution_service_factory() as execution_service:
-                return await self._execute_step(
-                    run, step, session_id, completed_outcomes,
-                    execution_service, gate=gate,
-                )
-
-        results = await asyncio.gather(
-            *[_run_step(step) for step in steps],
-        )
-        return list(results)
-
-    async def _execute_step(
-        self,
-        run: WorkflowRun,
-        step: WorkflowStepSchema,
-        session_id: str,
-        completed_outcomes: dict[str, dict],
-        execution_service: ExecutionService,
-        gate: object | None = None,
-    ) -> tuple[Any, dict]:
-        """Execute a single workflow step as an execution."""
-        # Resolve upstream context from dependencies
-        upstream = self._workflow_service.resolve_upstream_context(
-            step, completed_outcomes, run.context,
-        )
-
-        # Build the objective from step description + input context
-        step_input = upstream.get("_step_input", step.input)
-        objective = self._build_step_objective(step, step_input)
-
-        app_config = get_app_config()
-        cost_ceiling = (
-            step.cost_ceiling_usd
-            or app_config.workflows.default_budget_usd
-        )
-
-        execution = await execution_service.create_execution_from_step(
-            workflow_run_id=run.id,
-            step_id=step.id,
-            objective=objective,
-            roster_ref=step.roster,
-            complexity_tier=step.complexity_tier,
-            cost_ceiling_usd=cost_ceiling,
-            upstream_context=upstream,
-            session_id=session_id,
-            mission_id=run.mission_id,
-        )
-
-        logger.info(
-            "Step execution created",
-            extra={
-                "run_id": run.id,
-                "step_id": step.id,
-                "execution_id": execution.id,
-                "agent": f"{step.capability}.agent",
-            },
-        )
-
-        execution = await execution_service.run_execution(execution.id, gate=gate)
-
-        output_mapping = (
-            step.output_mapping.model_dump()
-            if step.output_mapping
-            else None
-        )
-        extracted = execution_service.extract_outputs(
-            execution, output_mapping,
-        )
-
-        status_str = execution.status if isinstance(execution.status, str) else execution.status.value
-        logger.info(
-            "Step completed",
-            extra={
-                "run_id": run.id,
-                "step_id": step.id,
-                "execution_id": execution.id,
-                "status": status_str,
-                "cost": execution.total_cost_usd,
-            },
-        )
-
-        if status_str == "failed":
-            raise RuntimeError(
-                f"Step '{step.id}' execution failed: "
-                f"{execution.error_data}"
-            )
-
-        return execution, extracted
-
-    def _build_step_objective(
-        self,
-        step: WorkflowStepSchema,
-        step_input: dict[str, Any],
-    ) -> str:
-        """Build an objective string from the step definition and resolved input."""
-        parts = [step.description or f"Execute step: {step.id}"]
-
-        if step_input:
-            context_parts = []
-            for key, value in step_input.items():
-                if isinstance(value, str):
-                    context_parts.append(f"{key}: {value}")
-                elif isinstance(value, list):
-                    context_parts.append(f"{key}: {', '.join(str(v) for v in value)}")
-            if context_parts:
-                parts.append("Context: " + "; ".join(context_parts))
-
-        return ". ".join(parts)
-
     @staticmethod
     async def _notify_run_outcome(run: "WorkflowRun", step_count: int) -> None:
         """Send notifications based on run outcome. Best-effort."""
@@ -564,43 +363,3 @@ class WorkflowRunService(BaseService):
         except Exception:
             logger.debug("Run notification failed", exc_info=True)
 
-    @staticmethod
-    def _compute_waves(
-        steps: list[WorkflowStepSchema],
-    ) -> list[list[str]]:
-        """Topologically sort steps into execution waves.
-
-        Steps with no unmet dependencies run in the same wave (parallel).
-        Returns a list of waves, each wave is a list of step IDs.
-        """
-        # Build dependency graph
-        in_degree: dict[str, int] = {}
-        dependents: dict[str, list[str]] = defaultdict(list)
-
-        for step in steps:
-            in_degree[step.id] = len(step.depends_on)
-            for dep in step.depends_on:
-                dependents[dep].append(step.id)
-
-        waves: list[list[str]] = []
-        remaining = set(in_degree.keys())
-
-        while remaining:
-            # Find all steps with no unmet dependencies
-            wave = [
-                sid for sid in remaining
-                if in_degree[sid] == 0
-            ]
-
-            if not wave:
-                raise RuntimeError("Dependency cycle detected in workflow steps")
-
-            waves.append(sorted(wave))
-
-            # Remove completed steps and update degrees
-            for sid in wave:
-                remaining.remove(sid)
-                for dependent in dependents[sid]:
-                    in_degree[dependent] -= 1
-
-        return waves

@@ -228,6 +228,21 @@ def check_telegram_imports_models(path: Path, rel: str) -> list[Violation]:
     return violations
 
 
+def check_tui_imports_models(path: Path, rel: str) -> list[Violation]:
+    """008.5 — TUI handlers must not import models or repositories."""
+    if not rel.startswith("modules/clients/tui/"):
+        return []
+    violations = []
+    pattern = re.compile(r"from modules\.backend\.(models|repositories)\.")
+    for i, line in enumerate(path.read_text().splitlines(), 1):
+        if pattern.search(line):
+            violations.append(Violation(
+                "008.5", "error", rel, i,
+                "TUI handler imports models/repositories — use a service",
+            ))
+    return violations
+
+
 def check_client_http_calls(path: Path, rel: str) -> list[Violation]:
     """008.2 — Client handlers must not make direct HTTP calls."""
     if not rel.startswith("modules/clients/"):
@@ -521,6 +536,7 @@ ALL_CHECKS = [
     check_cli_imports_models,
     check_direct_rich,
     check_telegram_imports_models,
+    check_tui_imports_models,
     check_client_http_calls,
     check_endpoint_orchestration,
     check_endpoint_inline_transforms,
