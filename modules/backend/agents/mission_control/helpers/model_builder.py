@@ -87,7 +87,12 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
         provider = get_openai_provider()
         return OpenAIModel(bare_name, provider=provider)
 
-    raise ValidationError(f"Unsupported model provider in '{model_name}'. Expected 'anthropic:...' or 'openai:...'.")
+    if model_name.startswith("copilot:"):
+        bare_name = model_name.split(":", 1)[1]
+        from modules.backend.core.copilot_model import CopilotModel
+        return CopilotModel(model_id=bare_name)
+
+    raise ValidationError(f"Unsupported model provider in '{model_name}'. Expected 'anthropic:...', 'openai:...', or 'copilot:...'.")
 
 
 def _get_model_name(config_model: str | AgentModelSchema) -> str:
