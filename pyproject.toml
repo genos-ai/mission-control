@@ -39,6 +39,8 @@ dependencies = [
     # AI Agents
     "pydantic-ai>=1.63.0",
     "jsonschema>=4.20.0",
+    # Subscription-based model auth (Plan 55/58)
+    "codex-auth>=0.1.0",
     # Durable Execution
     "temporalio>=1.20.0",
     # Agent execution isolation (Plan 47): containerized user-tier agents

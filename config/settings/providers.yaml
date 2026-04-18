@@ -4,13 +4,16 @@
 # Switch auth_mode without changing any agent code or config.
 #
 # Auth modes:
-#   api_key    — standard API key (default, billed per-token)
-#   auth_token — subscription/OAuth bearer token (billed to subscription)
+#   api_key      — standard API key (default, billed per-token)
+#   auth_token   — subscription/OAuth bearer token (blocked by Anthropic API)
+#   codex_oauth  — ChatGPT subscription OAuth (blocked by OpenAI API)
 #
-# To use Claude Max subscription instead of API credits:
-#   1. Run: claude setup-token (generates long-lived OAuth token)
-#   2. Set: export ANTHROPIC_AUTH_TOKEN="your-token"
-#   3. Change auth_mode below to "auth_token"
+# Both Anthropic and OpenAI reject subscription OAuth tokens for
+# programmatic API access. Subscription auth only works through
+# their official CLI tools (Claude Code, Codex CLI).
+#
+# For $0 agent execution, use engine: claude_code on coding agents
+# (Plan 55). Orchestration agents require API key billing.
 
 anthropic:
   auth_mode: api_key

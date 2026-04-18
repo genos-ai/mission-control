@@ -1,15 +1,12 @@
 """Model provider factory — creates SDK clients with the configured auth.
 
-This is the single point where auth mode (api_key vs auth_token) is
-resolved. Everything above this layer (PydanticAI, agents, tools) is
-auth-agnostic.
+This is the single point where auth mode is resolved. Everything above
+this layer (PydanticAI, agents, tools) is auth-agnostic.
 
 Auth modes:
-  api_key    — standard API key auth (X-Api-Key header for Anthropic,
-               Authorization: Bearer for OpenAI)
-  auth_token — subscription/OAuth bearer token auth (Authorization: Bearer
-               for Anthropic). Uses Claude Max / Enterprise subscription
-               billing instead of API key credits.
+  api_key      — standard API key (per-token billing)
+  auth_token   — subscription/OAuth bearer token (Anthropic — blocked by API)
+  codex_oauth  — ChatGPT Enterprise OAuth via codex-auth (OpenAI — $0)
 
 Usage:
     from modules.backend.core.model_providers import get_anthropic_provider
@@ -83,15 +80,34 @@ def get_anthropic_provider():
 def get_openai_provider():
     """Create a PydanticAI OpenAIProvider with configured auth.
 
-    Reads auth_mode from providers.yaml (or defaults).
-    Enterprise API keys work with the standard api_key parameter.
+    Auth modes:
+      api_key     — standard API key or Enterprise key
+      codex_oauth — ChatGPT Enterprise OAuth via codex-auth package.
+                    First run opens browser for OAuth login; token is
+                    cached and auto-refreshed. The returned client IS
+                    AsyncOpenAI — all PydanticAI features work.
     """
-    from openai import AsyncOpenAI
     from pydantic_ai.providers.openai import OpenAIProvider
 
     config = _get_provider_config().openai
-    credential = _read_credential(config)
 
+    if config.auth_mode == "codex_oauth":
+        try:
+            from codex_auth import AsyncCodexClient
+        except ImportError:
+            raise ImportError(
+                "codex-auth is required for auth_mode='codex_oauth'. "
+                "Install with: pip install codex-auth"
+            )
+        # AsyncCodexClient IS AsyncOpenAI — handles OAuth + token refresh
+        client = AsyncCodexClient()
+        logger.info("OpenAI provider: codex_oauth mode (ChatGPT Enterprise subscription)")
+        return OpenAIProvider(openai_client=client)
+
+    # Standard api_key mode
+    from openai import AsyncOpenAI
+
+    credential = _read_credential(config)
     if not credential:
         raise ValueError(
             f"No credential found for OpenAI provider. "
@@ -102,7 +118,7 @@ def get_openai_provider():
         api_key=credential,
         base_url=config.base_url,
     )
-    logger.info("OpenAI provider: %s mode", config.auth_mode)
+    logger.info("OpenAI provider: api_key mode")
 
     return OpenAIProvider(openai_client=client)
 

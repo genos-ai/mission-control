@@ -512,7 +512,7 @@ class GateAutoRulesSchema(_StrictBase):
 class ProviderAuthSchema(_StrictBase):
     """Authentication configuration for a model provider."""
 
-    auth_mode: str = "api_key"  # "api_key" | "auth_token"
+    auth_mode: str = "api_key"  # "api_key" | "auth_token" | "codex_oauth"
     env_var: str | None = None
     base_url: str | None = None
 
