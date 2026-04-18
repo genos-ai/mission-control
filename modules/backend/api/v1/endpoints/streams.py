@@ -50,7 +50,7 @@ async def _require_mission_access(
 
 
 async def _require_session_access(
-    db, session_id: str, user: User
+    db, session_id: str, user,
 ) -> None:
     """Admin, session owner, or mission member of the session's mission."""
     if user.has_role("admin"):
