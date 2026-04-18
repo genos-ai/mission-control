@@ -1,9 +1,9 @@
 # Implementation Plan: Decouple Playbooks from Projects
 
 *Created: 2026-03-13*
-*Status: Ready*
+*Status: Superseded (2026-04-18) — both Projects and Playbooks removed from the platform. See [ADR-005](../02-architecture/005-adr-mission-primitive-no-projects-playbooks.md).*
 *Depends on: Plan 17 (Playbooks & Missions), Plan 18 (Project Context Layer)*
-*Blocked by: Nothing*
+*Blocked by: N/A — superseded*
 
 ---
 

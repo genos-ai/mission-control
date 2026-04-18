@@ -1,248 +1,207 @@
 # Platform Flow: End-to-End Execution Model
 
-*How work flows through the Mission Control agentic platform — from project creation to task execution and back.*
+*How work flows through the Mission Control agentic platform — from mission creation to task execution and back.*
+
+*Updated: 2026-04-18 — Reflects current architecture. Projects and playbooks removed (see ADR-005).*
 
 ---
 
 ## Overview
 
-The platform executes work through a five-layer chain:
+The platform executes work through a three-layer chain:
 
 ```
-Project → Playbook → Mission → Mission Control → Agents
+Mission → Mission Control → Agents
 ```
 
-Each layer has a clear responsibility, a distinct identity, and well-defined boundaries. Work flows **down** through planning and dispatch. Results flow **back up** through persistence, output extraction, and context updates.
+Each layer has a clear responsibility, a distinct identity, and well-defined boundaries. Work flows **down** through planning and dispatch. Results flow **back up** through persistence, context updates, and knowledge extraction.
+
+**What changed from the original BFA design:** The original 5-layer chain (`Project → Playbook → Mission → Mission Control → Agents`) was simplified. Projects and playbooks were removed — missions are the domain primitive, workflows replaced playbooks, and cross-mission knowledge uses platform-scoped promotion instead of project grouping. See [ADR-005](../02-architecture/005-adr-mission-primitive-no-projects-playbooks.md) for the rationale.
 
 ---
 
 ## The Full Flow
 
 ```
-Project (id: UUID)                          ← Owner of everything
+Mission (id: UUID)                            ← The domain primitive
 │
-├── Session (id: UUID, project_id)          ← Tracks cost, conversation history
+├── Session (id: UUID, mission_id)            ← Tracks cost, conversation history
 │
-├── PlaybookRun (id: UUID, project_id)      ← One execution of a playbook template
-│   ├── playbook_name: "ai-news-digest"     ← Which template
-│   ├── version: "1.0.0"                    ← Frozen at creation
+├── MCD (mission_id, 1:1)                     ← Living knowledge brief (Mission Context Document)
+│   ├── Updated after each task via context_updates
+│   └── Loaded into every agent's context window
+│
+├── Intent (mission_id, append-only)          ← Evolving goal tracked as revisions
+│   └── Current intent injected into Director every turn
+│
+├── Workflow (mission_id, optional)           ← Multi-step orchestration recipe
+│   ├── Cloned from system template or designed by Workflow Architect
+│   └── Steps executed sequentially via WorkflowRunService
+│       └── Each step creates a Mission execution
+│
+├── handle() — Chat path (user-initiated)     ← In-process, low latency
+│   └── Director agent responds in chat
+│       ├── Can call tools: run_objective, run_workflow, capture_intent
+│       └── Knowledge query tool for "has anyone seen this before?"
+│
+├── handle_mission() — Execution path         ← Temporal-backed, durable
 │   │
-│   └── Step "fetch-news"                   ← Playbook-authored, static
-│       │
-│       └── Mission (id: UUID, project_id, playbook_run_id, step_id)
-│           ├── session_id: UUID            ← Inherits from playbook run
-│           ├── objective: "Fetch today's AI news from 5 sources"
-│           ├── roster_ref: "default"
-│           ├── cost_ceiling_usd: 2.0
-│           ├── upstream_context: {from prior steps}
+│   ├── Planning Agent → TaskPlan
+│   │   ├── mission_id: "mission-{UUID}"
+│   │   └── tasks: [{task_id, agent, objective, dependencies, verification}]
+│   │
+│   ├── Context Assembly (per task)
+│   │   ├── Layer 0: MCD (always, never trimmed)
+│   │   ├── Layer 1: Task definition + resolved upstream inputs
+│   │   ├── Layer 2.5: Learnings (mission + platform-promoted)
+│   │   ├── Layer 3: Code Map (for coding tasks)
+│   │   └── Layer 2: History (recent failures, past executions)
+│   │
+│   └── dispatch()
+│       └── For each task (topological order, parallel within layer):
 │           │
-│           └── handle_mission()
-│               │
-│               ├── Planning Agent → TaskPlan
-│               │   ├── mission_id: "mission-{UUID}"
-│               │   └── tasks:
-│               │       ├── task_id: "scrape-arxiv"      ← LLM-assigned, local
-│               │       ├── task_id: "scrape-hackernews"  ← LLM-assigned, local
-│               │       └── task_id: "merge-results"      ← LLM-assigned, local
-│               │
-│               └── dispatch()
-│                   │
-│                   └── For each task (topological order, parallel within layer):
-│                       │
-│                       │  execution_id = uuid4()   ← Assigned HERE by code
-│                       │
-│                       ├── _execute_with_retry()
-│                       │   ├── attempt 0 → agent.run()
-│                       │   ├── verify_task() (3-tier verification)
-│                       │   ├── attempt 1 (if needed) → agent.run() with feedback
-│                       │   └── ...up to retry_budget
-│                       │
-│                       └── TaskResult
-│                           ├── task_id: "scrape-arxiv"       ← LLM label
-│                           ├── execution_id: UUID             ← Correlation ID
-│                           ├── agent_name: "web.scraper.agent"
-│                           ├── status: SUCCESS
-│                           ├── output_reference: {...}
-│                           └── context_updates: [...]         ← PCD patches
+│           │  execution_id = uuid4()
+│           │
+│           ├── _execute_with_retry()
+│           │   ├── attempt 0 → agent.run()
+│           │   ├── verify_task() (3-tier verification)
+│           │   ├── attempt 1 (if needed) → agent.run() with feedback
+│           │   └── ...up to retry_budget
+│           │
+│           └── TaskResult
+│               ├── task_id, execution_id, agent_name
+│               ├── status: SUCCESS | FAILED
+│               ├── output_reference: {...}
+│               └── context_updates: [...]        ← MCD patches
 │
-│           ← persist_mission_results()
-│               ├── MissionRecord (id: UUID, project_id, session_id)
-│               ├── TaskExecution (id: UUID, execution_id, mission_record_id, task_id)
-│               │   └── TaskAttempt (id: UUID, task_execution_id, attempt_number)
-│               └── MissionDecision (id: UUID, mission_record_id)
+│       ← persist_mission_results()
+│           ├── ExecutionRecord (mission_id, session_id)
+│           ├── TaskExecution (execution_id, task_id, agent_name)
+│           │   └── TaskAttempt (attempt_number, failure_reason, feedback)
+│           └── MissionArtifact (summary/finding/code from outputs)
 │
-│           ← extract_outputs(output_mapping)
-│               └── {"news_items": [...], "source_count": 5}
-│                   └── feeds next step's upstream_context
+│       ← MissionLearningExtractor (deterministic, daily + post-mission)
+│           └── Extracts failure_pattern / retry_strategy from TaskAttempt history
 │
-└── PCD (project_id)                         ← Living knowledge brief
-    ├── Updated after each mission via context_updates
-    └── Loaded into every agent's context window
+│       ← ContextCurator.apply_task_updates()
+│           └── Patches MCD with agent context_updates
+│
+└── Knowledge Platform (Plan 57)
+    ├── MCD — living knowledge brief per mission
+    ├── Intent — event-sourced goal revisions
+    ├── Learnings — extracted failure/success patterns
+    ├── Decisions — archived from MCD pruning
+    ├── Milestones — compressed execution history
+    ├── Embeddings — pgvector for hybrid search
+    └── KnowledgeService — unified query facade
 ```
 
 ---
 
 ## Layer-by-Layer Breakdown
 
-### Layer 1: Project
+### Layer 1: Mission
 
-The **organizational boundary**. Everything belongs to a project — sessions, playbook runs, missions, context, history. Projects are long-lived (months to years), owned by humans, and scoped so agents operate within a single project at a time.
-
-```
-Project
-├── id: UUID                    ← Primary identity
-├── name: "my-saas-platform"    ← Human-readable, unique
-├── owner_id: "user:alice"      ← Human owner
-├── default_roster: "default"   ← Which agents to use
-├── budget_ceiling_usd: 100.0   ← Spend cap
-└── status: active | paused | archived
-```
-
-**Key files:** `modules/backend/models/project.py`, `modules/backend/services/project.py`
-
-### Layer 2: Playbook
-
-A **template** defining a sequence of steps. Written in YAML by humans. Each step declares a capability (e.g., `web.scraper`), inputs, outputs, dependencies, and cost constraints. Steps form a DAG — independent steps run in parallel.
-
-```yaml
-# config/playbooks/ai-news-digest.yaml
-playbook_name: ai-news-digest
-version: "1.0.0"
-steps:
-  - id: fetch-news
-    capability: web.scraper
-    description: "Fetch today's AI news from 5 sources"
-    cost_ceiling_usd: 2.0
-    input:
-      sources: ["arxiv", "hackernews", "techcrunch", "reddit", "twitter"]
-    depends_on: []
-
-  - id: summarize
-    capability: content.summarizer
-    description: "Create executive summary"
-    input:
-      articles: "@context.news_items"    ← References output from prior step
-    depends_on: [fetch-news]
-```
-
-A **PlaybookRun** is one execution of a playbook template. It freezes the version at creation time and tracks overall progress.
-
-**Key files:** `modules/backend/services/playbook.py`, `modules/backend/services/playbook_run.py`
-
-### Layer 3: Mission
-
-A **single unit of orchestrated work** — one playbook step becomes one mission. The mission carries the objective, the agent roster to use, cost constraints, and upstream context from prior steps.
+The **domain primitive**. Everything belongs to a mission — sessions, executions, context, history, learnings, intent. Missions are created by users (via CLI, web, or Director) and carry the brief, team, workflows, and accumulated context.
 
 ```
 Mission
-├── id: UUID                        ← DB identity
-├── project_id: UUID                ← Scoped to project
-├── playbook_run_id: UUID           ← Which run spawned this
-├── playbook_step_id: "fetch-news"  ← Which step
-├── objective: "Fetch today's..."   ← What to accomplish
-├── roster_ref: "default"           ← Which agents
-├── cost_ceiling_usd: 2.0          ← Budget
-├── upstream_context: {...}         ← Data from prior missions
-├── status: PENDING → RUNNING → COMPLETED | FAILED | CANCELLED
-└── mission_outcome: {...}          ← Result after execution
-```
-
-Missions can also be created **ad-hoc** (not from a playbook) via `create_adhoc_mission()`.
-
-**State machine:**
-```
-PENDING → RUNNING → COMPLETED
-                  → FAILED
-                  → CANCELLED
+├── id: UUID
+├── name: "auth-refactor"           ← Human-readable, unique
+├── description: "..."
+├── brief: "..."                    ← Detailed objective (seeds initial intent)
+├── owner_id: "user:alice"
+├── status: ACTIVE | PAUSED | ARCHIVED
+├── gate_mode: interactive | ai_assisted | autonomous
+├── tier: user | system
+├── budget_ceiling_usd: 10.0
+└── default_roster: "default"       ← Which agents to use
 ```
 
 **Key files:** `modules/backend/models/mission.py`, `modules/backend/services/mission.py`
 
-### Layer 4: Mission Control
+### Layer 2: Mission Control
 
-The **orchestration brain**. Takes a mission's objective and breaks it into executable tasks via the Planning Agent, then dispatches tasks to specialist agents.
+The **orchestration brain**. Routes messages to agents, enforces budgets, streams events. Infrastructure, not intelligence (P6).
+
+Two paths:
+- **Chat path** (`handle()`) — user-initiated, in-process, low latency. Director agent responds in conversation.
+- **Execution path** (`handle_mission()`) — Temporal-backed. Planning Agent decomposes into TaskPlan, dispatch loop executes tasks in topological order.
 
 ```
 handle_mission(mission)
 │
-├── 1. Load Roster                      ← Which agents are available
-│      roster = load_roster(roster_ref)
-│
-├── 2. Planning Agent                   ← LLM generates the plan
-│      task_plan = planning_agent.run(objective, roster)
-│      └── TaskPlan
-│          ├── tasks: [TaskDefinition, ...]
-│          ├── estimated_cost_usd: 1.50
-│          └── execution_hints: {critical_path: [...]}
-│
-├── 3. Topological Sort                 ← Deterministic ordering
-│      layers = topological_sort(task_plan)
-│      └── [[task_a, task_b], [task_c]]  ← Parallel within layers
-│
-├── 4. Dispatch Loop                    ← Execute tasks
-│      for layer in layers:
-│          gather(execute_task(t) for t in layer)  ← Parallel
-│
-└── 5. Build MissionOutcome             ← Aggregate results
-       └── MissionOutcome
-           ├── status: SUCCESS | PARTIAL | FAILED
-           ├── task_results: [TaskResult, ...]
-           ├── total_cost_usd: 1.23
-           └── summary: "Fetched 47 articles from 5 sources"
+├── 1. Load Roster
+├── 2. Planning Agent → TaskPlan (DAG of tasks)
+├── 3. Context Assembly (MCD + learnings + code map + history per task)
+├── 4. Topological Sort → parallel layers
+├── 5. Dispatch Loop → execute + verify + retry
+├── 6. Persist results + extract learnings + update MCD
+└── 7. Build ExecutionOutcome
 ```
 
-**Key files:** `modules/backend/agents/mission_control/mission_control.py`, `modules/backend/agents/mission_control/dispatch.py`
+**Key files:** `modules/backend/agents/mission_control/mission_control.py`, `modules/backend/agents/mission_control/dispatch/`
 
-### Layer 5: Agent Execution
+### Layer 3: Agent Execution
 
-Individual **specialist agents** execute tasks. Each agent is a PydanticAI agent with a YAML config, system prompt, and defined interface (input/output schema).
+Individual **specialist agents** execute tasks. Each is a PydanticAI agent with YAML config, layered system prompt, and defined interface.
 
 ```
-_execute_with_retry(task, roster_entry, execute_agent_fn)
+_execute_with_retry(task, agent)
 │
-├── execution_id = uuid4()            ← Globally unique correlation ID
-│
-├── Attempt 0:
-│   ├── agent.run(instructions, inputs)
-│   ├── verify_task()                  ← 3-tier verification
-│   │   ├── Tier 1: Schema validation (required fields present?)
-│   │   ├── Tier 2: Deterministic checks (custom rules)
-│   │   └── Tier 3: AI evaluation (optional, for complex tasks)
-│   └── Pass? → TaskResult(status=SUCCESS)
-│
-├── Attempt 1 (on failure):
-│   ├── Enrich instructions with feedback from prior failure
-│   ├── agent.run(enriched_instructions, inputs)
-│   └── verify_task() again
-│
-└── Exhausted retries? → TaskResult(status=FAILED)
+├── execution_id = uuid4()
+├── Attempt 0: agent.run() → verify_task() (3-tier)
+├── Attempt 1: agent.run(+feedback) → verify_task()
+└── Exhausted? → TaskResult(status=FAILED)
 ```
 
-**Key files:** `modules/backend/agents/mission_control/helpers.py`, agent configs in `config/agents/`
+**Key files:** `modules/backend/agents/mission_control/helpers/`, agent configs in `config/agents/`
+
+---
+
+## Multi-Step Orchestration: Workflows
+
+Workflows replaced the original BFA playbook concept. They serve the same purpose — multi-step recipes with data flow between steps — but are:
+
+- **Mission-scoped** (stored in DB per mission, not filesystem YAML)
+- **Agent-designable** (Workflow Architect creates them in conversation)
+- **Template-seeded** (system templates in `config/workflow_templates/` seed on boot)
+- **Clone-to-use** (templates are cloned into a mission before execution)
+
+```yaml
+# config/workflow_templates/system.platform-audit.workflow.yaml
+workflow_name: system.platform-audit.workflow
+steps:
+  - id: quality-scan
+    brief: "Run PQI code quality scan"
+    agent: software.quality.agent
+  - id: health-check
+    brief: "Check platform health"
+    agent: platform.health.agent
+    depends_on: []  # parallel with quality-scan
+```
+
+**Key files:** `modules/backend/services/workflow_run.py`, `modules/backend/services/workflow_definition.py`, `config/workflow_templates/`
 
 ---
 
 ## Identity Model
 
-Five layers of identity, each with a distinct purpose:
+Three layers of identity:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Layer   ID              Assigned By          Scope              │
-├─────────────────────────────────────────────────────────────────┤
-│ 1       project_id      User (CLI/API)       Cross-session     │
-│ 2       step.id         YAML author          Within playbook   │
-│ 3       mission.id      Database (UUID)      Per execution     │
-│ 4       task_id         Planning Agent (LLM) Within TaskPlan   │
-│ 5       execution_id    Dispatch loop (code) Global            │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Layer   ID              Assigned By          Scope            │
+├──────────────────────────────────────────────────────────────┤
+│ 1       mission.id      Database (UUID)      Per mission      │
+│ 2       task_id         Planning Agent (LLM) Within TaskPlan  │
+│ 3       execution_id    Dispatch loop (code) Global           │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 **Why two task-level IDs?**
-
-- `task_id` (layer 4) is assigned by the Planning Agent (LLM). It's a human-readable label like `"scrape-arxiv"` used for DAG dependencies within a single TaskPlan. It is **not stable** — the LLM assigns fresh IDs each run.
-
-- `execution_id` (layer 5) is assigned by deterministic code at dispatch time. It's a UUID that uniquely identifies one execution of one task across the entire platform. Use this for monitoring dashboards, log correlation, tracing, and cross-project queries.
+- `task_id` (layer 2) — LLM-assigned label like `"scrape-arxiv"`. Used for DAG dependencies within a TaskPlan. Not stable across runs.
+- `execution_id` (layer 3) — code-assigned UUID. Globally unique. Use for monitoring, log correlation, tracing.
 
 ---
 
@@ -251,130 +210,89 @@ Five layers of identity, each with a distinct purpose:
 ### Downward: Planning & Dispatch
 
 ```
-Playbook YAML
-  → PlaybookService.generate_mission_briefs()
-    → MissionService.create_mission_from_step()
+User creates mission (CLI / web / Director)
+  → MissionService.create_mission() + seed MCD + seed Intent
+    → mc run "objective" OR workflow step
       → MissionControl.handle_mission()
         → PlanningAgent.run() → TaskPlan
           → dispatch() → execute tasks in topological order
 ```
 
-### Upward: Results & Context
+### Upward: Results & Knowledge
 
 ```
 Agent returns output
   → verify_task() (3-tier)
-    → TaskResult (with execution_id)
-      → persist_mission_results()
-        → MissionRecord + TaskExecution + TaskAttempt (DB)
-      → context_updates → ContextCurator → PCD (if project-scoped)
-  → extract_outputs(output_mapping)
-    → upstream_context for next step
-      → next Mission in PlaybookRun
-```
-
-### Cross-Step Data Flow
-
-Playbook steps pass data via `upstream_context` and `output_mapping`:
-
-```
-Step A completes
-  → extract_outputs() pulls specific fields from MissionOutcome
-    → {"news_items": [...], "source_count": 5}
-
-Step B starts
-  → resolve_upstream_context() merges prior outputs
-    → step.input references @context.news_items
-      → resolved to actual data from Step A
+    → TaskResult (with execution_id + context_updates)
+      → persist_mission_results() → ExecutionRecord + TaskExecution + TaskAttempt
+      → ContextCurator.apply_task_updates() → MCD updated
+      → MissionLearningExtractor → learnings extracted from failures
+      → embed_source → vector embedding for hybrid search
 ```
 
 ---
 
 ## Persistence Model
 
-Every execution is fully recorded for audit, debugging, and history queries:
-
 ```
-MissionRecord                          ← One per mission execution
+ExecutionRecord                        ← One per mission execution
 ├── id: UUID
-├── project_id: UUID
+├── mission_id: UUID
 ├── session_id: UUID
-├── task_plan_json: {full TaskPlan}    ← What the LLM planned
-├── outcome_json: {MissionOutcome}     ← What actually happened
+├── objective_statement: "..."
+├── status: pending → running → completed | failed
 │
 ├── TaskExecution                      ← One per task
-│   ├── id: UUID
 │   ├── execution_id: UUID             ← Global correlation ID
-│   ├── task_id: "scrape-arxiv"        ← LLM-assigned label
-│   ├── agent_name: "web.scraper.agent"
-│   ├── status: success | failed | timeout
+│   ├── task_id: "scan-auth"           ← LLM-assigned label
+│   ├── agent_name: "software.quality.agent"
+│   ├── domain_tags: ["auth", "quality"]
 │   ├── cost_usd: 0.03
 │   │
 │   └── TaskAttempt                    ← One per retry attempt
 │       ├── attempt_number: 0
-│       ├── input_data: {...}
-│       ├── output_data: {...}
-│       └── verification_result: {...}
+│       ├── status: passed | failed
+│       ├── failure_reason: "..."
+│       └── feedback_provided: "..."
 │
-└── MissionDecision                    ← Audit trail for decisions
-    ├── decision_type: "plan_approved"
-    └── rationale: "..."
+├── MissionArtifact                    ← Extracted deliverables
+│   ├── artifact_type: report | finding | code
+│   └── content: {...}
+│
+└── MissionLearning                    ← Extracted patterns (Plan 57)
+    ├── kind: failure_pattern | retry_strategy
+    ├── confidence: 0.85
+    └── recommendation: "..."
 ```
 
 ---
 
-## Verification Pipeline
+## Knowledge Platform (Plan 57)
 
-Every task output goes through up to three tiers of verification:
+Five surfaces, one query service:
 
-```
-Agent Output
-│
-├── Tier 1: Structural Validation
-│   ├── Required output fields present?
-│   ├── Schema matches roster interface?
-│   └── FAIL → retry with feedback
-│
-├── Tier 2: Deterministic Checks
-│   ├── Custom validation rules (e.g., "confidence > 0.5")
-│   └── FAIL → retry with feedback
-│
-└── Tier 3: AI Evaluation (optional)
-    ├── LLM judges output quality
-    └── FAIL → retry with feedback
-```
+| Surface | Table | Scope | Purpose |
+|---|---|---|---|
+| MCD | `mission_contexts` | Mission | Living knowledge brief — always loaded |
+| Intent | `mission_intents` | Mission | Event-sourced goal revisions |
+| Learnings | `mission_learnings` | Mission → platform | Extracted failure/success patterns |
+| Decisions | `mission_decisions` | Mission | Archived from MCD pruning |
+| Milestones | `milestone_summaries` | Mission | Compressed execution history |
+
+Cross-mission: learnings promoted via `platform_promoted=true` (sysadmin-gated).
 
 ---
 
 ## Cost Control
 
-Budget enforcement at every level:
+Budget enforcement at mission and session level:
 
 ```
-Project.budget_ceiling_usd          ← Total project spend cap
-  └── Mission.cost_ceiling_usd      ← Per-mission budget
+Mission.budget_ceiling_usd            ← Per-mission budget
+  └── Session.cost_budget_usd         ← Per-session budget
         └── dispatch() tracks cumulative cost
               └── Cancels remaining tasks if budget exceeded
-                    └── RosterConstraints.cost_ceiling_usd  ← Per-agent limit
 ```
-
----
-
-## Ad-Hoc Missions
-
-Not everything comes from a playbook. Missions can be created directly:
-
-```
-MissionService.create_adhoc_mission(
-    objective="Analyze this PR for security issues",
-    triggered_by="user:alice",
-    session_id=session.id,
-    roster_ref="security",
-    cost_ceiling_usd=5.0,
-)
-```
-
-Ad-hoc missions skip the playbook layer entirely — no PlaybookRun, no step dependencies, no output_mapping. They go straight to Mission Control.
 
 ---
 
@@ -382,17 +300,17 @@ Ad-hoc missions skip the playbook layer entirely — no PlaybookRun, no step dep
 
 | Concern | File |
 |---------|------|
-| Playbook loading & resolution | `modules/backend/services/playbook.py` |
-| Playbook run orchestration | `modules/backend/services/playbook_run.py` |
 | Mission lifecycle | `modules/backend/services/mission.py` |
 | Mission Control orchestration | `modules/backend/agents/mission_control/mission_control.py` |
-| Dispatch loop (topo sort, parallel exec) | `modules/backend/agents/mission_control/dispatch.py` |
-| Agent executor construction | `modules/backend/agents/mission_control/helpers.py` |
+| Dispatch loop | `modules/backend/agents/mission_control/dispatch/` |
+| Planning Agent | `modules/backend/agents/system/planning/agent.py` |
+| Agent executor | `modules/backend/agents/mission_control/helpers/` |
 | TaskPlan schema | `modules/backend/schemas/task_plan.py` |
-| TaskResult / MissionOutcome | `modules/backend/agents/mission_control/outcome.py` |
-| Roster (agent registry) | `modules/backend/agents/mission_control/roster.py` |
+| ExecutionOutcome | `modules/backend/agents/mission_control/outcome.py` |
+| Roster | `modules/backend/agents/mission_control/roster.py` |
 | Persistence bridge | `modules/backend/agents/mission_control/persistence_bridge.py` |
-| DB models (Mission, PlaybookRun) | `modules/backend/models/mission.py` |
-| DB models (MissionRecord, TaskExecution) | `modules/backend/models/mission_record.py` |
-| Project entity (Plan 18) | `modules/backend/models/project.py` |
-| PCD (Plan 18) | `modules/backend/models/project_context.py` |
+| Context Assembler | `modules/backend/services/context_assembler.py` |
+| Knowledge Service | `modules/backend/services/knowledge.py` |
+| Workflow definitions | `modules/backend/services/workflow_definition.py` |
+| Workflow execution | `modules/backend/services/workflow_run.py` |
+| DB models | `modules/backend/models/` |
