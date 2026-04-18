@@ -3,20 +3,23 @@
 Routes LLM calls through the Copilot Enterprise subscription at $0.
 All 13 models (Claude, GPT) available.
 
-Tool bridging: PydanticAI tools are registered as native Copilot tools
-with skip_permission=True. Copilot drives the tool loop — handlers
-execute PydanticAI tool functions directly. The model returns the final
-text response to PydanticAI after all tool calls are complete.
+Tool bridging architecture:
+  PydanticAI tools are registered as native Copilot tools with async
+  handlers. When the LLM calls a tool, the handler signals PydanticAI
+  via an asyncio.Queue, then awaits a Future for the result. PydanticAI
+  executes the tool (with full deps/context), then resolves the Future.
+  The handler unblocks, returns the result to Copilot, and the LLM
+  continues.
 
-This means PydanticAI's tool loop is bypassed — Copilot handles
-tool execution internally. The trade-off: PydanticAI doesn't see
-individual tool call events, but all tools execute correctly.
+  This works because Copilot v3 protocol launches handlers via
+  asyncio.ensure_future — the event loop stays free during await.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -25,6 +28,7 @@ from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
     TextPart,
+    ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
 )
@@ -66,6 +70,9 @@ def _extract_messages(messages: list[ModelMessage]) -> tuple[str, str]:
                 if isinstance(part, TextPart) and part.content:
                     truncated = part.content[:2000] + ("..." if len(part.content) > 2000 else "")
                     history_parts.append(f"Assistant: {truncated}")
+                elif isinstance(part, ToolCallPart):
+                    args_str = json.dumps(part.args) if isinstance(part.args, dict) else str(part.args)
+                    history_parts.append(f"Tool call: {part.tool_name}({args_str})")
 
     if len(history_parts) > 1:
         prior = history_parts[:-1]
@@ -80,55 +87,97 @@ def _extract_messages(messages: list[ModelMessage]) -> tuple[str, str]:
     return system_prompt, user_message
 
 
+def _has_tool_returns(messages: list[ModelMessage]) -> list[ToolReturnPart]:
+    """Extract ToolReturnParts from the message list."""
+    parts: list[ToolReturnPart] = []
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    parts.append(part)
+    return parts
+
+
 # ---------------------------------------------------------------------------
-# Tool bridging — native Copilot tools with PydanticAI tool functions
+# Tool bridge — async handlers that await PydanticAI tool results
 # ---------------------------------------------------------------------------
 
-def _make_copilot_tools(function_tools: list[ToolDefinition]) -> list[Any]:
-    """Convert PydanticAI ToolDefinitions to native Copilot Tool objects.
+@dataclass
+class _ToolBridge:
+    """Bridges tool calls between Copilot and PydanticAI.
 
-    Each tool gets a synchronous handler that logs the call and returns
-    the result. Copilot drives the tool loop — handlers are called
-    automatically during send_and_wait().
+    Flow:
+      1. LLM calls tool → Copilot fires handler via ensure_future
+      2. Handler puts ToolInvocation on pending_calls queue
+      3. Handler awaits a Future in results dict
+      4. CopilotModel.request() reads pending_calls → returns ToolCallPart
+      5. PydanticAI executes tool → calls request() with ToolReturnPart
+      6. request() resolves the Future with the tool result
+      7. Handler unblocks → returns ToolResult to Copilot
+      8. LLM gets the result and continues
+    """
+    pending_calls: asyncio.Queue = field(default_factory=asyncio.Queue)
+    results: dict[str, asyncio.Future] = field(default_factory=dict)
+
+
+def _make_copilot_tools(
+    function_tools: list[ToolDefinition],
+    bridge: _ToolBridge,
+) -> list[Any]:
+    """Convert PydanticAI ToolDefinitions to native Copilot Tools.
+
+    Each tool gets an async handler that bridges to PydanticAI's tool loop.
+    The handler runs as an ensure_future task (Copilot v3 protocol) —
+    the event loop stays free while awaiting.
     """
     from copilot.tools import Tool, ToolInvocation, ToolResult
 
     tools: list[Tool] = []
 
     for tool_def in function_tools:
-        def make_handler(tdef: ToolDefinition):
-            def handler(invocation: ToolInvocation) -> ToolResult:
-                # Log the tool call for observability
-                logger.info(
-                    "Copilot tool call",
-                    extra={
-                        "tool": invocation.tool_name,
-                        "call_id": invocation.tool_call_id,
-                        "args": str(invocation.arguments)[:200],
-                    },
+        async def handler(
+            invocation: ToolInvocation,
+            _bridge: _ToolBridge = bridge,
+        ) -> ToolResult:
+            logger.info(
+                "Copilot tool call → PydanticAI",
+                extra={
+                    "tool": invocation.tool_name,
+                    "call_id": invocation.tool_call_id,
+                },
+            )
+            # Create a Future for PydanticAI to resolve
+            loop = asyncio.get_running_loop()
+            future: asyncio.Future[str] = loop.create_future()
+            _bridge.results[invocation.tool_call_id] = future
+
+            # Signal PydanticAI that a tool call is needed
+            await _bridge.pending_calls.put(invocation)
+
+            # Wait for PydanticAI to execute the tool and provide the result
+            try:
+                result_text = await asyncio.wait_for(future, timeout=120.0)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Tool bridge timeout",
+                    extra={"tool": invocation.tool_name, "call_id": invocation.tool_call_id},
                 )
-                # We can't execute PydanticAI tool functions here because
-                # they need RunContext/deps. Return a message indicating
-                # the tool was called — PydanticAI will see this in the
-                # final response and know the tool was invoked.
-                #
-                # For tools that are pure functions (no deps), we could
-                # execute them here. For now, return a descriptive result.
                 return ToolResult(
-                    text_result_for_llm=(
-                        f"Tool '{invocation.tool_name}' was called with "
-                        f"arguments: {json.dumps(invocation.arguments)}. "
-                        f"The tool executed successfully."
-                    ),
-                    result_type="success",
-                    error=None,
+                    text_result_for_llm="Tool execution timed out",
+                    result_type="timeout",
+                    error="Timed out waiting for tool result",
                 )
-            return handler
+
+            return ToolResult(
+                text_result_for_llm=str(result_text),
+                result_type="success",
+                error=None,
+            )
 
         tools.append(Tool(
             name=tool_def.name,
             description=tool_def.description or "",
-            handler=make_handler(tool_def),
+            handler=handler,
             parameters=tool_def.parameters_json_schema,
             skip_permission=True,
         ))
@@ -143,9 +192,9 @@ def _make_copilot_tools(function_tools: list[ToolDefinition]) -> list[Any]:
 class CopilotModel(Model):
     """PydanticAI Model backed by GitHub Copilot SDK.
 
-    Uses send_and_wait() for all requests. PydanticAI tools are registered
-    as native Copilot tools so the LLM knows about them and can call them.
-    Copilot handles the tool loop internally.
+    Full PydanticAI tool support via async handler bridging.
+    Copilot drives the tool loop, but handlers await PydanticAI's
+    tool execution before returning results.
     """
 
     _client: Any = None
@@ -162,6 +211,12 @@ class CopilotModel(Model):
         self._model_id = model_id
         self._reasoning_effort = reasoning_effort
         self._working_dir = working_directory
+        # Per-turn state (persists across tool round-trips)
+        self._active_session: Any = None
+        self._tool_bridge: _ToolBridge | None = None
+        self._response_text: str = ""
+        self._response_ready: asyncio.Event | None = None
+        self._usage_data: dict[str, int] = {}
 
     @property
     def model_name(self) -> str:
@@ -172,10 +227,8 @@ class CopilotModel(Model):
         return "copilot"
 
     async def _ensure_client(self) -> None:
-        """Lazily create and start the CopilotClient (thread-safe)."""
         if CopilotModel._lock is None:
             CopilotModel._lock = asyncio.Lock()
-
         async with CopilotModel._lock:
             if CopilotModel._client is None:
                 try:
@@ -190,6 +243,8 @@ class CopilotModel(Model):
                 await CopilotModel._client.start()
                 CopilotModel._started = True
 
+    # ---- Main entry ----
+
     async def request(
         self,
         messages: list[ModelMessage],
@@ -198,32 +253,43 @@ class CopilotModel(Model):
     ) -> ModelResponse:
         await self._ensure_client()
 
+        # Tool return continuation?
+        tool_returns = _has_tool_returns(messages)
+        if tool_returns and self._active_session and self._tool_bridge:
+            return await self._handle_tool_return(tool_returns)
+
+        # New turn
+        return await self._handle_new_turn(messages, model_request_parameters)
+
+    # ---- New turn ----
+
+    async def _handle_new_turn(
+        self,
+        messages: list[ModelMessage],
+        params: ModelRequestParameters,
+    ) -> ModelResponse:
         system_prompt, user_message = _extract_messages(messages)
         if not user_message:
             return self._empty_response()
 
-        # Collect usage
-        usage_data: dict[str, int] = {}
+        # Reset turn state
+        self._response_text = ""
+        self._response_ready = asyncio.Event()
+        self._usage_data = {}
+        has_tools = bool(params.function_tools)
 
-        def on_event(event: Any) -> None:
-            etype = str(getattr(event, "type", ""))
-            if "USAGE" in etype and hasattr(event, "data"):
-                d = event.data
-                usage_data["input"] = getattr(d, "input_tokens", 0) or 0
-                usage_data["output"] = getattr(d, "output_tokens", 0) or 0
-
-        # Convert PydanticAI tools to native Copilot tools
-        copilot_tools = None
-        if model_request_parameters.function_tools:
-            copilot_tools = _make_copilot_tools(
-                model_request_parameters.function_tools,
-            )
+        if has_tools:
+            self._tool_bridge = _ToolBridge()
+            copilot_tools = _make_copilot_tools(params.function_tools, self._tool_bridge)
+        else:
+            self._tool_bridge = None
+            copilot_tools = None
 
         # Build session
         session_kwargs: dict[str, Any] = {
             "on_permission_request": lambda *a, **k: True,
             "model": self._model_id,
-            "on_event": on_event,
+            "on_event": self._on_event,
         }
         if copilot_tools:
             session_kwargs["tools"] = copilot_tools
@@ -237,53 +303,172 @@ class CopilotModel(Model):
                 "content": system_prompt,
             }
 
-        session = await CopilotModel._client.create_session(**session_kwargs)
+        self._active_session = await CopilotModel._client.create_session(
+            **session_kwargs,
+        )
 
+        if not has_tools:
+            # No tools — simple path with send_and_wait
+            return await self._simple_request(user_message)
+
+        # Has tools — use send + wait for tool calls or completion
+        await self._active_session.send(user_message)
+        return await self._wait_for_response()
+
+    # ---- Simple request (no tools) ----
+
+    async def _simple_request(self, user_message: str) -> ModelResponse:
         try:
-            await session.send_and_wait(user_message, timeout=300.0)
+            await self._active_session.send_and_wait(user_message, timeout=300.0)
+            return self._extract_final_response()
+        finally:
+            await self._cleanup_session()
 
-            # Extract response
-            response_text = ""
-            msgs = await session.get_messages()
-            for m in msgs:
-                etype = str(getattr(m, "type", ""))
-                if "ASSISTANT_MESSAGE" in etype:
-                    data = getattr(m, "data", None)
-                    text = (
-                        getattr(data, "message", None)
-                        or getattr(data, "content", None)
-                    )
-                    if text:
-                        response_text = str(text)
+    # ---- Tool return continuation ----
 
-            if not response_text:
-                logger.warning(
-                    "Copilot: no assistant response",
-                    extra={"model": self._model_id},
+    async def _handle_tool_return(self, tool_returns: list[ToolReturnPart]) -> ModelResponse:
+        """PydanticAI executed tools — resolve the Futures so handlers unblock."""
+        for part in tool_returns:
+            future = self._tool_bridge.results.pop(part.tool_call_id, None)
+            if future and not future.done():
+                future.set_result(part.model_response_str())
+                logger.info(
+                    "Tool result → Copilot",
+                    extra={"tool": part.tool_name, "call_id": part.tool_call_id},
                 )
 
-            usage = RequestUsage(
-                input_tokens=usage_data.get("input", 0),
-                output_tokens=usage_data.get("output", 0),
+        # Wait for next tool call or final response
+        self._response_ready.clear()
+        return await self._wait_for_response()
+
+    # ---- Event handler ----
+
+    def _on_event(self, event: Any) -> None:
+        etype = str(getattr(event, "type", ""))
+
+        if "USAGE" in etype and hasattr(event, "data"):
+            d = event.data
+            self._usage_data["input"] = getattr(d, "input_tokens", 0) or 0
+            self._usage_data["output"] = getattr(d, "output_tokens", 0) or 0
+
+        elif "ASSISTANT_MESSAGE" in etype and "DELTA" not in etype:
+            data = getattr(event, "data", None)
+            text = getattr(data, "message", None) or getattr(data, "content", None)
+            if text:
+                self._response_text = str(text)
+
+        elif "SESSION_IDLE" in etype or "SESSION_ERROR" in etype:
+            if self._response_ready:
+                self._response_ready.set()
+
+    # ---- Wait for tool call or final response ----
+
+    async def _wait_for_response(self) -> ModelResponse:
+        """Race between a tool call from the bridge and session completion."""
+        tool_task = asyncio.ensure_future(self._tool_bridge.pending_calls.get())
+        idle_task = asyncio.ensure_future(self._response_ready.wait())
+
+        try:
+            done, pending = await asyncio.wait(
+                {tool_task, idle_task},
+                timeout=300.0,
+                return_when=asyncio.FIRST_COMPLETED,
             )
+        except Exception:
+            tool_task.cancel()
+            idle_task.cancel()
+            raise
+
+        for t in pending:
+            t.cancel()
+
+        if not done:
+            await self._cleanup_session()
+            logger.error("Copilot request timed out", extra={"model": self._model_id})
+            return self._empty_response()
+
+        if tool_task in done:
+            # Tool call — return to PydanticAI for execution
+            invocation = tool_task.result()
+            args = invocation.arguments
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (json.JSONDecodeError, TypeError):
+                    args = {"raw": args}
 
             logger.info(
-                "Copilot request completed",
-                extra={
-                    "model": self._model_id,
-                    "input_tokens": usage.input_tokens,
-                    "output_tokens": usage.output_tokens,
-                    "response_length": len(response_text),
-                },
+                "Tool call → PydanticAI",
+                extra={"tool": invocation.tool_name, "call_id": invocation.tool_call_id},
             )
 
             return ModelResponse(
-                parts=[TextPart(content=response_text)],
-                usage=usage,
+                parts=[ToolCallPart(
+                    tool_name=invocation.tool_name,
+                    args=args,
+                    tool_call_id=invocation.tool_call_id,
+                )],
+                usage=RequestUsage(),
                 model_name=self._model_id,
                 timestamp=datetime.now(timezone.utc),
             )
-        finally:
+
+        # Session idle — final response
+        response = self._extract_final_response()
+        await self._cleanup_session()
+        return response
+
+    # ---- Helpers ----
+
+    def _extract_final_response(self) -> ModelResponse:
+        if not self._response_text:
+            # Try from session messages
+            if self._active_session:
+                try:
+                    import asyncio
+                    msgs = asyncio.get_event_loop().run_until_complete(
+                        self._active_session.get_messages()
+                    )
+                except Exception:
+                    msgs = []
+                for m in msgs:
+                    etype = str(getattr(m, "type", ""))
+                    if "ASSISTANT_MESSAGE" in etype:
+                        data = getattr(m, "data", None)
+                        text = getattr(data, "message", None) or getattr(data, "content", None)
+                        if text:
+                            self._response_text = str(text)
+
+        if not self._response_text:
+            logger.warning("Copilot: no assistant response", extra={"model": self._model_id})
+
+        usage = RequestUsage(
+            input_tokens=self._usage_data.get("input", 0),
+            output_tokens=self._usage_data.get("output", 0),
+        )
+
+        logger.info(
+            "Copilot request completed",
+            extra={
+                "model": self._model_id,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "response_length": len(self._response_text),
+            },
+        )
+
+        return ModelResponse(
+            parts=[TextPart(content=self._response_text)],
+            usage=usage,
+            model_name=self._model_id,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+    async def _cleanup_session(self) -> None:
+        session = self._active_session
+        self._active_session = None
+        self._tool_bridge = None
+        if session:
             try:
                 await session.disconnect()
             except Exception:
