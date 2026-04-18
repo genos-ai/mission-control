@@ -210,7 +210,27 @@ async def handle(
                 return
             raise
 
-        # 3. Yield UserMessageEvent
+        # 3. Engine routing — CLI engines use a separate handler (Plan 55b)
+        engine = getattr(agent_config, "engine", "pydantic_ai")
+        if engine != "pydantic_ai":
+            from modules.backend.agents.mission_control.chat_cli_handler import handle_cli_chat
+            async for event in handle_cli_chat(
+                session_id, message,
+                agent_name=agent_name,
+                agent_config=agent_config,
+                mission_id=mission_id,
+                session_service=session_service,
+                event_bus=event_bus,
+                channel=channel,
+                sender_id=sender_id,
+                db_session=db_session,
+                skip_persistence=skip_persistence,
+            ):
+                yield event
+                await _publish(event_bus, event)
+            return
+
+        # 4. Yield UserMessageEvent
         user_event = UserMessageEvent(
             session_id=sid,
             source=source,
@@ -220,7 +240,7 @@ async def handle(
         yield user_event
         await _publish(event_bus, user_event)
 
-        # 4. Apply guardrails
+        # 5. Apply guardrails
         check_guardrails(message, agent_config)
 
         # 5. Yield AgentThinkingEvent
