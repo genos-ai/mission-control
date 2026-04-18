@@ -34,6 +34,7 @@ from modules.backend.core.config_schema import (
     LoggingSchema,
     ExecutionsSchema,
     NotificationsSchema,
+    ProvidersSchema,
     WorkflowsSchema,
     MissionsSchema,
     SecuritySchema,
@@ -141,6 +142,7 @@ class AppConfig:
         self._missions = _load_validated_optional(MissionsSchema, "missions.yaml")
         self._gate = _load_validated_optional(GateSchema, "gate.yaml")
         self._notifications = _load_validated_optional(NotificationsSchema, "notifications.yaml")
+        self._providers = _load_validated_optional(ProvidersSchema, "providers.yaml")
 
     @property
     def application(self) -> ApplicationSchema:
@@ -211,6 +213,11 @@ class AppConfig:
     def notifications(self) -> NotificationsSchema:
         """Run notification settings."""
         return self._notifications
+
+    @property
+    def providers(self) -> ProvidersSchema:
+        """Model provider auth settings."""
+        return self._providers
 
 
 @lru_cache

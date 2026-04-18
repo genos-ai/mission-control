@@ -1,0 +1,21 @@
+# Provider authentication configuration.
+#
+# Controls how PydanticAI agents authenticate with LLM providers.
+# Switch auth_mode without changing any agent code or config.
+#
+# Auth modes:
+#   api_key    — standard API key (default, billed per-token)
+#   auth_token — subscription/OAuth bearer token (billed to subscription)
+#
+# To use Claude Max subscription instead of API credits:
+#   1. Run: claude setup-token (generates long-lived OAuth token)
+#   2. Set: export ANTHROPIC_AUTH_TOKEN="your-token"
+#   3. Change auth_mode below to "auth_token"
+
+anthropic:
+  auth_mode: api_key
+  env_var: ANTHROPIC_API_KEY
+
+openai:
+  auth_mode: api_key
+  env_var: OPENAI_API_KEY
