@@ -2,7 +2,7 @@
 
 *Created: 2026-03-10*
 *Updated: 2026-03-11 — Added Pre-Phase 0 (seam bug fixes, execution_id, identity model)*
-*Status: Pending*
+*Status: Done (2026-04-18) — MCD, ContextAssembler, ContextCurator, HistoryQueryService, SummarizationService shipped. Project entity deliberately skipped (mission is the primitive per AGENTS.md). Extended by Plan 57.*
 *Phase: 9 of 9 (AI-First Platform Build)*
 *Depends on: Phase 4 (Mission Control Dispatch), Phase 6 (Plan Persistence), Phase 8 (Playbooks & Missions)*
 *Blocked by: Phase 8*

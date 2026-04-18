@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Done (2026-04-18) |
 | **Created** | 2026-04-12 |
 | **Supersedes** | The deleted "Plan 52 — Decouple Chat Persistence from SSE" (asyncio.create_task approach), the `MissionPlanDaemon` polling loop, the `mission_plan_crash_recovery.py` module, and the `session_followups` table-based wake-on-event primitive |
 | **Depends on** | Plan 16 (Temporal Integration — already shipped, feature flag off), Plan 51 (Autonomy Loop — supervisor decision matrix, gate checkpoint) |

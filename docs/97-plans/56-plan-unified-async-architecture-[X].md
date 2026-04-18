@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Ready |
+| **Status** | Done (2026-04-18) |
 | **Created** | 2026-04-14 |
 | **Updated** | 2026-04-14 |
 | **Depends on** | Plan 53 (MissionEventHandler — done), Plan 52 (Temporal Backbone — done) |
@@ -132,7 +132,7 @@ During streaming, content is written directly to the `content` column with `stat
 
 #### 3.2 SSE Disconnect Handling
 
-**Status: Already implemented** in `api/v1/endpoints/sessions.py:338-352`.
+**Status: Done (2026-04-18)** in `api/v1/endpoints/sessions.py:338-352`.
 
 The background `_run_agent()` task already continues after `CancelledError`. It has its own DB session and Redis connection. **No code changes needed** — verify with a test only.
 

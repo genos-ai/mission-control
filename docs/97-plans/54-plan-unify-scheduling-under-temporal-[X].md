@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Done (2026-04-18) |
 | **Created** | 2026-04-13 |
 | **Depends on** | Plan 52 (Temporal Backbone — done), Plan 53 (Workflow DB — ready) |
 | **Target** | Background tasks, workflow scheduling, event infrastructure, CLI, reference docs |
