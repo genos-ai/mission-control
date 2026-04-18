@@ -35,7 +35,12 @@ FORBIDDEN_IMPORTS: dict[str, list[str]] = {
 # Exceptions: imports that are permitted despite matching a forbidden prefix.
 # For example, schema imports or protocol imports that are intentionally shared.
 ALLOWED_EXCEPTIONS: set[str] = {
-    "modules.backend.models.base",  # TimestampMixin etc. may be needed for type hints
+    # Type hints only — Base/TimestampMixin/UUIDMixin are used for isinstance
+    # checks in health probes (cli/health.py), not for DB queries.  The CLI
+    # never calls into the ORM; it only references these classes for runtime
+    # type inspection.  Plan 38 §1.2 item #14 flagged this as a violation,
+    # but the exception is intentional and reviewed.
+    "modules.backend.models.base",
 }
 
 

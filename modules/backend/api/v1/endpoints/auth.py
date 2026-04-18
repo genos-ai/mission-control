@@ -14,6 +14,7 @@ from modules.backend.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
     LoginResponse,
+    SseTokenResponse,
     TokenRefreshRequest,
     TokenRefreshResponse,
     build_api_key_create_response,
@@ -65,6 +66,40 @@ async def refresh_token(
             access_token=result["access_token"],
             refresh_token=result["refresh_token"],
         ).model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.post("/sse-token", response_model=ApiResponse, summary="Exchange JWT for short-lived SSE token")
+async def create_sse_token(
+    current_user: CurrentUser,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Exchange a valid JWT for a short-lived, single-use SSE token.
+
+    EventSource cannot set custom headers, so SSE endpoints accept a
+    ``?token=`` query parameter. Rather than passing the long-lived JWT
+    directly, callers exchange it here for a 30-second, single-use token
+    stored in Redis.
+    """
+    import uuid
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_redis_url
+
+    sse_token = str(uuid.uuid4())
+    ttl = 30
+
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        await redis.set(f"sse_token:{sse_token}", str(current_user.id), ex=ttl)
+    finally:
+        await redis.aclose()
+
+    return ApiResponse(
+        success=True,
+        data=SseTokenResponse(token=sse_token, expires_in=ttl).model_dump(),
         metadata={"request_id": request_id},
     )
 

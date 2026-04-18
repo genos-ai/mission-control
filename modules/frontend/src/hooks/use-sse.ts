@@ -18,28 +18,36 @@ export function useRunStream(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId) return
 
-    const source = api.sse(`/streams/runs/${sessionId}`)
-    sourceRef.current = source
+    let cancelled = false
 
-    source.addEventListener('connected', () => {
-      setConnected(true)
-    })
+    async function connect() {
+      const source = await api.sse(`/streams/runs/${sessionId}`)
+      if (cancelled) { source.close(); return }
+      sourceRef.current = source
 
-    source.onmessage = (e) => {
-      try {
-        const parsed = JSON.parse(e.data) as SseEvent
-        setEvents((prev) => [...prev, parsed].slice(-200))
-      } catch {
-        // skip malformed
+      source.addEventListener('connected', () => {
+        setConnected(true)
+      })
+
+      source.onmessage = (e) => {
+        try {
+          const parsed = JSON.parse(e.data) as SseEvent
+          setEvents((prev) => [...prev, parsed].slice(-200))
+        } catch {
+          // skip malformed
+        }
+      }
+
+      source.onerror = () => {
+        setConnected(false)
       }
     }
 
-    source.onerror = () => {
-      setConnected(false)
-    }
+    connect()
 
     return () => {
-      source.close()
+      cancelled = true
+      sourceRef.current?.close()
       sourceRef.current = null
     }
   }, [sessionId])
@@ -61,28 +69,36 @@ export function useMissionStream(missionId: string | null) {
   useEffect(() => {
     if (!missionId) return
 
-    const source = api.sse(`/streams/missions/${missionId}`)
-    sourceRef.current = source
+    let cancelled = false
 
-    source.addEventListener('connected', () => {
-      setConnected(true)
-    })
+    async function connect() {
+      const source = await api.sse(`/streams/missions/${missionId}`)
+      if (cancelled) { source.close(); return }
+      sourceRef.current = source
 
-    source.onmessage = (e) => {
-      try {
-        const parsed = JSON.parse(e.data) as SseEvent
-        setEvents((prev) => [...prev, parsed].slice(-1000))
-      } catch {
-        // skip malformed
+      source.addEventListener('connected', () => {
+        setConnected(true)
+      })
+
+      source.onmessage = (e) => {
+        try {
+          const parsed = JSON.parse(e.data) as SseEvent
+          setEvents((prev) => [...prev, parsed].slice(-1000))
+        } catch {
+          // skip malformed
+        }
+      }
+
+      source.onerror = () => {
+        setConnected(false)
       }
     }
 
-    source.onerror = () => {
-      setConnected(false)
-    }
+    connect()
 
     return () => {
-      source.close()
+      cancelled = true
+      sourceRef.current?.close()
       sourceRef.current = null
     }
   }, [missionId])
@@ -107,20 +123,28 @@ export function useNotificationStream(
   useEffect(() => {
     if (!userId) return
 
-    const source = api.sse(`/streams/notifications?user_id=${userId}`)
-    sourceRef.current = source
+    let cancelled = false
 
-    source.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        callbackRef.current(data)
-      } catch {
-        // skip
+    async function connect() {
+      const source = await api.sse(`/streams/notifications?user_id=${userId}`)
+      if (cancelled) { source.close(); return }
+      sourceRef.current = source
+
+      source.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          callbackRef.current(data)
+        } catch {
+          // skip
+        }
       }
     }
 
+    connect()
+
     return () => {
-      source.close()
+      cancelled = true
+      sourceRef.current?.close()
       sourceRef.current = null
     }
   }, [userId])
