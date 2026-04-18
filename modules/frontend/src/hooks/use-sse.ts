@@ -43,7 +43,7 @@ export function useRunStream(sessionId: string | null) {
       }
     }
 
-    connect()
+    connect().catch(() => { /* token exchange or network failure — silent */ })
 
     return () => {
       cancelled = true
@@ -94,7 +94,7 @@ export function useMissionStream(missionId: string | null) {
       }
     }
 
-    connect()
+    connect().catch(() => { /* token exchange or network failure — silent */ })
 
     return () => {
       cancelled = true
@@ -140,7 +140,7 @@ export function useNotificationStream(
       }
     }
 
-    connect()
+    connect().catch(() => { /* token exchange or network failure — silent */ })
 
     return () => {
       cancelled = true

@@ -174,6 +174,18 @@ class ExecutionDispatchMixin:
                         total_cost_usd=execution.total_cost_usd or 0.0,
                     ),
                 )
+        except Exception as e:
+            # Catch-all: ensure execution never gets stuck in RUNNING
+            execution.status = ExecutionState.FAILED
+            execution.completed_at = utc_now()
+            execution.error_data = {
+                "message": str(e), "type": type(e).__name__,
+            }
+            await self._session.flush()
+            logger.exception(
+                "Execution failed with unexpected error",
+                extra={"execution_id": execution_id, "mission_id": execution.mission_id},
+            )
 
         return execution
 

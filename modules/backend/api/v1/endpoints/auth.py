@@ -91,11 +91,16 @@ async def create_sse_token(
     sse_token = str(uuid.uuid4())
     ttl = 30
 
-    redis = AsyncRedis.from_url(get_redis_url())
     try:
-        await redis.set(f"sse_token:{sse_token}", str(current_user.id), ex=ttl)
-    finally:
-        await redis.aclose()
+        redis = AsyncRedis.from_url(get_redis_url())
+        try:
+            await redis.set(f"sse_token:{sse_token}", str(current_user.id), ex=ttl)
+        finally:
+            await redis.aclose()
+    except Exception:
+        # Redis unavailable — fall back to returning the token as-is.
+        # The SSE dependency will resolve via JWT fallback.
+        pass
 
     return ApiResponse(
         success=True,

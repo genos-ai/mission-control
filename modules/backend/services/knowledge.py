@@ -21,6 +21,10 @@ from modules.backend.core.logging import get_logger
 from modules.backend.models.mission_learning import LearningStatus, MissionLearning
 from modules.backend.repositories.embedding import EmbeddingRepository
 from modules.backend.repositories.mission_intent import MissionIntentRepository
+from modules.backend.repositories.mission_history import (
+    MissionDecisionRepository,
+    MilestoneSummaryRepository,
+)
 from modules.backend.repositories.mission_learning import MissionLearningRepository
 from modules.backend.schemas.knowledge import KnowledgeEntry
 from modules.backend.services.base import BaseService
@@ -41,6 +45,8 @@ class KnowledgeService(BaseService):
         self._intent_repo = MissionIntentRepository(session)
         self._learning_repo = MissionLearningRepository(session)
         self._embedding_repo = EmbeddingRepository(session)
+        self._decision_repo = MissionDecisionRepository(session)
+        self._milestone_repo = MilestoneSummaryRepository(session)
 
     @staticmethod
     @asynccontextmanager
@@ -199,18 +205,9 @@ class KnowledgeService(BaseService):
         limit: int = 20,
     ) -> list[dict]:
         """List archived decisions, optionally filtered by mission/domain."""
-        from sqlalchemy import desc
-
-        from modules.backend.models.mission_history import MissionDecision
-
-        query = select(MissionDecision)
-        if domain:
-            query = query.where(MissionDecision.domain == domain)
-        if mission_id:
-            query = query.where(MissionDecision.mission_id == mission_id)
-        query = query.order_by(desc(MissionDecision.created_at)).limit(limit)
-
-        result = await self._session.execute(query)
+        decisions = await self._decision_repo.list_all(
+            mission_id=mission_id, domain=domain, limit=limit,
+        )
         return [
             {
                 "id": d.id,
@@ -223,7 +220,7 @@ class KnowledgeService(BaseService):
                 "status": d.status,
                 "created_at": str(d.created_at),
             }
-            for d in result.scalars().all()
+            for d in decisions
         ]
 
     async def list_milestones(
@@ -233,16 +230,9 @@ class KnowledgeService(BaseService):
         limit: int = 20,
     ) -> list[dict]:
         """List milestone summaries, optionally filtered by mission."""
-        from sqlalchemy import desc
-
-        from modules.backend.models.mission_history import MilestoneSummary
-
-        query = select(MilestoneSummary)
-        if mission_id:
-            query = query.where(MilestoneSummary.mission_id == mission_id)
-        query = query.order_by(desc(MilestoneSummary.created_at)).limit(limit)
-
-        result = await self._session.execute(query)
+        milestones = await self._milestone_repo.list_all(
+            mission_id=mission_id, limit=limit,
+        )
         return [
             {
                 "id": m.id,
@@ -253,7 +243,7 @@ class KnowledgeService(BaseService):
                 "key_outcomes": m.key_outcomes,
                 "created_at": str(m.created_at),
             }
-            for m in result.scalars().all()
+            for m in milestones
         ]
 
     # ------------------------------------------------------------------
