@@ -68,15 +68,15 @@ async def list_platform_learnings(
     domain_tags: str | None = Query(None, description="Comma-separated domain tags"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-) -> MissionLearningListResponse:
+) -> ApiResponse:
     """List platform-promoted learnings across all missions."""
     tags = [t.strip() for t in domain_tags.split(",")] if domain_tags else None
     svc = MissionLearningService(db)
     learnings = await svc.list_platform(kind=kind, domain_tags=tags, limit=limit, offset=offset)
-    return MissionLearningListResponse(
-        items=[MissionLearningResponse.model_validate(l) for l in learnings],
-        total=len(learnings),
-    )
+    return ApiResponse(data={
+        "items": [MissionLearningResponse.model_validate(l).model_dump() for l in learnings],
+        "total": len(learnings),
+    })
 
 
 @router.get("/knowledge/decisions")

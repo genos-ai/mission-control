@@ -64,7 +64,7 @@ async def list_mission_learnings(
     domain_tags: str | None = Query(None, description="Comma-separated domain tags"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-) -> MissionLearningListResponse:
+) -> ApiResponse:
     """List learnings for a mission."""
     tags = [t.strip() for t in domain_tags.split(",")] if domain_tags else None
     svc = MissionLearningService(db)
@@ -72,10 +72,10 @@ async def list_mission_learnings(
         mission_id, kind=kind, domain_tags=tags, limit=limit, offset=offset,
     )
     total = await svc._learning_repo.count_by_mission(mission_id)
-    return MissionLearningListResponse(
-        items=[MissionLearningResponse.model_validate(l) for l in learnings],
-        total=total,
-    )
+    return ApiResponse(data={
+        "items": [MissionLearningResponse.model_validate(l).model_dump() for l in learnings],
+        "total": total,
+    })
 
 
 @router.get("/missions/{mission_id}/learnings/{learning_id}")
@@ -163,15 +163,15 @@ async def list_intent_revisions(
     user: CurrentUser,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-) -> MissionIntentListResponse:
+) -> ApiResponse:
     """List intent revision history, newest first."""
     svc = MissionIntentService(db)
     revisions = await svc.list_revisions(mission_id, limit=limit, offset=offset)
     total = await svc.count_revisions(mission_id)
-    return MissionIntentListResponse(
-        items=[MissionIntentResponse.model_validate(r) for r in revisions],
-        total=total,
-    )
+    return ApiResponse(data={
+        "items": [MissionIntentResponse.model_validate(r).model_dump() for r in revisions],
+        "total": total,
+    })
 
 
 @router.post("/missions/{mission_id}/intent")
