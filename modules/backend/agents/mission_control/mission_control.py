@@ -519,6 +519,14 @@ async def handle(
         except (SQLAlchemyError, ApplicationError):
             logger.debug("Failed to touch session activity", exc_info=True)
 
+        # 13. Session memory compression (Plan 57 Phase C)
+        try:
+            from modules.backend.services.session_memory import SessionMemoryService
+            mem_svc = SessionMemoryService(session_service._session)
+            await mem_svc.compress_if_needed(session_id)
+        except Exception:
+            logger.debug("Session memory compression skipped", exc_info=True)
+
     except Exception as exc:
         logger.error(
             "Agent execution error",

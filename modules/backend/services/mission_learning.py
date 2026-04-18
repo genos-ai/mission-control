@@ -34,6 +34,70 @@ from modules.backend.services.base import BaseService
 logger = get_logger(__name__)
 
 
+def _schedule_embed(source_table: str, source_id: str) -> None:
+    """Fire embed_source as a background task. Best-effort, non-blocking."""
+    import asyncio
+
+    async def _fire():
+        try:
+            from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+            client = await get_temporal_client()
+            config = get_temporal_config()
+
+            from modules.backend.temporal.knowledge_activities import embed_source
+            await client.execute_workflow(
+                "no-op",  # Not a workflow — use start_activity pattern
+                task_queue=config.task_queue,
+            )
+        except Exception:
+            logger.debug("Embed-on-write skipped (Temporal unavailable)", exc_info=True)
+
+    # Can't reliably fire a Temporal activity from a service without
+    # a workflow context. Use asyncio.create_task as a fallback —
+    # the daily backfill sweep catches any misses.
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_fire_embed_direct(source_table, source_id))
+    except RuntimeError:
+        pass  # No event loop — skip (e.g. CLI context)
+
+
+async def _fire_embed_direct(source_table: str, source_id: str) -> None:
+    """Directly embed a source row. Called from create_task."""
+    try:
+        from modules.backend.services.knowledge_helpers import get_embed_text, get_embedding_version, get_source_mission_id
+        from modules.backend.core.embeddings import get_embedder, content_hash
+        from modules.backend.core.database import get_async_session
+        from modules.backend.repositories.embedding import EmbeddingRepository
+
+        embed_text = await get_embed_text(source_table, source_id)
+        if not embed_text:
+            return
+
+        embedder = get_embedder()
+        vec = await embedder.embed(embed_text)
+        if not vec:
+            return
+
+        version = get_embedding_version()
+        mission_id = await get_source_mission_id(source_table, source_id)
+
+        async with get_async_session() as db:
+            repo = EmbeddingRepository(db)
+            await repo.upsert(
+                source_table=source_table,
+                source_id=source_id,
+                embedding=vec,
+                model=embedder.model_name,
+                version=version,
+                mission_id=mission_id,
+                content_hash=content_hash(embed_text),
+            )
+            await db.commit()
+    except Exception:
+        logger.debug("Embed-on-write failed (backfill will catch)", exc_info=True)
+
+
 def _load_learning_config() -> dict:
     """Load knowledge.learnings config with safe defaults."""
     try:
@@ -87,7 +151,7 @@ class MissionLearningService(BaseService):
         """Create a new learning entry with tag validation."""
         validated_tags, _ = validate_tags(domain_tags or [])
 
-        return await self._learning_repo.create(
+        learning = await self._learning_repo.create(
             mission_id=mission_id,
             kind=kind,
             title=title,
@@ -99,6 +163,11 @@ class MissionLearningService(BaseService):
             confidence=confidence,
             occurrence_count=occurrence_count,
         )
+
+        # Fire embed-on-write (best-effort, non-blocking)
+        _schedule_embed("mission_learnings", learning.id)
+
+        return learning
 
     async def list_by_mission(
         self,

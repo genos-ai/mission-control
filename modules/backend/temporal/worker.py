@@ -41,6 +41,18 @@ from modules.backend.temporal.tool_fork_workflow import (
     RunObjectiveWorkflow,
     RunWorkflowWorkflow,
 )
+from modules.backend.temporal.knowledge_activities import (
+    extract_mission_learnings,
+    extract_all_missions,
+    embed_source,
+    backfill_embeddings,
+    run_knowledge_officer,
+)
+from modules.backend.temporal.knowledge_workflow import (
+    KnowledgeExtractionWorkflow,
+    KnowledgeOfficerWorkflow,
+    EmbeddingBackfillWorkflow,
+)
 from modules.backend.temporal.maintenance_activities import (
     run_daily_cleanup,
     run_hourly_health_check,
@@ -78,6 +90,10 @@ async def start_worker() -> None:
             DesignWorkflowWorkflow,
             RunObjectiveWorkflow,
             RunWorkflowWorkflow,
+            # Knowledge platform (Plan 57)
+            KnowledgeExtractionWorkflow,
+            KnowledgeOfficerWorkflow,
+            EmbeddingBackfillWorkflow,
             # Maintenance (Plan 56 Phase C — replaces TaskIQ cron)
             DailyCleanupWorkflow,
             HourlyHealthCheckWorkflow,
@@ -106,6 +122,12 @@ async def start_worker() -> None:
             execute_run_objective,
             execute_run_workflow,
             update_execution_record_status,
+            # Knowledge platform (Plan 57)
+            extract_mission_learnings,
+            extract_all_missions,
+            embed_source,
+            backfill_embeddings,
+            run_knowledge_officer,
             # Maintenance (Plan 56 Phase C — replaces TaskIQ cron)
             run_daily_cleanup,
             run_hourly_health_check,

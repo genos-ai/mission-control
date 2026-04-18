@@ -155,6 +155,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "evaluate-workflow-schedules",
             cron_expressions=["* * * * *"],
         )
+        # Plan 57: Knowledge platform schedules
+        from modules.backend.temporal.knowledge_workflow import (
+            KnowledgeExtractionWorkflow,
+            KnowledgeOfficerWorkflow,
+            EmbeddingBackfillWorkflow,
+        )
+
+        await _register_schedule(
+            "knowledge-daily-extraction",
+            KnowledgeExtractionWorkflow.run,
+            "knowledge-extraction",
+            cron_expressions=["30 3 * * *"],  # 03:30 UTC daily
+        )
+        await _register_schedule(
+            "knowledge-officer-daily",
+            KnowledgeOfficerWorkflow.run,
+            "knowledge-officer",
+            cron_expressions=["0 4 * * *"],  # 04:00 UTC daily
+        )
+        await _register_schedule(
+            "knowledge-embedding-backfill",
+            EmbeddingBackfillWorkflow.run,
+            "embedding-backfill",
+            cron_expressions=["15 4 * * *"],  # 04:15 UTC (after officer)
+        )
     except Exception:  # noqa: BLE001
         logger.error("Failed to register Temporal dispatch schedule", exc_info=True)
 

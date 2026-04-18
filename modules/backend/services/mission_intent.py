@@ -19,6 +19,17 @@ from modules.backend.services.base import BaseService
 logger = get_logger(__name__)
 
 
+def _schedule_embed(source_table: str, source_id: str) -> None:
+    """Fire embed-on-write as a background task. Best-effort."""
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+        from modules.backend.services.mission_learning import _fire_embed_direct
+        loop.create_task(_fire_embed_direct(source_table, source_id))
+    except RuntimeError:
+        pass  # No event loop — skip
+
+
 class MissionIntentService(BaseService):
     """Service for mission intent revisions."""
 
@@ -86,6 +97,9 @@ class MissionIntentService(BaseService):
             source=source,
             revised_from=revised_from,
         )
+
+        # Fire embed-on-write (best-effort, non-blocking)
+        _schedule_embed("mission_intents", new_intent.id)
 
         return new_intent
 

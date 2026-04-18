@@ -148,3 +148,51 @@ async def backfill_embeddings(
     result = {"total_embedded": total_embedded, "version": version}
     logger.info("Embedding backfill complete", extra=result)
     return result
+
+
+@activity.defn
+async def extract_all_missions() -> dict:
+    """Extract learnings across all active missions.
+
+    Called daily by KnowledgeExtractionWorkflow.
+    Walks every active mission and runs the extractor.
+    """
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.mission_learning import MissionLearningExtractor
+    from sqlalchemy import select
+    from modules.backend.models.mission import Mission, MissionStatus
+
+    total_created = 0
+    missions_processed = 0
+
+    async with get_async_session() as db:
+        result = await db.execute(
+            select(Mission.id).where(Mission.status == MissionStatus.ACTIVE)
+        )
+        mission_ids = [row[0] for row in result.all()]
+
+    for mid in mission_ids:
+        async with get_async_session() as db:
+            extractor = MissionLearningExtractor(db)
+            created = await extractor.extract_for_mission(mid)
+            await db.commit()
+            total_created += len(created)
+            missions_processed += 1
+
+    result = {
+        "missions_processed": missions_processed,
+        "learnings_created": total_created,
+    }
+    logger.info("Daily learning extraction complete", extra=result)
+    return result
+
+
+@activity.defn
+async def run_knowledge_officer() -> dict:
+    """Run the Knowledge Officer curation cycle.
+
+    Called daily by KnowledgeOfficerWorkflow.
+    """
+    from modules.backend.agents.system.knowledge_officer.agent import run_officer
+
+    return await run_officer()
