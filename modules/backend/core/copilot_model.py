@@ -19,6 +19,7 @@ from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
     TextPart,
+    ToolReturnPart,
     UserPromptPart,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
@@ -31,14 +32,18 @@ logger = get_logger(__name__)
 
 
 def _extract_messages(messages: list[ModelMessage]) -> tuple[str, str]:
-    """Extract system prompt and latest user message from PydanticAI messages.
+    """Extract system prompt and user message from PydanticAI messages.
 
     PydanticAI passes the full conversation history. We extract:
     - System prompt from the first ModelRequest with instructions
-    - Latest user message from the last UserPromptPart
+    - Full conversation context serialized into the user message
+
+    Copilot sessions are ephemeral (new session per request), so
+    prior turns are included as context in the prompt.
     """
     system_prompt = ""
-    user_message = ""
+    history_parts: list[str] = []
+    last_user_message = ""
 
     for msg in messages:
         if isinstance(msg, ModelRequest):
@@ -46,15 +51,28 @@ def _extract_messages(messages: list[ModelMessage]) -> tuple[str, str]:
                 system_prompt = msg.instructions
             for part in msg.parts:
                 if isinstance(part, UserPromptPart):
-                    content = part.content
-                    if isinstance(content, str):
-                        user_message = content
-                    elif isinstance(content, list):
-                        user_message = " ".join(
-                            p.get("text", "")
-                            for p in content
-                            if isinstance(p, dict) and p.get("type") == "text"
-                        )
+                    content = part.content if isinstance(part.content, str) else str(part.content)
+                    last_user_message = content
+                    history_parts.append(f"User: {content}")
+                elif isinstance(part, ToolReturnPart):
+                    history_parts.append(f"Tool ({part.tool_name}): {part.model_response_str()[:500]}")
+        elif isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, TextPart) and part.content:
+                    truncated = part.content[:2000] + ("..." if len(part.content) > 2000 else "")
+                    history_parts.append(f"Assistant: {truncated}")
+
+    # If there's prior history, prepend it to the last user message
+    if len(history_parts) > 1:
+        # Remove the last entry (it's the current user message, already in last_user_message)
+        prior = history_parts[:-1]
+        user_message = (
+            f"[Previous conversation]\n"
+            + "\n".join(prior)
+            + f"\n[End previous conversation]\n\n{last_user_message}"
+        )
+    else:
+        user_message = last_user_message
 
     return system_prompt, user_message
 
@@ -69,6 +87,7 @@ class CopilotModel(Model):
 
     _client: Any = None
     _started: bool = False
+    _lock: Any = None  # asyncio.Lock, created lazily
 
     def __init__(
         self,
@@ -90,16 +109,22 @@ class CopilotModel(Model):
         return "copilot"
 
     async def _ensure_client(self) -> None:
-        """Lazily create and start the CopilotClient."""
-        if CopilotModel._client is None:
-            try:
-                from copilot import CopilotClient
-            except ImportError:
-                raise ImportError(
-                    "github-copilot-sdk is required for copilot: models. "
-                    "Install with: pip install github-copilot-sdk"
-                )
-            CopilotModel._client = CopilotClient(auto_start=True)
+        """Lazily create and start the CopilotClient (thread-safe)."""
+        import asyncio
+
+        if CopilotModel._lock is None:
+            CopilotModel._lock = asyncio.Lock()
+
+        async with CopilotModel._lock:
+            if CopilotModel._client is None:
+                try:
+                    from copilot import CopilotClient
+                except ImportError:
+                    raise ImportError(
+                        "github-copilot-sdk is required for copilot: models. "
+                        "Install with: pip install github-copilot-sdk"
+                    )
+                CopilotModel._client = CopilotClient(auto_start=True)
         if not CopilotModel._started:
             await CopilotModel._client.start()
             CopilotModel._started = True
@@ -167,6 +192,12 @@ class CopilotModel(Model):
                     if text:
                         response_text = str(text)
 
+            if not response_text:
+                logger.warning(
+                    "Copilot: no assistant response found in session messages",
+                    extra={"model": self._model_id, "message_count": len(msgs)},
+                )
+
             usage = RequestUsage(
                 input_tokens=usage_data.get("input", 0),
                 output_tokens=usage_data.get("output", 0),
@@ -176,8 +207,8 @@ class CopilotModel(Model):
                 "Copilot request completed",
                 extra={
                     "model": self._model_id,
-                    "input_tokens": usage.request_tokens,
-                    "output_tokens": usage.response_tokens,
+                    "input_tokens": usage.input_tokens,
+                    "output_tokens": usage.output_tokens,
                     "response_length": len(response_text),
                 },
             )
@@ -189,4 +220,7 @@ class CopilotModel(Model):
                 timestamp=datetime.now(timezone.utc),
             )
         finally:
-            await session.disconnect()
+            try:
+                await session.disconnect()
+            except Exception:
+                logger.debug("Copilot session disconnect failed", exc_info=True)
