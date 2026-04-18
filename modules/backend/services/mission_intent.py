@@ -114,13 +114,15 @@ def _build_summary(intent: str, max_chars: int = 160) -> str:
     """Build a one-line summary from the full intent text.
 
     Takes the first sentence or first max_chars characters,
-    whichever is shorter.
+    whichever is shorter. A sentence ends with punctuation
+    followed by a space or end-of-string (not mid-word dots
+    like 'software.quality.agent').
     """
-    # First sentence
-    for end in (".", "!", "?"):
-        idx = intent.find(end)
-        if 0 < idx < max_chars:
-            return intent[: idx + 1].strip()
+    import re
+    # Match sentence-ending punctuation followed by whitespace or end
+    match = re.search(r'[.!?](?:\s|$)', intent[:max_chars])
+    if match and match.start() > 10:  # skip very short "sentences"
+        return intent[: match.start() + 1].strip()
 
     # Truncate
     if len(intent) <= max_chars:
