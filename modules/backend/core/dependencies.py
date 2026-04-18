@@ -98,6 +98,30 @@ async def get_optional_user(
         return None
 
 
+async def _resolve_sse_token(token: str) -> str | None:
+    """Look up a short-lived SSE token in Redis and return the user_id.
+
+    The token is deleted after retrieval (single-use).  Returns ``None``
+    when the token is not found or on any Redis error (fail-open so the
+    caller can fall back to JWT resolution).
+    """
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_redis_url
+
+    redis_key = f"sse_token:{token}"
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        user_id: bytes | None = await redis.getdel(redis_key)
+        if user_id:
+            return user_id.decode()
+    except Exception:
+        pass
+    finally:
+        await redis.aclose()
+    return None
+
+
 async def get_current_user_sse(
     db: DbSession,
     token: str | None = None,
@@ -105,26 +129,43 @@ async def get_current_user_sse(
 ) -> User:
     """Resolve the current user for SSE endpoints.
 
-    EventSource (browser) cannot set custom headers, so SSE clients pass the
-    JWT as a `?token=...` query parameter. This dependency accepts either:
-      1. `token` query parameter (EventSource / browser clients)
-      2. `Authorization: Bearer <jwt>` header (fetch-based clients, curl)
+    Resolution order:
+      1. ``?token`` query param resolved as a short-lived SSE token
+         (Redis lookup, single-use, 30 s TTL).
+      2. ``?token`` query param resolved as a raw JWT (backwards compat).
+      3. ``Authorization: Bearer <jwt>`` header (fetch-based clients, curl).
 
     API keys are not accepted on streaming endpoints — a stolen JWT is
     scoped by the short-lived access token expiry, while API keys are not.
     """
     from modules.backend.services.auth import AuthService
 
-    jwt_token: str | None = None
+    auth_service = AuthService(db)
+
+    # 1. Try short-lived SSE token (Redis)
     if token:
-        jwt_token = token
-    elif authorization and authorization.lower().startswith("bearer "):
+        user_id = await _resolve_sse_token(token)
+        if user_id:
+            from sqlalchemy import select
+
+            from modules.backend.models.user import User as UserModel
+
+            result = await db.execute(
+                select(UserModel).where(UserModel.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            if user:
+                return user
+
+        # 2. Fall back to treating the token as a raw JWT
+        return await auth_service.resolve_jwt(token)
+
+    # 3. Authorization header
+    if authorization and authorization.lower().startswith("bearer "):
         jwt_token = authorization[7:]
+        return await auth_service.resolve_jwt(jwt_token)
 
-    if not jwt_token:
-        raise AuthenticationError("Authentication required")
-
-    return await AuthService(db).resolve_jwt(jwt_token)
+    raise AuthenticationError("Authentication required")
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

@@ -4,9 +4,11 @@ Execution Service.
 Orchestrates execution lifecycle: creates executions from workflow steps,
 instantiates Mission Control with the appropriate roster, tracks
 ExecutionOutcome results, and manages inter-execution data flow.
+
+Dispatch methods (run_execution, start_temporal_execution) live in
+execution_dispatch.py and are mixed in via ExecutionDispatchMixin.
 """
 
-import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -14,7 +16,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config
-from modules.backend.core.exceptions import ApplicationError, NotFoundError, ValidationError
+from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
 from modules.backend.core.logging import get_logger
 from modules.backend.core.protocols import ExecutionDispatchProtocol
@@ -26,11 +28,12 @@ from modules.backend.models.execution import (
 )
 from modules.backend.repositories.execution import ExecutionRepository
 from modules.backend.services.base import BaseService
+from modules.backend.services.execution_dispatch import ExecutionDispatchMixin
 
 logger = get_logger(__name__)
 
 
-class ExecutionService(BaseService):
+class ExecutionService(ExecutionDispatchMixin, BaseService):
     """Execution lifecycle management."""
 
     def __init__(
@@ -228,200 +231,6 @@ class ExecutionService(BaseService):
         return await self._execute_db_operation(
             "create_adhoc_execution", _create(),
         )
-
-    # ---- Execution dispatch ----
-
-    async def run_execution(self, execution_id: str, gate: object | None = None) -> Execution:
-        """Execute by dispatching to Mission Control."""
-        execution = await self._get_execution(execution_id)
-        self._validate_transition(execution, ExecutionState.RUNNING)
-
-        execution.status = ExecutionState.RUNNING
-        execution.started_at = utc_now()
-        await self._session.flush()
-
-        # Emit system event: execution started
-        if execution.mission_id:
-            from modules.backend.events.types import SystemExecutionCreatedEvent
-            await self._event_bus.publish_to_mission(
-                execution.mission_id,
-                SystemExecutionCreatedEvent(
-                    session_id=uuid.UUID(execution.session_id) if execution.session_id else uuid.uuid4(),
-                    source="execution_service",
-                    execution_id=execution_id,
-                    mission_id=execution.mission_id,
-                    objective=execution.objective or "",
-                    triggered_by=execution.triggered_by or "unknown",
-                ),
-            )
-
-        if self._mission_control_dispatch is None:
-            logger.warning(
-                "Mission Control dispatch not available, "
-                "execution stays in RUNNING",
-                extra={"execution_id": execution_id, "mission_id": execution.mission_id},
-            )
-            return execution
-
-        try:
-            outcome = await self._mission_control_dispatch.execute(
-                mission_brief=execution.objective,
-                roster_ref=execution.roster_ref,
-                complexity_tier=execution.complexity_tier,
-                upstream_context=execution.upstream_context,
-                cost_ceiling_usd=execution.cost_ceiling_usd,
-                session_id=execution.session_id,
-                mission_id=execution.mission_id,
-                gate=gate,
-            )
-
-            execution.execution_outcome = (
-                outcome if isinstance(outcome, dict)
-                else outcome.model_dump()
-            )
-            execution.total_cost_usd = (
-                outcome.get("total_cost_usd", 0.0)
-                if isinstance(outcome, dict)
-                else getattr(outcome, "total_cost_usd", 0.0)
-            )
-            execution.result_summary = (
-                outcome.get("summary", None)
-                if isinstance(outcome, dict)
-                else getattr(outcome, "summary", None)
-            )
-
-            if (
-                execution.cost_ceiling_usd
-                and execution.total_cost_usd > execution.cost_ceiling_usd
-            ):
-                logger.warning(
-                    "Execution exceeded cost ceiling",
-                    extra={
-                        "execution_id": execution_id,
-                        "cost": execution.total_cost_usd,
-                        "ceiling": execution.cost_ceiling_usd,
-                        "mission_id": execution.mission_id,
-                    },
-                )
-
-            success = (
-                outcome.get("success", False)
-                if isinstance(outcome, dict)
-                else getattr(outcome, "success", False)
-            )
-            if success:
-                execution.status = ExecutionState.COMPLETED
-            else:
-                execution.status = ExecutionState.FAILED
-                execution.error_data = {
-                    "message": "Mission Control dispatch returned failure",
-                }
-
-            execution.completed_at = utc_now()
-            await self._session.flush()
-
-            # Emit system event: execution completed
-            if execution.mission_id:
-                from modules.backend.events.types import SystemExecutionCompletedEvent
-                duration = 0.0
-                if execution.started_at and execution.completed_at:
-                    try:
-                        from datetime import datetime
-                        t0 = datetime.fromisoformat(execution.started_at)
-                        t1 = datetime.fromisoformat(execution.completed_at)
-                        duration = (t1 - t0).total_seconds()
-                    except (ValueError, TypeError):
-                        pass
-                await self._event_bus.publish_to_mission(
-                    execution.mission_id,
-                    SystemExecutionCompletedEvent(
-                        session_id=uuid.UUID(execution.session_id) if execution.session_id else uuid.uuid4(),
-                        source="execution_service",
-                        execution_id=execution_id,
-                        mission_id=execution.mission_id,
-                        status=execution.status.value if hasattr(execution.status, 'value') else str(execution.status),
-                        total_cost_usd=execution.total_cost_usd or 0.0,
-                        duration_seconds=duration,
-                    ),
-                )
-
-        except (ApplicationError, OSError, RuntimeError, ValueError) as e:
-            execution.status = ExecutionState.FAILED
-            execution.completed_at = utc_now()
-            execution.error_data = {
-                "message": str(e), "type": type(e).__name__,
-            }
-            await self._session.flush()
-            logger.error(
-                "Execution failed",
-                extra={"execution_id": execution_id, "error": str(e), "mission_id": execution.mission_id},
-            )
-            # Emit system event: execution failed
-            if execution.mission_id:
-                from modules.backend.events.types import SystemExecutionCompletedEvent
-                await self._event_bus.publish_to_mission(
-                    execution.mission_id,
-                    SystemExecutionCompletedEvent(
-                        session_id=uuid.UUID(execution.session_id) if execution.session_id else uuid.uuid4(),
-                        source="execution_service",
-                        execution_id=execution_id,
-                        mission_id=execution.mission_id,
-                        status="failed",
-                        total_cost_usd=execution.total_cost_usd or 0.0,
-                    ),
-                )
-
-        return execution
-
-    async def start_temporal_execution(self, execution_id: str) -> dict[str, str]:
-        """Start an execution via Temporal workflow.
-
-        Reads execution data from the persistence layer and submits
-        a Temporal workflow. Returns workflow metadata dict.
-        """
-        from modules.backend.core.config import get_app_config
-        from modules.backend.services.execution_persistence import ExecutionPersistenceService
-        from modules.backend.temporal.client import get_temporal_client
-        from modules.backend.temporal.models import MissionWorkflowInput
-        from modules.backend.temporal.workflow import AgentMissionWorkflow
-
-        config = get_app_config()
-        persistence = ExecutionPersistenceService(self._session)
-        record = await persistence.get_execution(execution_id)
-
-        brief = ""
-        roster = "default"
-        budget = 10.0
-        mission_id = None
-        if record:
-            brief = record.objective_statement or ""
-            roster = record.roster_name or "default"
-            budget = record.total_cost_usd or 10.0
-            mission_id = record.mission_id
-
-        client = await get_temporal_client()
-        handle = await client.start_workflow(
-            AgentMissionWorkflow.run,
-            MissionWorkflowInput(
-                mission_run_id=execution_id,
-                session_id=execution_id,
-                mission_brief=brief,
-                roster_name=roster,
-                mission_budget_usd=budget,
-                mission_id=mission_id,
-                approval_timeout_seconds=config.temporal.approval_timeout_seconds,
-                escalation_timeout_seconds=config.temporal.escalation_timeout_seconds,
-                notification_timeout_seconds=config.temporal.notification_timeout_seconds,
-            ),
-            id=f"execution-{execution_id}",
-            task_queue=config.temporal.task_queue,
-        )
-
-        return {
-            "workflow_id": handle.id,
-            "execution_id": execution_id,
-            "status": "started",
-        }
 
     # ---- Execution lifecycle ----
 

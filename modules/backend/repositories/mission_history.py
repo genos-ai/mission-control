@@ -53,6 +53,24 @@ class MissionDecisionRepository(BaseRepository[MissionDecision]):
         return list(result.scalars().all())
 
 
+    async def list_all(
+        self,
+        *,
+        mission_id: str | None = None,
+        domain: str | None = None,
+        limit: int = 20,
+    ) -> list[MissionDecision]:
+        """List decisions with optional filters (cross-mission admin view)."""
+        query = select(MissionDecision)
+        if domain:
+            query = query.where(MissionDecision.domain == domain)
+        if mission_id:
+            query = query.where(MissionDecision.mission_id == mission_id)
+        query = query.order_by(desc(MissionDecision.created_at)).limit(limit)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+
 class MilestoneSummaryRepository(BaseRepository[MilestoneSummary]):
     """Repository for milestone summaries."""
 
@@ -70,4 +88,18 @@ class MilestoneSummaryRepository(BaseRepository[MilestoneSummary]):
             .order_by(desc(MilestoneSummary.period_end))
             .limit(limit)
         )
+        return list(result.scalars().all())
+
+    async def list_all(
+        self,
+        *,
+        mission_id: str | None = None,
+        limit: int = 20,
+    ) -> list[MilestoneSummary]:
+        """List milestones with optional mission filter (cross-mission admin view)."""
+        query = select(MilestoneSummary)
+        if mission_id:
+            query = query.where(MilestoneSummary.mission_id == mission_id)
+        query = query.order_by(desc(MilestoneSummary.period_end)).limit(limit)
+        result = await self.session.execute(query)
         return list(result.scalars().all())

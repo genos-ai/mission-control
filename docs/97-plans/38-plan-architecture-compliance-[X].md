@@ -1,11 +1,12 @@
 # Architecture Compliance: Layer Violations, File Splits, Test Coverage & Idempotency
 
-**Version:** 1.2.0
+**Version:** 2.0.0
 **Date:** 2026-04-18
 **Author:** Herman + Architecture Review
-**Status:** In progress — Phases 1 & 2 regressed, Phase 3 on track, Phase 4 partial, Phase 5 not started
+**Status:** Done — all phases complete, all 14 outstanding items resolved
 **Triggered by:** Codebase audit against reference architecture (01-core-principles, 08-python-coding-standards, AGENTS.md)
 **Re-assessed:** 2026-04-18 — compliance check against codebase revealed regressions and new scope
+**Closed:** 2026-04-18 — branch `fix/38-architecture-compliance` (8 commits)
 
 ---
 

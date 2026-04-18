@@ -23,7 +23,6 @@ from modules.backend.core.dependencies import DbSession, SseUser
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
-from modules.backend.models.user import User
 from modules.backend.services.console import format_event_for_sse
 from modules.backend.services.mission import MissionService
 from modules.backend.services.session import SessionService
@@ -37,7 +36,7 @@ router = APIRouter()
 
 
 async def _require_mission_access(
-    db, mission_id: str, user: User
+    db, mission_id: str, user,
 ) -> None:
     """Admin, owner, or mission member. Raises AuthorizationError otherwise."""
     if user.has_role("admin"):

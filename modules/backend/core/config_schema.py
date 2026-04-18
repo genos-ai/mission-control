@@ -310,7 +310,7 @@ class TemporalSchema(_StrictBase):
     """Temporal integration configuration (Tier 4 durable execution)."""
 
     enabled: bool = False
-    server_url: str = "localhost:7233"
+    server_url: str | None = None
     namespace: str = "default"
     task_queue: str = "agent-missions"
     workflow_execution_timeout_days: int = 30
@@ -330,10 +330,10 @@ class TemporalSchema(_StrictBase):
 
     @model_validator(mode="after")
     def _require_server_url_when_enabled(self) -> "TemporalSchema":
-        if self.enabled and self.server_url == "localhost:7233":
+        if self.enabled and self.server_url is None:
             raise ValueError(
                 "temporal.server_url must be explicitly configured when "
-                "temporal.enabled is true (default 'localhost:7233' is not allowed)"
+                "temporal.enabled is true"
             )
         return self
 

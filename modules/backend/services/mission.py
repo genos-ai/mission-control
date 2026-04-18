@@ -5,6 +5,7 @@ Business logic for mission lifecycle management, membership,
 and mission-scoping enforcement.
 """
 
+import json
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -20,6 +21,7 @@ from modules.backend.models.mission import (
     MissionMemberRole,
     MissionStatus,
 )
+from modules.backend.models.mission_event import MissionEvent
 from modules.backend.repositories.mission import (
     MissionMemberRepository,
     MissionRepository,
@@ -330,6 +332,11 @@ class MissionService(BaseService):
         except Exception:
             pass
 
+    async def is_member(self, mission_id: str, user_id: str) -> bool:
+        """Check if a user is a member of a mission."""
+        membership = await self._member_repo.get_membership(mission_id, user_id)
+        return membership is not None
+
     async def get_mission(self, mission_id: str) -> Mission:
         """Get a mission by ID. Raises NotFoundError if not found."""
         return await self._mission_repo.get_by_id(mission_id)
@@ -337,6 +344,34 @@ class MissionService(BaseService):
     async def get_mission_by_name(self, name: str) -> Mission | None:
         """Get a mission by name. Returns None if not found."""
         return await self._mission_repo.get_by_name(name)
+
+    async def get_narrative_events(
+        self, mission_id: str, *, limit: int = 200,
+    ) -> list[dict]:
+        """Return persisted narrative events for a mission timeline."""
+        rows = await self._session.execute(
+            select(MissionEvent)
+            .where(MissionEvent.mission_id == mission_id)
+            .order_by(MissionEvent.timestamp.desc())
+            .limit(limit)
+        )
+        events = []
+        for row in reversed(rows.scalars().all()):
+            data = row.data
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except (json.JSONDecodeError, TypeError):
+                    data = {}
+            events.append({
+                "event_id": str(row.id),
+                "event_type": row.event_type,
+                "category": "execution",
+                "timestamp": row.timestamp,
+                "source": row.source,
+                "data": data,
+            })
+        return events
 
     async def resolve_mission(self, id_or_name: str) -> Mission:
         """Resolve a mission by ID or name. Raises NotFoundError."""

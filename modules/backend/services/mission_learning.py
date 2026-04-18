@@ -169,6 +169,21 @@ class MissionLearningService(BaseService):
 
         return learning
 
+    async def get_by_id(self, learning_id: str) -> MissionLearning:
+        """Get a single learning by ID. Raises NotFoundError if missing."""
+        return await self._learning_repo.get_by_id(learning_id)
+
+    async def count_by_mission(
+        self,
+        mission_id: str,
+        *,
+        status: str | None = LearningStatus.ACTIVE.value,
+    ) -> int:
+        """Count learnings for a mission."""
+        return await self._learning_repo.count_by_mission(
+            mission_id, status=status,
+        )
+
     async def list_by_mission(
         self,
         mission_id: str,

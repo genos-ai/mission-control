@@ -21,6 +21,10 @@ from modules.backend.core.logging import get_logger
 from modules.backend.models.mission_learning import LearningStatus, MissionLearning
 from modules.backend.repositories.embedding import EmbeddingRepository
 from modules.backend.repositories.mission_intent import MissionIntentRepository
+from modules.backend.repositories.mission_history import (
+    MissionDecisionRepository,
+    MilestoneSummaryRepository,
+)
 from modules.backend.repositories.mission_learning import MissionLearningRepository
 from modules.backend.schemas.knowledge import KnowledgeEntry
 from modules.backend.services.base import BaseService
@@ -41,6 +45,8 @@ class KnowledgeService(BaseService):
         self._intent_repo = MissionIntentRepository(session)
         self._learning_repo = MissionLearningRepository(session)
         self._embedding_repo = EmbeddingRepository(session)
+        self._decision_repo = MissionDecisionRepository(session)
+        self._milestone_repo = MilestoneSummaryRepository(session)
 
     @staticmethod
     @asynccontextmanager
@@ -190,6 +196,55 @@ class KnowledgeService(BaseService):
             "reason": intent.reason,
             "created_at": str(intent.created_at),
         }
+
+    async def list_decisions(
+        self,
+        *,
+        mission_id: str | None = None,
+        domain: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """List archived decisions, optionally filtered by mission/domain."""
+        decisions = await self._decision_repo.list_all(
+            mission_id=mission_id, domain=domain, limit=limit,
+        )
+        return [
+            {
+                "id": d.id,
+                "mission_id": d.mission_id,
+                "decision_id": d.decision_id,
+                "domain": d.domain,
+                "decision": d.decision,
+                "rationale": d.rationale,
+                "made_by": d.made_by,
+                "status": d.status,
+                "created_at": str(d.created_at),
+            }
+            for d in decisions
+        ]
+
+    async def list_milestones(
+        self,
+        *,
+        mission_id: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """List milestone summaries, optionally filtered by mission."""
+        milestones = await self._milestone_repo.list_all(
+            mission_id=mission_id, limit=limit,
+        )
+        return [
+            {
+                "id": m.id,
+                "mission_id": m.mission_id,
+                "title": m.title,
+                "summary": m.summary,
+                "domain_tags": m.domain_tags,
+                "key_outcomes": m.key_outcomes,
+                "created_at": str(m.created_at),
+            }
+            for m in milestones
+        ]
 
     # ------------------------------------------------------------------
     # Internal search implementations

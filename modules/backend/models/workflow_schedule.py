@@ -9,7 +9,7 @@ The scheduler service reads enabled schedules, evaluates cron expressions,
 and creates WorkflowRuns when they fire.
 """
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -19,6 +19,14 @@ class WorkflowSchedule(UUIDMixin, TimestampMixin, Base):
     """A cron-based execution schedule for a workflow definition."""
 
     __tablename__ = "workflow_schedules"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_definition_id",
+            "mission_id",
+            "cron_expression",
+            name="uq_schedule_definition_mission_cron",
+        ),
+    )
 
     workflow_definition_id: Mapped[str] = mapped_column(
         String(36),

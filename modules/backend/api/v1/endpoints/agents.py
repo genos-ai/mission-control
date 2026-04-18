@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from fastapi import APIRouter
 
-from modules.backend.core.dependencies import DbSession, RequestId
+from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.base import ApiResponse
 
@@ -103,6 +103,7 @@ async def agent_chat(
 async def agent_chat_stream(
     data: ChatRequest,
     db: DbSession,
+    idempotency: Idempotency,
 ):
     """Stream agent events. Agent runs in background task that survives disconnect."""
     import asyncio
@@ -116,6 +117,12 @@ async def agent_chat_stream(
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.schemas.session import SessionMessageCreate
     from modules.backend.services.session import SessionService
+
+    # Return cached response if this stream was already started
+    if idempotency:
+        cached = await idempotency.get_cached_response()
+        if cached:
+            return ApiResponse(**cached)
 
     service = SessionService(db)
     session_id = await service.ensure_session(
@@ -154,6 +161,9 @@ async def agent_chat_stream(
             await queue.put(None)
 
     asyncio.create_task(_run_agent())
+
+    if idempotency:
+        await idempotency.cache_response({"success": True, "data": {"session_id": session_id}})
 
     async def generate():
         try:

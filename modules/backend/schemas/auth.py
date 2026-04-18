@@ -98,6 +98,13 @@ def build_api_key_create_response(full_key: str, api_key: object) -> "ApiKeyCrea
     )
 
 
+class SseTokenResponse(BaseModel):
+    """Short-lived SSE token."""
+
+    token: str
+    expires_in: int = 30
+
+
 class ChangePasswordRequest(BaseModel):
     """Change own password."""
 
