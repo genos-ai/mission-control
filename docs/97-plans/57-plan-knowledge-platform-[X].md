@@ -2,8 +2,9 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Ready |
+| **Status** | Done |
 | **Created** | 2026-04-16 |
+| **Completed** | 2026-04-18 |
 | **Depends on** | Plan 18 (Project Context Layer — done), Plan 51 (Session Followups — done), Plan 56 (Unified Async — done) |
 | **Closes TODO** | `Context management — continuous update of knowledge, intent, context, learnings`, `Investigate system.knowledge.officer.agent` |
 | **Scope** | Two new tables (`mission_intents`, `mission_learnings`), one new service (`KnowledgeService`), one new extractor (deterministic), one minimal system agent (governance only), pgvector hybrid retrieval for narrative content, full frontend + CLI + TUI surfaces |

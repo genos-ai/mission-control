@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Parking lot — nothing scheduled |
 | **Created** | 2026-04-16 |
-| **Parent** | [Plan 57 — Knowledge, Intent & Learnings Platform](./57-plan-knowledge-platform.md) |
+| **Parent** | [Plan 57 — Knowledge, Intent & Learnings Platform](./57-plan-knowledge-platform-[X].md) (Done 2026-04-18) |
 | **Purpose** | Catalogue work we deliberately don't build yet so we don't forget. Each item has a concrete trigger and design sketch. |
 
 ---
