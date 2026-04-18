@@ -1,11 +1,16 @@
 """
 Agent Registry.
 
-Discovers all agent configurations from config/agents/**/agent.yaml.
+DB-first agent configuration registry. The database catalog is the
+source of truth; YAML files are seed data only (loaded as fallback
+when DB is unavailable, e.g. during bootstrap or tests).
+
 Provides lookup by name, keyword matching, module path resolution,
-and listing. Caches results after first load.
+and listing. Caches results after first load. Call reload() to
+refresh from DB after admin changes.
 """
 
+import asyncio
 import importlib
 from functools import lru_cache
 from typing import Any
@@ -13,15 +18,79 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from modules.backend.agents.config_schema import AgentConfigSchema
+from modules.backend.agents.config_schema import (
+    AgentConfigSchema,
+    AgentModelSchema,
+    ExecutionSchema,
+    FileScopeConfigSchema,
+    InvocationSchema,
+)
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
+def _db_row_to_config(row: Any) -> AgentConfigSchema:
+    """Map an AgentCatalog DB row to an AgentConfigSchema.
+
+    The DB stores some fields in different shapes (e.g. model_config_json
+    as a dict vs AgentModelSchema). This function normalises them.
+    """
+    model_cfg = row.model_config_json or {}
+    model_name = model_cfg.get("name", "anthropic:claude-sonnet-4-6")
+
+    # Reconstruct the model field as AgentModelSchema if it has extra fields
+    if model_cfg.get("temperature") is not None or model_cfg.get("max_tokens"):
+        model: str | AgentModelSchema = AgentModelSchema(
+            name=model_name,
+            temperature=model_cfg.get("temperature", 0.0),
+            max_tokens=model_cfg.get("max_tokens"),
+        )
+    else:
+        model = model_name
+
+    scope_data = row.scope or {}
+    interface_data = row.interface
+    constraints = row.constraints or {}
+
+    return AgentConfigSchema(
+        agent_name=row.agent_name,
+        agent_type=row.agent_type,
+        description=row.description,
+        enabled=row.enabled,
+        model=model,
+        keywords=row.keywords or [],
+        tools=row.tools or [],
+        max_input_length=getattr(row, "max_input_length", 32000) or 32000,
+        max_budget_usd=getattr(row, "max_budget_usd", 1.0) or constraints.get("cost_ceiling_usd", 1.0),
+        execution=ExecutionSchema(
+            mode=getattr(row, "execution_mode", "standard") or "standard",
+        ),
+        invocation=InvocationSchema(
+            tier=getattr(row, "invocation_tier", "user") or "user",
+            required_role=getattr(row, "invocation_required_role", None),
+        ),
+        scope=FileScopeConfigSchema(
+            read=scope_data.get("read", []),
+            write=scope_data.get("write", []),
+        ),
+        interface=interface_data,
+        version=row.version or "1.0.0",
+        chat_enabled=row.chat_enabled,
+        thinking_budget=getattr(row, "thinking_budget_json", None),
+        engine=getattr(row, "engine", "pydantic_ai") or "pydantic_ai",
+        effort=getattr(row, "effort", None),
+    )
+
+
 class AgentRegistry:
-    """Discovers and caches agent configurations from YAML files."""
+    """DB-first agent configuration registry.
+
+    Loads from DB catalog on first access. Falls back to YAML if DB
+    is unavailable (bootstrap, tests). Call reload() to refresh after
+    admin changes.
+    """
 
     def __init__(self) -> None:
         self._agents: dict[str, AgentConfigSchema] = {}
@@ -31,9 +100,47 @@ class AgentRegistry:
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
+        try:
+            self._load_from_db()
+        except Exception as e:
+            logger.warning(
+                "DB catalog unavailable, falling back to YAML",
+                extra={"error": str(e)},
+            )
+            self._load_from_yaml()
+        self._loaded = True
+
+    def _load_from_db(self) -> None:
+        """Load agent configs from the DB catalog (source of truth)."""
+        from modules.backend.core.database import get_sync_session
+        from modules.backend.models.agent_catalog import AgentCatalog
+        from sqlalchemy import select
+
+        with get_sync_session() as session:
+            result = session.execute(select(AgentCatalog))
+            rows = result.scalars().all()
+
+        count = 0
+        for row in rows:
+            if not row.enabled:
+                logger.debug("Agent disabled", extra={"agent_name": row.agent_name})
+                continue
+            try:
+                config = _db_row_to_config(row)
+                self._agents[config.agent_name] = config
+                count += 1
+            except (ValidationError, Exception) as e:
+                logger.error(
+                    "Failed to load agent from DB",
+                    extra={"agent_name": row.agent_name, "error": str(e)},
+                )
+
+        logger.debug("Agent registry loaded from DB", extra={"agent_count": count})
+
+    def _load_from_yaml(self) -> None:
+        """Fallback: load from YAML files (bootstrap/tests)."""
         agents_dir = find_project_root() / "config" / "agents"
         if not agents_dir.exists():
-            self._loaded = True
             return
 
         for path in sorted(agents_dir.rglob("agent.yaml")):
@@ -44,34 +151,29 @@ class AgentRegistry:
                 logger.error("Failed to parse agent config", extra={"path": str(path), "error": str(e)})
                 continue
 
-            if raw is None:
-                logger.warning("Empty agent config file", extra={"path": str(path)})
-                continue
-
-            if not raw.get("agent_name"):
-                logger.warning("Agent config missing agent_name", extra={"path": str(path)})
+            if raw is None or not raw.get("agent_name"):
                 continue
 
             try:
                 config = AgentConfigSchema(**raw)
             except ValidationError as e:
-                logger.error(
-                    "Invalid agent config",
-                    extra={"path": str(path), "error": str(e)},
-                )
+                logger.error("Invalid agent config", extra={"path": str(path), "error": str(e)})
                 continue
 
             if not config.enabled:
-                logger.debug("Agent disabled", extra={"agent_name": config.agent_name})
                 continue
 
             self._agents[config.agent_name] = config
 
-        self._loaded = True
-        logger.debug(
-            "Agent registry loaded",
-            extra={"agent_count": len(self._agents)},
-        )
+        logger.debug("Agent registry loaded from YAML (fallback)", extra={"agent_count": len(self._agents)})
+
+    def reload(self) -> None:
+        """Reload the registry from DB. Call after admin config changes."""
+        self._agents.clear()
+        self._instances.clear()
+        self._loaded = False
+        self._ensure_loaded()
+        logger.info("Agent registry reloaded", extra={"agent_count": len(self._agents)})
 
     def get(self, agent_name: str) -> AgentConfigSchema:
         """Get agent config by name. Raises KeyError if not found."""
@@ -87,22 +189,15 @@ class AgentRegistry:
         return agent_name in self._agents
 
     def list_all(self, tier: str | None = None) -> list[dict[str, Any]]:
-        """List registered agents with their metadata, filtered by tier.
-
-        Args:
-            tier: If "user", returns user + mission agents (catalog for users).
-                  If "platform", returns user + mission + platform agents.
-                  If None, returns all non-system agents.
-                  System agents are never included — use list_system().
-        """
+        """List registered agents with their metadata, filtered by tier."""
         self._ensure_loaded()
         result = []
         for config in self._agents.values():
             agent_tier = config.invocation.tier
             if agent_tier == "system":
-                continue  # system agents excluded from catalog
+                continue
             if tier == "user" and agent_tier == "platform":
-                continue  # users can't see platform agents
+                continue
             result.append({
                 "agent_name": config.agent_name,
                 "agent_type": config.agent_type,
@@ -131,10 +226,7 @@ class AgentRegistry:
         ]
 
     def get_by_keyword(self, text: str) -> str | None:
-        """Find an agent whose keywords match the given text.
-
-        Returns the agent_name if a match is found, None otherwise.
-        """
+        """Find an agent whose keywords match the given text."""
         self._ensure_loaded()
         text_lower = text.lower()
         for agent_name, config in self._agents.items():
@@ -144,22 +236,14 @@ class AgentRegistry:
         return None
 
     def resolve_module_path(self, agent_name: str) -> str:
-        """Derive the Python import path from agent name.
-
-        Convention: modules.backend.agents.{category}.{name}.agent
-        Example: software.quality.agent → modules.backend.agents.software.quality.agent
-        """
+        """Derive the Python import path from agent name."""
         parts = agent_name.replace(".agent", "").split(".")
         category = parts[0]
         name = parts[1]
         return f"modules.backend.agents.{category}.{name}.agent"
 
     def get_instance(self, agent_name: str, model: Any) -> Any:
-        """Get or create a cached PydanticAI Agent instance.
-
-        First call imports the agent module and calls its create_agent() factory.
-        Subsequent calls return the cached instance. Call reset() to clear.
-        """
+        """Get or create a cached PydanticAI Agent instance."""
         if agent_name in self._instances:
             return self._instances[agent_name]
 
@@ -168,18 +252,11 @@ class AgentRegistry:
         agent = module.create_agent(model)
         self._instances[agent_name] = agent
 
-        logger.info(
-            "Agent instance created",
-            extra={"agent_name": agent_name},
-        )
+        logger.info("Agent instance created", extra={"agent_name": agent_name})
         return agent
 
     def reset(self) -> None:
-        """Clear all cached agent instances.
-
-        Call this in test fixtures to allow TestModel injection.
-        Config cache (_agents) is not affected.
-        """
+        """Clear cached agent instances (for tests)."""
         self._instances.clear()
 
 

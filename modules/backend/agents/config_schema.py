@@ -209,9 +209,9 @@ class AgentConfigSchema(_StrictBase):
                 f"Known: {', '.join(sorted(known_providers))}"
             )
 
-        # Thinking requires temperature >= 1.0 for Anthropic
+        # Thinking requires temperature >= 1.0 for Anthropic models only
         if self.thinking_budget and isinstance(self.model, AgentModelSchema):
-            if self.model.temperature < 1.0:
+            if provider == "anthropic" and self.model.temperature < 1.0:
                 raise ValueError(
                     f"Agent '{self.agent_name}' has thinking_budget but temperature "
                     f"{self.model.temperature} < 1.0. Anthropic requires temperature=1.0 "

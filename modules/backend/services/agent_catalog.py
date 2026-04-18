@@ -87,6 +87,12 @@ class AgentCatalogService(BaseService):
         visibility: str = "public",
         engine: str = "pydantic_ai",
         effort: str | None = None,
+        invocation_tier: str = "user",
+        invocation_required_role: str | None = None,
+        execution_mode: str = "standard",
+        thinking_budget_json: dict | None = None,
+        max_input_length: int = 32000,
+        max_budget_usd: float = 1.0,
     ) -> AgentCatalog:
         """Create a new agent catalog entry."""
         existing = await self._repo.get_by_name(agent_name)
@@ -110,6 +116,12 @@ class AgentCatalogService(BaseService):
             visibility=visibility,
             engine=engine,
             effort=effort,
+            invocation_tier=invocation_tier,
+            invocation_required_role=invocation_required_role,
+            execution_mode=execution_mode,
+            thinking_budget_json=thinking_budget_json,
+            max_input_length=max_input_length,
+            max_budget_usd=max_budget_usd,
         )
 
         self._log_operation(

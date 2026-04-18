@@ -81,6 +81,31 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
         String(10), nullable=True,
         comment="Effort level for CLI engines (low/medium/high)",
     )
+    # Fields needed for registry to work from DB (Plan 59)
+    invocation_tier: Mapped[str] = mapped_column(
+        String(20), default="user", nullable=False,
+        comment="Invocation tier: user, platform, system",
+    )
+    invocation_required_role: Mapped[str | None] = mapped_column(
+        String(20), nullable=True,
+        comment="Required role for invocation (e.g. admin for platform agents)",
+    )
+    execution_mode: Mapped[str] = mapped_column(
+        String(20), default="standard", nullable=False,
+        comment="Execution mode: standard, local, worktree, container",
+    )
+    thinking_budget_json: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True,
+        comment='{"max_thinking_tokens": 10000}',
+    )
+    max_input_length: Mapped[int] = mapped_column(
+        default=32000, nullable=False,
+        comment="Maximum input length in characters",
+    )
+    max_budget_usd: Mapped[float] = mapped_column(
+        default=1.0, nullable=False,
+        comment="Per-agent budget ceiling in USD",
+    )
 
     def __repr__(self) -> str:
         return (

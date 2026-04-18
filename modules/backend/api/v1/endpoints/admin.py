@@ -159,6 +159,10 @@ async def admin_catalog_update(
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     entry = await service.update_entry(agent_name, **updates)
 
+    # Reload registry so running agents pick up changes immediately
+    from modules.backend.agents.mission_control.registry import get_registry
+    get_registry().reload()
+
     return ApiResponse(
         success=True,
         data={"id": entry.id, "agent_name": entry.agent_name, "updated_fields": list(updates.keys())},
