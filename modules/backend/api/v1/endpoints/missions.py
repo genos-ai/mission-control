@@ -230,35 +230,8 @@ async def get_narrative(
     listed in events.yaml persist_event_types. This replaces the old
     multi-table reconstruction approach.
     """
-    from sqlalchemy import select
-
-    from modules.backend.models.mission_event import MissionEvent
-
-    rows = await db.execute(
-        select(MissionEvent)
-        .where(MissionEvent.mission_id == mission_id)
-        .order_by(MissionEvent.timestamp.desc())
-        .limit(limit)
-    )
-    events = []
-    for row in reversed(rows.scalars().all()):
-        # Parse the stored JSON data back into a dict
-        import json
-        data = row.data
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                data = {}
-
-        events.append({
-            "event_id": str(row.id),
-            "event_type": row.event_type,
-            "category": "execution",
-            "timestamp": row.timestamp,
-            "source": row.source,
-            "data": data,
-        })
+    svc = MissionService(db)
+    events = await svc.get_narrative_events(mission_id, limit=limit)
 
     return ApiResponse(
         success=True,

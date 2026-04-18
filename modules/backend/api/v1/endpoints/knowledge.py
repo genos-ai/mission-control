@@ -88,32 +88,11 @@ async def list_platform_decisions(
     limit: int = Query(20, ge=1, le=100),
 ) -> ApiResponse:
     """List archived decisions across missions."""
-    from sqlalchemy import desc, select
-    from modules.backend.models.mission_history import MissionDecision
-
-    query = select(MissionDecision)
-    if domain:
-        query = query.where(MissionDecision.domain == domain)
-    if mission_id:
-        query = query.where(MissionDecision.mission_id == mission_id)
-    query = query.order_by(desc(MissionDecision.created_at)).limit(limit)
-
-    result = await db.execute(query)
-    decisions = result.scalars().all()
-    return ApiResponse(data=[
-        {
-            "id": d.id,
-            "mission_id": d.mission_id,
-            "decision_id": d.decision_id,
-            "domain": d.domain,
-            "decision": d.decision,
-            "rationale": d.rationale,
-            "made_by": d.made_by,
-            "status": d.status,
-            "created_at": str(d.created_at),
-        }
-        for d in decisions
-    ])
+    svc = KnowledgeService(db)
+    decisions = await svc.list_decisions(
+        mission_id=mission_id, domain=domain, limit=limit,
+    )
+    return ApiResponse(data=decisions)
 
 
 @router.get("/knowledge/milestones")
@@ -124,28 +103,9 @@ async def list_platform_milestones(
     limit: int = Query(20, ge=1, le=100),
 ) -> ApiResponse:
     """List milestone summaries across missions."""
-    from sqlalchemy import desc, select
-    from modules.backend.models.mission_history import MilestoneSummary
-
-    query = select(MilestoneSummary)
-    if mission_id:
-        query = query.where(MilestoneSummary.mission_id == mission_id)
-    query = query.order_by(desc(MilestoneSummary.created_at)).limit(limit)
-
-    result = await db.execute(query)
-    milestones = result.scalars().all()
-    return ApiResponse(data=[
-        {
-            "id": m.id,
-            "mission_id": m.mission_id,
-            "title": m.title,
-            "summary": m.summary,
-            "domain_tags": m.domain_tags,
-            "key_outcomes": m.key_outcomes,
-            "created_at": str(m.created_at),
-        }
-        for m in milestones
-    ])
+    svc = KnowledgeService(db)
+    milestones = await svc.list_milestones(mission_id=mission_id, limit=limit)
+    return ApiResponse(data=milestones)
 
 
 @router.get("/knowledge/tags")

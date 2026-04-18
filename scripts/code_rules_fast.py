@@ -147,16 +147,26 @@ def check_hardcoded_secrets(path: Path, rel: str) -> list[Violation]:
 
 
 def check_api_imports_repositories(path: Path, rel: str) -> list[Violation]:
-    """001.6/005.1 — API layer must not import repositories directly."""
+    """001.6/005.1 — API layer must not import repositories or models directly."""
     if not rel.startswith("modules/backend/api/"):
         return []
     violations = []
-    pattern = re.compile(r"from modules\.backend\.repositories\.")
+    repo_pattern = re.compile(r"from modules\.backend\.repositories\.")
+    model_pattern = re.compile(r"from modules\.backend\.models\.")
+    # Schemas may re-export model enums — importing from schemas is fine.
+    schema_pattern = re.compile(r"from modules\.backend\.schemas\.")
+    # models.base is allowed (type hints only, per check_layer_violations.py)
+    base_pattern = re.compile(r"from modules\.backend\.models\.base\b")
     for i, line in enumerate(path.read_text().splitlines(), 1):
-        if pattern.search(line):
+        if repo_pattern.search(line):
             violations.append(Violation(
                 "001.6", "error", rel, i,
                 "API endpoint imports repository directly — use a service",
+            ))
+        elif model_pattern.search(line) and not base_pattern.search(line):
+            violations.append(Violation(
+                "001.6", "error", rel, i,
+                "API endpoint imports model directly — use a schema or service",
             ))
     return violations
 

@@ -71,7 +71,7 @@ async def list_mission_learnings(
     learnings = await svc.list_by_mission(
         mission_id, kind=kind, domain_tags=tags, limit=limit, offset=offset,
     )
-    total = await svc._learning_repo.count_by_mission(mission_id)
+    total = await svc.count_by_mission(mission_id)
     return ApiResponse(data={
         "items": [MissionLearningResponse.model_validate(l).model_dump() for l in learnings],
         "total": total,
@@ -86,9 +86,8 @@ async def get_learning_detail(
     user: CurrentUser,
 ) -> ApiResponse:
     """Get a single learning with evidence."""
-    from modules.backend.repositories.mission_learning import MissionLearningRepository
-    repo = MissionLearningRepository(db)
-    learning = await repo.get_by_id(learning_id)
+    svc = MissionLearningService(db)
+    learning = await svc.get_by_id(learning_id)
     return ApiResponse(data=MissionLearningResponse.model_validate(learning))
 
 
@@ -102,9 +101,8 @@ async def get_learning_evidence(
     limit: int = Query(20, ge=1, le=100),
 ) -> ApiResponse:
     """Paged evidence for a learning entry."""
-    from modules.backend.repositories.mission_learning import MissionLearningRepository
-    repo = MissionLearningRepository(db)
-    learning = await repo.get_by_id(learning_id)
+    svc = MissionLearningService(db)
+    learning = await svc.get_by_id(learning_id)
     evidence = learning.evidence or {}
 
     # Paginate each evidence list

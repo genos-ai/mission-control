@@ -191,6 +191,71 @@ class KnowledgeService(BaseService):
             "created_at": str(intent.created_at),
         }
 
+    async def list_decisions(
+        self,
+        *,
+        mission_id: str | None = None,
+        domain: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """List archived decisions, optionally filtered by mission/domain."""
+        from sqlalchemy import desc
+
+        from modules.backend.models.mission_history import MissionDecision
+
+        query = select(MissionDecision)
+        if domain:
+            query = query.where(MissionDecision.domain == domain)
+        if mission_id:
+            query = query.where(MissionDecision.mission_id == mission_id)
+        query = query.order_by(desc(MissionDecision.created_at)).limit(limit)
+
+        result = await self._session.execute(query)
+        return [
+            {
+                "id": d.id,
+                "mission_id": d.mission_id,
+                "decision_id": d.decision_id,
+                "domain": d.domain,
+                "decision": d.decision,
+                "rationale": d.rationale,
+                "made_by": d.made_by,
+                "status": d.status,
+                "created_at": str(d.created_at),
+            }
+            for d in result.scalars().all()
+        ]
+
+    async def list_milestones(
+        self,
+        *,
+        mission_id: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """List milestone summaries, optionally filtered by mission."""
+        from sqlalchemy import desc
+
+        from modules.backend.models.mission_history import MilestoneSummary
+
+        query = select(MilestoneSummary)
+        if mission_id:
+            query = query.where(MilestoneSummary.mission_id == mission_id)
+        query = query.order_by(desc(MilestoneSummary.created_at)).limit(limit)
+
+        result = await self._session.execute(query)
+        return [
+            {
+                "id": m.id,
+                "mission_id": m.mission_id,
+                "title": m.title,
+                "summary": m.summary,
+                "domain_tags": m.domain_tags,
+                "key_outcomes": m.key_outcomes,
+                "created_at": str(m.created_at),
+            }
+            for m in result.scalars().all()
+        ]
+
     # ------------------------------------------------------------------
     # Internal search implementations
     # ------------------------------------------------------------------
