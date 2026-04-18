@@ -1,9 +1,11 @@
 /**
- * KnowledgeTab — mission-scoped learnings + relevant platform knowledge.
+ * KnowledgeTab — mission knowledge dashboard.
  *
- * Two sections:
- *   1. Mission Learnings — extracted from this mission's execution history
- *   2. Platform Knowledge — promoted entries relevant by domain tag overlap
+ * Four sections:
+ *   1. Current Intent + revision history
+ *   2. Mission Learnings — extracted from execution history
+ *   3. MCD Decisions — archived decisions from context pruning
+ *   4. Recent failures — so agents don't repeat mistakes
  */
 
 import { useState } from 'react'
@@ -13,16 +15,21 @@ import {
   Brain,
   ChevronDown,
   ChevronRight,
+  Clock,
   Globe,
+  History,
   Lightbulb,
   ShieldAlert,
+  Target,
   TrendingUp,
   Zap,
+  AlertTriangle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { useMissionLearnings, type MissionLearning } from '@/hooks/use-mission-learnings'
-import { IntentStrip } from '@/components/knowledge/intent-strip'
+import { useCurrentIntent, useIntentHistory, type MissionIntent } from '@/hooks/use-mission-intent'
+import { useMissionKnowledge } from '@/hooks/use-knowledge-search'
 import { formatUtc } from '@/lib/format-date'
 
 // ---------------------------------------------------------------------------
@@ -37,6 +44,13 @@ const KIND_CONFIG: Record<string, { label: string; icon: typeof Lightbulb; color
   capability_gap: { label: 'Capability Gap', icon: Brain, color: 'text-purple-500' },
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  user_chat: 'User',
+  user_cli: 'CLI',
+  director_inferred: 'Director',
+  system: 'System',
+}
+
 // ---------------------------------------------------------------------------
 // Tab
 // ---------------------------------------------------------------------------
@@ -45,71 +59,197 @@ export default function KnowledgeTab() {
   const { id: missionId } = useParams<{ id: string }>()
   const [kindFilter, setKindFilter] = useState<string | undefined>()
 
-  const { data: learningsData, isLoading } = useMissionLearnings(missionId, {
+  const { data: learningsData, isLoading: learningsLoading } = useMissionLearnings(missionId, {
     kind: kindFilter,
   })
+  const { data: intent } = useCurrentIntent(missionId)
+  const { data: intentHistory } = useIntentHistory(missionId)
+  const { data: knowledge } = useMissionKnowledge(missionId)
 
   const learnings = learningsData?.items ?? []
   const total = learningsData?.total ?? 0
+  const intents = intentHistory?.items ?? []
+  const recentFailures = (knowledge as Record<string, unknown>)?.recent_failures as Record<string, unknown>[] | undefined
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      {/* Intent strip */}
-      <div className="border-b px-4 py-3">
-        <IntentStrip missionId={missionId!} />
-      </div>
+      {/* ── Section 1: Intent ─────────────────────────────── */}
+      <CollapsibleSection
+        title="Mission Intent"
+        icon={Target}
+        badge={intents.length > 0 ? `${intents.length} revisions` : undefined}
+        defaultOpen
+      >
+        {intent ? (
+          <div className="space-y-3">
+            {/* Current intent */}
+            <div className="rounded-md border border-amber-200/50 bg-amber-50/30 px-3 py-2 dark:border-amber-800/30 dark:bg-amber-950/20">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                {intent.intent}
+              </p>
+              {intent.scope && (Object.keys(intent.scope).length > 0) && (
+                <div className="mt-1.5 flex gap-4 text-xs text-muted-foreground">
+                  {(intent.scope as Record<string, string[]>).in?.length > 0 && (
+                    <span>
+                      <span className="text-green-600 dark:text-green-400 font-medium">In:</span>{' '}
+                      {(intent.scope as Record<string, string[]>).in.join(', ')}
+                    </span>
+                  )}
+                  {(intent.scope as Record<string, string[]>).out?.length > 0 && (
+                    <span>
+                      <span className="text-red-600 dark:text-red-400 font-medium">Out:</span>{' '}
+                      {(intent.scope as Record<string, string[]>).out.join(', ')}
+                    </span>
+                  )}
+                </div>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground/60">
+                {SOURCE_LABELS[intent.source] ?? intent.source} &middot; {intent.reason}
+              </p>
+            </div>
 
-      {/* Header + filters */}
-      <div className="flex items-center gap-3 border-b px-4 py-3">
-        <BookOpen className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold">
-          Mission Learnings
-          {total > 0 && (
-            <span className="ml-1.5 text-muted-foreground font-normal">({total})</span>
-          )}
-        </h2>
-
-        {/* Kind filter chips */}
-        <div className="ml-auto flex gap-1.5">
-          <FilterChip
-            active={!kindFilter}
-            onClick={() => setKindFilter(undefined)}
-          >
-            All
-          </FilterChip>
-          {Object.entries(KIND_CONFIG).map(([kind, cfg]) => (
-            <FilterChip
-              key={kind}
-              active={kindFilter === kind}
-              onClick={() => setKindFilter(kindFilter === kind ? undefined : kind)}
-            >
-              {cfg.label}
-            </FilterChip>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Spinner />
-          </div>
-        ) : learnings.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            <Lightbulb className="mx-auto mb-2 h-8 w-8 opacity-30" />
-            <p>No learnings extracted yet.</p>
-            <p className="mt-1 text-xs">
-              Learnings are automatically created from recurring failure patterns
-              in execution history.
-            </p>
+            {/* Intent timeline */}
+            {intents.length > 1 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <History className="h-3 w-3" /> Revision History
+                </p>
+                {intents.map((rev, i) => (
+                  <div
+                    key={rev.id}
+                    className={`flex items-start gap-2 rounded px-2 py-1 text-xs ${
+                      i === 0 ? 'bg-amber-50/50 dark:bg-amber-950/30' : ''
+                    }`}
+                  >
+                    <span className="text-muted-foreground/50 w-4 shrink-0 text-right">
+                      {intents.length - i}
+                    </span>
+                    <span className="flex-1 truncate">{rev.intent_summary}</span>
+                    <Badge variant="secondary" className="text-[9px] shrink-0">
+                      {SOURCE_LABELS[rev.source] ?? rev.source}
+                    </Badge>
+                    <span className="text-muted-foreground/40 shrink-0">
+                      {formatUtc(rev.created_at as string)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
-          learnings.map((learning) => (
-            <LearningCard key={learning.id} learning={learning} />
-          ))
+          <p className="text-xs text-muted-foreground">No intent set.</p>
         )}
-      </div>
+      </CollapsibleSection>
+
+      {/* ── Section 2: Learnings ──────────────────────────── */}
+      <CollapsibleSection
+        title="Learnings"
+        icon={BookOpen}
+        badge={total > 0 ? `${total}` : undefined}
+        defaultOpen
+        headerRight={
+          <div className="flex gap-1">
+            <FilterChip active={!kindFilter} onClick={() => setKindFilter(undefined)}>All</FilterChip>
+            {Object.entries(KIND_CONFIG).map(([kind, cfg]) => (
+              <FilterChip
+                key={kind}
+                active={kindFilter === kind}
+                onClick={() => setKindFilter(kindFilter === kind ? undefined : kind)}
+              >
+                {cfg.label}
+              </FilterChip>
+            ))}
+          </div>
+        }
+      >
+        {learningsLoading ? (
+          <div className="flex justify-center py-6"><Spinner /></div>
+        ) : learnings.length === 0 ? (
+          <div className="py-6 text-center text-xs text-muted-foreground">
+            <Lightbulb className="mx-auto mb-1.5 h-6 w-6 opacity-30" />
+            No learnings extracted yet.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {learnings.map((l) => <LearningCard key={l.id} learning={l} />)}
+          </div>
+        )}
+      </CollapsibleSection>
+
+      {/* ── Section 3: Recent Failures ────────────────────── */}
+      {recentFailures && recentFailures.length > 0 && (
+        <CollapsibleSection
+          title="Recent Failures"
+          icon={AlertTriangle}
+          badge={`${recentFailures.length}`}
+          defaultOpen={false}
+        >
+          <div className="space-y-1">
+            {recentFailures.map((f, i) => (
+              <div key={i} className="flex items-start gap-2 rounded border px-2.5 py-1.5 text-xs">
+                <AlertTriangle className="h-3 w-3 text-red-400 mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium">{(f as Record<string, unknown>).agent_name as string}</span>
+                  <span className="text-muted-foreground"> &middot; {(f as Record<string, unknown>).task_id as string}</span>
+                  {(f as Record<string, unknown>).failure_reason && (
+                    <p className="mt-0.5 text-muted-foreground truncate">
+                      {((f as Record<string, unknown>).failure_reason as string)?.slice(0, 150)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CollapsibleSection
+// ---------------------------------------------------------------------------
+
+function CollapsibleSection({
+  title,
+  icon: Icon,
+  badge,
+  defaultOpen = true,
+  headerRight,
+  children,
+}: {
+  title: string
+  icon: typeof BookOpen
+  badge?: string
+  defaultOpen?: boolean
+  headerRight?: React.ReactNode
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="border-b">
+      <button
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-muted/30"
+        onClick={() => setOpen(!open)}
+      >
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        )}
+        <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span className="text-sm font-semibold">{title}</span>
+        {badge && (
+          <Badge variant="secondary" className="text-[10px]">{badge}</Badge>
+        )}
+        {headerRight && (
+          <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
+            {headerRight}
+          </div>
+        )}
+      </button>
+      {open && <div className="px-4 pb-3">{children}</div>}
     </div>
   )
 }
@@ -165,14 +305,12 @@ function LearningCard({ learning }: { learning: MissionLearning }) {
           {learning.domain_tags.length > 0 && (
             <div className="flex gap-1 flex-wrap">
               {learning.domain_tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-[10px]">
-                  {tag}
-                </Badge>
+                <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
               ))}
             </div>
           )}
           <p className="text-muted-foreground/60">
-            {formatUtc(learning.created_at)}
+            {formatUtc(learning.created_at as string)}
             {learning.agent_names.length > 0 && (
               <> &middot; Agents: {learning.agent_names.join(', ')}</>
             )}
