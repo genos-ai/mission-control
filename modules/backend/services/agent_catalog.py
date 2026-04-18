@@ -85,6 +85,8 @@ class AgentCatalogService(BaseService):
         enabled: bool = True,
         chat_enabled: bool = False,
         visibility: str = "public",
+        engine: str = "pydantic_ai",
+        effort: str | None = None,
     ) -> AgentCatalog:
         """Create a new agent catalog entry."""
         existing = await self._repo.get_by_name(agent_name)
@@ -106,6 +108,8 @@ class AgentCatalogService(BaseService):
             enabled=enabled,
             chat_enabled=chat_enabled,
             visibility=visibility,
+            engine=engine,
+            effort=effort,
         )
 
         self._log_operation(

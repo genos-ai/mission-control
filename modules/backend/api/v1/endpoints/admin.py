@@ -36,6 +36,8 @@ class CatalogCreateRequest(BaseModel):
     scope: dict[str, Any] | None = None
     interface: dict[str, Any] | None = None
     constraints: dict[str, Any] | None = None
+    engine: str = "pydantic_ai"
+    effort: str | None = None
 
 
 class CatalogUpdateRequest(BaseModel):
@@ -49,6 +51,8 @@ class CatalogUpdateRequest(BaseModel):
     scope: dict[str, Any] | None = None
     interface: dict[str, Any] | None = None
     constraints: dict[str, Any] | None = None
+    engine: str | None = None
+    effort: str | None = None
 
 
 class SystemPromptUpdateRequest(BaseModel):
@@ -125,6 +129,8 @@ async def admin_catalog_create(
         scope=body.scope,
         interface=body.interface,
         constraints=body.constraints,
+        engine=body.engine,
+        effort=body.effort,
     )
 
     return ApiResponse(

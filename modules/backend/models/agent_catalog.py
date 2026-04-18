@@ -73,6 +73,14 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
         String(20), default="public", nullable=False, index=True,
         comment="public (all users) or system (sysadmins only)",
     )
+    engine: Mapped[str] = mapped_column(
+        String(20), default="pydantic_ai", nullable=False,
+        comment="Execution engine: pydantic_ai, claude_code, codex, copilot",
+    )
+    effort: Mapped[str | None] = mapped_column(
+        String(10), nullable=True,
+        comment="Effort level for CLI engines (low/medium/high)",
+    )
 
     def __repr__(self) -> str:
         return (

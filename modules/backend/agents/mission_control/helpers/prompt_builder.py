@@ -191,3 +191,23 @@ def _append_validation_feedback(prompt: str, errors: list[str]) -> str:
         f"Your previous TaskPlan failed validation:\n{error_text}\n"
         f"Fix these errors and try again.\n"
     )
+
+
+def load_agent_system_prompt(agent_name: str) -> str:
+    """Load the system prompt markdown for a CLI agent.
+
+    Reads config/prompts/agents/{domain}/{name}/system.md.
+    Returns the raw markdown content (no template substitution).
+    """
+    from modules.backend.core.config import find_project_root
+
+    parts = agent_name.rsplit(".", 1)[0].split(".")
+    prompt_path = find_project_root() / "config" / "prompts" / "agents"
+    for part in parts:
+        prompt_path = prompt_path / part
+    prompt_path = prompt_path / "system.md"
+
+    if not prompt_path.is_file():
+        return ""
+
+    return prompt_path.read_text(encoding="utf-8")

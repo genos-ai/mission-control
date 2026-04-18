@@ -155,6 +155,8 @@ async def seed_catalog(
                 enabled=config.enabled,
                 chat_enabled=config.chat_enabled,
                 visibility=_infer_visibility(config.agent_type, config.agent_name),
+                engine=config.engine,
+                effort=config.effort,
             )
 
             # Upsert: update existing entry or create new one.

@@ -280,6 +280,11 @@ export default function AdminCatalogPage() {
                         {agent.model_config_json.name}
                       </Badge>
                     )}
+                    {agent.engine && agent.engine !== 'pydantic_ai' && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-500/40 text-green-400">
+                        {agent.engine.replace('_', ' ')}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
                     {agent.description}
@@ -354,6 +359,8 @@ function AgentEditor({
   )
   const [description, setDescription] = useState(agent.description)
   const [version, setVersion] = useState(agent.version)
+  const [engine, setEngine] = useState(agent.engine ?? 'pydantic_ai')
+  const [effort, setEffort] = useState(agent.effort ?? '')
 
   return (
     <Card className="border-primary/30">
@@ -367,6 +374,8 @@ function AgentEditor({
                 onSave({
                   description,
                   version,
+                  engine,
+                  effort: (effort || null) as AgentCatalogItem['effort'],
                   model_config_json: {
                     ...agent.model_config_json,
                     name: model || undefined,
@@ -441,6 +450,35 @@ function AgentEditor({
             onChange={(e) => setVersion(e.target.value)}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
           />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Engine</label>
+            <select
+              value={engine}
+              onChange={(e) => setEngine(e.target.value as typeof engine)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+            >
+              <option value="pydantic_ai">PydanticAI (API Key)</option>
+              <option value="claude_code">Claude Code (Subscription)</option>
+              <option value="codex">OpenAI Codex (Subscription)</option>
+              <option value="copilot">GitHub Copilot (Subscription)</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Effort</label>
+            <select
+              value={effort}
+              onChange={(e) => setEffort(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+              disabled={engine !== 'claude_code'}
+            >
+              <option value="">— default —</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -15,6 +15,8 @@ export interface AgentCatalogItem {
   tools: string[]
   model_config_json: { name?: string; temperature?: number; max_tokens?: number }
   scope: { read?: string[]; write?: string[] }
+  engine: 'pydantic_ai' | 'claude_code' | 'codex' | 'copilot'
+  effort: 'low' | 'medium' | 'high' | null
 }
 
 export interface AgentCatalogDetail extends AgentCatalogItem {
