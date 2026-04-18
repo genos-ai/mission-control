@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -32,7 +34,8 @@ from pydantic_ai.messages import (
     ToolReturnPart,
     UserPromptPart,
 )
-from pydantic_ai.models import Model, ModelRequestParameters
+from pydantic_ai.messages import ModelResponseStreamEvent
+from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RequestUsage
@@ -186,6 +189,51 @@ def _make_copilot_tools(
 
 
 # ---------------------------------------------------------------------------
+# Streamed response wrapper (converts request() result to a stream)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CopilotStreamedResponse(StreamedResponse):
+    """Wraps a completed ModelResponse as a single-chunk stream.
+
+    Copilot doesn't support real-time streaming to PydanticAI (the
+    response comes back complete from send_and_wait). This wrapper
+    yields the full response as a single PartStartEvent so PydanticAI's
+    streaming infrastructure (event_stream_handler) works correctly.
+    """
+
+    _model_response: ModelResponse = field(default=None)
+    _model_id: str = ""
+    _timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @property
+    def model_name(self) -> str:
+        return f"copilot:{self._model_id}"
+
+    @property
+    def provider_name(self) -> str:
+        return "copilot"
+
+    @property
+    def provider_url(self) -> str:
+        return "https://github.com/copilot"
+
+    @property
+    def timestamp(self) -> datetime:
+        return self._timestamp
+
+    async def _get_event_iterator(self) -> AsyncIterator[ModelResponseStreamEvent]:
+        """Yield each part of the response via the parts manager."""
+        for part in self._model_response.parts:
+            event = self._parts_manager.handle_part(
+                vendor_part_id=None,
+                part=part,
+            )
+            yield event
+        self._usage = self._model_response.usage
+
+
+# ---------------------------------------------------------------------------
 # CopilotModel
 # ---------------------------------------------------------------------------
 
@@ -260,6 +308,30 @@ class CopilotModel(Model):
 
         # New turn
         return await self._handle_new_turn(messages, model_request_parameters)
+
+    @asynccontextmanager
+    async def request_stream(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        run_context: Any | None = None,
+    ) -> AsyncIterator[StreamedResponse]:
+        """Stream wrapper — calls request() and yields result as a single chunk.
+
+        PydanticAI's agent.run() with event_stream_handler requires
+        request_stream(). We call request() (blocking), then yield
+        the complete response as a stream. Not real-time streaming,
+        but satisfies the interface.
+        """
+        response = await self.request(messages, model_settings, model_request_parameters)
+        streamed = CopilotStreamedResponse(
+            model_request_parameters=model_request_parameters,
+            _model_response=response,
+            _model_id=self._model_id,
+        )
+        streamed._usage = response.usage
+        yield streamed
 
     # ---- New turn ----
 

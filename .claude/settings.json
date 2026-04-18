@@ -668,7 +668,8 @@
       "Read(//opt/anaconda3/lib/python3.12/site-packages/pydantic_ai/**)",
       "Read(//opt/anaconda3/lib/python3.12/site-packages/**)",
       "Bash(export ANTHROPIC_AUTH_TOKEN=\"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\")",
-      "Bash(ANTHROPIC_AUTH_TOKEN=\"\" python -c \":*)"
+      "Bash(ANTHROPIC_AUTH_TOKEN=\"\" python -c \":*)",
+      "Bash(gh api:*)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
