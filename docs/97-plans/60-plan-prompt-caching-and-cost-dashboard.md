@@ -61,25 +61,24 @@ def build_model_settings(agent_config: AgentConfigSchema) -> ModelSettings | Non
         return None  # cache control is Anthropic-specific
 
     # ── Cache control (Plan 60) ──────────────────────────────
-    # System prompts and tool definitions are stable across requests.
-    # 1h TTL because agent loops may pause for human approval (>5min).
-    # Auto-cache last block catches retrieved context (MCD, code map).
-    # This alone cuts 70-80% of input token cost.
+    # Read cache_ttl from agent config (default: "1h").
+    # Configurable per-agent via YAML or admin DB catalog.
+    cache_ttl = getattr(agent_config, "cache_ttl", None) or "1h"
     cache_kwargs = {
-        "anthropic_cache_instructions": "1h",
-        "anthropic_cache_tool_definitions": "1h",
+        "anthropic_cache_instructions": cache_ttl,
+        "anthropic_cache_tool_definitions": cache_ttl,
         "anthropic_cache": True,
     }
 
-    # ── Output token cap by agent role ───────────────────────
-    # Output is 5x input cost. Cap per role to prevent waste.
-    max_tokens = _get_max_tokens_for_role(agent_config)
+    # ── Output token cap ─────────────────────────────────────
+    # Read from agent's model config (AgentModelSchema.max_tokens).
+    # Falls back to role-based defaults from config/settings/cost.yaml.
+    max_tokens = _resolve_max_tokens(agent_config)
 
     # ── Thinking configuration ───────────────────────────────
     thinking_config = None
     if agent_config.thinking_budget:
         budget = agent_config.thinking_budget.get("max_thinking_tokens", 10000)
-        bare_name = model_name.split(":")[-1] if ":" in model_name else model_name
         _adaptive_models = ("claude-opus-4", "claude-sonnet-4", "opus-4", "sonnet-4")
         _use_adaptive = any(m in model_name for m in _adaptive_models)
 
@@ -100,36 +99,130 @@ def build_model_settings(agent_config: AgentConfigSchema) -> ModelSettings | Non
     return AnthropicModelSettings(**settings_kwargs)
 
 
-def _get_max_tokens_for_role(agent_config: AgentConfigSchema) -> int:
-    """Return appropriate max_tokens based on agent role.
+def _resolve_max_tokens(agent_config: AgentConfigSchema) -> int:
+    """Resolve max_tokens from agent config, falling back to defaults.
 
-    Output tokens cost 5x input. Capping per role prevents waste
-    without losing functionality. Values from research paper §2.7.
+    Priority:
+      1. Agent's model config (AgentModelSchema.max_tokens) — set by admin
+      2. Role-based defaults from config/settings/cost.yaml
+      3. Global default (2048)
+
+    Nothing is hardcoded — all values come from config.
     """
-    name = agent_config.agent_name
+    # 1. Explicit agent config
+    if isinstance(agent_config.model, AgentModelSchema) and agent_config.model.max_tokens:
+        return agent_config.model.max_tokens
 
-    # Utility agents — short output
-    if any(k in name for k in ("summarization", "synthesis", "health", "knowledge")):
-        return 800
+    # 2. Role-based defaults from cost.yaml
+    try:
+        from modules.backend.core.config import get_app_config
+        cost_config = get_app_config().cost
+        role_defaults = cost_config.max_tokens_by_role
+        agent_type = agent_config.agent_type
+        if agent_type in role_defaults:
+            return role_defaults[agent_type]
+    except (AttributeError, Exception):
+        pass
 
-    # Verification, supervisor — judgement, not prose
-    if any(k in name for k in ("verification", "supervisor")):
-        return 256
-
-    # Planning — structured output (TaskPlan JSON)
-    if "planning" in name:
-        return 4096
-
-    # Director — conversational but bounded
-    if "director" in name:
-        return 2048
-
-    # Code generation — needs room
-    if any(k in name for k in ("quality", "architecture")):
-        return 4096
-
-    # Default
+    # 3. Global default
     return 2048
+```
+
+#### New config file: `config/settings/cost.yaml`
+
+All cost-related configuration in one place — no hardcoded values in code:
+
+```yaml
+# Cost management configuration.
+# All token economics settings are here — not in code.
+
+# Default cache TTL for Anthropic agents.
+# "5m" for tight loops, "1h" for agents that may pause for human approval.
+default_cache_ttl: "1h"
+
+# Per-role max_tokens defaults (output costs 5x input).
+# These are defaults — admins can override per-agent via the catalog.
+max_tokens_by_role:
+  system: 800         # summarization, synthesis, knowledge
+  horizontal: 2048    # verification, supervisor
+  vertical: 4096      # quality, architecture, planning
+
+# Global default when role not matched
+default_max_tokens: 2048
+
+# Alert thresholds
+alerts:
+  hourly_spend_limit_usd: 5.00
+  per_agent_hourly_limit_usd: 2.00
+  min_cache_hit_rate: 0.40
+
+# Emergency downgrade
+emergency_downgrade_model: "anthropic:claude-haiku-4-5-20251001"
+
+# Output efficiency flags
+output_efficiency:
+  high_threshold: 3.0    # output/input ratio > 3x = warning
+  critical_threshold: 5.0  # > 5x = critical
+```
+
+#### New config schema additions
+
+**File:** `modules/backend/core/config_schema.py`
+
+```python
+class CostAlertsSchema(_StrictBase):
+    hourly_spend_limit_usd: float = 5.0
+    per_agent_hourly_limit_usd: float = 2.0
+    min_cache_hit_rate: float = 0.40
+
+class OutputEfficiencySchema(_StrictBase):
+    high_threshold: float = 3.0
+    critical_threshold: float = 5.0
+
+class CostSchema(_StrictBase):
+    """Cost management configuration (cost.yaml)."""
+    default_cache_ttl: str = "1h"
+    max_tokens_by_role: dict[str, int] = {
+        "system": 800,
+        "horizontal": 2048,
+        "vertical": 4096,
+    }
+    default_max_tokens: int = 2048
+    alerts: CostAlertsSchema = Field(default_factory=CostAlertsSchema)
+    emergency_downgrade_model: str = "anthropic:claude-haiku-4-5-20251001"
+    output_efficiency: OutputEfficiencySchema = Field(default_factory=OutputEfficiencySchema)
+```
+
+Add to `AppConfig`:
+```python
+self._cost = _load_validated_optional(CostSchema, "cost.yaml")
+
+@property
+def cost(self) -> CostSchema:
+    return self._cost
+```
+
+#### New agent config field: `cache_ttl`
+
+**File:** `modules/backend/agents/config_schema.py`
+
+Add to `AgentConfigSchema` (after `effort`):
+
+```python
+# Cache TTL for Anthropic prompt caching.
+# "5m" for tight loops, "1h" for agents with human-approval pauses.
+# None = use default from config/settings/cost.yaml.
+cache_ttl: str | None = None
+```
+
+**File:** `modules/backend/models/agent_catalog.py`
+
+Add column:
+```python
+cache_ttl: Mapped[str | None] = mapped_column(
+    String(10), nullable=True,
+    comment="Cache TTL: 5m or 1h (None = use default from cost.yaml)",
+)
 ```
 
 ### 1.3 Wire model_settings into the chat path
@@ -217,20 +310,16 @@ def compute_cost_usd(
 ) -> float:
     """Compute cost including cache and thinking tokens.
 
-    Pricing (per MTok):
-      Input:       base rate
-      Output:      5x base rate
-      Cache read:  0.1x base rate (90% discount!)
-      Cache write: 1.25x base rate (5min) or 2x (1h)
-      Thinking:    same as output
+    All rates read from config/agents/mission_control.yaml model_pricing.
+    No hardcoded multipliers — pricing changes are config-only.
     """
     config = _load_mission_control_config()
     rates = config.model_pricing.get(model or "", config.model_pricing.get("default"))
 
     input_cost = (input_tokens / 1_000_000) * rates.input
     output_cost = ((output_tokens + thinking_tokens) / 1_000_000) * rates.output
-    cache_read_cost = (cache_read_tokens / 1_000_000) * rates.input * 0.1
-    cache_write_cost = (cache_write_tokens / 1_000_000) * rates.input * 2.0  # 1h TTL
+    cache_read_cost = (cache_read_tokens / 1_000_000) * rates.cache_read
+    cache_write_cost = (cache_write_tokens / 1_000_000) * rates.cache_write
 
     return round(input_cost + output_cost + cache_read_cost + cache_write_cost, 6)
 ```
@@ -251,25 +340,35 @@ cost = compute_cost_usd(
 
 **File:** `config/agents/mission_control.yaml`
 
-Update pricing to include cache rates and fix Opus pricing:
+Add explicit cache rates per model — no hardcoded multipliers in code:
 
 ```yaml
 model_pricing:
   "anthropic:claude-haiku-4-5-20251001":
     input: 1.00
     output: 5.00
+    cache_read: 0.10     # 90% discount on input
+    cache_write: 2.00    # 1h TTL write cost
   "anthropic:claude-sonnet-4-6":
     input: 3.00
     output: 15.00
+    cache_read: 0.30
+    cache_write: 6.00
   "anthropic:claude-opus-4-6":
     input: 15.00
     output: 75.00
+    cache_read: 1.50
+    cache_write: 30.00
   "anthropic:claude-opus-4-7":
     input: 5.00
     output: 25.00
+    cache_read: 0.50
+    cache_write: 10.00
   default:
     input: 3.00
     output: 15.00
+    cache_read: 0.30
+    cache_write: 6.00
 ```
 
 ### 1.8 Verification
