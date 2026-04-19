@@ -1,10 +1,10 @@
 # Plan 60 — Prompt Caching & Cost Management Dashboard
 
-**Version:** 1.0.0
+**Version:** 1.2.0
 **Date:** 2026-04-19
 **Author:** Herman + Architecture Review
 **Status:** Ready to implement
-**Research basis:** docs/98-research/019-Claude token economics.md, docs/98-research/020-Cutting Anthropic spend on the BFA platform.md
+**Research basis:** docs/98-research/019, 020, 021 (Claude token economics, cost cutting, cost management)
 **Expected impact:** 70-80% reduction in Anthropic API spend
 
 ---
@@ -456,16 +456,18 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
     model: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
 
-    # Token breakdown (the full picture)
+    # Token breakdown — separate 5m vs 1h cache (different pricing)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False,
-        comment="Uncached input tokens")
+        comment="Uncached input tokens only")
     output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False,
-        comment="Tokens served from cache (90% discount)")
-    cache_write_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False,
-        comment="Tokens written to cache (1.25x or 2x cost)")
+        comment="Tokens served from cache (0.1x input price)")
+    cache_write_5m_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False,
+        comment="Tokens written to 5-minute cache (1.25x input price)")
+    cache_write_1h_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False,
+        comment="Tokens written to 1-hour cache (2x input price)")
     thinking_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False,
-        comment="Extended thinking tokens (billed as output)")
+        comment="Extended thinking tokens (billed as output rate)")
 
     # Cost
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
@@ -483,6 +485,97 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
 ```
 
 **Migration:** Create `llm_calls` table with indexes on `(agent_name)`, `(model)`, `(mission_id)`, `(created_at)`.
+
+### 2.2b New database table: `model_pricing` (from research paper 021)
+
+Time-bounded pricing so historical cost stays correct across price changes. The YAML config provides runtime defaults; this table is the source of truth for dashboard cost calculation.
+
+**File:** `modules/backend/models/model_pricing.py` (new)
+
+```python
+class ModelPricing(Base):
+    """Time-bounded per-model pricing for cost attribution.
+
+    Each row is valid from effective_from to effective_to. When
+    Anthropic changes prices, insert a new row — old rows stay
+    for historical accuracy.
+    """
+    __tablename__ = "model_pricing"
+
+    model: Mapped[str] = mapped_column(String(100), primary_key=True)
+    effective_from: Mapped[datetime] = mapped_column(primary_key=True)
+    effective_to: Mapped[datetime] = mapped_column(default="infinity")
+    price_per_mtok_input: Mapped[float] = mapped_column(Float, nullable=False)
+    price_per_mtok_output: Mapped[float] = mapped_column(Float, nullable=False)
+    price_per_mtok_cache_write_5m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_per_mtok_cache_write_1h: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_per_mtok_cache_read: Mapped[float | None] = mapped_column(Float, nullable=True)
+```
+
+**Seed data** (April 2026 Anthropic list prices):
+```sql
+INSERT INTO model_pricing VALUES
+  ('claude-opus-4-7',   '2026-04-16', 'infinity', 5.00, 25.00, 6.25, 10.00, 0.50),
+  ('claude-sonnet-4-6', '2026-02-01', 'infinity', 3.00, 15.00, 3.75,  6.00, 0.30),
+  ('claude-haiku-4-5',  '2025-10-01', 'infinity', 1.00,  5.00, 1.25,  2.00, 0.10);
+```
+
+### 2.2c Costed view (from research paper 021)
+
+Single view for all dashboard queries. Cost is calculated at query time from time-bounded pricing — always historically accurate.
+
+```sql
+CREATE OR REPLACE VIEW v_llm_calls_costed AS
+SELECT
+    c.*,
+    -- Cost components
+    (c.input_tokens / 1e6) * p.price_per_mtok_input               AS cost_input_usd,
+    ((c.output_tokens + c.thinking_tokens) / 1e6) * p.price_per_mtok_output AS cost_output_usd,
+    (c.cache_write_5m_tokens / 1e6) * COALESCE(p.price_per_mtok_cache_write_5m, 0) AS cost_cache_write_5m_usd,
+    (c.cache_write_1h_tokens / 1e6) * COALESCE(p.price_per_mtok_cache_write_1h, 0) AS cost_cache_write_1h_usd,
+    (c.cache_read_tokens / 1e6) * COALESCE(p.price_per_mtok_cache_read, 0) AS cost_cache_read_usd,
+    -- Total
+    ((c.input_tokens / 1e6) * p.price_per_mtok_input
+     + ((c.output_tokens + c.thinking_tokens) / 1e6) * p.price_per_mtok_output
+     + (c.cache_write_5m_tokens / 1e6) * COALESCE(p.price_per_mtok_cache_write_5m, 0)
+     + (c.cache_write_1h_tokens / 1e6) * COALESCE(p.price_per_mtok_cache_write_1h, 0)
+     + (c.cache_read_tokens / 1e6) * COALESCE(p.price_per_mtok_cache_read, 0)
+    ) AS total_cost_usd
+FROM llm_calls c
+LEFT JOIN LATERAL (
+    SELECT mp.*
+    FROM model_pricing mp
+    WHERE mp.model = c.model
+      AND c.created_at >= mp.effective_from
+      AND c.created_at <  mp.effective_to
+    ORDER BY mp.effective_from DESC
+    LIMIT 1
+) p ON TRUE;
+```
+
+### 2.2d Cache anti-patterns to audit before enabling (from research paper 021)
+
+Before deploying caching, verify the platform doesn't have these silent cache breakers:
+
+1. **Dynamic timestamps in system prompts** — check `assemble_instructions()` output for `datetime.now()`, `utc_now()`, or any time-varying content. Move timestamps to user turns.
+
+2. **Tool set churn** — check if agents change their tool list between calls (e.g., different tool subsets for different task types). Each variant creates a separate cache key.
+
+3. **Thinking mode flips** — check if agents switch `thinking` on/off between calls. This invalidates message-level cache hits (system and tool caches survive).
+
+Run these checks and fix any issues BEFORE enabling cache in Phase 1.
+
+### 2.2e Additional cache metric: write-to-read ratio (from research paper 021)
+
+Add to cache performance queries:
+
+```
+cache_write_to_read_ratio = (cache_write_5m_tokens + cache_write_1h_tokens) / cache_read_tokens
+```
+
+- Target: < 0.5 in steady state
+- If close to 1.0: writing as often as reading = no benefit = prefix instability
+- Add this as a column in the Cache Performance panel
 
 ### 2.3 Record LLM calls from agent execution
 
@@ -670,8 +763,10 @@ export interface CachePerformance {
   agent_name: string
   total_input_tokens: number
   cache_read_tokens: number
-  cache_write_tokens: number
-  cache_hit_rate: number
+  cache_write_5m_tokens: number
+  cache_write_1h_tokens: number
+  cache_hit_rate: number          // cache_read / (cache_read + input)
+  write_to_read_ratio: number     // (write_5m + write_1h) / cache_read
   estimated_savings_usd: number
 }
 
@@ -756,7 +851,17 @@ Feature flag `EMERGENCY_MODEL_DOWNGRADE=true` forces all agents to Haiku. Activa
 ## Implementation Order
 
 ```
-Phase 1 (Prompt Caching)         ← Do first — immediate 70-80% savings
+Phase 0 (Instrumentation)       ← Must come first — can't optimise what you can't see
+  ├── 2.2  llm_calls table + migration     ← Schema (30 min)
+  ├── 2.2b model_pricing table + seed data ← Historical pricing (20 min)
+  ├── 2.2c v_llm_calls_costed view         ← Single query surface (10 min)
+  ├── 2.3  Record calls in agent_executor  ← Start collecting data (1 hour)
+  └── 2.2d Audit cache anti-patterns       ← Fix before enabling cache (30 min)
+
+Phase 0.5 (Baseline)             ← Run for 3-7 days with no changes
+  └── Let data accumulate in llm_calls. Identify top 3 token sinks.
+
+Phase 1 (Prompt Caching)         ← Apply after baseline shows where money goes
   ├── 1.2 build_model_settings   ← Core change (30 min)
   ├── 1.4 Wire dispatch path     ← Ensure settings flow (15 min)
   ├── 1.6 Update cost.py         ← Cache token pricing (15 min)
@@ -764,19 +869,17 @@ Phase 1 (Prompt Caching)         ← Do first — immediate 70-80% savings
   └── 1.8 Verify cache hits      ← Must see >60% on second call
 
 Phase 2 (Cost Dashboard)         ← Visibility for continuous optimisation
-  ├── 2.2 LlmCall model + migration  ← Schema (30 min)
-  ├── 2.3 Record calls in executor   ← Instrumentation (1 hour)
   ├── 2.4-2.5 API + service          ← Backend queries (2 hours)
   ├── 2.6-2.8 Frontend dashboard     ← UI (3 hours)
   └── 2.9 Navigation                 ← Wire into admin (15 min)
 
 Phase 3 (Alerting)               ← Safety net
-  ├── 3.1 Per-agent budgets      ← Config change (30 min)
-  ├── 3.2 Alert thresholds       ← Periodic check (1 hour)
-  └── 3.3 Emergency downgrade    ← Feature flag (30 min)
+  ├── 3.1 Per-agent budgets      ← Config from cost.yaml (30 min)
+  ├── 3.2 Alert thresholds       ← Config from cost.yaml (1 hour)
+  └── 3.3 Emergency downgrade    ← Config from cost.yaml (30 min)
 ```
 
-**Total estimated effort:** Phase 1: ~2 hours, Phase 2: ~7 hours, Phase 3: ~2 hours.
+**Total estimated effort:** Phase 0: ~2 hours, Phase 0.5: 3-7 days (passive), Phase 1: ~1.5 hours, Phase 2: ~5.5 hours, Phase 3: ~2 hours.
 
 ---
 
