@@ -3,7 +3,7 @@
 **Version:** 1.0.0
 **Date:** 2026-04-18
 **Parent plan:** 55-plan-cli-agent-engine-integration.md
-**Status:** Ready to implement
+**Status:** Complete
 **Problem:** Chat path (`handle()`) always uses PydanticAI regardless of agent's `engine` config. Agents set to `engine: claude_code` still hit the Anthropic API with an API key.
 
 ---
