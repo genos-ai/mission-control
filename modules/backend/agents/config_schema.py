@@ -161,6 +161,11 @@ class AgentConfigSchema(_StrictBase):
     # Ignored for pydantic_ai engine.
     effort: str | None = None
 
+    # Cache TTL for Anthropic prompt caching (Plan 60).
+    # "5m" for tight loops, "1h" for agents with human-approval pauses.
+    # None = use default from config/settings/cost.yaml.
+    cache_ttl: str | None = None
+
     @field_validator("model", mode="before")
     @classmethod
     def _normalize_model(cls, v: str | dict) -> str | dict:
@@ -269,6 +274,9 @@ class ModelPricingRateSchema(_StrictBase):
 
     input: float
     output: float
+    cache_read: float = 0.0
+    cache_write_5m: float = 0.0
+    cache_write_1h: float = 0.0
 
 
 class RoutingSchema(_StrictBase):

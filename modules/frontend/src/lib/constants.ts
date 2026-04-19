@@ -25,6 +25,7 @@ export const ROUTES = {
   ADMIN_CONFIG: '/admin/config',
   ADMIN_HEALTH: '/admin/health',
   ADMIN_USERS: '/admin/users',
+  ADMIN_TOKEN_ECONOMICS: '/admin/token-economics',
 } as const
 
 export const API_BASE = '/api/v1'

@@ -17,17 +17,10 @@ def build_model_settings(
 ) -> "ModelSettings | None":
     """Build provider-specific model settings from agent config.
 
-    Handles thinking configuration per provider:
-    - Anthropic (Opus/Sonnet 4.x): uses adaptive thinking (budget_tokens deprecated)
-    - Anthropic (older models): uses enabled thinking with explicit budget_tokens
-    - Other providers: logs a warning and skips (thinking not supported)
-
-    Returns None if the agent has no thinking_budget configured.
+    Returns AnthropicModelSettings for ALL Anthropic agents (cache + thinking).
+    Returns None for non-Anthropic providers (cache control is Anthropic-specific).
     """
-    from pydantic_ai.settings import ModelSettings
-
-    if not agent_config.thinking_budget:
-        return None
+    from pydantic_ai.models.anthropic import AnthropicModelSettings
 
     model_name = (
         agent_config.model.name
@@ -35,36 +28,53 @@ def build_model_settings(
         else agent_config.model
     )
     provider = model_name.split(":")[0] if ":" in model_name else ""
-    budget = agent_config.thinking_budget.get("max_thinking_tokens", 10000)
 
-    if provider == "anthropic":
-        from pydantic_ai.models.anthropic import AnthropicModelSettings
+    if provider != "anthropic":
+        return None
 
-        max_tokens = getattr(agent_config.model, "max_tokens", None) or 16384
+    # ── Cache control (Plan 60) ──────────────────────────────
+    cache_ttl = agent_config.cache_ttl or _get_default_cache_ttl()
+    cache_kwargs = {
+        "anthropic_cache_instructions": cache_ttl,
+        "anthropic_cache_tool_definitions": cache_ttl,
+        "anthropic_cache": True,
+    }
 
-        # Opus 4.6 and Sonnet 4.6 use adaptive thinking (budget_tokens deprecated).
-        # Older models (e.g. claude-3-7-sonnet) require budget_tokens.
+    # ── Output token cap ─────────────────────────────────────
+    max_tokens = (
+        agent_config.model.max_tokens
+        if isinstance(agent_config.model, AgentModelSchema)
+        else 4096
+    )
+
+    # ── Thinking configuration ───────────────────────────────
+    thinking_config = None
+    if agent_config.thinking_budget:
+        budget = agent_config.thinking_budget.get("max_thinking_tokens", 10000)
         _adaptive_models = ("claude-opus-4", "claude-sonnet-4", "opus-4", "sonnet-4")
         _use_adaptive = any(m in model_name for m in _adaptive_models)
 
         if _use_adaptive:
-            thinking_config: dict = {"type": "adaptive"}
+            thinking_config = {"type": "adaptive"}
         else:
             if max_tokens <= budget:
                 max_tokens = budget + 8192
             thinking_config = {"type": "enabled", "budget_tokens": budget}
 
-        return AnthropicModelSettings(
-            anthropic_thinking=thinking_config,
-            max_tokens=max_tokens,
-        )
+    settings_kwargs = {
+        **cache_kwargs,
+        "max_tokens": max_tokens,
+    }
+    if thinking_config:
+        settings_kwargs["anthropic_thinking"] = thinking_config
 
-    logger.info(
-        "thinking_budget configured but provider '%s' does not support it, skipping",
-        provider,
-        extra={"agent": agent_config.agent_name},
-    )
-    return None
+    return AnthropicModelSettings(**settings_kwargs)
+
+
+def _get_default_cache_ttl() -> str:
+    """Read default_cache_ttl from cost.yaml config."""
+    from modules.backend.core.config import get_app_config
+    return get_app_config().cost.default_cache_ttl
 
 
 def _build_model(config_model: str | AgentModelSchema) -> Model:

@@ -47,15 +47,33 @@ model_pricing:
   "anthropic:claude-haiku-4-5-20251001":
     input: 1.00
     output: 5.00
+    cache_read: 0.10
+    cache_write_5m: 1.25
+    cache_write_1h: 2.00
   "anthropic:claude-sonnet-4-6":
     input: 3.00
     output: 15.00
+    cache_read: 0.30
+    cache_write_5m: 3.75
+    cache_write_1h: 6.00
   "anthropic:claude-opus-4-6":
     input: 15.00
     output: 75.00
+    cache_read: 1.50
+    cache_write_5m: 18.75
+    cache_write_1h: 30.00
+  "anthropic:claude-opus-4-7":
+    input: 5.00
+    output: 25.00
+    cache_read: 0.50
+    cache_write_5m: 6.25
+    cache_write_1h: 10.00
   default:
-    input: 1.00
-    output: 5.00
+    input: 3.00
+    output: 15.00
+    cache_read: 0.30
+    cache_write_5m: 3.75
+    cache_write_1h: 6.00
 
 routing:
   strategy: hybrid

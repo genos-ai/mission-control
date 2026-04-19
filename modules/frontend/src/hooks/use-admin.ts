@@ -10,6 +10,13 @@ import type {
   HealthCheck,
   ApiKeyResponse,
   ApiKeyCreateResponse,
+  TokenBreakdown,
+  TokenEconomicsSummary,
+  CachePerformance,
+  CostTimelinePoint,
+  ExpensiveCall,
+  ModelDistribution,
+  OutputEfficiency,
 } from '@/types'
 
 export const adminKeys = {
@@ -21,6 +28,12 @@ export const adminKeys = {
   config: ['admin', 'config'] as const,
   users: ['admin', 'users'] as const,
   userKeys: (userId: string) => ['admin', 'users', userId, 'keys'] as const,
+  tokenEconomics: (tf: string) => ['admin', 'token-economics', tf] as const,
+  cachePerformance: (tf: string) => ['admin', 'cache-performance', tf] as const,
+  costTimeline: (tf: string, g: string) => ['admin', 'cost-timeline', tf, g] as const,
+  expensiveCalls: (tf: string) => ['admin', 'expensive-calls', tf] as const,
+  modelDistribution: (tf: string) => ['admin', 'model-distribution', tf] as const,
+  outputEfficiency: (tf: string) => ['admin', 'output-efficiency', tf] as const,
 }
 
 // --- Catalog ---
@@ -144,6 +157,73 @@ export function useAdminConfig() {
   return useQuery({
     queryKey: adminKeys.config,
     queryFn: () => api.get<Record<string, unknown>>('/admin/config'),
+  })
+}
+
+// --- Token Economics (Plan 60) ---
+
+export function useTokenBreakdown(timeframe = '7d') {
+  return useQuery({
+    queryKey: adminKeys.tokenEconomics(timeframe),
+    queryFn: () =>
+      api.get<{ agents: TokenBreakdown[]; summary: TokenEconomicsSummary }>(
+        `/admin/metrics/token-economics?timeframe=${timeframe}`,
+      ),
+  })
+}
+
+export function useCachePerformance(timeframe = '7d') {
+  return useQuery({
+    queryKey: adminKeys.cachePerformance(timeframe),
+    queryFn: () =>
+      api.get<{ agents: CachePerformance[] }>(
+        `/admin/metrics/cache-performance?timeframe=${timeframe}`,
+      ),
+    select: (data) => data.agents,
+  })
+}
+
+export function useCostTimeline(timeframe = '7d', groupBy = 'agent') {
+  return useQuery({
+    queryKey: adminKeys.costTimeline(timeframe, groupBy),
+    queryFn: () =>
+      api.get<{ timeline: CostTimelinePoint[] }>(
+        `/admin/metrics/cost-timeline?timeframe=${timeframe}&group_by=${groupBy}`,
+      ),
+    select: (data) => data.timeline,
+  })
+}
+
+export function useExpensiveCalls(timeframe = '7d') {
+  return useQuery({
+    queryKey: adminKeys.expensiveCalls(timeframe),
+    queryFn: () =>
+      api.get<{ calls: ExpensiveCall[] }>(
+        `/admin/metrics/expensive-calls?timeframe=${timeframe}`,
+      ),
+    select: (data) => data.calls,
+  })
+}
+
+export function useModelDistribution(timeframe = '7d') {
+  return useQuery({
+    queryKey: adminKeys.modelDistribution(timeframe),
+    queryFn: () =>
+      api.get<{ models: ModelDistribution[] }>(
+        `/admin/metrics/model-distribution?timeframe=${timeframe}`,
+      ),
+    select: (data) => data.models,
+  })
+}
+
+export function useOutputEfficiency(timeframe = '7d') {
+  return useQuery({
+    queryKey: adminKeys.outputEfficiency(timeframe),
+    queryFn: () =>
+      api.get<{ agents: OutputEfficiency[] }>(
+        `/admin/metrics/output-efficiency?timeframe=${timeframe}`,
+      ),
+    select: (data) => data.agents,
   })
 }
 

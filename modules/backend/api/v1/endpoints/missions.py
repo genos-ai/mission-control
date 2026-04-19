@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from modules.backend.api.v1.endpoints import (
     missions_artifacts,
     missions_context,
+    missions_costs,
     missions_plan,
     missions_team,
     missions_workflows,
@@ -33,6 +34,7 @@ router.include_router(missions_workflows.router)
 router.include_router(missions_context.router)
 router.include_router(missions_plan.router)
 router.include_router(missions_artifacts.router)
+router.include_router(missions_costs.router)
 
 
 # ---- Mission CRUD ----

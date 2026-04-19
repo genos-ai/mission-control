@@ -387,6 +387,185 @@ async def admin_metrics_activity(
     )
 
 
+# ---- Token Economics (Plan 60) ----
+
+
+@router.get(
+    "/metrics/token-economics",
+    response_model=ApiResponse,
+    summary="Token breakdown by agent",
+)
+async def admin_token_breakdown(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+    timeframe: str = "7d",
+) -> ApiResponse:
+    """Per-agent token breakdown with cost attribution."""
+    from modules.backend.services.token_economics import TokenEconomicsService
+
+    service = TokenEconomicsService(db)
+    data = await service.get_token_breakdown(timeframe=timeframe)
+    summary = await service.get_summary(timeframe=timeframe)
+
+    return ApiResponse(
+        success=True,
+        data={"agents": data, "summary": summary},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/metrics/cache-performance",
+    response_model=ApiResponse,
+    summary="Cache hit rates and savings",
+)
+async def admin_cache_performance(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+    timeframe: str = "7d",
+) -> ApiResponse:
+    """Per-agent cache hit rate and write-to-read ratio."""
+    from modules.backend.services.token_economics import TokenEconomicsService
+
+    service = TokenEconomicsService(db)
+    data = await service.get_cache_performance(timeframe=timeframe)
+
+    return ApiResponse(
+        success=True,
+        data={"agents": data},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/metrics/cost-timeline",
+    response_model=ApiResponse,
+    summary="Cost timeline for charts",
+)
+async def admin_cost_timeline(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+    timeframe: str = "7d",
+    group_by: str = "agent",
+) -> ApiResponse:
+    """Hourly cost aggregation for time-series charts."""
+    from modules.backend.services.token_economics import TokenEconomicsService
+
+    service = TokenEconomicsService(db)
+    data = await service.get_cost_timeline(timeframe=timeframe, group_by=group_by)
+
+    return ApiResponse(
+        success=True,
+        data={"timeline": data},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/metrics/expensive-calls",
+    response_model=ApiResponse,
+    summary="Most expensive LLM calls",
+)
+async def admin_expensive_calls(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+    timeframe: str = "7d",
+    limit: int = 20,
+) -> ApiResponse:
+    """Top N most expensive individual LLM calls."""
+    from modules.backend.services.token_economics import TokenEconomicsService
+
+    service = TokenEconomicsService(db)
+    data = await service.get_expensive_calls(limit=limit, timeframe=timeframe)
+
+    return ApiResponse(
+        success=True,
+        data={"calls": data},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/metrics/model-distribution",
+    response_model=ApiResponse,
+    summary="Model usage distribution",
+)
+async def admin_model_distribution(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+    timeframe: str = "7d",
+) -> ApiResponse:
+    """Call count and cost percentage per model."""
+    from modules.backend.services.token_economics import TokenEconomicsService
+
+    service = TokenEconomicsService(db)
+    data = await service.get_model_distribution(timeframe=timeframe)
+
+    return ApiResponse(
+        success=True,
+        data={"models": data},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/metrics/output-efficiency",
+    response_model=ApiResponse,
+    summary="Output/input ratio by agent",
+)
+async def admin_output_efficiency(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+    timeframe: str = "7d",
+) -> ApiResponse:
+    """Per-agent output/input ratio — high ratio = expensive."""
+    from modules.backend.services.token_economics import TokenEconomicsService
+
+    service = TokenEconomicsService(db)
+    data = await service.get_output_efficiency(timeframe=timeframe)
+
+    return ApiResponse(
+        success=True,
+        data={"agents": data},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/metrics/cost-alerts",
+    response_model=ApiResponse,
+    summary="Active cost alerts",
+)
+async def admin_cost_alerts(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+) -> ApiResponse:
+    """Check all cost alert rules and return any that triggered."""
+    from modules.backend.services.cost_alerts import CostAlertService
+
+    service = CostAlertService(db)
+    alerts = await service.check_alerts()
+
+    return ApiResponse(
+        success=True,
+        data={
+            "alerts": [
+                {"rule": a.rule, "message": a.message, "severity": a.severity}
+                for a in alerts
+            ],
+            "count": len(alerts),
+        },
+        metadata={"request_id": request_id},
+    )
+
+
 # ---- System Operations ----
 
 

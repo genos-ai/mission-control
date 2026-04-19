@@ -1,0 +1,19 @@
+# Cost management configuration (Plan 60).
+#
+# Default cache TTL for Anthropic agents.
+# "5m" for tight loops, "1h" for agents that may pause for human approval.
+default_cache_ttl: "1h"
+
+# Alert thresholds (Phase 3)
+alerts:
+  hourly_spend_limit_usd: 5.00
+  per_agent_hourly_limit_usd: 2.00
+  min_cache_hit_rate: 0.40
+
+# Emergency downgrade (Phase 3)
+emergency_downgrade_model: "anthropic:claude-haiku-4-5-20251001"
+
+# Output efficiency flags (Phase 2 dashboard)
+output_efficiency:
+  high_threshold: 3.0    # output/input ratio > 3x = warning
+  critical_threshold: 5.0  # > 5x = critical

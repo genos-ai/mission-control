@@ -26,6 +26,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from modules.backend.core.config_schema import (
     ApplicationSchema,
+    CostSchema,
     DatabaseSchema,
     EventsSchema,
     FeaturesSchema,
@@ -143,6 +144,7 @@ class AppConfig:
         self._gate = _load_validated_optional(GateSchema, "gate.yaml")
         self._notifications = _load_validated_optional(NotificationsSchema, "notifications.yaml")
         self._providers = _load_validated_optional(ProvidersSchema, "providers.yaml")
+        self._cost = _load_validated_optional(CostSchema, "cost.yaml")
 
     @property
     def application(self) -> ApplicationSchema:
@@ -218,6 +220,11 @@ class AppConfig:
     def providers(self) -> ProvidersSchema:
         """Model provider auth settings."""
         return self._providers
+
+    @property
+    def cost(self) -> CostSchema:
+        """Cost management settings (Plan 60)."""
+        return self._cost
 
 
 @lru_cache

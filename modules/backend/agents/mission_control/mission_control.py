@@ -410,9 +410,28 @@ async def handle(
         # Await agent result for usage stats
         result = await agent_task
         usage = result.usage()
-        input_tokens = usage.input_tokens or 0
-        output_tokens = usage.output_tokens or 0
-        cost_usd = compute_cost_usd(input_tokens, output_tokens, model_str)
+        from modules.backend.agents.mission_control.helpers.cost_recorder import extract_usage, record_llm_call
+        fields = extract_usage(usage)
+        cost_usd = compute_cost_usd(
+            fields["input_tokens"], fields["output_tokens"], model_str,
+            cache_read_tokens=fields["cache_read_tokens"],
+            cache_write_1h_tokens=fields["cache_write_tokens"],
+            thinking_tokens=fields["thinking_tokens"],
+        )
+
+        # Record to llm_calls table (Plan 60 §0.7)
+        try:
+            await record_llm_call(
+                session_id=str(sid), mission_id=mission_id,
+                agent_name=agent_name, agent_role=agent_config.agent_type,
+                model=model_str, usage=usage, cost_usd=cost_usd,
+                tool_count=len(agent_config.tools),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record LLM call for %s — cost data will be missing",
+                agent_name, exc_info=True,
+            )
 
         # Chunks are authoritative — they capture all text across all
         # turns (including the first token from PartStartEvent). Only
@@ -437,8 +456,8 @@ async def handle(
             source=source,
             agent_id=agent_name,
             full_content=full_content,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            input_tokens=fields["input_tokens"],
+            output_tokens=fields["output_tokens"],
             cost_usd=cost_usd,
             model=model_str,
             metadata=metadata,
@@ -450,8 +469,8 @@ async def handle(
         try:
             await session_service.update_cost(
                 session_id,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
+                input_tokens=fields["input_tokens"],
+                output_tokens=fields["output_tokens"],
                 cost_usd=cost_usd,
             )
         except (SQLAlchemyError, ApplicationError):
@@ -466,8 +485,8 @@ async def handle(
         cost_event = CostUpdateEvent(
             session_id=sid,
             source=source,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            input_tokens=fields["input_tokens"],
+            output_tokens=fields["output_tokens"],
             cost_usd=cost_usd,
             cumulative_cost_usd=updated_session.total_cost_usd,
             budget_remaining_usd=budget_remaining,

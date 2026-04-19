@@ -86,3 +86,61 @@ export interface PromptHistoryResponse {
   member_id: string
   versions: PromptVersion[]
 }
+
+// Per-mission cost breakdown (Plan 60)
+
+export interface MissionCostSummary {
+  total_cost_usd: number
+  total_calls: number
+  avg_cost_per_call: number
+  cache_hit_rate: number
+  output_ratio: number
+}
+
+export interface MissionCostAgent {
+  agent_name: string
+  call_count: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  thinking_tokens: number
+  total_cost_usd: number
+}
+
+export interface MissionCostCache {
+  agent_name: string
+  total_input_tokens: number
+  cache_read_tokens: number
+  cache_hit_rate: number
+}
+
+export interface MissionCostEfficiency {
+  agent_name: string
+  avg_input_tokens: number
+  avg_output_tokens: number
+  output_input_ratio: number
+  flag: 'ok' | 'high' | 'critical'
+}
+
+export interface MissionCostCall {
+  id: string
+  created_at: string
+  agent_name: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  thinking_tokens: number
+  cost_usd: number
+  latency_ms: number | null
+}
+
+export interface MissionCostsResponse {
+  mission_id: string
+  summary: MissionCostSummary
+  by_agent: MissionCostAgent[]
+  cache_performance: MissionCostCache[]
+  output_efficiency: MissionCostEfficiency[]
+  expensive_calls: MissionCostCall[]
+}

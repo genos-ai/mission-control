@@ -29,7 +29,8 @@ from modules.backend.events.types import (
 
 from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps, _import_agent_module
 from modules.backend.agents.mission_control.helpers.event_emitter import _emit, _emit_tool_events
-from modules.backend.agents.mission_control.helpers.model_builder import _build_model, _get_model_name
+from modules.backend.agents.mission_control.helpers.cost_recorder import extract_usage, record_llm_call
+from modules.backend.agents.mission_control.helpers.model_builder import _build_model, _get_model_name, build_model_settings
 from modules.backend.agents.mission_control.helpers.prompt_builder import _build_planning_prompt, _build_roster_prompt
 
 logger = get_logger(__name__)
@@ -63,6 +64,7 @@ def _make_agent_executor(
         module = _import_agent_module(agent_name)
         model = _build_model(agent_config.model)
         agent = module.create_agent(model)
+        model_settings = build_model_settings(agent_config)
         deps = _build_agent_deps(agent_name, agent_config)
 
         # Inject environment handle and redirect project_root for user-tier agents.
@@ -186,6 +188,7 @@ def _make_agent_executor(
 
         async with agent.run_stream(
             user_message, deps=deps, usage_limits=usage_limits,
+            model_settings=model_settings,
         ) as stream:
             try:
                 async for text in stream.stream_text(delta=True):
@@ -240,16 +243,34 @@ def _make_agent_executor(
                 content_type="markdown",
             )
 
-        input_tokens = usage.input_tokens or 0
-        output_tokens = usage.output_tokens or 0
+        fields = extract_usage(usage)
         model_name = _get_model_name(agent_config.model)
-        cost_usd = compute_cost_usd(input_tokens, output_tokens, model_name)
+        cost_usd = compute_cost_usd(
+            fields["input_tokens"], fields["output_tokens"], model_name,
+            cache_read_tokens=fields["cache_read_tokens"],
+            cache_write_1h_tokens=fields["cache_write_tokens"],
+            thinking_tokens=fields["thinking_tokens"],
+        )
         cumulative_cost_usd += cost_usd
 
+        # Record to llm_calls table (Plan 60 §0.7)
+        try:
+            await record_llm_call(
+                session_id=session_id, mission_id=mission_id,
+                agent_name=agent_name, agent_role=agent_config.agent_type,
+                model=model_name, usage=usage, cost_usd=cost_usd,
+                latency_ms=0, tool_count=len(agent_config.tools),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record LLM call for %s — cost data will be missing",
+                agent_name, exc_info=True,
+            )
+
         output_dict["_meta"] = {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "thinking_tokens": 0,
+            "input_tokens": fields["input_tokens"],
+            "output_tokens": fields["output_tokens"],
+            "thinking_tokens": fields["thinking_tokens"],
             "cost_usd": cost_usd,
         }
 
@@ -262,8 +283,8 @@ def _make_agent_executor(
             source=f"dispatch:{mission_id}",
             agent_id=agent_name,
             full_content=full_content,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            input_tokens=fields["input_tokens"],
+            output_tokens=fields["output_tokens"],
             cost_usd=cost_usd,
             model=model_name,
         )
@@ -271,8 +292,8 @@ def _make_agent_executor(
         await _emit(event_bus, CostUpdateEvent,
             session_id=session_id,
             source=f"dispatch:{mission_id}",
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            input_tokens=fields["input_tokens"],
+            output_tokens=fields["output_tokens"],
             cost_usd=cost_usd,
             cumulative_cost_usd=cumulative_cost_usd,
             model=model_name,
@@ -322,6 +343,7 @@ async def _call_planning_agent(
     registry = get_registry()
     planning_cfg = registry.get("system.planning.agent")
     model = _build_model(planning_cfg.model)
+    planning_model_settings = build_model_settings(planning_cfg)
     agent = create_agent(model)
 
     roster_desc = _build_roster_prompt(roster)
@@ -348,7 +370,9 @@ async def _call_planning_agent(
     sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
     full_content = ""
 
-    async with agent.run_stream(planning_prompt, deps=deps) as stream:
+    async with agent.run_stream(
+        planning_prompt, deps=deps, model_settings=planning_model_settings,
+    ) as stream:
         async for text in stream.stream_text(delta=True):
             full_content += text
             if event_bus:

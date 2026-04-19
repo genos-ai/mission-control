@@ -539,3 +539,34 @@ class GateSchema(_StrictBase):
     ai: GateAiSchema = Field(default_factory=GateAiSchema)
     points: GatePointsSchema = Field(default_factory=GatePointsSchema)
     auto_rules: GateAutoRulesSchema = Field(default_factory=GateAutoRulesSchema)
+
+
+# =============================================================================
+# cost.yaml (Plan 60)
+# =============================================================================
+
+
+class CostAlertsSchema(_StrictBase):
+    """Alert thresholds for cost monitoring (Phase 3)."""
+
+    hourly_spend_limit_usd: float = 5.0
+    per_agent_hourly_limit_usd: float = 2.0
+    min_cache_hit_rate: float = 0.40
+
+
+class OutputEfficiencySchema(_StrictBase):
+    """Output/input ratio thresholds for flagging expensive agents."""
+
+    high_threshold: float = 3.0
+    critical_threshold: float = 5.0
+
+
+class CostSchema(_StrictBase):
+    """Cost management configuration (cost.yaml)."""
+
+    default_cache_ttl: str = "1h"
+    alerts: CostAlertsSchema = Field(default_factory=CostAlertsSchema)
+    emergency_downgrade_model: str = "anthropic:claude-haiku-4-5-20251001"
+    output_efficiency: OutputEfficiencySchema = Field(
+        default_factory=OutputEfficiencySchema,
+    )

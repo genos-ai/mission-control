@@ -1,11 +1,25 @@
 # Plan 60 — Prompt Caching & Cost Management Dashboard
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Date:** 2026-04-19
-**Author:** Herman + Architecture Review
+**Author:** Herman + Architecture Review + Codebase Verification
 **Status:** Ready to implement
 **Research basis:** docs/98-research/019, 020, 021 (Claude token economics, cost cutting, cost management)
 **Expected impact:** 70-80% reduction in Anthropic API spend
+
+### v1.3 changelog (codebase verification)
+
+1. **Fixed `build_model_settings()` rewrite** — removed early return on no `thinking_budget`; cache settings now flow for ALL Anthropic agents regardless of thinking config
+2. **Fixed dispatch path gap** — `agent_executor.py` uses `run_stream()` (not `run()`) and does NOT currently call `build_model_settings()` at all; added explicit wiring + import
+3. **Fixed files-changed table** — 11 files, not 4. Added: `config_schema.py` (core + agents), `config.py`, `agent_catalog.py`, `cost.yaml`, Alembic migration
+4. **Fixed strict schema handling** — `_StrictBase` uses `extra='forbid'`; new fields (`cache_ttl`, cache pricing rates) must be added to schemas before YAML changes
+5. **Removed role-based `max_tokens`** — `AgentModelSchema.max_tokens` (default 4096) is already the correct per-agent source of truth; `_resolve_max_tokens()` removed
+6. **No swallowed exceptions** — `record_llm_call()` raises on failure; callers catch + log at WARNING with `exc_info=True`. `_get_default_cache_ttl()` raises on invalid config (no silent fallback)
+7. **Fixed `effective_to` sentinel** — `datetime(9999, 12, 31)` instead of string `"infinity"` (portable across PostgreSQL versions)
+8. **Added `created_at` index** to `llm_calls` — all timeline queries filter by time range
+9. **Deferred CachePoint to Phase 1.5** — requires `str` → `list` return type change in `assemble_instructions()` + caller updates in both execution paths
+10. **Fixed `estimate_cost()`** — output estimate changed from 100% to 30% of input (more realistic)
+11. **Added `cost_recorder.py` session management** — dispatch path has no `db_session` in scope; recorder uses `get_async_session()` internally
 
 ---
 
@@ -39,15 +53,27 @@ settings = AnthropicModelSettings(
 
 **Current state:** `build_model_settings()` in `model_builder.py` only handles `thinking_budget`. It does NOT set any cache fields. This is the single change that delivers 70-80% savings.
 
-### 1.2 Implementation — update `build_model_settings()`
+### 1.2 Implementation — rewrite `build_model_settings()`
 
 **File:** `modules/backend/agents/mission_control/helpers/model_builder.py`
 
-**Current function** (line 17) only handles thinking. Add cache settings for ALL Anthropic agents.
+**Current function** (line 15) returns `None` when `thinking_budget` is absent — meaning
+agents without thinking get **no** `model_settings` at all. The rewrite must remove that
+early return so cache settings flow for ALL Anthropic agents, with or without thinking.
+
+**Breaking change:** The current function returns `None` for non-thinking agents. After
+this change it returns `AnthropicModelSettings` for all Anthropic agents. Callers already
+handle both `None` and `ModelSettings`, so this is safe — but verify in §1.3 and §1.4.
 
 ```python
-def build_model_settings(agent_config: AgentConfigSchema) -> ModelSettings | None:
-    from pydantic_ai.settings import ModelSettings
+def build_model_settings(
+    agent_config: AgentConfigSchema,
+) -> "ModelSettings | None":
+    """Build provider-specific model settings from agent config.
+
+    Returns AnthropicModelSettings for ALL Anthropic agents (cache + thinking).
+    Returns None for non-Anthropic providers (cache control is Anthropic-specific).
+    """
     from pydantic_ai.models.anthropic import AnthropicModelSettings
 
     model_name = (
@@ -61,15 +87,8 @@ def build_model_settings(agent_config: AgentConfigSchema) -> ModelSettings | Non
         return None  # cache control is Anthropic-specific
 
     # ── Cache control (Plan 60) ──────────────────────────────
-    # Read cache_ttl from agent config (default: "1h").
-    # Configurable per-agent via YAML or admin DB catalog.
-    cache_ttl = getattr(agent_config, "cache_ttl", None)
-    if not cache_ttl:
-        try:
-            from modules.backend.core.config import get_app_config
-            cache_ttl = get_app_config().cost.default_cache_ttl
-        except AttributeError:
-            cache_ttl = "1h"
+    # Per-agent cache_ttl from YAML, then cost.yaml default, then "1h".
+    cache_ttl = agent_config.cache_ttl or _get_default_cache_ttl()
     cache_kwargs = {
         "anthropic_cache_instructions": cache_ttl,
         "anthropic_cache_tool_definitions": cache_ttl,
@@ -77,9 +96,12 @@ def build_model_settings(agent_config: AgentConfigSchema) -> ModelSettings | Non
     }
 
     # ── Output token cap ─────────────────────────────────────
-    # Read from agent's model config (AgentModelSchema.max_tokens).
-    # Falls back to role-based defaults from config/settings/cost.yaml.
-    max_tokens = _resolve_max_tokens(agent_config)
+    # AgentModelSchema.max_tokens (pinned per-agent, default 4096).
+    max_tokens = (
+        agent_config.model.max_tokens
+        if isinstance(agent_config.model, AgentModelSchema)
+        else 4096
+    )
 
     # ── Thinking configuration ───────────────────────────────
     thinking_config = None
@@ -105,67 +127,44 @@ def build_model_settings(agent_config: AgentConfigSchema) -> ModelSettings | Non
     return AnthropicModelSettings(**settings_kwargs)
 
 
-def _resolve_max_tokens(agent_config: AgentConfigSchema) -> int:
-    """Resolve max_tokens from agent config, falling back to defaults.
+def _get_default_cache_ttl() -> str:
+    """Read default_cache_ttl from cost.yaml config.
 
-    Priority:
-      1. Agent's model config (AgentModelSchema.max_tokens) — set by admin
-      2. Role-based defaults from config/settings/cost.yaml
-      3. Global default (2048)
-
-    Nothing is hardcoded — all values come from config.
+    Raises if cost.yaml exists but has invalid schema — we do NOT
+    silently fall back, because a broken config must be fixed.
     """
-    # 1. Explicit agent config
-    if isinstance(agent_config.model, AgentModelSchema) and agent_config.model.max_tokens:
-        return agent_config.model.max_tokens
-
-    # 2. Role-based defaults from cost.yaml
-    try:
-        from modules.backend.core.config import get_app_config
-        cost_config = get_app_config().cost
-        role_defaults = cost_config.max_tokens_by_role
-        agent_type = agent_config.agent_type
-        if agent_type in role_defaults:
-            return role_defaults[agent_type]
-    except AttributeError:
-        pass  # cost.yaml not loaded — use global default
-
-    # 3. Global default
-    return 2048
+    from modules.backend.core.config import get_app_config
+    return get_app_config().cost.default_cache_ttl
 ```
+
+**Removed `_resolve_max_tokens()`** — the original plan added a role-based
+`max_tokens` resolution from `cost.yaml`. This is unnecessary: `AgentModelSchema`
+already has `max_tokens` (default 4096) pinned per-agent. The existing field is
+the correct source of truth — adding a second resolution path creates ambiguity
+about which value wins. If we need role-based defaults, add them as a future plan.
 
 #### New config file: `config/settings/cost.yaml`
 
-All cost-related configuration in one place — no hardcoded values in code:
+Cost-related configuration. Loaded by `AppConfig` via `_load_validated_optional`
+(returns defaults if file is missing — but validation errors are **not** swallowed).
 
 ```yaml
 # Cost management configuration.
-# All token economics settings are here — not in code.
 
 # Default cache TTL for Anthropic agents.
 # "5m" for tight loops, "1h" for agents that may pause for human approval.
 default_cache_ttl: "1h"
 
-# Per-role max_tokens defaults (output costs 5x input).
-# These are defaults — admins can override per-agent via the catalog.
-max_tokens_by_role:
-  system: 800         # summarization, synthesis, knowledge
-  horizontal: 2048    # verification, supervisor
-  vertical: 4096      # quality, architecture, planning
-
-# Global default when role not matched
-default_max_tokens: 2048
-
-# Alert thresholds
+# Alert thresholds (Phase 3)
 alerts:
   hourly_spend_limit_usd: 5.00
   per_agent_hourly_limit_usd: 2.00
   min_cache_hit_rate: 0.40
 
-# Emergency downgrade
+# Emergency downgrade (Phase 3)
 emergency_downgrade_model: "anthropic:claude-haiku-4-5-20251001"
 
-# Output efficiency flags
+# Output efficiency flags (Phase 2 dashboard)
 output_efficiency:
   high_threshold: 3.0    # output/input ratio > 3x = warning
   critical_threshold: 5.0  # > 5x = critical
@@ -174,6 +173,9 @@ output_efficiency:
 #### New config schema additions
 
 **File:** `modules/backend/core/config_schema.py`
+
+Add alongside existing schemas. Uses `_StrictBase` — unknown YAML keys
+will fail validation at startup (not silently ignored).
 
 ```python
 class CostAlertsSchema(_StrictBase):
@@ -188,34 +190,40 @@ class OutputEfficiencySchema(_StrictBase):
 class CostSchema(_StrictBase):
     """Cost management configuration (cost.yaml)."""
     default_cache_ttl: str = "1h"
-    max_tokens_by_role: dict[str, int] = {
-        "system": 800,
-        "horizontal": 2048,
-        "vertical": 4096,
-    }
-    default_max_tokens: int = 2048
     alerts: CostAlertsSchema = Field(default_factory=CostAlertsSchema)
     emergency_downgrade_model: str = "anthropic:claude-haiku-4-5-20251001"
     output_efficiency: OutputEfficiencySchema = Field(default_factory=OutputEfficiencySchema)
 ```
 
-Add to `AppConfig`:
+**File:** `modules/backend/core/config.py`
+
+Add to `AppConfig.__init__()` alongside the other optional configs:
 ```python
 self._cost = _load_validated_optional(CostSchema, "cost.yaml")
+```
 
+Add property (same pattern as `sessions`, `executions`, etc.):
+```python
 @property
 def cost(self) -> CostSchema:
     return self._cost
 ```
 
+**Note:** `_load_validated_optional` already exists and is used for 9 other
+configs (`events`, `sessions`, `executions`, etc.). If the file is missing,
+it returns `CostSchema()` with defaults. If the file exists but has invalid
+content, it raises `ValueError` — this is the correct behavior (no swallowed errors).
+
 #### New agent config field: `cache_ttl`
 
 **File:** `modules/backend/agents/config_schema.py`
 
-Add to `AgentConfigSchema` (after `effort`):
+Add to `AgentConfigSchema` (after `effort`, line 162). Since `AgentConfigSchema`
+uses `_StrictBase` (`extra='forbid'`), the field **must** be added to the schema
+before any agent YAML includes `cache_ttl` — otherwise startup validation fails.
 
 ```python
-# Cache TTL for Anthropic prompt caching.
+# Cache TTL for Anthropic prompt caching (Plan 60).
 # "5m" for tight loops, "1h" for agents with human-approval pauses.
 # None = use default from config/settings/cost.yaml.
 cache_ttl: str | None = None
@@ -223,7 +231,7 @@ cache_ttl: str | None = None
 
 **File:** `modules/backend/models/agent_catalog.py`
 
-Add column:
+Add column + **Alembic migration** (the plan must include a migration step):
 ```python
 cache_ttl: Mapped[str | None] = mapped_column(
     String(10), nullable=True,
@@ -231,41 +239,90 @@ cache_ttl: Mapped[str | None] = mapped_column(
 )
 ```
 
+**Migration:** `alembic revision --autogenerate -m "add cache_ttl to agent_catalog"`
+
 ### 1.3 Wire model_settings into the chat path
 
 **File:** `modules/backend/agents/mission_control/mission_control.py`
 
-**Current state (line 374):** `agent.run()` already passes `model_settings=model_settings` where `model_settings` comes from `build_model_settings(agent_config)` (line 261). **This already works** — once we add cache fields to `build_model_settings()`, they flow through automatically.
+**Current state (line 374):** `agent.run()` already passes `model_settings=model_settings`
+where `model_settings` comes from `build_model_settings(agent_config)` (line 263).
 
-**Verify:** Line 261: `model_settings = build_model_settings(agent_config)` — confirmed.
+**Behavioral change:** Previously, non-thinking agents got `model_settings=None`.
+After §1.2, all Anthropic agents get `AnthropicModelSettings` with cache fields.
+PydanticAI handles `model_settings=None` vs populated settings identically for
+non-configured fields, so this is safe. **No code changes needed in this file for
+cache to work** — the rewrite in §1.2 is sufficient.
+
+**Verified:** Line 263 calls `build_model_settings(agent_config)`, line 374 passes
+it to `agent.run()`. Cache settings flow automatically.
 
 ### 1.4 Wire model_settings into the dispatch path
 
 **File:** `modules/backend/agents/mission_control/helpers/agent_executor.py`
 
-**Current state:** The dispatch path uses `agent.run()` with `model_settings` built inside `execute_agent()`. Check if `build_model_settings` is called there.
+**Current state:** The dispatch path uses `agent.run_stream()` (NOT `agent.run()`)
+at line 187. It does **not** call `build_model_settings()` and does **not** pass
+`model_settings` at all. This means dispatch-path agents currently get:
+- No cache control
+- No thinking configuration (even if `thinking_budget` is set in their YAML)
 
-Search for `build_model_settings` in `agent_executor.py`. If not present, add it:
+This is a **real gap** — not a 5-line fix. The change:
 
 ```python
-# Inside execute_agent(), before agent.run():
-from modules.backend.agents.mission_control.helpers.model_builder import build_model_settings
-model_settings = build_model_settings(agent_config)
-
-# Then pass to agent.run():
-result = await agent.run(
-    instructions,
-    model_settings=model_settings,
-    ...
+# Line 32 — add import (build_model_settings is not currently imported):
+from modules.backend.agents.mission_control.helpers.model_builder import (
+    _build_model, _get_model_name, build_model_settings,
 )
+
+# Line 64-66 — after building model, add model_settings:
+model = _build_model(agent_config.model)
+agent = module.create_agent(model)
+model_settings = build_model_settings(agent_config)  # NEW
+
+# Line 187-188 — pass model_settings to run_stream():
+async with agent.run_stream(
+    user_message, deps=deps, usage_limits=usage_limits,
+    model_settings=model_settings,  # NEW — enables cache + thinking
+) as stream:
 ```
 
-### 1.5 Add CachePoint for dynamic context
+**Also wire into `_call_planning_agent()`** (line 351):
+```python
+# Line 323-325 — add model_settings for planning agent:
+planning_cfg = registry.get("system.planning.agent")
+model = _build_model(planning_cfg.model)
+model_settings = build_model_settings(planning_cfg)  # NEW
+
+# Line 351 — pass to run_stream():
+async with agent.run_stream(
+    planning_prompt, deps=deps, model_settings=model_settings,
+) as stream:
+```
+
+**Impact:** This also fixes the existing bug where dispatch-path agents
+don't get thinking configuration. The `thinking_tokens: 0` hardcoded at
+line 252 should be updated to read from `usage.details` (see §1.6).
+
+### 1.5 Add CachePoint for dynamic context (deferred — Phase 1.5)
 
 **File:** `modules/backend/agents/mission_control/helpers/prompt_builder.py`
 
-When assembling instructions, add a `CachePoint()` after the stable context (system prompt, MCD) and before the variable user message. This ensures the stable prefix is cached even when the user message changes.
+**Current state:** `assemble_instructions()` returns a single `str`. Both callers
+(`mission_control.py` line 374 and `agent_executor.py` line 187) pass a string
+to `agent.run()` / `agent.run_stream()`.
 
+Adding `CachePoint()` requires changing the return type from `str` to `list` and
+updating both callers to pass `[*cached_prefix, user_message]` instead of a flat
+string. This is a meaningful refactor across the two execution paths.
+
+**Recommendation:** Defer to Phase 1.5. The `anthropic_cache_instructions` and
+`anthropic_cache_tool_definitions` settings from §1.2 already cache the system
+prompt and tool schemas (the two largest stable prefixes). `CachePoint()` adds
+an additional cache boundary for mission context — valuable but not required
+for the initial 70-80% savings.
+
+**When implementing (Phase 1.5):**
 ```python
 from pydantic_ai import CachePoint
 
@@ -277,17 +334,15 @@ def assemble_instructions_with_cache(
     """Assemble instructions as a list with CachePoint for caching.
 
     Layout: [system_prompt, mission_context, CachePoint(), user_message]
-    Everything before CachePoint is cached at 1h TTL.
+    Everything before CachePoint is cached at the TTL from model_settings.
     """
     parts = []
-    # Stable prefix — cached
     system_prompt = assemble_instructions(category, name)
     parts.append(system_prompt)
 
     if mission_context:
         parts.append(mission_context)
 
-    # Cache boundary — everything above is cached.
     # WARNING: Anthropic allows max 4 cache_control breakpoints per request.
     # anthropic_cache_instructions (1) + anthropic_cache_tool_definitions (2)
     # + anthropic_cache=True (3) + this CachePoint (4) = exactly 4.
@@ -297,17 +352,48 @@ def assemble_instructions_with_cache(
     return parts
 ```
 
-**Usage in handle():**
+**Caller change required (both paths):**
 ```python
-# Instead of: result = await agent.run(message, ...)
-# Use: result = await agent.run([*cached_prefix, message], ...)
+# mission_control.py — change agent.run(message, ...) to:
+cached_prefix = assemble_instructions_with_cache(category, name, mission_context)
+result = await agent.run([*cached_prefix, message], ...)
+
+# agent_executor.py — change agent.run_stream(user_message, ...) to:
+cached_prefix = assemble_instructions_with_cache(category, name, mission_context)
+async with agent.run_stream([*cached_prefix, user_message], ...) as stream:
 ```
 
 ### 1.6 Update cost calculation for cache tokens
 
 **File:** `modules/backend/agents/mission_control/cost.py`
 
-Current `compute_cost_usd()` only handles `input_tokens` and `output_tokens`. Add cache token pricing:
+**Current state:** `compute_cost_usd()` (line 13) takes only `input_tokens`,
+`output_tokens`, `model`. Uses `ModelPricingRateSchema` which only has
+`input` and `output` fields.
+
+**Both the function AND the schema need updating.**
+
+**Step 1 — Update `ModelPricingRateSchema`:**
+
+**File:** `modules/backend/agents/config_schema.py` (line 267)
+
+```python
+class ModelPricingRateSchema(_StrictBase):
+    """Cost per million tokens for a specific model."""
+
+    input: float
+    output: float
+    cache_read: float = 0.0
+    cache_write_5m: float = 0.0
+    cache_write_1h: float = 0.0
+```
+
+Cache fields default to `0.0` so existing `mission_control.yaml` entries
+(which only have `input`/`output`) continue to validate. New entries add
+cache rates explicitly. `_StrictBase` ensures typos in field names are
+caught at startup.
+
+**Step 2 — Update `compute_cost_usd()`:**
 
 ```python
 def compute_cost_usd(
@@ -323,10 +409,15 @@ def compute_cost_usd(
 
     All rates read from config/agents/mission_control.yaml model_pricing.
     5m and 1h cache writes have different pricing (1.25x vs 2x input).
-    No hardcoded multipliers — pricing changes are config-only.
     """
     config = _load_mission_control_config()
-    rates = config.model_pricing.get(model or "", config.model_pricing.get("default"))
+    default_rates = config.model_pricing.get("default")
+    rates = config.model_pricing.get(model or "", default_rates)
+    if rates is None:
+        rates = default_rates
+    if rates is None:
+        logger.warning("No pricing config found", extra={"model": model})
+        return 0.0
 
     input_cost = (input_tokens / 1_000_000) * rates.input
     output_cost = ((output_tokens + thinking_tokens) / 1_000_000) * rates.output
@@ -340,27 +431,50 @@ def compute_cost_usd(
     )
 ```
 
-Update callers to pass cache tokens from PydanticAI's `usage` object:
+**Step 3 — Update callers** (both paths):
+
 ```python
-usage = result.usage()
-# PydanticAI's cache_write_tokens is a single value. Since we default
-# to 1h TTL, attribute all cache writes to the 1h bucket. If using 5m
-# TTL on specific agents, the implementer should check usage.details
-# for the breakdown (Anthropic returns cache_creation by TTL).
-cost = compute_cost_usd(
-    usage.input_tokens,
-    usage.output_tokens,
-    model=model_str,
-    cache_read_tokens=usage.cache_read_tokens,
-    cache_write_1h_tokens=usage.cache_write_tokens,  # default TTL is 1h
+# mission_control.py (line 410-415) and agent_executor.py (line 243-246):
+usage = result.usage()  # or stream.usage()
+cost_usd = compute_cost_usd(
+    usage.input_tokens or 0,
+    usage.output_tokens or 0,
+    model_str,
+    cache_read_tokens=getattr(usage, "cache_read_tokens", 0) or 0,
+    cache_write_1h_tokens=getattr(usage, "cache_write_tokens", 0) or 0,
+    thinking_tokens=_extract_thinking_tokens(usage),
 )
+```
+
+**Note on `getattr` guards:** PydanticAI's `Usage` object may not have
+`cache_read_tokens` / `cache_write_tokens` on older versions. Using `getattr`
+with a default is defensive but intentional — if the fields are missing, we
+get 0 (correct: no cache = no cache cost). This is NOT a swallowed error —
+it's forward-compatible field access.
+
+**Step 4 — Fix `estimate_cost()`:**
+
+Current implementation assumes `output ≈ input` which overestimates (output is
+typically 10-30% of input). Update to use a configurable ratio:
+
+```python
+def estimate_cost(
+    estimated_input_tokens: int,
+    model: str | None = None,
+) -> float:
+    """Estimate cost before execution. Conservative: assumes output = 30% of input."""
+    estimated_output = int(estimated_input_tokens * 0.3)
+    return compute_cost_usd(estimated_input_tokens, estimated_output, model)
 ```
 
 ### 1.7 Update model pricing config
 
 **File:** `config/agents/mission_control.yaml`
 
-Add explicit cache rates per model — no hardcoded multipliers in code:
+**Current state** (line 46-58): Only has `input`/`output` per model. Add cache
+rates. Because `ModelPricingRateSchema` defaults cache fields to `0.0` (see §1.6
+step 1), existing entries without cache fields continue to work — but costs will
+be under-reported for cached requests. Add rates to all entries:
 
 ```yaml
 model_pricing:
@@ -396,7 +510,9 @@ model_pricing:
     cache_write_1h: 6.00
 ```
 
-**Note:** Model names use the `anthropic:` prefix to match what `llm_calls.model` stores (from agent config). The `model_pricing` DB table (§2.2b) must use the same prefix format.
+**Note:** Model names use the `anthropic:` prefix to match `_get_model_name()`
+return values (e.g., `"anthropic:claude-sonnet-4-6"`). The `model_pricing` DB
+table (§2.2b) must use the same prefix format.
 
 ### 1.8 Verification
 
@@ -419,12 +535,19 @@ print(f"Cache hit rate: {cache_rate:.1%}")
 
 | # | File | Action | Lines |
 |---|------|--------|-------|
-| 1 | `modules/backend/agents/mission_control/helpers/model_builder.py` | Rewrite `build_model_settings()` | ~50 |
-| 2 | `modules/backend/agents/mission_control/cost.py` | Add cache/thinking token params | ~15 |
-| 3 | `modules/backend/agents/mission_control/helpers/agent_executor.py` | Pass cache tokens to cost calc | ~5 |
-| 4 | `config/agents/mission_control.yaml` | Update pricing | ~5 |
+| 1 | `modules/backend/core/config_schema.py` | Add `CostSchema` + sub-schemas | ~20 |
+| 2 | `modules/backend/core/config.py` | Add `_cost` field + `cost` property to `AppConfig` | ~5 |
+| 3 | `modules/backend/agents/config_schema.py` | Add `cache_ttl` to `AgentConfigSchema`, cache fields to `ModelPricingRateSchema` | ~10 |
+| 4 | `modules/backend/models/agent_catalog.py` | Add `cache_ttl` column | ~5 |
+| 5 | `modules/backend/agents/mission_control/helpers/model_builder.py` | Rewrite `build_model_settings()` — remove early return, add cache | ~50 |
+| 6 | `modules/backend/agents/mission_control/helpers/agent_executor.py` | Import + call `build_model_settings()`, pass to `run_stream()` | ~10 |
+| 7 | `modules/backend/agents/mission_control/cost.py` | Add cache/thinking token params to `compute_cost_usd()`, fix `estimate_cost()` | ~20 |
+| 8 | `modules/backend/agents/mission_control/mission_control.py` | Update `compute_cost_usd()` call to pass cache tokens | ~5 |
+| 9 | `config/agents/mission_control.yaml` | Add cache rates to `model_pricing` | ~20 |
+| 10 | `config/settings/cost.yaml` | New file — cache TTL defaults, alert thresholds | ~15 |
+| 11 | Alembic migration | Add `cache_ttl` column to `agent_catalog` | ~10 |
 
-**Estimated effort: 2-3 hours.**
+**Estimated effort: 3-4 hours.**
 
 ---
 
@@ -511,7 +634,19 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
         comment="Estimated tokens consumed by tool definitions")
 ```
 
-**Migration:** Create `llm_calls` table with indexes on `(agent_name)`, `(model)`, `(mission_id)`, `(created_at)`.
+**Migration:** Create `llm_calls` table with indexes on `(agent_name)`, `(model)`,
+`(mission_id)`, `(session_id)`, `(created_at)`.
+
+**Critical:** The `created_at` index is required — all dashboard timeline queries
+(§2.5) filter by time range. Without it, every query is a full table scan.
+`TimestampMixin` adds `created_at` but does NOT add an index — add it explicitly:
+
+```python
+from sqlalchemy import Index
+
+# At module level, after class definition:
+Index("ix_llm_calls_created_at", LlmCall.created_at)
+```
 
 ### 2.2b New database table: `model_pricing` (from research paper 021)
 
@@ -531,7 +666,10 @@ class ModelPricing(Base):
 
     model: Mapped[str] = mapped_column(String(100), primary_key=True)
     effective_from: Mapped[datetime] = mapped_column(primary_key=True)
-    effective_to: Mapped[datetime] = mapped_column(default="infinity")
+    effective_to: Mapped[datetime] = mapped_column(
+        default=datetime(9999, 12, 31, tzinfo=timezone.utc),
+        comment="Far-future sentinel for 'current' pricing — not PostgreSQL 'infinity'",
+    )
     price_per_mtok_input: Mapped[float] = mapped_column(Float, nullable=False)
     price_per_mtok_output: Mapped[float] = mapped_column(Float, nullable=False)
     price_per_mtok_cache_write_5m: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -542,9 +680,9 @@ class ModelPricing(Base):
 **Seed data** (April 2026 Anthropic list prices — prefixed to match `llm_calls.model`):
 ```sql
 INSERT INTO model_pricing VALUES
-  ('anthropic:claude-opus-4-7',          '2026-04-16', 'infinity', 5.00, 25.00, 6.25, 10.00, 0.50),
-  ('anthropic:claude-sonnet-4-6',        '2026-02-01', 'infinity', 3.00, 15.00, 3.75,  6.00, 0.30),
-  ('anthropic:claude-haiku-4-5-20251001','2025-10-01', 'infinity', 1.00,  5.00, 1.25,  2.00, 0.10);
+  ('anthropic:claude-opus-4-7',          '2026-04-16', '9999-12-31', 5.00, 25.00, 6.25, 10.00, 0.50),
+  ('anthropic:claude-sonnet-4-6',        '2026-02-01', '9999-12-31', 3.00, 15.00, 3.75,  6.00, 0.30),
+  ('anthropic:claude-haiku-4-5-20251001','2025-10-01', '9999-12-31', 1.00,  5.00, 1.25,  2.00, 0.10);
 ```
 
 ### 2.2c Costed view (from research paper 021)
@@ -638,67 +776,107 @@ async def record_llm_call(
     latency_ms: int = 0,
     tool_count: int = 0,
 ) -> None:
-    """Persist an LlmCall row. Best-effort — errors are logged, not raised."""
-    try:
-        from modules.backend.models.llm_call import LlmCall
+    """Persist an LlmCall row.
 
-        provider = model.split(":")[0] if ":" in model else "unknown"
-        details = usage.details if hasattr(usage, "details") and usage.details else {}
+    Raises on failure — callers decide whether to catch.
+    Silent data loss in cost tracking defeats the purpose of this system.
+    """
+    from modules.backend.models.llm_call import LlmCall
 
-        # PydanticAI reports cache_write_tokens as a single value.
-        # Attribute to 1h bucket by default (our default TTL).
-        # If usage.details has per-TTL breakdown, use it.
-        cache_write_5m = details.get("cache_creation_5m_tokens", 0)
-        cache_write_1h = details.get("cache_creation_1h_tokens", 0)
-        if not cache_write_5m and not cache_write_1h:
-            cache_write_1h = getattr(usage, "cache_write_tokens", 0) or 0
+    provider = model.split(":")[0] if ":" in model else "unknown"
+    details = usage.details if hasattr(usage, "details") and usage.details else {}
 
-        call = LlmCall(
-            session_id=session_id,
-            mission_id=mission_id,
-            agent_name=agent_name,
-            agent_role=agent_role,
-            model=model,
-            provider=provider,
-            input_tokens=getattr(usage, "input_tokens", 0) or 0,
-            output_tokens=getattr(usage, "output_tokens", 0) or 0,
-            cache_read_tokens=getattr(usage, "cache_read_tokens", 0) or 0,
-            cache_write_5m_tokens=cache_write_5m,
-            cache_write_1h_tokens=cache_write_1h,
-            thinking_tokens=details.get("reasoning_tokens", 0) or details.get("thinking_tokens", 0),
-            cost_usd=cost_usd,
-            latency_ms=latency_ms,
-            tool_count=tool_count,
-            tool_schema_tokens=tool_count * TOKENS_PER_TOOL_ESTIMATE,
-        )
-        db_session.add(call)
-        await db_session.flush()
-    except Exception:
-        logger.debug("Failed to record LLM call (non-fatal)", exc_info=True)
+    # PydanticAI reports cache_write_tokens as a single value.
+    # Attribute to 1h bucket by default (our default TTL).
+    # If usage.details has per-TTL breakdown, use it.
+    cache_write_5m = details.get("cache_creation_5m_tokens", 0)
+    cache_write_1h = details.get("cache_creation_1h_tokens", 0)
+    if not cache_write_5m and not cache_write_1h:
+        cache_write_1h = getattr(usage, "cache_write_tokens", 0) or 0
+
+    call = LlmCall(
+        session_id=session_id,
+        mission_id=mission_id,
+        agent_name=agent_name,
+        agent_role=agent_role,
+        model=model,
+        provider=provider,
+        input_tokens=getattr(usage, "input_tokens", 0) or 0,
+        output_tokens=getattr(usage, "output_tokens", 0) or 0,
+        cache_read_tokens=getattr(usage, "cache_read_tokens", 0) or 0,
+        cache_write_5m_tokens=cache_write_5m,
+        cache_write_1h_tokens=cache_write_1h,
+        thinking_tokens=details.get("reasoning_tokens", 0) or details.get("thinking_tokens", 0),
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        tool_count=tool_count,
+        tool_schema_tokens=tool_count * TOKENS_PER_TOOL_ESTIMATE,
+    )
+    db_session.add(call)
+    await db_session.flush()
 ```
 
 **Wire into dispatch path** (`agent_executor.py`):
+
+The dispatch path does NOT have a `db_session` in scope — it runs inside
+`_make_agent_executor()` which only receives `event_bus`, `session_id`,
+`mission_id`. Two options:
+
+**Option A (preferred):** Acquire a session inside `record_llm_call`:
 ```python
-# After cost calculation, before returning result:
-await record_llm_call(
-    db_session, session_id=session_id, mission_id=mission_id,
-    agent_name=agent_name, agent_role=agent_config.agent_type,
-    model=model_str, usage=usage, cost_usd=cost_usd,
-    latency_ms=int(elapsed_ms), tool_count=len(agent_config.tools),
-)
+# cost_recorder.py — use standalone session:
+from modules.backend.core.database import get_async_session
+
+async def record_llm_call(...) -> None:
+    ...
+    async with get_async_session() as db_session:
+        db_session.add(call)
+        await db_session.commit()
+```
+
+**Option B:** Pass `db_session` factory into `_make_agent_executor`. This
+requires changing the closure signature, which ripples into callers.
+
+**Recommended: Option A.** `record_llm_call` manages its own session. Callers
+are simpler. The write is small (one row) so the session overhead is negligible.
+
+```python
+# agent_executor.py — after cost calculation (line 246), before return:
+try:
+    await record_llm_call(
+        session_id=session_id, mission_id=mission_id,
+        agent_name=agent_name, agent_role=agent_config.agent_type,
+        model=model_name, usage=usage, cost_usd=cost_usd,
+        latency_ms=0, tool_count=len(agent_config.tools),
+    )
+except Exception:
+    logger.warning(
+        "Failed to record LLM call for %s — cost data will be missing",
+        agent_name, exc_info=True,
+    )
 ```
 
 **Wire into chat path** (`mission_control.py`):
 ```python
 # After usage extraction (~line 415), before persisting messages:
-from modules.backend.agents.mission_control.helpers.cost_recorder import record_llm_call
-await record_llm_call(
-    db_session, session_id=session_id, mission_id=mission_id,
-    agent_name=agent_name, agent_role=agent_config.agent_type,
-    model=model_str, usage=usage, cost_usd=cost_usd,
-    latency_ms=int(elapsed_ms), tool_count=len(agent_config.tools),
-)
+try:
+    await record_llm_call(
+        session_id=str(session_id), mission_id=mission_id,
+        agent_name=agent_name, agent_role=agent_config.agent_type,
+        model=model_str, usage=usage, cost_usd=cost_usd,
+        latency_ms=int(elapsed_ms), tool_count=len(agent_config.tools),
+    )
+except Exception:
+    logger.warning(
+        "Failed to record LLM call for %s — cost data will be missing",
+        agent_name, exc_info=True,
+    )
 ```
+
+**Error handling philosophy:** `record_llm_call` raises on failure (no
+swallowed exceptions). Callers catch and log at `WARNING` level with
+`exc_info=True` — the full traceback is in the logs. The agent response
+is not blocked by a recording failure, but the failure is **visible**.
 
 ### 2.4 Backend API endpoints
 
@@ -941,39 +1119,55 @@ Feature flag `EMERGENCY_MODEL_DOWNGRADE=true` forces all agents to Haiku. Activa
 ## Implementation Order
 
 ```
-Phase 0 (Instrumentation)       ← Must come first — can't optimise what you can't see
-  ├── 2.2  llm_calls table + migration     ← Schema (30 min)
-  ├── 2.2b model_pricing table + seed data ← Historical pricing (20 min)
-  ├── 2.2c v_llm_calls_costed view         ← Single query surface (10 min)
-  ├── 2.3  Record calls in agent_executor  ← Start collecting data (1 hour)
-  └── 2.2d Audit cache anti-patterns       ← Fix before enabling cache (30 min)
+Phase 0 (Config + Instrumentation)  ← Must come first — schemas before code
+  ├── 0.1  CostSchema + cost.yaml           ← Config foundation (20 min)
+  │        Files: core/config_schema.py, core/config.py, config/settings/cost.yaml
+  ├── 0.2  ModelPricingRateSchema + cache_ttl ← Schema updates (15 min)
+  │        Files: agents/config_schema.py, models/agent_catalog.py + migration
+  ├── 0.3  llm_calls table + migration       ← Per-request tracking (30 min)
+  │        File: models/llm_call.py (new) — include created_at index
+  ├── 0.4  model_pricing table + seed data   ← Historical pricing (20 min)
+  │        File: models/model_pricing.py (new) — use 9999-12-31 sentinel
+  ├── 0.5  v_llm_calls_costed view           ← Single query surface (10 min)
+  ├── 0.6  cost_recorder.py                  ← Shared recording helper (30 min)
+  │        File: helpers/cost_recorder.py (new) — raises on failure
+  ├── 0.7  Wire recording into both paths    ← Start collecting data (30 min)
+  │        Files: agent_executor.py, mission_control.py
+  └── 0.8  Audit cache anti-patterns (§2.2d) ← Fix before enabling cache (30 min)
 
-Phase 0.5 (Baseline)             ← Run for 3-7 days with no changes
+Phase 0.5 (Baseline)               ← Run for 3-7 days with no changes
   └── Let data accumulate in llm_calls. Proceed when:
       - llm_calls has >100 rows across >3 distinct agents
       - Top 3 sinks identified via:
         SELECT agent_name, sum(cost_usd) FROM llm_calls
         GROUP BY 1 ORDER BY 2 DESC LIMIT 3
 
-Phase 1 (Prompt Caching)         ← Apply after baseline shows where money goes
-  ├── 1.2 build_model_settings   ← Core change (30 min)
-  ├── 1.4 Wire dispatch path     ← Ensure settings flow (15 min)
-  ├── 1.6 Update cost.py         ← Cache token pricing (15 min)
-  ├── 1.7 Update pricing config  ← Fix Opus 4.7 rates (5 min)
-  └── 1.8 Verify cache hits      ← Must see >60% on second call
+Phase 1 (Prompt Caching)           ← Apply after baseline shows where money goes
+  ├── 1.2 Rewrite build_model_settings()     ← Core change (45 min)
+  │        Remove early return, add cache for all Anthropic agents
+  ├── 1.4 Wire model_settings into dispatch  ← Fix existing gap (30 min)
+  │        agent_executor.py + _call_planning_agent()
+  ├── 1.6 Update cost.py                     ← Cache token pricing (20 min)
+  ├── 1.7 Update mission_control.yaml        ← Add cache rates (10 min)
+  └── 1.8 Verify cache hits                  ← Must see >60% on second call
 
-Phase 2 (Cost Dashboard)         ← Visibility for continuous optimisation
-  ├── 2.4-2.5 API + service          ← Backend queries (2 hours)
-  ├── 2.6-2.8 Frontend dashboard     ← UI (3 hours)
-  └── 2.9 Navigation                 ← Wire into admin (15 min)
+Phase 1.5 (CachePoint — optional)  ← Additional savings on mission context
+  └── 1.5 assemble_instructions_with_cache() ← Requires caller refactor (1 hour)
+          Changes return type from str to list, updates both execution paths
 
-Phase 3 (Alerting)               ← Safety net
-  ├── 3.1 Per-agent budgets      ← Config from cost.yaml (30 min)
-  ├── 3.2 Alert thresholds       ← Config from cost.yaml (1 hour)
-  └── 3.3 Emergency downgrade    ← Config from cost.yaml (30 min)
+Phase 2 (Cost Dashboard)           ← Visibility for continuous optimisation
+  ├── 2.4-2.5 API + service             ← Backend queries (2 hours)
+  ├── 2.6-2.8 Frontend dashboard        ← UI (3 hours)
+  └── 2.9 Navigation                    ← Wire into admin (15 min)
+
+Phase 3 (Alerting)                  ← Safety net
+  ├── 3.1 Per-agent budgets         ← Config from cost.yaml (30 min)
+  ├── 3.2 Alert thresholds          ← Config from cost.yaml (1 hour)
+  └── 3.3 Emergency downgrade       ← Config from cost.yaml (30 min)
 ```
 
-**Total estimated effort:** Phase 0: ~2 hours, Phase 0.5: 3-7 days (passive), Phase 1: ~1.5 hours, Phase 2: ~5.5 hours, Phase 3: ~2 hours.
+**Total estimated effort:** Phase 0: ~3 hours, Phase 0.5: 3-7 days (passive),
+Phase 1: ~2 hours, Phase 1.5: ~1 hour (optional), Phase 2: ~5.5 hours, Phase 3: ~2 hours.
 
 ---
 

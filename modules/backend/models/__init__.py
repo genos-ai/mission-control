@@ -16,6 +16,8 @@ from modules.backend.models.mission_history import MilestoneSummary, MissionDeci
 from modules.backend.models.mission_intent import IntentSource, MissionIntent
 from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
 from modules.backend.models.embedding import Embedding
+from modules.backend.models.llm_call import LlmCall
+from modules.backend.models.model_pricing import ModelPricing
 from modules.backend.models.mission_artifact import (
     ArtifactContentType,
     ArtifactType,
@@ -53,7 +55,9 @@ __all__ = [
     "IntentSource",
     "LearningKind",
     "LearningStatus",
+    "LlmCall",
     "MilestoneSummary",
+    "ModelPricing",
     "Mission",
     "MissionArtifact",
     "MissionContext",

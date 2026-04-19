@@ -15,7 +15,6 @@ import {
   Brain,
   ChevronDown,
   ChevronRight,
-  Clock,
   Globe,
   History,
   Lightbulb,
@@ -28,7 +27,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { useMissionLearnings, type MissionLearning } from '@/hooks/use-mission-learnings'
-import { useCurrentIntent, useIntentHistory, type MissionIntent } from '@/hooks/use-mission-intent'
+import { useCurrentIntent, useIntentHistory } from '@/hooks/use-mission-intent'
 import { useMissionKnowledge } from '@/hooks/use-knowledge-search'
 import { formatUtc } from '@/lib/format-date'
 
@@ -191,9 +190,9 @@ export default function KnowledgeTab() {
                 <div className="min-w-0 flex-1">
                   <span className="font-medium">{(f as Record<string, unknown>).agent_name as string}</span>
                   <span className="text-muted-foreground"> &middot; {(f as Record<string, unknown>).task_id as string}</span>
-                  {(f as Record<string, unknown>).failure_reason && (
+                  {typeof (f as Record<string, unknown>).failure_reason === 'string' && (
                     <p className="mt-0.5 text-muted-foreground truncate">
-                      {((f as Record<string, unknown>).failure_reason as string)?.slice(0, 150)}
+                      {((f as Record<string, unknown>).failure_reason as string).slice(0, 150)}
                     </p>
                   )}
                 </div>
@@ -279,7 +278,9 @@ function LearningCard({ learning }: { learning: MissionLearning }) {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium truncate">{learning.title}</span>
             {learning.platform_promoted && (
-              <Globe className="h-3 w-3 text-purple-500 shrink-0" title="Platform promoted" />
+              <span title="Platform promoted">
+                <Globe className="h-3 w-3 text-purple-500 shrink-0" />
+              </span>
             )}
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">

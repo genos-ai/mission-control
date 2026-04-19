@@ -5,6 +5,7 @@ import { ROUTES } from '@/lib/constants'
 const tabs = [
   { label: 'Catalog', path: ROUTES.ADMIN_CATALOG },
   { label: 'Metrics', path: ROUTES.ADMIN_METRICS },
+  { label: 'Token Economics', path: ROUTES.ADMIN_TOKEN_ECONOMICS },
   { label: 'Config', path: ROUTES.ADMIN_CONFIG },
   { label: 'Health', path: ROUTES.ADMIN_HEALTH },
   { label: 'Users', path: ROUTES.ADMIN_USERS },

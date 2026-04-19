@@ -5,12 +5,14 @@ import type {
   MissionResponse,
   MissionCreateRequest,
   MissionUpdateRequest,
+  MissionCostsResponse,
 } from '@/types'
 
 export const missionKeys = {
   all: ['missions'] as const,
   detail: (id: string) => ['missions', id] as const,
   environment: (id: string) => ['missions', id, 'environment'] as const,
+  costs: (id: string, tf?: string) => ['missions', id, 'costs', tf ?? 'all'] as const,
 }
 
 export function useMissions() {
@@ -88,3 +90,14 @@ export function useMissionEnvironment(id: string | undefined) {
     refetchInterval: 15000, // Poll every 15s to track container status
   })
 }
+
+export function useMissionCosts(id: string | undefined, timeframe?: string) {
+  const params = timeframe ? `?timeframe=${timeframe}` : ''
+  return useQuery({
+    queryKey: missionKeys.costs(id!, timeframe),
+    queryFn: () =>
+      api.get<MissionCostsResponse>(`/missions/${id}/costs${params}`),
+    enabled: !!id,
+  })
+}
+

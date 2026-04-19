@@ -33,6 +33,7 @@ import {
   Lightbulb,
   ListChecks,
   Loader2,
+  DollarSign,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
@@ -68,6 +69,7 @@ const tabs = [
   { label: 'Knowledge', icon: Lightbulb,     path: 'knowledge' },
   { label: 'Runs',      icon: ListChecks,    path: 'runs' },
   { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
+  { label: 'Costs',     icon: DollarSign,    path: 'costs' },
   { label: 'Console',   icon: Terminal,      path: 'console' },
 ]
 

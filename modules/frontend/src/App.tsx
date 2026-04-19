@@ -27,6 +27,7 @@ import ContextTab from '@/pages/mission/tabs/context-tab'
 import KnowledgeTab from '@/pages/mission/tabs/knowledge-tab'
 import RunsTab from '@/pages/mission/tabs/runs-tab'
 import WorkflowsTab from '@/pages/mission/tabs/workflows-tab'
+import CostsTab from '@/pages/mission/tabs/costs-tab'
 
 import AdminLayout from '@/pages/admin/layout'
 import AdminCatalogPage from '@/pages/admin/catalog'
@@ -34,6 +35,7 @@ import AdminMetricsPage from '@/pages/admin/metrics'
 import AdminConfigPage from '@/pages/admin/config'
 import AdminHealthPage from '@/pages/admin/health'
 import AdminUsersPage from '@/pages/admin/users'
+import TokenEconomicsPage from '@/pages/admin/token-economics'
 
 // Redirects /missions/:id to the last-visited tab (or 'chat' if none stored).
 function MissionDefaultTab() {
@@ -85,6 +87,7 @@ export default function App() {
             <Route path="runs" element={<RunsTab />} />
             <Route path="runs/:runId" element={<RunLivePage />} />
             <Route path="workflows" element={<WorkflowsTab />} />
+            <Route path="costs" element={<CostsTab />} />
             {/* Legacy drill-in: full workflows DAG viz */}
             <Route path="workflows/:workflowId" element={<WorkflowsPage />} />
           </Route>
@@ -97,6 +100,7 @@ export default function App() {
             <Route path="config" element={<AdminConfigPage />} />
             <Route path="health" element={<AdminHealthPage />} />
             <Route path="users" element={<AdminUsersPage />} />
+            <Route path="token-economics" element={<TokenEconomicsPage />} />
           </Route>
 
           {/* Catch-all */}

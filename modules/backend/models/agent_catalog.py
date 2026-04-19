@@ -106,6 +106,10 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
         default=1.0, nullable=False,
         comment="Per-agent budget ceiling in USD",
     )
+    cache_ttl: Mapped[str | None] = mapped_column(
+        String(10), nullable=True,
+        comment="Cache TTL for Anthropic prompt caching: 5m or 1h (None = cost.yaml default)",
+    )
 
     def __repr__(self) -> str:
         return (
