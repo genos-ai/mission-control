@@ -63,7 +63,13 @@ def build_model_settings(agent_config: AgentConfigSchema) -> ModelSettings | Non
     # ── Cache control (Plan 60) ──────────────────────────────
     # Read cache_ttl from agent config (default: "1h").
     # Configurable per-agent via YAML or admin DB catalog.
-    cache_ttl = getattr(agent_config, "cache_ttl", None) or "1h"
+    cache_ttl = getattr(agent_config, "cache_ttl", None)
+    if not cache_ttl:
+        try:
+            from modules.backend.core.config import get_app_config
+            cache_ttl = get_app_config().cost.default_cache_ttl
+        except AttributeError:
+            cache_ttl = "1h"
     cache_kwargs = {
         "anthropic_cache_instructions": cache_ttl,
         "anthropic_cache_tool_definitions": cache_ttl,
@@ -121,8 +127,8 @@ def _resolve_max_tokens(agent_config: AgentConfigSchema) -> int:
         agent_type = agent_config.agent_type
         if agent_type in role_defaults:
             return role_defaults[agent_type]
-    except (AttributeError, Exception):
-        pass
+    except AttributeError:
+        pass  # cost.yaml not loaded — use global default
 
     # 3. Global default
     return 2048
@@ -281,7 +287,11 @@ def assemble_instructions_with_cache(
     if mission_context:
         parts.append(mission_context)
 
-    # Cache boundary — everything above is cached
+    # Cache boundary — everything above is cached.
+    # WARNING: Anthropic allows max 4 cache_control breakpoints per request.
+    # anthropic_cache_instructions (1) + anthropic_cache_tool_definitions (2)
+    # + anthropic_cache=True (3) + this CachePoint (4) = exactly 4.
+    # Do NOT add a second CachePoint — it will be silently dropped.
     parts.append(CachePoint())
 
     return parts
@@ -305,12 +315,14 @@ def compute_cost_usd(
     output_tokens: int,
     model: str | None = None,
     cache_read_tokens: int = 0,
-    cache_write_tokens: int = 0,
+    cache_write_5m_tokens: int = 0,
+    cache_write_1h_tokens: int = 0,
     thinking_tokens: int = 0,
 ) -> float:
     """Compute cost including cache and thinking tokens.
 
     All rates read from config/agents/mission_control.yaml model_pricing.
+    5m and 1h cache writes have different pricing (1.25x vs 2x input).
     No hardcoded multipliers — pricing changes are config-only.
     """
     config = _load_mission_control_config()
@@ -319,20 +331,28 @@ def compute_cost_usd(
     input_cost = (input_tokens / 1_000_000) * rates.input
     output_cost = ((output_tokens + thinking_tokens) / 1_000_000) * rates.output
     cache_read_cost = (cache_read_tokens / 1_000_000) * rates.cache_read
-    cache_write_cost = (cache_write_tokens / 1_000_000) * rates.cache_write
+    cache_write_5m_cost = (cache_write_5m_tokens / 1_000_000) * rates.cache_write_5m
+    cache_write_1h_cost = (cache_write_1h_tokens / 1_000_000) * rates.cache_write_1h
 
-    return round(input_cost + output_cost + cache_read_cost + cache_write_cost, 6)
+    return round(
+        input_cost + output_cost + cache_read_cost
+        + cache_write_5m_cost + cache_write_1h_cost, 6,
+    )
 ```
 
 Update callers to pass cache tokens from PydanticAI's `usage` object:
 ```python
 usage = result.usage()
+# PydanticAI's cache_write_tokens is a single value. Since we default
+# to 1h TTL, attribute all cache writes to the 1h bucket. If using 5m
+# TTL on specific agents, the implementer should check usage.details
+# for the breakdown (Anthropic returns cache_creation by TTL).
 cost = compute_cost_usd(
     usage.input_tokens,
     usage.output_tokens,
     model=model_str,
     cache_read_tokens=usage.cache_read_tokens,
-    cache_write_tokens=usage.cache_write_tokens,
+    cache_write_1h_tokens=usage.cache_write_tokens,  # default TTL is 1h
 )
 ```
 
@@ -347,29 +367,36 @@ model_pricing:
   "anthropic:claude-haiku-4-5-20251001":
     input: 1.00
     output: 5.00
-    cache_read: 0.10     # 90% discount on input
-    cache_write: 2.00    # 1h TTL write cost
+    cache_read: 0.10       # 0.1x input (90% discount)
+    cache_write_5m: 1.25   # 1.25x input
+    cache_write_1h: 2.00   # 2x input
   "anthropic:claude-sonnet-4-6":
     input: 3.00
     output: 15.00
     cache_read: 0.30
-    cache_write: 6.00
+    cache_write_5m: 3.75
+    cache_write_1h: 6.00
   "anthropic:claude-opus-4-6":
     input: 15.00
     output: 75.00
     cache_read: 1.50
-    cache_write: 30.00
+    cache_write_5m: 18.75
+    cache_write_1h: 30.00
   "anthropic:claude-opus-4-7":
     input: 5.00
     output: 25.00
     cache_read: 0.50
-    cache_write: 10.00
+    cache_write_5m: 6.25
+    cache_write_1h: 10.00
   default:
     input: 3.00
     output: 15.00
     cache_read: 0.30
-    cache_write: 6.00
+    cache_write_5m: 3.75
+    cache_write_1h: 6.00
 ```
+
+**Note:** Model names use the `anthropic:` prefix to match what `llm_calls.model` stores (from agent config). The `model_pricing` DB table (§2.2b) must use the same prefix format.
 
 ### 1.8 Verification
 
@@ -512,12 +539,12 @@ class ModelPricing(Base):
     price_per_mtok_cache_read: Mapped[float | None] = mapped_column(Float, nullable=True)
 ```
 
-**Seed data** (April 2026 Anthropic list prices):
+**Seed data** (April 2026 Anthropic list prices — prefixed to match `llm_calls.model`):
 ```sql
 INSERT INTO model_pricing VALUES
-  ('claude-opus-4-7',   '2026-04-16', 'infinity', 5.00, 25.00, 6.25, 10.00, 0.50),
-  ('claude-sonnet-4-6', '2026-02-01', 'infinity', 3.00, 15.00, 3.75,  6.00, 0.30),
-  ('claude-haiku-4-5',  '2025-10-01', 'infinity', 1.00,  5.00, 1.25,  2.00, 0.10);
+  ('anthropic:claude-opus-4-7',          '2026-04-16', 'infinity', 5.00, 25.00, 6.25, 10.00, 0.50),
+  ('anthropic:claude-sonnet-4-6',        '2026-02-01', 'infinity', 3.00, 15.00, 3.75,  6.00, 0.30),
+  ('anthropic:claude-haiku-4-5-20251001','2025-10-01', 'infinity', 1.00,  5.00, 1.25,  2.00, 0.10);
 ```
 
 ### 2.2c Costed view (from research paper 021)
@@ -577,37 +604,100 @@ cache_write_to_read_ratio = (cache_write_5m_tokens + cache_write_1h_tokens) / ca
 - If close to 1.0: writing as often as reading = no benefit = prefix instability
 - Add this as a column in the Cache Performance panel
 
-### 2.3 Record LLM calls from agent execution
+### 2.3 Record LLM calls from BOTH execution paths
 
-**File:** `modules/backend/agents/mission_control/helpers/agent_executor.py`
+Recording must happen in **both** the dispatch path and the chat path. Extract a shared helper:
 
-After each `agent.run()` or `stream` completion, persist an `LlmCall` row:
+**File:** `modules/backend/agents/mission_control/helpers/cost_recorder.py` (new)
 
 ```python
-# After getting usage from result/stream:
-usage = result.usage()  # or stream.usage()
+"""Records LLM calls to the llm_calls table for cost attribution.
 
-from modules.backend.models.llm_call import LlmCall
-from modules.backend.core.database import get_async_session
+Called from both agent_executor.py (dispatch path) and
+mission_control.py (chat path) to ensure all costs are captured.
+"""
 
-llm_call = LlmCall(
-    session_id=session_id,
-    mission_id=mission_id,
-    agent_name=agent_name,
-    agent_role=agent_config.agent_type,
-    model=model_str,
-    provider=model_str.split(":")[0] if ":" in model_str else "unknown",
-    input_tokens=usage.input_tokens or 0,
-    output_tokens=usage.output_tokens or 0,
-    cache_read_tokens=usage.cache_read_tokens or 0,
-    cache_write_tokens=usage.cache_write_tokens or 0,
-    thinking_tokens=usage.details.get("thinking_tokens", 0) if usage.details else 0,
-    cost_usd=cost_usd,
-    latency_ms=int(elapsed_ms),
-    tool_count=len(agent_config.tools),
-    tool_schema_tokens=_estimate_tool_schema_tokens(agent_config.tools),
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Estimate ~200 tokens per tool definition (name + description + schema)
+TOKENS_PER_TOOL_ESTIMATE = 200
+
+
+async def record_llm_call(
+    db_session,
+    *,
+    session_id: str | None,
+    mission_id: str | None,
+    agent_name: str,
+    agent_role: str,
+    model: str,
+    usage,  # PydanticAI RunUsage or RequestUsage
+    cost_usd: float,
+    latency_ms: int = 0,
+    tool_count: int = 0,
+) -> None:
+    """Persist an LlmCall row. Best-effort — errors are logged, not raised."""
+    try:
+        from modules.backend.models.llm_call import LlmCall
+
+        provider = model.split(":")[0] if ":" in model else "unknown"
+        details = usage.details if hasattr(usage, "details") and usage.details else {}
+
+        # PydanticAI reports cache_write_tokens as a single value.
+        # Attribute to 1h bucket by default (our default TTL).
+        # If usage.details has per-TTL breakdown, use it.
+        cache_write_5m = details.get("cache_creation_5m_tokens", 0)
+        cache_write_1h = details.get("cache_creation_1h_tokens", 0)
+        if not cache_write_5m and not cache_write_1h:
+            cache_write_1h = getattr(usage, "cache_write_tokens", 0) or 0
+
+        call = LlmCall(
+            session_id=session_id,
+            mission_id=mission_id,
+            agent_name=agent_name,
+            agent_role=agent_role,
+            model=model,
+            provider=provider,
+            input_tokens=getattr(usage, "input_tokens", 0) or 0,
+            output_tokens=getattr(usage, "output_tokens", 0) or 0,
+            cache_read_tokens=getattr(usage, "cache_read_tokens", 0) or 0,
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
+            thinking_tokens=details.get("reasoning_tokens", 0) or details.get("thinking_tokens", 0),
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            tool_count=tool_count,
+            tool_schema_tokens=tool_count * TOKENS_PER_TOOL_ESTIMATE,
+        )
+        db_session.add(call)
+        await db_session.flush()
+    except Exception:
+        logger.debug("Failed to record LLM call (non-fatal)", exc_info=True)
+```
+
+**Wire into dispatch path** (`agent_executor.py`):
+```python
+# After cost calculation, before returning result:
+await record_llm_call(
+    db_session, session_id=session_id, mission_id=mission_id,
+    agent_name=agent_name, agent_role=agent_config.agent_type,
+    model=model_str, usage=usage, cost_usd=cost_usd,
+    latency_ms=int(elapsed_ms), tool_count=len(agent_config.tools),
 )
-# Persist via the active DB session or a fire-and-forget task
+```
+
+**Wire into chat path** (`mission_control.py`):
+```python
+# After usage extraction (~line 415), before persisting messages:
+from modules.backend.agents.mission_control.helpers.cost_recorder import record_llm_call
+await record_llm_call(
+    db_session, session_id=session_id, mission_id=mission_id,
+    agent_name=agent_name, agent_role=agent_config.agent_type,
+    model=model_str, usage=usage, cost_usd=cost_usd,
+    latency_ms=int(elapsed_ms), tool_count=len(agent_config.tools),
+)
 ```
 
 ### 2.4 Backend API endpoints
@@ -859,7 +949,11 @@ Phase 0 (Instrumentation)       ← Must come first — can't optimise what you 
   └── 2.2d Audit cache anti-patterns       ← Fix before enabling cache (30 min)
 
 Phase 0.5 (Baseline)             ← Run for 3-7 days with no changes
-  └── Let data accumulate in llm_calls. Identify top 3 token sinks.
+  └── Let data accumulate in llm_calls. Proceed when:
+      - llm_calls has >100 rows across >3 distinct agents
+      - Top 3 sinks identified via:
+        SELECT agent_name, sum(cost_usd) FROM llm_calls
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 3
 
 Phase 1 (Prompt Caching)         ← Apply after baseline shows where money goes
   ├── 1.2 build_model_settings   ← Core change (30 min)
