@@ -19,6 +19,7 @@ from modules.backend.agents.mission_control.helpers.prompt_builder import (
     _build_planning_prompt,
     _build_roster_prompt,
     assemble_instructions,
+    load_agent_system_prompt,
 )
 from modules.backend.agents.mission_control.helpers.agent_setup import (
     _build_agent_deps,
@@ -61,4 +62,5 @@ __all__ = [
     "build_deps_from_config",
     "build_model_settings",
     "get_chat_agent",
+    "load_agent_system_prompt",
 ]

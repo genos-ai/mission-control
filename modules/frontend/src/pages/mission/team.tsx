@@ -200,6 +200,11 @@ function TeamMemberCard({
                   {modelLabel(agent.model.name)}
                 </Badge>
               )}
+              {agent?.engine && agent.engine !== 'pydantic_ai' && (
+                <Badge variant="outline" className="text-[11px] px-1.5 py-0 border-green-500/40 text-green-400">
+                  {agent.engine.replace('_', ' ')}
+                </Badge>
+              )}
               <span className="text-xs text-muted-foreground">
                 v{member.user_prompt_version}
               </span>
@@ -255,7 +260,7 @@ function TeamMemberCard({
 
             {expanded && (
               <div className="mt-2 grid gap-3 rounded-md border bg-muted/20 p-3 text-xs">
-                {/* Model */}
+                {/* Model + Engine */}
                 <ConfigRow icon={<Cpu className="h-3 w-3" />} label="Model">
                   <span className="font-mono">
                     {agent.model.name ?? 'default'}
@@ -263,6 +268,12 @@ function TeamMemberCard({
                   {agent.model.max_tokens && (
                     <span className="text-muted-foreground ml-2">
                       max {agent.model.max_tokens.toLocaleString()} tokens
+                    </span>
+                  )}
+                  {agent.engine && agent.engine !== 'pydantic_ai' && (
+                    <span className="ml-2 text-green-400">
+                      via {agent.engine.replace('_', ' ')}
+                      {agent.effort ? ` (${agent.effort})` : ''}
                     </span>
                   )}
                 </ConfigRow>

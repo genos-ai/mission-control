@@ -155,6 +155,15 @@ async def seed_catalog(
                 enabled=config.enabled,
                 chat_enabled=config.chat_enabled,
                 visibility=_infer_visibility(config.agent_type, config.agent_name),
+                engine=config.engine,
+                effort=config.effort,
+                # Registry-critical fields (Plan 59)
+                invocation_tier=config.invocation.tier,
+                invocation_required_role=config.invocation.required_role,
+                execution_mode=config.execution.mode,
+                thinking_budget_json=config.thinking_budget,
+                max_input_length=config.max_input_length,
+                max_budget_usd=config.max_budget_usd,
             )
 
             # Upsert: update existing entry or create new one.

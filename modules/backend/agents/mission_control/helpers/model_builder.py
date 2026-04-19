@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.providers.anthropic import AnthropicProvider
 
 from modules.backend.agents.config_schema import AgentConfigSchema, AgentModelSchema
-from modules.backend.core.config import get_settings
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
 
@@ -76,14 +74,25 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
     else:
         model_name = config_model
 
-    settings = get_settings()
-
     if model_name.startswith("anthropic:"):
         bare_name = model_name.split(":", 1)[1]
-        provider = AnthropicProvider(api_key=settings.anthropic_api_key)
+        from modules.backend.core.model_providers import get_anthropic_provider
+        provider = get_anthropic_provider()
         return AnthropicModel(bare_name, provider=provider)
 
-    raise ValidationError(f"Unsupported model provider in '{model_name}'. Expected 'anthropic:model_name'.")
+    if model_name.startswith("openai:"):
+        bare_name = model_name.split(":", 1)[1]
+        from pydantic_ai.models.openai import OpenAIModel
+        from modules.backend.core.model_providers import get_openai_provider
+        provider = get_openai_provider()
+        return OpenAIModel(bare_name, provider=provider)
+
+    if model_name.startswith("copilot:"):
+        bare_name = model_name.split(":", 1)[1]
+        from modules.backend.core.copilot_model import CopilotModel
+        return CopilotModel(model_id=bare_name)
+
+    raise ValidationError(f"Unsupported model provider in '{model_name}'. Expected 'anthropic:...', 'openai:...', or 'copilot:...'.")
 
 
 def _get_model_name(config_model: str | AgentModelSchema) -> str:

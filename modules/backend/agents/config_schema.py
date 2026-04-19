@@ -150,10 +150,36 @@ class AgentConfigSchema(_StrictBase):
     # Horizontal agent fields (Plan 13)
     thinking_budget: dict[str, int] | None = None
 
+    # Execution engine — determines how the agent runs (Plan 55).
+    # "pydantic_ai" (default): in-process PydanticAI agent.run_stream()
+    # "claude_code": subprocess via claude-agent-sdk
+    # "codex": subprocess via codex exec CLI
+    # "copilot": subprocess via copilot -p CLI
+    engine: str = "pydantic_ai"
+
+    # Effort level for CLI engines that support it (claude_code).
+    # Ignored for pydantic_ai engine.
+    effort: str | None = None
+
     @field_validator("model", mode="before")
     @classmethod
     def _normalize_model(cls, v: str | dict) -> str | dict:
         """Accept flat string model specs as-is; dicts become AgentModelSchema."""
+        return v
+
+    @field_validator("engine")
+    @classmethod
+    def _validate_engine(cls, v: str) -> str:
+        valid = {"pydantic_ai", "claude_code", "codex", "copilot"}
+        if v not in valid:
+            raise ValueError(f"engine must be one of {valid}, got '{v}'")
+        return v
+
+    @field_validator("effort")
+    @classmethod
+    def _validate_effort(cls, v: str | None) -> str | None:
+        if v is not None and v not in {"low", "medium", "high"}:
+            raise ValueError(f"effort must be low/medium/high, got '{v}'")
         return v
 
     @model_validator(mode="after")
@@ -176,16 +202,16 @@ class AgentConfigSchema(_StrictBase):
 
         # Known provider check
         provider = model_name.split(":")[0] if ":" in model_name else ""
-        known_providers = {"anthropic", "openai", "google", "bedrock"}
+        known_providers = {"anthropic", "openai", "google", "bedrock", "copilot"}
         if provider and provider not in known_providers:
             raise ValueError(
                 f"Unknown model provider '{provider}' for agent '{self.agent_name}'. "
                 f"Known: {', '.join(sorted(known_providers))}"
             )
 
-        # Thinking requires temperature >= 1.0 for Anthropic
+        # Thinking requires temperature >= 1.0 for Anthropic models only
         if self.thinking_budget and isinstance(self.model, AgentModelSchema):
-            if self.model.temperature < 1.0:
+            if provider == "anthropic" and self.model.temperature < 1.0:
                 raise ValueError(
                     f"Agent '{self.agent_name}' has thinking_budget but temperature "
                     f"{self.model.temperature} < 1.0. Anthropic requires temperature=1.0 "
@@ -217,6 +243,19 @@ class AgentConfigSchema(_StrictBase):
         if tier == "system" and prefix != "system":
             raise ValueError("only system.* agents can use tier: system")
 
+        return self
+
+    @model_validator(mode="after")
+    def _validate_cli_engine_interface(self) -> Self:
+        """CLI engines cannot have strict interface.output requirements."""
+        if self.engine != "pydantic_ai" and self.interface:
+            output_fields = getattr(self.interface, "output", None)
+            if output_fields:
+                raise ValueError(
+                    f"Agent '{self.agent_name}' has engine='{self.engine}' but declares "
+                    f"interface.output fields. CLI engines return unstructured output — "
+                    f"remove interface.output or set engine to pydantic_ai."
+                )
         return self
 
 

@@ -1,0 +1,24 @@
+# Provider authentication configuration.
+#
+# Controls how PydanticAI agents authenticate with LLM providers.
+# Switch auth_mode without changing any agent code or config.
+#
+# Auth modes:
+#   api_key      — standard API key (default, billed per-token)
+#   auth_token   — subscription/OAuth bearer token (blocked by Anthropic API)
+#   codex_oauth  — ChatGPT subscription OAuth (blocked by OpenAI API)
+#
+# Both Anthropic and OpenAI reject subscription OAuth tokens for
+# programmatic API access. Subscription auth only works through
+# their official CLI tools (Claude Code, Codex CLI).
+#
+# For $0 agent execution, use engine: claude_code on coding agents
+# (Plan 55). Orchestration agents require API key billing.
+
+anthropic:
+  auth_mode: api_key
+  env_var: ANTHROPIC_API_KEY
+
+openai:
+  auth_mode: api_key
+  env_var: OPENAI_API_KEY

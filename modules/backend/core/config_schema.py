@@ -509,6 +509,29 @@ class GateAutoRulesSchema(_StrictBase):
     skip_post_task_on_pass: bool = True
 
 
+class ProviderAuthSchema(_StrictBase):
+    """Authentication configuration for a model provider."""
+
+    auth_mode: str = "api_key"  # "api_key" | "auth_token" | "codex_oauth"
+    env_var: str | None = None
+    base_url: str | None = None
+
+
+class ProvidersSchema(_StrictBase):
+    """Provider authentication configuration (providers.yaml)."""
+
+    anthropic: ProviderAuthSchema = Field(
+        default_factory=lambda: ProviderAuthSchema(
+            auth_mode="api_key", env_var="ANTHROPIC_API_KEY",
+        ),
+    )
+    openai: ProviderAuthSchema = Field(
+        default_factory=lambda: ProviderAuthSchema(
+            auth_mode="api_key", env_var="OPENAI_API_KEY",
+        ),
+    )
+
+
 class GateSchema(_StrictBase):
     """Gate reviewer configuration (gate.yaml)."""
 

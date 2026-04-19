@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Complete (Phase A + 55b) |
 | **Created** | 2026-04-13 |
 | **Depends on** | Plan 52 (Temporal Backbone — done), Plan 37 (Execution Environments — in progress) |
 | **Target** | Agent config schema, dispatch loop, execution service, frontend agent settings |
