@@ -57,6 +57,15 @@ persist_event_types:
   # Convergence
   - convergence.iteration
   - convergence.completed
+  # Mission Plan (Plan 51 — autonomy loop)
+  - mission_plan.dispatched
+  - mission_plan.run.completed
+  - mission_plan.supervisor_decision
+  - mission_plan.task.status_changed
+  - mission_plan.refined
+  - mission_plan.gate_mode_changed
+  # Session followups
+  - session.followup.fired
   # Approvals
   - approval.requested
   - approval.response
