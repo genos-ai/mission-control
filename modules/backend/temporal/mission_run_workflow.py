@@ -129,6 +129,35 @@ class MissionRunWorkflow:
             self._last_action = eval_result.action
             self._total_cost += eval_result.cost_usd
 
+            # ── Step 3b: Fire followups so Director can report ────────
+            _mission = input.mission_id or input.mission_run_id
+            await workflow.execute_activity(
+                sup.fire_supervisor_followups,
+                args=[
+                    _mission, input.mission_run_id,
+                    result.execution_record_id or "",
+                    eval_result.action, eval_result.reason[:200],
+                    eval_result.reviewer,
+                    result.status or "unknown",
+                    result.total_cost_usd, self._total_cost,
+                ],
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+
+            # ── Step 3c: Check plan is still active ───────────────────
+            plan_active = await workflow.execute_local_activity(
+                sup.check_plan_active,
+                _mission,
+                schedule_to_close_timeout=persist_timeout,
+            )
+            if not plan_active:
+                workflow.logger.info(
+                    "Plan no longer active — stopping loop",
+                    extra={"mission_id": _mission},
+                )
+                break
+
             # ── Step 4: Route the decision ───────────────────────────
 
             if eval_result.action == "wait":

@@ -228,6 +228,106 @@ async def fetch_plan_task_counts(mission_id: str) -> PlanTaskCounts:
 
 
 @activity.defn
+async def check_plan_active(mission_id: str) -> bool:
+    """Return True if the plan is still active. False if paused/completed.
+
+    Called before applying supervisor decisions — if someone paused
+    the plan while we were evaluating, we should not advance.
+    """
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.mission_plan import MissionPlanService
+
+    async with get_async_session() as db:
+        svc = MissionPlanService(db)
+        plan = await svc.get_or_create_plan(mission_id)
+        return plan.status == "active"
+
+
+@activity.defn
+async def fire_supervisor_followups(
+    mission_id: str,
+    plan_id: str,
+    execution_record_id: str,
+    action: str,
+    reason: str,
+    reviewer: str,
+    run_status: str,
+    run_cost_usd: float,
+    total_spent_usd: float,
+) -> int:
+    """Fire session followups after a supervisor decision.
+
+    Emits MissionPlanRunCompletedEvent and SupervisorDecisionEmittedEvent,
+    then fires matching session followups so the Director wakes up and
+    reports to the user.
+
+    Returns the number of followups fired.
+    """
+    import uuid as _uuid
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.core.database import get_async_session
+    from modules.backend.events.bus import SessionEventBus
+    from modules.backend.events.types import (
+        MissionPlanRunCompletedEvent,
+        SupervisorDecisionEmittedEvent,
+    )
+    from modules.backend.services.session_followup import SessionFollowupService
+
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        event_bus = SessionEventBus(redis, mission_id=mission_id)
+        sid = _uuid.uuid4()
+
+        # Emit run completed event
+        run_event = MissionPlanRunCompletedEvent(
+            session_id=sid, source="temporal_supervisor",
+            mission_id=mission_id, plan_id=plan_id,
+            execution_record_id=execution_record_id,
+            run_status=run_status, run_cost_usd=run_cost_usd,
+            total_spent_usd=total_spent_usd,
+        )
+        await event_bus.publish_to_mission(mission_id, run_event)
+
+        # Emit supervisor decision event
+        decision_event = SupervisorDecisionEmittedEvent(
+            session_id=sid, source="temporal_supervisor",
+            mission_id=mission_id, plan_id=plan_id,
+            execution_record_id=execution_record_id,
+            action=action, reason=reason[:500], reviewer=reviewer,
+        )
+        await event_bus.publish_to_mission(mission_id, decision_event)
+
+        # Fire matching followups
+        async with get_async_session() as db:
+            followup_svc = SessionFollowupService(db, event_bus=event_bus)
+
+            async def _noop_runner(s: str, m: str, p: str) -> None:
+                # In Temporal path, Director is woken via start_director_turn
+                # activity, not via the followup runner. The followup still
+                # fires to consume the row and emit the audit event.
+                pass
+
+            fired = []
+            for event in (run_event, decision_event):
+                result = await followup_svc.fire_matching(
+                    event, agent_turn_runner=_noop_runner,
+                )
+                fired.extend(result)
+            await db.commit()
+
+        activity.logger.info(
+            "Supervisor followups fired",
+            extra={"mission_id": mission_id, "fired_count": len(fired)},
+        )
+        return len(fired)
+    finally:
+        await redis.aclose()
+
+
+@activity.defn
 async def start_director_turn(
     mission_id: str,
     session_id: str,
