@@ -2,9 +2,8 @@
 Tool Fork Workflow (Plan 56 Phase B).
 
 Generic Temporal Workflow that wraps Director tool calls that were forked
-to Temporal for durability. Handles three tool types:
+to Temporal for durability. Handles two tool types:
 - design_workflow: Runs the Workflow Architect agent
-- run_objective: Runs an ad-hoc execution
 - run_workflow: Runs a named workflow
 
 Flow:
@@ -21,7 +20,6 @@ from temporalio.common import RetryPolicy
 
 from modules.backend.temporal.tool_fork_models import (
     DesignWorkflowInput,
-    RunObjectiveInput,
     RunWorkflowInput,
     ToolForkResult,
 )
@@ -96,43 +94,6 @@ class DesignWorkflowWorkflow:
         await _notify_director(
             input.mission_id, input.session_id,
             "design_workflow", result,
-        )
-
-        return result
-
-
-@workflow.defn
-class RunObjectiveWorkflow:
-    """Fork run_objective tool to Temporal for durability."""
-
-    @workflow.run
-    async def run(self, input: RunObjectiveInput) -> ToolForkResult:
-        config = get_app_config().temporal
-
-        await workflow.execute_activity(
-            tool_fork_activities.update_execution_record_status,
-            args=[input.execution_record_id, "running"],
-            start_to_close_timeout=timedelta(seconds=30),
-        )
-
-        result = await workflow.execute_activity(
-            tool_fork_activities.execute_run_objective,
-            input,
-            start_to_close_timeout=timedelta(
-                seconds=max(config.min_activity_timeout_seconds, 600),
-            ),
-            retry_policy=RetryPolicy(maximum_attempts=1),
-        )
-
-        await workflow.execute_activity(
-            tool_fork_activities.update_execution_record_status,
-            args=[input.execution_record_id, result.status, result.error],
-            start_to_close_timeout=timedelta(seconds=30),
-        )
-
-        await _notify_director(
-            input.mission_id, input.session_id,
-            "run_objective", result,
         )
 
         return result

@@ -3,7 +3,6 @@ Tool fork activities (Plan 56 Phase B).
 
 Activities for workflows that handle Director tool calls forked to Temporal:
 - execute_design_workflow: Runs the Workflow Architect agent
-- execute_run_objective: Runs an ad-hoc execution
 - execute_run_workflow: Runs a named workflow
 - update_execution_record_status: Updates the ExecutionRecord lifecycle
 
@@ -15,7 +14,6 @@ from temporalio import activity
 from modules.backend.core.logging import get_logger
 from modules.backend.temporal.tool_fork_models import (
     DesignWorkflowInput,
-    RunObjectiveInput,
     RunWorkflowInput,
     ToolForkResult,
 )
@@ -118,58 +116,6 @@ async def execute_design_workflow(input: DesignWorkflowInput) -> ToolForkResult:
     except Exception as e:
         activity.logger.error(
             "execute_design_workflow failed",
-            extra={"mission_id": input.mission_id, "error": str(e)},
-            exc_info=True,
-        )
-        return ToolForkResult(
-            execution_record_id=input.execution_record_id,
-            status="failed",
-            error=str(e)[:500],
-        )
-
-
-@activity.defn
-async def execute_run_objective(input: RunObjectiveInput) -> ToolForkResult:
-    """Run an ad-hoc execution objective via ExecutionService."""
-    activity.logger.info(
-        "Running objective",
-        extra={
-            "mission_id": input.mission_id,
-            "objective": input.objective[:100],
-        },
-    )
-
-    try:
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.services.execution import ExecutionService
-        from redis.asyncio import Redis as AsyncRedis
-
-        redis = AsyncRedis.from_url(get_redis_url())
-        event_bus = SessionEventBus(redis, mission_id=input.mission_id)
-        try:
-            async with ExecutionService.factory(event_bus=event_bus) as svc:
-                execution = await svc.create_adhoc_execution(
-                    objective=input.objective,
-                    triggered_by="mission_director",
-                    cost_ceiling_usd=input.budget_usd,
-                    mission_id=input.mission_id,
-                )
-                execution_id = str(execution.id)
-
-            async with ExecutionService.factory(event_bus=event_bus) as svc:
-                await svc.run_execution(execution_id)
-        finally:
-            await redis.aclose()
-
-        return ToolForkResult(
-            execution_record_id=input.execution_record_id,
-            status="completed",
-            summary=f"Execution {execution_id} completed",
-        )
-    except Exception as e:
-        activity.logger.error(
-            "execute_run_objective failed",
             extra={"mission_id": input.mission_id, "error": str(e)},
             exc_info=True,
         )

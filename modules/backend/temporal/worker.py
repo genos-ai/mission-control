@@ -26,19 +26,19 @@ from modules.backend.temporal.scheduled_workflow import ScheduledMissionCheckWor
 from modules.backend.temporal.scheduled_activities import find_ready_plans
 from modules.backend.temporal.supervisor_activities import (
     approve_proposed_tasks,
+    check_plan_active,
     evaluate_post_run,
     fetch_plan_task_counts,
+    fire_supervisor_followups,
     start_director_turn,
 )
 from modules.backend.temporal.tool_fork_activities import (
     execute_design_workflow,
-    execute_run_objective,
     execute_run_workflow,
     update_execution_record_status,
 )
 from modules.backend.temporal.tool_fork_workflow import (
     DesignWorkflowWorkflow,
-    RunObjectiveWorkflow,
     RunWorkflowWorkflow,
 )
 from modules.backend.temporal.knowledge_activities import (
@@ -88,7 +88,6 @@ async def start_worker() -> None:
             MissionRunWorkflow,
             ScheduledMissionCheckWorkflow,
             DesignWorkflowWorkflow,
-            RunObjectiveWorkflow,
             RunWorkflowWorkflow,
             # Knowledge platform (Plan 57)
             KnowledgeExtractionWorkflow,
@@ -115,11 +114,12 @@ async def start_worker() -> None:
             approve_proposed_tasks,
             fetch_plan_task_counts,
             start_director_turn,
+            check_plan_active,
+            fire_supervisor_followups,
             # Scheduled dispatch (Plan 52 Phase D)
             find_ready_plans,
             # Tool fork (Plan 56 Phase B)
             execute_design_workflow,
-            execute_run_objective,
             execute_run_workflow,
             update_execution_record_status,
             # Knowledge platform (Plan 57)

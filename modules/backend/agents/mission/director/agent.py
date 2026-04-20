@@ -67,13 +67,11 @@ async def _start_tool_fork_workflow(
     from modules.backend.temporal.client import get_temporal_client, get_temporal_config
     from modules.backend.temporal.tool_fork_workflow import (
         DesignWorkflowWorkflow,
-        RunObjectiveWorkflow,
         RunWorkflowWorkflow,
     )
 
     workflow_map = {
         "DesignWorkflowWorkflow": DesignWorkflowWorkflow.run,
-        "RunObjectiveWorkflow": RunObjectiveWorkflow.run,
         "RunWorkflowWorkflow": RunWorkflowWorkflow.run,
     }
 
@@ -111,7 +109,7 @@ async def _schedule_director_followup(
     """Schedule a session followup so the Director wakes on a future event.
 
     Best-effort — failures are logged but never block the calling tool.
-    Used by run_objective and approve_plan_tasks to ensure the Director
+    Used by approve_plan_tasks to ensure the Director
     proactively reports outcomes to the user (Plan 51 Phase E).
     """
     if db_session is None or session_id is None:
@@ -429,74 +427,6 @@ def create_agent(model: str | Model) -> Agent:
             return json.dumps({"error": str(e)})
 
     # ── Action Tools ──────────────────────────────────────
-
-    @agent.tool
-    async def run_objective(
-        ctx: RunContext[MissionDirectorDeps],
-        objective: str,
-        budget_usd: float = 5.0,
-    ) -> str:
-        """Start an ad-hoc execution with the given objective.
-
-        Creates an execution record and starts a durable Temporal workflow
-        in the background. Returns immediately — use get_execution_detail
-        or check_background_tasks to check progress.
-
-        Args:
-            objective: What to accomplish (e.g., "run a health check").
-            budget_usd: Maximum cost ceiling for this run (default $5.00).
-        """
-        try:
-            if ctx.deps.db_session is None:
-                return json.dumps({"error": "No database session available"})
-
-            record = await _create_background_record(
-                mission_id=ctx.deps.mission_id,
-                session_id=ctx.deps.session_id,
-                task_type="run_objective",
-                objective=objective,
-                params={"objective": objective, "budget_usd": budget_usd},
-            )
-
-            from modules.backend.temporal.tool_fork_models import RunObjectiveInput
-            workflow_id = await _start_tool_fork_workflow(
-                workflow_name="RunObjectiveWorkflow",
-                input_data=RunObjectiveInput(
-                    mission_id=ctx.deps.mission_id,
-                    session_id=ctx.deps.session_id,
-                    execution_record_id=record.id,
-                    objective=objective,
-                    budget_usd=budget_usd,
-                ),
-                record_id=record.id,
-            )
-
-            # Schedule a followup so we wake when the run completes
-            # and proactively report results to the user (Plan 51 Phase E).
-            await _schedule_director_followup(
-                db_session=ctx.deps.db_session,
-                session_id=ctx.deps.session_id,
-                mission_id=ctx.deps.mission_id,
-                trigger_event_types=["mission_plan.supervisor_decision"],
-                prompt_template=(
-                    "The run you started (objective: '{objective}') just "
-                    "completed. The supervisor decided: {action}. "
-                    "Reason: {reason}. Summarise the outcome for the user "
-                    "and suggest next steps."
-                ),
-            )
-
-            return json.dumps({
-                "execution_record_id": record.id,
-                "temporal_workflow_id": workflow_id,
-                "status": "started_in_background",
-                "objective": objective,
-                "budget_usd": budget_usd,
-                "message": "Execution started in background. Check progress via get_execution_detail or check_background_tasks.",
-            }, indent=2, default=str)
-        except Exception as e:
-            logger.error("run_objective failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
-            return json.dumps({"error": str(e)})
 
     @agent.tool
     async def run_workflow(
@@ -919,7 +849,7 @@ def create_agent(model: str | Model) -> Agent:
     # no async queue exists for out-of-band resolution.
 
     # Plan 51 Phase E: Director followups are scheduled automatically
-    # by run_objective and approve_plan_tasks via _schedule_director_followup.
+    # by approve_plan_tasks via _schedule_director_followup.
     # The Temporal path also wakes the Director via ChatTurnWorkflow.
     # Both paths ensure the Director proactively reports to the user.
 

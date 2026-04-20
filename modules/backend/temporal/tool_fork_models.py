@@ -1,7 +1,7 @@
 """
 Data models for tool-forked Temporal workflows (Plan 56 Phase B).
 
-Serializable dataclasses for DesignWorkflowWorkflow and RunObjectiveWorkflow.
+Serializable dataclasses for DesignWorkflowWorkflow and RunWorkflowWorkflow.
 Same convention as chat_models.py — no ORM objects, JSON-safe, Temporal-friendly.
 """
 
@@ -18,17 +18,6 @@ class DesignWorkflowInput:
     workflow_name: str
     description: str
     instructions: str
-
-
-@dataclass
-class RunObjectiveInput:
-    """Input for RunObjectiveWorkflow."""
-
-    mission_id: str
-    session_id: str
-    execution_record_id: str
-    objective: str
-    budget_usd: float = 5.0
 
 
 @dataclass
