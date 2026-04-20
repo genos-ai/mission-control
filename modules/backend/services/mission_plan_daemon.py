@@ -222,7 +222,18 @@ class MissionPlanDaemon:
             )
 
     async def _tick(self) -> None:
-        """One pass: find autonomous plans with work ready, dispatch each."""
+        """One pass: find autonomous plans with work ready, dispatch each.
+
+        When Temporal is enabled, the daemon does NOT dispatch — the
+        MissionRunWorkflow handles the autonomy loop with durable
+        execution. Running both paths simultaneously causes double-
+        dispatch and race conditions (plan paused by one path, re-
+        activated by the other).
+        """
+        from modules.backend.core.config import get_app_config
+        if get_app_config().temporal.enabled:
+            return  # Temporal owns the dispatch loop
+
         plan_ids = await self._find_ready_plan_ids()
         if not plan_ids:
             return
