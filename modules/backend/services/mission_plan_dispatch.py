@@ -8,6 +8,7 @@ from CRUD, refinement, and task-state transitions.
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import TYPE_CHECKING
 
@@ -403,13 +404,12 @@ class MissionPlanDispatchMixin:
         *,
         session_id: str | None,
     ) -> None:
-        """Route the supervisor's gate decision (non-Temporal path).
+        """Route the supervisor's gate decision (inline path).
 
-        Mirrors the decision routing in MissionRunWorkflow.run() so the
-        daemon-dispatched path has the same autonomous behaviour as the
-        Temporal path. The daemon's next tick naturally picks up any
-        newly-approved tasks, so ADVANCE_APPROVED and ADVANCE_REFINE
-        don't need to loop — they just prepare the state and return.
+        Used when dispatch_approved is called directly (e.g. the UI Run
+        button). The Temporal MissionRunWorkflow has its own decision
+        routing. ADVANCE_APPROVED and ADVANCE_REFINE prepare state for
+        the next dispatch cycle without looping.
         """
         from modules.backend.agents.mission_control.gate_models import GateAction
         from modules.backend.models.mission_plan import (
@@ -434,14 +434,14 @@ class MissionPlanDispatchMixin:
                 return
 
         if action == GateAction.WAIT:
-            # Approved tasks still pending — daemon dispatches next tick.
+            # Approved tasks still pending — next dispatch cycle picks them up.
             self._log_operation(
                 "Supervisor: WAIT", plan_id=plan.id,
-                reason="Approved tasks remain; daemon will dispatch next tick",
+                reason="Approved tasks remain; next dispatch picks them up",
             )
 
         elif action == GateAction.ADVANCE_APPROVED:
-            # Flip all proposed → approved so daemon dispatches them.
+            # Flip all proposed → approved for the next dispatch cycle.
             for ts in await self.get_task_states(plan.id, status=_PTS.PROPOSED):
                 await self.approve_task(
                     plan.id, ts.task_id, "mission.supervisor.agent",
@@ -528,8 +528,6 @@ class MissionPlanDispatchMixin:
         Returns a {task_id: output_dict} mapping that seeds the dispatch
         loop's completed_outputs so from_upstream references resolve.
         """
-        import json as _json
-
         completed_states = await self._repo.get_task_states(
             mission_plan_id, status=PlanTaskStatus.COMPLETED,
         )
@@ -538,8 +536,8 @@ class MissionPlanDispatchMixin:
             if not state.result_summary:
                 continue
             try:
-                prior[state.task_id] = _json.loads(state.result_summary)
-            except (TypeError, ValueError, _json.JSONDecodeError):
+                prior[state.task_id] = json.loads(state.result_summary)
+            except (TypeError, ValueError, json.JSONDecodeError):
                 # result_summary might be plain text from older runs
                 prior[state.task_id] = {"result": state.result_summary}
         return prior
@@ -605,11 +603,10 @@ class MissionPlanDispatchMixin:
             else:
                 # Persist the agent's output so downstream tasks in
                 # later waves can access it via from_upstream inputs.
-                import json as _json
                 output = task_result.output_reference
                 if output:
                     try:
-                        state.result_summary = _json.dumps(output, default=str)
+                        state.result_summary = json.dumps(output, default=str)
                     except (TypeError, ValueError):
                         state.result_summary = str(output)
                 state.failure_reason = None
