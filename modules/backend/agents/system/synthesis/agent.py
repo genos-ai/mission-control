@@ -19,31 +19,40 @@ from modules.backend.agents.mission_control.helpers import (
     _build_model,
     assemble_instructions,
 )
+from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-_DEFAULT_MODEL = "anthropic:claude-haiku-4-5-20251001"
+_AGENT_NAME = "system.synthesis.agent"
 
 
 @lru_cache(maxsize=1)
 def _get_agent() -> Agent[None, str]:
-    """Cached synthesis agent instance.
-
-    Created once, reused across calls. The agent is stateless —
-    all context is in the prompt, so caching is safe.
-    """
-    model = _build_model(_DEFAULT_MODEL)
+    """Cached synthesis agent instance. Model loaded from agent.yaml."""
+    agent_config = get_registry().get(_AGENT_NAME)
+    model = _build_model(agent_config.model)
     instructions = assemble_instructions("system", "synthesis")
 
-    agent = Agent(
+    return Agent(
         model,
         output_type=str,
         instructions=instructions,
     )
 
-    logger.info("Synthesis agent created", extra={"model": _DEFAULT_MODEL})
-    return agent
+
+def create_agent(model: str | Model | None = None) -> Agent[None, str]:
+    """Create a synthesis agent with the given model.
+
+    Args:
+        model: Model override for roster-driven execution. Falls back
+            to the registry-configured model when None.
+    """
+    if model is not None:
+        m = _build_model(model) if isinstance(model, str) else model
+        instructions = assemble_instructions("system", "synthesis")
+        return Agent(m, output_type=str, instructions=instructions)
+    return _get_agent()
 
 
 async def synthesize(outcome_data: dict[str, Any]) -> str:
@@ -52,7 +61,7 @@ async def synthesize(outcome_data: dict[str, Any]) -> str:
     Public entry point. Returns indented text ready for CLI display.
     Raises on failure — caller decides fallback policy.
     """
-    agent = _get_agent()
+    agent = create_agent()
 
     prompt = (
         "Summarize the following outcome data into a concise narrative "
