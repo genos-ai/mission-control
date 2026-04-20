@@ -42,7 +42,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMissionStream } from '@/hooks/use-sse'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { planKeys } from '@/hooks/use-mission-plan'
+import { planKeys, useMissionPlan, useUpdatePlan } from '@/hooks/use-mission-plan'
 import { artifactKeys } from '@/hooks/use-mission-artifacts'
 import { queryClient } from '@/main'
 import { Badge } from '@/components/ui/badge'
@@ -112,6 +112,23 @@ export default function MissionLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showRunModal, setShowRunModal] = useState(false)
   const { activeCount: bgTaskCount, activeTasks: bgTasks } = useBackgroundTasks(id)
+  const { data: plan } = useMissionPlan(id)
+  const updatePlan = useUpdatePlan(id!)
+
+  // Plan is autonomously dispatching if active + gate_mode allows it
+  const planIsAutonomous = plan?.status === 'active' &&
+    (plan?.gate_mode === 'autonomous' || plan?.gate_mode === 'off')
+  const planIsPaused = plan?.status === 'paused'
+
+  async function handlePlanPauseResume() {
+    const next = planIsPaused ? 'active' : 'paused'
+    try {
+      await updatePlan.mutateAsync({ status: next })
+      toast.success(next === 'paused' ? 'Plan paused — autonomous dispatch stopped' : 'Plan resumed')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update plan')
+    }
+  }
   const location = useLocation()
 
   // Persist last-visited tab per mission for the default-tab redirect
@@ -283,6 +300,20 @@ export default function MissionLayout() {
                 <Loader2 className="h-3 w-3 animate-spin" />
                 <span>{bgTaskCount} background {bgTaskCount === 1 ? 'task' : 'tasks'}</span>
               </div>
+            )}
+            {(planIsAutonomous || planIsPaused) && (
+              <Button
+                size="sm"
+                variant={planIsPaused ? 'outline' : 'destructive'}
+                onClick={handlePlanPauseResume}
+                disabled={updatePlan.isPending}
+              >
+                {planIsPaused ? (
+                  <><RotateCcw className="mr-1.5 h-3.5 w-3.5" />Resume Plan</>
+                ) : (
+                  <><Pause className="mr-1.5 h-3.5 w-3.5" />Stop Plan</>
+                )}
+              </Button>
             )}
             <Button size="sm" onClick={() => setShowRunModal(true)}>
               <Play className="mr-1.5 h-3.5 w-3.5" />Run
