@@ -229,6 +229,32 @@ export function useRetryTask(missionId: string) {
   })
 }
 
+/** Fetch the latest supervisor decision for a paused plan. */
+export function useLastSupervisorDecision(
+  missionId: string | undefined,
+  planStatus: string | undefined,
+) {
+  return useQuery({
+    queryKey: ['missions', missionId, 'supervisor-decision'],
+    queryFn: async () => {
+      const history = await api.get<{ events: Array<{ event_type: string; data: Record<string, unknown> }> }>(
+        `/missions/${missionId}/console/history?limit=50`,
+      )
+      const decisions = history.events
+        ?.filter((e) => e.event_type === 'mission_plan.supervisor_decision')
+      const decision = decisions?.[0]
+      if (!decision) return null
+      const data = decision.data as Record<string, unknown>
+      return {
+        action: (data.action as string) || '',
+        reason: (data.reason as string) || '',
+      }
+    },
+    enabled: !!missionId && planStatus === 'paused',
+    staleTime: 60_000,
+  })
+}
+
 /** Dispatch all currently-approved tasks as a single run. */
 export function useDispatchApproved(missionId: string) {
   const qc = useQueryClient()

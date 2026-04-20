@@ -9,6 +9,7 @@ import {
   Play,
   Pause,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
@@ -19,6 +20,7 @@ import {
   useRefinePlan,
   useDispatchApproved,
   useUpdatePlan,
+  useLastSupervisorDecision,
   type MissionPlan,
   type GateMode,
 } from '@/hooks/use-mission-plan'
@@ -42,6 +44,7 @@ export function PlanTopBar({
 }) {
   const updatePlan = useUpdatePlan(missionId)
   const dispatch = useDispatchApproved(missionId)
+  const { data: lastDecision } = useLastSupervisorDecision(missionId, plan.status)
   const [gateOpen, setGateOpen] = useState(false)
 
   const approvedTasks = joined.filter(
@@ -199,6 +202,20 @@ export function PlanTopBar({
         </Button>
       </div>
     </div>
+
+    {isPlanPaused && lastDecision?.action === 'escalate' && (
+      <div className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+        <div className="min-w-0">
+          <span className="text-[11px] font-medium text-destructive">
+            Supervisor escalated
+          </span>
+          <p className="text-[10px] leading-snug text-destructive/80">
+            {lastDecision.reason}
+          </p>
+        </div>
+      </div>
+    )}
 
     {gateOpen && (
       <PreRunGateModal
