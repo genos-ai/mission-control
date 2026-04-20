@@ -306,6 +306,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             prompt=brief,
             roster=roster,
             upstream_context=None,
+            event_bus=self._event_bus,
             mission_id=plan.mission_id,
             current_plan=plan.task_plan_json,
             refinement_instructions=instructions,

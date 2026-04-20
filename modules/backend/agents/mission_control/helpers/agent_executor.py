@@ -370,6 +370,12 @@ async def _call_planning_agent(
     sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
     full_content = ""
 
+    if event_bus:
+        await _emit(event_bus, AgentThinkingEvent,
+            session_id=str(sid), source="mission_control",
+            agent_id=planning_agent_id,
+        )
+
     async with agent.run_stream(
         planning_prompt, deps=deps, model_settings=planning_model_settings,
     ) as stream:
@@ -394,6 +400,13 @@ async def _call_planning_agent(
                 if hasattr(part, "content") and hasattr(part, "part_kind"):
                     if "thinking" in str(getattr(part, "part_kind", "")):
                         thinking_trace = part.content
+
+    if event_bus:
+        await _emit(event_bus, AgentResponseCompleteEvent,
+            session_id=str(sid), source="mission_control",
+            agent_id=planning_agent_id,
+            content=f"Plan generated ({len(plan_json.get('tasks', []))} tasks)" if isinstance(plan_json, dict) else "Plan generated",
+        )
 
     # Record planning agent cost to llm_calls table (was missing — only
     # dispatch agents and Director were recording, not the planner).
