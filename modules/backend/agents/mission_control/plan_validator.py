@@ -87,6 +87,8 @@ def _rule_2_agent_validation(plan: TaskPlan, roster: Roster, result: ValidationR
         if task.agent.startswith("workflow:"):
             continue
         entry = roster.get_agent(task.agent, task.agent_version)
+        if entry is None and task.agent_version == "latest":
+            entry = roster.get_agent_by_name(task.agent)
         if entry is None:
             result.add_error(
                 "agent_validation",
