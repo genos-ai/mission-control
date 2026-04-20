@@ -43,6 +43,7 @@ class MissionPlanDispatchMixin:
         user_id: str,
         *,
         session_id: str | None = None,
+        skip_post_run_supervisor: bool = False,
     ) -> dict:
         """Dispatch all currently-approved tasks as a single run.
 
@@ -196,23 +197,22 @@ class MissionPlanDispatchMixin:
             ),
         )
 
-        # ── Safety: re-read plan status before supervisor evaluation ──
-        # If someone paused or completed the plan while we were running,
-        # skip the supervisor loop entirely. Write-back and cost update
-        # above are still valid (the work was done), but we must NOT
-        # auto-advance or auto-approve further work.
-        await self._session.refresh(plan, ["status"])
-        if plan.status != MissionPlanStatus.ACTIVE.value:
-            self._log_operation(
-                "Skipping post-run supervisor — plan no longer active",
-                plan_id=mission_plan_id,
-                plan_status=plan.status,
-            )
-        else:
-            # ── Plan 51 Phase C: post-run event + followup fire ─────
-            await self._post_run_supervisor(
-                plan, outcome, session_id=session_id,
-            )
+        # When called from Temporal's execute_mission activity, skip the
+        # inline supervisor — the MissionRunWorkflow handles the supervisor
+        # loop, Director notifications, and plan status changes. Running
+        # both causes double-evaluation and the inline one steals decisions.
+        if not skip_post_run_supervisor:
+            await self._session.refresh(plan, ["status"])
+            if plan.status != MissionPlanStatus.ACTIVE.value:
+                self._log_operation(
+                    "Skipping post-run supervisor — plan no longer active",
+                    plan_id=mission_plan_id,
+                    plan_status=plan.status,
+                )
+            else:
+                await self._post_run_supervisor(
+                    plan, outcome, session_id=session_id,
+                )
 
         return {
             "outcome_status": (

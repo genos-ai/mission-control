@@ -62,6 +62,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             result = await svc.dispatch_approved(
                 input.mission_run_id,
                 user_id=mission.owner_id,
+                skip_post_run_supervisor=True,
             )
             await db.commit()
 

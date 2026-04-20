@@ -85,12 +85,40 @@ async def show_status(mission_id: str, verbose: bool = False) -> None:
             counts[ts.status] = counts.get(ts.status, 0) + 1
         plan_status = plan.status or "active"
         plan_cost = f"${plan.total_spent_usd:.4f}" if plan.total_spent_usd else "$0"
+
+        # Show last supervisor decision if plan is paused
+        last_decision = None
+        if plan_status == "paused":
+            from sqlalchemy import text as _text
+            async with get_async_session() as _db:
+                _row = (await _db.execute(_text(
+                    "SELECT data FROM mission_events "
+                    "WHERE mission_id = :mid AND event_type = 'mission_plan.supervisor_decision' "
+                    "ORDER BY timestamp DESC LIMIT 1"
+                ), {"mid": mission_id})).first()
+                if _row:
+                    import json as _json
+                    try:
+                        _data = _json.loads(_row[0]) if isinstance(_row[0], str) else _row[0]
+                        last_decision = {
+                            "action": _data.get("action", ""),
+                            "reason": _data.get("reason", "")[:120],
+                        }
+                    except Exception:
+                        pass
+
         parts = [f"[bold]Plan[/bold] {plan_status}"]
         parts.append(f"v{plan.version}")
         parts.append(f"spent {plan_cost}")
         if plan.supervisor_iteration_count:
             parts.append(f"supervisor x{plan.supervisor_iteration_count}")
         console.print("  ".join(parts))
+
+        if last_decision:
+            action = last_decision["action"]
+            reason = last_decision["reason"]
+            color = "red" if action == "escalate" else "yellow"
+            console.print(f"  [{color}]>> {action}: {reason}[/{color}]")
 
         status_icons = {
             "completed": "[green]\u2713[/green]",
