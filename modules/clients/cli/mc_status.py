@@ -27,12 +27,20 @@ def _execution_to_dict(e) -> dict:
 
 
 async def show_status(mission_id: str, verbose: bool = False) -> None:
-    """Show current mission snapshot: active runs, recent history, spend."""
+    """Show current mission snapshot: plan state, active runs, spend."""
     from modules.backend.services.execution import ExecutionService
     from modules.backend.services.mission import MissionService
+    from modules.backend.services.mission_plan import MissionPlanService
 
     async with MissionService.factory() as svc:
         mission = await svc.get_mission(mission_id)
+
+    from modules.backend.core.database import get_async_session
+
+    async with get_async_session() as db:
+        plan_svc = MissionPlanService(db)
+        plan = await plan_svc.get_or_create_plan(mission_id)
+        task_states = await plan_svc.get_task_states(plan.id)
 
     async with ExecutionService.factory() as svc:
         executions, total = await svc.list_executions(
@@ -69,6 +77,37 @@ async def show_status(mission_id: str, verbose: bool = False) -> None:
     console.print(f"[bold]{mission.name}[/bold]  [{gate_str}]  Budget: {budget_str}")
     console.print(f"  {mission.description}")
     console.print()
+
+    # ── Plan state ────────────────────────────────────────────────
+    if task_states:
+        counts: dict[str, int] = {}
+        for ts in task_states:
+            counts[ts.status] = counts.get(ts.status, 0) + 1
+        plan_status = plan.status or "active"
+        plan_cost = f"${plan.total_spent_usd:.4f}" if plan.total_spent_usd else "$0"
+        parts = [f"[bold]Plan[/bold] {plan_status}"]
+        parts.append(f"v{plan.version}")
+        parts.append(f"spent {plan_cost}")
+        if plan.supervisor_iteration_count:
+            parts.append(f"supervisor x{plan.supervisor_iteration_count}")
+        console.print("  ".join(parts))
+
+        status_icons = {
+            "completed": "[green]\u2713[/green]",
+            "failed": "[red]\u2717[/red]",
+            "running": "[yellow]\u25cf[/yellow]",
+            "queued": "[blue]\u25cb[/blue]",
+            "approved": "[cyan]\u25cb[/cyan]",
+            "proposed": "[dim]\u25cb[/dim]",
+        }
+        for ts in sorted(task_states, key=lambda x: x.task_id):
+            icon = status_icons.get(ts.status, "\u00b7")
+            cost = f"${ts.cost_usd:.4f}" if ts.cost_usd else ""
+            dur = f"{ts.duration_seconds:.1f}s" if ts.duration_seconds else ""
+            meta = f"  [dim]{cost}  {dur}[/dim]" if cost or dur else ""
+            fail = f"  [red]{ts.failure_reason[:40]}[/red]" if ts.failure_reason else ""
+            console.print(f"  {icon} {ts.task_id:12s} {ts.status:12s}{meta}{fail}")
+        console.print()
 
     running = [
         e for e in executions
