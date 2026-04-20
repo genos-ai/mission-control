@@ -66,7 +66,7 @@ def _get_agent() -> Agent[None, SummarizationOutput]:
     )
 
 
-def get_agent(model: Model | None = None) -> Agent[None, SummarizationOutput]:
+def create_agent(model: Model | None = None) -> Agent[None, SummarizationOutput]:
     """Get or create the summarization agent.
 
     Args:
@@ -98,7 +98,7 @@ async def summarize_missions(
     Returns:
         Dict with title, summary, key_outcomes, and domain_tags.
     """
-    agent = get_agent(model)
+    agent = create_agent(model)
 
     prompt = (
         f"Summarize these {len(mission_outcomes)} mission outcomes "

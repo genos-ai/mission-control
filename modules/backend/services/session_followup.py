@@ -139,7 +139,7 @@ class SessionFollowupService(BaseService):
             trigger_event_type=trigger_event_type,
             created_by_agent=row.created_by_agent,
             success=success,
-            failure_reason=failure_reason,
+            failure_reason=failure_reason or "",
         )
         try:
             await self._event_bus.publish_to_mission(row.mission_id, event)

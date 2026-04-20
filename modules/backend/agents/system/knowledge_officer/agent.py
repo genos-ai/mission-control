@@ -124,7 +124,7 @@ def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
     return agent
 
 
-def get_agent(model: Model | None = None) -> Agent[None, KnowledgeOfficerReport]:
+def create_agent(model: Model | None = None) -> Agent[None, KnowledgeOfficerReport]:
     """Get or create the Knowledge Officer agent."""
     if model is not None:
         instructions = assemble_instructions("system", "knowledge_officer")
@@ -142,7 +142,7 @@ async def run_officer(*, model: Model | None = None) -> dict:
 
     Called by Temporal daily schedule. Returns the report dict.
     """
-    agent = get_agent(model)
+    agent = create_agent(model)
 
     prompt = (
         "Run your daily curation cycle:\n"
