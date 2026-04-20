@@ -298,7 +298,7 @@ async def handle_mission(
         execute_agent_fn=_make_agent_executor(
             event_bus,
             session_id=session_id or mission_run_id,
-            mission_id=mission_run_id,
+            mission_id=mission_id or mission_run_id,
             environment_handle=env_handle,
             current_user_id=None,  # Plan 55: resolved in Phase B
         ),

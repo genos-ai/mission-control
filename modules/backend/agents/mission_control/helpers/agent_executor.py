@@ -395,6 +395,28 @@ async def _call_planning_agent(
                     if "thinking" in str(getattr(part, "part_kind", "")):
                         thinking_trace = part.content
 
+    # Record planning agent cost to llm_calls table (was missing — only
+    # dispatch agents and Director were recording, not the planner).
+    try:
+        fields = extract_usage(usage)
+        model_name = _get_model_name(planning_cfg.model)
+        planning_cost = compute_cost_usd(
+            fields["input_tokens"], fields["output_tokens"], model_name,
+            cache_read_tokens=fields["cache_read_tokens"],
+            cache_write_1h_tokens=fields["cache_write_tokens"],
+            thinking_tokens=fields["thinking_tokens"],
+        )
+        await record_llm_call(
+            session_id=session_id or "",
+            mission_id=mission_id or "",
+            agent_name="system.planning.agent",
+            agent_role="system",
+            model=model_name, usage=usage, cost_usd=planning_cost,
+            latency_ms=0, tool_count=0,
+        )
+    except Exception:
+        logger.warning("Failed to record planning agent LLM call", exc_info=True)
+
     return {
         "task_plan": plan_json,
         "thinking_trace": thinking_trace,
