@@ -489,12 +489,11 @@ class MissionPlanDispatchMixin:
             )
 
         elif action == GateAction.PROPOSE_COMPLETE:
-            # Pause the plan so the daemon stops dispatching.
-            # The Director followup (wired via fire_matching) will ask
-            # the user to confirm whether the mission is truly done.
-            plan.status = MissionPlanStatus.PAUSED.value
+            # Plan stays active — an idle plan with zero approved tasks
+            # costs nothing. The Director followup asks the user to
+            # confirm completion; the user archives when ready.
             self._log_operation(
-                "Supervisor: PROPOSE_COMPLETE — plan paused",
+                "Supervisor: PROPOSE_COMPLETE — notifying user",
                 plan_id=plan.id,
                 reason=(decision.reason or "")[:200],
             )
