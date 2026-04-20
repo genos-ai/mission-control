@@ -154,6 +154,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         plan = await self._repo.create_for_mission(
             mission_id=mission_id,
             gate_mode=mission.gate_mode,
+            budget_usd_ceiling=mission.budget_ceiling_usd,
         )
         self._log_operation(
             "MissionPlan created",
