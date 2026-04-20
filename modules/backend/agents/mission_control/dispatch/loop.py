@@ -67,6 +67,7 @@ async def dispatch(
     event_bus: EventBusProtocol | None = None,
     session_id: str | None = None,
     execution_mode: str = "local",
+    prior_outputs: dict[str, dict] | None = None,
 ) -> ExecutionOutcome:
     """Execute the dispatch loop for a validated TaskPlan.
 
@@ -127,7 +128,10 @@ async def dispatch(
 
     project_context = await _load_project_context(mission_id, context_curator)
 
-    completed_outputs: dict[str, dict] = {}
+    # Seed with outputs from prior waves (completed in earlier dispatches).
+    # Without this, from_upstream references to tasks that ran in a previous
+    # dispatch_approved call would fail with KeyError.
+    completed_outputs: dict[str, dict] = dict(prior_outputs) if prior_outputs else {}
     task_results: list[TaskResult] = []
     total_cost = 0.0
     total_input_tokens = 0

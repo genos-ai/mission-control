@@ -136,6 +136,11 @@ class MissionPlanDispatchMixin:
         mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
         brief = mission.brief or mission.description or mission.name
 
+        # Load outputs from prior waves so downstream tasks can resolve
+        # from_upstream references to tasks that completed in earlier
+        # dispatch_approved calls.
+        prior_outputs = await self._load_prior_outputs(mission_plan_id)
+
         # Dispatch via the Phase 0 precomputed_plan path
         budget = plan.budget_usd_ceiling or 10.0
         if plan.budget_usd_ceiling is not None:
@@ -155,6 +160,7 @@ class MissionPlanDispatchMixin:
             execution_mode=mission.execution_environment or "local",
             precomputed_plan=derived_plan,
             mission_repo_root=mission.repo_root,
+            prior_outputs=prior_outputs,
         )
 
         # Write back task states from outcome (Plan 42 §10.5 batch write-back)
@@ -509,6 +515,35 @@ class MissionPlanDispatchMixin:
                 extra={"action": str(action), "plan_id": plan.id},
             )
 
+    async def _load_prior_outputs(
+        self,
+        mission_plan_id: str,
+    ) -> dict[str, dict]:
+        """Load output_reference dicts from tasks completed in prior waves.
+
+        Reads plan_task_states where status is completed/skipped and
+        result_summary is not null. result_summary contains the JSON-
+        serialized output_reference stored by _write_back_task_results.
+
+        Returns a {task_id: output_dict} mapping that seeds the dispatch
+        loop's completed_outputs so from_upstream references resolve.
+        """
+        import json as _json
+
+        completed_states = await self._repo.get_task_states(
+            mission_plan_id, status=PlanTaskStatus.COMPLETED,
+        )
+        prior: dict[str, dict] = {}
+        for state in completed_states:
+            if not state.result_summary:
+                continue
+            try:
+                prior[state.task_id] = _json.loads(state.result_summary)
+            except (TypeError, ValueError, _json.JSONDecodeError):
+                # result_summary might be plain text from older runs
+                prior[state.task_id] = {"result": state.result_summary}
+        return prior
+
     async def _write_back_task_results(
         self,
         plan: MissionPlan,
@@ -568,9 +603,15 @@ class MissionPlanDispatchMixin:
                 ) or "Task failed during dispatch"
                 state.retry_count += 1
             else:
-                state.result_summary = getattr(
-                    task_result, "result_summary", None,
-                )
+                # Persist the agent's output so downstream tasks in
+                # later waves can access it via from_upstream inputs.
+                import json as _json
+                output = task_result.output_reference
+                if output:
+                    try:
+                        state.result_summary = _json.dumps(output, default=str)
+                    except (TypeError, ValueError):
+                        state.result_summary = str(output)
                 state.failure_reason = None
 
             updated_ids.append(task_id)
