@@ -4,8 +4,9 @@ Mission Event Bus.
 Redis Pub/Sub wrapper for real-time event delivery. All events for a
 mission publish to a single channel: mission_events:{mission_id}.
 
-Events whose type is in the persist_event_types config are also
-written to the mission_events DB table for historical display.
+All events are persisted to the mission_events DB table for historical
+display, EXCEPT those in the exclude_event_types blacklist (high-volume
+streaming events that would flood the DB without adding value).
 """
 
 import asyncio
@@ -21,23 +22,28 @@ from modules.backend.events.types import SessionEvent, deserialize_event
 
 logger = get_logger(__name__)
 
-# Loaded once at import — the set of event types to persist to DB.
-_persist_types: set[str] | None = None
+# Loaded once at import — event types to EXCLUDE from DB persistence.
+_exclude_types: set[str] | None = None
 
 
-def _get_persist_types() -> set[str]:
-    global _persist_types
-    if _persist_types is None:
-        _persist_types = set(get_app_config().events.persist_event_types)
-    return _persist_types
+def _get_exclude_types() -> set[str]:
+    global _exclude_types
+    if _exclude_types is None:
+        _exclude_types = set(get_app_config().events.exclude_event_types)
+    return _exclude_types
+
+
+def _should_persist(event_type: str) -> bool:
+    """Return True if this event type should be written to the DB."""
+    return event_type not in _get_exclude_types()
 
 
 class SessionEventBus:
     """Publish and subscribe to real-time mission events via Redis Pub/Sub.
 
-    All events go to mission_events:{mission_id}. Events whose type is
-    in persist_event_types are also written to the mission_events DB
-    table for historical narrative display.
+    All events go to mission_events:{mission_id}. Events are persisted
+    to the mission_events DB table by default, except those in the
+    exclude_event_types blacklist (high-volume streaming noise).
     """
 
     def __init__(self, redis: Redis, mission_id: str | None = None) -> None:
@@ -62,7 +68,7 @@ class SessionEventBus:
         await self._redis.publish(channel, payload)
 
         # DB persistence — append to mission_events table
-        if event.event_type in _get_persist_types():
+        if _should_persist(event.event_type):
             await self._persist_event(self._mission_id, event)
 
     async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
@@ -71,7 +77,7 @@ class SessionEventBus:
         payload = event.model_dump_json()
         await self._redis.publish(channel, payload)
 
-        if event.event_type in _get_persist_types():
+        if _should_persist(event.event_type):
             await self._persist_event(mission_id, event)
 
     async def _persist_event(self, mission_id: str, event: SessionEvent) -> None:

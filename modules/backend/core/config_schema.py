@@ -267,7 +267,7 @@ class EventsSchema(_StrictBase):
     consumer_timeout_ms: int = 5000
     dlq_enabled: bool = True
     dlq_prefix: str = "dlq"
-    persist_event_types: list[str] = Field(default_factory=list)
+    exclude_event_types: list[str] = Field(default_factory=list)
 
 
 # =============================================================================

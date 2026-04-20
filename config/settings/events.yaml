@@ -2,13 +2,14 @@
 # Event Configuration
 # =============================================================================
 #   Session events use Redis Pub/Sub for real-time delivery (SSE to browser).
-#   Configured event types are also persisted to the mission_events DB table,
-#   which serves as the single source of truth for the Console timeline.
+#   All events are persisted to the mission_events DB table by default,
+#   EXCEPT those in exclude_event_types (high-volume noise).
 #
 #   Channel naming: mission_events:{mission_id} (one channel per mission)
 #
-#   persist_event_types: event types written to mission_events for the Console.
-#   Adding a type here = it appears in Console history. Nothing else needed.
+#   To hide an event type from the Console timeline, add it to
+#   exclude_event_types. Everything else persists automatically —
+#   new event types show up without config changes.
 
 transport: redis
 
@@ -21,51 +22,11 @@ consumer_timeout_ms: 5000
 dlq_enabled: true
 dlq_prefix: dlq
 
-# persist_event_types: event types written to mission_events for the Console.
-# mission_events is the single source of truth for the Console timeline.
-# To add a new event type to the Console, add it here. Nothing else needed.
-#
-# Excluded: agent.response.chunk (high-volume streaming deltas),
-#           session.cost.update (noise — cost is on the response event).
-persist_event_types:
-  # Chat
-  - user.message.sent
-  - agent.response.complete
-  # Agent lifecycle
-  - agent.thinking.started
-  - agent.tool.called
-  - agent.tool.returned
-  # Planning
-  - plan.created
-  - plan.revised
-  - planning.phase
-  - plan.step.started
-  - plan.step.completed
-  # Execution
-  - system.execution.created
-  - system.execution.completed
-  # Workflow
-  - workflow.run.started
-  - workflow.run.completed
-  - workflow.run.failed
-  - workflow.execution.started
-  - workflow.execution.completed
-  # System
-  - system.info
-  - mission.artifact.found
-  - mission.narrative
-  # Convergence
-  - convergence.iteration
-  - convergence.completed
-  # Mission Plan (Plan 51 — autonomy loop)
-  - mission_plan.dispatched
-  - mission_plan.run.completed
-  - mission_plan.supervisor_decision
-  - mission_plan.task.status_changed
-  - mission_plan.refined
-  - mission_plan.gate_mode_changed
-  # Session followups
-  - session.followup.fired
-  # Approvals
-  - approval.requested
-  - approval.response
+# exclude_event_types: high-volume event types excluded from DB persistence.
+# These stream live via SSE but are NOT written to mission_events.
+# Everything NOT listed here persists and appears in the Console timeline.
+exclude_event_types:
+  # Streaming deltas — hundreds per agent turn, no historical value
+  - agent.response.chunk
+  # Redundant — cost is on agent.response.complete
+  - session.cost.update

@@ -229,7 +229,7 @@ async def get_narrative(
     """Return persisted narrative events from the mission_events table.
 
     Events are written by SessionEventBus.publish() for event types
-    listed in events.yaml persist_event_types. This replaces the old
+    listed in events.yaml (all types except exclude_event_types). This replaces the old
     multi-table reconstruction approach.
     """
     svc = MissionService(db)

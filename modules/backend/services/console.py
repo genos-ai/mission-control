@@ -5,8 +5,8 @@ The Console is a chronological event log for a mission. Its single
 source of truth is the `mission_events` table — one query, sorted
 by timestamp, no deduplication.
 
-To add a new event type to the Console, add it to `persist_event_types`
-in config/settings/events.yaml. Nothing else needed.
+All events persist to the Console by default. To exclude a noisy event
+type, add it to `exclude_event_types` in config/settings/events.yaml.
 
 See ADR-004 (Unified Async Architecture) for the design rationale.
 """
