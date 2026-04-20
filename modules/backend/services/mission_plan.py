@@ -609,11 +609,19 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         """
         plan = await self._repo.get_by_id(mission_plan_id)
 
+        # Look up agent version from registry so the plan validator
+        # doesn't reject "latest" as not matching the roster entry.
+        from modules.backend.agents.mission_control.registry import get_registry
+        registry = get_registry()
+        agent_version = "1.0.0"
+        if registry.has(agent):
+            agent_version = registry.get(agent).version or "1.0.0"
+
         task_id = f"task_{uuid.uuid4().hex[:12]}"
         task_body = {
             "task_id": task_id,
             "agent": agent,
-            "agent_version": "latest",
+            "agent_version": agent_version,
             "description": description,
             "instructions": instructions or description,
             "dependencies": dependencies or [],

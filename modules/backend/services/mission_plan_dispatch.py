@@ -693,6 +693,17 @@ class MissionPlanDispatchMixin:
                         f"Approve the dependency first."
                     )
 
+        # Filter execution_hints.critical_path to only tasks in this subset —
+        # the plan validator rejects references to tasks not in the plan.
+        hints = full_plan.execution_hints
+        if hints and hasattr(hints, "critical_path") and hints.critical_path:
+            filtered_ids = {t.task_id for t in filtered_tasks}
+            hints = hints.model_copy(update={
+                "critical_path": [
+                    tid for tid in hints.critical_path if tid in filtered_ids
+                ],
+            })
+
         return TaskPlan(
             version=full_plan.version,
             mission_id=full_plan.mission_id,
@@ -700,5 +711,5 @@ class MissionPlanDispatchMixin:
             estimated_cost_usd=full_plan.estimated_cost_usd,
             estimated_duration_seconds=full_plan.estimated_duration_seconds,
             tasks=filtered_tasks,
-            execution_hints=full_plan.execution_hints,
+            execution_hints=hints,
         )
