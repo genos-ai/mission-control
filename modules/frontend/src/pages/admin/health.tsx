@@ -1,5 +1,7 @@
-import { Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
-import { useHealthCheck } from '@/hooks/use-admin'
+import { useState } from 'react'
+import { Loader2, CheckCircle, XCircle, RefreshCw, StopCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { useHealthCheck, useEmergencyStop } from '@/hooks/use-admin'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -86,6 +88,80 @@ export default function AdminHealthPage() {
           ))}
         </div>
       )}
+
+      <EmergencyStopSection />
     </div>
+  )
+}
+
+
+function EmergencyStopSection() {
+  const emergencyStop = useEmergencyStop()
+  const [confirming, setConfirming] = useState(false)
+
+  async function handleStop() {
+    try {
+      const result = await emergencyStop.mutateAsync()
+      toast.success(result.message)
+      setConfirming(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Emergency stop failed')
+    }
+  }
+
+  return (
+    <Card className="border-destructive/50">
+      <CardContent className="flex items-center justify-between py-4 px-4">
+        <div>
+          <h3 className="text-sm font-semibold">Emergency Stop</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pause all active autonomous plans. Stops the daemon from dispatching
+            new work. In-flight runs finish but no new waves start.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {confirming ? (
+            <>
+              <span className="text-xs text-destructive font-medium">
+                Are you sure?
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => setConfirming(false)}
+                disabled={emergencyStop.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-7 gap-1 text-xs"
+                onClick={handleStop}
+                disabled={emergencyStop.isPending}
+              >
+                {emergencyStop.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <StopCircle className="h-3 w-3" />
+                )}
+                Stop All
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setConfirming(true)}
+            >
+              <StopCircle className="h-3 w-3" />
+              Emergency Stop
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

@@ -160,6 +160,20 @@ export function useAdminConfig() {
   })
 }
 
+// --- Emergency Stop (Plan 51 Phase C) ---
+
+export interface EmergencyStopResult {
+  paused_count: number
+  message: string
+}
+
+export function useEmergencyStop() {
+  return useMutation({
+    mutationFn: () =>
+      api.post<EmergencyStopResult>('/admin/dispatch/emergency-stop'),
+  })
+}
+
 // --- Token Economics (Plan 60) ---
 
 export function useTokenBreakdown(timeframe = '7d') {

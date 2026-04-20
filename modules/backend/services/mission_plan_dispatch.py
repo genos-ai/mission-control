@@ -19,6 +19,7 @@ from modules.backend.events.types import (
     SupervisorDecisionEmittedEvent,
 )
 from modules.backend.models.mission_plan import (
+    MissionPlanStatus,
     PlanTaskStatus,
 )
 from modules.backend.schemas.task_plan import TaskPlan
@@ -188,10 +189,23 @@ class MissionPlanDispatchMixin:
             ),
         )
 
-        # ── Plan 51 Phase C: post-run event + followup fire ─────────
-        await self._post_run_supervisor(
-            plan, outcome, session_id=session_id,
-        )
+        # ── Safety: re-read plan status before supervisor evaluation ──
+        # If someone paused or completed the plan while we were running,
+        # skip the supervisor loop entirely. Write-back and cost update
+        # above are still valid (the work was done), but we must NOT
+        # auto-advance or auto-approve further work.
+        await self._session.refresh(plan, ["status"])
+        if plan.status != MissionPlanStatus.ACTIVE.value:
+            self._log_operation(
+                "Skipping post-run supervisor — plan no longer active",
+                plan_id=mission_plan_id,
+                plan_status=plan.status,
+            )
+        else:
+            # ── Plan 51 Phase C: post-run event + followup fire ─────
+            await self._post_run_supervisor(
+                plan, outcome, session_id=session_id,
+            )
 
         return {
             "outcome_status": (
@@ -268,7 +282,7 @@ class MissionPlanDispatchMixin:
 
         # Plan 52: inline supervisor for non-Temporal dispatch paths
         try:
-            from modules.backend.agents.mission_control.gate_models import GateAction, GateContext
+            from modules.backend.agents.mission_control.gate_models import GateContext
             from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
             from modules.backend.agents.tools.supervisor_introspection import get_recent_run_outcomes
 
@@ -296,23 +310,204 @@ class MissionPlanDispatchMixin:
             reviewer = AutonomousPostRunReviewer(session=self._session, gate_mode=plan.gate_mode)
             decision = await reviewer.review(context)
             plan.supervisor_iteration_count += 1
-            # Apply ADVANCE_APPROVED inline
-            if decision.action == GateAction.ADVANCE_APPROVED:
-                from modules.backend.models.mission_plan import PlanTaskStatus as _PTS
-                for ts in await self.get_task_states(plan.id, status=_PTS.PROPOSED):
-                    await self.approve_task(plan.id, ts.task_id, "mission.supervisor.agent")
+            await self._apply_supervisor_decision(
+                plan, decision, outcome, session_id=session_id,
+            )
             await self._session.flush()
             # Emit decision event
-            await self._emit(plan.mission_id, SupervisorDecisionEmittedEvent(
+            _decision_event = SupervisorDecisionEmittedEvent(
                 session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
                 source="mission_plan_service", mission_id=plan.mission_id,
                 plan_id=plan.id, execution_record_id=outcome.execution_record_id or "",
                 action=decision.action.value, reason=(decision.reason or "")[:500],
                 reviewer=decision.reviewer,
-            ))
+            )
+            await self._emit(plan.mission_id, _decision_event)
             self._log_operation("Post-run supervisor", plan_id=plan.id, action=decision.action.value)
+
+            # Fire matching session followups so the Director wakes up
+            # and posts a proactive chat update (Plan 51 Phase E).
+            await self._fire_followups(
+                plan, _run_completed_event, _decision_event,
+            )
         except Exception:
             self._logger.warning("Post-run supervisor evaluation failed", exc_info=True)
+
+    async def _fire_followups(
+        self,
+        plan: MissionPlan,
+        run_event,
+        decision_event,
+    ) -> None:
+        """Fire matching session followups for both supervisor events.
+
+        Creates a lightweight agent_turn_runner adapter that starts a
+        Director chat turn via handle_mission. Followup failures are
+        swallowed by SessionFollowupService — they never block the
+        dispatch path.
+        """
+        from modules.backend.services.session_followup import (
+            SessionFollowupService,
+        )
+
+        followup_svc = SessionFollowupService(
+            self._session, event_bus=self._event_bus,
+        )
+
+        async def _agent_turn_runner(
+            session_id: str, mission_id: str, prompt: str,
+        ) -> None:
+            """Adapter: start a Director chat turn for the followup."""
+            from modules.backend.agents.mission_control.mission_control import (
+                handle_mission,
+            )
+            from modules.backend.services.session import SessionService
+
+            await handle_mission(
+                mission_run_id=plan.id,
+                mission_brief=prompt,
+                session_service=SessionService(self._session),  # type: ignore[arg-type]
+                session_id=session_id,
+                mission_id=mission_id,
+                db_session=self._session,
+            )
+
+        # Fire for both events — followups may subscribe to either
+        # "mission_plan.run.completed" or "mission_plan.supervisor_decision".
+        for event in (run_event, decision_event):
+            try:
+                await followup_svc.fire_matching(
+                    event, agent_turn_runner=_agent_turn_runner,
+                )
+            except Exception:
+                self._logger.warning(
+                    "Failed to fire followups for event",
+                    extra={
+                        "event_type": getattr(event, "event_type", "unknown"),
+                        "plan_id": plan.id,
+                    },
+                    exc_info=True,
+                )
+
+    async def _apply_supervisor_decision(
+        self,
+        plan: MissionPlan,
+        decision,
+        outcome,
+        *,
+        session_id: str | None,
+    ) -> None:
+        """Route the supervisor's gate decision (non-Temporal path).
+
+        Mirrors the decision routing in MissionRunWorkflow.run() so the
+        daemon-dispatched path has the same autonomous behaviour as the
+        Temporal path. The daemon's next tick naturally picks up any
+        newly-approved tasks, so ADVANCE_APPROVED and ADVANCE_REFINE
+        don't need to loop — they just prepare the state and return.
+        """
+        from modules.backend.agents.mission_control.gate_models import GateAction
+        from modules.backend.models.mission_plan import (
+            PlanTaskStatus as _PTS,
+        )
+
+        action = decision.action
+
+        # Safety: re-read plan status before mutating. If the plan was
+        # paused or completed while the supervisor was evaluating, refuse
+        # to advance — only PROPOSE_COMPLETE and ESCALATE (which pause
+        # the plan themselves) are safe to apply regardless.
+        await self._session.refresh(plan, ["status"])
+        _plan_active = plan.status == MissionPlanStatus.ACTIVE.value
+
+        if action in (GateAction.WAIT, GateAction.ADVANCE_APPROVED, GateAction.ADVANCE_REFINE):
+            if not _plan_active:
+                self._log_operation(
+                    f"Supervisor: {action.value} suppressed — plan is {plan.status}",
+                    plan_id=plan.id,
+                )
+                return
+
+        if action == GateAction.WAIT:
+            # Approved tasks still pending — daemon dispatches next tick.
+            self._log_operation(
+                "Supervisor: WAIT", plan_id=plan.id,
+                reason="Approved tasks remain; daemon will dispatch next tick",
+            )
+
+        elif action == GateAction.ADVANCE_APPROVED:
+            # Flip all proposed → approved so daemon dispatches them.
+            for ts in await self.get_task_states(plan.id, status=_PTS.PROPOSED):
+                await self.approve_task(
+                    plan.id, ts.task_id, "mission.supervisor.agent",
+                )
+            self._log_operation(
+                "Supervisor: ADVANCE_APPROVED", plan_id=plan.id,
+            )
+
+        elif action == GateAction.ADVANCE_REFINE:
+            # Ask the Planning Agent to generate the next wave of tasks,
+            # then approve the new proposed tasks for dispatch.
+            _run_status = (
+                outcome.status.value
+                if hasattr(outcome.status, "value")
+                else str(outcome.status)
+            )
+            instructions = (
+                f"The last wave {_run_status}. "
+                f"Total cost so far: ${plan.total_spent_usd:.2f}. "
+                f"Generate the next wave of tasks based on outcomes."
+            )
+            try:
+                await self.refine(
+                    plan.id, instructions, "mission.supervisor.agent",
+                    mission_budget_usd=(
+                        plan.budget_usd_ceiling - plan.total_spent_usd
+                        if plan.budget_usd_ceiling is not None
+                        else 10.0
+                    ),
+                )
+                # Auto-approve newly proposed tasks so daemon dispatches them.
+                for ts in await self.get_task_states(plan.id, status=_PTS.PROPOSED):
+                    await self.approve_task(
+                        plan.id, ts.task_id, "mission.supervisor.agent",
+                    )
+            except Exception:
+                self._logger.warning(
+                    "Supervisor ADVANCE_REFINE: refinement failed, "
+                    "pausing plan for human review",
+                    exc_info=True,
+                )
+                plan.status = MissionPlanStatus.PAUSED.value
+            self._log_operation(
+                "Supervisor: ADVANCE_REFINE", plan_id=plan.id,
+            )
+
+        elif action == GateAction.PROPOSE_COMPLETE:
+            # Pause the plan so the daemon stops dispatching.
+            # The Director followup (wired via fire_matching) will ask
+            # the user to confirm whether the mission is truly done.
+            plan.status = MissionPlanStatus.PAUSED.value
+            self._log_operation(
+                "Supervisor: PROPOSE_COMPLETE — plan paused",
+                plan_id=plan.id,
+                reason=(decision.reason or "")[:200],
+            )
+
+        elif action == GateAction.ESCALATE:
+            # Pause and escalate — human attention required.
+            plan.status = MissionPlanStatus.PAUSED.value
+            self._log_operation(
+                "Supervisor: ESCALATE — plan paused for human review",
+                plan_id=plan.id,
+                reason=(decision.reason or "")[:200],
+            )
+
+        else:
+            # Unknown action — safe default: do nothing, log.
+            self._logger.warning(
+                "Supervisor returned unknown action",
+                extra={"action": str(action), "plan_id": plan.id},
+            )
 
     async def _write_back_task_results(
         self,

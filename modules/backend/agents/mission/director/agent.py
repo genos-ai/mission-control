@@ -100,6 +100,41 @@ async def _start_tool_fork_workflow(
     return workflow_id
 
 
+async def _schedule_director_followup(
+    *,
+    db_session,
+    session_id: str | None,
+    mission_id: str | None,
+    trigger_event_types: list[str],
+    prompt_template: str,
+) -> None:
+    """Schedule a session followup so the Director wakes on a future event.
+
+    Best-effort — failures are logged but never block the calling tool.
+    Used by run_objective and approve_plan_tasks to ensure the Director
+    proactively reports outcomes to the user (Plan 51 Phase E).
+    """
+    if db_session is None or session_id is None:
+        return
+    try:
+        from modules.backend.agents.tools.followup import schedule_followup
+
+        await schedule_followup(
+            db_session,
+            session_id=session_id,
+            mission_id=mission_id,
+            trigger_event_types=trigger_event_types,
+            prompt_template=prompt_template,
+            created_by_agent="mission.director.agent",
+        )
+    except Exception:
+        logger.warning(
+            "Director followup scheduling failed (non-fatal)",
+            extra={"session_id": session_id, "mission_id": mission_id},
+            exc_info=True,
+        )
+
+
 def create_agent(model: str | Model) -> Agent:
     """Create the Mission Director agent with all tools registered."""
     if isinstance(model, str):
@@ -434,6 +469,21 @@ def create_agent(model: str | Model) -> Agent:
                     budget_usd=budget_usd,
                 ),
                 record_id=record.id,
+            )
+
+            # Schedule a followup so we wake when the run completes
+            # and proactively report results to the user (Plan 51 Phase E).
+            await _schedule_director_followup(
+                db_session=ctx.deps.db_session,
+                session_id=ctx.deps.session_id,
+                mission_id=ctx.deps.mission_id,
+                trigger_event_types=["mission_plan.supervisor_decision"],
+                prompt_template=(
+                    "The run you started (objective: '{objective}') just "
+                    "completed. The supervisor decided: {action}. "
+                    "Reason: {reason}. Summarise the outcome for the user "
+                    "and suggest next steps."
+                ),
             )
 
             return json.dumps({
@@ -828,6 +878,22 @@ def create_agent(model: str | Model) -> Agent:
                 },
             )
 
+            # Schedule a followup so we wake when the supervisor decides
+            # and proactively report to the user (Plan 51 Phase E).
+            if unique_transitioned:
+                await _schedule_director_followup(
+                    db_session=ctx.deps.db_session,
+                    session_id=ctx.deps.session_id,
+                    mission_id=ctx.deps.mission_id,
+                    trigger_event_types=["mission_plan.supervisor_decision"],
+                    prompt_template=(
+                        "The tasks I approved have been dispatched and the "
+                        "supervisor just decided: {action}. Reason: {reason}. "
+                        "Summarise the outcome for the user and suggest "
+                        "next steps."
+                    ),
+                )
+
             return json.dumps({
                 "plan_id": plan.id,
                 "gate_mode": plan.gate_mode,
@@ -852,10 +918,10 @@ def create_agent(model: str | Model) -> Agent:
     # deferred to Phase 2. Gates currently resolve inline during dispatch —
     # no async queue exists for out-of-band resolution.
 
-    # Plan 52: Director followups are handled by Temporal — the
-    # MissionRunWorkflow starts a ChatTurnWorkflow for the Director
-    # when the supervisor decides ADVANCE_REFINE, PROPOSE_COMPLETE,
-    # or ESCALATE. No schedule_followup tool needed.
+    # Plan 51 Phase E: Director followups are scheduled automatically
+    # by run_objective and approve_plan_tasks via _schedule_director_followup.
+    # The Temporal path also wakes the Director via ChatTurnWorkflow.
+    # Both paths ensure the Director proactively reports to the user.
 
     # ── Intent Tools (Plan 57 Phase C) ─────────────────────
 

@@ -533,6 +533,28 @@ class SupervisorDecisionEmittedEvent(SessionEvent):
 
 
 # =============================================================================
+# Session Followup Events (Plan 51 Phase A)
+# =============================================================================
+
+
+class SessionFollowupFiredEvent(SessionEvent):
+    """A session followup was triggered by an event match (Plan 51 Phase A).
+
+    Emitted by ``SessionFollowupService.fire_matching`` after each
+    followup fires (success or failure). Used for audit logging and
+    frontend notifications.
+    """
+
+    event_type: str = "session.followup.fired"
+    followup_id: str = ""
+    mission_id: str = ""
+    trigger_event_type: str = ""
+    created_by_agent: str = ""
+    success: bool = True
+    failure_reason: str = ""
+
+
+# =============================================================================
 # Knowledge Events (Plan 57)
 # =============================================================================
 

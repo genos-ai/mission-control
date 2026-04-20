@@ -722,3 +722,69 @@ async def admin_daemon_status(
     )
 
 
+@router.post(
+    "/dispatch/emergency-stop",
+    response_model=ApiResponse,
+    summary="Emergency stop — pause all active autonomous plans",
+)
+async def admin_emergency_stop(
+    request_id: RequestId,
+    _role: AdminRole,
+    db: DbSession,
+) -> ApiResponse:
+    """Atomically pause every active autonomous plan.
+
+    Sets ``status = paused`` on all ``mission_plans`` rows where
+    ``status = active`` AND ``gate_mode in {autonomous, off}``.
+    This is a single UPDATE query — no per-plan loop, no race window.
+
+    Use this when something is wrong and you need all autonomous
+    dispatch to stop immediately. The daemon's next tick will see
+    zero active plans and idle. Paused plans can be individually
+    re-activated via the Plan tab or API once the situation is
+    resolved.
+
+    Does NOT cancel in-flight Temporal workflows — those must be
+    cancelled via the Temporal CLI if needed. This endpoint prevents
+    NEW dispatch cycles from starting.
+    """
+    from sqlalchemy import update
+
+    from modules.backend.core.logging import get_logger
+    from modules.backend.models.mission_plan import (
+        MissionPlan,
+        MissionPlanStatus,
+    )
+
+    logger = get_logger(__name__)
+
+    stmt = (
+        update(MissionPlan)
+        .where(
+            MissionPlan.status == MissionPlanStatus.ACTIVE.value,
+            MissionPlan.gate_mode.in_({"autonomous", "off"}),
+        )
+        .values(status=MissionPlanStatus.PAUSED.value)
+    )
+    result = await db.execute(stmt)
+    paused_count = result.rowcount
+    await db.commit()
+
+    logger.warning(
+        "EMERGENCY STOP: paused all autonomous plans",
+        extra={"paused_count": paused_count, "request_id": request_id},
+    )
+
+    return ApiResponse(
+        success=True,
+        data={
+            "paused_count": paused_count,
+            "message": (
+                f"Emergency stop: {paused_count} autonomous plan(s) paused. "
+                f"Daemon will idle on next tick. Re-activate plans "
+                f"individually when safe."
+            ),
+        },
+        metadata={"request_id": request_id},
+    )
+

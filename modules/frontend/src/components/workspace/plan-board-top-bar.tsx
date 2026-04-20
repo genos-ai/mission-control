@@ -7,6 +7,7 @@ import {
   Loader2,
   X,
   Play,
+  Pause,
   Sparkles,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -53,11 +54,23 @@ export function PlanTopBar({
       ? Math.min(100, (plan.total_spent_usd / plan.budget_usd_ceiling) * 100)
       : 0
 
+  const isPlanPaused = plan.status === 'paused'
+
   async function handleGateMode(mode: GateMode) {
     try {
       await updatePlan.mutateAsync({ gate_mode: mode })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update gate mode')
+    }
+  }
+
+  async function handlePlanPauseToggle() {
+    const next = isPlanPaused ? 'active' : 'paused'
+    try {
+      await updatePlan.mutateAsync({ status: next })
+      toast.success(next === 'paused' ? 'Plan paused — dispatch stopped' : 'Plan resumed')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update plan status')
     }
   }
 
@@ -104,6 +117,30 @@ export function PlanTopBar({
         </select>
       </div>
 
+      <Button
+        size="sm"
+        variant={isPlanPaused ? 'default' : 'ghost'}
+        className={cn(
+          'h-6 gap-1 px-2 text-[11px]',
+          isPlanPaused && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        )}
+        onClick={handlePlanPauseToggle}
+        disabled={updatePlan.isPending}
+        title={isPlanPaused ? 'Resume autonomous dispatch' : 'Pause autonomous dispatch'}
+      >
+        {isPlanPaused ? (
+          <>
+            <Play className="h-3 w-3" />
+            Resume
+          </>
+        ) : (
+          <>
+            <Pause className="h-3 w-3" />
+            Pause
+          </>
+        )}
+      </Button>
+
       {plan.budget_usd_ceiling != null && plan.budget_usd_ceiling > 0 && (
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] tabular-nums text-muted-foreground">
@@ -144,11 +181,13 @@ export function PlanTopBar({
           variant="ghost"
           className="h-6 gap-1 px-2 text-[11px]"
           onClick={handleDispatch}
-          disabled={dispatch.isPending || approvedCount === 0}
+          disabled={dispatch.isPending || approvedCount === 0 || isPlanPaused}
           title={
-            approvedCount === 0
-              ? 'Approve tasks before running'
-              : `Run ${approvedCount} approved task${approvedCount === 1 ? '' : 's'}`
+            isPlanPaused
+              ? 'Resume the plan before running'
+              : approvedCount === 0
+                ? 'Approve tasks before running'
+                : `Run ${approvedCount} approved task${approvedCount === 1 ? '' : 's'}`
           }
         >
           {dispatch.isPending ? (
