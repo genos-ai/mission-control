@@ -288,6 +288,8 @@ async def execute_execution(
     execution = await service.get_execution(execution_id)
 
     # Fire-and-forget: run dispatch in background task
+    _bg_mission_id = getattr(execution, "mission_id", None)
+
     async def _run_in_background(exec_id: str) -> None:
         from modules.backend.events.bus import SessionEventBus
         from modules.backend.core.config import get_redis_url
@@ -295,7 +297,7 @@ async def execute_execution(
 
         try:
             redis = AsyncRedis.from_url(get_redis_url())
-            event_bus = SessionEventBus(redis)
+            event_bus = SessionEventBus(redis, mission_id=_bg_mission_id)
 
             async with ExecutionService.factory(event_bus=event_bus) as svc:
                 await svc.run_execution(exec_id)
