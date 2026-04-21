@@ -2,7 +2,7 @@
 
 *How work flows through the Mission Control agentic platform — from mission creation to task execution and back.*
 
-*Updated: 2026-04-18 — Reflects current architecture. Projects and playbooks removed (see ADR-005).*
+*Updated: 2026-04-21 — Reflects current architecture including autonomy loop (Plan 51). Projects and playbooks removed (see ADR-005).*
 
 ---
 
@@ -41,14 +41,14 @@ Mission (id: UUID)                            ← The domain primitive
 │
 ├── handle() — Chat path (user-initiated)     ← In-process, low latency
 │   └── Director agent responds in chat
-│       ├── Can call tools: refine_plan, approve_plan_tasks, run_workflow, capture_intent
+│       ├── Can call tools: refine_plan, approve_plan_tasks, run_workflow, capture_mission_intent
 │       └── Knowledge query tool for "has anyone seen this before?"
 │
 ├── handle_mission() — Execution path         ← Temporal-backed, durable
 │   │
 │   ├── Planning Agent → TaskPlan
 │   │   ├── mission_id: "mission-{UUID}"
-│   │   └── tasks: [{task_id, agent, objective, dependencies, verification}]
+│   │   └── tasks: [{task_id, agent, agent_version, description, instructions, inputs, dependencies, verification}]
 │   │
 │   ├── Context Assembly (per task)
 │   │   ├── Layer 0: MCD (always, never trimmed)
@@ -112,7 +112,7 @@ Mission
 ├── brief: "..."                    ← Detailed objective (seeds initial intent)
 ├── owner_id: "user:alice"
 ├── status: ACTIVE | PAUSED | ARCHIVED
-├── gate_mode: interactive | ai_assisted | autonomous
+├── gate_mode: off | interactive | ai_assisted | autonomous
 ├── tier: user | system
 ├── budget_ceiling_usd: 10.0
 └── default_roster: "default"       ← Which agents to use
@@ -156,6 +156,62 @@ _execute_with_retry(task, agent)
 ```
 
 **Key files:** `modules/backend/agents/mission_control/helpers/`, agent configs in `config/agents/`
+
+---
+
+## Autonomy Loop (Plan 51)
+
+When the plan's gate mode is `autonomous` or `off`, the platform iterates through
+waves without human intervention. The loop is driven by Temporal:
+
+```
+ScheduledMissionCheckWorkflow (every 5s)
+│
+├── find_ready_plans() — plans with status=active, gate_mode in {autonomous, off},
+│                        at least one approved task
+│
+└── For each ready plan → start MissionRunWorkflow
+    │
+    └── Loop (up to 25 iterations):
+        │
+        ├── 1. execute_mission → dispatch_approved(skip_post_run_supervisor=True)
+        │      → handle_mission(precomputed_plan, prior_outputs)
+        │      → dispatch() → execute tasks in parallel waves
+        │
+        ├── 2. persist_mission_outcome → ExecutionRecord
+        │
+        ├── 3. evaluate_post_run → AutonomousPostRunReviewer (rules-first, Haiku fallback)
+        │      → 7 deterministic branches + 1 Haiku branch
+        │      → 4 circuit breakers: budget, max iterations, stall, budget headroom
+        │
+        ├── 4. fire_supervisor_followups → emit events + wake Director
+        │
+        ├── 5. check_plan_active → stop if plan was paused externally
+        │
+        └── 6. Route decision:
+            ├── WAIT              → sleep, loop (approved tasks pending)
+            ├── ADVANCE_APPROVED  → approve proposed tasks, loop
+            ├── ADVANCE_REFINE    → Director refines plan, approve new tasks, loop
+            ├── PROPOSE_COMPLETE  → Director notifies user, break (plan stays active)
+            └── ESCALATE          → Director notifies user, pause plan, break
+```
+
+**Single execution path.** The daemon dispatch loop was removed. Temporal
+`MissionRunWorkflow` is the sole autonomous dispatch mechanism. A manual Run
+button exists for single-wave dispatch without looping (interactive/ai_assisted
+modes) — it calls `dispatch_approved()` directly with the inline supervisor.
+
+**Cross-wave result flow.** Task outputs are persisted as JSON in
+`plan_task_states.result_summary`. When a new wave dispatches, `_load_prior_outputs()`
+reads completed task results and passes them to `dispatch()` via the `prior_outputs`
+parameter, so `from_upstream` references resolve across separate dispatch calls.
+
+**Key files:**
+- `modules/backend/temporal/mission_run_workflow.py` — autonomy loop workflow
+- `modules/backend/temporal/supervisor_activities.py` — evaluate, approve, followup activities
+- `modules/backend/temporal/scheduled_workflow.py` — 5-second poll scheduler
+- `modules/backend/agents/mission_control/gate_post_run.py` — 8-branch decision matrix
+- `modules/backend/services/mission_plan_dispatch.py` — dispatch_approved + inline supervisor
 
 ---
 
@@ -285,14 +341,18 @@ Cross-mission: learnings promoted via `platform_promoted=true` (sysadmin-gated).
 
 ## Cost Control
 
-Budget enforcement at mission and session level:
+Budget enforcement at three levels:
 
 ```
-Mission.budget_ceiling_usd            ← Per-mission budget
-  └── Session.cost_budget_usd         ← Per-session budget
-        └── dispatch() tracks cumulative cost
-              └── Cancels remaining tasks if budget exceeded
+Mission.budget_ceiling_usd            ← Per-mission budget (propagated to plan on creation)
+  └── MissionPlan.budget_usd_ceiling  ← Per-plan budget (checked before each dispatch)
+        └── Session.cost_budget_usd   ← Per-session budget
+              └── dispatch() tracks cumulative cost
+                    └── Supervisor circuit breaker: budget exhaustion + headroom check
 ```
+
+Every LLM call recorded in `llm_calls` table with agent name, model, mission_id,
+token counts, and cost. Cost dashboard provides per-agent breakdown.
 
 ---
 
