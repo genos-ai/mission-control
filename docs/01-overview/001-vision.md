@@ -38,7 +38,7 @@ The human re-enters the loop only when the supervisor escalates or the mission i
 
 **Task** — A single unit of work assigned to one agent. Has instructions, inputs (static or from upstream tasks), verification criteria, and produces an output that downstream tasks can consume.
 
-**Wave** — A set of tasks with no dependencies between them, executed in parallel. The dispatcher sorts the DAG topologically and executes one wave at a time.
+**Wave** — A set of tasks with no dependencies between them, executed in parallel. The dispatcher sorts the DAG topologically and executes one wave at a time. Task outputs persist across waves — downstream tasks receive upstream results via `from_upstream` inputs, even when waves run in separate dispatch cycles.
 
 **Agent** — A specialist AI (PydanticAI) with a system prompt, tools, typed interface, and YAML config. Agents are black boxes — the platform dispatches to them and verifies their output without knowing their internals. Adding an agent is a YAML file and a Python module.
 
@@ -84,7 +84,7 @@ Three layers with clear boundaries:
 └─────────────────────────────────────────────────┘
 ```
 
-**Execution path:** Temporal workflows own all autonomous dispatch. One path — no fallback mechanisms, no dual execution loops. Durable, crash-recoverable, replayable.
+**Execution path:** Temporal workflows own all autonomous dispatch. A `ScheduledMissionCheckWorkflow` polls every 5 seconds for plans with approved tasks in autonomous mode and starts a `MissionRunWorkflow` for each. The workflow executes the wave, evaluates via supervisor, and loops until done or escalated. One path — no fallback mechanisms, no dual execution loops. Durable, crash-recoverable, replayable. A manual Run button exists for single-wave dispatch without looping (interactive/ai_assisted modes).
 
 **Event system:** All events persist by default (blacklist for noise, not whitelist for inclusion). Redis pub/sub for live streaming, PostgreSQL `mission_events` table for history. Console and narrative views read from the same source.
 
@@ -104,7 +104,9 @@ Three layers with clear boundaries:
 
 **No agent self-evaluation.** The agent that produces output never judges its own quality. Verification is always external — a different agent, a deterministic check, or a human.
 
-**The user decides when they're done.** The supervisor proposes completion but never marks the mission complete. The plan stays active with zero approved tasks — idle, not locked. The user archives when ready.
+**The user decides when they're done.** The supervisor proposes completion but never marks the mission complete. The plan stays active with zero approved tasks — idle, not locked. The user archives when ready. Tasks can be added manually at any time — add in the proposed column, approve, and the scheduler picks them up.
+
+**Escalations are visible.** When the supervisor escalates, the plan pauses and the reason is shown — red banner in the Plan tab, reason line in `mc status`. The user sees what went wrong and decides how to proceed.
 
 ---
 
