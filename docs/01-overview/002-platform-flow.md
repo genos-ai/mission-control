@@ -41,7 +41,7 @@ Mission (id: UUID)                            ← The domain primitive
 │
 ├── handle() — Chat path (user-initiated)     ← In-process, low latency
 │   └── Director agent responds in chat
-│       ├── Can call tools: run_objective, run_workflow, capture_intent
+│       ├── Can call tools: refine_plan, approve_plan_tasks, run_workflow, capture_intent
 │       └── Knowledge query tool for "has anyone seen this before?"
 │
 ├── handle_mission() — Execution path         ← Temporal-backed, durable

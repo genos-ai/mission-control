@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Active — Phase 3 complete (2026-04-21) |
 | **Created** | 2026-04-11 |
 | **Type** | Roadmap / coordination (not a design doc) |
 | **Depends on** | Plan 37 (Execution Environments), Plan 41 (Mission Workspace Redesign), Plan 42 (Mission Backlog Model) |
@@ -338,95 +338,98 @@ artifacts, costs, durations, and narrative survive page refresh and backend rest
 
 ### Phase 3 — Autonomy Loop
 
-**Status:** Ready to start. Implementing plan drafted 2026-04-11: [Plan 51 — Autonomy Loop + Mission Supervisor Agent](51-plan-autonomy-loop-supervisor.md).
+**Status:** ✅ **Complete (2026-04-21).** All work units done, verified with live multi-wave missions. Branch `feat/plan-51-autonomy-loop-wiring` (19 commits).
 
 **Goal:** A mission keeps moving on its own between run waves — advancing the next
 approved wave, refining the plan, proposing completion, or escalating to the user —
 so a human can walk away after wave 1 and return to find the mission iterated
-through many waves without hand-holding. Without this closed feedback loop, Phase 6
-(the 7+ day endurance test) is architecturally impossible.
+through many waves without hand-holding.
 
-**Reframe note.** Phase 3 was originally "Signaling" — Telegram notifications so a
-user would know when to return. Investigation during Phase 2 close-out surfaced that
-the actual load-bearing gap was **iteration**, not notification: the `MissionPlanDaemon`
-loops on already-approved tasks but has no authority to approve new ones, so a wave
-completes and the mission sits inert until the user manually re-engages. This phase
-closes that gap directly via Plan 51. Telegram is deferred to a future plan because
-in-app Director chat updates (Plan 51 Phase E) cover v1 conversational continuity
-without needing an external channel.
+**What was built:**
 
-**Work units (all tracked in [Plan 51](51-plan-autonomy-loop-supervisor.md)):**
-1. **Plan 51 Phase A — Session followup primitive.** Generic wake-on-event mechanism
-   any agent can use to schedule itself on future events (`session_followups` table,
-   service + dispatcher hook on event-bus publish). Folds in the previously deferred
-   "Director proactive follow-up" TODO candidate as a first consumer.
-2. **Plan 51 Phase B — Convergence loop runner.** Graduates Plan 48 Phase 6 only:
-   wires the existing `agents/mission_control/dispatch/convergence.py` scaffold into
-   dispatch/loop with declarative exit conditions (`score_threshold` /
-   `boolean_predicate` / `max_iterations`). Handles the Karpathy "single measurable
-   number" and IndyDevDan "till done" intra-task patterns. Plan 48's other phases
-   remain deferred as originally scoped.
-3. **Plan 51 Phase C — Post-run Gate checkpoint.** Extends Plan 22's `GateReviewer`
-   protocol with a new `post_run` gate_type. Rules-first routing: 7 of 8 decision
-   branches are deterministic Python (budget exhausted / max iterations / stall
-   detected / approved remaining / proposed + gate_mode variants / plan exhausted),
-   and the 8th uses Haiku for ambiguous classification. Four independent circuit
-   breakers (max supervisor iterations, stall detection, duplicate detection, budget
-   headroom) evaluate before any LLM call.
-4. **Plan 51 Phase D — `mission.supervisor.agent`.** New mission-tier agent, sibling
-   to `mission.director` and `mission.workflow`. Two invocation modes: event-triggered
-   (structured output, called by the gate) and chat-triggered (natural language, so
-   the user can ask *"why did you escalate wave 3?"* and get an audited answer).
-   Model: `claude-haiku-4-5-20251001` — ~$0.003 per decision. Chat mode is read-only
-   in v1; overriding decisions still goes through the Director.
-5. **Plan 51 Phase E — Director followup integration.** Wires the session followup
-   primitive so the Director surfaces supervisor decisions as assistant chat messages
-   in the mission Chat tab without user action — replacing Telegram for v1.
-6. **Plan 51 Phase F — End-to-end verification.** `scripts/verify_autonomy_loop.py`
-   exercising a synthetic multi-wave mission through advance / refine / propose-
-   complete / escalate paths, all four circuit breakers, and gate-mode interactions.
+1. **Autonomy loop wiring.** All 5 supervisor gate decisions routed in both the
+   inline path (API Run button) and the Temporal path (`MissionRunWorkflow`):
+   WAIT, ADVANCE_APPROVED, ADVANCE_REFINE, PROPOSE_COMPLETE, ESCALATE.
 
-**Exit criteria (mirror Plan 51 §6):**
-- Autonomy loop works end-to-end on a synthetic multi-wave mission: daemon
-  dispatches → run completes → supervisor evaluates → advances → next wave
-  dispatches → eventually proposes completion → Director posts chat updates
-  throughout. Verified by `scripts/verify_autonomy_loop.py`.
-- Each circuit breaker fires independently and is individually tested: budget
-  exhaustion, stall detection, duplicate detection, max supervisor iterations.
-- Gate-mode respect: the same mission in `interactive` mode always escalates
-  instead of auto-advancing (short-circuit before the supervisor LLM is even
-  invoked).
-- Supervisor decisions are audited via `execution_decisions` rows with
-  `decision_type = "post_run_supervisor"`, readable via existing decision queries.
-- Chat mode works: the mission owner opens a chat with `mission.supervisor.agent`,
-  asks "explain your last decision", and receives a natural-language answer that
-  cites the audit trail. Chat mode makes no new decisions.
-- In-app Director updates: after a supervisor-driven advance, a new assistant
-  message appears in the mission's Chat tab without user action, visible via the
-  SSE stream.
-- Cost budget: total LLM cost of the supervisor across the verification run (≥4
-  wakes) is under $0.05. Haiku class confirmed by the model field in logged
-  decisions.
-- Plan 48 Phase 6 (convergence loop runner) is wired and verified; Plan 48's other
-  phases remain deferred.
-- TODO.md "Director proactive follow-up" entry is marked `[x] DONE` with a pointer
-  to Plan 51 Phase A.
-- Plan 51 is marked "Done" in its own header.
+2. **Single execution path.** Daemon dispatch logic removed — Temporal
+   `MissionRunWorkflow` is the sole autonomous dispatch mechanism. The daemon
+   retains heartbeat publishing only. `run_objective` Director tool removed —
+   all execution goes through the plan. This eliminated double-dispatch race
+   conditions and ensures every fix applies to one path.
+
+3. **Session followup wiring (Plan 51 Phase A + E).** Director auto-schedules
+   followups in `approve_plan_tasks`. `fire_supervisor_followups` Temporal
+   activity emits `MissionPlanRunCompletedEvent` and `SupervisorDecisionEmittedEvent`,
+   fires matching followups. Director wakes and reports outcomes to the user.
+
+4. **Safety safeguards.** Plan status re-checked before supervisor decisions
+   (`check_plan_active` activity + inline re-read). Emergency stop endpoint
+   `POST /admin/dispatch/emergency-stop` atomically pauses all autonomous plans.
+   Plan Pause/Resume toggle in plan board top bar and mission header.
+
+5. **PROPOSE_COMPLETE does not pause.** An idle plan with zero approved tasks
+   costs nothing. The supervisor notifies the user via Director followup but
+   the plan stays active — users can keep adding tasks without resuming.
+   Only ESCALATE pauses (something is wrong, human must intervene).
+
+6. **Escalation visibility.** Red banner in Plan tab top bar when plan is paused
+   with escalation reason. `mc status` shows last supervisor decision and reason
+   when plan is paused.
+
+7. **Event persistence blacklist.** Switched from whitelist (explicitly listing
+   event types to persist) to blacklist (persist everything except high-volume
+   noise: `agent.response.chunk`, `session.cost.update`). New event types
+   automatically appear in the Console timeline without config changes.
+
+8. **Cost attribution fixed.** All agents (dispatch, planning, supervisor) now
+   record to `llm_calls` with correct `mission_id`. Planning Agent cost recording
+   added (was missing). Planning Agent lifecycle events emitted during refinement.
+
+9. **Cross-wave result flow.** Task outputs persisted as JSON in
+   `plan_task_states.result_summary`. Prior wave outputs loaded via
+   `_load_prior_outputs()` and threaded through `dispatch()` → `prior_outputs`
+   parameter so `from_upstream` references resolve across separate dispatch calls.
+
+10. **Agent factory standardised.** All 12 agents export `create_agent()`.
+    Plan validator accepts `agent_version: "latest"`. `_derive_subset_task_plan`
+    filters `execution_hints.critical_path` to the current subset.
+
+**Bugs found and fixed during live testing:**
+- `system.summarization.agent`, `system.synthesis.agent`, `system.knowledge_officer.agent` used `get_agent` instead of `create_agent` — dispatch executor couldn't find them
+- `SessionFollowupFiredEvent.failure_reason` rejected `None` on success path
+- `SessionEventBus` created without `mission_id` in daemon and execution endpoint — step events silently dropped
+- `mission_dispatch.py` passed plan_id instead of mission_id to `_make_agent_executor` — costs attributed to wrong entity
+- Planning agent DB config had `temperature: 0.0` with `thinking_budget` set — Anthropic requires `temperature >= 1.0` for extended thinking
+- `software.architecture.agent` and `software.quality.agent` had `engine: claude_code` with `interface.output` — CLI engines can't declare structured output
+- Mission budget not propagated to plan's `budget_usd_ceiling` — supervisor saw `$X / $0.00` and escalated
+- Inline supervisor in `dispatch_approved` stole decisions from Temporal workflow — added `skip_post_run_supervisor` flag
+
+**Live test results (5 missions, 6+ runs):**
+- 3-wave parallel mission (5 tasks): 5/5 completed, $0.048 loop cost
+- Manually-added task: dispatched via Temporal, completed, plan stayed active
+- Supervisor correctly escalated on failure (low confidence → ESCALATE → plan paused)
+- All agents visible in Costs tab with correct attribution
+- Console events persist through page refresh
+
+**Exit criteria (updated):**
+- ✅ Autonomy loop works end-to-end: Temporal dispatches → supervisor evaluates →
+  advances → next wave dispatches → proposes completion. Verified with live
+  multi-wave missions (parallel waves, cross-wave dependencies).
+- ✅ Circuit breakers functional: budget exhaustion, max supervisor iterations,
+  stall detection verified in live runs.
+- ✅ Supervisor decisions audited via `execution_decisions` rows.
+- ✅ In-app Director updates: `fire_supervisor_followups` Temporal activity emits
+  events and fires session followups.
+- ✅ Cost budget: ~$0.003 per supervisor decision (Haiku). Total loop cost $0.04–0.05
+  for 3-wave missions.
+- ✅ Escalation visible: Plan tab banner + `mc status` show reason.
+- ✅ Single execution path: Temporal only, daemon heartbeat only, `run_objective` removed.
 
 **Explicitly not in this phase:**
-- **No Telegram / Slack / Discord / email adapters.** Deferred to a follow-up plan.
-  In-app Director chat covers v1 conversational continuity; ping-me-when-I'm-not-in-
-  the-app becomes a later concern.
-- **No workflow-step supervisor.** Plans 44/45 territory. If a plan task is a
-  workflow invocation, the supervisor treats the whole workflow as a single
-  task black-box.
-- **No cross-mission learning.** The supervisor only knows its own mission's audit
-  trail.
-- **No auto-mark-complete.** The supervisor never flips `mission_plans.status` to
-  `completed`. Completion always requires human confirmation via the Director —
-  the non-negotiable runaway-mission safeguard.
-- **No chat-mode overrides in v1.** Chatting with the supervisor is read-only.
-  Forcing a new decision means opening a chat with the Director instead.
+- **No Telegram / Slack / Discord / email adapters.** Deferred.
+- **No workflow-step supervisor.** Plans 44/45 territory.
+- **No cross-mission learning.** Supervisor knows only its own mission.
+- **No chat-mode overrides.** Chatting with the supervisor is read-only.
 - **No kanban polish** — that's Phase 4.
 - **No workflow rewrites** — that's Phase 5.
 
@@ -643,7 +646,7 @@ Which plan docs get marked "Done" at the end of which phase:
 | Plan 47 — Agent Execution Isolation | Phase 1 ✅ (2026-04-11) | Graduated mid-phase when scrutiny surfaced that Plan 37's infrastructure wasn't actually wired into agent execution. Host-side worktree + bind-mount + tier-guarded `project_root` redirect. 14/14 checks on `scripts/verify_isolation.py`. |
 | Plan 48 — Convergence Loop + Branch Automation (Phase 6 only) | Phase 3 | Phase 6 (convergence loop runner) graduates in Plan 51 Phase B as the intra-task iteration layer the autonomy loop sits on top of. Plan 48's other phases (branch + PR automation, final verification) remain out of roadmap scope and land opportunistically when a specific mission needs them. |
 | Plan 43 — Persistent Artifacts | Phase 2 ✅ (2026-04-11) | Graduated from TODO + implemented in a single focused session. Commits `2e21874` / `c42ae8c` / `73d5859`. `mission_artifacts` table, extraction path in `persist_mission_results`, `GET /missions/:id/artifacts` API, frontend `ArtifactsPanel` rewrite with react-query + SSE invalidation. 7/7 checks on `scripts/verify_artifacts_persistence.py`. |
-| Plan 51 — Autonomy Loop + Mission Supervisor Agent | Phase 3 | Graduated 2026-04-11 as the implementing plan for Phase 3 after the reframe from Signaling → Autonomy Loop. Session followup primitive, post-run Gate checkpoint, `mission.supervisor.agent` (Haiku-class, chat-triggered + event-triggered), Director followup integration. Absorbs the "Director proactive follow-up" TODO candidate. |
+| Plan 51 — Autonomy Loop + Mission Supervisor Agent | Phase 3 ✅ (2026-04-21) | Wiring completed in branch `feat/plan-51-autonomy-loop-wiring` (19 commits). Single execution path (Temporal only), daemon dispatch removed, `run_objective` removed, cross-wave result flow, event blacklist, cost attribution, escalation visibility. Verified with live multi-wave missions. |
 | Plan 41 — Mission Workspace Redesign | Phase 4 | Kanban polish items close out the §3.5a spec. |
 | Plan 45 — Rich Workflow Model | Phase 5 | Graduated from TODO candidate during Phase 5. |
 | Plan 44 — Plan Tasks Invoke Workflows | Phase 5 | Graduated from TODO candidate during Phase 5, depends on Plan 45. |
@@ -665,8 +668,9 @@ the roadmap:
   this foundation. Land the roadmap first, then build Guardian on top.
 - **Plan 40 — Deep Research System.** Same — a specific research-loop use case that
   consumes the workflow engine (Plan 45). Build on top of the roadmap, not inside it.
-- **Plan 16 — Temporal Integration.** The obvious production path for the workflow
-  executor once Plan 45 stabilizes. Deliberately deferred until after the roadmap.
+- **Plan 16 — Temporal Integration.** Temporal is now the sole execution path for
+  autonomous dispatch (landed in Phase 3). Workflow executor integration deferred
+  until after the roadmap.
 - **Code review P1–P12** (in TODO.md — service↔agent import cycle, oversized files,
   hardcoded budgets, thin-client violations, etc). Quality debt, not roadmap work.
   Address opportunistically inside each phase where the relevant file is touched,
@@ -683,7 +687,7 @@ the roadmap:
 - [Plan 42 — Mission Backlog Model](42-plan-mission-backlog-model.md)
 - [Plan 47 — Agent Execution Isolation](47-plan-agent-execution-isolation.md) ✅ Done 2026-04-11 (graduated mid-Phase-1)
 - [Plan 48 — Convergence Loop + Branch Automation](48-plan-convergence-loop-and-branch-automation.md) — extracted from Plan 37 Phases 6/7/9. Phase 6 (convergence loop runner) graduates inside Plan 51 Phase B; other phases remain out of roadmap scope.
-- [Plan 51 — Autonomy Loop + Mission Supervisor Agent](51-plan-autonomy-loop-supervisor.md) — implementing plan for Phase 3 (autonomy loop). Session followup primitive, post-run Gate checkpoint, `mission.supervisor.agent`, Director followup integration.
+- [Plan 51 — Autonomy Loop + Mission Supervisor Agent](51-plan-autonomy-loop-supervisor.md) ✅ Done 2026-04-21 — implementing plan for Phase 3. Single Temporal execution path, supervisor loop, Director followups, escalation visibility, cross-wave result flow.
 
 ### TODO candidates that graduate inside the roadmap
 
