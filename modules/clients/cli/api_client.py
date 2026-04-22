@@ -280,8 +280,8 @@ class CliApiClient:
                 )
                 self._save_token()
                 return True
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as exc:
+            logger.debug("Token refresh failed: %s", exc)
         return False
 
     def _auth_headers(self) -> dict[str, str]:
@@ -298,8 +298,8 @@ class CliApiClient:
             data = json.loads(_AUTH_FILE.read_text())
             self._access_token = data.get("access_token")
             self._refresh_token_str = data.get("refresh_token")
-        except (json.JSONDecodeError, KeyError, OSError):
-            pass
+        except (json.JSONDecodeError, KeyError, OSError) as exc:
+            logger.warning("Corrupt auth file %s: %s — will re-authenticate", _AUTH_FILE, exc)
 
     def _save_token(self, email: str | None = None) -> None:
         """Persist JWT tokens to disk."""
