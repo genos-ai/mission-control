@@ -83,6 +83,22 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 extra={"mission_run_id": input.mission_run_id, "error": str(e), "mission_id": input.mission_id},
                 exc_info=True,
             )
+            # Emit error event so it surfaces in the Console
+            try:
+                import uuid
+                from modules.backend.events.types import SystemEvent
+                await event_bus.publish_to_mission(
+                    input.mission_id,
+                    SystemEvent(
+                        session_id=uuid.uuid4(),
+                        source="mission_execution",
+                        level="error",
+                        message=f"Mission execution failed: {str(e)[:250]}",
+                        mission_id=input.mission_id,
+                    ),
+                )
+            except Exception:
+                pass  # best-effort
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
                 status="failed",
@@ -126,6 +142,32 @@ async def persist_mission_outcome(
             "Failed to persist mission results",
             extra={"mission_run_id": mission_run_id, "error": str(e), "mission_id": mission_id},
         )
+        # Emit error event so it surfaces in the Console
+        if mission_id:
+            try:
+                import uuid
+                from modules.backend.core.config import get_redis_url
+                from modules.backend.events.bus import SessionEventBus
+                from modules.backend.events.types import SystemEvent
+                from redis.asyncio import Redis as AsyncRedis
+
+                redis = AsyncRedis.from_url(get_redis_url())
+                try:
+                    bus = SessionEventBus(redis, mission_id=mission_id)
+                    await bus.publish_to_mission(
+                        mission_id,
+                        SystemEvent(
+                            session_id=uuid.uuid4(),
+                            source="mission_persistence",
+                            level="error",
+                            message=f"Failed to persist mission results: {str(e)[:200]}",
+                            mission_id=mission_id,
+                        ),
+                    )
+                finally:
+                    await redis.aclose()
+            except Exception:
+                pass  # best-effort
         return False
 
 

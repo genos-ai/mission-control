@@ -250,8 +250,12 @@ function Timeline() {
 // ---------------------------------------------------------------------------
 
 function EventRow({ event }: { event: ConsoleEvent }) {
+  const d = event.data as Record<string, unknown>
   const isError =
-    event.data.error === true ||
+    d.error === true ||
+    d.level === 'error' ||
+    d.phase === 'error' ||
+    d.status === 'failed' ||
     event.event_type.includes('failed') ||
     event.event_type.includes('error')
 
@@ -493,8 +497,12 @@ function NarrativeRow({ event }: { event: ConsoleEvent }) {
   const level = String(d.level ?? 'info')
   const ts = formatTime(event.timestamp)
 
-  const accent =
-    level === 'success'
+  const phase = String(d.phase ?? '')
+  const isNarrativeError = level === 'warning' && phase === 'error'
+
+  const accent = isNarrativeError
+    ? 'border-l-red-500/60 bg-red-500/10'
+    : level === 'success'
       ? 'border-l-emerald-500/60 bg-emerald-500/5'
       : level === 'warning'
         ? 'border-l-amber-500/60 bg-amber-500/5'
@@ -537,6 +545,8 @@ function ArtifactRow({ event }: { event: ConsoleEvent }) {
 function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
   const ts = formatTime(event.timestamp)
   const detail = eventDetail(event.event_type, event.data)
+  const d = event.data as Record<string, unknown>
+  const errorMessage = isError ? String(d.message ?? d.error_detail ?? d.reason ?? detail ?? '') : ''
   const categoryColor = event.category === 'execution'
     ? 'text-blue-400'
     : event.category === 'system'
@@ -545,9 +555,7 @@ function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
 
   return (
     <div className={`flex items-start gap-2 rounded px-2 py-0.5 font-mono text-xs ${
-      isError
-        ? 'bg-destructive/10 text-destructive'
-        : 'text-muted-foreground hover:bg-muted/20'
+      isError ? 'text-red-400' : 'text-muted-foreground hover:bg-muted/20'
     }`}>
       <span className="shrink-0 text-[10px] tabular-nums opacity-60 mt-0.5">
         {ts}
@@ -557,13 +565,16 @@ function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
           <Zap className="h-3 w-3 text-gray-400" />
         )}
       </span>
-      <span className={`shrink-0 font-medium ${isError ? '' : categoryColor}`}>
+      <span className={`shrink-0 font-medium ${isError ? 'text-red-400' : categoryColor}`}>
         {eventLabel(event.event_type)}
       </span>
       {event.source && (
-        <span className="shrink-0 text-foreground/60">{event.source}</span>
+        <span className={`shrink-0 ${isError ? 'text-red-400/70' : 'text-foreground/60'}`}>{event.source}</span>
       )}
-      {detail && (
+      {isError && errorMessage && (
+        <span className="min-w-0 break-words text-red-400">{errorMessage}</span>
+      )}
+      {!isError && detail && (
         <span className="min-w-0 break-words opacity-70">{detail}</span>
       )}
     </div>
@@ -582,6 +593,16 @@ function StatusFooter() {
     categoryTab === 'all'
       ? selectFilteredEvents(s, null).length
       : selectFilteredEvents(s, categoryTab).length,
+  )
+  const errorCount = useConsoleStore((s) =>
+    s.events.filter((e) =>
+      e.data.error === true ||
+      e.data.level === 'error' ||
+      e.data.phase === 'error' ||
+      e.data.status === 'failed' ||
+      e.event_type.includes('failed') ||
+      e.event_type.includes('error')
+    ).length,
   )
 
   return (
@@ -604,6 +625,12 @@ function StatusFooter() {
           ? `${eventCount} events`
           : `${filteredCount} / ${eventCount} events`}
       </span>
+      {errorCount > 0 && (
+        <span className="flex items-center gap-1 rounded-full bg-red-500/20 px-2 py-0.5 text-red-400 font-medium">
+          <AlertCircle className="h-3 w-3" />
+          {errorCount} {errorCount === 1 ? 'error' : 'errors'}
+        </span>
+      )}
     </div>
   )
 }

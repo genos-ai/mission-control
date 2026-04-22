@@ -38,6 +38,9 @@ const MAX_EVENTS = 1000
 function isErrorEvent(event: ConsoleEvent): boolean {
   return (
     event.data.error === true ||
+    event.data.level === 'error' ||
+    event.data.phase === 'error' ||
+    event.data.status === 'failed' ||
     event.event_type.includes('failed') ||
     event.event_type.includes('error')
   )
