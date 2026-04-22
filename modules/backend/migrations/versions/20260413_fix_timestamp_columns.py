@@ -5,14 +5,14 @@ strings. Convert to proper TIMESTAMP columns so datetime arithmetic
 works without parsing.
 
 Revision ID: fix_timestamps
-Revises: plan18_milestones
+Revises: plan51_004
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "fix_timestamps"
-down_revision = "plan18_milestones"
+down_revision = "plan51_004"
 branch_labels = None
 depends_on = None
 
