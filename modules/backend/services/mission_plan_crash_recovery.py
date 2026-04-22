@@ -67,7 +67,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-from modules.backend.events.types import MissionPlanTaskStatusChangedEvent
+from modules.backend.events.types import MissionPlanTaskStatusChangedEvent, SystemEvent
 from modules.backend.models.mission_plan import PlanTaskStatus
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 
@@ -182,6 +182,27 @@ async def reconcile_orphaned_task_states(
                         "error": str(exc),
                     },
                 )
+
+        # Emit a summary SystemEvent per affected mission so the console shows
+        # what crash recovery did — even if individual task events failed above.
+        affected_missions = {mid for mid, *_ in emit_buffer}
+        for mid in affected_missions:
+            try:
+                await event_bus.publish_to_mission(
+                    mid,
+                    SystemEvent(
+                        session_id=uuid.uuid4(),
+                        source="crash_recovery",
+                        level="warning",
+                        message=(
+                            f"Crash recovery: {running_to_failed} task(s) marked failed, "
+                            f"{queued_to_approved} task(s) re-approved after backend restart"
+                        ),
+                        mission_id=mid,
+                    ),
+                )
+            except Exception:
+                pass  # best-effort
 
     return {
         "running_to_failed": running_to_failed,

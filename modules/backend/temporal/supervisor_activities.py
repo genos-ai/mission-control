@@ -21,6 +21,34 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+async def _emit_supervisor_error(mission_id: str, message: str) -> None:
+    """Emit a SystemEvent from a supervisor activity so errors surface in the console."""
+    try:
+        import uuid
+        from redis.asyncio import Redis as AsyncRedis
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.events.bus import SessionEventBus
+        from modules.backend.events.types import SystemEvent
+
+        redis = AsyncRedis.from_url(get_redis_url())
+        try:
+            bus = SessionEventBus(redis, mission_id=mission_id)
+            await bus.publish_to_mission(
+                mission_id,
+                SystemEvent(
+                    session_id=uuid.uuid4(),
+                    source="mission.supervisor",
+                    level="error",
+                    message=message[:300],
+                    mission_id=mission_id,
+                ),
+            )
+        finally:
+            await redis.aclose()
+    except Exception:
+        logger.debug("Failed to emit supervisor error event (non-fatal)", exc_info=True)
+
+
 @dataclass
 class PostRunEvalInput:
     """Input for the evaluate_post_run activity."""
@@ -86,6 +114,9 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             "evaluate_post_run failed",
             extra={"plan_id": input.plan_id, "error": str(e), "mission_id": input.mission_id},
             exc_info=True,
+        )
+        await _emit_supervisor_error(
+            input.mission_id, f"Post-run evaluation failed: {e}",
         )
         raise
 
@@ -187,6 +218,9 @@ async def approve_proposed_tasks(mission_id: str) -> int:
                     "Failed to approve task: %s",
                     exc,
                     extra={"task_id": ts.task_id, "mission_id": mission_id},
+                )
+                await _emit_supervisor_error(
+                    mission_id, f"Failed to approve task '{ts.task_id}': {exc}",
                 )
 
         await db.commit()

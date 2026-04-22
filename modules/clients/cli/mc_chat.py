@@ -1,19 +1,20 @@
 """
-mc chat / mc design — conversational REPL handlers for the user CLI.
+mc chat / mc design — API-based conversational REPL handlers.
 
-Chat streams agent responses in real-time using the handle() AsyncIterator.
-Design wraps WorkflowArchitectService for multi-turn workflow creation.
+Chat streams agent responses via SSE. Design wraps the workflow
+architect endpoint. Zero backend service imports.
 """
 
 import json
 
 import click
 
+from modules.clients.cli.api_client import CliApiClient
 from modules.clients.common.display import get_console
-from modules.clients.common.event_rendering import format_event_line
 
 
 async def chat_repl(
+    api: CliApiClient,
     agent_name: str | None = None,
     initial_message: str | None = None,
     mission_id: str = "",
@@ -22,72 +23,47 @@ async def chat_repl(
 ) -> None:
     """Interactive chat with the coordinator or a specific agent.
 
-    Uses the simple-agent path in handle() with conversation history.
-    The agent is pinned on the session so _resolve_agent picks it up
-    on every turn — no keyword routing ambiguity.
-
-    By default, reuses the most recent active session for the agent
-    on this mission — so the web frontend and CLI share the same
-    conversation thread. Pass new_thread=True (--new flag) to force
-    a fresh session.
+    Reuses the most recent active session by default (shared with the
+    web frontend). Pass new_thread=True (--new flag) to start fresh.
     """
-    from modules.backend.agents.mission_control.helpers import get_chat_agent
-    from modules.backend.agents.mission_control.mission_control import handle
-    from modules.backend.core.database import get_async_session
-    from modules.backend.schemas.session import SessionCreate
-    from modules.backend.services.mission import MissionService
-    from modules.backend.services.session import SessionService
-
     console = get_console()
 
-    # Suppress console log noise during chat (warnings from dispatch loop etc.)
-    # Verbose mode keeps full logging; normal mode silences everything below CRITICAL.
-    if not verbose:
-        import logging
-        logging.getLogger().setLevel(logging.CRITICAL)
+    # Resolve or create session
+    session_id = None
 
-    # Resolve which agent to chat with
-    target_agent = agent_name or get_chat_agent()
+    if not new_thread:
+        params: dict = {"mission_id": mission_id, "limit": 1}
+        if agent_name:
+            params["agent_id"] = agent_name
+        sessions = await api.get("/sessions", params=params)
+        session_list = sessions if isinstance(sessions, list) else sessions.get("items", [])
+        if session_list:
+            session_id = session_list[0].get("id")
 
-    # Reuse the most recent session for this agent + mission, or create new
-    async with get_async_session() as db:
-        session_svc = SessionService(db)
-        session_id = None
+    if not session_id:
+        agent_label = agent_name or "mission.director.agent"
+        goal = f"{agent_label.split('.')[-2]} Chat" if "." in agent_label else f"{agent_label} Chat"
+        session = await api.post("/sessions", body={
+            "goal": goal,
+            "agent_id": agent_name,
+            "mission_id": mission_id,
+        })
+        session_id = session.get("id")
 
-        if not new_thread:
-            existing, _ = await session_svc.list_sessions(
-                mission_id=mission_id,
-                agent_id=target_agent,
-                limit=1,
-            )
-            if existing:
-                session_id = str(existing[0].id)
+    # Display header
+    mission = await api.get(f"/missions/{mission_id}")
+    agent_label = (agent_name or "director").split(".")[-2] if agent_name and "." in agent_name else (agent_name or "director")
 
-        if not session_id:
-            session = await session_svc.create_session(
-                SessionCreate(
-                    goal=f"{target_agent.split('.')[-2]} Chat",
-                    agent_id=target_agent,
-                    mission_id=mission_id,
-                ),
-            )
-            session_id = str(session.id)
-            await db.commit()
-
-    # Load mission name for display
-    async with MissionService.factory() as svc:
-        mission = await svc.get_mission(mission_id)
-
-    agent_label = target_agent.split(".")[-2] if "." in target_agent else target_agent
     if verbose:
-        click.echo(f"Mission Control — {mission.name} [{target_agent}]")
+        click.echo(f"Mission Control \u2014 {mission.get('name', '')} [{agent_name or 'director'}]")
     else:
         console.print(
-            f"[bold cyan]Mission Control[/bold cyan] — {mission.name} "
+            f"[bold cyan]Mission Control[/bold cyan] \u2014 {mission.get('name', '')} "
             f"[dim]({agent_label})[/dim]"
         )
     click.echo("Type /exit to quit. Ctrl+C to cancel current response.\n")
 
+    # REPL loop
     while True:
         if initial_message:
             user_input = initial_message
@@ -103,32 +79,30 @@ async def chat_repl(
 
         if not verbose:
             console.print()
-        try:
-            from redis.asyncio import Redis as AsyncRedis
-            from modules.backend.core.config import get_redis_url
-            from modules.backend.events.bus import SessionEventBus
 
-            redis = AsyncRedis.from_url(get_redis_url())
-            event_bus = SessionEventBus(redis, mission_id=mission_id)
-            try:
-                async with get_async_session() as db:
-                    session_svc = SessionService(db)
-                    async for event in handle(
-                        session_id=session_id,
-                        message=user_input,
-                        session_service=session_svc,
-                        event_bus=event_bus,
-                        channel="mc",
-                        mission_id=mission_id,
-                        db_session=db,
-                    ):
-                        if verbose:
-                            _render_chat_event_verbose(event)
-                        else:
-                            _render_chat_event(console, event)
-                    await db.commit()
-            finally:
-                await redis.aclose()
+        try:
+            body: dict = {
+                "message": user_input,
+                "mission_id": mission_id,
+                "session_id": session_id,
+            }
+            if agent_name:
+                body["agent"] = agent_name
+
+            saw_chunks = False
+            async for sse in api.stream_sse("POST", "/agents/chat/stream", body=body):
+                event_type = sse.get("event", "")
+                data = sse.get("data", {})
+                evt = data.get("event_type", event_type)
+
+                if evt == "agent.response.chunk":
+                    saw_chunks = True
+
+                if verbose:
+                    _render_sse_verbose(event_type, data)
+                else:
+                    _render_sse_event(console, event_type, data, suppress_body=saw_chunks)
+
         except KeyboardInterrupt:
             click.echo("\nCancelled.")
 
@@ -137,15 +111,13 @@ async def chat_repl(
 
 
 async def design_repl(
+    api: CliApiClient,
     description: str | None,
     mission_id: str,
     verbose: bool = False,
 ) -> None:
     """Interactive workflow design with the Architect."""
-    from modules.backend.services.workflow_architect import WorkflowArchitectService
-
     console = get_console()
-    message_history: list = []
 
     if verbose:
         click.echo("Workflow Architect")
@@ -160,13 +132,16 @@ async def design_repl(
         except (click.Abort, EOFError):
             return
 
+    message_history: list[dict] = []
+
     while True:
-        async with WorkflowArchitectService.factory() as svc:
-            result = await svc.chat(
-                mission_id=mission_id,
-                message=user_input,
-                message_history=message_history,
-            )
+        result = await api.post(
+            f"/missions/{mission_id}/architect/chat",
+            body={
+                "message": user_input,
+                "message_history": message_history,
+            },
+        )
 
         response = result.get("response", "")
         new_history = result.get("all_messages", [])
@@ -180,8 +155,7 @@ async def design_repl(
                 print(json.dumps({"type": "workflow_generated", "yaml": workflow_yaml}, default=str), flush=True)
         else:
             console.print(f"\n[bold cyan]architect:[/bold cyan] {response}\n")
-            workflow_yaml = result.get("workflow_yaml")
-            if workflow_yaml:
+            if result.get("workflow_yaml"):
                 console.print("[green]Workflow generated. Save with /save <name>[/green]")
 
         try:
@@ -193,43 +167,76 @@ async def design_repl(
             break
 
 
-def _render_chat_event(console, event):
-    """Render a SessionEvent inline in the chat stream.
+# =============================================================================
+# SSE event rendering
+# =============================================================================
 
-    Reuses format_event_line() from event_rendering.py for all
-    non-streaming events. Only AgentResponseChunkEvent needs special
-    handling (raw text output without line formatting).
+
+def _render_sse_event(
+    console, event_type: str, data: dict, suppress_body: bool = False,
+) -> None:
+    """Render an SSE event inline in the chat stream.
+
+    The API sends dot-notation event types:
+      agent.response.chunk     — streaming text fragment
+      agent.response.complete  — full response with cost
+      agent.thinking.started   — agent is thinking
+      agent.tool.called        — tool invocation
+      agent.tool.returned      — tool result
+      session.cost.updated     — cumulative cost
+      user.message.sent        — echo of user input
+      done                     — stream end
+
+    When chunks have already streamed the text, suppress_body=True
+    prevents the complete event from printing full_content again.
     """
-    from modules.backend.events.types import (
-        AgentResponseChunkEvent,
-        AgentResponseCompleteEvent,
-    )
+    evt = data.get("event_type", event_type)
 
-    if isinstance(event, AgentResponseChunkEvent):
-        console.file.write(event.content)
+    if evt == "agent.response.chunk":
+        content = data.get("content", "")
+        console.file.write(content)
         console.file.flush()
 
-    elif isinstance(event, AgentResponseCompleteEvent):
-        console.print()
-        if event.metadata and event.metadata.get("error"):
-            console.print(f"  [bold red]Error:[/bold red] {event.full_content}")
-        elif event.cost_usd > 0:
+    elif evt == "agent.response.complete":
+        # Only print body if chunks didn't already stream it
+        if not suppress_body:
+            full = data.get("full_content", "")
+            if full:
+                console.print(full)
+        cost = data.get("cost_usd", 0)
+        if data.get("metadata", {}).get("error"):
+            console.print(f"  [bold red]Error:[/bold red] {full}")
+        elif cost > 0:
+            tokens = data.get("input_tokens", 0) + data.get("output_tokens", 0)
             console.print(
-                f"[dim]  ${event.cost_usd:.4f} | "
-                f"{event.input_tokens + event.output_tokens:,} tokens[/dim]"
+                f"[dim]  ${cost:.4f} | {tokens:,} tokens[/dim]"
             )
 
+    elif evt == "agent.thinking.started":
+        agent = data.get("agent_id", "agent")
+        console.print(f"  [dim]\U0001f9e0 {agent} thinking...[/dim]")
+
+    elif evt == "agent.tool.called":
+        agent = data.get("agent_id", "agent")
+        tool = data.get("tool_name", data.get("content", ""))
+        console.print(f"  [dim]\U0001f527 {agent}: {tool}[/dim]")
+
+    elif evt in ("agent.tool.returned", "user.message.sent",
+                 "session.cost.updated", "done"):
+        pass  # suppress noise
+
     else:
-        console.print(f"  {format_event_line(event)}")
+        msg = data.get("message", data.get("content", ""))
+        if msg:
+            console.print(f"  [dim]{evt}: {str(msg)[:80]}[/dim]")
 
 
-def _render_chat_event_verbose(event):
-    """Print event as JSONL — no Rich formatting."""
-    from modules.backend.events.types import AgentResponseChunkEvent
+def _render_sse_verbose(event_type: str, data: dict) -> None:
+    """Print SSE event as JSONL — no Rich formatting."""
+    evt = data.get("event_type", event_type)
 
-    # Skip noisy streaming chunks in verbose mode; aggregate in complete event
-    if isinstance(event, AgentResponseChunkEvent):
+    # Skip streaming chunks in verbose mode (aggregated in complete event)
+    if evt == "agent.response.chunk":
         return
 
-    data = event.model_dump(mode="json")
     print(json.dumps(data, default=str), flush=True)

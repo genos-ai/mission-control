@@ -303,6 +303,11 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             has_current_plan=plan.task_plan_json is not None,
         )
 
+        # The new plan version is current + 1 (version gets bumped after
+        # refinement succeeds). Pass it so the Planning Agent generates
+        # task IDs with the correct version prefix: v{N}-task-001, etc.
+        next_version = plan.version + 1
+
         planning_result = await _call_planning_agent(
             prompt=brief,
             roster=roster,
@@ -311,6 +316,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             mission_id=plan.mission_id,
             current_plan=plan.task_plan_json,
             refinement_instructions=instructions,
+            plan_version=next_version,
         )
 
         try:
@@ -791,7 +797,16 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         if registry.has(agent):
             agent_version = registry.get(agent).version or "1.0.0"
 
-        task_id = f"task_{uuid.uuid4().hex[:12]}"
+        # Versioned task ID: v{version}-task-{NNN}
+        existing: dict = plan.task_plan_json or {}
+        version = plan.version
+        version_prefix = f"v{version}-task-"
+        existing_tasks = existing.get("tasks", [])
+        existing_count = sum(
+            1 for t in existing_tasks
+            if t.get("task_id", "").startswith(version_prefix)
+        )
+        task_id = f"v{version}-task-{existing_count + 1:03d}"
         task_body = {
             "task_id": task_id,
             "agent": agent,
@@ -801,7 +816,6 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             "dependencies": dependencies or [],
         }
 
-        existing: dict = plan.task_plan_json or {}
         tasks = list(existing.get("tasks", []))
         tasks.append(task_body)
         plan.task_plan_json = {**existing, "tasks": tasks}

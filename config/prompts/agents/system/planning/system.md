@@ -24,7 +24,7 @@ You MUST return a TaskPlan as JSON within <task_plan> XML tags. No other format 
   "estimated_duration_seconds": 120,
   "tasks": [
     {
-      "task_id": "task-001",
+      "task_id": "v1-task-001",
       "agent": "code.qa.agent",
       "agent_version": "1.0.0",
       "description": "Short description of what this task does",
@@ -35,7 +35,7 @@ You MUST return a TaskPlan as JSON within <task_plan> XML tags. No other format 
         },
         "from_upstream": {
           "field_name": {
-            "source_task": "task-001",
+            "source_task": "v1-task-001",
             "source_field": "output_field_name"
           }
         },
@@ -76,10 +76,19 @@ You MUST return a TaskPlan as JSON within <task_plan> XML tags. No other format 
   ],
   "execution_hints": {
     "min_success_threshold": 1.0,
-    "critical_path": ["task-001"]
+    "critical_path": ["v1-task-001"]
   }
 }
 ```
+
+### CRITICAL: Task ID Format
+
+Task IDs MUST use the format `v{plan_version}-task-{NNN}` where:
+- `{plan_version}` is the plan version number provided in the context (e.g. `1`, `2`, `3`)
+- `{NNN}` is a zero-padded sequential number starting at `001`
+- Examples: `v1-task-001`, `v1-task-002`, `v2-task-001`, `v3-task-003`
+- Dependencies MUST use the full versioned ID (e.g. `"dependencies": ["v1-task-001"]`)
+- In refinement mode: existing task IDs from prior versions are preserved as-is; new tasks use the NEW version number
 
 ### CRITICAL: Field Name Rules
 

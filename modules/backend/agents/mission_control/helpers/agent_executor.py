@@ -315,6 +315,7 @@ async def _call_planning_agent(
     current_plan: dict | None = None,
     refinement_instructions: str | None = None,
     mission_id: str | None = None,
+    plan_version: int = 1,
 ) -> dict:
     """Call the Planning Agent and return the raw result.
 
@@ -355,6 +356,7 @@ async def _call_planning_agent(
         code_map=code_map,
         current_plan=current_plan,
         refinement_instructions=refinement_instructions,
+        plan_version=plan_version,
     )
 
     deps = PlanningAgentDeps(

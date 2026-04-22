@@ -104,6 +104,7 @@ async def list_executions(
             "started_at": _parse_ts(live.started_at),
             "completed_at": _parse_ts(live.completed_at),
             "parent_execution_record_id": None,
+            "objective_statement": getattr(live, "objective", None),
             "created_at": _parse_ts(live.created_at) or now,
             "updated_at": _parse_ts(live.updated_at) or _parse_ts(live.created_at) or now,
         }))

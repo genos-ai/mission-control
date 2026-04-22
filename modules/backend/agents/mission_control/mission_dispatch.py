@@ -17,6 +17,7 @@ from modules.backend.agents.mission_control.helpers import (
     _build_roster_prompt,
     _append_validation_feedback,
     _call_planning_agent,
+    _emit,
     _make_agent_executor,
     _publish,
 )
@@ -31,6 +32,7 @@ from modules.backend.events.types import (
     AgentResponseCompleteEvent,
     AgentThinkingEvent,
     PlanningPhaseEvent,
+    SystemEvent,
 )
 from modules.backend.schemas.task_plan import TaskPlan
 from modules.backend.services.context_assembler import ContextAssembler
@@ -121,11 +123,19 @@ async def handle_mission(
         await _phase("context", "Loading mission context")
         try:
             project_context = await context_curator.get_mission_context(mission_id)
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, ValueError, RuntimeError) as exc:
             logger.warning(
                 "Failed to load PCD for planning (non-fatal)",
                 extra={"mission_id": mission_id},
                 exc_info=True,
+            )
+            await _emit(
+                event_bus, SystemEvent,
+                session_id=session_id or mission_run_id,
+                source="mission_dispatch",
+                level="warning",
+                message=f"Context loading failed (non-fatal): {exc}",
+                mission_id=mission_id or "",
             )
 
         # Load recent failures so the planner can avoid repeating them
@@ -133,11 +143,19 @@ async def handle_mission(
             recent_failures = await history_service.get_recent_failures(
                 mission_id, limit=5,
             )
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, ValueError, RuntimeError) as exc:
             logger.warning(
                 "Failed to load failure history for planning (non-fatal)",
                 extra={"mission_id": mission_id},
                 exc_info=True,
+            )
+            await _emit(
+                event_bus, SystemEvent,
+                session_id=session_id or mission_run_id,
+                source="mission_dispatch",
+                level="warning",
+                message=f"Failure history loading failed (non-fatal): {exc}",
+                mission_id=mission_id or "",
             )
         await _phase("context", "Context assembled")
 
@@ -284,11 +302,19 @@ async def handle_mission(
                     "reused": env_handle.metadata.get("execution_count", 0) > 1,
                 },
             )
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 "Failed to provision execution environment, falling back to local",
                 extra={"mission_id": mission_id},
                 exc_info=True,
+            )
+            await _emit(
+                event_bus, SystemEvent,
+                session_id=session_id or mission_run_id,
+                source="mission_dispatch",
+                level="warning",
+                message=f"Environment provisioning failed, falling back to local: {exc}",
+                mission_id=mission_id or "",
             )
             env_handle = None
 

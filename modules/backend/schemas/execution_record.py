@@ -87,6 +87,7 @@ class ExecutionRecordResponse(BaseModel):
     task_params: dict | None = None
     temporal_workflow_id: str | None = None
     mission_id: str | None = None
+    objective_statement: str | None = None
     created_at: datetime
     updated_at: datetime
 

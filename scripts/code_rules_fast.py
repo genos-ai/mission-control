@@ -544,6 +544,86 @@ def check_temporal_determinism(path: Path, rel: str) -> list[Violation]:
     return violations
 
 
+def check_silent_error_swallow(path: Path, rel: str) -> list[Violation]:
+    """014.1 — except blocks with logger.error/warning must emit a mission event.
+
+    When mission_id is in scope and an except block logs an error/warning
+    but does not emit a mission event (publish, _emit, _emit_activity_error,
+    _emit_supervisor_error, _emit_task_failure), the error is invisible to
+    the user in the Console view. This rule flags those silent swallows.
+
+    Exempt: best-effort blocks (# best-effort comment), test files,
+    infrastructure without mission context.
+    """
+    if not rel.startswith("modules/backend/"):
+        return []
+    if any(s in rel for s in ("test_", "conftest", "core/logging.py",
+                               "seeder", "catalog_seeder", "registry.py",
+                               "code_map", "config_schema", "bootstrap",
+                               "run_notifier", "synthesis.py",
+                               "knowledge.py")):
+        return []
+
+    source = path.read_text()
+    if "mission_id" not in source:
+        return []
+
+    lines = source.splitlines()
+    violations = []
+
+    # Patterns that indicate event emission
+    emit_patterns = re.compile(
+        r"(publish_to_mission|publish\(|_emit\(|_emit_activity_error|"
+        r"_emit_supervisor_error|_emit_task_failure|SystemEvent|"
+        r"MissionNarrativeEvent|SystemExecutionCompletedEvent)"
+    )
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Find except blocks
+        if re.match(r"\s*except\s+", line):
+            except_line = i + 1  # 1-indexed
+            indent = len(line) - len(line.lstrip())
+            # Collect the except block body (lines indented deeper)
+            block_lines = []
+            j = i + 1
+            while j < len(lines):
+                next_line = lines[j]
+                if next_line.strip() == "":
+                    block_lines.append(next_line)
+                    j += 1
+                    continue
+                next_indent = len(next_line) - len(next_line.lstrip())
+                if next_indent <= indent:
+                    break
+                block_lines.append(next_line)
+                j += 1
+
+            block_text = "\n".join(block_lines)
+
+            # Only flag if block has logger.error/warning AND no event emission
+            has_error_log = bool(re.search(r"logger\.(error|warning|exception)\(", block_text))
+            has_event_emit = bool(emit_patterns.search(block_text))
+            is_best_effort = any(s in block_text for s in (
+                "best-effort", "non-fatal", "falling back", "# non-critical",
+                '_phase("error', "_phase('error",
+            ))
+            is_pass_only = block_text.strip() == "pass"
+
+            if has_error_log and not has_event_emit and not is_best_effort:
+                violations.append(Violation(
+                    "014.1", "warning", rel, except_line,
+                    "except block logs error/warning but does not emit a mission event — "
+                    "error will be invisible in Console",
+                ))
+            i = j
+        else:
+            i += 1
+
+    return violations
+
+
 def check_noopbus_in_production(path: Path, rel: str) -> list[Violation]:
     """012.1 — NoOpEventBus should not be used in production code paths.
 
@@ -595,6 +675,7 @@ ALL_CHECKS = [
     check_agent_imports_models_repos,
     check_noopbus_in_production,
     check_temporal_determinism,
+    check_silent_error_swallow,
 ]
 
 

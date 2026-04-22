@@ -21,6 +21,34 @@ from modules.backend.temporal.tool_fork_models import (
 logger = get_logger(__name__)
 
 
+async def _emit_activity_error(mission_id: str, source: str, error: str) -> None:
+    """Emit a SystemEvent from a Temporal activity so errors surface in the console."""
+    try:
+        import uuid
+        from redis.asyncio import Redis as AsyncRedis
+        from modules.backend.core.config import get_redis_url
+        from modules.backend.events.bus import SessionEventBus
+        from modules.backend.events.types import SystemEvent
+
+        redis = AsyncRedis.from_url(get_redis_url())
+        try:
+            bus = SessionEventBus(redis, mission_id=mission_id)
+            await bus.publish_to_mission(
+                mission_id,
+                SystemEvent(
+                    session_id=uuid.uuid4(),
+                    source=source,
+                    level="error",
+                    message=error[:300],
+                    mission_id=mission_id,
+                ),
+            )
+        finally:
+            await redis.aclose()
+    except Exception:
+        logger.debug("Failed to emit activity error event (non-fatal)", exc_info=True)
+
+
 @activity.defn
 async def update_execution_record_status(
     execution_record_id: str,
@@ -119,6 +147,7 @@ async def execute_design_workflow(input: DesignWorkflowInput) -> ToolForkResult:
             extra={"mission_id": input.mission_id, "error": str(e)},
             exc_info=True,
         )
+        await _emit_activity_error(input.mission_id, "workflow_architect", f"Design workflow failed: {e}")
         return ToolForkResult(
             execution_record_id=input.execution_record_id,
             status="failed",
@@ -166,6 +195,7 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
             extra={"mission_id": input.mission_id, "error": str(e)},
             exc_info=True,
         )
+        await _emit_activity_error(input.mission_id, "workflow_runner", f"Run workflow '{input.workflow_name}' failed: {e}")
         return ToolForkResult(
             execution_record_id=input.execution_record_id,
             status="failed",

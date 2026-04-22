@@ -55,17 +55,17 @@ def service(db_session: AsyncSession) -> MissionPlanService:
     return MissionPlanService(db_session)
 
 
-def _mock_planning_agent_result(task_count: int = 1) -> dict:
+def _mock_planning_agent_result(task_count: int = 1, plan_version: int = 1) -> dict:
     """Build a mock planning agent result with N tasks."""
     tasks = []
     for i in range(task_count):
         tasks.append({
-            "task_id": f"task-{i+1:03d}",
+            "task_id": f"v{plan_version}-task-{i+1:03d}",
             "agent": "system.summarization.agent",
             "agent_version": "1.0.0",
             "description": f"Test task {i+1}",
             "instructions": f"Do thing {i+1}",
-            "dependencies": [f"task-{i:03d}"] if i > 0 else [],
+            "dependencies": [f"v{plan_version}-task-{i:03d}"] if i > 0 else [],
             "verification": {
                 "tier_1": {"schema_validation": False, "required_output_fields": []},
                 "tier_2": {"deterministic_checks": []},
@@ -100,8 +100,8 @@ class TestConcurrencyGuard:
         # Manually insert a task plan + queued state
         from modules.backend.repositories.mission_plan import MissionPlanRepository
         repo = MissionPlanRepository(db_session)
-        await repo.create_task_state(plan.id, "task-001")
-        state = await repo.get_task_state_required(plan.id, "task-001")
+        await repo.create_task_state(plan.id, "v1-task-001")
+        state = await repo.get_task_state_required(plan.id, "v1-task-001")
         state.status = PlanTaskStatus.QUEUED.value
         await db_session.flush()
 
@@ -117,8 +117,8 @@ class TestConcurrencyGuard:
 
         from modules.backend.repositories.mission_plan import MissionPlanRepository
         repo = MissionPlanRepository(db_session)
-        await repo.create_task_state(plan.id, "task-001")
-        state = await repo.get_task_state_required(plan.id, "task-001")
+        await repo.create_task_state(plan.id, "v1-task-001")
+        state = await repo.get_task_state_required(plan.id, "v1-task-001")
         state.status = PlanTaskStatus.RUNNING.value
         await db_session.flush()
 
@@ -134,8 +134,8 @@ class TestConcurrencyGuard:
 
         from modules.backend.repositories.mission_plan import MissionPlanRepository
         repo = MissionPlanRepository(db_session)
-        await repo.create_task_state(plan.id, "task-001")
-        state = await repo.get_task_state_required(plan.id, "task-001")
+        await repo.create_task_state(plan.id, "v1-task-001")
+        state = await repo.get_task_state_required(plan.id, "v1-task-001")
         state.status = PlanTaskStatus.COMPLETED.value
         await db_session.flush()
 
@@ -171,15 +171,15 @@ class TestApproveAllProposed:
         plan.task_plan_json = _mock_planning_agent_result(2)["task_plan"]
         await db_session.flush()
 
-        await repo.create_task_state(plan.id, "task-001")
-        await repo.create_task_state(plan.id, "task-002")
+        await repo.create_task_state(plan.id, "v1-task-001")
+        await repo.create_task_state(plan.id, "v1-task-002")
         await db_session.flush()
 
         approved = await service.approve_all_proposed(plan.id, "test-user")
 
         assert len(approved) >= 2
-        assert "task-001" in approved
-        assert "task-002" in approved
+        assert "v1-task-001" in approved
+        assert "v1-task-002" in approved
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_proposed(

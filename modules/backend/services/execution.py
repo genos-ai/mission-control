@@ -283,7 +283,7 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
         task_results in the outcome is a list of TaskResult dicts.
         We index them by task_id for direct lookup, but also support
         matching source_task against agent_name (since the Planning
-        Agent assigns dynamic task IDs like 'task-001' that won't
+        Agent assigns dynamic task IDs like 'v1-task-001' that won't
         match workflow-defined source_task names).
         """
         if not output_mapping:

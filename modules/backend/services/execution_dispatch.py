@@ -186,6 +186,23 @@ class ExecutionDispatchMixin:
                 "Execution failed with unexpected error",
                 extra={"execution_id": execution_id, "mission_id": execution.mission_id},
             )
+            # Emit system event so the error surfaces in the console
+            if execution.mission_id:
+                from modules.backend.events.types import SystemExecutionCompletedEvent
+                try:
+                    await self._event_bus.publish_to_mission(
+                        execution.mission_id,
+                        SystemExecutionCompletedEvent(
+                            session_id=uuid.UUID(execution.session_id) if execution.session_id else uuid.uuid4(),
+                            source="execution_service",
+                            execution_id=execution_id,
+                            mission_id=execution.mission_id,
+                            status="failed",
+                            total_cost_usd=execution.total_cost_usd or 0.0,
+                        ),
+                    )
+                except Exception:
+                    pass  # best-effort — don't mask the original error
 
         return execution
 

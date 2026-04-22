@@ -3,9 +3,11 @@ Shared gate display helpers for CLI, TUI, and any future client.
 
 These functions render gate-related information (cost colors, status
 icons, headers) and are used by both CliGateReviewer and TuiGateReviewer.
+
+No module-level backend imports — safe for thin CLI usage.
 """
 
-from modules.backend.agents.mission_control.gate import GateContext
+from __future__ import annotations
 
 
 def cost_color(cost: float, budget: float) -> str:
@@ -52,6 +54,9 @@ STATUS_ICONS: dict[str, str] = {
     "inactive": "[dim]○[/dim]",
     "archived": "[dim]⊘[/dim]",
     "pending": "[dim]○[/dim]",
+    "proposed": "[dim]○[/dim]",
+    "queued": "[blue]○[/blue]",
+    "approved": "[cyan]○[/cyan]",
     "running": "[bold cyan]●[/bold cyan]",
     "success": "[green]✓[/green]",
     "completed": "[green]✓[/green]",
@@ -78,7 +83,7 @@ def filter_catalog_agents(
     ]
 
 
-def gate_header(ctx: GateContext, title: str) -> str:
+def gate_header(ctx: "GateContext", title: str) -> str:
     """Format a gate panel header with title, mission ID, and cost."""
     cc = cost_color(ctx.total_cost_usd, ctx.budget_usd)
     return (

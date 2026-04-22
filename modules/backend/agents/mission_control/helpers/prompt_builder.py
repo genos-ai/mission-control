@@ -94,6 +94,7 @@ def _build_planning_prompt(
     recent_failures: list | None = None,
     current_plan: dict | None = None,
     refinement_instructions: str | None = None,
+    plan_version: int = 1,
 ) -> str:
     """Assemble the full prompt for the Planning Agent.
 
@@ -109,6 +110,9 @@ def _build_planning_prompt(
     parts = [
         f"## Mission Brief\n\n{mission_brief}\n",
         f"## Mission ID\n\n{mission_id}\n",
+        f"## Plan Version\n\n{plan_version}\n"
+        f"Use this version number for task IDs: `v{plan_version}-task-001`, "
+        f"`v{plan_version}-task-002`, etc.\n",
         roster_description,
     ]
 

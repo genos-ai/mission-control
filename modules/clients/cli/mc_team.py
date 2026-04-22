@@ -1,103 +1,120 @@
 """
-mc team — agent team management for the user CLI.
+mc team — API-based agent team management for the user CLI.
 
-Thin renderers over MissionTeamService and AgentCatalogService.
+All operations go through the HTTP API. Zero backend service imports.
 """
 
-from modules.clients.cli.report import build_table
-from modules.clients.common.display import get_console
+from modules.clients.cli.api_client import CliApiClient, extract_list
+from modules.clients.common.display import build_table, get_console
+from modules.clients.common.gate_helpers import filter_catalog_agents
 
 
-async def list_team(mission_id: str) -> None:
+async def list_team(api: CliApiClient, mission_id: str) -> None:
     """List agents on the current mission's team."""
-    from modules.backend.services.mission_team import MissionTeamService
-
     console = get_console()
 
-    async with MissionTeamService.factory() as svc:
-        team_info = await svc.list_team_with_names(mission_id, enabled_only=False)
+    data = await api.get(f"/missions/{mission_id}/team")
+    members = extract_list(data, "team_members")
 
-    if not team_info:
+    if not members:
         console.print("[dim]No agents assigned to this mission.[/dim]")
-        console.print("[dim]  Use: mc team add <agent>[/dim]")
+        console.print("[dim]  Use: mc team add --agent <name>[/dim]")
         return
 
-    table = build_table(f"Team ({len(team_info)} agents)", columns=[
+    table = build_table(f"Team ({len(members)} agents)", columns=[
         ("Agent", {"style": "cyan", "width": 30}),
         ("Enabled", {"width": 10}),
         ("Added", {"width": 14, "style": "dim"}),
     ])
 
-    for t in team_info:
-        enabled = "[green]yes[/green]" if t["enabled"] else "[red]no[/red]"
-        when = t["created_at"].strftime("%m-%d %H:%M") if t["created_at"] else ""
-        table.add_row(t["agent_name"], enabled, when)
+    for m in members:
+        agent = m.get("agent", {})
+        name = agent.get("agent_name", m.get("agent_catalog_id", ""))
+        enabled = "[green]yes[/green]" if m.get("enabled", True) else "[red]no[/red]"
+        when = (m.get("created_at") or "")[:16].replace("T", " ")
+        table.add_row(name, enabled, when)
 
     console.print(table)
 
 
-async def list_available(search: str | None = None) -> None:
+async def list_available(api: CliApiClient, search: str | None = None) -> None:
     """Browse the global agent catalog."""
-    from modules.backend.services.agent_catalog import AgentCatalogService
-
     console = get_console()
 
-    async with AgentCatalogService.factory() as svc:
-        if search:
-            agents = await svc.search_by_keyword(search)
-        else:
-            agents = await svc.list_catalog(enabled_only=True)
-
+    agents = await api.get("/agents/registry")
     if not agents:
         console.print("[dim]No agents found.[/dim]")
         return
 
+    if search:
+        agents = filter_catalog_agents(agents, search)
+
+    if not agents:
+        console.print(f"[dim]No agents matching '{search}'.[/dim]")
+        return
+
     table = build_table(f"Agent Catalog ({len(agents)} agents)", columns=[
         ("Name", {"style": "cyan", "width": 30}),
-        ("Type", {"width": 15}),
         ("Description", {"ratio": 1}),
     ])
 
     for a in agents:
-        desc = (a.description or "")[:60]
-        table.add_row(a.agent_name, a.agent_type or "", desc)
+        desc = (a.get("description") or "")[:60]
+        table.add_row(a.get("agent_name", ""), desc)
 
     console.print(table)
 
 
-async def add_agent(mission_id: str, agent_name: str) -> None:
+async def add_agent(api: CliApiClient, mission_id: str, agent_name: str) -> None:
     """Add an agent to the current mission by name."""
-    from modules.backend.core.exceptions import ConflictError, NotFoundError
-    from modules.backend.services.mission_team import MissionTeamService
-
     console = get_console()
 
-    try:
-        async with MissionTeamService.factory() as svc:
-            await svc.add_agent_by_name(mission_id, agent_name)
-    except NotFoundError:
+    # Look up agent catalog entry by name
+    catalog = await api.get("/catalog/agents")
+    agents = extract_list(catalog, "agents")
+    matched = [a for a in agents if a.get("agent_name") == agent_name]
+
+    if not matched:
         console.print(f"[red]Agent '{agent_name}' not found in catalog.[/red]")
         console.print("[dim]  Use: mc team available --search <query>[/dim]")
         return
-    except ConflictError:
-        console.print(f"[yellow]Agent '{agent_name}' is already on this team.[/yellow]")
-        return
+
+    catalog_id = matched[0].get("id", matched[0].get("agent_catalog_id"))
+
+    try:
+        await api.post(
+            f"/missions/{mission_id}/team",
+            body={"agent_catalog_id": catalog_id},
+        )
+    except Exception as exc:
+        msg = str(exc)
+        if "409" in msg or "conflict" in msg.lower() or "already" in msg.lower():
+            console.print(
+                f"[yellow]Agent '{agent_name}' is already on this team.[/yellow]"
+            )
+            return
+        raise
 
     console.print(f"[green]Added:[/green] {agent_name}")
 
 
-async def remove_agent(mission_id: str, agent_name: str) -> None:
+async def remove_agent(api: CliApiClient, mission_id: str, agent_name: str) -> None:
     """Remove an agent from the current mission by name."""
-    from modules.backend.core.exceptions import NotFoundError
-    from modules.backend.services.mission_team import MissionTeamService
-
     console = get_console()
 
-    try:
-        async with MissionTeamService.factory() as svc:
-            await svc.remove_agent_by_name(mission_id, agent_name)
-    except NotFoundError:
+    # Find team member by agent name
+    data = await api.get(f"/missions/{mission_id}/team")
+    members = extract_list(data, "team_members")
+
+    matched = [
+        m for m in members
+        if m.get("agent", {}).get("agent_name") == agent_name
+    ]
+
+    if not matched:
         console.print(f"[red]Agent '{agent_name}' not found on this team.[/red]")
         return
 
+    member_id = matched[0]["id"]
+    await api.delete(f"/missions/{mission_id}/team/{member_id}")
     console.print(f"[yellow]Removed:[/yellow] {agent_name}")

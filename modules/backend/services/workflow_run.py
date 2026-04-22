@@ -47,11 +47,13 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         session: AsyncSession,
         execution_service_factory: ExecutionServiceFactory | None = None,
         workflow_service: WorkflowService | None = None,
+        event_bus: Any | None = None,
     ) -> None:
         super().__init__(session)
         self._run_repo = WorkflowRunRepository(session)
         self._execution_service_factory = execution_service_factory
         self._workflow_service = workflow_service or WorkflowService()
+        self._event_bus = event_bus
 
     @staticmethod
     @asynccontextmanager
@@ -73,6 +75,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             yield WorkflowRunService(
                 session=db,
                 execution_service_factory=_execution_factory,
+                event_bus=event_bus,
             )
             await db.commit()
 
@@ -251,6 +254,23 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 "DB workflow run failed",
                 extra={"run_id": run.id, "error": str(e), "mission_id": mission_id},
             )
+            # Emit error event so it surfaces in the console
+            if self._event_bus and mission_id:
+                try:
+                    import uuid as _uuid
+                    from modules.backend.events.types import SystemEvent
+                    await self._event_bus.publish_to_mission(
+                        mission_id,
+                        SystemEvent(
+                            session_id=_uuid.UUID(session.id) if session else _uuid.uuid4(),
+                            source="workflow_run_service",
+                            level="error",
+                            message=f"Workflow '{run.workflow_name}' failed: {str(e)[:200]}",
+                            mission_id=mission_id,
+                        ),
+                    )
+                except Exception:
+                    pass  # best-effort
 
         # Sync the parent ExecutionRecord with workflow outcome
         exec_record.total_cost_usd = run.total_cost_usd
