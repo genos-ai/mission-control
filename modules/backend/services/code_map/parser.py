@@ -125,9 +125,9 @@ def _parse_file(repo_root: Path, file_path: Path) -> ModuleInfo | None:
 
 
 def _extract_imports(tree: ast.Module) -> list[str]:
-    """Extract import paths from top-level import statements."""
+    """Extract import paths from all statements, including inline/lazy imports."""
     imports: list[str] = []
-    for node in ast.iter_child_nodes(tree):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imports.append(alias.name)

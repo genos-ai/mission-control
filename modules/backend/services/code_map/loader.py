@@ -115,7 +115,7 @@ class CodeMapLoader:
         try:
             code_map = generate_code_map(
                 repo_root=self._root,
-                scope=["modules/"],
+                scope=["modules/", "*.py"],
                 project_id=self._root.name,
             )
 

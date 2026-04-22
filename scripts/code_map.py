@@ -1059,8 +1059,8 @@ def main() -> None:
     parser.add_argument(
         "--scope",
         nargs="*",
-        default=["modules/"],
-        help="Directories or files to include (default: modules/)",
+        default=["modules/", "*.py"],
+        help="Directories or files to include (default: modules/ + root scripts)",
     )
     parser.add_argument(
         "--exclude",
