@@ -4,7 +4,7 @@ mc team — API-based agent team management for the user CLI.
 All operations go through the HTTP API. Zero backend service imports.
 """
 
-from modules.clients.cli.api_client import CliApiClient, extract_list
+from modules.clients.cli.api_client import ApiError, CliApiClient, extract_list
 from modules.clients.common.display import build_table, get_console
 from modules.clients.common.gate_helpers import filter_catalog_agents
 
@@ -86,9 +86,8 @@ async def add_agent(api: CliApiClient, mission_id: str, agent_name: str) -> None
             f"/missions/{mission_id}/team",
             body={"agent_catalog_id": catalog_id},
         )
-    except Exception as exc:
-        msg = str(exc)
-        if "409" in msg or "conflict" in msg.lower() or "already" in msg.lower():
+    except ApiError as exc:
+        if exc.status == 409:
             console.print(
                 f"[yellow]Agent '{agent_name}' is already on this team.[/yellow]"
             )

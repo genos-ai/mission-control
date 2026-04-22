@@ -23,7 +23,6 @@ async def run(
     mission_id: str,
     budget: float | None,
     gate_override: str | None,
-    context_overrides: dict[str, str],
     dry_run: bool,
     quiet: bool,
     verbose: bool,

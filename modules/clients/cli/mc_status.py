@@ -18,6 +18,8 @@ async def show_status(
     api: CliApiClient, mission_id: str, verbose: bool = False,
 ) -> None:
     """Show current mission snapshot: plan state, active runs, spend."""
+    console = get_console()
+
     mission = await api.get(f"/missions/{mission_id}")
 
     # Fetch plan (may not exist yet)
@@ -51,8 +53,6 @@ async def show_status(
         }
         print(json.dumps(data, default=str, indent=2), flush=True)
         return
-
-    console = get_console()
 
     budget_str = (
         f"${mission['budget_ceiling_usd']:.2f}"

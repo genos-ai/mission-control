@@ -9,8 +9,6 @@ Zero backend service imports.
 import asyncio
 import json
 
-import click
-
 from modules.clients.cli.api_client import CliApiClient
 from modules.clients.common.display import get_console
 from modules.clients.common.gate_helpers import STATUS_ICONS

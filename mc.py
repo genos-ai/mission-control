@@ -301,14 +301,12 @@ def mission_unarchive(name_or_id):
               type=click.Choice(["off", "interactive", "ai_assisted", "autonomous"]),
               default=None, help="Gate mode override.")
 @click.option("--step", is_flag=True, help="Alias for --gate interactive.")
-@click.option("--set", "overrides", multiple=True, help="key=value context override.")
 @click.option("--dry-run", is_flag=True, help="Show plan + estimated cost, don't execute.")
 @click.pass_obj
-def run(ctx, objective, budget, gate_override, step, overrides, dry_run):
+def run(ctx, objective, budget, gate_override, step, dry_run):
     """Run a task or workflow against the current mission."""
     if step:
         gate_override = "interactive"
-    context_overrides = dict(kv.split("=", 1) for kv in overrides)
 
     from modules.clients.cli.mc_run import run as mc_run
 
@@ -319,7 +317,6 @@ def run(ctx, objective, budget, gate_override, step, overrides, dry_run):
                 api, objective,
                 mission_id=mid, budget=budget,
                 gate_override=gate_override,
-                context_overrides=context_overrides,
                 dry_run=dry_run,
                 quiet=ctx.quiet, verbose=ctx.verbose,
             )
