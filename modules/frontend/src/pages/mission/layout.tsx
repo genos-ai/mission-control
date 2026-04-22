@@ -366,9 +366,9 @@ export default function MissionLayout() {
           <RunModal
             missionId={id}
             onClose={() => setShowRunModal(false)}
-            onStarted={(executionId) => {
+            onStarted={() => {
               setShowRunModal(false)
-              navigate(ROUTES.MISSION_RUN_LIVE(id, executionId))
+              navigate(ROUTES.MISSION_PLAN(id!))
             }}
           />
         )}

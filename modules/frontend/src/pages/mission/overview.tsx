@@ -87,9 +87,9 @@ export default function OverviewPage() {
           missionId={id!}
           missionBrief={mission.brief ?? undefined}
           onClose={() => setShowRunModal(false)}
-          onStarted={(execId) => {
+          onStarted={() => {
             setShowRunModal(false)
-            navigate(ROUTES.MISSION_RUN_LIVE(id!, execId))
+            navigate(ROUTES.MISSION_PLAN(id!))
           }}
         />
       )}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useCreateExecution } from '@/hooks/use-executions'
+import { useRunObjective } from '@/hooks/use-executions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,7 +11,7 @@ interface RunModalProps {
   workflowName?: string
   missionBrief?: string
   onClose: () => void
-  onStarted: (executionId: string, sessionId: string) => void
+  onStarted: (planId: string) => void
 }
 
 const GATE_OPTIONS = [
@@ -29,7 +29,7 @@ export function RunModal({
   onClose,
   onStarted,
 }: RunModalProps) {
-  const createExecution = useCreateExecution()
+  const runObjective = useRunObjective(missionId)
 
   const [objective, setObjective] = useState(
     workflowName ? `Execute workflow: ${workflowName}` : '',
@@ -45,18 +45,26 @@ export function RunModal({
     }
 
     try {
-      const execution = await createExecution.mutateAsync({
+      const result = await runObjective.mutateAsync({
         objective: objective.trim(),
-        triggered_by: 'user:web',
-        mission_id: missionId,
-        roster_ref: 'default',
-        complexity_tier: gateMode || undefined,
-        cost_ceiling_usd: budget ? parseFloat(budget) : undefined,
+        gate_mode: gateMode || undefined,
+        budget_ceiling_usd: budget ? parseFloat(budget) : undefined,
+        async_dispatch: true,
       })
 
-      onStarted(execution.id, execution.session_id)
+      if (result.outcome_status === 'awaiting_approval') {
+        toast.success(`Plan created with ${result.task_count} tasks — approve in Plan tab`)
+      } else {
+        toast.success(`Dispatching ${result.task_count} tasks...`)
+      }
+      onStarted(result.plan_id)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create run')
+      const msg = err instanceof Error ? err.message : 'Failed to start run'
+      if (msg.includes('in-progress')) {
+        toast.error('Plan has tasks in progress — wait for completion first')
+      } else {
+        toast.error(msg)
+      }
     }
   }
 
@@ -137,9 +145,9 @@ export function RunModal({
             <Button variant="outline" type="button" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createExecution.isPending}>
+            <Button type="submit" disabled={runObjective.isPending}>
               <Play className="mr-2 h-4 w-4" />
-              {createExecution.isPending ? 'Creating...' : 'Start Run'}
+              {runObjective.isPending ? 'Planning...' : 'Start Run'}
             </Button>
           </div>
         </form>

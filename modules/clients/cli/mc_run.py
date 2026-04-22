@@ -6,7 +6,6 @@ dry-run preview, and live display during execution.
 """
 
 import sys
-from uuid import uuid4
 
 import click
 
@@ -61,7 +60,51 @@ async def retry(
     quiet: bool = False,
     verbose: bool = False,
 ) -> None:
-    """Re-run the Nth most recent execution."""
+    """Retry failed tasks in the mission's plan.
+
+    Plan 62: retry now re-approves failed tasks and re-dispatches via
+    the plan path, preserving completed task results. If the plan has no
+    failed tasks, falls back to re-running the Nth most recent objective.
+    """
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.mission_plan import MissionPlanService
+
+    # Try plan-based retry first
+    async with get_async_session() as db:
+        svc = MissionPlanService(db)
+        plan = await svc.get_or_create_plan(mission_id)
+
+        if plan.task_plan_json is not None:
+            from modules.backend.schemas.mission_plan import PlanTaskStatus
+
+            failed_states = await svc.get_task_states(
+                plan.id, status=PlanTaskStatus.FAILED,
+            )
+
+            if failed_states:
+                console = get_console()
+                failed_ids = [s.task_id for s in failed_states]
+                console.print(
+                    f"[bold]Retrying {len(failed_ids)} failed task(s):[/bold] "
+                    f"{', '.join(failed_ids)}"
+                )
+
+                for state in failed_states:
+                    await svc.retry_task(plan.id, state.task_id, "system:cli")
+
+                result = await svc.dispatch_approved(
+                    plan.id, "system:cli",
+                )
+                await db.commit()
+
+                console.print(
+                    f"\n[bold]Retry complete:[/bold] {result.get('outcome_status', 'unknown')}"
+                    f" | ${result.get('total_cost_usd', 0):.4f}"
+                )
+                console.print("[dim]Run 'mc status' for full details.[/dim]")
+                return
+
+    # Fallback: no plan or no failed tasks — re-run the Nth most recent objective
     from modules.backend.services.execution import ExecutionService
 
     async with ExecutionService.factory() as svc:
@@ -137,7 +180,7 @@ async def _run_workflow(
         async with WorkflowRunService.factory(event_bus=event_bus) as run_service:
             wf_run = await run_service.run_workflow(
                 workflow_name=workflow.workflow_name,
-                triggered_by="user:mc",
+                triggered_by="system:cli",
                 on_progress=lambda e: click.echo(f"progress: {e}"),
                 mission_name=mission_name,
                 gate=gate,
@@ -156,7 +199,7 @@ async def _run_workflow(
             with display.start():
                 wf_run = await run_service.run_workflow(
                     workflow_name=workflow.workflow_name,
-                    triggered_by="user:mc",
+                    triggered_by="system:cli",
                     on_progress=display.handle_progress,
                     mission_name=mission_name,
                     gate=gate,
@@ -182,7 +225,12 @@ async def _run_adhoc(
     quiet: bool,
     verbose: bool,
 ) -> None:
-    """Execute an ad-hoc objective."""
+    """Execute an ad-hoc objective via the plan path (Plan 62).
+
+    Creates/refines a mission plan, auto-approves tasks, and dispatches
+    synchronously. All runs go through the plan infrastructure — supervisor,
+    budget tracking, task states, and audit trail.
+    """
     if dry_run:
         console = get_console()
         console.print(f"[bold]Dry run:[/bold] {objective}\n")
@@ -192,61 +240,68 @@ async def _run_adhoc(
         console.print(f"\n[dim]Run without --dry-run to execute.[/dim]")
         return
 
-    gate = await _resolve_gate(mission_id, gate_override)
-
-    from modules.backend.services.execution import ExecutionService
-    from modules.clients.cli.report import render_execution
-
-    if verbose:
-        # Verbose / AI-friendly mode: raw JSONL event stream, no Rich
-        from modules.clients.cli.live_display import VerboseEventBus
-
-        click.echo(f"Running: {objective}\n")
-        event_bus = VerboseEventBus()
-
-        async with ExecutionService.factory(event_bus=event_bus) as svc:
-            execution = await svc.create_adhoc_execution(
-                objective=objective,
-                triggered_by="user:mc",
-                session_id=str(uuid4()),
-                mission_id=mission_id,
-                cost_ceiling_usd=budget,
-            )
-            execution = await svc.run_execution(execution.id, gate=gate)
-
-        await render_execution(execution, "human")
-        return
-
-    from modules.clients.cli.live_display import LiveExecutionDisplay
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.mission_plan import MissionPlanService
 
     console = get_console()
     console.print(f"[bold]Running:[/bold] {objective}\n")
 
-    display = LiveExecutionDisplay(show_thinking=not quiet)
-    event_bus = display.create_event_bus()
+    if verbose:
+        from modules.clients.cli.live_display import VerboseEventBus
+        event_bus = VerboseEventBus()
+    else:
+        from modules.clients.cli.live_display import LiveExecutionDisplay
+        display = LiveExecutionDisplay(show_thinking=not quiet)
+        event_bus = display.create_event_bus()
 
-    async with ExecutionService.factory(event_bus=event_bus) as svc:
-        execution = await svc.create_adhoc_execution(
-            objective=objective,
-            triggered_by="user:mc",
-            session_id=str(uuid4()),
-            mission_id=mission_id,
-            cost_ceiling_usd=budget,
-        )
-        with display.start():
-            try:
-                execution = await svc.run_execution(execution.id, gate=gate)
-            except Exception as exc:
-                display.add_error(str(exc))
-                import asyncio
-                await asyncio.sleep(2)  # brief pause so user can see the error
-                raise
-            finally:
-                status = getattr(execution, "status", "failed")
-                s = status.value if hasattr(status, "value") else str(status)
-                display.set_status("success" if s == "completed" else "failed" if s == "failed" else s)
+    result: dict = {}
+    async with get_async_session() as db:
+        svc = MissionPlanService(db, event_bus=event_bus)
 
-    await render_execution(execution, "human")
+        if verbose:
+            result = await svc.run_objective(
+                mission_id=mission_id,
+                objective=objective,
+                user_id="system:cli",
+                gate_mode=gate_override,
+                budget_ceiling_usd=budget,
+                async_dispatch=False,
+            )
+            await db.commit()
+        else:
+            with display.start():
+                try:
+                    result = await svc.run_objective(
+                        mission_id=mission_id,
+                        objective=objective,
+                        user_id="system:cli",
+                        gate_mode=gate_override,
+                        budget_ceiling_usd=budget,
+                        async_dispatch=False,
+                    )
+                    await db.commit()
+                except Exception as exc:
+                    display.add_error(str(exc))
+                    import asyncio
+                    await asyncio.sleep(2)
+                    raise
+                finally:
+                    outcome = result.get("outcome_status", "failed")
+                    display.set_status("success" if outcome == "success" else "failed" if outcome == "failed" else outcome)
+
+    # Render summary
+    status = result.get("outcome_status", "unknown")
+    cost = result.get("total_cost_usd", 0)
+    task_count = result.get("task_count", 0)
+    dispatched = result.get("dispatched_task_ids", [])
+
+    console.print(f"\n[bold]Plan dispatch complete:[/bold] {status}")
+    console.print(f"  Tasks: {len(dispatched)}/{task_count} dispatched")
+    console.print(f"  Cost: ${cost:.4f}")
+    if status == "awaiting_approval":
+        console.print("[dim]Gate mode is interactive — approve tasks in the Plan tab.[/dim]")
+    else:
+        console.print("[dim]Run 'mc status' for full task breakdown.[/dim]")
 
 
 def _show_dry_run(workflow) -> None:

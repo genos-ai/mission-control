@@ -11,6 +11,7 @@ from modules.backend.agents.mission_control.dispatch import (
     topological_sort,
     verify_task,
 )
+from modules.backend.agents.mission_control.gate import GateAction, GateDecision
 from modules.backend.agents.mission_control.outcome import ExecutionStatus, TaskStatus
 from modules.backend.agents.mission_control.roster import (
     Roster,
@@ -869,3 +870,287 @@ class TestDispatch:
         )
         call_kwargs = mock_assembler.build.call_args
         assert call_kwargs.kwargs.get("domain_tags") is None
+
+
+# ---------------------------------------------------------------------------
+# A.3 — Workflow task dispatch (Plan 53 Phase B)
+# ---------------------------------------------------------------------------
+
+
+class TestWorkflowTaskDispatch:
+    """Tests for workflow:* agent routing through dispatch()."""
+
+    @pytest.mark.asyncio
+    async def test_workflow_task_routes_to_service(self):
+        """Plan containing agent='workflow:deploy' routes to WorkflowRunService."""
+        plan = _plan([_task("t1", agent="workflow:deploy-staging")])
+        roster = Roster(agents=[])  # no roster needed for workflow tasks
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            pytest.fail("Standard executor should NOT be called for workflow tasks")
+
+        # Mock the WorkflowRunService.factory context manager
+        mock_run = MagicMock()
+        mock_run.id = "run-123"
+        mock_run.status = "completed"
+        mock_run.execution_record_id = "er-456"
+        mock_run.result_summary = "Deployed successfully"
+        mock_run.total_cost_usd = 0.25
+        mock_run.started_at = None
+        mock_run.completed_at = None
+
+        mock_svc = MagicMock()
+        mock_svc.run_workflow = AsyncMock(return_value=mock_run)
+
+        mock_factory = MagicMock()
+        mock_factory.__aenter__ = AsyncMock(return_value=mock_svc)
+        mock_factory.__aexit__ = AsyncMock(return_value=False)
+
+        import modules.backend.agents.mission_control.dispatch.loop as loop_mod
+        original_import = loop_mod.__builtins__ if hasattr(loop_mod, '__builtins__') else None
+
+        from unittest.mock import patch
+        with patch(
+            "modules.backend.services.workflow_run.WorkflowRunService.factory",
+            return_value=mock_factory,
+        ):
+            outcome = await dispatch(plan, roster, mock_execute, 10.0)
+
+        assert len(outcome.task_results) == 1
+        result = outcome.task_results[0]
+        assert result.agent_name == "workflow:deploy-staging"
+        assert result.status == TaskStatus.SUCCESS
+        assert result.cost_usd == 0.25
+        assert result.output_reference["workflow_run_id"] == "run-123"
+
+    @pytest.mark.asyncio
+    async def test_workflow_task_failure_captured(self):
+        """WorkflowRunService raising an exception returns FAILED result."""
+        plan = _plan([_task("t1", agent="workflow:broken-flow")])
+        roster = Roster(agents=[])
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            pytest.fail("Should not be called")
+
+        mock_svc = MagicMock()
+        mock_svc.run_workflow = AsyncMock(
+            side_effect=RuntimeError("Workflow definition not found"),
+        )
+
+        mock_factory = MagicMock()
+        mock_factory.__aenter__ = AsyncMock(return_value=mock_svc)
+        mock_factory.__aexit__ = AsyncMock(return_value=False)
+
+        from unittest.mock import patch
+        with patch(
+            "modules.backend.services.workflow_run.WorkflowRunService.factory",
+            return_value=mock_factory,
+        ):
+            outcome = await dispatch(plan, roster, mock_execute, 10.0)
+
+        result = outcome.task_results[0]
+        assert result.status == TaskStatus.FAILED
+        assert "not found" in result.output_reference.get("error", "")
+
+    @pytest.mark.asyncio
+    async def test_mixed_plan_standard_and_workflow(self):
+        """Plan with both a standard agent task and a workflow task."""
+        plan = _plan([
+            _task("t1", agent="agent_a"),
+            _task("t2", agent="workflow:lint-check"),
+        ])
+        roster = Roster(agents=[_entry("agent_a")])
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            return {"result": "done", "confidence": 0.9, "_meta": {
+                "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.01,
+            }}
+
+        mock_run = MagicMock()
+        mock_run.id = "run-789"
+        mock_run.status = "completed"
+        mock_run.execution_record_id = "er-abc"
+        mock_run.result_summary = "Lint passed"
+        mock_run.total_cost_usd = 0.05
+        mock_run.started_at = None
+        mock_run.completed_at = None
+
+        mock_svc = MagicMock()
+        mock_svc.run_workflow = AsyncMock(return_value=mock_run)
+
+        mock_factory = MagicMock()
+        mock_factory.__aenter__ = AsyncMock(return_value=mock_svc)
+        mock_factory.__aexit__ = AsyncMock(return_value=False)
+
+        from unittest.mock import patch
+        with patch(
+            "modules.backend.services.workflow_run.WorkflowRunService.factory",
+            return_value=mock_factory,
+        ):
+            outcome = await dispatch(plan, roster, mock_execute, 10.0)
+
+        assert outcome.status == ExecutionStatus.SUCCESS
+        assert len(outcome.task_results) == 2
+        agents = {r.agent_name for r in outcome.task_results}
+        assert "agent_a" in agents
+        assert "workflow:lint-check" in agents
+
+
+# ---------------------------------------------------------------------------
+# A.4 — Retry handler edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestRetryModifyAction:
+    """Tests for GateAction.MODIFY in verification failure path."""
+
+    @pytest.mark.asyncio
+    async def test_modify_action_accepts_output_as_is(self):
+        """MODIFY gate action accepts the task output without re-running."""
+        plan = _plan([_task("t1")])
+        roster = Roster(agents=[_entry("agent_a")])
+
+        call_count = 0
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            nonlocal call_count
+            call_count += 1
+            # Return output missing required "confidence" field → verification fails
+            return {"result": "partial", "_meta": {
+                "input_tokens": 50, "output_tokens": 20, "cost_usd": 0.005,
+            }}
+
+        # Gate that returns MODIFY on verification_failed
+        modify_gate = MagicMock()
+        modify_gate.review = AsyncMock(return_value=GateDecision(
+            action=GateAction.MODIFY,
+            reason="Accept partial output",
+        ))
+
+        outcome = await dispatch(plan, roster, mock_execute, 10.0, gate=modify_gate)
+
+        # MODIFY means: accept the output as-is (status=SUCCESS), no retry
+        assert len(outcome.task_results) == 1
+        result = outcome.task_results[0]
+        assert result.status == TaskStatus.SUCCESS
+        # Agent was called only once (no retry)
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_modified_instructions_override_feedback(self):
+        """Gate providing modified_instructions overrides standard retry feedback."""
+        plan = _plan([{
+            **_task("t1"),
+            "verification": {
+                "tier_1": {
+                    "schema_validation": True,
+                    "required_output_fields": ["result", "confidence"],
+                },
+                "tier_2": {"deterministic_checks": []},
+                "tier_3": {"requires_ai_evaluation": False},
+            },
+        }])
+        roster = Roster(agents=[_entry("agent_a")])
+
+        call_instructions = []
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            call_instructions.append(instructions)
+            # First call: missing confidence → verification fails → gate says CONTINUE with modified_instructions
+            # Second call: all fields present → passes
+            if len(call_instructions) == 1:
+                return {"result": "partial", "_meta": {}}
+            return {"result": "done", "confidence": 0.9, "_meta": {}}
+
+        gate_calls = []
+
+        async def mock_review(context):
+            gate_calls.append(context.gate_type)
+            if context.gate_type == "verification_failed":
+                return GateDecision(
+                    action=GateAction.CONTINUE,
+                    reason="Try again",
+                    modified_instructions="USE THESE EXACT INSTRUCTIONS INSTEAD",
+                )
+            return GateDecision(action=GateAction.CONTINUE, reason="ok")
+
+        gate = MagicMock()
+        gate.review = mock_review
+
+        outcome = await dispatch(plan, roster, mock_execute, 10.0, gate=gate)
+
+        # Agent called twice (original + retry)
+        assert len(call_instructions) == 2
+        # Second call should use the gate's modified instructions
+        assert call_instructions[1] == "USE THESE EXACT INSTRUCTIONS INSTEAD"
+
+
+class TestPostTaskGatePqi:
+    """Tests for PQI extraction in the post-task gate path."""
+
+    @pytest.mark.asyncio
+    async def test_pqi_extracted_into_context_updates(self):
+        """Output containing pqi dict gets extracted into context_updates."""
+        plan = _plan([_task("t1")])
+        roster = Roster(agents=[_entry("agent_a")])
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            return {
+                "result": "done",
+                "confidence": 0.9,
+                "pqi": {
+                    "composite": 78.5,
+                    "quality_band": "good",
+                    "dimensions": {
+                        "maintainability": {"score": 82},
+                        "security": {"score": 75},
+                    },
+                    "file_count": 42,
+                    "line_count": 3500,
+                },
+                "_meta": {"input_tokens": 100, "output_tokens": 50, "cost_usd": 0.01},
+            }
+
+        # Use a gate that returns CONTINUE at post_task so the PQI path runs
+        async def mock_review(context):
+            return GateDecision(action=GateAction.CONTINUE, reason="ok")
+
+        gate = MagicMock()
+        gate.review = mock_review
+
+        outcome = await dispatch(plan, roster, mock_execute, 10.0, gate=gate)
+
+        result = outcome.task_results[0]
+        assert result.status == TaskStatus.SUCCESS
+        # PQI should be extracted into context_updates
+        pqi_updates = [
+            u for u in result.context_updates
+            if u.get("path") == "current_state.pqi_score"
+        ]
+        assert len(pqi_updates) == 1
+        assert pqi_updates[0]["value"]["composite"] == 78.5
+        assert pqi_updates[0]["value"]["quality_band"] == "good"
+
+    @pytest.mark.asyncio
+    async def test_missing_pqi_no_context_update(self):
+        """Output without pqi dict produces no PQI context update."""
+        plan = _plan([_task("t1")])
+        roster = Roster(agents=[_entry("agent_a")])
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            return {"result": "done", "confidence": 0.9, "_meta": {}}
+
+        async def mock_review(context):
+            return GateDecision(action=GateAction.CONTINUE, reason="ok")
+
+        gate = MagicMock()
+        gate.review = mock_review
+
+        outcome = await dispatch(plan, roster, mock_execute, 10.0, gate=gate)
+
+        result = outcome.task_results[0]
+        pqi_updates = [
+            u for u in result.context_updates
+            if u.get("path", "").startswith("current_state.pqi")
+        ]
+        assert len(pqi_updates) == 0

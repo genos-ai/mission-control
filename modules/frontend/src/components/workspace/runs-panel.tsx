@@ -159,12 +159,12 @@ export function RunsPanel({
         <RunModal
           missionId={missionId}
           onClose={() => setShowRunModal(false)}
-          onStarted={(execId) => {
+          onStarted={() => {
             setShowRunModal(false)
             if (onStartRun) {
-              onStartRun(execId)
+              onStartRun('')
             } else {
-              navigate(ROUTES.MISSION_RUN_LIVE(missionId, execId))
+              navigate(ROUTES.MISSION_PLAN(missionId))
             }
           }}
         />

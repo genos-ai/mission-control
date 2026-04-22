@@ -276,12 +276,6 @@ async def execute_convergence_loop(
         task_id=task_id,
         agent_name=f"convergence({config.evaluation_agent},{config.remediation_agent})",
         status=TaskStatus.SUCCESS if outcome == "converged" else TaskStatus.FAILED,
-        summary=(
-            f"Convergence loop {outcome} after {len(cycles)} cycles. "
-            f"Final findings: {cycles[-1].findings_count if cycles else 'N/A'}."
-            + (f" Final verification: {'passed' if verification_passed else 'failed'}."
-               if verification_passed is not None else "")
-        ),
         output_reference={
             "outcome": outcome,
             "total_cycles": len(cycles),
@@ -425,7 +419,6 @@ def _to_task_result(
             task_id=task_id,
             agent_name=agent_name,
             status=TaskStatus.SUCCESS if raw_result.get("success", True) else TaskStatus.FAILED,
-            summary=str(raw_result.get("summary", "")),
             output_reference=raw_result.get("output", {}),
             cost_usd=raw_result.get("cost_usd", 0.0),
             token_usage=TaskTokenUsage(
@@ -437,5 +430,4 @@ def _to_task_result(
         task_id=task_id,
         agent_name=agent_name,
         status=TaskStatus.FAILED,
-        summary="Unexpected result format",
     )

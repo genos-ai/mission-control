@@ -15,8 +15,11 @@ from typing import Any, Protocol, TypedDict, runtime_checkable
 
 from pydantic_ai import UsageLimits
 
+from modules.backend.core.logging import get_logger
 from modules.backend.core.protocols import ExecutionDispatchProtocol, SessionServiceProtocol
 from modules.backend.events.types import SessionEvent
+
+logger = get_logger(__name__)
 
 # Re-export protocols so existing imports from models.py continue to work
 __all__ = [
@@ -89,8 +92,7 @@ class NoOpEventBus:
 
     async def publish(self, event: SessionEvent) -> None:
         if not NoOpEventBus._warned:
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "NoOpEventBus in use — events are being silently dropped. "
                 "Pass a real SessionEventBus for production visibility.",
             )
@@ -98,8 +100,7 @@ class NoOpEventBus:
 
     async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
         if not NoOpEventBus._warned:
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "NoOpEventBus in use — events are being silently dropped. "
                 "Pass a real SessionEventBus for production visibility.",
             )

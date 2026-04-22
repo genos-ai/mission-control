@@ -177,6 +177,9 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
         complexity_tier: str = "simple",
         cost_ceiling_usd: float | None = None,
         upstream_context: dict | None = None,
+        # DEPRECATED (Plan 62): Use MissionPlanService.run_objective() instead.
+        # This method bypasses the plan infrastructure (supervisor, budget
+        # tracking, task states). Kept for workflow_run_waves.py compatibility.
         mission_id: str | None = None,
     ) -> Execution:
         """Create an ad-hoc execution (not from a workflow)."""

@@ -21,7 +21,7 @@ from modules.backend.agents.mission_control.models import (
     EventBusProtocol,
     NoOpEventBus,
 )
-from modules.backend.core.exceptions import NotFoundError, ValidationError
+from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import (
     MissionPlanGateModeChangedEvent,
@@ -493,6 +493,179 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             actor=f"user:{user_id}",
         )
         return transitioned
+
+    # ── Unified execution entry point (Plan 62) ────────────────────────
+
+    async def run_objective(
+        self,
+        mission_id: str,
+        objective: str,
+        user_id: str,
+        *,
+        session_id: str | None = None,
+        gate_mode: str | None = None,
+        budget_ceiling_usd: float | None = None,
+        async_dispatch: bool = False,
+    ) -> dict:
+        """Create/refine a plan from an objective and dispatch it.
+
+        Unified entry point for all execution — CLI, chat, frontend.
+        Single-task objectives produce single-task plans. Complex objectives
+        produce multi-task plans. Both go through the full plan infrastructure
+        (task states, supervisor, budget tracking, audit trail).
+
+        Args:
+            mission_id: The mission to execute against.
+            objective: Natural-language objective for the Planning Agent.
+            user_id: The user requesting execution.
+            session_id: Session for event publishing (optional).
+            gate_mode: Override the plan's gate mode (optional).
+            budget_ceiling_usd: Override the plan's budget (optional).
+            async_dispatch: If False (default), calls dispatch_approved()
+                and blocks until all tasks complete (CLI mode). If True,
+                approves tasks and returns immediately — the Temporal daemon
+                dispatches on its next tick (chat/frontend mode).
+
+        Returns:
+            dict with: plan_id, plan_version, task_count, outcome_status,
+            dispatched_task_ids (sync only), total_cost_usd (sync only).
+            In async mode, outcome_status is "dispatching".
+
+        Raises:
+            ConflictError: If the plan has tasks in QUEUED or RUNNING state.
+            ValidationError: If the Planning Agent returns an invalid plan.
+            NotFoundError: If the mission does not exist.
+        """
+        # 1. Get or create the plan
+        plan = await self.get_or_create_plan(mission_id)
+
+        # 2. Apply overrides
+        if gate_mode is not None and gate_mode in VALID_GATE_MODES:
+            plan.gate_mode = gate_mode
+        if budget_ceiling_usd is not None:
+            plan.budget_usd_ceiling = budget_ceiling_usd
+        await self._session.flush()
+
+        # 3. Concurrency guard — reject if tasks are in-flight
+        await self._check_no_active_tasks(plan.id)
+
+        # 4. Refine: Planning Agent decomposes objective into TaskPlan
+        budget = plan.budget_usd_ceiling or 10.0
+        plan = await self.refine(
+            plan.id,
+            objective,
+            user_id,
+            mission_budget_usd=budget,
+        )
+
+        task_plan = self._get_task_plan_or_raise(plan)
+        task_count = len(task_plan.tasks)
+
+        # 5. Auto-approve (gate mode permitting)
+        effective_gate = plan.gate_mode or "off"
+        if effective_gate == "interactive":
+            self._log_operation(
+                "run_objective: interactive gate — stopping after refine",
+                plan_id=plan.id,
+                mission_id=mission_id,
+                task_count=task_count,
+            )
+            return {
+                "plan_id": plan.id,
+                "plan_version": plan.version,
+                "task_count": task_count,
+                "outcome_status": "awaiting_approval",
+                "dispatched_task_ids": [],
+                "total_cost_usd": 0.0,
+            }
+
+        approved_ids = await self.approve_all_proposed(plan.id, user_id)
+
+        if not approved_ids:
+            return {
+                "plan_id": plan.id,
+                "plan_version": plan.version,
+                "task_count": task_count,
+                "outcome_status": "no_tasks_to_approve",
+                "dispatched_task_ids": [],
+                "total_cost_usd": 0.0,
+            }
+
+        # 6. Dispatch
+        if async_dispatch:
+            # Tasks are APPROVED — Temporal daemon picks them up next tick
+            self._log_operation(
+                "run_objective: async dispatch — tasks approved, daemon will pick up",
+                plan_id=plan.id,
+                mission_id=mission_id,
+                approved_task_ids=approved_ids,
+            )
+            return {
+                "plan_id": plan.id,
+                "plan_version": plan.version,
+                "task_count": task_count,
+                "outcome_status": "dispatching",
+                "dispatched_task_ids": approved_ids,
+                "total_cost_usd": 0.0,
+            }
+
+        # Sync dispatch — block until complete
+        result = await self.dispatch_approved(
+            plan.id,
+            user_id,
+            session_id=session_id,
+        )
+        result["plan_id"] = plan.id
+        result["plan_version"] = plan.version
+        result["task_count"] = task_count
+        return result
+
+    async def approve_all_proposed(
+        self,
+        mission_plan_id: str,
+        user_id: str,
+    ) -> list[str]:
+        """Approve all tasks currently in PROPOSED state.
+
+        Calls approve_task() for each proposed task, which handles
+        transitive dependency approval. Returns the list of task_ids
+        that were transitioned to APPROVED.
+        """
+        states = await self._repo.get_task_states(
+            mission_plan_id, status=PlanTaskStatus.PROPOSED,
+        )
+        if not states:
+            return []
+
+        all_transitioned: list[str] = []
+        for state in states:
+            transitioned = await self.approve_task(
+                mission_plan_id, state.task_id, user_id,
+            )
+            all_transitioned.extend(s.task_id for s in transitioned)
+
+        # Deduplicate (transitive approval may overlap)
+        seen: set[str] = set()
+        return [t for t in all_transitioned if not (t in seen or seen.add(t))]
+
+    async def _check_no_active_tasks(self, mission_plan_id: str) -> None:
+        """Raise ConflictError if the plan has tasks in QUEUED or RUNNING state.
+
+        Prevents refine() from clobbering in-progress tasks when a second
+        run_objective() is called on the same mission concurrently.
+        """
+        active_statuses = (PlanTaskStatus.QUEUED.value, PlanTaskStatus.RUNNING.value)
+        all_states = await self._repo.get_task_states(mission_plan_id)
+        active = [s for s in all_states if s.status in active_statuses]
+        if active:
+            active_ids = [s.task_id for s in active]
+            raise ConflictError(
+                f"Plan has {len(active)} in-progress task(s): "
+                f"{', '.join(active_ids[:5])}. "
+                "Wait for completion or cancel before starting a new run."
+            )
+
+    # ── Task state transitions ──────────────────────────────────────────
 
     async def reject_task(
         self,

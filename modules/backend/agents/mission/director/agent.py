@@ -489,6 +489,58 @@ def create_agent(model: str | Model) -> Agent:
             logger.error("run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
+    @agent.tool
+    async def run_objective(
+        ctx: RunContext[MissionDirectorDeps],
+        objective: str,
+    ) -> str:
+        """Run an objective via the plan path (Plan 62). Async dispatch.
+
+        Args:
+            objective: What to accomplish (natural language).
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            mission_id = ctx.deps.mission_id
+
+            from modules.backend.services.mission import MissionService
+            from modules.backend.services.mission_plan import MissionPlanService
+            acting_user_id = (await MissionService(ctx.deps.db_session).get_mission(mission_id)).owner_id
+            svc = MissionPlanService(ctx.deps.db_session)
+            result = await svc.run_objective(
+                mission_id=mission_id,
+                objective=objective,
+                user_id=acting_user_id,
+                session_id=ctx.deps.session_id,
+                async_dispatch=True,  # Director is always fire-and-forget
+            )
+            await ctx.deps.db_session.commit()
+
+            # Schedule followup so Director wakes when supervisor decides
+            if result.get("outcome_status") == "dispatching":
+                await _schedule_director_followup(
+                    ctx.deps.db_session,
+                    session_id=ctx.deps.session_id,
+                    mission_id=mission_id,
+                    trigger_event_types=["mission_plan.supervisor_decision"],
+                    prompt_template=(
+                        "The supervisor just evaluated the latest run. "
+                        "Check the plan status and report back to the user."
+                    ),
+                )
+
+            return json.dumps(result, default=str)
+
+        except Exception as e:
+            logger.error("run_objective failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            try:
+                await ctx.deps.db_session.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            return json.dumps({"error": str(e)})
+
     # ── Background Task Tracking (Plan 56 Phase B) ─────────────────────
 
     @agent.tool

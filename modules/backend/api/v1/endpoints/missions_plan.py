@@ -39,6 +39,8 @@ from modules.backend.schemas.mission_plan import (
     MissionPlanUpdate,
     PlanTaskStateResponse,
     PlanTaskStatus,
+    RunObjectiveRequest,
+    RunObjectiveResponse,
     TaskTransitionResponse,
 )
 from modules.backend.services.mission import MissionService
@@ -200,6 +202,58 @@ async def refine_plan(
     )
 
     response = MissionPlanResponse.model_validate(refined)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+# ── Run objective (Plan 62 — unified execution entry point) ──────────────
+
+
+@router.post(
+    "/{mission_id}/plan/run-objective",
+    response_model=ApiResponse,
+    summary="Plan, approve, and dispatch an objective in one call",
+)
+async def run_objective(
+    mission_id: str,
+    data: RunObjectiveRequest,
+    db: DbSession,
+    request_id: RequestId,
+    current_user: CurrentUser,
+    event_bus: EventBus,
+) -> ApiResponse:
+    """Unified execution entry point (Plan 62).
+
+    Creates or refines the mission's plan from the given objective,
+    auto-approves tasks (unless gate_mode is interactive), and dispatches.
+
+    In sync mode (async_dispatch=false, default): blocks until all tasks
+    complete and returns the full dispatch result. Use for CLI.
+
+    In async mode (async_dispatch=true): approves tasks and returns
+    immediately. The Temporal daemon dispatches on its next 5-second tick.
+    Use for chat and frontend.
+
+    Returns 409 Conflict if the plan has tasks currently in QUEUED or
+    RUNNING state — wait for completion or cancel before starting a new run.
+    """
+    await _require_mission_access(db, mission_id, current_user)
+
+    service = MissionPlanService(db, event_bus=event_bus)
+    result = await service.run_objective(
+        mission_id=mission_id,
+        objective=data.objective,
+        user_id=current_user.id,
+        session_id=str(request_id),
+        gate_mode=data.gate_mode,
+        budget_ceiling_usd=data.budget_ceiling_usd,
+        async_dispatch=data.async_dispatch,
+    )
+
+    response = RunObjectiveResponse(**result)
     return ApiResponse(
         success=True,
         data=response.model_dump(),

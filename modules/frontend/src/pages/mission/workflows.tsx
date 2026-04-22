@@ -298,9 +298,9 @@ function WorkflowDetailPanel({
           missionId={missionId}
           workflowName={workflow.name}
           onClose={() => setShowRunModal(false)}
-          onStarted={(execId) => {
+          onStarted={() => {
             setShowRunModal(false)
-            navigate(ROUTES.MISSION_RUN_LIVE(missionId, execId))
+            navigate(ROUTES.MISSION_PLAN(missionId))
           }}
         />
       )}

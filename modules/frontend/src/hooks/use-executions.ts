@@ -106,6 +106,31 @@ export function useCreateExecution() {
   })
 }
 
+/** Plan 62: unified execution via the plan path. */
+export function useRunObjective(missionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      objective: string
+      gate_mode?: string
+      budget_ceiling_usd?: number
+      async_dispatch?: boolean
+    }) =>
+      api.post<{
+        plan_id: string
+        plan_version: number
+        task_count: number
+        outcome_status: string
+        dispatched_task_ids: string[]
+        total_cost_usd: number
+      }>(`/missions/${missionId}/plan/run-objective`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['executions'] })
+      qc.invalidateQueries({ queryKey: ['plan', missionId] })
+    },
+  })
+}
+
 export function useStartExecution() {
   const qc = useQueryClient()
   return useMutation({

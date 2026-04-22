@@ -157,6 +157,57 @@ class MissionPlanResponse(BaseModel):
 # ── Task-level transitions ───────────────────────────────────────────────
 
 
+class RunObjectiveRequest(BaseModel):
+    """POST /missions/:id/plan/run-objective body (Plan 62)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    objective: str = Field(
+        ...,
+        min_length=5,
+        description="Natural-language objective for the Planning Agent",
+    )
+    gate_mode: str | None = Field(
+        None,
+        description="Override gate mode: off, interactive, ai_assisted, autonomous",
+    )
+    budget_ceiling_usd: float | None = Field(
+        None,
+        ge=0.01,
+        description="Override budget ceiling for this plan",
+    )
+    async_dispatch: bool = Field(
+        False,
+        description=(
+            "If false (default), blocks until dispatch completes (CLI mode). "
+            "If true, approves tasks and returns immediately — daemon dispatches "
+            "on next tick (chat/frontend mode)."
+        ),
+    )
+
+
+class RunObjectiveResponse(BaseModel):
+    """Result of POST /missions/:id/plan/run-objective (Plan 62)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: str
+    plan_version: int
+    task_count: int
+    outcome_status: str = Field(
+        ...,
+        description=(
+            "success | partial | failed (sync), "
+            "dispatching | awaiting_approval | no_tasks_to_approve (async/interactive)"
+        ),
+    )
+    dispatched_task_ids: list[str] = Field(default_factory=list)
+    total_cost_usd: float = 0.0
+    execution_record_id: str | None = None
+    updated_task_ids: list[str] = Field(default_factory=list)
+    new_total_spent_usd: float | None = None
+
+
 class DispatchApprovedResponse(BaseModel):
     """Result of POST /missions/:id/plan/dispatch (Plan 42 §10.1)."""
 

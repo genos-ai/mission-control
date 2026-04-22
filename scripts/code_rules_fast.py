@@ -494,6 +494,56 @@ def check_agent_imports_models_repos(path: Path, rel: str) -> list[Violation]:
     return violations
 
 
+def check_temporal_determinism(path: Path, rel: str) -> list[Violation]:
+    """013.1 — Temporal workflow code must be fully deterministic.
+
+    Workflow methods run in a replay-safe sandbox. Any non-deterministic
+    call (datetime.now, random, direct I/O, os.getenv, uuid4, time.time,
+    sleep) will cause replay divergence — a silent, catastrophic bug that
+    only surfaces under failure recovery. All side effects belong in
+    Activities.
+    """
+    if not rel.startswith("modules/backend/temporal/"):
+        return []
+    # Only check workflow files, not activities or worker
+    if "workflow" not in Path(rel).stem:
+        return []
+    violations = []
+    # Patterns that break Temporal replay determinism
+    nondeterministic = [
+        (re.compile(r"\bdatetime\.(now|utcnow)\b"), "datetime.now()/utcnow()"),
+        (re.compile(r"\brandom\.\w+\("), "random module"),
+        (re.compile(r"\buuid[._]uuid[14]\b|uuid4\(\)"), "uuid generation"),
+        (re.compile(r"\btime\.(time|sleep|monotonic)\b"), "time module"),
+        (re.compile(r"\bos\.(getenv|environ)\b"), "os.getenv/environ"),
+        (re.compile(r"\bopen\s*\("), "file I/O"),
+        (re.compile(r"\bhttpx\.|aiohttp\.|requests\."), "HTTP client"),
+        (re.compile(r"\basyncio\.sleep\b"), "asyncio.sleep (use workflow.sleep)"),
+    ]
+    comment_line = re.compile(r"^\s*#")
+    lines = path.read_text().splitlines()
+    in_docstring = False
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        # Track multiline docstrings (triple-quote toggle)
+        if '"""' in stripped or "'''" in stripped:
+            count = stripped.count('"""') + stripped.count("'''")
+            if count == 1:
+                in_docstring = not in_docstring
+                continue
+            # Opening and closing on same line — skip the line, stay outside
+            continue
+        if in_docstring or comment_line.match(line):
+            continue
+        for pat, label in nondeterministic:
+            if pat.search(line):
+                violations.append(Violation(
+                    "013.1", "error", rel, i,
+                    f"Non-deterministic in workflow: {label} — move to an Activity",
+                ))
+    return violations
+
+
 def check_noopbus_in_production(path: Path, rel: str) -> list[Violation]:
     """012.1 — NoOpEventBus should not be used in production code paths.
 
@@ -544,6 +594,7 @@ ALL_CHECKS = [
     check_logger_error_needs_mission_id,
     check_agent_imports_models_repos,
     check_noopbus_in_production,
+    check_temporal_determinism,
 ]
 
 

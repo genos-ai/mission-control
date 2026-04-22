@@ -281,8 +281,8 @@ class MissionService(BaseService):
             "mission_artifacts",
             "mission_events",
             "mission_contexts",
-            "context_milestones",
             "context_changes",
+            "context_milestones",
             "mission_decisions",
             "milestone_summaries",
             "mission_members",
@@ -293,6 +293,10 @@ class MissionService(BaseService):
             "workflow_runs",
             "workflow_definitions",
             "execution_environments",
+            "llm_calls",
+            "mission_intents",
+            "mission_learnings",
+            "embeddings",
         ]
         for table in direct_tables:
             await self._session.execute(
