@@ -8,7 +8,7 @@ Used by mc.py only; admin.py continues to use mission_cmds.py.
 import json
 import sys
 
-from modules.clients.cli.api_client import CliApiClient, extract_list, resolve_mission
+from modules.clients.cli.api_client import ApiError, CliApiClient, extract_list, resolve_mission
 from modules.clients.common.display import build_table, get_console, styled_status
 
 
@@ -138,8 +138,9 @@ async def info(api: CliApiClient, mission_id: str) -> None:
                 console.print(f"    [cyan]{agent_name}[/cyan]")
                 if desc:
                     console.print(f"      {desc}")
-    except Exception:
-        pass
+    except ApiError as exc:
+        if exc.status != 404:
+            console.print(f"  [dim yellow]Could not load team: {exc.message}[/dim yellow]")
 
 
 async def archive(api: CliApiClient, mission_id: str) -> None:

@@ -11,7 +11,7 @@ import sys
 
 import click
 
-from modules.clients.cli.api_client import CliApiClient, extract_list
+from modules.clients.cli.api_client import ApiError, CliApiClient, extract_list
 from modules.clients.common.display import get_console
 from modules.clients.common.gate_helpers import STATUS_ICONS
 
@@ -75,8 +75,9 @@ async def retry(
     plan = None
     try:
         plan = await api.get(f"/missions/{mission_id}/plan")
-    except Exception:
-        pass
+    except ApiError as exc:
+        if exc.status != 404:
+            console.print(f"[dim yellow]Could not load plan: {exc.message}[/dim yellow]")
 
     if plan:
         task_states = plan.get("task_states", [])
