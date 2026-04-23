@@ -8,10 +8,9 @@ Tavily returns content snippets directly; Brave returns URLs only
 
 from __future__ import annotations
 
-import os
-
 import httpx
 
+from modules.backend.core.config import get_settings
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import SearchResult
 
@@ -26,8 +25,9 @@ class WebSearchService:
 
     def __init__(self, http_client: httpx.AsyncClient) -> None:
         self._client = http_client
-        self._tavily_key = os.environ.get("TAVILY_API_KEY", "")
-        self._brave_key = os.environ.get("BRAVE_API_KEY", "")
+        settings = get_settings()
+        self._tavily_key = settings.tavily_api_key
+        self._brave_key = settings.brave_api_key
 
     async def search(
         self,
