@@ -114,15 +114,11 @@ export function useRunObjective(missionId: string) {
       objective: string
       gate_mode?: string
       budget_ceiling_usd?: number
-      async_dispatch?: boolean
     }) =>
       api.post<{
         plan_id: string
-        plan_version: number
-        task_count: number
         outcome_status: string
-        dispatched_task_ids: string[]
-        total_cost_usd: number
+        workflow_id?: string
       }>(`/missions/${missionId}/plan/run-objective`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['executions'] })

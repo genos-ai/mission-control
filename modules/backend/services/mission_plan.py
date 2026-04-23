@@ -511,14 +511,17 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         session_id: str | None = None,
         gate_mode: str | None = None,
         budget_ceiling_usd: float | None = None,
-        async_dispatch: bool = False,
     ) -> dict:
-        """Create/refine a plan from an objective and dispatch it.
+        """Create/refine a plan from an objective and dispatch via Temporal.
 
         Unified entry point for all execution — CLI, chat, frontend.
         Single-task objectives produce single-task plans. Complex objectives
         produce multi-task plans. Both go through the full plan infrastructure
         (task states, supervisor, budget tracking, audit trail).
+
+        Always starts a Temporal MissionRunWorkflow for dispatch and
+        returns immediately. Returns outcome_status="temporal_unavailable"
+        if Temporal is not reachable.
 
         Args:
             mission_id: The mission to execute against.
@@ -527,18 +530,10 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             session_id: Session for event publishing (optional).
             gate_mode: Override the plan's gate mode (optional).
             budget_ceiling_usd: Override the plan's budget (optional).
-            async_dispatch: If False (default), calls dispatch_approved()
-                and blocks until all tasks complete (CLI mode). If True,
-                starts a Temporal MissionRunWorkflow for autonomous
-                multi-wave execution (chat/frontend mode). Returns
-                outcome_status="temporal_unavailable" if Temporal is
-                not enabled — never silently falls back to blocking.
 
         Returns:
             dict with: plan_id, plan_version, task_count, outcome_status,
-            dispatched_task_ids (sync only), total_cost_usd (sync only).
-            In async mode, outcome_status is "dispatching" or
-            "temporal_unavailable".
+            dispatched_task_ids, workflow_id.
 
         Raises:
             ConflictError: If the plan has tasks in QUEUED or RUNNING state.
@@ -556,7 +551,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         await self._session.flush()
 
         # 3. Concurrency guard — reject if tasks are in-flight
-        await self._check_no_active_tasks(plan.id)
+        await self.check_no_active_tasks(plan.id)
 
         # 4. Refine: Planning Agent decomposes objective into TaskPlan
         budget = plan.budget_usd_ceiling or 10.0
@@ -600,53 +595,37 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
                 "total_cost_usd": 0.0,
             }
 
-        # 6. Dispatch
-        if async_dispatch:
-            # Start Temporal MissionRunWorkflow for autonomous multi-wave
-            # execution. Falls back to inline dispatch if Temporal is disabled.
-            workflow_id = await self._start_temporal_run_workflow(
-                plan, session_id,
-            )
-            self._log_operation(
-                "run_objective: async dispatch — Temporal workflow started"
-                if workflow_id
-                else "run_objective: async dispatch — Temporal unavailable, returning error",
-                plan_id=plan.id,
-                mission_id=mission_id,
-                approved_task_ids=approved_ids,
-                workflow_id=workflow_id,
-            )
-            if workflow_id:
-                return {
-                    "plan_id": plan.id,
-                    "plan_version": plan.version,
-                    "task_count": task_count,
-                    "outcome_status": "dispatching",
-                    "dispatched_task_ids": approved_ids,
-                    "total_cost_usd": 0.0,
-                    "workflow_id": workflow_id,
-                }
-            # Temporal not available — refuse rather than silently
-            # blocking the caller (e.g. a Director chat turn) for minutes.
+        # 6. Dispatch via Temporal
+        workflow_id = await self._start_temporal_run_workflow(
+            plan, session_id,
+        )
+        self._log_operation(
+            "run_objective: Temporal workflow started"
+            if workflow_id
+            else "run_objective: Temporal unavailable",
+            plan_id=plan.id,
+            mission_id=mission_id,
+            approved_task_ids=approved_ids,
+            workflow_id=workflow_id,
+        )
+        if workflow_id:
             return {
                 "plan_id": plan.id,
                 "plan_version": plan.version,
                 "task_count": task_count,
-                "outcome_status": "temporal_unavailable",
-                "dispatched_task_ids": [],
+                "outcome_status": "dispatching",
+                "dispatched_task_ids": approved_ids,
                 "total_cost_usd": 0.0,
+                "workflow_id": workflow_id,
             }
-
-        # Sync dispatch — block until complete
-        result = await self.dispatch_approved(
-            plan.id,
-            user_id,
-            session_id=session_id,
-        )
-        result["plan_id"] = plan.id
-        result["plan_version"] = plan.version
-        result["task_count"] = task_count
-        return result
+        return {
+            "plan_id": plan.id,
+            "plan_version": plan.version,
+            "task_count": task_count,
+            "outcome_status": "temporal_unavailable",
+            "dispatched_task_ids": [],
+            "total_cost_usd": 0.0,
+        }
 
     async def dispatch_autonomous(
         self,
@@ -750,7 +729,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         seen: set[str] = set()
         return [t for t in all_transitioned if not (t in seen or seen.add(t))]
 
-    async def _check_no_active_tasks(self, mission_plan_id: str) -> None:
+    async def check_no_active_tasks(self, mission_plan_id: str) -> None:
         """Raise ConflictError if the plan has tasks in QUEUED or RUNNING state.
 
         Prevents refine() from clobbering in-progress tasks when a second

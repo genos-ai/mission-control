@@ -95,12 +95,13 @@ export interface TaskTransitionResult {
 }
 
 export interface DispatchApprovedResult {
-  outcome_status: 'success' | 'partial' | 'failed'
+  outcome_status: 'success' | 'partial' | 'failed' | 'dispatching'
   execution_record_id: string | null
   dispatched_task_ids: string[]
   updated_task_ids: string[]
   total_cost_usd: number
   new_total_spent_usd: number
+  workflow_id?: string | null
 }
 
 // ── Query keys ───────────────────────────────────────────────────────────
@@ -129,17 +130,18 @@ export function useMissionPlan(missionId: string | undefined) {
 
 // ── Mutations ────────────────────────────────────────────────────────────
 
-/** Refine the plan via the Planning Agent. */
+/** Refine the plan via the Planning Agent (async — returns immediately).
+ *
+ * Starts a PlanRefineWorkflow via Temporal. The plan cache is invalidated
+ * when the mission_plan.refined SSE event arrives (handled in layout.tsx).
+ */
 export function useRefinePlan(missionId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: (instructions: string) =>
-      api.post<MissionPlan>(`/missions/${missionId}/plan/refine`, {
-        instructions,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: planKeys.plan(missionId) })
-    },
+      api.post<{ status: string; plan_id: string; workflow_id?: string }>(
+        `/missions/${missionId}/plan/refine`,
+        { instructions },
+      ),
   })
 }
 
@@ -255,7 +257,7 @@ export function useLastSupervisorDecision(
   })
 }
 
-/** Dispatch all currently-approved tasks as a single run. */
+/** Dispatch all currently-approved tasks via Temporal. */
 export function useDispatchApproved(missionId: string) {
   const qc = useQueryClient()
   return useMutation({

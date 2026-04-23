@@ -96,7 +96,7 @@ async def retry(
                 )
 
             result = await api.post(
-                f"/missions/{mission_id}/plan/dispatch?autonomous=true",
+                f"/missions/{mission_id}/plan/dispatch",
             )
 
             outcome = result.get("outcome_status", "")
@@ -201,8 +201,8 @@ async def _run_adhoc(
 ) -> None:
     """Execute an ad-hoc objective via the plan path.
 
-    Uses async_dispatch=true then polls the plan endpoint for progress,
-    avoiding HTTP timeout issues with long-running sync dispatch.
+    The endpoint starts a RunObjectiveWorkflow via Temporal and returns
+    immediately. Progress is streamed via SSE with polling fallback.
     """
     console = get_console()
 
@@ -218,7 +218,6 @@ async def _run_adhoc(
 
     body: dict = {
         "objective": objective,
-        "async_dispatch": True,
     }
     if gate_override:
         body["gate_mode"] = gate_override
@@ -230,29 +229,13 @@ async def _run_adhoc(
         body=body,
     )
 
-    task_count = result.get("task_count", 0)
-    outcome = result.get("outcome_status", "")
-
     if verbose:
         print(json.dumps(result, default=str, indent=2), flush=True)
-        if outcome not in ("success", "failed", "awaiting_approval"):
-            await _stream_plan_progress(api, mission_id, verbose=True)
-        return
 
-    if outcome in ("success", "failed"):
-        _render_summary(console, result)
-        return
-
-    if outcome == "awaiting_approval":
-        console.print(
-            f"[bold]Plan created:[/bold] {task_count} task(s) awaiting approval"
-        )
-        console.print("[dim]Approve via the web UI or API.[/dim]")
-        return
-
-    # Dispatching — stream progress via SSE
-    console.print(f"Dispatched {task_count} task(s). Streaming progress...\n")
-    await _stream_plan_progress(api, mission_id, verbose=False, quiet=quiet)
+    # Endpoint returns immediately — refine + dispatch run in Temporal.
+    # Stream progress via SSE until all tasks complete.
+    console.print("Dispatched. Streaming progress...\n")
+    await _stream_plan_progress(api, mission_id, verbose=verbose, quiet=quiet)
 
 
 async def _stream_plan_progress(

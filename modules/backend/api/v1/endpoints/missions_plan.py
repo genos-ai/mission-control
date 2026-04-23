@@ -15,7 +15,10 @@ in Phase 1.5 and 1.6 respectively.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
+
+from modules.backend.core.config import get_app_config
+from modules.backend.core.logging import get_logger
 
 from modules.backend.core.dependencies import (
     CurrentUser,
@@ -40,11 +43,12 @@ from modules.backend.schemas.mission_plan import (
     PlanTaskStateResponse,
     PlanTaskStatus,
     RunObjectiveRequest,
-    RunObjectiveResponse,
     TaskTransitionResponse,
 )
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -179,32 +183,49 @@ async def refine_plan(
 ) -> ApiResponse:
     """Refine the mission's plan using the Planning Agent.
 
-    Delegates to MissionPlanService.refine, which invokes the Planning
-    Agent in refinement mode with the current TaskPlan + the user's
-    instructions. The agent returns a new TaskPlan; task states are
-    reconciled in place (surviving task_ids keep their state, missing
-    ones are cancelled, new ones start as proposed), and the plan's
-    version counter is bumped.
+    Starts a PlanRefineWorkflow via Temporal and returns immediately.
+    The workflow emits mission_plan.refined via SSE on completion,
+    or a system.info error event on failure.
 
     This is the single authoring entry point. The Director calls this
     via a tool when the user describes changes in chat — Plan 36
     compatibility: the Director delegates to existing code rather than
     hand-editing tasks.
     """
+    import uuid as _uuid
+    from modules.backend.temporal.client import get_temporal_client
+    from modules.backend.temporal.plan_refine_models import PlanRefineInput
+    from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
+
     await _require_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
-    refined = await service.refine(
-        plan.id,
-        data.instructions,
-        user_id=current_user.id,
+
+    client = await get_temporal_client()
+    config = get_app_config().temporal
+
+    workflow_id = f"plan-refine-{plan.id[:12]}-{_uuid.uuid4().hex[:8]}"
+    await client.start_workflow(
+        PlanRefineWorkflow.run,
+        PlanRefineInput(
+            mission_id=mission_id,
+            plan_id=plan.id,
+            instructions=data.instructions,
+            user_id=current_user.id,
+            mission_budget_usd=plan.budget_usd_ceiling or 10.0,
+        ),
+        id=workflow_id,
+        task_queue=config.task_queue,
     )
 
-    response = MissionPlanResponse.model_validate(refined)
     return ApiResponse(
         success=True,
-        data=response.model_dump(),
+        data={
+            "status": "refining",
+            "plan_id": plan.id,
+            "workflow_id": workflow_id,
+        },
         metadata={"request_id": request_id},
     )
 
@@ -227,36 +248,51 @@ async def run_objective(
 ) -> ApiResponse:
     """Unified execution entry point (Plan 62).
 
-    Creates or refines the mission's plan from the given objective,
-    auto-approves tasks (unless gate_mode is interactive), and dispatches.
-
-    In sync mode (async_dispatch=false, default): blocks until all tasks
-    complete and returns the full dispatch result. Use for CLI.
-
-    In async mode (async_dispatch=true): approves tasks and returns
-    immediately. The Temporal daemon dispatches on its next 5-second tick.
-    Use for chat and frontend.
+    Starts a RunObjectiveWorkflow via Temporal and returns immediately.
+    The workflow runs: refine (Planning Agent) → approve → dispatch
+    (MissionRunWorkflow). Progress is streamed via SSE.
 
     Returns 409 Conflict if the plan has tasks currently in QUEUED or
     RUNNING state — wait for completion or cancel before starting a new run.
     """
+    import uuid as _uuid
+    from modules.backend.temporal.client import get_temporal_client
+    from modules.backend.temporal.run_objective_models import RunObjectiveInput
+    from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
+
     await _require_mission_access(db, mission_id, current_user)
 
+    # Validate plan exists and check for in-flight tasks before
+    # starting the workflow (fast DB check — fails early on 409).
     service = MissionPlanService(db, event_bus=event_bus)
-    result = await service.run_objective(
-        mission_id=mission_id,
-        objective=data.objective,
-        user_id=current_user.id,
-        session_id=str(request_id),
-        gate_mode=data.gate_mode,
-        budget_ceiling_usd=data.budget_ceiling_usd,
-        async_dispatch=data.async_dispatch,
+    plan = await service.get_or_create_plan(mission_id)
+    await service.check_no_active_tasks(plan.id)
+
+    client = await get_temporal_client()
+    config = get_app_config().temporal
+
+    workflow_id = f"run-objective-{mission_id[:12]}-{_uuid.uuid4().hex[:8]}"
+    await client.start_workflow(
+        RunObjectiveWorkflow.run,
+        RunObjectiveInput(
+            mission_id=mission_id,
+            objective=data.objective,
+            user_id=current_user.id,
+            session_id=str(request_id),
+            gate_mode=data.gate_mode,
+            budget_ceiling_usd=data.budget_ceiling_usd,
+        ),
+        id=workflow_id,
+        task_queue=config.task_queue,
     )
 
-    response = RunObjectiveResponse(**result)
     return ApiResponse(
         success=True,
-        data=response.model_dump(),
+        data={
+            "plan_id": plan.id,
+            "outcome_status": "dispatching",
+            "workflow_id": workflow_id,
+        },
         metadata={"request_id": request_id},
     )
 
@@ -275,56 +311,34 @@ async def dispatch_approved(
     request_id: RequestId,
     current_user: CurrentUser,
     event_bus: EventBus,
-    autonomous: bool = Query(
-        False,
-        description=(
-            "If true, start a Temporal MissionRunWorkflow that loops "
-            "autonomously (execute → supervisor → advance → repeat). "
-            "Returns immediately with workflow_id. Falls back to inline "
-            "dispatch if Temporal is not enabled."
-        ),
-    ),
 ) -> ApiResponse:
-    """Start a run of every currently-approved task in the plan.
+    """Start a Temporal MissionRunWorkflow for all approved tasks.
 
-    In default mode (autonomous=false): blocks until dispatch completes
-    and returns the full result with task outcomes and costs.
-
-    In autonomous mode (autonomous=true): starts a Temporal
-    MissionRunWorkflow and returns immediately. The workflow handles
+    Returns immediately with the workflow ID. The workflow handles
     the full supervisor loop — execute, evaluate, advance/refine/
     escalate — repeating until done or a circuit breaker trips.
+
+    Returns an error if Temporal is unavailable.
     """
     await _require_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
 
-    if autonomous:
-        result = await service.dispatch_autonomous(
-            plan.id, session_id=str(request_id),
-        )
-        if result:
-            response = DispatchApprovedResponse(**result)
-            return ApiResponse(
-                success=True,
-                data=response.model_dump(),
-                metadata={"request_id": request_id},
-            )
-        # Temporal not available — refuse rather than silently blocking
+    result = await service.dispatch_autonomous(
+        plan.id, session_id=str(request_id),
+    )
+    if result:
+        response = DispatchApprovedResponse(**result)
         return ApiResponse(
-            success=False,
-            error="Temporal is not available. Use autonomous=false for "
-                  "inline dispatch, or ensure Temporal is running.",
+            success=True,
+            data=response.model_dump(),
             metadata={"request_id": request_id},
         )
 
-    result = await service.dispatch_approved(plan.id, current_user.id)
-
-    response = DispatchApprovedResponse(**result)
     return ApiResponse(
-        success=True,
-        data=response.model_dump(),
+        success=False,
+        error="Temporal is not available. Ensure Temporal is running.",
         metadata={"request_id": request_id},
     )
 

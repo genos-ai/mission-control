@@ -514,7 +514,6 @@ def create_agent(model: str | Model) -> Agent:
                 objective=objective,
                 user_id=acting_user_id,
                 session_id=ctx.deps.session_id,
-                async_dispatch=True,  # Director is always fire-and-forget
             )
             await ctx.deps.db_session.commit()
 

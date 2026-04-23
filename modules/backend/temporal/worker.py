@@ -69,6 +69,10 @@ from modules.backend.temporal.maintenance_workflow import (
     CleanupEnvironmentsWorkflow,
     EvaluateWorkflowSchedulesWorkflow,
 )
+from modules.backend.temporal.plan_refine_activities import execute_plan_refine
+from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
+from modules.backend.temporal.run_objective_activities import execute_run_objective
+from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
 from modules.backend.temporal.workflow import AgentMissionWorkflow
 
 logger = get_logger(__name__)
@@ -93,6 +97,9 @@ async def start_worker() -> None:
             KnowledgeExtractionWorkflow,
             KnowledgeOfficerWorkflow,
             EmbeddingBackfillWorkflow,
+            # Plan endpoints (async-only)
+            PlanRefineWorkflow,
+            RunObjectiveWorkflow,
             # Maintenance (Plan 56 Phase C — replaces TaskIQ cron)
             DailyCleanupWorkflow,
             HourlyHealthCheckWorkflow,
@@ -118,6 +125,9 @@ async def start_worker() -> None:
             fire_supervisor_followups,
             # Scheduled dispatch (Plan 52 Phase D)
             find_ready_plans,
+            # Plan endpoints (async-only)
+            execute_plan_refine,
+            execute_run_objective,
             # Tool fork (Plan 56 Phase B)
             execute_design_workflow,
             execute_run_workflow,

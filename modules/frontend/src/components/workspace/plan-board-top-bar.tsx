@@ -80,9 +80,13 @@ export function PlanTopBar({
   async function doDispatch() {
     try {
       const result = await dispatch.mutateAsync()
-      toast.success(
-        `Run ${result.outcome_status} — $${result.total_cost_usd.toFixed(4)}`,
-      )
+      if (result.outcome_status === 'dispatching') {
+        toast.success('Dispatched — streaming progress via console')
+      } else {
+        toast.success(
+          `Run ${result.outcome_status} — $${result.total_cost_usd.toFixed(4)}`,
+        )
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Dispatch failed')
     }
@@ -332,7 +336,7 @@ export function RefinePanel({
     if (!trimmed) return
     try {
       await refine.mutateAsync(trimmed)
-      toast.success('Plan refined')
+      toast.success('Refining plan — updates will appear shortly')
       setInstructions('')
       onDone()
     } catch (err) {

@@ -176,40 +176,24 @@ class RunObjectiveRequest(BaseModel):
         ge=0.01,
         description="Override budget ceiling for this plan",
     )
-    async_dispatch: bool = Field(
-        False,
-        description=(
-            "If false (default), blocks until dispatch completes (CLI mode). "
-            "If true, approves tasks and starts Temporal MissionRunWorkflow "
-            "for autonomous multi-wave execution (chat/frontend mode)."
-        ),
-    )
 
 
 class RunObjectiveResponse(BaseModel):
-    """Result of POST /missions/:id/plan/run-objective (Plan 62)."""
+    """Result of POST /missions/:id/plan/run-objective (Plan 62).
+
+    Always returns immediately — the RunObjectiveWorkflow runs in Temporal.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     plan_id: str
-    plan_version: int
-    task_count: int
     outcome_status: str = Field(
         ...,
-        description=(
-            "success | partial | failed (sync), "
-            "dispatching | awaiting_approval | no_tasks_to_approve | "
-            "temporal_unavailable (async/interactive)"
-        ),
+        description="dispatching — the RunObjectiveWorkflow is running in Temporal",
     )
-    dispatched_task_ids: list[str] = Field(default_factory=list)
-    total_cost_usd: float = 0.0
-    execution_record_id: str | None = None
-    updated_task_ids: list[str] = Field(default_factory=list)
-    new_total_spent_usd: float | None = None
     workflow_id: str | None = Field(
         None,
-        description="Temporal workflow ID when async_dispatch=true and Temporal is enabled",
+        description="Temporal workflow ID for the RunObjectiveWorkflow",
     )
 
 

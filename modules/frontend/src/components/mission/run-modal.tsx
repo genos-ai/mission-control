@@ -49,14 +49,9 @@ export function RunModal({
         objective: objective.trim(),
         gate_mode: gateMode || undefined,
         budget_ceiling_usd: budget ? parseFloat(budget) : undefined,
-        async_dispatch: true,
       })
 
-      if (result.outcome_status === 'awaiting_approval') {
-        toast.success(`Plan created with ${result.task_count} tasks — approve in Plan tab`)
-      } else {
-        toast.success(`Dispatching ${result.task_count} tasks...`)
-      }
+      toast.success('Objective dispatched — streaming progress via console')
       onStarted(result.plan_id)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to start run'
