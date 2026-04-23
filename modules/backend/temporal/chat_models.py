@@ -18,6 +18,7 @@ class ChatTurnInput:
     sender_id: str | None = None
     agent_id: str | None = None
     channel: str = "api"
+    parent_workflow_id: str | None = None
 
 
 @dataclass

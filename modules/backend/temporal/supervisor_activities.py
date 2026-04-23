@@ -366,12 +366,17 @@ async def start_director_turn(
     mission_id: str,
     session_id: str,
     prompt: str,
+    parent_workflow_id: str | None = None,
 ) -> str:
     """Start a ChatTurnWorkflow for the Director.
 
     Used by ADVANCE_REFINE, PROPOSE_COMPLETE, and ESCALATE paths
     to wake the Director with a system-generated prompt. Returns
     the workflow ID.
+
+    When parent_workflow_id is set (advance_refine path), it is passed
+    to ChatTurnWorkflow so it can signal the parent when done — replacing
+    polling with an instant wake-up.
     """
     from modules.backend.core.config import get_app_config
     from modules.backend.temporal.chat_models import ChatTurnInput
@@ -390,6 +395,7 @@ async def start_director_turn(
         sender_id="mission.supervisor.agent",
         agent_id="mission.director.agent",
         channel="followup",
+        parent_workflow_id=parent_workflow_id,
     )
 
     workflow_id = f"director-followup-{mission_id[:12]}-{uuid.uuid4().hex[:8]}"

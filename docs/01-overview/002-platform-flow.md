@@ -232,7 +232,8 @@ Entry points:
         ├── ADVANCE_APPROVED  → approve_proposed_tasks activity, loop
         ├── ADVANCE_REFINE    → start_director_turn activity (ChatTurnWorkflow)
         │                       → Director calls refine_plan + approve
-        │                       → Poll for new tasks, loop
+        │                       → ChatTurnWorkflow signals refinement_complete
+        │                       → Check for new tasks, loop
         ├── PROPOSE_COMPLETE  → start_director_turn (notify user), break
         │                       (plan stays active — idle plan costs nothing)
         └── ESCALATE          → start_director_turn + notification, pause plan, break

@@ -47,6 +47,12 @@ class MissionRunWorkflow:
         self._iteration = 0
         self._last_action = ""
         self._total_cost = 0.0
+        self._refinement_done = False
+
+    @workflow.signal
+    def refinement_complete(self) -> None:
+        """Signal from ChatTurnWorkflow when the Director finishes refining."""
+        self._refinement_done = True
 
     @workflow.query
     def get_loop_status(self) -> dict:
@@ -178,7 +184,9 @@ class MissionRunWorkflow:
                 continue
 
             elif eval_result.action == "advance_refine":
-                # Start Director to refine the plan
+                # Start Director to refine the plan. Pass our workflow ID
+                # so the ChatTurnWorkflow signals us when done — no polling.
+                self._refinement_done = False
                 prompt = (
                     f"The supervisor decided to advance the plan after "
                     f"run {result.mission_id}. The last wave "
@@ -193,28 +201,34 @@ class MissionRunWorkflow:
                         input.mission_id or input.mission_run_id,
                         input.session_id,
                         prompt,
+                        workflow.info().workflow_id,
                     ],
-                    start_to_close_timeout=activity_timeout,
+                    start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=RetryPolicy(maximum_attempts=1),
                 )
 
-                # Poll for new proposed/approved tasks (reuse last counts)
-                counts = sup.PlanTaskCounts()
-                refine_polls = config.refine_poll_max_seconds // max(
-                    config.refine_poll_interval_seconds, 1,
-                )
-                for _ in range(refine_polls):
-                    await workflow.sleep(timedelta(
-                        seconds=config.refine_poll_interval_seconds,
-                    ))
-                    counts = await workflow.execute_local_activity(
-                        sup.fetch_plan_task_counts,
-                        input.mission_id or input.mission_run_id,
-                        schedule_to_close_timeout=persist_timeout,
-                        retry_policy=persist_policy,
+                # Wait for ChatTurnWorkflow to signal refinement_complete,
+                # with a configurable timeout as safety net.
+                try:
+                    await workflow.wait_condition(
+                        lambda: self._refinement_done,
+                        timeout=timedelta(
+                            seconds=config.refine_poll_max_seconds,
+                        ),
                     )
-                    if counts.approved > 0 or counts.proposed > 0:
-                        break
+                except TimeoutError:
+                    workflow.logger.warning(
+                        "Refinement signal not received within %ds",
+                        config.refine_poll_max_seconds,
+                    )
+
+                # Check what the Director produced
+                counts = await workflow.execute_local_activity(
+                    sup.fetch_plan_task_counts,
+                    input.mission_id or input.mission_run_id,
+                    schedule_to_close_timeout=persist_timeout,
+                    retry_policy=persist_policy,
+                )
 
                 # If proposed tasks appeared, approve them
                 if counts.proposed > 0:
@@ -285,6 +299,43 @@ class MissionRunWorkflow:
             else:
                 # Unknown action — break out safely
                 break
+
+        # If we exhausted the iteration cap without a terminal decision,
+        # escalate so the user knows the mission stopped making progress.
+        if (
+            self._iteration >= max_loop_iterations
+            and self._last_action not in ("propose_complete", "escalate")
+        ):
+            _mission = input.mission_id or input.mission_run_id
+            reason = (
+                f"Reached maximum supervisor iterations ({max_loop_iterations}). "
+                f"Total cost: ${self._total_cost:.2f}."
+            )
+            await workflow.execute_activity(
+                sup.start_director_turn,
+                args=[
+                    _mission,
+                    input.session_id,
+                    f"The autonomy loop hit its iteration cap "
+                    f"({max_loop_iterations} waves). {reason} "
+                    f"Please inform the user and ask whether to continue "
+                    f"or wrap up.",
+                ],
+                start_to_close_timeout=activity_timeout,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+            await workflow.execute_activity(
+                activities.send_notification,
+                NotificationPayload(
+                    channel="webhook",
+                    recipient="admin",
+                    title=f"Mission iteration cap reached: {input.mission_run_id[:12]}",
+                    body=reason,
+                    action_url=f"/missions/{input.mission_id}",
+                    urgency="high",
+                ),
+                start_to_close_timeout=timedelta(seconds=30),
+            )
 
         return {
             "iterations": self._iteration,

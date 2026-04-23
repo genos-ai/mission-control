@@ -91,4 +91,22 @@ class ChatTurnWorkflow:
         )
 
         self._result = result
+
+        # Step 3: Signal parent workflow if this chat turn was spawned
+        # by MissionRunWorkflow's advance_refine path. The signal wakes
+        # the parent immediately instead of requiring it to poll for new
+        # tasks on a timer.
+        if input.parent_workflow_id:
+            try:
+                parent = workflow.get_external_workflow_handle(
+                    input.parent_workflow_id,
+                )
+                await parent.signal("refinement_complete")
+            except Exception:
+                # Parent may have completed or been cancelled — non-fatal.
+                workflow.logger.warning(
+                    "Failed to signal parent workflow %s (non-fatal)",
+                    input.parent_workflow_id,
+                )
+
         return result
