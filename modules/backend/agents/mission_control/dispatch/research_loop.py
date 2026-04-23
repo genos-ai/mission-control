@@ -626,12 +626,17 @@ def _extract_findings(result: dict, sq_id: str) -> list[ResearchFinding]:
 def _extract_citations_for_verification(
     report_output: dict, findings: list[ResearchFinding]
 ) -> list[dict]:
-    """Build citation list for verifier from report output + findings."""
+    """Build citation list for verifier from report output + findings.
+
+    Matches one claim per source URL (the first finding that cites it).
+    This is intentional for v1 — verifying every claim×source pair would
+    multiply verifier cost. A single representative claim per source is
+    sufficient to detect hallucinated citations.
+    """
     citations = []
     sources = report_output.get("sources", [])
     for i, source in enumerate(sources):
         url = source.get("url", "")
-        # Find a claim that references this source
         for f in findings:
             if f.source_url == url:
                 citations.append({

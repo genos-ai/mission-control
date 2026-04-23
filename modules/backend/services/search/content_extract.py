@@ -85,28 +85,29 @@ class ContentExtractService:
 
     @staticmethod
     def _extract_trafilatura(html: str, url: str) -> tuple[str, str | None]:
-        """Extract text using trafilatura."""
+        """Extract text using trafilatura.
+
+        Single call with output_format="json" returns both text and
+        metadata (title, author, date). Avoids double-parsing the HTML.
+        """
         try:
-            text = trafilatura.extract(
-                html,
-                url=url,
-                include_comments=False,
-                include_tables=True,
-                favor_precision=True,
-            )
-            metadata = trafilatura.extract(
+            raw = trafilatura.extract(
                 html,
                 url=url,
                 output_format="json",
                 include_comments=False,
+                include_tables=True,
+                favor_precision=True,
             )
-            title = None
-            if metadata and isinstance(metadata, str):
-                try:
-                    title = json.loads(metadata).get("title")
-                except (json.JSONDecodeError, AttributeError):
-                    pass
-            return text or "", title
+            if not raw or not isinstance(raw, str):
+                return "", None
+            try:
+                parsed = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                return raw, None  # raw is plain text if JSON parse fails
+            text = parsed.get("text", "")
+            title = parsed.get("title") or None
+            return text, title
         except Exception:
             logger.debug("Trafilatura extraction failed", exc_info=True)
             return "", None
