@@ -1,0 +1,31 @@
+agent_name: research.verifier.agent
+agent_type: vertical
+description: "NLI-style citation verification — checks whether cited sources support claims"
+enabled: true
+chat_enabled: false
+model: anthropic:claude-haiku-4-5
+max_budget_usd: 1.00
+max_tokens: 8192
+
+execution:
+  mode: local
+invocation:
+  tier: system
+keywords:
+  - verify
+  - citations
+  - nli
+
+tools: []
+
+interface:
+  input:
+    citations: array
+    source_texts: object
+  output:
+    citation_verdicts: array
+    verification_score: number
+
+scope:
+  read: []
+  write: []

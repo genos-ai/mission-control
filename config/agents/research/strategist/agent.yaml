@@ -1,0 +1,31 @@
+agent_name: research.strategist.agent
+agent_type: vertical
+description: "Decomposes research queries into sub-questions and refines queries for gap coverage"
+enabled: true
+chat_enabled: false
+model: anthropic:claude-sonnet-4-6
+max_budget_usd: 3.00
+max_tokens: 16384
+
+execution:
+  mode: local
+invocation:
+  tier: system
+keywords:
+  - research
+  - decompose
+  - sub-questions
+
+tools: []
+
+interface:
+  input:
+    query: string
+    mode: string
+  output:
+    sub_questions: array
+    source_strategy: object
+
+scope:
+  read: []
+  write: []

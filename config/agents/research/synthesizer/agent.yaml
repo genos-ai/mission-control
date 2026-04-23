@@ -1,0 +1,33 @@
+agent_name: research.synthesizer.agent
+agent_type: vertical
+description: "Produces structured research reports with inline citations from compressed findings"
+enabled: true
+chat_enabled: false
+model: anthropic:claude-sonnet-4-6
+max_budget_usd: 5.00
+max_tokens: 32768
+
+execution:
+  mode: local
+invocation:
+  tier: system
+keywords:
+  - synthesize
+  - report
+  - citations
+
+tools: []
+
+interface:
+  input:
+    findings: array
+    sources: object
+  output:
+    title: string
+    executive_summary: string
+    report_markdown: string
+    sources: array
+
+scope:
+  read: []
+  write: []
