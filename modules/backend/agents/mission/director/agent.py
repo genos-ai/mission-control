@@ -594,7 +594,7 @@ def create_agent(model: str | Model) -> Agent:
             )
 
             await _schedule_director_followup(
-                ctx.deps.db_session,
+                db_session=ctx.deps.db_session,
                 session_id=ctx.deps.session_id,
                 mission_id=mission_id,
                 trigger_event_types=["research.completed", "research.failed"],
