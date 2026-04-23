@@ -613,6 +613,60 @@ def create_agent(model: str | Model) -> Agent:
             return json.dumps({"error": str(e)})
 
     @agent.tool
+    async def get_research_findings(
+        ctx: RunContext[MissionDirectorDeps],
+        report_id: str | None = None,
+    ) -> str:
+        """Get research findings for this mission.
+
+        Returns the executive summary, key findings, source count, and
+        verification score from the latest research report (or a specific
+        report by ID). Use this to answer follow-up questions about
+        completed research.
+
+        Args:
+            report_id: Optional specific report ID. If None, returns the
+                       latest report for this mission.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            from modules.backend.services.research_report import ResearchReportService
+            svc = ResearchReportService(ctx.deps.db_session)
+
+            if report_id:
+                report = await svc.get_report(report_id)
+            else:
+                reports = await svc.list_for_mission(
+                    ctx.deps.mission_id, limit=1
+                )
+                report = reports[0] if reports else None
+
+            if report is None:
+                return json.dumps({
+                    "status": "no_reports",
+                    "message": "No research reports found for this mission.",
+                })
+
+            structured = report.report_structured or {}
+            return json.dumps({
+                "report_id": report.id,
+                "query": report.query,
+                "status": report.status,
+                "executive_summary": structured.get("executive_summary", ""),
+                "source_count": len(report.sources or []),
+                "citation_count": report.citation_count,
+                "verification_score": report.verification_score,
+                "report_markdown_preview": (report.report_markdown or "")[:2000],
+                "sources": (report.sources or [])[:10],
+            }, indent=2, default=str)
+
+        except Exception as e:
+            logger.error("get_research_findings failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    @agent.tool
     async def run_objective(
         ctx: RunContext[MissionDirectorDeps],
         objective: str,
