@@ -15,6 +15,7 @@ from modules.backend.api.v1.endpoints import (
     missions_plan,
     missions_team,
     missions_workflows,
+    research,
 )
 from modules.backend.core.dependencies import CurrentUser, DbSession, Idempotency, RequestId
 from modules.backend.core.exceptions import AuthorizationError
@@ -35,6 +36,7 @@ router.include_router(missions_context.router)
 router.include_router(missions_plan.router)
 router.include_router(missions_artifacts.router)
 router.include_router(missions_costs.router)
+router.include_router(research.router)
 
 
 # ---- Mission CRUD ----
