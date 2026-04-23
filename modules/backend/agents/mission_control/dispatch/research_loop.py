@@ -628,23 +628,23 @@ def _extract_citations_for_verification(
 ) -> list[dict]:
     """Build citation list for verifier from report output + findings.
 
-    Matches one claim per source URL (the first finding that cites it).
-    This is intentional for v1 — verifying every claim×source pair would
-    multiply verifier cost. A single representative claim per source is
-    sufficient to detect hallucinated citations.
+    Matches ALL claims per source URL — every finding that cites a given
+    source becomes a separate citation to verify. The verifier receives
+    all citations in a single call (Haiku), so the marginal cost of
+    additional citations is minimal (extra input tokens, not extra calls).
     """
     citations = []
     sources = report_output.get("sources", [])
-    for i, source in enumerate(sources):
-        url = source.get("url", "")
-        for f in findings:
-            if f.source_url == url:
-                citations.append({
-                    "citation_id": i + 1,
-                    "claim": f.claim,
-                    "source_url": url,
-                })
-                break
+    source_urls = {source.get("url", "") for source in sources}
+    citation_id = 0
+    for f in findings:
+        if f.source_url in source_urls:
+            citation_id += 1
+            citations.append({
+                "citation_id": citation_id,
+                "claim": f.claim,
+                "source_url": f.source_url,
+            })
     return citations
 
 
