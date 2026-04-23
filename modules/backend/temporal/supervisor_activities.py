@@ -23,30 +23,9 @@ logger = get_logger(__name__)
 
 async def _emit_supervisor_error(mission_id: str, message: str) -> None:
     """Emit a SystemEvent from a supervisor activity so errors surface in the console."""
-    try:
-        import uuid
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.events.types import SystemEvent
+    from modules.backend.temporal.activity_helpers import emit_activity_error
 
-        redis = AsyncRedis.from_url(get_redis_url())
-        try:
-            bus = SessionEventBus(redis, mission_id=mission_id)
-            await bus.publish_to_mission(
-                mission_id,
-                SystemEvent(
-                    session_id=uuid.uuid4(),
-                    source="mission.supervisor",
-                    level="error",
-                    message=message[:300],
-                    mission_id=mission_id,
-                ),
-            )
-        finally:
-            await redis.aclose()
-    except Exception:
-        logger.debug("Failed to emit supervisor error event (non-fatal)", exc_info=True)
+    await emit_activity_error(mission_id, "mission.supervisor", message)
 
 
 @dataclass

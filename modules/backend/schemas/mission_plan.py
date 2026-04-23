@@ -198,40 +198,33 @@ class RunObjectiveResponse(BaseModel):
 
 
 class DispatchApprovedResponse(BaseModel):
-    """Result of POST /missions/:id/plan/dispatch (Plan 42 §10.1)."""
+    """Result of POST /missions/:id/plan/dispatch (Plan 42 §10.1).
+
+    Dispatch always starts a Temporal MissionRunWorkflow and returns
+    immediately. The workflow_id can be used for status queries.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     outcome_status: str = Field(
         ...,
-        description="Dispatch result: success | partial | failed | dispatching (autonomous)",
-    )
-    execution_record_id: str | None = Field(
-        None,
-        description="ExecutionRecord row for this run (Plan 15). None on failure.",
+        description="Always 'dispatching' — the workflow runs in Temporal",
     )
     dispatched_task_ids: list[str] = Field(
         default_factory=list,
         description="task_ids included in the derived subset TaskPlan",
     )
-    updated_task_ids: list[str] = Field(
-        default_factory=list,
-        description="task_ids whose plan_task_state was written back post-run",
-    )
     total_cost_usd: float = Field(
         0.0,
-        description="Cost of this individual run (0 for autonomous until complete)",
+        description="Cost so far (0 at dispatch time, updated via SSE)",
     )
     new_total_spent_usd: float = Field(
         0.0,
-        description=(
-            "Cumulative total across all runs dispatched from this plan, "
-            "including this one"
-        ),
+        description="Cumulative spend across all runs from this plan",
     )
     workflow_id: str | None = Field(
         None,
-        description="Temporal workflow ID when autonomous=true and Temporal is enabled",
+        description="Temporal workflow ID for status queries",
     )
 
 

@@ -75,35 +75,13 @@ async def execute_run_objective(input: RunObjectiveInput) -> RunObjectiveResult:
             exc_info=True,
         )
         # Emit error event so the console shows the failure
-        await _emit_run_objective_error(input.mission_id, str(exc))
+        from modules.backend.temporal.activity_helpers import emit_activity_error
+
+        await emit_activity_error(
+            input.mission_id,
+            "mission_plan_service",
+            f"Run objective failed: {exc}",
+        )
         raise
     finally:
         await redis.aclose()
-
-
-async def _emit_run_objective_error(mission_id: str, message: str) -> None:
-    """Best-effort error event so the console shows the failure."""
-    try:
-        import uuid
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.events.types import SystemEvent
-
-        redis = AsyncRedis.from_url(get_redis_url())
-        try:
-            bus = SessionEventBus(redis, mission_id=mission_id)
-            await bus.publish_to_mission(
-                mission_id,
-                SystemEvent(
-                    session_id=uuid.uuid4(),
-                    source="mission_plan_service",
-                    level="error",
-                    message=f"Run objective failed: {message}"[:300],
-                    mission_id=mission_id,
-                ),
-            )
-        finally:
-            await redis.aclose()
-    except Exception:
-        logger.debug("Failed to emit run_objective error event", exc_info=True)

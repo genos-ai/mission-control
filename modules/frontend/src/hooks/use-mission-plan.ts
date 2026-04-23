@@ -95,13 +95,11 @@ export interface TaskTransitionResult {
 }
 
 export interface DispatchApprovedResult {
-  outcome_status: 'success' | 'partial' | 'failed' | 'dispatching'
-  execution_record_id: string | null
+  outcome_status: 'dispatching'
   dispatched_task_ids: string[]
-  updated_task_ids: string[]
   total_cost_usd: number
   new_total_spent_usd: number
-  workflow_id?: string | null
+  workflow_id: string | null
 }
 
 // ── Query keys ───────────────────────────────────────────────────────────

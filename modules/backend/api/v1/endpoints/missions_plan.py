@@ -317,8 +317,6 @@ async def dispatch_approved(
     Returns immediately with the workflow ID. The workflow handles
     the full supervisor loop — execute, evaluate, advance/refine/
     escalate — repeating until done or a circuit breaker trips.
-
-    Returns an error if Temporal is unavailable.
     """
     await _require_mission_access(db, mission_id, current_user)
 
@@ -328,17 +326,10 @@ async def dispatch_approved(
     result = await service.dispatch_autonomous(
         plan.id, session_id=str(request_id),
     )
-    if result:
-        response = DispatchApprovedResponse(**result)
-        return ApiResponse(
-            success=True,
-            data=response.model_dump(),
-            metadata={"request_id": request_id},
-        )
-
+    response = DispatchApprovedResponse(**result)
     return ApiResponse(
-        success=False,
-        error="Temporal is not available. Ensure Temporal is running.",
+        success=True,
+        data=response.model_dump(),
         metadata={"request_id": request_id},
     )
 

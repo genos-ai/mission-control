@@ -600,43 +600,31 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             plan, session_id,
         )
         self._log_operation(
-            "run_objective: Temporal workflow started"
-            if workflow_id
-            else "run_objective: Temporal unavailable",
+            "run_objective: Temporal workflow started",
             plan_id=plan.id,
             mission_id=mission_id,
             approved_task_ids=approved_ids,
             workflow_id=workflow_id,
         )
-        if workflow_id:
-            return {
-                "plan_id": plan.id,
-                "plan_version": plan.version,
-                "task_count": task_count,
-                "outcome_status": "dispatching",
-                "dispatched_task_ids": approved_ids,
-                "total_cost_usd": 0.0,
-                "workflow_id": workflow_id,
-            }
         return {
             "plan_id": plan.id,
             "plan_version": plan.version,
             "task_count": task_count,
-            "outcome_status": "temporal_unavailable",
-            "dispatched_task_ids": [],
+            "outcome_status": "dispatching",
+            "dispatched_task_ids": approved_ids,
             "total_cost_usd": 0.0,
+            "workflow_id": workflow_id,
         }
 
     async def dispatch_autonomous(
         self,
         mission_plan_id: str,
         session_id: str | None = None,
-    ) -> dict | None:
+    ) -> dict:
         """Start a Temporal MissionRunWorkflow for autonomous multi-wave execution.
 
-        Returns a dict compatible with DispatchApprovedResponse on success,
-        or None if Temporal is not available (caller should return an error
-        rather than falling back to blocking inline dispatch).
+        Returns a dict compatible with DispatchApprovedResponse. Raises if
+        Temporal is unavailable — callers should let it propagate.
 
         The workflow handles the full supervisor loop: execute → evaluate →
         advance/refine/escalate → repeat until done or circuit-breaker trips.
@@ -645,8 +633,6 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         workflow_id = await self._start_temporal_run_workflow(
             plan, session_id,
         )
-        if workflow_id is None:
-            return None
 
         approved_states = await self._repo.get_task_states(
             mission_plan_id, status=PlanTaskStatus.APPROVED,
@@ -663,43 +649,41 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         self,
         plan: MissionPlan,
         session_id: str | None,
-    ) -> str | None:
-        """Start a MissionRunWorkflow via Temporal. Returns workflow_id or None."""
-        try:
-            from modules.backend.core.config import get_app_config
-            from modules.backend.temporal.client import get_temporal_client
-            from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
-            from modules.backend.temporal.models import MissionWorkflowInput
+    ) -> str:
+        """Start a MissionRunWorkflow via Temporal. Returns the workflow_id.
 
-            client = await get_temporal_client()
-            config = get_app_config()
+        Raises if Temporal is unavailable — callers should let it propagate.
+        """
+        from modules.backend.core.config import get_app_config
+        from modules.backend.temporal.client import get_temporal_client
+        from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
+        from modules.backend.temporal.models import MissionWorkflowInput
 
-            mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
-            brief = mission.brief or mission.description or mission.name
-            remaining_budget = (plan.budget_usd_ceiling or 10.0) - plan.total_spent_usd
+        client = await get_temporal_client()
+        config = get_app_config()
 
-            workflow_input = MissionWorkflowInput(
-                mission_run_id=plan.id,
-                session_id=session_id or str(uuid.uuid4()),
-                mission_brief=brief,
-                roster_name=mission.default_roster or "default",
-                mission_budget_usd=max(remaining_budget, 0.01),
-                mission_id=plan.mission_id,
-                execution_mode=mission.execution_environment,
-            )
+        mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
+        brief = mission.brief or mission.description or mission.name
+        remaining_budget = (plan.budget_usd_ceiling or 10.0) - plan.total_spent_usd
 
-            workflow_id = f"mission-run-{plan.id[:12]}-{uuid.uuid4().hex[:8]}"
-            await client.start_workflow(
-                MissionRunWorkflow.run,
-                workflow_input,
-                id=workflow_id,
-                task_queue=config.temporal.task_queue,
-            )
-            return workflow_id
+        workflow_input = MissionWorkflowInput(
+            mission_run_id=plan.id,
+            session_id=session_id or str(uuid.uuid4()),
+            mission_brief=brief,
+            roster_name=mission.default_roster or "default",
+            mission_budget_usd=max(remaining_budget, 0.01),
+            mission_id=plan.mission_id,
+            execution_mode=mission.execution_environment,
+        )
 
-        except RuntimeError:
-            # Temporal not enabled — caller falls back to inline dispatch
-            return None
+        workflow_id = f"mission-run-{plan.id[:12]}-{uuid.uuid4().hex[:8]}"
+        await client.start_workflow(
+            MissionRunWorkflow.run,
+            workflow_input,
+            id=workflow_id,
+            task_queue=config.temporal.task_queue,
+        )
+        return workflow_id
 
     async def approve_all_proposed(
         self,

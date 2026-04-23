@@ -65,35 +65,13 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
             exc_info=True,
         )
         # Emit error event so the console shows the failure
-        await _emit_refine_error(input.mission_id, str(exc))
+        from modules.backend.temporal.activity_helpers import emit_activity_error
+
+        await emit_activity_error(
+            input.mission_id,
+            "mission_plan_service",
+            f"Plan refinement failed: {exc}",
+        )
         raise
     finally:
         await redis.aclose()
-
-
-async def _emit_refine_error(mission_id: str, message: str) -> None:
-    """Best-effort error event so the console shows the failure."""
-    try:
-        import uuid
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.events.types import SystemEvent
-
-        redis = AsyncRedis.from_url(get_redis_url())
-        try:
-            bus = SessionEventBus(redis, mission_id=mission_id)
-            await bus.publish_to_mission(
-                mission_id,
-                SystemEvent(
-                    session_id=uuid.uuid4(),
-                    source="mission_plan_service",
-                    level="error",
-                    message=f"Plan refinement failed: {message}"[:300],
-                    mission_id=mission_id,
-                ),
-            )
-        finally:
-            await redis.aclose()
-    except Exception:
-        logger.debug("Failed to emit refine error event", exc_info=True)

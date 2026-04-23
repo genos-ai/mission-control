@@ -251,7 +251,7 @@ async def _stream_plan_progress(
     """
     try:
         await _stream_plan_sse(api, mission_id, verbose=verbose, quiet=quiet)
-    except (ApiError, Exception) as exc:
+    except Exception as exc:
         # SSE unavailable — fall back to polling
         get_console().print(
             f"[dim yellow]SSE unavailable ({exc}), falling back to polling...[/dim yellow]"
@@ -419,14 +419,3 @@ async def _poll_plan_fallback(
     console.print("[yellow]Timed out. Run 'mc status' to check progress.[/yellow]")
 
 
-def _render_summary(console, result: dict) -> None:
-    """Render post-dispatch summary."""
-    status = result.get("outcome_status", "unknown")
-    cost = result.get("total_cost_usd", 0)
-    task_count = result.get("task_count", 0)
-    dispatched = result.get("dispatched_task_ids", [])
-
-    console.print(f"\n[bold]Plan dispatch complete:[/bold] {status}")
-    console.print(f"  Tasks: {len(dispatched)}/{task_count} dispatched")
-    console.print(f"  Cost: ${cost:.4f}")
-    console.print("[dim]Run 'mc status' for full task breakdown.[/dim]")
