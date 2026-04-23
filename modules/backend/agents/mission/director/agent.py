@@ -543,6 +543,7 @@ def create_agent(model: str | Model) -> Agent:
         ctx: RunContext[MissionDirectorDeps],
         query: str,
         depth: str = "comprehensive",
+        include_domains: list[str] | None = None,
     ) -> str:
         """Start a deep research investigation on any topic.
 
@@ -555,6 +556,8 @@ def create_agent(model: str | Model) -> Agent:
             query: The research question to investigate.
             depth: Research depth — "quick" (2-5 min), "moderate" (5-15 min),
                    or "comprehensive" (15-30 min).
+            include_domains: Only search these domains (e.g. ["anthropic.com", "openai.com"]).
+                            If not set, searches the entire web.
         """
         try:
             if ctx.deps.db_session is None:
@@ -584,6 +587,7 @@ def create_agent(model: str | Model) -> Agent:
                     context_overrides={
                         "query": query,
                         "research_depth": depth,
+                        **({"include_domains": include_domains} if include_domains else {}),
                     },
                 ),
                 record_id=record.id,

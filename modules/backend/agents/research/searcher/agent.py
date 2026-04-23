@@ -38,12 +38,20 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
         ctx: RunContext[ResearchAgentDeps],
         query: str,
         max_results: int = 10,
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
     ) -> list[dict]:
         """Search the web for information on a topic.
 
         Returns results with url, title, snippet, content, and relevance_score.
         Tavily results include content directly. For Brave results (empty content),
         use fetch_and_extract to get the page content.
+
+        Args:
+            query: Search query string.
+            max_results: Max results to return.
+            include_domains: Only return results from these domains.
+            exclude_domains: Exclude results from these domains.
         """
         if not ctx.deps.http_client:
             return [{"error": "No HTTP client available"}]
@@ -51,6 +59,8 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
             ctx.deps.http_client,
             query,
             max_results=max_results,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
         )
 
     @agent.tool

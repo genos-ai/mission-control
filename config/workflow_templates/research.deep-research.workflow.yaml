@@ -34,6 +34,8 @@ context:
   source_types: ["web"]
   min_coverage_ratio: 0.8
   verification_enabled: true
+  include_domains: []
+  exclude_domains: []
 
 steps:
   - id: research
@@ -56,6 +58,8 @@ steps:
         source_types: "@context.source_types"
         min_coverage_ratio: "@context.min_coverage_ratio"
         verification_enabled: "@context.verification_enabled"
+        include_domains: "@context.include_domains"
+        exclude_domains: "@context.exclude_domains"
     output_mapping:
       summary_key: research_summary
       field_mappings:

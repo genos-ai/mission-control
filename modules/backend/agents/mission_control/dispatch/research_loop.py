@@ -290,14 +290,28 @@ async def execute_research_loop(
             round_findings: list[ResearchFinding] = []
             round_cost = 0.0
 
+            # Build domain filter instructions if configured
+            domain_hint = ""
+            if config.include_domains:
+                domains = ", ".join(config.include_domains)
+                domain_hint = (
+                    f"\n\nIMPORTANT: Only search these trusted domains: {domains}. "
+                    f"Pass include_domains={config.include_domains} to web_search."
+                )
+
             async def _search_one(
                 sq_id: str, sq_text: str
             ) -> tuple[list[ResearchFinding], float]:
                 async with semaphore:
                     result = await execute_agent_fn(
                         agent_name=config.searcher_agent,
-                        instructions=f"Research this sub-question: {sq_text}",
-                        inputs={"sub_question": sq_text, "sub_question_id": sq_id},
+                        instructions=f"Research this sub-question: {sq_text}{domain_hint}",
+                        inputs={
+                            "sub_question": sq_text,
+                            "sub_question_id": sq_id,
+                            "include_domains": config.include_domains,
+                            "exclude_domains": config.exclude_domains,
+                        },
                         usage_limits=UsageLimits(request_limit=10),
                     )
                     cost = result.get("_meta", {}).get("cost_usd", 0.0)
