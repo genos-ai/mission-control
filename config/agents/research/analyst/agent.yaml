@@ -3,10 +3,12 @@ agent_type: vertical
 description: "Evaluates research coverage — classifies which sub-questions are covered and which remain as gaps"
 enabled: true
 chat_enabled: false
-model: anthropic:claude-sonnet-4-6
+model:
+  name: "anthropic:claude-sonnet-4-6"
+  temperature: 0.0
+  max_tokens: 8192
 max_budget_usd: 2.00
 max_input_length: 2000
-max_tokens: 8192
 
 execution:
   mode: local
