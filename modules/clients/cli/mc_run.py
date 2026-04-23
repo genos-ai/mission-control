@@ -1,8 +1,8 @@
 """
 mc run / mc retry — API-based execution handlers for the user CLI.
 
-Run objectives and workflows via the HTTP API. Polls plan status for
-live progress display. Zero backend service imports.
+Run objectives and workflows via the HTTP API. Streams plan progress
+via SSE for real-time updates. Zero backend service imports.
 """
 
 import asyncio
@@ -110,7 +110,7 @@ async def retry(
                     f"Dispatched {len(failed_ids)} retried task(s). "
                     f"Polling for progress...\n"
                 )
-                await _poll_plan(api, mission_id, verbose=False, quiet=quiet)
+                await _stream_plan_progress(api, mission_id, verbose=False, quiet=quiet)
             return
 
     # Fallback: re-run the Nth most recent objective
@@ -236,7 +236,7 @@ async def _run_adhoc(
     if verbose:
         print(json.dumps(result, default=str, indent=2), flush=True)
         if outcome not in ("success", "failed", "awaiting_approval"):
-            await _poll_plan(api, mission_id, verbose=True)
+            await _stream_plan_progress(api, mission_id, verbose=True)
         return
 
     if outcome in ("success", "failed"):
@@ -250,12 +250,138 @@ async def _run_adhoc(
         console.print("[dim]Approve via the web UI or API.[/dim]")
         return
 
-    # Dispatching — poll for completion
-    console.print(f"Dispatched {task_count} task(s). Polling for progress...\n")
-    await _poll_plan(api, mission_id, verbose=False, quiet=quiet)
+    # Dispatching — stream progress via SSE
+    console.print(f"Dispatched {task_count} task(s). Streaming progress...\n")
+    await _stream_plan_progress(api, mission_id, verbose=False, quiet=quiet)
 
 
-async def _poll_plan(
+async def _stream_plan_progress(
+    api: CliApiClient,
+    mission_id: str,
+    verbose: bool = False,
+    quiet: bool = False,
+) -> None:
+    """Stream plan progress via SSE for real-time task updates.
+
+    Falls back to REST polling if the SSE connection fails (e.g. when
+    the SSE token exchange endpoint is unavailable).
+    """
+    try:
+        await _stream_plan_sse(api, mission_id, verbose=verbose, quiet=quiet)
+    except (ApiError, Exception) as exc:
+        # SSE unavailable — fall back to polling
+        get_console().print(
+            f"[dim yellow]SSE unavailable ({exc}), falling back to polling...[/dim yellow]"
+        )
+        await _poll_plan_fallback(api, mission_id, verbose=verbose, quiet=quiet)
+
+
+async def _stream_plan_sse(
+    api: CliApiClient,
+    mission_id: str,
+    verbose: bool = False,
+    quiet: bool = False,
+) -> None:
+    """Stream plan progress via SSE — real-time, no polling."""
+    console = get_console()
+
+    # SSE token exchange (same pattern as mc console monitor)
+    sse_token_data = await api.post("/auth/sse-token")
+    sse_token = sse_token_data.get("token", "")
+
+    task_statuses: dict[str, str] = {}  # step_id → latest status
+    total_cost: float = 0.0
+    terminal = {"completed", "failed", "cancelled"}
+
+    # SSE wire format after format_event_for_sse():
+    #   {event_type, category, timestamp, source, data: {step_id, ...}}
+    async for sse in api.stream_sse(
+        "GET",
+        f"/streams/missions/{mission_id}",
+        params={"token": sse_token},
+    ):
+        payload = sse.get("data", {})
+        evt = payload.get("event_type", "")
+        d = payload.get("data", {})
+
+        if verbose:
+            if evt and evt != "connected":
+                print(json.dumps(payload, default=str)[:300], flush=True)
+
+        if evt == "plan.step.started":
+            tid = d.get("step_id", "")
+            if tid:
+                task_statuses[tid] = "running"
+                if not quiet:
+                    name = d.get("step_name", tid)
+                    console.print(f"  {STATUS_ICONS['running']} {name} running...")
+
+        elif evt == "plan.step.completed":
+            tid = d.get("step_id", "")
+            status = d.get("status", "completed")
+            if tid:
+                task_statuses[tid] = status if status in terminal else "completed"
+                if not quiet:
+                    console.print(
+                        f"  {STATUS_ICONS.get('completed', chr(0x2713))} "
+                        f"{tid} {status}"
+                    )
+
+        elif evt == "plan.step.failed":
+            tid = d.get("step_id", "")
+            reason = d.get("result_summary", "")[:60]
+            if tid:
+                task_statuses[tid] = "failed"
+                if not quiet:
+                    console.print(
+                        f"  {STATUS_ICONS.get('failed', chr(0x2717))} "
+                        f"{tid} failed: {reason}"
+                    )
+
+        elif evt == "mission_plan.run.completed":
+            total_cost = d.get("total_spent_usd", total_cost)
+
+        elif evt == "mission_plan.supervisor_decision":
+            action = d.get("action", "")
+            if not quiet:
+                reason = d.get("reason", "")[:80]
+                console.print(
+                    f"  [dim]{STATUS_ICONS.get('running', chr(0x00b7))} "
+                    f"supervisor: {action}"
+                    f"{' — ' + reason if reason else ''}[/dim]"
+                )
+            if action in ("propose_complete", "escalate"):
+                break
+
+        # After any task state change, check if all tracked tasks are done
+        if task_statuses and all(
+            s in terminal for s in task_statuses.values()
+        ):
+            # Confirm via API — SSE events might not cover all tasks
+            # (e.g. tasks that were already completed before we connected)
+            plan = await api.get(f"/missions/{mission_id}/plan")
+            plan_states = plan.get("task_states", [])
+            all_done = plan_states and all(
+                ts.get("status", "") in terminal for ts in plan_states
+            )
+            if all_done:
+                cost = plan.get("total_spent_usd", total_cost)
+                completed = sum(
+                    1 for ts in plan_states if ts.get("status") == "completed"
+                )
+                failed_count = sum(
+                    1 for ts in plan_states if ts.get("status") == "failed"
+                )
+                label = "success" if failed_count == 0 else "failed"
+                console.print(
+                    f"\n[bold]Plan complete:[/bold] {label}"
+                    f" | {completed}/{len(plan_states)} succeeded"
+                    f" | ${cost:.4f}"
+                )
+                return
+
+
+async def _poll_plan_fallback(
     api: CliApiClient,
     mission_id: str,
     verbose: bool = False,
@@ -264,14 +390,7 @@ async def _poll_plan(
     poll_interval: float = 3.0,
     max_iterations: int = 300,
 ) -> None:
-    """Poll the plan endpoint until all tasks reach a terminal state.
-
-    Args:
-        poll_interval: Seconds between polls (default 3.0, matches
-            application.yaml cli.plan_poll_interval_seconds).
-        max_iterations: Maximum poll iterations before timeout (default 300,
-            matches application.yaml cli.plan_poll_max_iterations).
-    """
+    """Fallback: poll the plan endpoint until all tasks reach a terminal state."""
     console = get_console()
     terminal = {"completed", "failed", "cancelled"}
     seen_running: set[str] = set()
@@ -285,7 +404,6 @@ async def _poll_plan(
         if not task_states:
             continue
 
-        # Show progress for newly running/completed tasks
         if not quiet:
             for ts in task_states:
                 tid = ts.get("task_id", "")
@@ -299,7 +417,6 @@ async def _poll_plan(
                     cost = f"${ts.get('cost_usd', 0):.4f}"
                     console.print(f"  {icon} {tid} {status} {cost}")
 
-        # Check if all terminal
         all_terminal = all(
             ts.get("status", "") in terminal
             for ts in task_states
@@ -316,7 +433,7 @@ async def _poll_plan(
             )
             return
 
-    console.print("[yellow]Polling timed out. Run 'mc status' to check progress.[/yellow]")
+    console.print("[yellow]Timed out. Run 'mc status' to check progress.[/yellow]")
 
 
 def _render_summary(console, result: dict) -> None:
