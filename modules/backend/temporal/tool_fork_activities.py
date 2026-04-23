@@ -180,6 +180,7 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
                     workflow_name=input.workflow_name,
                     triggered_by="mission_director",
                     mission_id=input.mission_id,
+                    context_overrides=input.context_overrides,
                 )
         finally:
             await redis.aclose()

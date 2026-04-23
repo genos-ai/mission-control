@@ -28,6 +28,7 @@ class RunWorkflowInput:
     session_id: str
     execution_record_id: str
     workflow_name: str
+    context_overrides: dict | None = None  # Plan 40: override template context vars
 
 
 @dataclass

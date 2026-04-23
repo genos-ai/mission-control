@@ -133,6 +133,53 @@ async def _schedule_director_followup(
         )
 
 
+async def _ensure_research_team(db_session, mission_id: str) -> None:
+    """Add research agents to mission team if not already present.
+
+    Research agents must be in the team for derive_roster_from_team() to
+    include them. Idempotent — skips agents already in the team.
+    """
+    if db_session is None:
+        return
+    try:
+        from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+        from modules.backend.repositories.mission_team import MissionTeamRepository
+
+        RESEARCH_AGENTS = [
+            "research.strategist.agent",
+            "research.searcher.agent",
+            "research.analyst.agent",
+            "research.synthesizer.agent",
+            "research.verifier.agent",
+        ]
+        team_repo = MissionTeamRepository(db_session)
+        catalog_repo = AgentCatalogRepository(db_session)
+
+        for agent_name in RESEARCH_AGENTS:
+            catalog_entry = await catalog_repo.get_by_name(agent_name)
+            if not catalog_entry:
+                continue
+            existing = await team_repo.get_by_mission_and_agent(
+                mission_id, catalog_entry.id
+            )
+            if existing is None:
+                await team_repo.create(
+                    mission_id=mission_id,
+                    agent_catalog_id=catalog_entry.id,
+                )
+                logger.debug(
+                    "Added research agent to mission team",
+                    extra={"agent": agent_name, "mission_id": mission_id},
+                )
+        await db_session.flush()
+    except Exception:
+        logger.warning(
+            "Failed to ensure research team (non-fatal)",
+            extra={"mission_id": mission_id},
+            exc_info=True,
+        )
+
+
 def create_agent(model: str | Model) -> Agent:
     """Create the Mission Director agent with all tools registered."""
     if isinstance(model, str):
@@ -487,6 +534,82 @@ def create_agent(model: str | Model) -> Agent:
             }, indent=2, default=str)
         except Exception as e:
             logger.error("run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    # ── Research Tools (Plan 40) ────────────────────────────────────
+
+    @agent.tool
+    async def start_research(
+        ctx: RunContext[MissionDirectorDeps],
+        query: str,
+        depth: str = "comprehensive",
+    ) -> str:
+        """Start a deep research investigation on any topic.
+
+        Triggers the research workflow template which runs 5 specialized
+        agents (strategist, searcher, analyst, synthesizer, verifier) in
+        an iterative search loop. Returns immediately — research runs in
+        the background.
+
+        Args:
+            query: The research question to investigate.
+            depth: Research depth — "quick" (2-5 min), "moderate" (5-15 min),
+                   or "comprehensive" (15-30 min).
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            mission_id = ctx.deps.mission_id
+
+            # Ensure research agents are in the mission team
+            await _ensure_research_team(ctx.deps.db_session, mission_id)
+
+            record = await _create_background_record(
+                mission_id=mission_id,
+                session_id=ctx.deps.session_id,
+                task_type="research",
+                objective=f"Deep research: {query}",
+                params={"query": query, "depth": depth},
+            )
+
+            from modules.backend.temporal.tool_fork_models import RunWorkflowInput
+            workflow_id = await _start_tool_fork_workflow(
+                workflow_name="RunWorkflowWorkflow",
+                input_data=RunWorkflowInput(
+                    mission_id=mission_id,
+                    session_id=ctx.deps.session_id,
+                    execution_record_id=record.id,
+                    workflow_name="research.deep-research",
+                    context_overrides={
+                        "query": query,
+                        "research_depth": depth,
+                    },
+                ),
+                record_id=record.id,
+            )
+
+            await _schedule_director_followup(
+                ctx.deps.db_session,
+                session_id=ctx.deps.session_id,
+                mission_id=mission_id,
+                trigger_event_types=["research.completed", "research.failed"],
+                prompt_template=(
+                    "The research just completed. Check the results and "
+                    "report back to the user with key findings."
+                ),
+            )
+
+            return json.dumps({
+                "status": "research_started",
+                "execution_record_id": record.id,
+                "temporal_workflow_id": workflow_id,
+                "depth": depth,
+                "message": f"Research started: \"{query}\". I'll report back when it's done.",
+            }, indent=2, default=str)
+
+        except Exception as e:
+            logger.error("start_research failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
