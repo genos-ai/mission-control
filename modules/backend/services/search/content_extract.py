@@ -7,6 +7,9 @@ Each extractor is tried in order; the first to return non-empty text wins.
 
 from __future__ import annotations
 
+import json
+import re
+
 import httpx
 import trafilatura
 from readability import Document as ReadabilityDocument
@@ -99,7 +102,6 @@ class ContentExtractService:
             )
             title = None
             if metadata and isinstance(metadata, str):
-                import json
                 try:
                     title = json.loads(metadata).get("title")
                 except (json.JSONDecodeError, AttributeError):
@@ -117,7 +119,6 @@ class ContentExtractService:
             title = doc.title()
             # readability returns HTML — strip tags for plain text
             summary_html = doc.summary()
-            import re
             text = re.sub(r"<[^>]+>", " ", summary_html)
             text = re.sub(r"\s+", " ", text).strip()
             return text, title

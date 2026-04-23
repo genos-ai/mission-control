@@ -290,7 +290,9 @@ async def execute_research_loop(
             round_findings: list[ResearchFinding] = []
             round_cost = 0.0
 
-            async def _search_one(sq_id: str, sq_text: str) -> list[ResearchFinding]:
+            async def _search_one(
+                sq_id: str, sq_text: str
+            ) -> tuple[list[ResearchFinding], float]:
                 async with semaphore:
                     result = await execute_agent_fn(
                         agent_name=config.searcher_agent,
@@ -298,7 +300,9 @@ async def execute_research_loop(
                         inputs={"sub_question": sq_text, "sub_question_id": sq_id},
                         usage_limits=UsageLimits(request_limit=10),
                     )
-                    return _extract_findings(result, sq_id)
+                    cost = result.get("_meta", {}).get("cost_usd", 0.0)
+                    _accumulate_tokens(total_tokens, result)
+                    return _extract_findings(result, sq_id), cost
 
             search_tasks = [
                 _search_one(sq.id, sq.text) for sq in gap_questions
@@ -310,8 +314,11 @@ async def execute_research_loop(
                     logger.warning("Searcher failed for sub-question",
                                    extra={"sq_id": sq.id, "error": str(result)})
                     continue
-                findings_list: list[ResearchFinding] = result
+                findings_list, searcher_cost = result
                 round_findings.extend(findings_list)
+                round_cost += searcher_cost
+
+            total_cost += round_cost
 
             all_findings.extend(round_findings)
 
