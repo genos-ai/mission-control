@@ -17,6 +17,7 @@ export interface AgentCatalogItem {
   scope: { read?: string[]; write?: string[] }
   engine: 'pydantic_ai' | 'claude_code' | 'codex' | 'copilot'
   effort: 'low' | 'medium' | 'high' | null
+  thinking_budget_json: { max_thinking_tokens: number } | null
 }
 
 export interface AgentCatalogDetail extends AgentCatalogItem {

@@ -353,9 +353,12 @@ through many waves without hand-holding.
 
 2. **Single execution path.** Daemon dispatch logic removed — Temporal
    `MissionRunWorkflow` is the sole autonomous dispatch mechanism. The daemon
-   retains heartbeat publishing only. `run_objective` Director tool removed —
-   all execution goes through the plan. This eliminated double-dispatch race
-   conditions and ensures every fix applies to one path.
+   retains heartbeat publishing only. `run_objective` Director tool repurposed
+   as Plan 62 unified entry point — `async_dispatch=true` starts
+   `MissionRunWorkflow` via Temporal (with inline fallback). Dispatch endpoint
+   gained `?autonomous=true` query param for the same Temporal path. This
+   eliminated double-dispatch race conditions and ensures every fix applies
+   to one path.
 
 3. **Session followup wiring (Plan 51 Phase A + E).** Director auto-schedules
    followups in `approve_plan_tasks`. `fire_supervisor_followups` Temporal

@@ -7,6 +7,7 @@ import {
   FileCode,
   Sprout,
   Search,
+  Brain,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
@@ -285,6 +286,14 @@ export default function AdminCatalogPage() {
                         {agent.engine.replace('_', ' ')}
                       </Badge>
                     )}
+                    {agent.thinking_budget_json && (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-purple-500/40 text-purple-400">
+                        <Brain className="h-2.5 w-2.5 mr-0.5" />
+                        {agent.thinking_budget_json.max_thinking_tokens > 0
+                          ? `${(agent.thinking_budget_json.max_thinking_tokens / 1000).toFixed(0)}k`
+                          : 'adaptive'}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
                     {agent.description}
@@ -339,6 +348,13 @@ const AVAILABLE_MODELS = [
   'anthropic:claude-haiku-4-5-20251001',
 ]
 
+/** Models that support extended thinking (all Claude 4.5+ models). */
+const THINKING_CAPABLE_MODELS = new Set([
+  'anthropic:claude-sonnet-4-6',
+  'anthropic:claude-opus-4-6',
+  'anthropic:claude-haiku-4-5-20251001',
+])
+
 function AgentEditor({
   agent,
   onSave,
@@ -362,6 +378,17 @@ function AgentEditor({
   const [engine, setEngine] = useState(agent.engine ?? 'pydantic_ai')
   const [effort, setEffort] = useState(agent.effort ?? '')
 
+  // Thinking mode: 'off' | 'adaptive' | 'fixed'
+  const initialThinking = agent.thinking_budget_json
+    ? (agent.thinking_budget_json.max_thinking_tokens > 0 ? 'fixed' : 'adaptive')
+    : 'off'
+  const [thinkingMode, setThinkingMode] = useState<'off' | 'adaptive' | 'fixed'>(initialThinking)
+  const [thinkingTokens, setThinkingTokens] = useState(
+    String(agent.thinking_budget_json?.max_thinking_tokens || 10000),
+  )
+  const thinkingEnabled = thinkingMode !== 'off'
+  const modelSupportsThinking = THINKING_CAPABLE_MODELS.has(model)
+
   return (
     <Card className="border-primary/30">
       <CardHeader className="pb-3">
@@ -370,20 +397,28 @@ function AgentEditor({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() =>
+              onClick={() => {
+                const effectiveThinking = modelSupportsThinking ? thinkingMode : 'off'
+                const effectiveTemp = effectiveThinking !== 'off' ? 1.0 : (temperature ? parseFloat(temperature) : undefined)
+                const thinkingBudget = effectiveThinking === 'off'
+                  ? null
+                  : effectiveThinking === 'adaptive'
+                    ? { max_thinking_tokens: 0 }
+                    : { max_thinking_tokens: parseInt(thinkingTokens, 10) || 10000 }
                 onSave({
                   description,
                   version,
                   engine,
                   effort: (effort || null) as AgentCatalogItem['effort'],
+                  thinking_budget_json: thinkingBudget,
                   model_config_json: {
                     ...agent.model_config_json,
                     name: model || undefined,
-                    temperature: temperature ? parseFloat(temperature) : undefined,
+                    temperature: effectiveTemp,
                     max_tokens: maxTokens ? parseInt(maxTokens, 10) : undefined,
                   },
                 })
-              }
+              }}
               disabled={saving}
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
@@ -409,19 +444,23 @@ function AgentEditor({
             ))}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Temperature</label>
             <input
-              value={temperature}
+              value={thinkingEnabled ? '1.0' : temperature}
               onChange={(e) => setTemperature(e.target.value)}
               placeholder="0.0 - 1.0"
               type="number"
               step="0.1"
               min="0"
               max="1"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+              disabled={thinkingEnabled}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1 disabled:opacity-50"
             />
+            {thinkingEnabled && (
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">Locked to 1.0 (thinking requires it)</p>
+            )}
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Max Tokens</label>
@@ -433,7 +472,37 @@ function AgentEditor({
               className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
             />
           </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Thinking</label>
+            <select
+              value={modelSupportsThinking ? thinkingMode : 'off'}
+              onChange={(e) => setThinkingMode(e.target.value as typeof thinkingMode)}
+              disabled={!modelSupportsThinking}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1 disabled:opacity-50"
+            >
+              <option value="off">Off</option>
+              <option value="adaptive">Adaptive</option>
+              <option value="fixed">Fixed Budget</option>
+            </select>
+            {!modelSupportsThinking && model && (
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">Not supported by this model</p>
+            )}
+          </div>
         </div>
+        {thinkingMode === 'fixed' && modelSupportsThinking && (
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Thinking Token Budget</label>
+            <input
+              value={thinkingTokens}
+              onChange={(e) => setThinkingTokens(e.target.value)}
+              placeholder="e.g. 10000"
+              type="number"
+              min="1000"
+              step="1000"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+            />
+          </div>
+        )}
         <div>
           <label className="text-xs font-medium text-muted-foreground">Description</label>
           <Textarea

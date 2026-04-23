@@ -20,6 +20,7 @@ import {
   GripVertical,
   MoreVertical,
   GitBranch,
+  Copy,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
@@ -325,16 +326,35 @@ export function TaskCard({
                   </button>
                 )}
                 <div className="mx-2 my-0.5 border-t border-border/50" />
-                <p className="px-3 py-1 font-mono text-[10px] text-muted-foreground/50 truncate max-w-[160px]">
-                  {body.task_id}
-                </p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(body.task_id)
+                    toast.success(`Copied ${body.task_id}`)
+                    setMenuOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-muted-foreground hover:bg-accent"
+                >
+                  <Copy className="h-3 w-3" />
+                  Copy task ID
+                </button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Description */}
+      {/* Task ID + Description */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          navigator.clipboard.writeText(body.task_id)
+          toast.success(`Copied ${body.task_id}`)
+        }}
+        className="mb-0.5 font-mono text-[9px] text-muted-foreground/40 hover:text-muted-foreground/70 cursor-copy"
+        title="Click to copy task ID"
+      >
+        {body.task_id}
+      </button>
       <p className="text-[12px] leading-snug">
         {body.description || body.task_id}
       </p>

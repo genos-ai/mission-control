@@ -53,6 +53,7 @@ class CatalogUpdateRequest(BaseModel):
     constraints: dict[str, Any] | None = None
     engine: str | None = None
     effort: str | None = None
+    thinking_budget_json: dict[str, Any] | None = Field(None, description="Extended thinking config, e.g. {max_thinking_tokens: 10000}")
 
 
 class SystemPromptUpdateRequest(BaseModel):
