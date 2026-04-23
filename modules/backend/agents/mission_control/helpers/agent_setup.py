@@ -63,6 +63,13 @@ def _build_agent_deps(
     if "mission.supervisor" in agent_name:
         from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
         return MissionSupervisorDeps(**common, mission_id=mission_id or "", db_session=db_session)
+    if category == "research":
+        from modules.backend.agents.research.deps import ResearchAgentDeps
+        import httpx as _httpx
+        # Create a per-invocation AsyncClient. The client is scoped to the
+        # agent call lifetime — PydanticAI's run() context manages cleanup.
+        # Agents without tools (strategist, analyst, verifier) ignore it.
+        return ResearchAgentDeps(**common, http_client=_httpx.AsyncClient())
 
     return BaseAgentDeps(**common)
 
