@@ -12,11 +12,8 @@ execution:
   mode: local
 invocation:
   tier: user
-keywords:
-  - research
-  - decompose
-  - sub-questions
 
+keywords: []
 tools: []
 
 interface:

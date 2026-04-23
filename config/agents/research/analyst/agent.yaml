@@ -12,11 +12,8 @@ execution:
   mode: local
 invocation:
   tier: user
-keywords:
-  - coverage
-  - analysis
-  - gaps
 
+keywords: []
 tools: []
 
 interface:

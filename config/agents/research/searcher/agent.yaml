@@ -12,11 +12,8 @@ execution:
   mode: local
 invocation:
   tier: user
-keywords:
-  - search
-  - extract
-  - sources
 
+keywords: []
 tools:
   - research.web_search
   - research.fetch_and_extract
