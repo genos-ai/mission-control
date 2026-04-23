@@ -304,6 +304,33 @@ async def _execute_layer(
             )
             continue
 
+        # ── Research loop fork (Plan 40) ──────────────────────────────
+        # If the task's static inputs declare type=research_loop,
+        # route to execute_research_loop() instead of the standard
+        # single-agent path. Same pattern as convergence_loop above.
+        if task.inputs.static.get("type") == "research_loop":
+            try:
+                resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
+            except KeyError as e:
+                task_results.append(failed_result(task, str(e)))
+                await _emit_task_failure(_bus, _sid, mission_id, task.task_id, task.agent, str(e))
+                continue
+            resolved_inputs = dict(resolved_inputs)
+            layer_tasks.append(task)
+            resolved_inputs_map[task.task_id] = resolved_inputs
+            coros.append(
+                _dispatch_research_loop(
+                    task_id=task.task_id,
+                    resolved_inputs=resolved_inputs,
+                    execute_agent_fn=execute_agent_fn,
+                    mission_id=plan.mission_id,
+                    gate=gate,
+                    event_bus=event_bus,
+                    session_id=session_id,
+                )
+            )
+            continue
+
         # ── Workflow task fork (Plan 53 Phase B) ──────────────────────
         # If the task's agent field starts with "workflow:", delegate to
         # WorkflowRunService instead of the standard single-agent path.
@@ -530,6 +557,74 @@ async def _dispatch_convergence_loop(
 
     return await execute_convergence_loop(
         task_id=task_id,
+        config=config,
+        execute_agent_fn=execute_agent_fn,
+        mission_id=mission_id,
+        gate=gate,
+        event_bus=event_bus,
+        session_id=session_id,
+    )
+
+
+async def _dispatch_research_loop(
+    *,
+    task_id: str,
+    resolved_inputs: dict[str, Any],
+    execute_agent_fn: ExecuteAgentFn,
+    mission_id: str | None,
+    gate: GateReviewer,
+    event_bus: EventBusProtocol,
+    session_id: str,
+) -> TaskResult:
+    """Dispatch a research_loop task via the research loop executor.
+
+    Plan 40: parses ``ResearchConfig`` from the task's ``loop_config``
+    input, delegates to ``execute_research_loop()``, and returns the
+    resulting ``TaskResult``. Mirrors ``_dispatch_convergence_loop``.
+    """
+    from modules.backend.agents.mission_control.dispatch.research_loop import (
+        ResearchConfig,
+        execute_research_loop,
+    )
+
+    loop_config_raw = resolved_inputs.get("loop_config")
+    if not isinstance(loop_config_raw, dict):
+        logger.warning(
+            "research_loop task missing loop_config in inputs",
+            extra={"task_id": task_id, "mission_id": mission_id},
+        )
+        return TaskResult(
+            task_id=task_id,
+            agent_name="research",
+            status=TaskStatus.FAILED,
+            output_reference={
+                "error": "research_loop task requires a 'loop_config' dict "
+                "in inputs.static, but none was found.",
+            },
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+
+    try:
+        config = ResearchConfig.from_dict(loop_config_raw)
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            "research_loop task has invalid loop_config",
+            extra={"task_id": task_id, "error": str(exc), "mission_id": mission_id},
+        )
+        return TaskResult(
+            task_id=task_id,
+            agent_name="research",
+            status=TaskStatus.FAILED,
+            output_reference={"error": f"Invalid loop_config: {exc}"},
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+
+    query = resolved_inputs.get("query", "")
+    return await execute_research_loop(
+        task_id=task_id,
+        query=query,
         config=config,
         execute_agent_fn=execute_agent_fn,
         mission_id=mission_id,
