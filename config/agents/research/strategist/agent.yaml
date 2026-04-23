@@ -5,12 +5,13 @@ enabled: true
 chat_enabled: false
 model: anthropic:claude-sonnet-4-6
 max_budget_usd: 3.00
+max_input_length: 2000
 max_tokens: 16384
 
 execution:
   mode: local
 invocation:
-  tier: system
+  tier: user
 keywords:
   - research
   - decompose
