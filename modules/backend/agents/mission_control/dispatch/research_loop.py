@@ -500,7 +500,8 @@ async def execute_research_loop(
                 "sources": source_map,
                 "query": query,
             },
-            usage_limits=UsageLimits(request_limit=2),
+            # Synthesizer needs high token limit — reports are long structured JSON
+            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=200_000),
         )
         total_cost += synthesis_result.get("_meta", {}).get("cost_usd", 0.0)
         _accumulate_tokens(total_tokens, synthesis_result)
