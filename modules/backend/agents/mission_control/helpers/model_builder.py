@@ -41,11 +41,14 @@ def build_model_settings(
     }
 
     # ── Output token cap ─────────────────────────────────────
-    max_tokens = (
-        agent_config.model.max_tokens
-        if isinstance(agent_config.model, AgentModelSchema)
-        else 4096
-    )
+    # Prefer the model schema's max_tokens, fall back to the top-level
+    # agent config max_tokens (from YAML), then default 4096.
+    if isinstance(agent_config.model, AgentModelSchema):
+        max_tokens = agent_config.model.max_tokens
+    elif getattr(agent_config, "max_tokens", None):
+        max_tokens = agent_config.max_tokens
+    else:
+        max_tokens = 4096
 
     # ── Thinking configuration ───────────────────────────────
     thinking_config = None
