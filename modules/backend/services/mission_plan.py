@@ -530,13 +530,15 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             async_dispatch: If False (default), calls dispatch_approved()
                 and blocks until all tasks complete (CLI mode). If True,
                 starts a Temporal MissionRunWorkflow for autonomous
-                multi-wave execution (chat/frontend mode). Falls back
-                to inline dispatch if Temporal is not enabled.
+                multi-wave execution (chat/frontend mode). Returns
+                outcome_status="temporal_unavailable" if Temporal is
+                not enabled — never silently falls back to blocking.
 
         Returns:
             dict with: plan_id, plan_version, task_count, outcome_status,
             dispatched_task_ids (sync only), total_cost_usd (sync only).
-            In async mode, outcome_status is "dispatching".
+            In async mode, outcome_status is "dispatching" or
+            "temporal_unavailable".
 
         Raises:
             ConflictError: If the plan has tasks in QUEUED or RUNNING state.
@@ -608,7 +610,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             self._log_operation(
                 "run_objective: async dispatch — Temporal workflow started"
                 if workflow_id
-                else "run_objective: async dispatch — Temporal unavailable, falling back to inline",
+                else "run_objective: async dispatch — Temporal unavailable, returning error",
                 plan_id=plan.id,
                 mission_id=mission_id,
                 approved_task_ids=approved_ids,
@@ -624,7 +626,16 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
                     "total_cost_usd": 0.0,
                     "workflow_id": workflow_id,
                 }
-            # Temporal not available — fall through to sync dispatch
+            # Temporal not available — refuse rather than silently
+            # blocking the caller (e.g. a Director chat turn) for minutes.
+            return {
+                "plan_id": plan.id,
+                "plan_version": plan.version,
+                "task_count": task_count,
+                "outcome_status": "temporal_unavailable",
+                "dispatched_task_ids": [],
+                "total_cost_usd": 0.0,
+            }
 
         # Sync dispatch — block until complete
         result = await self.dispatch_approved(
@@ -645,8 +656,8 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         """Start a Temporal MissionRunWorkflow for autonomous multi-wave execution.
 
         Returns a dict compatible with DispatchApprovedResponse on success,
-        or None if Temporal is not available (caller should fall back to
-        inline dispatch_approved).
+        or None if Temporal is not available (caller should return an error
+        rather than falling back to blocking inline dispatch).
 
         The workflow handles the full supervisor loop: execute → evaluate →
         advance/refine/escalate → repeat until done or circuit-breaker trips.

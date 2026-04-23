@@ -311,7 +311,13 @@ async def dispatch_approved(
                 data=response.model_dump(),
                 metadata={"request_id": request_id},
             )
-        # Temporal not available — fall through to inline dispatch
+        # Temporal not available — refuse rather than silently blocking
+        return ApiResponse(
+            success=False,
+            error="Temporal is not available. Use autonomous=false for "
+                  "inline dispatch, or ensure Temporal is running.",
+            metadata={"request_id": request_id},
+        )
 
     result = await service.dispatch_approved(plan.id, current_user.id)
 

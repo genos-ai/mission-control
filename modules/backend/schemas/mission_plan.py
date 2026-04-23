@@ -198,7 +198,8 @@ class RunObjectiveResponse(BaseModel):
         ...,
         description=(
             "success | partial | failed (sync), "
-            "dispatching | awaiting_approval | no_tasks_to_approve (async/interactive)"
+            "dispatching | awaiting_approval | no_tasks_to_approve | "
+            "temporal_unavailable (async/interactive)"
         ),
     )
     dispatched_task_ids: list[str] = Field(default_factory=list)

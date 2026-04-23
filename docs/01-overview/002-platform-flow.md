@@ -187,9 +187,11 @@ POST /missions/:id/plan/run-objective {objective, async_dispatch, gate_mode, bud
     │
     └── 6. Dispatch:
         ├── async_dispatch=true (chat/frontend):
-        │   → _start_temporal_run_workflow() → MissionRunWorkflow
-        │   → Returns immediately {outcome_status: "dispatching", workflow_id}
-        │   → Workflow handles autonomous supervisor loop
+        │   ├── Temporal available:
+        │   │   → _start_temporal_run_workflow() → MissionRunWorkflow
+        │   │   → Returns immediately {outcome_status: "dispatching", workflow_id}
+        │   └── Temporal unavailable:
+        │       → Returns {outcome_status: "temporal_unavailable"} (never blocks)
         │
         └── async_dispatch=false (CLI sync mode):
             → dispatch_approved() inline → blocks until complete
