@@ -598,17 +598,34 @@ async def execute_research_loop(
 
 
 def _parse_output(result: dict, model_class: type) -> Any | None:
-    """Parse agent output dict into a Pydantic model. Returns None on failure."""
-    output = result.get("output")
-    if output is None:
+    """Parse agent output dict into a Pydantic model. Returns None on failure.
+
+    The agent executor (agent_executor.py) returns the output in two formats:
+    - Structured output agents: output.model_dump() as the top-level dict
+    - String output agents: {"result": str} as the top-level dict
+
+    So the Pydantic fields may be at the top level of `result` (not nested
+    under an "output" key). We try both: result["output"] first (if present),
+    then the result dict itself.
+    """
+    # Try nested "output" key first (some executors nest it)
+    output = result.get("output", result)
+
+    # Skip metadata-only dicts (just _meta, no real output)
+    if isinstance(output, dict) and set(output.keys()) <= {"_meta"}:
         return None
+
     try:
-        if isinstance(output, dict):
-            return model_class.model_validate(output)
-        if isinstance(output, str):
-            return model_class.model_validate_json(output)
         if isinstance(output, model_class):
             return output
+        if isinstance(output, dict):
+            # Filter out _meta before validation
+            clean = {k: v for k, v in output.items() if k != "_meta"}
+            if not clean:
+                return None
+            return model_class.model_validate(clean)
+        if isinstance(output, str):
+            return model_class.model_validate_json(output)
         return None
     except Exception:
         logger.debug("Failed to parse output as %s", model_class.__name__, exc_info=True)
