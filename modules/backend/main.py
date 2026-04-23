@@ -110,12 +110,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except ScheduleAlreadyRunningError:
                 pass  # Already exists — normal on restart
 
-        # Plan dispatch — every 5 seconds
+        # Plan dispatch — configurable interval
         await _register_schedule(
             "mission-plan-dispatch-schedule",
             ScheduledMissionCheckWorkflow.run,
             "scheduled-mission-check",
-            intervals=[ScheduleIntervalSpec(every=_td(seconds=5))],
+            intervals=[ScheduleIntervalSpec(every=_td(
+                seconds=temporal_config.dispatch_check_interval_seconds,
+            ))],
         )
 
         # Plan 56 Phase C: Maintenance schedules (replaces TaskIQ cron)

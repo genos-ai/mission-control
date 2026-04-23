@@ -58,6 +58,8 @@ class TelegramAppSchema(_StrictBase):
 
 class CliSchema(_StrictBase):
     console_width: int = 160
+    plan_poll_interval_seconds: float = 3.0
+    plan_poll_max_iterations: int = 300
 
 
 class ApplicationSchema(_StrictBase):
@@ -327,6 +329,12 @@ class TemporalSchema(_StrictBase):
     execution_retry_max_attempts: int = 2
     execution_retry_initial_interval_seconds: int = 5
     execution_retry_max_interval_seconds: int = 60
+    # Polling intervals (seconds)
+    dispatch_check_interval_seconds: int = 1
+    wait_action_sleep_seconds: int = 1
+    refine_poll_interval_seconds: int = 1
+    refine_poll_max_seconds: int = 60
+    max_supervisor_iterations: int = 25
 
     @model_validator(mode="after")
     def _require_server_url_when_enabled(self) -> "TemporalSchema":

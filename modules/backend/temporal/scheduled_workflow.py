@@ -28,7 +28,7 @@ with workflow.unsafe.imports_passed_through():
 class ScheduledMissionCheckWorkflow:
     """Check for dispatchable missions and start run workflows.
 
-    This workflow runs once per scheduled trigger (e.g. every 5s).
+    This workflow runs once per scheduled trigger (every 1s).
     It queries the DB for missions with approved tasks in autonomous
     or off gate_mode, then starts a MissionRunWorkflow for each.
 

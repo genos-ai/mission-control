@@ -26,7 +26,9 @@
 #     authorized_users   - Authorized user IDs (list of integers, empty = deny all)
 #     max_message_length - Maximum message length (integer, default: 4096)
 #   cli             - CLI display settings (object)
-#     console_width  - Console output width in columns (integer, default: 160)
+#     console_width             - Console output width in columns (integer, default: 160)
+#     plan_poll_interval_seconds - Seconds between plan status polls (float, default: 3.0)
+#     plan_poll_max_iterations   - Maximum poll iterations before timeout (integer, default: 300)
 # =============================================================================
 
 name: "Mission Control"
@@ -65,3 +67,5 @@ telegram:
 
 cli:
   console_width: 160
+  plan_poll_interval_seconds: 3.0
+  plan_poll_max_iterations: 300

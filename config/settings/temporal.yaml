@@ -19,3 +19,9 @@ persistence_retry_max_attempts: 3         # retries for persist activities
 execution_retry_max_attempts: 2           # retries for execute_mission activity
 execution_retry_initial_interval_seconds: 5
 execution_retry_max_interval_seconds: 60
+# Polling intervals (seconds)
+dispatch_check_interval_seconds: 1           # ScheduledMissionCheckWorkflow trigger frequency
+wait_action_sleep_seconds: 1                 # MissionRunWorkflow WAIT action sleep between checks
+refine_poll_interval_seconds: 1              # advance_refine: poll interval for new tasks
+refine_poll_max_seconds: 60                  # advance_refine: max wait for Director to produce tasks
+max_supervisor_iterations: 25                # MissionRunWorkflow hard cap on loop iterations

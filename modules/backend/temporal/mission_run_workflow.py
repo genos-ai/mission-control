@@ -74,7 +74,7 @@ class MissionRunWorkflow:
             ),
         )
 
-        max_loop_iterations = 25  # Hard safety cap
+        max_loop_iterations = config.max_supervisor_iterations
 
         while self._iteration < max_loop_iterations:
             self._iteration += 1
@@ -161,8 +161,10 @@ class MissionRunWorkflow:
             # ── Step 4: Route the decision ───────────────────────────
 
             if eval_result.action == "wait":
-                # Approved tasks still pending — daemon-equivalent sleep
-                await workflow.sleep(timedelta(seconds=5))
+                # Approved tasks still pending — short sleep then re-check
+                await workflow.sleep(timedelta(
+                    seconds=config.wait_action_sleep_seconds,
+                ))
                 continue
 
             elif eval_result.action == "advance_approved":
@@ -198,8 +200,13 @@ class MissionRunWorkflow:
 
                 # Poll for new proposed/approved tasks (reuse last counts)
                 counts = sup.PlanTaskCounts()
-                for _ in range(12):  # 60 seconds max polling
-                    await workflow.sleep(timedelta(seconds=5))
+                refine_polls = config.refine_poll_max_seconds // max(
+                    config.refine_poll_interval_seconds, 1,
+                )
+                for _ in range(refine_polls):
+                    await workflow.sleep(timedelta(
+                        seconds=config.refine_poll_interval_seconds,
+                    ))
                     counts = await workflow.execute_local_activity(
                         sup.fetch_plan_task_counts,
                         input.mission_id or input.mission_run_id,

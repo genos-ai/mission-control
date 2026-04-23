@@ -180,8 +180,8 @@ class RunObjectiveRequest(BaseModel):
         False,
         description=(
             "If false (default), blocks until dispatch completes (CLI mode). "
-            "If true, approves tasks and returns immediately — daemon dispatches "
-            "on next tick (chat/frontend mode)."
+            "If true, approves tasks and starts Temporal MissionRunWorkflow "
+            "for autonomous multi-wave execution (chat/frontend mode)."
         ),
     )
 
@@ -206,6 +206,10 @@ class RunObjectiveResponse(BaseModel):
     execution_record_id: str | None = None
     updated_task_ids: list[str] = Field(default_factory=list)
     new_total_spent_usd: float | None = None
+    workflow_id: str | None = Field(
+        None,
+        description="Temporal workflow ID when async_dispatch=true and Temporal is enabled",
+    )
 
 
 class DispatchApprovedResponse(BaseModel):
@@ -215,7 +219,7 @@ class DispatchApprovedResponse(BaseModel):
 
     outcome_status: str = Field(
         ...,
-        description="Dispatch result: success | partial | failed",
+        description="Dispatch result: success | partial | failed | dispatching (autonomous)",
     )
     execution_record_id: str | None = Field(
         None,
@@ -230,15 +234,19 @@ class DispatchApprovedResponse(BaseModel):
         description="task_ids whose plan_task_state was written back post-run",
     )
     total_cost_usd: float = Field(
-        ...,
-        description="Cost of this individual run",
+        0.0,
+        description="Cost of this individual run (0 for autonomous until complete)",
     )
     new_total_spent_usd: float = Field(
-        ...,
+        0.0,
         description=(
             "Cumulative total across all runs dispatched from this plan, "
             "including this one"
         ),
+    )
+    workflow_id: str | None = Field(
+        None,
+        description="Temporal workflow ID when autonomous=true and Temporal is enabled",
     )
 
 

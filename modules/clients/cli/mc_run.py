@@ -89,20 +89,28 @@ async def retry(
                 f"{', '.join(failed_ids)}"
             )
 
-            # Retry each failed task then dispatch
+            # Retry each failed task then dispatch via Temporal
             for ts in failed:
                 await api.post(
                     f"/missions/{mission_id}/plan/tasks/{ts['task_id']}/retry",
                 )
 
-            result = await api.post(f"/missions/{mission_id}/plan/dispatch")
-
-            console.print(
-                f"\n[bold]Retry complete:[/bold] "
-                f"{result.get('outcome_status', 'unknown')}"
-                f" | ${result.get('total_cost_usd', 0):.4f}"
+            result = await api.post(
+                f"/missions/{mission_id}/plan/dispatch?autonomous=true",
             )
-            console.print("[dim]Run 'mc status' for full details.[/dim]")
+
+            outcome = result.get("outcome_status", "")
+            if outcome in ("success", "failed"):
+                console.print(
+                    f"\n[bold]Retry complete:[/bold] {outcome}"
+                    f" | ${result.get('total_cost_usd', 0):.4f}"
+                )
+            else:
+                console.print(
+                    f"Dispatched {len(failed_ids)} retried task(s). "
+                    f"Polling for progress...\n"
+                )
+                await _poll_plan(api, mission_id, verbose=False, quiet=quiet)
             return
 
     # Fallback: re-run the Nth most recent objective
@@ -252,14 +260,24 @@ async def _poll_plan(
     mission_id: str,
     verbose: bool = False,
     quiet: bool = False,
+    *,
+    poll_interval: float = 3.0,
+    max_iterations: int = 300,
 ) -> None:
-    """Poll the plan endpoint until all tasks reach a terminal state."""
+    """Poll the plan endpoint until all tasks reach a terminal state.
+
+    Args:
+        poll_interval: Seconds between polls (default 3.0, matches
+            application.yaml cli.plan_poll_interval_seconds).
+        max_iterations: Maximum poll iterations before timeout (default 300,
+            matches application.yaml cli.plan_poll_max_iterations).
+    """
     console = get_console()
     terminal = {"completed", "failed", "cancelled"}
     seen_running: set[str] = set()
 
-    for _ in range(300):
-        await asyncio.sleep(3)
+    for _ in range(max_iterations):
+        await asyncio.sleep(poll_interval)
 
         plan = await api.get(f"/missions/{mission_id}/plan")
         task_states = plan.get("task_states", [])

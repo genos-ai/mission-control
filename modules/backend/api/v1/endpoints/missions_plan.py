@@ -15,7 +15,7 @@ in Phase 1.5 and 1.6 respectively.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from modules.backend.core.dependencies import (
     CurrentUser,
@@ -275,30 +275,44 @@ async def dispatch_approved(
     request_id: RequestId,
     current_user: CurrentUser,
     event_bus: EventBus,
+    autonomous: bool = Query(
+        False,
+        description=(
+            "If true, start a Temporal MissionRunWorkflow that loops "
+            "autonomously (execute → supervisor → advance → repeat). "
+            "Returns immediately with workflow_id. Falls back to inline "
+            "dispatch if Temporal is not enabled."
+        ),
+    ),
 ) -> ApiResponse:
     """Start a run of every currently-approved task in the plan.
 
-    Delegates to MissionPlanService.dispatch_approved, which:
-      1. Verifies the cumulative budget ceiling has not been exhausted
-      2. Filters the current TaskPlan to the closed subset of approved
-         tasks (approve_task is transitive so the subset is always a
-         valid sub-DAG)
-      3. Marks each approved task as `queued`
-      4. Builds a GateReviewer from the plan's gate_mode (or None for
-         `off` mode)
-      5. Calls handle_mission(precomputed_plan=...) to reuse the full
-         dispatch pipeline (roster, context, environment, persistence)
-      6. Writes the per-task outcomes back to plan_task_states and
-         bumps the cumulative spent total
+    In default mode (autonomous=false): blocks until dispatch completes
+    and returns the full result with task outcomes and costs.
 
-    Returns a DispatchApprovedResponse with the ExecutionRecord id
-    (for linking to the Runs tab) and the list of task_ids whose
-    state was updated.
+    In autonomous mode (autonomous=true): starts a Temporal
+    MissionRunWorkflow and returns immediately. The workflow handles
+    the full supervisor loop — execute, evaluate, advance/refine/
+    escalate — repeating until done or a circuit breaker trips.
     """
     await _require_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
+
+    if autonomous:
+        result = await service.dispatch_autonomous(
+            plan.id, session_id=str(request_id),
+        )
+        if result:
+            response = DispatchApprovedResponse(**result)
+            return ApiResponse(
+                success=True,
+                data=response.model_dump(),
+                metadata={"request_id": request_id},
+            )
+        # Temporal not available — fall through to inline dispatch
+
     result = await service.dispatch_approved(plan.id, current_user.id)
 
     response = DispatchApprovedResponse(**result)
