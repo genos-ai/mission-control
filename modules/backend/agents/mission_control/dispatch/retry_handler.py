@@ -139,9 +139,15 @@ async def execute_with_retry(
         )
         cost_usd = output.get("_meta", {}).get("cost_usd", 0.0)
 
+        # Verification pipeline expects the agent's actual output fields,
+        # not the executor wrapper. Unwrap {"output": {...}, "_meta": {...}}.
+        agent_output = output.get("output", output)
+        if not isinstance(agent_output, dict):
+            agent_output = {"result": str(agent_output)}
+
         verification = await verify_task(
             task=task,
-            output=output,
+            output=agent_output,
             roster_entry=roster_entry,
             execute_agent_fn=execute_agent_fn,
         )
@@ -240,7 +246,7 @@ async def _handle_verification_failure(
                 task_id=task.task_id,
                 agent_name=task.agent,
                 status=TaskStatus.SUCCESS,
-                output_reference=output,
+                output_reference=output.get("output", output) if isinstance(output, dict) else output,
                 token_usage=token_usage,
                 cost_usd=cost_usd,
                 duration_seconds=round(duration, 2),
@@ -266,11 +272,12 @@ async def _handle_verification_failure(
             new_instructions = gate_decision.modified_instructions
         return new_instructions
 
+    _unwrapped = output.get("output", output) if isinstance(output, dict) else output
     return TaskResult(
         task_id=task.task_id,
         agent_name=task.agent,
         status=TaskStatus.FAILED,
-        output_reference=output,
+        output_reference=_unwrapped,
         token_usage=token_usage,
         cost_usd=cost_usd,
         duration_seconds=round(duration, 2),
@@ -350,11 +357,12 @@ async def _handle_post_task_gate(
             "reason": "PQI score from code quality audit",
         })
 
+    _unwrapped_out = output.get("output", output) if isinstance(output, dict) else output
     return TaskResult(
         task_id=task.task_id,
         agent_name=task.agent,
         status=TaskStatus.SUCCESS,
-        output_reference=output,
+        output_reference=_unwrapped_out,
         token_usage=token_usage,
         cost_usd=cost_usd,
         duration_seconds=round(duration, 2),
