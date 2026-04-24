@@ -39,16 +39,15 @@ async def update_execution_record_status(
     from modules.backend.core.utils import utc_now
     from modules.backend.repositories.execution_record import ExecutionRecordRepository
 
-    # Normalise to lowercase — the ExecutionRecordStatus enum values
-    # are all lowercase ("pending", "running", "completed", "failed").
-    normalised = status.lower()
+    # SQLAlchemy Enum(native_enum=False) stores by enum NAME (uppercase).
+    normalised = status.upper()
 
     async with get_async_session() as db:
         repo = ExecutionRecordRepository(db)
         update_kwargs: dict = {"status": normalised}
-        if normalised == "running":
+        if normalised == "RUNNING":
             update_kwargs["started_at"] = utc_now()
-        if normalised in ("completed", "failed", "cancelled"):
+        if normalised in ("COMPLETED", "FAILED", "CANCELLED"):
             update_kwargs["completed_at"] = utc_now()
         await repo.update(execution_record_id, **update_kwargs)
         await db.commit()

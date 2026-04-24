@@ -63,7 +63,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
@@ -214,44 +213,48 @@ async def reconcile_orphaned_task_states(
 async def reconcile_orphaned_execution_records(
     session: AsyncSession,
 ) -> int:
-    """Mark execution records stuck in 'running' or 'pending' as failed.
+    """Mark execution records stuck in RUNNING or PENDING as FAILED.
 
     Tool-fork workflows (RunWorkflowWorkflow, DesignWorkflowWorkflow) set
-    execution_record status to 'running' at start. If the Temporal worker
-    crashes mid-execution, the record stays in 'running' forever. This
-    function transitions orphaned records to 'failed' on startup.
+    execution_record status to RUNNING at start. If the Temporal worker
+    crashes mid-execution, the record stays in RUNNING forever. This
+    function transitions orphaned records to FAILED on startup.
 
-    Also normalises any uppercase status values to lowercase for
-    consistency with ExecutionRecordStatus enum values.
+    Also fixes any lowercase status values that slipped in — SQLAlchemy's
+    Enum(native_enum=False) stores by enum name (uppercase).
 
     Call at backend startup alongside reconcile_orphaned_task_states.
     """
     from sqlalchemy import or_, select, update
 
-    from modules.backend.models.execution_record import ExecutionRecord
+    from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
 
-    # Normalise uppercase → lowercase (legacy data cleanup)
-    normalise_result = await session.execute(
-        update(ExecutionRecord)
-        .where(
-            ExecutionRecord.status.in_(["COMPLETED", "FAILED", "RUNNING", "PENDING"])
+    # Fix any lowercase values — SQLAlchemy Enum stores by name (uppercase)
+    lowercase_fixes = {
+        "completed": ExecutionRecordStatus.COMPLETED.name,
+        "failed": ExecutionRecordStatus.FAILED.name,
+        "running": ExecutionRecordStatus.RUNNING.name,
+        "pending": ExecutionRecordStatus.PENDING.name,
+    }
+    for wrong, right in lowercase_fixes.items():
+        fix_result = await session.execute(
+            update(ExecutionRecord)
+            .where(ExecutionRecord.status == wrong)
+            .values(status=right)
         )
-        .values(status=func.lower(ExecutionRecord.status))
-    )
-    normalised = normalise_result.rowcount or 0
-    if normalised:
-        logger.info(
-            "Crash recovery: normalised execution record statuses to lowercase",
-            extra={"count": normalised},
-        )
+        if fix_result.rowcount:
+            logger.info(
+                "Crash recovery: fixed execution record status case",
+                extra={"from": wrong, "to": right, "count": fix_result.rowcount},
+            )
 
-    # Transition orphaned running/pending → failed
+    # Transition orphaned RUNNING/PENDING → FAILED
     stmt = (
         select(ExecutionRecord)
         .where(
             or_(
-                ExecutionRecord.status == "running",
-                ExecutionRecord.status == "pending",
+                ExecutionRecord.status == ExecutionRecordStatus.RUNNING.name,
+                ExecutionRecord.status == ExecutionRecordStatus.PENDING.name,
             )
         )
     )
@@ -259,7 +262,7 @@ async def reconcile_orphaned_execution_records(
     orphans = list(result.scalars().all())
 
     for record in orphans:
-        record.status = "failed"
+        record.status = ExecutionRecordStatus.FAILED.name
         record.completed_at = utc_now()
 
     await session.flush()
