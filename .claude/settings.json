@@ -58,7 +58,11 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkMmQ3NGQxZS0yOTRiLTRmZGEtYTY5ZS0zMTU3ZmFiOGEzOWMiLCJyb2xlIjoiYWRtaW4iLCJqdGkiOiI1NDdmNDNkYS00MjY1LTRhYjItOTc5OC05MTAyYTViMzA2ZjUiLCJleHAiOjE3NzY4NDk1NzUsInR5cGUiOiJhY2Nlc3MiLCJhdWQiOiJtaXNzaW9uLWNvbnRyb2wtYXBpIn0.7UN4wo9sgIG4WG5NXLyFtBd9f5jbJP8ormvGAkNpPzs\" __NEW_LINE_fd8ff74dfb1f33a1__ curl -s \"http://localhost:8100/api/v1/missions/81f33f27-0691-4555-b010-180e76b80add/console/history?limit=10\" -H \"Authorization: Bearer $TOKEN\")",
       "Bash(python -c \":*)",
       "Bash(2)",
-      "Read(//Users/herman.young/development/mission-control/**)"
+      "Read(//Users/herman.young/development/mission-control/**)",
+      "Bash(do)",
+      "Bash(file=\"config/agents/research/$agent/agent.yaml\")",
+      "Bash(sed -i '' 's/tier: system/tier: user/' \"$file\")",
+      "Bash(done)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

@@ -40,6 +40,7 @@ Log File:
 
 import asyncio
 import logging
+import os
 import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
@@ -250,6 +251,11 @@ def setup_logging(
     effective_level = level if level is not None else config["level"]
     effective_format = format_type if format_type is not None else config["format"]
 
+    # Environment overrides for console handler only (set by services.py CLI flags).
+    # These do NOT affect file logging — file handler always uses config level/format.
+    console_level_override = os.environ.get("MC_LOG_LEVEL")
+    console_format_override = os.environ.get("MC_LOG_FORMAT")
+
     handlers_config = config["handlers"]
     console_config = handlers_config["console"]
     file_config = handlers_config["file"]
@@ -314,7 +320,15 @@ def setup_logging(
 
     if effective_console_enabled:
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(console_formatter)
+        if console_format_override and console_format_override.lower() == "console":
+            console_handler.setFormatter(structlog.stdlib.ProcessorFormatter(
+                processor=structlog.dev.ConsoleRenderer(colors=True),
+                foreign_pre_chain=shared_processors,
+            ))
+        else:
+            console_handler.setFormatter(console_formatter)
+        if console_level_override:
+            console_handler.setLevel(getattr(logging, console_level_override.upper(), log_level))
         root_logger.addHandler(console_handler)
 
     if effective_file_enabled:
