@@ -225,22 +225,17 @@ async def reconcile_orphaned_execution_records(
 
     Call at backend startup alongside reconcile_orphaned_task_states.
     """
-    from sqlalchemy import or_, select, update
+    from sqlalchemy import or_, select, text
 
     from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
 
-    # Fix any lowercase values — SQLAlchemy Enum stores by name (uppercase)
-    lowercase_fixes = {
-        "completed": ExecutionRecordStatus.COMPLETED.name,
-        "failed": ExecutionRecordStatus.FAILED.name,
-        "running": ExecutionRecordStatus.RUNNING.name,
-        "pending": ExecutionRecordStatus.PENDING.name,
-    }
-    for wrong, right in lowercase_fixes.items():
+    # Fix any lowercase values — SQLAlchemy Enum stores by name (uppercase).
+    # Use raw SQL because the ORM Enum column rejects lowercase in comparisons.
+    for wrong, right in [("completed", "COMPLETED"), ("failed", "FAILED"),
+                         ("running", "RUNNING"), ("pending", "PENDING")]:
         fix_result = await session.execute(
-            update(ExecutionRecord)
-            .where(ExecutionRecord.status == wrong)
-            .values(status=right)
+            text("UPDATE execution_records SET status = :right WHERE status = :wrong"),
+            {"wrong": wrong, "right": right},
         )
         if fix_result.rowcount:
             logger.info(
