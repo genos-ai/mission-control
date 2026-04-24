@@ -35,6 +35,7 @@ from modules.backend.temporal.supervisor_activities import (
 from modules.backend.temporal.tool_fork_activities import (
     execute_design_workflow,
     execute_run_workflow,
+    notify_director_on_completion,
     update_execution_record_status,
 )
 from modules.backend.temporal.tool_fork_workflow import (
@@ -131,6 +132,7 @@ async def start_worker() -> None:
             # Tool fork (Plan 56 Phase B)
             execute_design_workflow,
             execute_run_workflow,
+            notify_director_on_completion,
             update_execution_record_status,
             # Knowledge platform (Plan 57)
             extract_mission_learnings,

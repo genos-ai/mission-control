@@ -589,6 +589,7 @@ def create_agent(model: str | Model) -> Agent:
                         "research_depth": depth,
                         **({"include_domains": include_domains} if include_domains else {}),
                     },
+                    followup_event_types=["research.completed", "research.failed"],
                 ),
                 record_id=record.id,
             )
