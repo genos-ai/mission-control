@@ -83,14 +83,22 @@ class DesignWorkflowWorkflow:
             start_to_close_timeout=timedelta(seconds=30),
         )
 
-        result = await workflow.execute_activity(
-            tool_fork_activities.execute_design_workflow,
-            input,
-            start_to_close_timeout=timedelta(
-                seconds=max(config.min_activity_timeout_seconds, 300),
-            ),
-            retry_policy=RetryPolicy(maximum_attempts=1),
-        )
+        try:
+            result = await workflow.execute_activity(
+                tool_fork_activities.execute_design_workflow,
+                input,
+                start_to_close_timeout=timedelta(
+                    seconds=max(config.min_activity_timeout_seconds, 300),
+                ),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+        except Exception as exc:
+            await workflow.execute_activity(
+                tool_fork_activities.update_execution_record_status,
+                args=[input.execution_record_id, "failed", str(exc)[:500]],
+                start_to_close_timeout=timedelta(seconds=30),
+            )
+            raise
 
         await workflow.execute_activity(
             tool_fork_activities.update_execution_record_status,
@@ -120,14 +128,22 @@ class RunWorkflowWorkflow:
             start_to_close_timeout=timedelta(seconds=30),
         )
 
-        result = await workflow.execute_activity(
-            tool_fork_activities.execute_run_workflow,
-            input,
-            start_to_close_timeout=timedelta(
-                seconds=max(config.min_activity_timeout_seconds, 600),
-            ),
-            retry_policy=RetryPolicy(maximum_attempts=1),
-        )
+        try:
+            result = await workflow.execute_activity(
+                tool_fork_activities.execute_run_workflow,
+                input,
+                start_to_close_timeout=timedelta(
+                    seconds=max(config.min_activity_timeout_seconds, 600),
+                ),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+        except Exception as exc:
+            await workflow.execute_activity(
+                tool_fork_activities.update_execution_record_status,
+                args=[input.execution_record_id, "failed", str(exc)[:500]],
+                start_to_close_timeout=timedelta(seconds=30),
+            )
+            raise
 
         await workflow.execute_activity(
             tool_fork_activities.update_execution_record_status,

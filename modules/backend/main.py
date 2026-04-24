@@ -211,6 +211,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from modules.backend.core.database import get_async_session
         from modules.backend.events.bus import SessionEventBus
         from modules.backend.services.mission_plan_crash_recovery import (
+            reconcile_orphaned_execution_records,
             reconcile_orphaned_task_states,
         )
 
@@ -219,6 +220,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             event_bus = SessionEventBus(redis)
             async with get_async_session() as db:
                 stats = await reconcile_orphaned_task_states(db, event_bus)
+                exec_orphans = await reconcile_orphaned_execution_records(db)
+                stats["execution_records_reconciled"] = exec_orphans
                 await db.commit()
             logger.info("Crash recovery completed", extra=stats)
         finally:
