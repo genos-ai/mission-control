@@ -36,6 +36,10 @@ You MUST return a TaskPlan as JSON within <task_plan> XML tags. No other format 
           "field_name": {
             "source_task": "v1-task-001",
             "source_field": "output_field_name"
+          },
+          "another_field": {
+            "source_task": "v1-task-002",
+            "source_field": "results"
           }
         },
         "file_manifest": {
@@ -96,6 +100,7 @@ Task IDs MUST use the format `v{plan_version}-task-{NNN}` where:
 - Task instructions field is `instructions` (required, detailed agent instructions)
 - Inputs go inside `inputs.static` (NOT directly in `inputs`)
 - Upstream references go inside `inputs.from_upstream` (NOT at the task level)
+- Each `from_upstream` value is a SINGLE object `{"source_task": "...", "source_field": "..."}` — NOT a list. One key = one upstream source. To pull from multiple tasks, use separate keys (e.g. `"findings_a": {...}, "findings_b": {...}`)
 - `estimated_cost_usd` and `estimated_duration_seconds` are TOP-LEVEL ONLY (NOT per-task)
 - `critical_path` goes inside `execution_hints` (NOT per-task)
 - Verification tiers use `schema_validation`, `required_output_fields`, `deterministic_checks`, `requires_ai_evaluation` — NOT `enabled`
