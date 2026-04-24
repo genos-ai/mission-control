@@ -198,6 +198,94 @@ async def set_budget(api: CliApiClient, mission_id: str, amount: float) -> None:
     console.print(f"[green]Budget set:[/green] ${amount:.2f}")
 
 
+async def show_report(api: CliApiClient, mission_id: str, run: int | None) -> None:
+    """Show the research report from the latest (or specified) run."""
+    console = get_console()
+
+    # Get executions and filter by mission
+    execs = await api.get("/executions", params={"limit": 50})
+    all_records = execs.get("executions", [])
+    completed = [
+        r for r in all_records
+        if r.get("status") == "completed" and r.get("mission_id") == mission_id
+    ]
+
+    if not completed:
+        console.print("[dim]No completed runs found.[/dim]")
+        return
+
+    if run is not None:
+        if run < 1 or run > len(completed):
+            console.print(f"[red]Run #{run} not found. Available: 1-{len(completed)}[/red]")
+            return
+        target = completed[run - 1]
+    else:
+        target = completed[0]
+
+    eid = target["id"]
+    detail = await api.get(f"/executions/{eid}")
+    tasks = detail.get("task_executions", [])
+
+    # Find synthesizer output (the report)
+    report_task = None
+    search_task = None
+    for t in tasks:
+        agent = t.get("agent_name", "")
+        if "synthesizer" in agent:
+            report_task = t
+        elif "searcher" in agent:
+            search_task = t
+
+    obj = target.get("objective_statement", "")
+    console.print(f"\n[bold]Run:[/bold] {eid[:12]}  [dim]{target.get('created_at', '')[:16]}[/dim]")
+    console.print(f"[bold]Objective:[/bold] {obj}")
+    console.print(f"[bold]Cost:[/bold] ${target.get('total_cost_usd', 0):.4f}\n")
+
+    if report_task:
+        out = report_task.get("output_data") or {}
+        title = out.get("title", "Research Report")
+        summary = out.get("executive_summary", "")
+        sections = out.get("sections", [])
+        sources = out.get("sources", [])
+        report_md = out.get("report_markdown", "")
+
+        console.print(f"[bold cyan]# {title}[/bold cyan]\n")
+
+        if summary:
+            console.print(f"[bold]Executive Summary[/bold]\n{summary}\n")
+
+        if report_md:
+            from rich.markdown import Markdown
+            console.print(Markdown(report_md))
+        elif sections:
+            for sec in sections:
+                heading = sec.get("heading", sec.get("title", ""))
+                body = sec.get("content", sec.get("body", ""))
+                console.print(f"\n[bold]## {heading}[/bold]\n{body}")
+
+        if sources:
+            console.print(f"\n[bold]Sources ({len(sources)})[/bold]")
+            for s in sources[:10]:
+                url = s.get("url", "")
+                title = s.get("title", url)
+                console.print(f"  • {title}")
+                if url and url != title:
+                    console.print(f"    [dim]{url}[/dim]")
+    elif search_task:
+        # No synthesizer — show raw search findings
+        out = search_task.get("output_data") or {}
+        findings = out.get("findings", [])
+        console.print(f"[bold]Search Findings ({len(findings)})[/bold]\n")
+        for f in findings[:10]:
+            claim = f.get("claim", "")
+            evidence = f.get("evidence", "")
+            console.print(f"  • {claim}")
+            if evidence:
+                console.print(f"    [dim]{evidence[:200]}[/dim]")
+    else:
+        console.print("[dim]No research output found in this run.[/dim]")
+
+
 async def context_show(api: CliApiClient, mission_id: str) -> None:
     """View the Mission Context Document."""
     console = get_console()

@@ -400,6 +400,21 @@ def history(ctx, n):
 
 
 @mc.command()
+@click.option("--run", "n", type=int, default=None, help="Show report from run #N (default: latest).")
+@click.pass_obj
+def report(ctx, n):
+    """View the research report from the latest completed run."""
+    from modules.clients.cli.mc_mission import show_report
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await show_report(api, mid, n)
+
+    asyncio.run(_run())
+
+
+@mc.command()
 @click.argument("workflow_id")
 @click.option("--verbose", "-v", is_flag=True, help="Show all event types.")
 @click.option("--detail", "-d", is_flag=True, help="Show research phase breakdown from mission events.")
