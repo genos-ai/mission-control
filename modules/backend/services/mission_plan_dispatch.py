@@ -119,12 +119,13 @@ class MissionPlanDispatchMixin:
             task_plan, approved_task_ids, mission_plan_id,
         )
 
-        # Mark approved → queued (Plan 42 §2.3 state machine)
-        # Commit immediately so the kanban board reflects "queued"
-        # before the long-running handle_mission execution starts.
+        # Mark approved → running and commit immediately so the kanban
+        # board shows the task in the "Running" column during execution.
+        # We skip "queued" because handle_mission starts immediately —
+        # there's no queue delay in the synchronous dispatch path.
         now = utc_now()
         for state in approved_states:
-            state.status = PlanTaskStatus.QUEUED.value
+            state.status = PlanTaskStatus.RUNNING.value
             state.last_attempt_at = now
         await self._session.commit()
 
@@ -625,7 +626,7 @@ class MissionPlanDispatchMixin:
         # Tasks dispatched but never reported: mark failed
         for task_id in dispatched_task_ids - seen_task_ids:
             state = await self._repo.get_task_state(plan.id, task_id)
-            if state is None or state.status != PlanTaskStatus.QUEUED.value:
+            if state is None or state.status not in (PlanTaskStatus.QUEUED.value, PlanTaskStatus.RUNNING.value):
                 continue
             state.status = PlanTaskStatus.FAILED.value
             state.failure_reason = (
