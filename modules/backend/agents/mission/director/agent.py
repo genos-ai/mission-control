@@ -180,6 +180,35 @@ async def _ensure_research_team(db_session, mission_id: str) -> None:
         )
 
 
+async def _get_research_team_config(db_session, mission_id: str) -> dict:
+    """Read research config from the strategist's custom_constraints.
+
+    Returns a dict with optional keys: depth, include_domains, exclude_domains.
+    These are set per-mission via the Team tab's custom_constraints field.
+    Returns empty dict if not configured (all defaults apply).
+    """
+    if db_session is None:
+        return {}
+    try:
+        from modules.backend.repositories.mission_team import MissionTeamRepository
+        from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+
+        catalog_repo = AgentCatalogRepository(db_session)
+        strategist = await catalog_repo.get_by_name("research.strategist.agent")
+        if not strategist:
+            return {}
+
+        team_repo = MissionTeamRepository(db_session)
+        member = await team_repo.get_by_mission_and_agent(mission_id, strategist.id)
+        if not member or not member.custom_constraints:
+            return {}
+
+        return member.custom_constraints
+    except Exception:
+        logger.debug("Failed to read research team config", exc_info=True)
+        return {}
+
+
 def create_agent(model: str | Model) -> Agent:
     """Create the Mission Director agent with all tools registered."""
     if isinstance(model, str):
@@ -568,10 +597,22 @@ def create_agent(model: str | Model) -> Agent:
             # Ensure research agents are in the mission team
             await _ensure_research_team(ctx.deps.db_session, mission_id)
 
-            # Build the research loop config
-            loop_config: dict = {"depth": depth}
-            if include_domains:
-                loop_config["include_domains"] = include_domains
+            # Read research config from team member's custom_constraints.
+            # Per-mission overrides set via Team tab take priority over
+            # the tool's default. Explicit LLM params override everything.
+            team_config = await _get_research_team_config(
+                ctx.deps.db_session, mission_id
+            )
+            effective_depth = depth if depth != "comprehensive" else team_config.get("depth", "comprehensive")
+
+            loop_config: dict = {"depth": effective_depth}
+            # Merge domain filters: explicit param > team config > empty
+            effective_domains = include_domains or team_config.get("include_domains") or []
+            if effective_domains:
+                loop_config["include_domains"] = effective_domains
+            exclude = team_config.get("exclude_domains")
+            if exclude:
+                loop_config["exclude_domains"] = exclude
 
             # Add a plan task with type=research_loop — shows on kanban
             from modules.backend.services.mission import MissionService
