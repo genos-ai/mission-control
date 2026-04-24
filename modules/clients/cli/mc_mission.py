@@ -198,6 +198,111 @@ async def set_budget(api: CliApiClient, mission_id: str, amount: float) -> None:
     console.print(f"[green]Budget set:[/green] ${amount:.2f}")
 
 
+# ── Artifacts ─────────────────────────────────────────────────────────
+
+
+async def list_artifacts(api: CliApiClient, mission_id: str) -> None:
+    """List artifacts for the current mission."""
+    console = get_console()
+    data = await api.get(f"/missions/{mission_id}/artifacts")
+    artifacts = data.get("artifacts", [])
+    if not artifacts:
+        console.print("[dim]No artifacts found.[/dim]")
+        return
+
+    from rich.table import Table
+
+    table = Table(title=f"Artifacts ({len(artifacts)})")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Type", width=10)
+    table.add_column("Agent", width=30)
+    table.add_column("Title", width=50)
+    table.add_column("Created", width=16)
+
+    for i, a in enumerate(artifacts, 1):
+        table.add_row(
+            str(i),
+            a.get("artifact_type", ""),
+            a.get("agent_id", ""),
+            a.get("title", "")[:50],
+            str(a.get("created_at", ""))[:16],
+        )
+
+    console.print(table)
+
+
+async def show_artifact(api: CliApiClient, mission_id: str, num: int) -> None:
+    """Show a specific artifact by its list number."""
+    console = get_console()
+    data = await api.get(f"/missions/{mission_id}/artifacts")
+    artifacts = data.get("artifacts", [])
+
+    if not artifacts:
+        console.print("[dim]No artifacts found.[/dim]")
+        return
+
+    if num < 1 or num > len(artifacts):
+        console.print(f"[red]Artifact #{num} not found. Available: 1-{len(artifacts)}[/red]")
+        return
+
+    a = artifacts[num - 1]
+    console.print(f"\n[bold]Artifact #{num}[/bold]")
+    console.print(f"[bold]ID:[/bold] {a.get('id', '')}")
+    console.print(f"[bold]Type:[/bold] {a.get('artifact_type', '')}")
+    console.print(f"[bold]Agent:[/bold] {a.get('agent_id', '')}")
+    console.print(f"[bold]Title:[/bold] {a.get('title', '')}")
+    console.print(f"[bold]Created:[/bold] {a.get('created_at', '')}")
+    console.print()
+
+    content = a.get("content_text", "")
+    if content:
+        if a.get("content_type") == "markdown":
+            from rich.markdown import Markdown
+            console.print(Markdown(content))
+        else:
+            console.print(content)
+    else:
+        console.print("[dim](no content)[/dim]")
+
+
+# ── Reports ───────────────────────────────────────────────────────────
+
+
+async def list_reports(api: CliApiClient, mission_id: str) -> None:
+    """List research reports from completed runs."""
+    console = get_console()
+
+    execs = await api.get("/executions", params={"limit": 50})
+    all_records = execs.get("executions", [])
+    completed = [
+        r for r in all_records
+        if r.get("status") == "completed" and r.get("mission_id") == mission_id
+    ]
+
+    if not completed:
+        console.print("[dim]No completed runs found.[/dim]")
+        return
+
+    from rich.table import Table
+
+    table = Table(title=f"Reports ({len(completed)} completed runs)")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("When", width=16)
+    table.add_column("Cost", width=10)
+    table.add_column("Objective", width=70)
+
+    for i, r in enumerate(completed, 1):
+        table.add_row(
+            str(i),
+            str(r.get("created_at", ""))[:16],
+            f"${r.get('total_cost_usd', 0):.4f}",
+            str(r.get("objective_statement", ""))[:70],
+        )
+
+    console.print(table)
+    console.print("\n[dim]Use: mc.py report --run N  to view a report[/dim]")
+
+
 async def show_report(api: CliApiClient, mission_id: str, run: int | None) -> None:
     """Show the research report from the latest (or specified) run."""
     console = get_console()
