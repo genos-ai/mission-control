@@ -188,6 +188,16 @@ async def set_gate(api: CliApiClient, mission_id: str, mode: str) -> None:
     console.print(f"[green]Gate mode set:[/green] {mode}")
 
 
+async def set_budget(api: CliApiClient, mission_id: str, amount: float) -> None:
+    """Set the budget ceiling for the current mission."""
+    console = get_console()
+    await api.patch(
+        f"/missions/{mission_id}/plan",
+        body={"budget_usd_ceiling": amount},
+    )
+    console.print(f"[green]Budget set:[/green] ${amount:.2f}")
+
+
 async def context_show(api: CliApiClient, mission_id: str) -> None:
     """View the Mission Context Document."""
     console = get_console()

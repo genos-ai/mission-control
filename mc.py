@@ -241,6 +241,21 @@ def mission_set_gate(ctx, mode):
     asyncio.run(_run())
 
 
+@mission.command("set-budget")
+@click.argument("amount", type=float)
+@click.pass_obj
+def mission_set_budget(ctx, amount):
+    """Set the budget ceiling for the current mission."""
+    from modules.clients.cli.mc_mission import set_budget
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await set_budget(api, mid, amount)
+
+    asyncio.run(_run())
+
+
 @mission.command("archive")
 @click.pass_obj
 def mission_archive(ctx):
