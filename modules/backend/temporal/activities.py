@@ -106,7 +106,10 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 success_count=len(result.get("updated_task_ids", [])),
                 failed_count=0,
                 execution_record_id=result.get("execution_record_id"),
-                outcome_json=result,
+                # Use the full serialized ExecutionOutcome if dispatch_approved
+                # provided it; otherwise fall back to the summary dict (older
+                # code paths that don't include the full outcome).
+                outcome_json=result.get("outcome_json", result),
             )
 
         except (asyncio.CancelledError, KeyboardInterrupt) as e:

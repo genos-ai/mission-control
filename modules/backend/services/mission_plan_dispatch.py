@@ -244,6 +244,11 @@ class MissionPlanDispatchMixin:
             "updated_task_ids": updated_ids,
             "total_cost_usd": float(outcome.total_cost_usd or 0.0),
             "new_total_spent_usd": plan.total_spent_usd,
+            # Full serialized outcome for Temporal's persist_mission_outcome
+            # activity (MissionRunWorkflow Step 2). handle_mission already
+            # persists inside dispatch_approved, but the workflow also
+            # persists independently for durability.
+            "outcome_json": outcome.model_dump(mode="json"),
         }
 
     async def _post_run_supervisor(
