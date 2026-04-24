@@ -365,9 +365,15 @@ class CopilotModel(Model):
         messages: list[ModelMessage],
         params: ModelRequestParameters,
     ) -> ModelResponse:
-        system_prompt, user_message = _extract_messages(messages)
+        _, user_message = _extract_messages(messages)
         if not user_message:
             return self._empty_response()
+
+        # Use PydanticAI's _get_instructions which appends the prompted
+        # output schema (JSON schema instructions) to the base instructions.
+        # Without this, agents with output_type get no schema guidance and
+        # the LLM returns free-form text instead of JSON.
+        system_prompt = self._get_instructions(messages, params) or ""
 
         # Reset turn state
         self._response_text = ""
