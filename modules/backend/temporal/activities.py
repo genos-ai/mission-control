@@ -183,12 +183,24 @@ async def persist_mission_outcome(
 
     try:
         outcome = ExecutionOutcome.model_validate(outcome_json)
+
+        # task_plan_reference may be a JSON string (from model_dump_json)
+        # or a dict. persist_mission_results expects a dict for domain_tags
+        # lookup, so parse if needed.
+        task_plan_ref = outcome_json.get("task_plan_reference")
+        if isinstance(task_plan_ref, str):
+            import json
+            try:
+                task_plan_ref = json.loads(task_plan_ref)
+            except (json.JSONDecodeError, TypeError):
+                task_plan_ref = None
+
         async with get_async_session() as db:
             await persist_mission_results(
                 outcome,
                 session_id=session_id,
                 roster_name=roster_name,
-                task_plan_json=outcome_json.get("task_plan_reference"),
+                task_plan_json=task_plan_ref,
                 thinking_trace=outcome_json.get("planning_trace_reference"),
                 mission_id=mission_id,
                 db_session=db,
