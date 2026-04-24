@@ -571,7 +571,7 @@ def create_agent(model: str | Model) -> Agent:
     async def start_research(
         ctx: RunContext[MissionDirectorDeps],
         query: str,
-        depth: str = "comprehensive",
+        depth: str = "quick",
         include_domains: list[str] | None = None,
     ) -> str:
         """Start a deep research investigation on any topic.
