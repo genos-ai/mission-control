@@ -153,6 +153,7 @@ class MissionPlanDispatchMixin:
             mission_run_id=mission_plan_id,
             mission_brief=brief,
             session_service=SessionService(self._session),  # type: ignore[arg-type]
+            event_bus=self._event_bus,
             roster_name=mission.default_roster,
             mission_budget_usd=budget,
             session_id=session_id,
