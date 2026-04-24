@@ -20,12 +20,12 @@ from modules.backend.temporal.models import (
 logger = get_logger(__name__)
 
 
-def _format_model_error(exc: Exception) -> str:
-    """Extract a clean, actionable message from LLM provider errors.
+def _format_activity_error(exc: Exception) -> str:
+    """Extract a clean, actionable message from activity errors.
 
-    Handles ModelHTTPError (pydantic_ai), anthropic.APIError, and
-    generic exceptions. Returns a one-line summary suitable for
-    user-facing error messages and SSE events.
+    For LLM provider errors (ModelHTTPError, etc.), includes model name,
+    status code, and error detail. For all other exceptions, produces a
+    generic but informative message without the misleading "LLM" prefix.
     """
     # pydantic_ai.exceptions.ModelHTTPError
     model_name = getattr(exc, "model_name", None)
@@ -42,7 +42,7 @@ def _format_model_error(exc: Exception) -> str:
             f"{f' — {detail[:200]}' if detail else ''}"
         )
 
-    return f"LLM call failed: {type(exc).__name__}: {str(exc)[:250]}"
+    return f"{type(exc).__name__}: {str(exc)[:250]}"
 
 
 
@@ -127,7 +127,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
         except Exception as e:
             # Produce a clean, structured error message — especially for
             # LLM provider failures (credits exhausted, auth errors, etc.)
-            clean_msg = _format_model_error(e)
+            clean_msg = _format_activity_error(e)
             activity.logger.error(
                 "Mission execution failed",
                 extra={
@@ -192,6 +192,9 @@ async def persist_mission_outcome(
             )
             await db.commit()
         return True
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        # Never swallow cancellation — let Temporal handle retry/timeout.
+        raise
     except Exception as e:
         error_msg = f"Failed to persist mission results: {type(e).__name__}: {str(e)[:200]}"
         activity.logger.error(

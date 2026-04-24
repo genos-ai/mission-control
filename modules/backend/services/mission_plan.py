@@ -307,31 +307,86 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         # refinement succeeds). Pass it so the Planning Agent generates
         # task IDs with the correct version prefix: v{N}-task-001, etc.
         next_version = plan.version + 1
+        budget = plan.budget_usd_ceiling or mission_budget_usd
 
-        planning_result = await _call_planning_agent(
-            prompt=brief,
-            roster=roster,
-            upstream_context=None,
-            event_bus=self._event_bus,
-            mission_id=plan.mission_id,
-            current_plan=plan.task_plan_json,
-            refinement_instructions=instructions,
-            plan_version=next_version,
+        # Retry loop: if the Planning Agent produces invalid output,
+        # feed the validation errors back and re-call. Max 3 attempts.
+        from modules.backend.agents.mission_control.helpers.prompt_builder import (
+            _append_validation_feedback,
         )
 
-        try:
-            new_plan = TaskPlan.model_validate(planning_result["task_plan"])
-        except Exception as e:
-            raise ValidationError(
-                f"Planning Agent returned an invalid TaskPlan: {e}"
-            ) from e
+        max_attempts = 3
+        last_errors: list[str] = []
+        new_plan: TaskPlan | None = None
+        refinement_prompt = instructions
 
-        budget = plan.budget_usd_ceiling or mission_budget_usd
-        validation = validate_plan(new_plan, roster, budget)
-        if not validation.is_valid:
+        for attempt in range(1, max_attempts + 1):
+            planning_result = await _call_planning_agent(
+                prompt=brief,
+                roster=roster,
+                upstream_context=None,
+                event_bus=self._event_bus,
+                mission_id=plan.mission_id,
+                current_plan=plan.task_plan_json,
+                refinement_instructions=refinement_prompt,
+                plan_version=next_version,
+            )
+
+            # Validate schema
+            errors: list[str] = []
+            try:
+                candidate = TaskPlan.model_validate(planning_result["task_plan"])
+            except Exception as e:
+                errors.append(f"Schema validation failed: {e}")
+                candidate = None
+
+            # Validate semantics (only if schema passed)
+            if candidate is not None:
+                validation = validate_plan(candidate, roster, budget)
+                if not validation.is_valid:
+                    errors.extend(validation.errors)
+
+            if not errors and candidate is not None:
+                new_plan = candidate
+                break
+
+            last_errors = errors
+            self._log_operation(
+                "Planning Agent produced invalid plan, retrying",
+                plan_id=mission_plan_id,
+                attempt=attempt,
+                error_count=len(errors),
+                errors=errors[:5],
+            )
+
+            if attempt < max_attempts:
+                # Notify console so the user knows why there's a second
+                # thinking animation — without this the UX is confusing.
+                from modules.backend.events.types import SystemEvent
+                await self._emit(
+                    plan.mission_id,
+                    SystemEvent(
+                        session_id=uuid.uuid4(),
+                        source="mission_plan_service",
+                        level="warning",
+                        message=(
+                            f"Plan validation failed ({len(errors)} error(s)), "
+                            f"retrying (attempt {attempt + 1}/{max_attempts})..."
+                        ),
+                        mission_id=plan.mission_id,
+                    ),
+                )
+
+                # Append errors to the refinement instructions so the
+                # planner can self-correct on the next attempt.
+                refinement_prompt = _append_validation_feedback(
+                    instructions, errors,
+                )
+
+        if new_plan is None:
             raise ValidationError(
-                "Refined TaskPlan failed validation: "
-                + "; ".join(validation.errors)
+                f"Planning Agent failed after {max_attempts} attempts: "
+                + "; ".join(last_errors)
             )
 
         # Reconcile task states
