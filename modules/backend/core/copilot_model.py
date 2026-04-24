@@ -243,6 +243,12 @@ class CopilotModel(Model):
     Full PydanticAI tool support via async handler bridging.
     Copilot drives the tool loop, but handlers await PydanticAI's
     tool execution before returning results.
+
+    Structured output: Copilot SDK does not support native JSON schema
+    output. We set default_structured_output_mode='prompted' so PydanticAI
+    injects the JSON schema into the system prompt automatically. The LLM
+    is instructed to respond with JSON matching the schema — no native API
+    enforcement, but reliable enough for structured output types.
     """
 
     _client: Any = None
@@ -255,7 +261,18 @@ class CopilotModel(Model):
         *,
         reasoning_effort: str | None = None,
         working_directory: str | None = None,
+        profile: "ModelProfile | None" = None,
     ) -> None:
+        from pydantic_ai.profiles import ModelProfile
+
+        # Copilot doesn't support native JSON schema or tool-based output for
+        # structured responses. Fall back to 'prompted' mode — PydanticAI
+        # injects the schema into the system prompt and the LLM responds with
+        # JSON. This makes Agent(output_type=SomeModel) work correctly.
+        self._profile = profile or ModelProfile(
+            supports_json_schema_output=False,
+            default_structured_output_mode='prompted',
+        )
         self._model_id = model_id
         self._reasoning_effort = reasoning_effort
         self._working_dir = working_directory
