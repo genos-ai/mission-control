@@ -547,10 +547,10 @@ def create_agent(model: str | Model) -> Agent:
     ) -> str:
         """Start a deep research investigation on any topic.
 
-        Triggers the research workflow template which runs 5 specialized
-        agents (strategist, searcher, analyst, synthesizer, verifier) in
-        an iterative search loop. Returns immediately — research runs in
-        the background.
+        Creates a plan task with type=research_loop and auto-approves it.
+        The research then appears on the Plan kanban like any other task,
+        with full status tracking. MissionRunWorkflow dispatches it via
+        _execute_layer → research_loop fork.
 
         Args:
             query: The research question to investigate.
@@ -568,37 +568,47 @@ def create_agent(model: str | Model) -> Agent:
             # Ensure research agents are in the mission team
             await _ensure_research_team(ctx.deps.db_session, mission_id)
 
-            record = await _create_background_record(
-                mission_id=mission_id,
-                session_id=ctx.deps.session_id,
-                task_type="research",
-                objective=f"Deep research: {query}",
-                params={"query": query, "depth": depth},
+            # Build the research loop config
+            loop_config: dict = {"depth": depth}
+            if include_domains:
+                loop_config["include_domains"] = include_domains
+
+            # Add a plan task with type=research_loop — shows on kanban
+            from modules.backend.services.mission import MissionService
+            from modules.backend.services.mission_plan import MissionPlanService
+
+            plan_svc = MissionPlanService(ctx.deps.db_session)
+            plan = await plan_svc.get_or_create_plan(mission_id)
+
+            await plan_svc.add_task(
+                plan.id,
+                description=f"Deep research: {query}",
+                agent="research.strategist.agent",
+                instructions=f"Research: {query}",
+                inputs={
+                    "static": {
+                        "type": "research_loop",
+                        "query": query,
+                        "loop_config": loop_config,
+                    },
+                },
             )
 
-            from modules.backend.temporal.tool_fork_models import RunWorkflowInput
-            workflow_id = await _start_tool_fork_workflow(
-                workflow_name="RunWorkflowWorkflow",
-                input_data=RunWorkflowInput(
-                    mission_id=mission_id,
-                    session_id=ctx.deps.session_id,
-                    execution_record_id=record.id,
-                    workflow_name="research.deep-research",
-                    context_overrides={
-                        "query": query,
-                        "research_depth": depth,
-                        **({"include_domains": include_domains} if include_domains else {}),
-                    },
-                    followup_event_types=["research.completed", "research.failed"],
-                ),
-                record_id=record.id,
+            # Auto-approve and dispatch via Temporal
+            acting_user_id = (await MissionService(ctx.deps.db_session).get_mission(mission_id)).owner_id
+            approved_ids = await plan_svc.approve_all_proposed(plan.id, acting_user_id)
+            await ctx.deps.db_session.flush()
+
+            workflow_id = await plan_svc._start_temporal_run_workflow(
+                plan, ctx.deps.session_id,
             )
+            await ctx.deps.db_session.commit()
 
             await _schedule_director_followup(
                 db_session=ctx.deps.db_session,
                 session_id=ctx.deps.session_id,
                 mission_id=mission_id,
-                trigger_event_types=["research.completed", "research.failed"],
+                trigger_event_types=["mission_plan.supervisor_decision"],
                 prompt_template=(
                     "The research just completed. Check the results and "
                     "report back to the user with key findings."
@@ -607,8 +617,9 @@ def create_agent(model: str | Model) -> Agent:
 
             return json.dumps({
                 "status": "research_started",
-                "execution_record_id": record.id,
-                "temporal_workflow_id": workflow_id,
+                "plan_id": plan.id,
+                "task_ids": approved_ids,
+                "workflow_id": workflow_id,
                 "depth": depth,
                 "message": f"Research started: \"{query}\". I'll report back when it's done.",
             }, indent=2, default=str)

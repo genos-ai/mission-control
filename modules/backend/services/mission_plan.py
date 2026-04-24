@@ -839,6 +839,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         agent: str,
         instructions: str = "",
         dependencies: list[str] | None = None,
+        inputs: dict | None = None,
     ) -> MissionPlan:
         """Append a single proposed task to the plan's task_plan_json.
 
@@ -866,7 +867,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             if t.get("task_id", "").startswith(version_prefix)
         )
         task_id = f"v{version}-task-{existing_count + 1:03d}"
-        task_body = {
+        task_body: dict = {
             "task_id": task_id,
             "agent": agent,
             "agent_version": agent_version,
@@ -874,6 +875,8 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             "instructions": instructions or description,
             "dependencies": dependencies or [],
         }
+        if inputs:
+            task_body["inputs"] = inputs
 
         tasks = list(existing.get("tasks", []))
         tasks.append(task_body)
