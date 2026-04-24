@@ -44,7 +44,7 @@
 # =============================================================================
 
 model_pricing:
-  "anthropic:claude-haiku-4-5-20251001":
+  "copilot:claude-haiku-4.5":
     input: 1.00
     output: 5.00
     cache_read: 0.10
@@ -77,7 +77,7 @@ model_pricing:
 
 routing:
   strategy: hybrid
-  llm_model: anthropic:claude-haiku-4-5-20251001
+  llm_model: copilot:claude-haiku-4.5
   complex_request_agent: horizontal.pm.agent
   fallback_agent: platform.health.agent
   chat_agent: mission.director.agent
