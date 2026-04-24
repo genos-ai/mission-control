@@ -64,9 +64,13 @@ class TaskInputs(BaseModel):
         default_factory=dict,
         description="Fixed input values defined by the Planning Agent",
     )
-    from_upstream: dict[str, FromUpstreamRef] = Field(
+    from_upstream: dict[str, FromUpstreamRef | list[FromUpstreamRef]] = Field(
         default_factory=dict,
-        description="References to outputs from completed upstream tasks",
+        description=(
+            "References to outputs from completed upstream tasks. "
+            "Each value is a single FromUpstreamRef or a list of them "
+            "(for merging outputs from multiple upstream tasks)."
+        ),
     )
     file_manifest: FileManifest | None = Field(
         default=None,

@@ -57,18 +57,23 @@ def resolve_upstream_inputs(
     """
     resolved = dict(task.inputs.static)
 
-    for field_name, ref in task.inputs.from_upstream.items():
-        source_output = completed_outputs.get(ref.source_task)
-        if source_output is None:
-            raise KeyError(
-                f"Task '{task.task_id}': upstream task '{ref.source_task}' "
-                f"has no output (did it fail?)"
-            )
-        if ref.source_field not in source_output:
-            raise KeyError(
-                f"Task '{task.task_id}': upstream task '{ref.source_task}' "
-                f"output missing field '{ref.source_field}'"
-            )
-        resolved[field_name] = source_output[ref.source_field]
+    for field_name, ref_or_list in task.inputs.from_upstream.items():
+        refs = ref_or_list if isinstance(ref_or_list, list) else [ref_or_list]
+        values = []
+        for ref in refs:
+            source_output = completed_outputs.get(ref.source_task)
+            if source_output is None:
+                raise KeyError(
+                    f"Task '{task.task_id}': upstream task '{ref.source_task}' "
+                    f"has no output (did it fail?)"
+                )
+            if ref.source_field not in source_output:
+                raise KeyError(
+                    f"Task '{task.task_id}': upstream task '{ref.source_task}' "
+                    f"output missing field '{ref.source_field}'"
+                )
+            values.append(source_output[ref.source_field])
+        # Single ref → unwrap; list of refs → keep as list
+        resolved[field_name] = values[0] if len(values) == 1 else values
 
     return resolved
