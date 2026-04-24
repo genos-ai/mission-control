@@ -880,6 +880,19 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
 
         tasks = list(existing.get("tasks", []))
         tasks.append(task_body)
+
+        # Initialise the full TaskPlan scaffold if starting from scratch.
+        # TaskPlan requires mission_id, summary, estimated_cost_usd,
+        # estimated_duration_seconds — dispatch validates these on read.
+        if not existing or "mission_id" not in existing:
+            existing = {
+                "version": f"{version}.0.0",
+                "mission_id": plan.mission_id,
+                "summary": description,
+                "estimated_cost_usd": 5.0,
+                "estimated_duration_seconds": 300,
+                "execution_hints": {"critical_path": [task_id]},
+            }
         plan.task_plan_json = {**existing, "tasks": tasks}
         await self._session.flush()
 
