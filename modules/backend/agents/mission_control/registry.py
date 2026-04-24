@@ -38,7 +38,7 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
     as a dict vs AgentModelSchema). This function normalises them.
     """
     model_cfg = row.model_config_json or {}
-    model_name = model_cfg.get("name", "anthropic:claude-sonnet-4-6")
+    model_name = model_cfg.get("name", "copilot:claude-sonnet-4.6")
 
     # Reconstruct the model field as AgentModelSchema if it has extra fields
     if model_cfg.get("temperature") is not None or model_cfg.get("max_tokens"):

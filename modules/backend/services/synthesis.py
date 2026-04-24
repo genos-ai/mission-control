@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MODEL = "anthropic:claude-haiku-4-5-20251001"
+_MODEL = "copilot:claude-haiku-4.5"
 
 _INSTRUCTIONS = """\
 You are a concise technical writer. Given structured execution outcome data,

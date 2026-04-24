@@ -180,7 +180,7 @@ class WorkflowArchitectService(BaseService):
             config = registry.get(ARCHITECT_AGENT_NAME)
             model = _build_model(config.model)
         else:
-            model = _build_model("anthropic:claude-opus-4-20250514")
+            model = _build_model("copilot:claude-opus-4.6")
 
         return create_agent(model)
 

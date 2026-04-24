@@ -366,7 +366,7 @@ class AutonomousPostRunReviewer:
                 MissionSupervisorDeps,
             )
 
-            agent = create_event_agent("anthropic:claude-haiku-4-5-20251001")
+            agent = create_event_agent("copilot:claude-haiku-4.5")
             deps = MissionSupervisorDeps(
                 mission_id=context.mission_id,
                 db_session=self._session,
@@ -391,7 +391,7 @@ class AutonomousPostRunReviewer:
             cost_usd = compute_cost_usd(
                 usage.input_tokens or 0,
                 usage.output_tokens or 0,
-                "anthropic:claude-haiku-4-5-20251001",
+                "copilot:claude-haiku-4.5",
             )
 
             # Confidence override: < 0.6 → ESCALATE

@@ -105,7 +105,7 @@ class AgentCatalogService(BaseService):
             version=version,
             description=description,
             system_prompt=system_prompt,
-            model_config_json=model_config_json or {"name": "anthropic:claude-haiku-4-5-20251001", "temperature": 0.0, "max_tokens": 4096},
+            model_config_json=model_config_json or {"name": "copilot:claude-haiku-4.5", "temperature": 0.0, "max_tokens": 4096},
             tools=tools or [],
             scope=scope or {"read": [], "write": []},
             interface=interface,
