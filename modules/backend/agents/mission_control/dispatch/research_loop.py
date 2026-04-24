@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic_ai import UsageLimits
 
@@ -73,10 +73,38 @@ class ResearchConfig:
     synthesizer_agent: str = "research.synthesizer.agent"
     verifier_agent: str = "research.verifier.agent"
 
+    # Depth presets: override defaults when depth is set but individual
+    # fields are not explicitly provided in the input dict.
+    _DEPTH_PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
+        "quick": {
+            "max_iterations": 1,
+            "min_coverage_ratio": 0.5,
+            "max_sources_per_question": 5,
+            "max_findings_for_synthesis": 20,
+            "budget_usd": 5.0,
+            "verification_enabled": False,
+        },
+        "moderate": {
+            "max_iterations": 3,
+            "min_coverage_ratio": 0.7,
+            "max_sources_per_question": 8,
+            "max_findings_for_synthesis": 35,
+            "budget_usd": 15.0,
+        },
+        # "comprehensive" uses the dataclass defaults — no overrides needed.
+    }
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ResearchConfig:
-        """Create from task input_data['loop_config']."""
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        """Create from task input_data['loop_config'].
+
+        Applies depth presets first, then lets explicit values override.
+        """
+        depth = data.get("depth", "comprehensive")
+        preset = dict(cls._DEPTH_PRESETS.get(depth, {}))
+        # Explicit values in data override preset defaults
+        preset.update({k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        return cls(**preset)
 
 
 @dataclass

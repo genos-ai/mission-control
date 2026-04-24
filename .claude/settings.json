@@ -62,7 +62,14 @@
       "Bash(do)",
       "Bash(file=\"config/agents/research/$agent/agent.yaml\")",
       "Bash(sed -i '' 's/tier: system/tier: user/' \"$file\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mission_control -c \"SELECT email FROM users LIMIT 5;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mc -c \"SELECT email FROM users LIMIT 5;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mc -c \"SELECT COUNT\\(*\\) FROM mission_artifacts;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mc -c \"SELECT id, mission_id, agent_id, title FROM mission_artifacts ORDER BY created_at DESC LIMIT 5;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -c l)",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U mission_control -d mission_control -c \"SELECT COUNT\\(*\\) as total FROM mission_artifacts;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U mission_control -d mission_control -c \"SELECT sm.role, LEFT\\(sm.content, 80\\) as content_preview FROM session_messages sm JOIN sessions s ON sm.session_id = s.id WHERE s.mission_id = ''6c79d683-7d65-493a-8cfd-10c11a9f1c30'' ORDER BY sm.created_at DESC LIMIT 10;\")"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

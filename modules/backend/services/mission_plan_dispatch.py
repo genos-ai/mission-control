@@ -120,11 +120,13 @@ class MissionPlanDispatchMixin:
         )
 
         # Mark approved → queued (Plan 42 §2.3 state machine)
+        # Commit immediately so the kanban board reflects "queued"
+        # before the long-running handle_mission execution starts.
         now = utc_now()
         for state in approved_states:
             state.status = PlanTaskStatus.QUEUED.value
             state.last_attempt_at = now
-        await self._session.flush()
+        await self._session.commit()
 
         self._log_operation(
             "MissionPlan dispatching",
@@ -156,12 +158,6 @@ class MissionPlanDispatchMixin:
             budget = plan.budget_usd_ceiling - plan.total_spent_usd
 
         from modules.backend.services.session import SessionService
-        logger.info("TRACE     calling handle_mission",
-                     extra={"task_count": len(derived_plan.tasks),
-                            "budget": budget,
-                            "event_bus_type": type(self._event_bus).__name__,
-                            "session_id": session_id,
-                            "execution_mode": mission.execution_environment})
         outcome = await handle_mission(
             mission_run_id=mission_plan_id,
             mission_brief=brief,

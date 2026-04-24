@@ -44,13 +44,11 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     from modules.backend.services.mission_plan import MissionPlanService
 
     activity.logger.info(
-        "TRACE >>> execute_mission activity started",
+        "execute_mission started",
         extra={
             "mission_run_id": input.mission_run_id,
             "mission_id": input.mission_id,
-            "session_id": input.session_id,
             "budget": input.mission_budget_usd,
-            "execution_mode": input.execution_mode,
         },
     )
 
@@ -61,13 +59,12 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
         try:
             # Look up mission owner for audit trail
             mission = await MissionService(db).get_mission(input.mission_id)
-            activity.logger.info(
-                "TRACE     mission loaded",
-                extra={"owner_id": str(mission.owner_id), "mission_name": mission.name},
-            )
 
             svc = MissionPlanService(db, event_bus=event_bus)
-            activity.logger.info("TRACE     calling dispatch_approved")
+            activity.logger.info(
+                "execute_mission dispatching",
+                extra={"plan_id": input.mission_run_id, "owner": str(mission.owner_id)},
+            )
             result = await svc.dispatch_approved(
                 input.mission_run_id,
                 user_id=mission.owner_id,
@@ -85,6 +82,21 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 failed_count=0,
                 execution_record_id=result.get("execution_record_id"),
                 outcome_json=result,
+            )
+
+        except (asyncio.CancelledError, KeyboardInterrupt) as e:
+            # CancelledError is a BaseException — not caught by
+            # "except Exception".  When Temporal cancels the activity
+            # (timeout or workflow cancellation), this prevents the
+            # error from propagating uncaught and causing silent retries.
+            activity.logger.warning(
+                "Mission execution cancelled",
+                extra={"mission_run_id": input.mission_run_id, "mission_id": input.mission_id},
+            )
+            return MissionExecutionResult(
+                mission_id=input.mission_run_id,
+                status="failed",
+                outcome_json={"error": f"Activity cancelled: {type(e).__name__}"},
             )
 
         except Exception as e:
