@@ -50,13 +50,13 @@ model_pricing:
     cache_read: 0.10
     cache_write_5m: 1.25
     cache_write_1h: 2.00
-  "anthropic:claude-sonnet-4-6":
+  "copilot:claude-sonnet-4.6":
     input: 3.00
     output: 15.00
     cache_read: 0.30
     cache_write_5m: 3.75
     cache_write_1h: 6.00
-  "anthropic:claude-opus-4-6":
+  "copilot:claude-opus-4.6":
     input: 15.00
     output: 75.00
     cache_read: 1.50
