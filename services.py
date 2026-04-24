@@ -12,6 +12,7 @@ Usage:
     python services.py stop                   # Stop backend + frontend
     python services.py stop --backend-only    # Stop backend only
     python services.py restart                # Stop then start
+    python services.py restart --log-level WARNING --log-format console  # Errors/warnings only, colored
     python services.py status                 # Show what's running
     python services.py check                  # Preflight checks only
 
@@ -568,6 +569,11 @@ class DevRunner:
 
 def _prepare_services_environment(args) -> None:
     """Preflight, migrate, and seed. Exits the process on hard failure."""
+    if getattr(args, "log_level", None):
+        os.environ["MC_LOG_LEVEL"] = args.log_level
+    if getattr(args, "log_format", None):
+        os.environ["MC_LOG_FORMAT"] = args.log_format
+
     if not preflight(args.port, check_frontend=not args.backend_only):
         sys.exit(1)
 
@@ -937,6 +943,18 @@ Examples:
         p.add_argument("--backend-only", action="store_true", help="Skip frontend dev server")
         p.add_argument("--no-migrate", action="store_true", help="Skip database migrations")
         p.add_argument("--no-seed", action="store_true", help="Skip dev user seeding")
+        p.add_argument(
+            "--log-level",
+            choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+            default=None,
+            help="Console log level filter (file logging unaffected)",
+        )
+        p.add_argument(
+            "--log-format",
+            choices=["json", "console"],
+            default=None,
+            help="Console log format: 'console' for colored human-readable output",
+        )
 
     # -- start --
     p_start = subparsers.add_parser("start", help="Start development services")

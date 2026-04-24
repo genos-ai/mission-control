@@ -23,30 +23,9 @@ logger = get_logger(__name__)
 
 async def _emit_activity_error(mission_id: str, source: str, error: str) -> None:
     """Emit a SystemEvent from a Temporal activity so errors surface in the console."""
-    try:
-        import uuid
-        from redis.asyncio import Redis as AsyncRedis
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.events.types import SystemEvent
+    from modules.backend.temporal.activity_helpers import emit_activity_error
 
-        redis = AsyncRedis.from_url(get_redis_url())
-        try:
-            bus = SessionEventBus(redis, mission_id=mission_id)
-            await bus.publish_to_mission(
-                mission_id,
-                SystemEvent(
-                    session_id=uuid.uuid4(),
-                    source=source,
-                    level="error",
-                    message=error[:300],
-                    mission_id=mission_id,
-                ),
-            )
-        finally:
-            await redis.aclose()
-    except Exception:
-        logger.debug("Failed to emit activity error event (non-fatal)", exc_info=True)
+    await emit_activity_error(mission_id, source, error)
 
 
 @activity.defn
@@ -60,12 +39,15 @@ async def update_execution_record_status(
     from modules.backend.core.utils import utc_now
     from modules.backend.repositories.execution_record import ExecutionRecordRepository
 
+    # SQLAlchemy Enum(native_enum=False) stores by enum NAME (uppercase).
+    normalised = status.upper()
+
     async with get_async_session() as db:
         repo = ExecutionRecordRepository(db)
-        update_kwargs: dict = {"status": status}
-        if status == "running":
+        update_kwargs: dict = {"status": normalised}
+        if normalised == "RUNNING":
             update_kwargs["started_at"] = utc_now()
-        if status in ("completed", "failed", "cancelled"):
+        if normalised in ("COMPLETED", "FAILED", "CANCELLED"):
             update_kwargs["completed_at"] = utc_now()
         await repo.update(execution_record_id, **update_kwargs)
         await db.commit()
@@ -180,6 +162,7 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
                     workflow_name=input.workflow_name,
                     triggered_by="mission_director",
                     mission_id=input.mission_id,
+                    context_overrides=input.context_overrides,
                 )
         finally:
             await redis.aclose()
@@ -201,3 +184,86 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
             status="failed",
             error=str(e)[:500],
         )
+
+
+@activity.defn
+async def notify_director_on_completion(
+    mission_id: str,
+    session_id: str,
+    followup_event_types: list[str] | None,
+    fallback_prompt: str,
+) -> str:
+    """Fire any matching followups and start a Director turn — atomically.
+
+    1. If followup_event_types is set, fires matching session followups.
+       A matching followup's rendered prompt replaces the fallback.
+    2. Starts a ChatTurnWorkflow with the chosen prompt.
+
+    Returns the Director ChatTurnWorkflow ID.
+
+    By combining followup consumption and Director notification in one
+    activity, we avoid the race where a followup is consumed but the
+    Director turn fails to start in a separate step.
+    """
+    import uuid
+
+    from modules.backend.core.config import get_app_config
+    from modules.backend.temporal.chat_models import ChatTurnInput
+    from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
+    from modules.backend.temporal.client import get_temporal_client
+
+    prompt = fallback_prompt
+
+    # Fire matching followups and use their rendered prompt if available
+    if followup_event_types:
+        from modules.backend.core.database import get_async_session
+        from modules.backend.services.session_followup import SessionFollowupService
+
+        rendered: list[str] = []
+
+        async def _capture(_s: str, _m: str, p: str) -> None:
+            rendered.append(p)
+
+        async with get_async_session() as db:
+            followup_svc = SessionFollowupService(db)
+            for evt_type in followup_event_types:
+                await followup_svc.fire_matching(
+                    {"event_type": evt_type, "mission_id": mission_id},
+                    agent_turn_runner=_capture,
+                )
+            await db.commit()
+
+        if rendered:
+            prompt = rendered[0]
+            activity.logger.info(
+                "Using followup prompt for Director",
+                extra={
+                    "mission_id": mission_id,
+                    "event_types": followup_event_types,
+                },
+            )
+
+    # Start Director turn
+    client = await get_temporal_client()
+    config = get_app_config().temporal
+
+    workflow_id = f"director-followup-{mission_id[:12]}-{uuid.uuid4().hex[:8]}"
+    await client.start_workflow(
+        ChatTurnWorkflow.run,
+        ChatTurnInput(
+            session_id=session_id,
+            mission_id=mission_id,
+            message=prompt,
+            sender_id="mission.supervisor.agent",
+            agent_id="mission.director.agent",
+            channel="followup",
+        ),
+        id=workflow_id,
+        task_queue=config.task_queue,
+    )
+
+    activity.logger.info(
+        "Director notified on completion",
+        extra={"mission_id": mission_id, "workflow_id": workflow_id},
+    )
+    return workflow_id

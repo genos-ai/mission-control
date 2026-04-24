@@ -60,6 +60,7 @@ async def handle_mission(
     precomputed_plan: TaskPlan | None = None,
     mission_repo_root: str | None = None,
     prior_outputs: dict[str, dict] | None = None,
+    execution_record_id: str | None = None,
 ) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
@@ -93,6 +94,11 @@ async def handle_mission(
             step=step, message=message,
         ))
 
+    logger.info("TRACE >>> handle_mission entered",
+                 extra={"mission_run_id": mission_run_id, "mission_id": mission_id,
+                        "has_precomputed_plan": precomputed_plan is not None,
+                        "task_count": len(precomputed_plan.tasks) if precomputed_plan else 0,
+                        "event_bus_type": type(event_bus).__name__})
     await _phase("roster", "Deriving agent roster from team")
     roster = await derive_roster_from_team(mission_id, db_session)
     roster_description = _build_roster_prompt(roster)
@@ -358,6 +364,7 @@ async def handle_mission(
             thinking_trace=thinking_trace,
             mission_id=mission_id,
             db_session=db_session,
+            execution_record_id=execution_record_id,
         )
         outcome.execution_record_id = record_id
 

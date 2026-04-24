@@ -1,0 +1,68 @@
+# =============================================================================
+# Workflow: Deep Research (Plan 40)
+# =============================================================================
+# Iterative multi-agent research with search, synthesis, and citation
+# verification. The research loop executor manages 5 specialized agents
+# internally — the Planning Agent creates a single task for this step.
+# =============================================================================
+
+workflow_name: research.deep-research.workflow
+description: "Deep research with iterative multi-agent search, synthesis, and citation verification"
+objective:
+  statement: "Produce a comprehensive, cited research report"
+  category: research
+  owner: user
+  priority: high
+version: 1
+enabled: true
+
+trigger:
+  type: on_demand
+  match_patterns:
+    - "deep research"
+    - "research report"
+    - "investigate"
+    - "research"
+
+budget:
+  max_cost_usd: 25.00
+
+context:
+  query: ""
+  research_depth: "comprehensive"
+  max_iterations: 5
+  source_types: ["web"]
+  min_coverage_ratio: 0.8
+  verification_enabled: true
+  include_domains: []
+  exclude_domains: []
+
+steps:
+  - id: research
+    description: "Execute deep research loop"
+    capability: research.strategist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 25.00
+    environment: local
+    input:
+      # type: research_loop is declared here — NOT inferred by the Planning Agent.
+      # This makes dispatch routing deterministic. The Planning Agent creates a
+      # single task for this step; the dispatch loop sees type=research_loop and
+      # routes to execute_research_loop().
+      type: "research_loop"
+      query: "@context.query"
+      loop_config:
+        depth: "@context.research_depth"
+        max_iterations: "@context.max_iterations"
+        source_types: "@context.source_types"
+        min_coverage_ratio: "@context.min_coverage_ratio"
+        verification_enabled: "@context.verification_enabled"
+        include_domains: "@context.include_domains"
+        exclude_domains: "@context.exclude_domains"
+    # No output_mapping needed — research results are persisted to the
+    # research_reports table by the persistence bridge and accessible
+    # via GET /missions/{id}/research/reports and get_research_findings.
+    timeout_seconds: 3600
+    termination: criteria_met
+    depends_on: []

@@ -598,6 +598,96 @@ class LearningContradictionFlaggedEvent(SessionEvent):
 
 
 # =============================================================================
+# Research Events (Plan 40 §7.2)
+# =============================================================================
+
+
+class ResearchStartedEvent(SessionEvent):
+    """A deep research loop has started."""
+
+    event_type: str = "research.started"
+    research_id: str
+    query: str
+    depth: str = "comprehensive"
+    max_iterations: int = 5
+
+
+class ResearchDecomposedEvent(SessionEvent):
+    """The strategist decomposed a query into sub-questions."""
+
+    event_type: str = "research.decomposed"
+    research_id: str
+    sub_question_count: int = 0
+    sub_questions: list[dict] = Field(default_factory=list)
+
+
+class ResearchSubQuestionUpdatedEvent(SessionEvent):
+    """A sub-question's status changed (pending → searching → covered → gap)."""
+
+    event_type: str = "research.subquestion.updated"
+    research_id: str
+    sub_question_id: str
+    text: str = ""
+    status: str = "pending"
+    source_count: int = 0
+
+
+class ResearchSearchCompletedEvent(SessionEvent):
+    """A search round completed across parallel searchers."""
+
+    event_type: str = "research.search.completed"
+    research_id: str
+    iteration: int = 0
+    sources_found: int = 0
+    new_findings: int = 0
+    cost_usd: float = 0.0
+
+
+class ResearchCoverageEvent(SessionEvent):
+    """Coverage ratio updated after analyst evaluation."""
+
+    event_type: str = "research.coverage.updated"
+    research_id: str
+    iteration: int = 0
+    coverage_ratio: float = 0.0
+    gaps_remaining: int = 0
+    stop_reason: str = ""
+
+
+class ResearchSynthesizingEvent(SessionEvent):
+    """Report synthesis is about to start."""
+
+    event_type: str = "research.synthesizing"
+    research_id: str
+    total_findings: int = 0
+    findings_after_compression: int = 0
+
+
+class ResearchCompletedEvent(SessionEvent):
+    """Research loop completed successfully."""
+
+    event_type: str = "research.completed"
+    research_id: str
+    report_title: str = ""
+    total_sources: int = 0
+    total_iterations: int = 0
+    coverage_ratio: float = 0.0
+    verification_score: float | None = None
+    cost_usd: float = 0.0
+    duration_seconds: float = 0.0
+
+
+class ResearchFailedEvent(SessionEvent):
+    """Research loop failed with an error."""
+
+    event_type: str = "research.failed"
+    research_id: str
+    error: str = ""
+    iteration: int = 0
+    cost_usd: float = 0.0
+
+
+# =============================================================================
 # Event Type Registry
 # =============================================================================
 
@@ -644,6 +734,15 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "knowledge.learning.extracted": MissionLearningExtractedEvent,
     "knowledge.learning.promoted": PlatformLearningPromotedEvent,
     "knowledge.contradiction.flagged": LearningContradictionFlaggedEvent,
+    # Research events (Plan 40)
+    "research.started": ResearchStartedEvent,
+    "research.decomposed": ResearchDecomposedEvent,
+    "research.subquestion.updated": ResearchSubQuestionUpdatedEvent,
+    "research.search.completed": ResearchSearchCompletedEvent,
+    "research.coverage.updated": ResearchCoverageEvent,
+    "research.synthesizing": ResearchSynthesizingEvent,
+    "research.completed": ResearchCompletedEvent,
+    "research.failed": ResearchFailedEvent,
 }
 
 

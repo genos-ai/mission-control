@@ -32,13 +32,17 @@ async def persist_mission_results(
     thinking_trace: str | None = None,
     mission_id: str | None = None,
     db_session: AsyncSession,
+    execution_record_id: str | None = None,
 ) -> str | None:
     """Persist execution results. Best-effort — does not raise.
 
-    Returns the inserted ExecutionRecord id on success, or None if persistence
-    failed (best-effort semantics preserved). Callers that need to link back
-    to the run record (Plan 42: MissionPlanService) read this value; callers
-    that don't care simply ignore the return.
+    Returns the ExecutionRecord id on success, or None if persistence
+    failed (best-effort semantics preserved).
+
+    When ``execution_record_id`` is provided, the existing record
+    (created at dispatch start) is updated with final results instead
+    of inserting a new row.  This two-phase pattern ensures the run
+    is visible in the UI while it executes.
     """
     try:
         service = ExecutionPersistenceService(db_session)
@@ -58,16 +62,27 @@ async def persist_mission_results(
         }
         record_status = status_map.get(outcome.status, "failed")
 
-        record = await service.save_execution(
-            session_id=session_id,
-            status=record_status,
-            roster_name=roster_name,
-            task_plan_json=task_plan_json,
-            execution_outcome_json=outcome.model_dump(),
-            planning_thinking_trace=thinking_trace,
-            total_cost_usd=outcome.total_cost_usd,
-            mission_id=mission_id,
-        )
+        if execution_record_id:
+            record = await service.complete_execution(
+                execution_record_id=execution_record_id,
+                status=record_status,
+                roster_name=roster_name,
+                task_plan_json=task_plan_json,
+                execution_outcome_json=outcome.model_dump(),
+                planning_thinking_trace=thinking_trace,
+                total_cost_usd=outcome.total_cost_usd,
+            )
+        else:
+            record = await service.save_execution(
+                session_id=session_id,
+                status=record_status,
+                roster_name=roster_name,
+                task_plan_json=task_plan_json,
+                execution_outcome_json=outcome.model_dump(),
+                planning_thinking_trace=thinking_trace,
+                total_cost_usd=outcome.total_cost_usd,
+                mission_id=mission_id,
+            )
 
         for task_result in outcome.task_results:
             verification_dict = None
@@ -153,6 +168,15 @@ async def persist_mission_results(
                     feedback_provided=retry_entry.feedback_provided,
                 )
 
+        # Plan 40: persist research reports from research_loop tasks
+        if mission_id:
+            await _persist_research_reports(
+                db_session=db_session,
+                mission_id=mission_id,
+                execution_record_id=record.id,
+                task_results=outcome.task_results,
+            )
+
         await db_session.commit()
 
         logger.info(
@@ -170,3 +194,66 @@ async def persist_mission_results(
             extra={"session_id": session_id, "error": str(e), "mission_id": mission_id},
         )
         return None
+
+
+async def _persist_research_reports(
+    *,
+    db_session: "AsyncSession",
+    mission_id: str,
+    execution_record_id: str,
+    task_results: list,
+) -> None:
+    """Persist research reports from research_loop task results (Plan 40).
+
+    Best-effort — failures are logged but never block execution persistence.
+    Detects research loop tasks by agent_name starting with "research(".
+    """
+    from modules.backend.services.research_report import ResearchReportService
+
+    svc = ResearchReportService(db_session)
+
+    for task_result in task_results:
+        if not getattr(task_result, "agent_name", "").startswith("research("):
+            continue
+
+        output = getattr(task_result, "output_reference", None)
+        if not isinstance(output, dict):
+            continue
+
+        report_data = output.get("report")
+        if not isinstance(report_data, dict):
+            continue
+
+        try:
+            await svc.create_report(
+                mission_id=mission_id,
+                execution_id=execution_record_id,
+                query=report_data.get("title", output.get("report_title", "")),
+                report_markdown=report_data.get("report_markdown", ""),
+                report_structured={
+                    "sections": report_data.get("sections", []),
+                    "executive_summary": report_data.get("executive_summary", ""),
+                    "methodology": report_data.get("methodology", ""),
+                    "limitations": report_data.get("limitations", ""),
+                },
+                sources=report_data.get("sources", []),
+                metadata_json={
+                    "total_sources": output.get("total_sources", 0),
+                    "total_iterations": output.get("total_iterations", 0),
+                    "total_findings": output.get("total_findings", 0),
+                    "coverage_ratio": output.get("coverage_ratio", 0),
+                },
+                status="verified" if output.get("verification_score") else "draft",
+                citation_count=len(report_data.get("sources", [])),
+                verification_score=output.get("verification_score"),
+            )
+            logger.info(
+                "Research report persisted",
+                extra={"mission_id": mission_id, "title": report_data.get("title", "")[:80]},
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist research report (non-fatal)",
+                extra={"mission_id": mission_id, "task_id": getattr(task_result, "task_id", "")},
+                exc_info=True,
+            )

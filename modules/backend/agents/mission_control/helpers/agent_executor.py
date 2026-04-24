@@ -217,18 +217,20 @@ def _make_agent_executor(
                 logger.warning("post_execute hook failed for %s", agent_name, extra={"mission_id": mission_id}, exc_info=True)
 
         if hasattr(output, "model_dump"):
-            output_dict = output.model_dump()
+            output_dict = {"output": output.model_dump()}
         elif isinstance(output, dict):
-            output_dict = output
+            output_dict = {"output": output}
         else:
-            output_dict = {"result": str(output)}
+            output_dict = {"output": str(output)}
 
         # Emit artifact if agent produced a meaningful textual result
+        _inner = output_dict.get("output", {})
+        _inner = _inner if isinstance(_inner, dict) else {}
         _artifact_content: str | None = None
-        if isinstance(output_dict.get("summary"), str):
-            _artifact_content = output_dict["summary"]
-        elif isinstance(output_dict.get("result"), str):
-            _artifact_content = output_dict["result"]
+        if isinstance(_inner.get("summary"), str):
+            _artifact_content = _inner["summary"]
+        elif isinstance(_inner.get("result"), str):
+            _artifact_content = _inner["result"]
         if _artifact_content and _artifact_content.strip():
             await _emit(
                 event_bus,

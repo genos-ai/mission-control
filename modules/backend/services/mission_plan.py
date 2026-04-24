@@ -839,6 +839,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
         agent: str,
         instructions: str = "",
         dependencies: list[str] | None = None,
+        inputs: dict | None = None,
     ) -> MissionPlan:
         """Append a single proposed task to the plan's task_plan_json.
 
@@ -866,7 +867,7 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             if t.get("task_id", "").startswith(version_prefix)
         )
         task_id = f"v{version}-task-{existing_count + 1:03d}"
-        task_body = {
+        task_body: dict = {
             "task_id": task_id,
             "agent": agent,
             "agent_version": agent_version,
@@ -874,9 +875,24 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
             "instructions": instructions or description,
             "dependencies": dependencies or [],
         }
+        if inputs:
+            task_body["inputs"] = inputs
 
         tasks = list(existing.get("tasks", []))
         tasks.append(task_body)
+
+        # Initialise the full TaskPlan scaffold if starting from scratch.
+        # TaskPlan requires mission_id, summary, estimated_cost_usd,
+        # estimated_duration_seconds — dispatch validates these on read.
+        if not existing or "mission_id" not in existing:
+            existing = {
+                "version": f"{version}.0.0",
+                "mission_id": plan.mission_id,
+                "summary": description,
+                "estimated_cost_usd": 5.0,
+                "estimated_duration_seconds": 300,
+                "execution_hints": {"critical_path": [task_id]},
+            }
         plan.task_plan_json = {**existing, "tasks": tasks}
         await self._session.flush()
 

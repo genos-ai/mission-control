@@ -145,6 +145,10 @@ When generating tasks for coding agents (agents that create or modify files), in
 - Tier 3 (AI evaluation): Request ONLY when the task output genuinely requires judgment — code generation, analysis, recommendations. Pure data retrieval or transformation tasks survive on Tier 1 and Tier 2 alone. Every Tier 3 evaluation is an Opus call. Use sparingly to control cost.
 - The `evaluator_agent` for Tier 3 MUST be "system.verification.agent". No agent may evaluate its own output.
 
+## Single-task steps
+
+Some workflow steps are self-managing loops (research, convergence) that handle their own internal decomposition. When a step has `type: "research_loop"` or `type: "convergence_loop"` in its `inputs.static`, create ONE task for it — do not decompose it into sub-tasks. The executor handles internal parallelism and iteration.
+
 ## Constraints
 
 - Do not include agents not in the roster.

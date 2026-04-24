@@ -21,6 +21,23 @@ from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Shared httpx client for research agents. Module-level singleton avoids
+# leaking a new connection pool on every agent invocation. Bounded pool
+# prevents resource exhaustion during parallel searcher fan-out.
+_research_http_client = None
+
+
+def _get_research_http_client():
+    """Get or create the shared httpx AsyncClient for research agents."""
+    global _research_http_client
+    if _research_http_client is None:
+        import httpx
+        _research_http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            timeout=30.0,
+        )
+    return _research_http_client
+
 
 def build_deps_from_config(agent_config: AgentConfigSchema) -> dict[str, Any]:
     """Build common dep fields from agent YAML config."""
@@ -63,6 +80,9 @@ def _build_agent_deps(
     if "mission.supervisor" in agent_name:
         from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
         return MissionSupervisorDeps(**common, mission_id=mission_id or "", db_session=db_session)
+    if category == "research":
+        from modules.backend.agents.research.deps import ResearchAgentDeps
+        return ResearchAgentDeps(**common, http_client=_get_research_http_client())
 
     return BaseAgentDeps(**common)
 

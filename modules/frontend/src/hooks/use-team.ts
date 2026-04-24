@@ -77,6 +77,20 @@ export function useUpdatePrompt(missionId: string, memberId: string) {
   })
 }
 
+export function useUpdateConstraints(missionId: string, memberId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      api.patch<MissionTeamMember>(
+        `/missions/${missionId}/team/${memberId}/constraints`,
+        data,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teamKeys.all(missionId) })
+    },
+  })
+}
+
 export function usePromptHistory(
   missionId: string | undefined,
   memberId: string | undefined,

@@ -32,6 +32,7 @@ import {
   Radio,
   Lightbulb,
   ListChecks,
+  Package,
   Loader2,
   DollarSign,
 } from 'lucide-react'
@@ -67,6 +68,7 @@ const tabs = [
   { label: 'Narrative', icon: Radio,         path: 'narrative' },
   { label: 'Context',   icon: FileText,      path: 'context' },
   { label: 'Knowledge', icon: Lightbulb,     path: 'knowledge' },
+  { label: 'Artifacts', icon: Package,       path: 'artifacts' },
   { label: 'Runs',      icon: ListChecks,    path: 'runs' },
   { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
   { label: 'Costs',     icon: DollarSign,    path: 'costs' },

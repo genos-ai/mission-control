@@ -83,7 +83,7 @@ export function useMissionArtifacts(
   if (artifactType) query.set('artifact_type', artifactType)
 
   return useQuery({
-    queryKey: artifactKeys.list(missionId!),
+    queryKey: [...artifactKeys.list(missionId!), limit],
     queryFn: async () => {
       const resp = await api.get<MissionArtifactsResponse>(
         `/missions/${missionId}/artifacts?${query.toString()}`,

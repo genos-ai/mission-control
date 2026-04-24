@@ -1,0 +1,32 @@
+agent_name: research.searcher.agent
+agent_type: vertical
+description: "Searches for and extracts content for a single research sub-question"
+enabled: true
+chat_enabled: false
+model:
+  name: "anthropic:claude-sonnet-4-6"
+  temperature: 0.0
+  max_tokens: 8192
+max_budget_usd: 2.00
+max_input_length: 2000
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools:
+  - research.web_search
+  - research.fetch_and_extract
+
+interface:
+  input:
+    sub_question: string
+  output:
+    findings: array
+    sources_searched: number
+
+scope:
+  read: []
+  write: []

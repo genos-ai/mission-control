@@ -9,6 +9,7 @@ import {
 } from '@/hooks/use-executions'
 import { useRunStream } from '@/hooks/use-sse'
 import { useLiveRunStore } from '@/stores/live-run'
+import { useResearchStore } from '@/stores/research'
 import { ROUTES } from '@/lib/constants'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { LiveActivityPanel } from '@/components/live/live-activity-panel'
 import { LiveResultsPanel } from '@/components/live/live-results-panel'
 import { LiveFooter } from '@/components/live/live-footer'
+import { ResearchLiveView } from '@/components/research/research-live-view'
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'timed_out'])
 const PENDING_STATUSES = new Set(['pending', 'created'])
@@ -64,13 +66,21 @@ export default function RunLivePage() {
     }
   }, [execution, storeExecId, init])
 
-  // Forward SSE events to store
+  // Research store reactive state
+  const researchActive = useResearchStore((s) => s.isActive)
+  const researchComplete = useResearchStore((s) => s.reportComplete)
+
+  // Forward SSE events to both live-run store and research store
+  const handleResearchEvent = useResearchStore((s) => s.handleEvent)
   const processedCount = useRef(0)
   useEffect(() => {
     if (events.length > processedCount.current) {
       const newEvents = events.slice(processedCount.current)
       processedCount.current = events.length
-      newEvents.forEach(handleEvent)
+      newEvents.forEach((event) => {
+        handleEvent(event)
+        handleResearchEvent(event)
+      })
     }
   }, [events.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -87,7 +97,8 @@ export default function RunLivePage() {
   const [resultsOpen, setResultsOpen] = useState(true)
 
   // Cleanup on unmount
-  useEffect(() => reset, [reset])
+  const resetResearch = useResearchStore((s) => s.reset)
+  useEffect(() => () => { reset(); resetResearch() }, [reset, resetResearch])
 
   if (isLoading) {
     return (
@@ -159,31 +170,35 @@ export default function RunLivePage() {
         </div>
       </div>
 
-      {/* Main content: two-panel layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {activityOpen ? (
-          <LiveActivityPanel onCollapse={() => setActivityOpen(false)} />
-        ) : (
-          <button
-            onClick={() => setActivityOpen(true)}
-            className="flex w-5 shrink-0 items-center justify-center border-r text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-            title="Open activity panel"
-          >
-            <ChevronRight className="h-3 w-3" />
-          </button>
-        )}
-        {resultsOpen ? (
-          <LiveResultsPanel onCollapse={() => setResultsOpen(false)} />
-        ) : (
-          <button
-            onClick={() => setResultsOpen(true)}
-            className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-            title="Open results panel"
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </button>
-        )}
-      </div>
+      {/* Main content: research three-panel view or standard two-panel */}
+      {researchActive || researchComplete ? (
+        <ResearchLiveView />
+      ) : (
+        <div className="flex flex-1 overflow-hidden">
+          {activityOpen ? (
+            <LiveActivityPanel onCollapse={() => setActivityOpen(false)} />
+          ) : (
+            <button
+              onClick={() => setActivityOpen(true)}
+              className="flex w-5 shrink-0 items-center justify-center border-r text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              title="Open activity panel"
+            >
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          )}
+          {resultsOpen ? (
+            <LiveResultsPanel onCollapse={() => setResultsOpen(false)} />
+          ) : (
+            <button
+              onClick={() => setResultsOpen(true)}
+              className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              title="Open results panel"
+            >
+              <ChevronLeft className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Footer */}
       <LiveFooter />

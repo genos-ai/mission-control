@@ -172,6 +172,42 @@ async def update_team_member_prompt(
     )
 
 
+@router.patch(
+    "/{mission_id}/team/{member_id}/constraints",
+    response_model=ApiResponse,
+    summary="Update agent constraints",
+)
+async def update_team_member_constraints(
+    mission_id: str,
+    member_id: str,
+    data: dict,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Update a team member's custom_constraints JSON.
+
+    Merges the provided dict into the existing constraints (or replaces
+    if the existing value is None). Used by the Team tab to configure
+    per-agent settings like research_depth, include_domains, etc.
+    """
+    from modules.backend.repositories.mission_team import MissionTeamRepository
+
+    repo = MissionTeamRepository(db)
+    member = await repo.get_by_id(member_id)
+    existing = member.custom_constraints or {}
+    member.custom_constraints = {**existing, **data}
+    await db.flush()
+    await db.refresh(member)
+    await db.commit()
+
+    response = MissionTeamMemberResponse.model_validate(member)
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
 @router.get(
     "/{mission_id}/team/{member_id}/prompt-history",
     response_model=ApiResponse,

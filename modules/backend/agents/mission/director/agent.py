@@ -133,6 +133,82 @@ async def _schedule_director_followup(
         )
 
 
+async def _ensure_research_team(db_session, mission_id: str) -> None:
+    """Add research agents to mission team if not already present.
+
+    Research agents must be in the team for derive_roster_from_team() to
+    include them. Idempotent — skips agents already in the team.
+    """
+    if db_session is None:
+        return
+    try:
+        from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+        from modules.backend.repositories.mission_team import MissionTeamRepository
+
+        RESEARCH_AGENTS = [
+            "research.strategist.agent",
+            "research.searcher.agent",
+            "research.analyst.agent",
+            "research.synthesizer.agent",
+            "research.verifier.agent",
+        ]
+        team_repo = MissionTeamRepository(db_session)
+        catalog_repo = AgentCatalogRepository(db_session)
+
+        for agent_name in RESEARCH_AGENTS:
+            catalog_entry = await catalog_repo.get_by_name(agent_name)
+            if not catalog_entry:
+                continue
+            existing = await team_repo.get_by_mission_and_agent(
+                mission_id, catalog_entry.id
+            )
+            if existing is None:
+                await team_repo.create(
+                    mission_id=mission_id,
+                    agent_catalog_id=catalog_entry.id,
+                )
+                logger.debug(
+                    "Added research agent to mission team",
+                    extra={"agent": agent_name, "mission_id": mission_id},
+                )
+        await db_session.flush()
+    except Exception:
+        logger.warning(
+            "Failed to ensure research team (non-fatal)",
+            extra={"mission_id": mission_id},
+            exc_info=True,
+        )
+
+
+async def _get_research_team_config(db_session, mission_id: str) -> dict:
+    """Read research config from the strategist's custom_constraints.
+
+    Returns a dict with optional keys: depth, include_domains, exclude_domains.
+    These are set per-mission via the Team tab's custom_constraints field.
+    Returns empty dict if not configured (all defaults apply).
+    """
+    if db_session is None:
+        return {}
+    try:
+        from modules.backend.repositories.mission_team import MissionTeamRepository
+        from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+
+        catalog_repo = AgentCatalogRepository(db_session)
+        strategist = await catalog_repo.get_by_name("research.strategist.agent")
+        if not strategist:
+            return {}
+
+        team_repo = MissionTeamRepository(db_session)
+        member = await team_repo.get_by_mission_and_agent(mission_id, strategist.id)
+        if not member or not member.custom_constraints:
+            return {}
+
+        return member.custom_constraints
+    except Exception:
+        logger.debug("Failed to read research team config", exc_info=True)
+        return {}
+
+
 def create_agent(model: str | Model) -> Agent:
     """Create the Mission Director agent with all tools registered."""
     if isinstance(model, str):
@@ -487,6 +563,165 @@ def create_agent(model: str | Model) -> Agent:
             }, indent=2, default=str)
         except Exception as e:
             logger.error("run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    # ── Research Tools (Plan 40) ────────────────────────────────────
+
+    @agent.tool
+    async def start_research(
+        ctx: RunContext[MissionDirectorDeps],
+        query: str,
+        depth: str = "quick",
+        include_domains: list[str] | None = None,
+    ) -> str:
+        """Start a deep research investigation on any topic.
+
+        Creates a plan task with type=research_loop and auto-approves it.
+        The research then appears on the Plan kanban like any other task,
+        with full status tracking. MissionRunWorkflow dispatches it via
+        _execute_layer → research_loop fork.
+
+        Args:
+            query: The research question to investigate.
+            depth: Research depth — "quick" (2-5 min), "moderate" (5-15 min),
+                   or "comprehensive" (15-30 min).
+            include_domains: Only search these domains (e.g. ["anthropic.com", "openai.com"]).
+                            If not set, searches the entire web.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            mission_id = ctx.deps.mission_id
+
+            # Ensure research agents are in the mission team
+            await _ensure_research_team(ctx.deps.db_session, mission_id)
+
+            # Read research config from team member's custom_constraints.
+            # Per-mission overrides set via Team tab take priority over
+            # the tool's default. Explicit LLM params override everything.
+            team_config = await _get_research_team_config(
+                ctx.deps.db_session, mission_id
+            )
+            effective_depth = depth if depth != "comprehensive" else team_config.get("depth", "comprehensive")
+
+            loop_config: dict = {"depth": effective_depth}
+            # Merge domain filters: explicit param > team config > empty
+            effective_domains = include_domains or team_config.get("include_domains") or []
+            if effective_domains:
+                loop_config["include_domains"] = effective_domains
+            exclude = team_config.get("exclude_domains")
+            if exclude:
+                loop_config["exclude_domains"] = exclude
+
+            # Add a plan task with type=research_loop — shows on kanban
+            from modules.backend.services.mission import MissionService
+            from modules.backend.services.mission_plan import MissionPlanService
+
+            plan_svc = MissionPlanService(ctx.deps.db_session)
+            plan = await plan_svc.get_or_create_plan(mission_id)
+
+            await plan_svc.add_task(
+                plan.id,
+                description=f"Deep research: {query}",
+                agent="research.strategist.agent",
+                instructions=f"Research: {query}",
+                inputs={
+                    "static": {
+                        "type": "research_loop",
+                        "query": query,
+                        "loop_config": loop_config,
+                    },
+                },
+            )
+
+            # Auto-approve and dispatch via Temporal.
+            # Commit BEFORE starting the workflow — the Temporal worker
+            # opens its own DB session and needs to see the approved tasks.
+            acting_user_id = (await MissionService(ctx.deps.db_session).get_mission(mission_id)).owner_id
+            approved_ids = await plan_svc.approve_all_proposed(plan.id, acting_user_id)
+            await ctx.deps.db_session.commit()
+
+            workflow_id = await plan_svc._start_temporal_run_workflow(
+                plan, ctx.deps.session_id,
+            )
+
+            await _schedule_director_followup(
+                db_session=ctx.deps.db_session,
+                session_id=ctx.deps.session_id,
+                mission_id=mission_id,
+                trigger_event_types=["mission_plan.supervisor_decision"],
+                prompt_template=(
+                    "The research just completed. Check the results and "
+                    "report back to the user with key findings."
+                ),
+            )
+
+            return json.dumps({
+                "status": "research_started",
+                "plan_id": plan.id,
+                "task_ids": approved_ids,
+                "workflow_id": workflow_id,
+                "depth": depth,
+                "message": f"Research started: \"{query}\". I'll report back when it's done.",
+            }, indent=2, default=str)
+
+        except Exception as e:
+            logger.error("start_research failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            return json.dumps({"error": str(e)})
+
+    @agent.tool
+    async def get_research_findings(
+        ctx: RunContext[MissionDirectorDeps],
+        report_id: str | None = None,
+    ) -> str:
+        """Get research findings for this mission.
+
+        Returns the executive summary, key findings, source count, and
+        verification score from the latest research report (or a specific
+        report by ID). Use this to answer follow-up questions about
+        completed research.
+
+        Args:
+            report_id: Optional specific report ID. If None, returns the
+                       latest report for this mission.
+        """
+        try:
+            if ctx.deps.db_session is None:
+                return json.dumps({"error": "No database session available"})
+
+            from modules.backend.services.research_report import ResearchReportService
+            svc = ResearchReportService(ctx.deps.db_session)
+
+            if report_id:
+                report = await svc.get_report(report_id)
+            else:
+                reports = await svc.list_for_mission(
+                    ctx.deps.mission_id, limit=1
+                )
+                report = reports[0] if reports else None
+
+            if report is None:
+                return json.dumps({
+                    "status": "no_reports",
+                    "message": "No research reports found for this mission.",
+                })
+
+            structured = report.report_structured or {}
+            return json.dumps({
+                "report_id": report.id,
+                "query": report.query,
+                "status": report.status,
+                "executive_summary": structured.get("executive_summary", ""),
+                "source_count": len(report.sources or []),
+                "citation_count": report.citation_count,
+                "verification_score": report.verification_score,
+                "report_markdown_preview": (report.report_markdown or "")[:2000],
+                "sources": (report.sources or [])[:10],
+            }, indent=2, default=str)
+
+        except Exception as e:
+            logger.error("get_research_findings failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool

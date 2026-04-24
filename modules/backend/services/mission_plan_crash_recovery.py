@@ -208,3 +208,64 @@ async def reconcile_orphaned_task_states(
         "running_to_failed": running_to_failed,
         "queued_to_approved": queued_to_approved,
     }
+
+
+async def reconcile_orphaned_execution_records(
+    session: AsyncSession,
+) -> int:
+    """Mark execution records stuck in RUNNING or PENDING as FAILED.
+
+    Tool-fork workflows (RunWorkflowWorkflow, DesignWorkflowWorkflow) set
+    execution_record status to RUNNING at start. If the Temporal worker
+    crashes mid-execution, the record stays in RUNNING forever. This
+    function transitions orphaned records to FAILED on startup.
+
+    Also fixes any lowercase status values that slipped in — SQLAlchemy's
+    Enum(native_enum=False) stores by enum name (uppercase).
+
+    Call at backend startup alongside reconcile_orphaned_task_states.
+    """
+    from sqlalchemy import or_, select, text
+
+    from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
+
+    # Fix any lowercase values — SQLAlchemy Enum stores by name (uppercase).
+    # Use raw SQL because the ORM Enum column rejects lowercase in comparisons.
+    for wrong, right in [("completed", "COMPLETED"), ("failed", "FAILED"),
+                         ("running", "RUNNING"), ("pending", "PENDING")]:
+        fix_result = await session.execute(
+            text("UPDATE execution_records SET status = :right WHERE status = :wrong"),
+            {"wrong": wrong, "right": right},
+        )
+        if fix_result.rowcount:
+            logger.info(
+                "Crash recovery: fixed execution record status case",
+                extra={"from": wrong, "to": right, "count": fix_result.rowcount},
+            )
+
+    # Transition orphaned RUNNING/PENDING → FAILED
+    stmt = (
+        select(ExecutionRecord)
+        .where(
+            or_(
+                ExecutionRecord.status == ExecutionRecordStatus.RUNNING.name,
+                ExecutionRecord.status == ExecutionRecordStatus.PENDING.name,
+            )
+        )
+    )
+    result = await session.execute(stmt)
+    orphans = list(result.scalars().all())
+
+    for record in orphans:
+        record.status = ExecutionRecordStatus.FAILED.name
+        record.completed_at = utc_now()
+
+    await session.flush()
+
+    if orphans:
+        logger.info(
+            "Crash recovery: reconciled orphaned execution records",
+            extra={"count": len(orphans)},
+        )
+
+    return len(orphans)

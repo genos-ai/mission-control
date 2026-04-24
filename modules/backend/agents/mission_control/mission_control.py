@@ -42,6 +42,7 @@ from modules.backend.events.types import (
     AgentToolCallEvent,
     AgentToolResultEvent,
     CostUpdateEvent,
+    MissionArtifactFoundEvent,
     SessionEvent,
     UserMessageEvent,
 )
@@ -534,6 +535,44 @@ async def handle(
                     thinking="\n\n".join(thinking_parts) if thinking_parts else None,
                 )],
             )
+
+        # 11b. Persist artifact + emit SSE event (Plan 43 chat path)
+        # Only for substantive, non-error responses with a mission context.
+        is_error = metadata.get("error") is True
+        is_substantive = len(full_content) > 100
+        if mission_id and is_substantive and not is_error:
+            # SSE event — triggers live artifact panel update
+            try:
+                artifact_event = MissionArtifactFoundEvent(
+                    session_id=sid,
+                    source=source,
+                    mission_id=mission_id,
+                    agent_id=agent_name,
+                    artifact_type="report",
+                    title=f"{agent_name} — result",
+                    content=full_content[:3000],
+                    content_type="markdown",
+                )
+                yield artifact_event
+                await _publish(event_bus, artifact_event)
+            except Exception:
+                logger.debug("Failed to emit artifact event", exc_info=True)
+
+            # DB persistence — survives page refresh
+            if db_session is not None:
+                try:
+                    from modules.backend.services.mission_artifact import MissionArtifactService
+                    artifact_svc = MissionArtifactService(db_session)
+                    await artifact_svc.create_artifact(
+                        mission_id=mission_id,
+                        agent_id=agent_name,
+                        title=f"{agent_name} — result",
+                        content_text=full_content,
+                        artifact_type="report",
+                        content_type="markdown",
+                    )
+                except Exception:
+                    logger.debug("Failed to persist chat artifact", exc_info=True)
 
         # 12. Touch activity
         try:

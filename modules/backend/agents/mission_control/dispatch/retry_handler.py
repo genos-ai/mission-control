@@ -132,16 +132,23 @@ async def execute_with_retry(
 
         duration = time.monotonic() - task_start
 
+        # The executor returns {"output": <agent data>, "_meta": <tokens/cost>}.
+        # Split once here — everything downstream uses agent_output (unwrapped).
+        meta = output.get("_meta", {})
+        agent_output = output.get("output", output)
+        if not isinstance(agent_output, dict):
+            agent_output = {"result": str(agent_output)}
+
         token_usage = TaskTokenUsage(
-            input=output.get("_meta", {}).get("input_tokens", 0),
-            output=output.get("_meta", {}).get("output_tokens", 0),
-            thinking=output.get("_meta", {}).get("thinking_tokens", 0),
+            input=meta.get("input_tokens", 0),
+            output=meta.get("output_tokens", 0),
+            thinking=meta.get("thinking_tokens", 0),
         )
-        cost_usd = output.get("_meta", {}).get("cost_usd", 0.0)
+        cost_usd = meta.get("cost_usd", 0.0)
 
         verification = await verify_task(
             task=task,
-            output=output,
+            output=agent_output,
             roster_entry=roster_entry,
             execute_agent_fn=execute_agent_fn,
         )
@@ -149,7 +156,7 @@ async def execute_with_retry(
         if not verification.passed:
             result = await _handle_verification_failure(
                 task=task,
-                output=output,
+                output=agent_output,
                 token_usage=token_usage,
                 cost_usd=cost_usd,
                 duration=duration,
@@ -171,7 +178,7 @@ async def execute_with_retry(
 
         result = await _handle_post_task_gate(
             task=task,
-            output=output,
+            output=agent_output,
             token_usage=token_usage,
             cost_usd=cost_usd,
             duration=duration,

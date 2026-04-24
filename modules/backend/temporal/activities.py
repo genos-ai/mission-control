@@ -6,6 +6,8 @@ deterministic replay. Each Activity is idempotent and safe to retry.
 Activities receive IDs and brief strings, not large objects.
 """
 
+import asyncio
+
 from temporalio import activity
 
 from modules.backend.core.logging import get_logger
@@ -42,7 +44,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     from modules.backend.services.mission_plan import MissionPlanService
 
     activity.logger.info(
-        "Starting mission execution",
+        "execute_mission started",
         extra={
             "mission_run_id": input.mission_run_id,
             "mission_id": input.mission_id,
@@ -59,9 +61,14 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             mission = await MissionService(db).get_mission(input.mission_id)
 
             svc = MissionPlanService(db, event_bus=event_bus)
+            activity.logger.info(
+                "execute_mission dispatching",
+                extra={"plan_id": input.mission_run_id, "owner": str(mission.owner_id)},
+            )
             result = await svc.dispatch_approved(
                 input.mission_run_id,
                 user_id=mission.owner_id,
+                session_id=input.session_id,
                 skip_post_run_supervisor=True,
             )
             await db.commit()
@@ -75,6 +82,21 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 failed_count=0,
                 execution_record_id=result.get("execution_record_id"),
                 outcome_json=result,
+            )
+
+        except (asyncio.CancelledError, KeyboardInterrupt) as e:
+            # CancelledError is a BaseException — not caught by
+            # "except Exception".  When Temporal cancels the activity
+            # (timeout or workflow cancellation), this prevents the
+            # error from propagating uncaught and causing silent retries.
+            activity.logger.warning(
+                "Mission execution cancelled",
+                extra={"mission_run_id": input.mission_run_id, "mission_id": input.mission_id},
+            )
+            return MissionExecutionResult(
+                mission_id=input.mission_run_id,
+                status="failed",
+                outcome_json={"error": f"Activity cancelled: {type(e).__name__}"},
             )
 
         except Exception as e:

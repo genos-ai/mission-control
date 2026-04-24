@@ -58,7 +58,19 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkMmQ3NGQxZS0yOTRiLTRmZGEtYTY5ZS0zMTU3ZmFiOGEzOWMiLCJyb2xlIjoiYWRtaW4iLCJqdGkiOiI1NDdmNDNkYS00MjY1LTRhYjItOTc5OC05MTAyYTViMzA2ZjUiLCJleHAiOjE3NzY4NDk1NzUsInR5cGUiOiJhY2Nlc3MiLCJhdWQiOiJtaXNzaW9uLWNvbnRyb2wtYXBpIn0.7UN4wo9sgIG4WG5NXLyFtBd9f5jbJP8ormvGAkNpPzs\" __NEW_LINE_fd8ff74dfb1f33a1__ curl -s \"http://localhost:8100/api/v1/missions/81f33f27-0691-4555-b010-180e76b80add/console/history?limit=10\" -H \"Authorization: Bearer $TOKEN\")",
       "Bash(python -c \":*)",
       "Bash(2)",
-      "Read(//Users/herman.young/development/mission-control/**)"
+      "Read(//Users/herman.young/development/mission-control/**)",
+      "Bash(do)",
+      "Bash(file=\"config/agents/research/$agent/agent.yaml\")",
+      "Bash(sed -i '' 's/tier: system/tier: user/' \"$file\")",
+      "Bash(done)",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mission_control -c \"SELECT email FROM users LIMIT 5;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mc -c \"SELECT email FROM users LIMIT 5;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mc -c \"SELECT COUNT\\(*\\) FROM mission_artifacts;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mc -c \"SELECT id, mission_id, agent_id, title FROM mission_artifacts ORDER BY created_at DESC LIMIT 5;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -c l)",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U mission_control -d mission_control -c \"SELECT COUNT\\(*\\) as total FROM mission_artifacts;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U mission_control -d mission_control -c \"SELECT sm.role, LEFT\\(sm.content, 80\\) as content_preview FROM session_messages sm JOIN sessions s ON sm.session_id = s.id WHERE s.mission_id = ''6c79d683-7d65-493a-8cfd-10c11a9f1c30'' ORDER BY sm.created_at DESC LIMIT 10;\")",
+      "Read(//Users/backend/services/**)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

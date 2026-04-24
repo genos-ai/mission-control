@@ -1,0 +1,44 @@
+# =============================================================================
+# Research Configuration (Plan 40 §9)
+# =============================================================================
+# Available options:
+#   presets           - Named depth configurations (quick | moderate | comprehensive)
+#   search            - Search provider settings
+#   extraction        - Content extraction settings
+#   stopping          - Iteration stopping conditions
+# =============================================================================
+
+presets:
+  quick:
+    max_iterations: 2
+    max_sub_questions: 5
+    max_sources_per_question: 5
+    max_findings_for_synthesis: 25
+    budget_usd: 5.00
+  moderate:
+    max_iterations: 3
+    max_sub_questions: 7
+    max_sources_per_question: 8
+    max_findings_for_synthesis: 40
+    budget_usd: 10.00
+  comprehensive:
+    max_iterations: 5
+    max_sub_questions: 10
+    max_sources_per_question: 15
+    max_findings_for_synthesis: 50
+    budget_usd: 25.00
+
+search:
+  primary_provider: tavily
+  fallback_provider: brave
+  max_concurrent_searches: 10
+
+extraction:
+  max_content_length: 50000
+  timeout_seconds: 15
+  fallback_chain: [trafilatura, readability, jina]
+
+stopping:
+  min_coverage_ratio: 0.8
+  diminishing_returns_threshold: 0.05
+  min_sources_per_question: 2
