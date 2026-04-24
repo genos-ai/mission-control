@@ -506,7 +506,7 @@ async def execute_research_loop(
         total_cost += synthesis_result.get("_meta", {}).get("cost_usd", 0.0)
         _accumulate_tokens(total_tokens, synthesis_result)
 
-        report_output = _get_agent_output(synthesis_result)
+        report_output = synthesis_result.get("output", {})
         report_title = report_output.get("title", query[:80])
 
         # ── Phase 5: Verify ─────────────────────────────────────────
@@ -527,7 +527,7 @@ async def execute_research_loop(
             total_cost += verify_result.get("_meta", {}).get("cost_usd", 0.0)
             _accumulate_tokens(total_tokens, verify_result)
 
-            verify_output = _get_agent_output(verify_result)
+            verify_output = verify_result.get("output", {})
             verification_score = verify_output.get("verification_score")
             if verification_score is not None:
                 supported = verify_output.get("supported_count", 0)
@@ -598,48 +598,20 @@ async def execute_research_loop(
 # =============================================================================
 
 
-def _get_agent_output(result: dict) -> dict:
-    """Extract the agent's output dict from an execute_agent_fn result.
-
-    The agent executor returns model_dump() as a flat top-level dict
-    (not nested under "output"). This helper normalises both formats:
-    returns result["output"] if it's a dict, otherwise returns the
-    result itself with _meta filtered out.
-    """
-    nested = result.get("output")
-    if isinstance(nested, dict) and len(nested) > 0:
-        return nested
-    # Output is at top level — filter out metadata
-    return {k: v for k, v in result.items() if k != "_meta"}
-
-
 def _parse_output(result: dict, model_class: type) -> Any | None:
     """Parse agent output dict into a Pydantic model. Returns None on failure.
 
-    The agent executor (agent_executor.py) returns the output in two formats:
-    - Structured output agents: output.model_dump() as the top-level dict
-    - String output agents: {"result": str} as the top-level dict
-
-    So the Pydantic fields may be at the top level of `result` (not nested
-    under an "output" key). We try both: result["output"] first (if present),
-    then the result dict itself.
+    The agent executor wraps output under result["output"]. This reads
+    that key and validates it against the given Pydantic model class.
     """
-    # Try nested "output" key first (some executors nest it)
-    output = result.get("output", result)
-
-    # Skip metadata-only dicts (just _meta, no real output)
-    if isinstance(output, dict) and set(output.keys()) <= {"_meta"}:
+    output = result.get("output")
+    if output is None:
         return None
-
     try:
         if isinstance(output, model_class):
             return output
         if isinstance(output, dict):
-            # Filter out _meta before validation
-            clean = {k: v for k, v in output.items() if k != "_meta"}
-            if not clean:
-                return None
-            return model_class.model_validate(clean)
+            return model_class.model_validate(output)
         if isinstance(output, str):
             return model_class.model_validate_json(output)
         return None
