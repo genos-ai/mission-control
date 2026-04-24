@@ -20,7 +20,7 @@ mode: "off"
 # AI reviewer settings (used in ai_assisted and autonomous modes)
 # ---------------------------------------------------------------------------
 ai:
-  model: "anthropic:claude-haiku-4-5-20251001"     # Cost-effective for routine gates
+  model: "copilot:claude-haiku-4.5"                 # Cost-effective for routine gates
   temperature: 0.0                                  # Deterministic decisions
   max_tokens: 1024                                  # Plenty for a structured decision
   budget_per_review_usd: 0.01                       # Not yet enforced — reserved for future cost-gating

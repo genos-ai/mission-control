@@ -11,7 +11,7 @@ alerts:
   min_cache_hit_rate: 0.40
 
 # Emergency downgrade (Phase 3)
-emergency_downgrade_model: "anthropic:claude-haiku-4-5-20251001"
+emergency_downgrade_model: "copilot:claude-haiku-4.5"
 
 # Output efficiency flags (Phase 2 dashboard)
 output_efficiency:
