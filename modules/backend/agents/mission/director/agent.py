@@ -594,15 +594,16 @@ def create_agent(model: str | Model) -> Agent:
                 },
             )
 
-            # Auto-approve and dispatch via Temporal
+            # Auto-approve and dispatch via Temporal.
+            # Commit BEFORE starting the workflow — the Temporal worker
+            # opens its own DB session and needs to see the approved tasks.
             acting_user_id = (await MissionService(ctx.deps.db_session).get_mission(mission_id)).owner_id
             approved_ids = await plan_svc.approve_all_proposed(plan.id, acting_user_id)
-            await ctx.deps.db_session.flush()
+            await ctx.deps.db_session.commit()
 
             workflow_id = await plan_svc._start_temporal_run_workflow(
                 plan, ctx.deps.session_id,
             )
-            await ctx.deps.db_session.commit()
 
             await _schedule_director_followup(
                 db_session=ctx.deps.db_session,
