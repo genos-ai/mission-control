@@ -506,7 +506,7 @@ async def execute_research_loop(
         total_cost += synthesis_result.get("_meta", {}).get("cost_usd", 0.0)
         _accumulate_tokens(total_tokens, synthesis_result)
 
-        report_output = synthesis_result.get("output", {})
+        report_output = _get_agent_output(synthesis_result)
         report_title = report_output.get("title", query[:80])
 
         # ── Phase 5: Verify ─────────────────────────────────────────
@@ -527,7 +527,7 @@ async def execute_research_loop(
             total_cost += verify_result.get("_meta", {}).get("cost_usd", 0.0)
             _accumulate_tokens(total_tokens, verify_result)
 
-            verify_output = verify_result.get("output", {})
+            verify_output = _get_agent_output(verify_result)
             verification_score = verify_output.get("verification_score")
             if verification_score is not None:
                 supported = verify_output.get("supported_count", 0)
@@ -596,6 +596,21 @@ async def execute_research_loop(
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+def _get_agent_output(result: dict) -> dict:
+    """Extract the agent's output dict from an execute_agent_fn result.
+
+    The agent executor returns model_dump() as a flat top-level dict
+    (not nested under "output"). This helper normalises both formats:
+    returns result["output"] if it's a dict, otherwise returns the
+    result itself with _meta filtered out.
+    """
+    nested = result.get("output")
+    if isinstance(nested, dict) and len(nested) > 0:
+        return nested
+    # Output is at top level — filter out metadata
+    return {k: v for k, v in result.items() if k != "_meta"}
 
 
 def _parse_output(result: dict, model_class: type) -> Any | None:
