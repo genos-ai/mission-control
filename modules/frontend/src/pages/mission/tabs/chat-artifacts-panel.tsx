@@ -5,10 +5,11 @@ import {
   Package,
 } from 'lucide-react'
 import { formatUtc } from '@/lib/format-date'
-import { useWorkspaceStore, type StreamingArtifact } from '@/stores/workspace'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useMissionArtifacts, type MissionArtifact } from '@/hooks/use-mission-artifacts'
 import { useResizable } from '@/hooks/use-resizable'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
+import { StreamingArtifactCard } from '@/components/workspace/streaming-artifact-card'
 
 export function ArtifactsPanel({ missionId, onClose }: { missionId: string; onClose: () => void }) {
   // Durable artifacts via react-query (Plan 43). SSE invalidation wired
@@ -71,24 +72,6 @@ export function ArtifactsPanel({ missionId, onClose }: { missionId: string; onCl
             ))}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-export function StreamingArtifactCard({ streaming }: { streaming: StreamingArtifact }) {
-  const agentShort = streaming.agentId.endsWith('.agent')
-    ? streaming.agentId.slice(0, -6)
-    : streaming.agentId
-  return (
-    <div className="rounded border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs">
-      <div className="mb-1.5 flex items-center gap-1.5">
-        <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
-        <span className="font-medium text-amber-400">{agentShort}</span>
-        <span className="text-muted-foreground/60">writing…</span>
-      </div>
-      <div className="max-h-48 overflow-y-auto">
-        <MarkdownRenderer content={streaming.content} className="text-[11px]" />
       </div>
     </div>
   )

@@ -25,6 +25,7 @@ import NarrativeTab from '@/pages/mission/tabs/narrative-tab'
 import StreamTab from '@/pages/mission/tabs/stream-tab'
 import ContextTab from '@/pages/mission/tabs/context-tab'
 import KnowledgeTab from '@/pages/mission/tabs/knowledge-tab'
+import ArtifactsTab from '@/pages/mission/tabs/artifacts-tab'
 import RunsTab from '@/pages/mission/tabs/runs-tab'
 import WorkflowsTab from '@/pages/mission/tabs/workflows-tab'
 import CostsTab from '@/pages/mission/tabs/costs-tab'
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="console" element={<StreamTab />} />
             <Route path="context" element={<ContextTab />} />
             <Route path="knowledge" element={<KnowledgeTab />} />
+            <Route path="artifacts" element={<ArtifactsTab />} />
             <Route path="runs" element={<RunsTab />} />
             <Route path="runs/:runId" element={<RunLivePage />} />
             <Route path="workflows" element={<WorkflowsTab />} />
