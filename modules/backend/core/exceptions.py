@@ -83,3 +83,35 @@ class DatabaseError(ApplicationError):
 
     def __init__(self, message: str = "Database error") -> None:
         super().__init__(message, code="SYS_DATABASE_ERROR")
+
+
+class ModelError(ApplicationError):
+    """Raised when an LLM model call fails (auth, credits, HTTP errors).
+
+    Wraps provider-specific exceptions (ModelHTTPError, etc.) into a
+    consistent application error so callers don't need to import
+    provider SDKs to handle model failures.
+    """
+
+    def __init__(
+        self,
+        message: str = "Model call failed",
+        *,
+        model_name: str = "",
+        status_code: int | None = None,
+    ) -> None:
+        self.model_name = model_name
+        self.status_code = status_code
+        super().__init__(message, code="SYS_MODEL_ERROR")
+
+
+class ConfigurationError(ApplicationError):
+    """Raised when required configuration is missing or invalid.
+
+    Used to fail fast when model strings, provider credentials, or
+    other critical config values are absent — instead of silently
+    falling back to defaults.
+    """
+
+    def __init__(self, message: str = "Configuration error") -> None:
+        super().__init__(message, code="SYS_CONFIGURATION_ERROR")

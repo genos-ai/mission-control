@@ -336,12 +336,8 @@ async def _call_planning_agent(
         extract_task_plan_json,
     )
     from modules.backend.events.types import AgentResponseChunkEvent
-    from modules.backend.services.code_map.loader import CodeMapLoader
 
     project_root = find_project_root()
-
-    loader = CodeMapLoader(project_root)
-    code_map = loader.ensure_fresh()
 
     registry = get_registry()
     planning_cfg = registry.get("system.planning.agent")
@@ -355,7 +351,6 @@ async def _call_planning_agent(
         mission_id=mission_id or "pending",
         roster_description=roster_desc,
         upstream_context=upstream_context,
-        code_map=code_map,
         current_plan=current_plan,
         refinement_instructions=refinement_instructions,
         plan_version=plan_version,
@@ -367,7 +362,6 @@ async def _call_planning_agent(
         mission_brief=prompt,
         roster_description=roster_desc,
         upstream_context=upstream_context,
-        code_map=code_map,
     )
 
     planning_agent_id = "system.planning.agent"

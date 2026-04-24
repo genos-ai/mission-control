@@ -20,6 +20,31 @@ from modules.backend.temporal.models import (
 logger = get_logger(__name__)
 
 
+def _format_model_error(exc: Exception) -> str:
+    """Extract a clean, actionable message from LLM provider errors.
+
+    Handles ModelHTTPError (pydantic_ai), anthropic.APIError, and
+    generic exceptions. Returns a one-line summary suitable for
+    user-facing error messages and SSE events.
+    """
+    # pydantic_ai.exceptions.ModelHTTPError
+    model_name = getattr(exc, "model_name", None)
+    status_code = getattr(exc, "status_code", None)
+    body = getattr(exc, "body", None)
+
+    if model_name and status_code:
+        detail = ""
+        if isinstance(body, dict):
+            error_info = body.get("error", {})
+            detail = error_info.get("message", "") if isinstance(error_info, dict) else str(body)
+        return (
+            f"LLM call failed: model={model_name}, status={status_code}"
+            f"{f' — {detail[:200]}' if detail else ''}"
+        )
+
+    return f"LLM call failed: {type(exc).__name__}: {str(exc)[:250]}"
+
+
 
 @activity.defn
 async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult:
@@ -100,9 +125,17 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             )
 
         except Exception as e:
+            # Produce a clean, structured error message — especially for
+            # LLM provider failures (credits exhausted, auth errors, etc.)
+            clean_msg = _format_model_error(e)
             activity.logger.error(
                 "Mission execution failed",
-                extra={"mission_run_id": input.mission_run_id, "error": str(e), "mission_id": input.mission_id},
+                extra={
+                    "mission_run_id": input.mission_run_id,
+                    "error": clean_msg,
+                    "error_type": type(e).__name__,
+                    "mission_id": input.mission_id,
+                },
                 exc_info=True,
             )
             # Emit error event so it surfaces in the Console
@@ -115,7 +148,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                         session_id=uuid.uuid4(),
                         source="mission_execution",
                         level="error",
-                        message=f"Mission execution failed: {str(e)[:250]}",
+                        message=clean_msg,
                         mission_id=input.mission_id,
                     ),
                 )
@@ -124,7 +157,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
                 status="failed",
-                outcome_json={"error": str(e)},
+                outcome_json={"error": clean_msg},
             )
         finally:
             await redis.aclose()
@@ -159,10 +192,15 @@ async def persist_mission_outcome(
             )
             await db.commit()
         return True
-    except (OSError, ValueError, RuntimeError) as e:
+    except Exception as e:
+        error_msg = f"Failed to persist mission results: {type(e).__name__}: {str(e)[:200]}"
         activity.logger.error(
-            "Failed to persist mission results",
-            extra={"mission_run_id": mission_run_id, "error": str(e), "mission_id": mission_id},
+            error_msg,
+            extra={
+                "mission_run_id": mission_run_id,
+                "error_type": type(e).__name__,
+                "mission_id": mission_id,
+            },
         )
         # Emit error event so it surfaces in the Console
         if mission_id:
@@ -182,7 +220,7 @@ async def persist_mission_outcome(
                             session_id=uuid.uuid4(),
                             source="mission_persistence",
                             level="error",
-                            message=f"Failed to persist mission results: {str(e)[:200]}",
+                            message=error_msg,
                             mission_id=mission_id,
                         ),
                     )

@@ -424,7 +424,7 @@ class AutonomousPostRunReviewer:
 
             metadata_json = json.dumps({
                 "action": action.value,
-                "reviewer": "ai:claude-haiku-4-5-20251001",
+                "reviewer": "ai:copilot:claude-haiku-4.5",
                 "rule": 8,
                 "model_metadata": {
                     "confidence": decision.confidence,
@@ -437,7 +437,7 @@ class AutonomousPostRunReviewer:
             gate_decision = GateDecision(
                 action=action,
                 reason=full_reason,
-                reviewer="ai:claude-haiku-4-5-20251001",
+                reviewer="ai:copilot:claude-haiku-4.5",
                 model_metadata={
                     "confidence": decision.confidence,
                     "tokens_used": tokens_used,

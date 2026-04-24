@@ -38,7 +38,12 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
     as a dict vs AgentModelSchema). This function normalises them.
     """
     model_cfg = row.model_config_json or {}
-    model_name = model_cfg.get("name", "copilot:claude-sonnet-4.6")
+    if not model_cfg.get("name"):
+        raise ValueError(
+            f"Agent '{row.agent_name}' has no model name in model_config_json. "
+            f"Fix the agent_catalog row in the database."
+        )
+    model_name = model_cfg["name"]
 
     # Reconstruct the model field as AgentModelSchema if it has extra fields
     if model_cfg.get("temperature") is not None or model_cfg.get("max_tokens"):
