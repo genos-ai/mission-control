@@ -132,18 +132,19 @@ async def execute_with_retry(
 
         duration = time.monotonic() - task_start
 
-        token_usage = TaskTokenUsage(
-            input=output.get("_meta", {}).get("input_tokens", 0),
-            output=output.get("_meta", {}).get("output_tokens", 0),
-            thinking=output.get("_meta", {}).get("thinking_tokens", 0),
-        )
-        cost_usd = output.get("_meta", {}).get("cost_usd", 0.0)
-
-        # Verification pipeline expects the agent's actual output fields,
-        # not the executor wrapper. Unwrap {"output": {...}, "_meta": {...}}.
+        # The executor returns {"output": <agent data>, "_meta": <tokens/cost>}.
+        # Split once here — everything downstream uses agent_output (unwrapped).
+        meta = output.get("_meta", {})
         agent_output = output.get("output", output)
         if not isinstance(agent_output, dict):
             agent_output = {"result": str(agent_output)}
+
+        token_usage = TaskTokenUsage(
+            input=meta.get("input_tokens", 0),
+            output=meta.get("output_tokens", 0),
+            thinking=meta.get("thinking_tokens", 0),
+        )
+        cost_usd = meta.get("cost_usd", 0.0)
 
         verification = await verify_task(
             task=task,
@@ -155,7 +156,7 @@ async def execute_with_retry(
         if not verification.passed:
             result = await _handle_verification_failure(
                 task=task,
-                output=output,
+                output=agent_output,
                 token_usage=token_usage,
                 cost_usd=cost_usd,
                 duration=duration,
@@ -177,7 +178,7 @@ async def execute_with_retry(
 
         result = await _handle_post_task_gate(
             task=task,
-            output=output,
+            output=agent_output,
             token_usage=token_usage,
             cost_usd=cost_usd,
             duration=duration,
@@ -246,7 +247,7 @@ async def _handle_verification_failure(
                 task_id=task.task_id,
                 agent_name=task.agent,
                 status=TaskStatus.SUCCESS,
-                output_reference=output.get("output", output) if isinstance(output, dict) else output,
+                output_reference=output,
                 token_usage=token_usage,
                 cost_usd=cost_usd,
                 duration_seconds=round(duration, 2),
@@ -272,12 +273,11 @@ async def _handle_verification_failure(
             new_instructions = gate_decision.modified_instructions
         return new_instructions
 
-    _unwrapped = output.get("output", output) if isinstance(output, dict) else output
     return TaskResult(
         task_id=task.task_id,
         agent_name=task.agent,
         status=TaskStatus.FAILED,
-        output_reference=_unwrapped,
+        output_reference=output,
         token_usage=token_usage,
         cost_usd=cost_usd,
         duration_seconds=round(duration, 2),
@@ -357,12 +357,11 @@ async def _handle_post_task_gate(
             "reason": "PQI score from code quality audit",
         })
 
-    _unwrapped_out = output.get("output", output) if isinstance(output, dict) else output
     return TaskResult(
         task_id=task.task_id,
         agent_name=task.agent,
         status=TaskStatus.SUCCESS,
-        output_reference=_unwrapped_out,
+        output_reference=output,
         token_usage=token_usage,
         cost_usd=cost_usd,
         duration_seconds=round(duration, 2),
