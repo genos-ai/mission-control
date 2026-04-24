@@ -316,6 +316,14 @@ class CopilotModel(Model):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
+        # Resolve output_mode (auto → prompted), merge settings, inject
+        # schema into instructions. Must happen before _handle_new_turn
+        # reads the messages — the prompted output schema is appended to
+        # the instructions field by PydanticAI's base prepare_request.
+        model_settings, model_request_parameters = self.prepare_request(
+            model_settings, model_request_parameters,
+        )
+
         await self._ensure_client()
 
         # Tool return continuation?
