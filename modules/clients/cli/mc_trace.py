@@ -11,7 +11,10 @@ from __future__ import annotations
 from google.protobuf.json_format import MessageToDict
 
 
-async def trace_workflow(workflow_id: str, verbose: bool = False) -> None:
+async def trace_workflow(
+    workflow_id: str, verbose: bool = False, detail: bool = False,
+    mission_id: str | None = None,
+) -> None:
     """Query Temporal workflow history and display activity timeline."""
     from modules.backend.temporal.client import get_temporal_client
     from modules.clients.common.display import get_console
@@ -134,6 +137,99 @@ async def trace_workflow(workflow_id: str, verbose: bool = False) -> None:
         elif verbose and "WORKFLOW" not in et and "TASK" not in et:
             elapsed = _elapsed_from_str(start_ts, ts)
             console.print(f"  [dim]{elapsed}[/dim]  [dim]{et}[/dim]")
+
+    # Summary
+    console.print()
+    still_running = [a for aid, a in activities.items() if activities[aid] in ("scheduled", "running")]
+    # (activities dict stores type strings, not dicts — skip summary for now)
+
+    # Research phase breakdown
+    if detail and mission_id:
+        await _show_research_phases(console, mission_id)
+
+
+async def _show_research_phases(console, mission_id: str) -> None:
+    """Query mission_events for research phase timings."""
+    from datetime import datetime
+
+    from modules.backend.core.database import get_async_session
+    from sqlalchemy import text
+
+    async with get_async_session() as db:
+        result = await db.execute(text(
+            "SELECT event_type, timestamp FROM mission_events "
+            "WHERE mission_id = :mid AND event_type LIKE 'research.%' "
+            "ORDER BY timestamp ASC"
+        ), {"mid": mission_id})
+        rows = result.fetchall()
+
+    if not rows:
+        console.print("[dim]No research events found for phase breakdown.[/dim]")
+        return
+
+    console.print("[bold underline]Research Phase Breakdown[/bold underline]")
+    console.print()
+
+    # Group into runs (split on research.started)
+    runs: list[list] = []
+    current: list = []
+    for row in rows:
+        if row[0] == "research.started":
+            if current:
+                runs.append(current)
+            current = [row]
+        else:
+            current.append(row)
+    if current:
+        runs.append(current)
+
+    for run_idx, run_events in enumerate(runs):
+        if len(runs) > 1:
+            console.print(f"  [bold]Run {run_idx + 1}[/bold]")
+
+        first_ts = _parse_ts(run_events[0][1])
+        prev_ts = first_ts
+        prev_phase = "started"
+
+        PHASE_LABELS = {
+            "research.started": "Started",
+            "research.decomposed": "Decompose",
+            "research.search.completed": "Search round",
+            "research.coverage.updated": "Analyze coverage",
+            "research.synthesizing": "Synthesizing",
+            "research.completed": "Completed",
+            "research.failed": "FAILED",
+        }
+
+        for event_type, ts_raw in run_events:
+            if event_type not in PHASE_LABELS:
+                continue
+            ts = _parse_ts(ts_raw)
+            elapsed = (ts - first_ts).total_seconds()
+            duration = (ts - prev_ts).total_seconds()
+            m, s = int(elapsed) // 60, int(elapsed) % 60
+            label = PHASE_LABELS[event_type]
+
+            if duration >= 1.0:
+                dur_str = f"{duration:.0f}s" if duration < 60 else f"{int(duration)//60}m{int(duration)%60}s"
+                console.print(f"    [dim]{m:02d}:{s:02d}[/dim]  {label:20s}  [dim]+{dur_str}[/dim]")
+            else:
+                console.print(f"    [dim]{m:02d}:{s:02d}[/dim]  {label}")
+
+            prev_ts = ts
+            prev_phase = event_type
+
+        total = (prev_ts - first_ts).total_seconds()
+        console.print(f"    [bold]Total: {int(total)//60}m{int(total)%60}s[/bold]")
+        console.print()
+
+
+def _parse_ts(ts):
+    """Parse a timestamp that may be string or datetime."""
+    from datetime import datetime
+    if isinstance(ts, str):
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    return ts
 
 
 def _elapsed_from_str(start, ts_str: str) -> str:
