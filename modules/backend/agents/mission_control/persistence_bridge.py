@@ -32,13 +32,17 @@ async def persist_mission_results(
     thinking_trace: str | None = None,
     mission_id: str | None = None,
     db_session: AsyncSession,
+    execution_record_id: str | None = None,
 ) -> str | None:
     """Persist execution results. Best-effort — does not raise.
 
-    Returns the inserted ExecutionRecord id on success, or None if persistence
-    failed (best-effort semantics preserved). Callers that need to link back
-    to the run record (Plan 42: MissionPlanService) read this value; callers
-    that don't care simply ignore the return.
+    Returns the ExecutionRecord id on success, or None if persistence
+    failed (best-effort semantics preserved).
+
+    When ``execution_record_id`` is provided, the existing record
+    (created at dispatch start) is updated with final results instead
+    of inserting a new row.  This two-phase pattern ensures the run
+    is visible in the UI while it executes.
     """
     try:
         service = ExecutionPersistenceService(db_session)
@@ -58,16 +62,27 @@ async def persist_mission_results(
         }
         record_status = status_map.get(outcome.status, "failed")
 
-        record = await service.save_execution(
-            session_id=session_id,
-            status=record_status,
-            roster_name=roster_name,
-            task_plan_json=task_plan_json,
-            execution_outcome_json=outcome.model_dump(),
-            planning_thinking_trace=thinking_trace,
-            total_cost_usd=outcome.total_cost_usd,
-            mission_id=mission_id,
-        )
+        if execution_record_id:
+            record = await service.complete_execution(
+                execution_record_id=execution_record_id,
+                status=record_status,
+                roster_name=roster_name,
+                task_plan_json=task_plan_json,
+                execution_outcome_json=outcome.model_dump(),
+                planning_thinking_trace=thinking_trace,
+                total_cost_usd=outcome.total_cost_usd,
+            )
+        else:
+            record = await service.save_execution(
+                session_id=session_id,
+                status=record_status,
+                roster_name=roster_name,
+                task_plan_json=task_plan_json,
+                execution_outcome_json=outcome.model_dump(),
+                planning_thinking_trace=thinking_trace,
+                total_cost_usd=outcome.total_cost_usd,
+                mission_id=mission_id,
+            )
 
         for task_result in outcome.task_results:
             verification_dict = None

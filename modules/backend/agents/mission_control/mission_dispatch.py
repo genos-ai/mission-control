@@ -60,6 +60,7 @@ async def handle_mission(
     precomputed_plan: TaskPlan | None = None,
     mission_repo_root: str | None = None,
     prior_outputs: dict[str, dict] | None = None,
+    execution_record_id: str | None = None,
 ) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
@@ -363,6 +364,7 @@ async def handle_mission(
             thinking_trace=thinking_trace,
             mission_id=mission_id,
             db_session=db_session,
+            execution_record_id=execution_record_id,
         )
         outcome.execution_record_id = record_id
 

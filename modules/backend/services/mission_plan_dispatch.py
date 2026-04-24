@@ -81,12 +81,7 @@ class MissionPlanDispatchMixin:
         from modules.backend.repositories.mission import MissionRepository
 
         plan = await self._repo.get_by_id(mission_plan_id)
-        logger.info("TRACE >>> dispatch_approved entered",
-                     extra={"plan_id": mission_plan_id, "mission_id": plan.mission_id})
         task_plan = self._get_task_plan_or_raise(plan)
-        logger.info("TRACE     task_plan parsed",
-                     extra={"task_count": len(task_plan.tasks),
-                            "task_ids": [t.task_id for t in task_plan.tasks]})
 
         # Budget check (Plan 42 §10.7)
         if plan.budget_usd_ceiling is not None:
@@ -109,8 +104,6 @@ class MissionPlanDispatchMixin:
                 "the Plan tab before running."
             )
         approved_task_ids = {s.task_id for s in approved_states}
-        logger.info("TRACE     approved tasks found",
-                     extra={"approved_ids": sorted(approved_task_ids)})
 
         # Derive the filtered TaskPlan. Approval is transitive (§10.2) so
         # the closure guarantee should hold — but verify and raise if not.
@@ -129,6 +122,23 @@ class MissionPlanDispatchMixin:
             state.last_attempt_at = now
         await self._session.commit()
 
+        # Fetch mission for brief + session service
+        mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
+        brief = mission.brief or mission.description or mission.name
+
+        # Create an early execution record so the run is visible in the
+        # "runs" tab and the background-task badge while it executes.
+        # persist_mission_results will UPDATE this record on completion.
+        task_type = self._infer_task_type(derived_plan)
+        early_record = await self._create_early_execution_record(
+            plan=plan,
+            mission=mission,
+            session_id=session_id,
+            task_type=task_type,
+            approved_task_ids=approved_task_ids,
+        )
+        early_record_id = early_record.id if early_record else None
+
         self._log_operation(
             "MissionPlan dispatching",
             plan_id=mission_plan_id,
@@ -136,6 +146,7 @@ class MissionPlanDispatchMixin:
             task_count=len(approved_task_ids),
             task_ids=sorted(approved_task_ids),
             gate_mode=plan.gate_mode,
+            execution_record_id=early_record_id,
         )
 
         # Build the gate reviewer from the plan's gate_mode (Plan 42 §10.4)
@@ -143,10 +154,6 @@ class MissionPlanDispatchMixin:
         if plan.gate_mode and plan.gate_mode != "off":
             from modules.backend.agents.mission_control.gate import create_gate
             gate_reviewer = create_gate(mode_override=plan.gate_mode)
-
-        # Fetch mission for brief + session service
-        mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
-        brief = mission.brief or mission.description or mission.name
 
         # Load outputs from prior waves so downstream tasks can resolve
         # from_upstream references to tasks that completed in earlier
@@ -174,6 +181,7 @@ class MissionPlanDispatchMixin:
             precomputed_plan=derived_plan,
             mission_repo_root=mission.repo_root,
             prior_outputs=prior_outputs,
+            execution_record_id=early_record_id,
         )
 
         # Write back task states from outcome (Plan 42 §10.5 batch write-back)
@@ -723,3 +731,66 @@ class MissionPlanDispatchMixin:
             tasks=filtered_tasks,
             execution_hints=hints,
         )
+
+    @staticmethod
+    def _infer_task_type(plan: TaskPlan) -> str:
+        """Derive a task_type label from the plan's tasks.
+
+        Used to populate execution_records.task_type so the background-
+        task badge can display running dispatches. Special loop types
+        (research_loop, convergence_loop) get their own label; standard
+        multi-agent plans use "plan_dispatch".
+        """
+        for task in plan.tasks:
+            static_type = task.inputs.static.get("type", "")
+            if static_type == "research_loop":
+                return "research"
+            if static_type == "convergence_loop":
+                return "convergence"
+        return "plan_dispatch"
+
+    async def _create_early_execution_record(
+        self,
+        plan,
+        mission,
+        *,
+        session_id: str | None,
+        task_type: str,
+        approved_task_ids: set[str],
+    ):
+        """Insert a 'running' ExecutionRecord before dispatch starts.
+
+        Makes the run visible in the Runs tab and background-task badge
+        while execution is in progress.  persist_mission_results will
+        UPDATE this record with final results on completion.
+        """
+        from modules.backend.models.execution_record import (
+            ExecutionRecord,
+            ExecutionRecordStatus,
+        )
+
+        try:
+            record = ExecutionRecord(
+                session_id=session_id or str(uuid.uuid4()),
+                status=ExecutionRecordStatus.RUNNING,
+                mission_id=plan.mission_id,
+                roster_name=mission.default_roster,
+                objective_statement=(
+                    mission.brief or mission.description or mission.name
+                ),
+                task_type=task_type,
+                task_params={
+                    "plan_id": plan.id,
+                    "task_ids": sorted(approved_task_ids),
+                },
+                started_at=utc_now(),
+            )
+            self._session.add(record)
+            await self._session.commit()
+            return record
+        except Exception:
+            self._logger.warning(
+                "Failed to create early execution record (non-fatal)",
+                exc_info=True,
+            )
+            return None

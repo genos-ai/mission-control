@@ -136,6 +136,57 @@ class ExecutionPersistenceService(BaseService):
 
         return record
 
+    async def complete_execution(
+        self,
+        execution_record_id: str,
+        status: str,
+        *,
+        roster_name: str | None = None,
+        task_plan_json: dict | None = None,
+        execution_outcome_json: dict | None = None,
+        planning_thinking_trace: str | None = None,
+        total_cost_usd: float = 0.0,
+    ) -> ExecutionRecord:
+        """Update an existing execution record with final results.
+
+        Called by persist_mission_results when an early record was
+        created at dispatch start. Transitions the record from
+        'running' to the final status and fills in outcome data.
+        """
+        config = get_app_config().executions
+
+        if planning_thinking_trace and config.persist_thinking_trace:
+            if len(planning_thinking_trace) > config.max_thinking_trace_length:
+                planning_thinking_trace = (
+                    planning_thinking_trace[: config.max_thinking_trace_length]
+                    + "\n\n[TRUNCATED]"
+                )
+        elif not config.persist_thinking_trace:
+            planning_thinking_trace = None
+
+        record = await self._repo.get_by_id(execution_record_id)
+        record.status = ExecutionRecordStatus(status)
+        record.completed_at = utc_now()
+        record.total_cost_usd = total_cost_usd
+        record.execution_outcome_json = execution_outcome_json
+        record.planning_thinking_trace = planning_thinking_trace
+        if roster_name:
+            record.roster_name = roster_name
+        if task_plan_json:
+            record.task_plan_json = task_plan_json
+
+        await self._session.flush()
+
+        logger.info(
+            "Execution record completed",
+            extra={
+                "execution_id": record.id,
+                "status": status,
+                "cost": total_cost_usd,
+            },
+        )
+        return record
+
     async def save_task_execution(
         self,
         execution_record_id: str,
