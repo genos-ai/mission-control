@@ -37,16 +37,16 @@ export function getAgentIcon(name: string): LucideIcon {
   return AGENT_ICONS[name] ?? Bot
 }
 
-// Narrative event types to show inline in chat
-export const INLINE_NARRATIVE_TYPES = new Set([
-  'agent.thinking.started',
-  'agent.tool.called',
-  'agent.tool.returned',
-  'plan.step.started',
-  'plan.step.completed',
-  'system.execution.created',
-  'system.execution.completed',
-  'mission.artifact.found',
+// Event types to HIDE from inline chat (blacklist — new events show by default)
+export const CHAT_HIDDEN_EVENT_TYPES = new Set([
+  // Handled separately by streaming/message logic, not as inline events
+  'agent.response.chunk',
+  'agent.response.complete',
+  'user.message.sent',
+  // Too noisy / internal bookkeeping
+  'session.cost.updated',
+  'workflow.graph.updated',
+  'system.session.created',
 ])
 
 // ---------------------------------------------------------------------------

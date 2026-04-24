@@ -9,6 +9,8 @@ import {
   Package,
   Zap,
   Activity,
+  Search,
+  Info,
 } from 'lucide-react'
 import { formatUtc } from '@/lib/format-date'
 import { useBackgroundTasks } from '@/hooks/use-executions'
@@ -25,7 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { API_BASE } from '@/lib/constants'
 import type { SessionMessage } from '@/types'
-import { INLINE_NARRATIVE_TYPES, type TimelineEntry } from './chat-constants'
+import { CHAT_HIDDEN_EVENT_TYPES, type TimelineEntry } from './chat-constants'
 
 export function Conversation({ sessionId, missionId }: { sessionId: string; missionId: string }) {
   const { data: history, isLoading } = useMessages(sessionId)
@@ -45,14 +47,14 @@ export function Conversation({ sessionId, missionId }: { sessionId: string; miss
     if (!missionId) return
     api.get<{ events: ConsoleEvent[]; count: number }>(`/missions/${missionId}/narrative`)
       .then((data) => {
-        setHistoricalEvents(data.events.filter((e) => INLINE_NARRATIVE_TYPES.has(e.event_type)))
+        setHistoricalEvents(data.events.filter((e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type)))
       })
       .catch(() => {})
   }, [missionId])
 
   // Live narrative events from SSE
   const liveEvents = useConsoleStore((s) =>
-    s.events.filter((e) => INLINE_NARRATIVE_TYPES.has(e.event_type)),
+    s.events.filter((e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type)),
   )
 
   useEffect(() => {
@@ -399,7 +401,120 @@ export function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
     )
   }
 
-  return null
+  // ── Research events ──────────────────────────────────────────────────
+
+  if (event.event_type === 'research.started') {
+    return (
+      <div className="mx-8 flex items-center gap-2 rounded bg-sky-500/5 px-3 py-1.5 text-xs">
+        <Search className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+        <span className="font-medium text-sky-300">Research started</span>
+        <span className="truncate text-muted-foreground">{String(d.query ?? '')}</span>
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'research.decomposed') {
+    const count = Number(d.sub_question_count ?? 0)
+    return (
+      <div className="mx-8 flex items-center gap-2 rounded bg-sky-500/5 px-3 py-1.5 text-xs">
+        <Search className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+        <span className="font-medium">Decomposed into {count} sub-questions</span>
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'research.subquestion.updated') {
+    const status = String(d.status ?? '')
+    const text = String(d.text ?? '')
+    const isSearching = status === 'searching'
+    const isCovered = status === 'covered'
+    return (
+      <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/60">
+        <Search className={cn('h-3 w-3', isSearching ? 'text-sky-400 animate-pulse' : isCovered ? 'text-emerald-400' : 'text-muted-foreground/40')} />
+        <span className="truncate">{text}</span>
+        <Badge variant="outline" className="h-4 shrink-0 text-[9px]">{status}</Badge>
+        <span className="ml-auto shrink-0 text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'research.search.completed') {
+    const sources = Number(d.sources_found ?? 0)
+    const findings = Number(d.findings_count ?? 0)
+    return (
+      <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/60">
+        <Search className="h-3 w-3 text-sky-400" />
+        <span>Search round complete</span>
+        <span className="text-muted-foreground/40">·</span>
+        <span>{sources} sources, {findings} findings</span>
+        <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'research.coverage.updated') {
+    const ratio = d.coverage_ratio != null ? `${(Number(d.coverage_ratio) * 100).toFixed(0)}%` : ''
+    return (
+      <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/60">
+        <Search className="h-3 w-3 text-sky-400" />
+        <span>Coverage updated</span>
+        {ratio && <span className="font-medium text-sky-300">{ratio}</span>}
+        <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'research.synthesizing') {
+    return (
+      <div className="mx-8 flex items-center gap-2 rounded bg-sky-500/5 px-3 py-1.5 text-xs">
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-400" />
+        <span className="font-medium text-sky-300">Synthesizing research report…</span>
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'research.completed') {
+    const findings = Number(d.total_findings ?? 0)
+    const cost = d.total_cost_usd != null ? `$${Number(d.total_cost_usd).toFixed(4)}` : ''
+    return (
+      <div className="mx-8 flex items-center gap-2 rounded bg-emerald-500/5 px-3 py-1.5 text-xs">
+        <Search className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+        <span className="font-medium text-emerald-300">Research complete</span>
+        <span className="text-muted-foreground">{findings} findings</span>
+        {cost && <span className="text-muted-foreground">{cost}</span>}
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  if (event.event_type === 'research.failed') {
+    return (
+      <div className="mx-8 flex items-start gap-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-xs">
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-destructive">Research failed</span>
+          <p className="mt-0.5 truncate text-muted-foreground">{String(d.error ?? '')}</p>
+        </div>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  // ── Generic fallback for unhandled event types ───────────────────────
+
+  const label = event.event_type.replace(/\./g, ' ')
+  const message = String(d.message ?? d.content ?? d.summary ?? '')
+  return (
+    <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/50">
+      <Info className="h-3 w-3 shrink-0" />
+      <span>{label}</span>
+      {message && <span className="truncate text-muted-foreground/40">{message}</span>}
+      <span className="ml-auto shrink-0 text-[10px] tabular-nums">{ts}</span>
+    </div>
+  )
 }
 
 export function MessageBubble({ message }: { message: SessionMessage }) {
