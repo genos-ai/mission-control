@@ -65,10 +65,8 @@ class LlmGateReviewer:
 
         from pydantic import BaseModel, Field
         from pydantic_ai import Agent
-        from pydantic_ai.models.anthropic import AnthropicModel
-        from pydantic_ai.providers.anthropic import AnthropicProvider
 
-        from modules.backend.core.config import get_settings
+        from modules.backend.agents.mission_control.helpers import _build_model
 
         class GateReviewOutput(BaseModel):
             """Structured output from the AI gate reviewer."""
@@ -85,10 +83,7 @@ class LlmGateReviewer:
                 description="Feedback for retry (only when action=retry)",
             )
 
-        settings = get_settings()
-        bare_name = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
-        provider = AnthropicProvider(api_key=settings.anthropic_api_key)
-        model = AnthropicModel(bare_name, provider=provider)
+        model = _build_model(self.model_name)
 
         self._agent = Agent(
             model,
