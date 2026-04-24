@@ -3,9 +3,18 @@
 The Planning Agent produces this structure as JSON within XML tags.
 Mission Control parses, validates (plan_validator.py), and executes it.
 This is the handoff point between AI reasoning and deterministic execution.
+
+Normalization (Postel's Law): LLMs produce structurally varied but
+semantically equivalent output. Rather than fighting the LLM with prompt
+engineering or retries, we normalize its output before Pydantic validation.
+The ``normalize_from_upstream`` function converts string shorthands and
+mixed forms into canonical ``FromUpstreamRef`` dicts. This runs
+automatically via ``TaskInputs.model_validator(mode="before")``.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class FromUpstreamRef(BaseModel):
@@ -55,6 +64,53 @@ class FileManifest(BaseModel):
     )
 
 
+def _parse_upstream_shorthand(value: str) -> dict:
+    """Parse a dot-notation shorthand into a FromUpstreamRef dict.
+
+    Accepted forms:
+        "v1-task-001.findings"           → {source_task: "v1-task-001", source_field: "findings"}
+        "v1-task-001.sub_questions[0]"   → {source_task: "v1-task-001", source_field: "sub_questions"}
+
+    The task_id portion is everything up to the LAST dot that precedes an
+    identifier (not a number), since task_ids themselves can contain dots.
+    In practice, task_ids use hyphens (v1-task-001) so splitting on the
+    first dot works. Falls back to returning the original string as
+    source_field with an empty source_task if parsing fails — Pydantic
+    will catch the invalid shape downstream.
+    """
+    # Strip array indices like [0], [1] — the runtime resolves the full field
+    cleaned = re.sub(r"\[\d+\]", "", value)
+    if "." in cleaned:
+        parts = cleaned.split(".", 1)
+        return {"source_task": parts[0], "source_field": parts[1]}
+    return {"source_task": "", "source_field": value}
+
+
+def _normalize_upstream_value(value) -> dict | list[dict]:
+    """Normalize a single from_upstream value into canonical form.
+
+    Handles:
+        dict  → pass through (already correct)
+        str   → parse dot-notation shorthand
+        list  → normalize each element (dicts or strings)
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return _parse_upstream_shorthand(value)
+    if isinstance(value, list):
+        normalized = []
+        for item in value:
+            if isinstance(item, dict):
+                normalized.append(item)
+            elif isinstance(item, str):
+                normalized.append(_parse_upstream_shorthand(item))
+            else:
+                normalized.append(item)  # let Pydantic catch it
+        return normalized if len(normalized) != 1 else normalized[0]
+    return value  # let Pydantic catch it
+
+
 class TaskInputs(BaseModel):
     """Static and upstream-derived inputs for a task."""
 
@@ -76,6 +132,27 @@ class TaskInputs(BaseModel):
         default=None,
         description="Pre-computed file list for coding tasks (from Code Map)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_from_upstream(cls, data):
+        """Normalize LLM output variations before Pydantic validation.
+
+        LLMs produce string shorthands ("task.field"), lists of strings,
+        and mixed forms. This converts everything to canonical
+        FromUpstreamRef dicts so Pydantic validation always passes for
+        semantically valid plans.
+        """
+        if not isinstance(data, dict):
+            return data
+        upstream = data.get("from_upstream")
+        if not isinstance(upstream, dict):
+            return data
+        data["from_upstream"] = {
+            key: _normalize_upstream_value(val)
+            for key, val in upstream.items()
+        }
+        return data
 
 
 class Tier1Verification(BaseModel):
