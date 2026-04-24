@@ -16,7 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useTeam, useRemoveFromTeam, useUpdatePrompt, useSeedTeam } from '@/hooks/use-team'
+import { useTeam, useRemoveFromTeam, useUpdatePrompt, useUpdateConstraints, useSeedTeam } from '@/hooks/use-team'
 import { useMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
@@ -336,6 +336,12 @@ function TeamMemberCard({
                     )}
                   </div>
                 </ConfigRow>
+
+                {/* Custom constraints (editable) */}
+                <ConstraintsEditor
+                  member={member}
+                  missionId={missionId}
+                />
               </div>
             )}
           </div>
@@ -381,6 +387,119 @@ function TeamMemberCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function ConstraintsEditor({
+  member,
+  missionId,
+}: {
+  member: MissionTeamMember
+  missionId: string
+}) {
+  const isResearch = member.agent?.agent_name?.startsWith('research.')
+  const constraints = member.custom_constraints ?? {}
+  const updateMutation = useUpdateConstraints(missionId, member.id)
+
+  const [editing, setEditing] = useState(false)
+  const [depth, setDepth] = useState(constraints.depth as string ?? '')
+  const [domains, setDomains] = useState(
+    (constraints.include_domains as string[] ?? []).join(', ')
+  )
+
+  if (!isResearch && !Object.keys(constraints).length) return null
+
+  const handleSave = () => {
+    const update: Record<string, unknown> = {}
+    if (depth) update.depth = depth
+    const domainList = domains
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean)
+    if (domainList.length) update.include_domains = domainList
+    else update.include_domains = []
+
+    updateMutation.mutate(update, {
+      onSuccess: () => {
+        setEditing(false)
+        toast.success('Constraints updated')
+      },
+      onError: (err) => toast.error(err.message),
+    })
+  }
+
+  return (
+    <ConfigRow icon={<Wrench className="h-3 w-3" />} label="Custom">
+      {editing ? (
+        <div className="space-y-2 w-full">
+          {isResearch && (
+            <>
+              <div className="flex items-center gap-2">
+                <label className="text-muted-foreground w-16 shrink-0">Depth</label>
+                <select
+                  value={depth}
+                  onChange={(e) => setDepth(e.target.value)}
+                  className="rounded border bg-background px-2 py-1 text-xs"
+                >
+                  <option value="">Default</option>
+                  <option value="quick">Quick (1 iteration, ~2 min)</option>
+                  <option value="moderate">Moderate (3 iterations, ~10 min)</option>
+                  <option value="comprehensive">Comprehensive (5 iterations, ~20 min)</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-muted-foreground w-16 shrink-0">Domains</label>
+                <input
+                  value={domains}
+                  onChange={(e) => setDomains(e.target.value)}
+                  placeholder="anthropic.com, openai.com"
+                  className="flex-1 rounded border bg-background px-2 py-1 text-xs font-mono"
+                />
+              </div>
+            </>
+          )}
+          {!isResearch && (
+            <pre className="text-[10px] text-muted-foreground">
+              {JSON.stringify(constraints, null, 2)}
+            </pre>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+              <Save className="mr-1 h-3 w-3" />
+              Save
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {Object.keys(constraints).length > 0 ? (
+            <span className="flex flex-wrap gap-2">
+              {constraints.depth ? (
+                <Badge variant="outline" className="text-[10px]">
+                  depth: {String(constraints.depth)}
+                </Badge>
+              ) : null}
+              {Array.isArray(constraints.include_domains) && constraints.include_domains.length > 0 ? (
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {(constraints.include_domains as string[]).join(', ')}
+                </Badge>
+              ) : null}
+              {!constraints.depth && !Array.isArray(constraints.include_domains) && (
+                <span className="text-[10px]">{JSON.stringify(constraints)}</span>
+              )}
+            </span>
+          ) : (
+            <span className="text-[10px]">Click to configure...</span>
+          )}
+        </button>
+      )}
+    </ConfigRow>
   )
 }
 
