@@ -93,6 +93,11 @@ async def handle_mission(
             step=step, message=message,
         ))
 
+    logger.info("TRACE >>> handle_mission entered",
+                 extra={"mission_run_id": mission_run_id, "mission_id": mission_id,
+                        "has_precomputed_plan": precomputed_plan is not None,
+                        "task_count": len(precomputed_plan.tasks) if precomputed_plan else 0,
+                        "event_bus_type": type(event_bus).__name__})
     await _phase("roster", "Deriving agent roster from team")
     roster = await derive_roster_from_team(mission_id, db_session)
     roster_description = _build_roster_prompt(roster)

@@ -173,6 +173,11 @@ async def execute_research_loop(
     Phase 5: Verify — NLI citation verification
     Phase 6: Build result
     """
+    logger.info("TRACE >>> execute_research_loop entered",
+                 extra={"task_id": task_id, "query": query[:80],
+                        "depth": config.depth, "budget": config.budget_usd,
+                        "event_bus_type": type(event_bus).__name__ if event_bus else "None",
+                        "session_id": session_id})
     _gate = gate or NoOpGate()
     _bus = event_bus or NoOpEventBus()
     _sid = session_id or ""

@@ -6,6 +6,8 @@ deterministic replay. Each Activity is idempotent and safe to retry.
 Activities receive IDs and brief strings, not large objects.
 """
 
+import asyncio
+
 from temporalio import activity
 
 from modules.backend.core.logging import get_logger
@@ -42,11 +44,13 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     from modules.backend.services.mission_plan import MissionPlanService
 
     activity.logger.info(
-        "Starting mission execution",
+        "TRACE >>> execute_mission activity started",
         extra={
             "mission_run_id": input.mission_run_id,
             "mission_id": input.mission_id,
+            "session_id": input.session_id,
             "budget": input.mission_budget_usd,
+            "execution_mode": input.execution_mode,
         },
     )
 
@@ -57,8 +61,13 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
         try:
             # Look up mission owner for audit trail
             mission = await MissionService(db).get_mission(input.mission_id)
+            activity.logger.info(
+                "TRACE     mission loaded",
+                extra={"owner_id": str(mission.owner_id), "mission_name": mission.name},
+            )
 
             svc = MissionPlanService(db, event_bus=event_bus)
+            activity.logger.info("TRACE     calling dispatch_approved")
             result = await svc.dispatch_approved(
                 input.mission_run_id,
                 user_id=mission.owner_id,

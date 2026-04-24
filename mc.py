@@ -384,6 +384,23 @@ def history(ctx, n):
     asyncio.run(_run())
 
 
+@mc.command()
+@click.argument("workflow_id")
+@click.option("--verbose", "-v", is_flag=True, help="Show all event types.")
+@click.pass_obj
+def trace(ctx, workflow_id, verbose):
+    """Trace a Temporal workflow execution — shows activity timeline.
+
+    \b
+    Examples:
+        mc trace mission-run-f32ffb36-1d4-abe596f7
+        mc trace mission-run-f32ffb36-1d4-abe596f7 -v
+    """
+    from modules.clients.cli.mc_trace import trace_workflow
+
+    asyncio.run(trace_workflow(workflow_id, verbose=verbose))
+
+
 # =============================================================================
 # Chat + Design
 # =============================================================================

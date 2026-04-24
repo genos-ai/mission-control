@@ -81,7 +81,12 @@ class MissionPlanDispatchMixin:
         from modules.backend.repositories.mission import MissionRepository
 
         plan = await self._repo.get_by_id(mission_plan_id)
+        logger.info("TRACE >>> dispatch_approved entered",
+                     extra={"plan_id": mission_plan_id, "mission_id": plan.mission_id})
         task_plan = self._get_task_plan_or_raise(plan)
+        logger.info("TRACE     task_plan parsed",
+                     extra={"task_count": len(task_plan.tasks),
+                            "task_ids": [t.task_id for t in task_plan.tasks]})
 
         # Budget check (Plan 42 §10.7)
         if plan.budget_usd_ceiling is not None:
@@ -104,6 +109,8 @@ class MissionPlanDispatchMixin:
                 "the Plan tab before running."
             )
         approved_task_ids = {s.task_id for s in approved_states}
+        logger.info("TRACE     approved tasks found",
+                     extra={"approved_ids": sorted(approved_task_ids)})
 
         # Derive the filtered TaskPlan. Approval is transitive (§10.2) so
         # the closure guarantee should hold — but verify and raise if not.
@@ -149,6 +156,12 @@ class MissionPlanDispatchMixin:
             budget = plan.budget_usd_ceiling - plan.total_spent_usd
 
         from modules.backend.services.session import SessionService
+        logger.info("TRACE     calling handle_mission",
+                     extra={"task_count": len(derived_plan.tasks),
+                            "budget": budget,
+                            "event_bus_type": type(self._event_bus).__name__,
+                            "session_id": session_id,
+                            "execution_mode": mission.execution_environment})
         outcome = await handle_mission(
             mission_run_id=mission_plan_id,
             mission_brief=brief,

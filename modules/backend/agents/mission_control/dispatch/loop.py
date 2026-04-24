@@ -308,7 +308,12 @@ async def _execute_layer(
         # If the task's static inputs declare type=research_loop,
         # route to execute_research_loop() instead of the standard
         # single-agent path. Same pattern as convergence_loop above.
-        if task.inputs.static.get("type") == "research_loop":
+        task_type = task.inputs.static.get("type")
+        logger.info("TRACE     _execute_layer task routing",
+                     extra={"task_id": task.task_id, "agent": task.agent,
+                            "task_type": task_type,
+                            "static_keys": list(task.inputs.static.keys())})
+        if task_type == "research_loop":
             try:
                 resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
             except KeyError as e:
