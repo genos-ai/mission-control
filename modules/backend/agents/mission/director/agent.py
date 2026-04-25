@@ -673,51 +673,51 @@ def create_agent(model: str | Model) -> Agent:
     @agent.tool
     async def get_research_findings(
         ctx: RunContext[MissionDirectorDeps],
-        report_id: str | None = None,
     ) -> str:
         """Get research findings for this mission.
 
-        Returns the executive summary, key findings, source count, and
-        verification score from the latest research report (or a specific
-        report by ID). Use this to answer follow-up questions about
-        completed research.
-
-        Args:
-            report_id: Optional specific report ID. If None, returns the
-                       latest report for this mission.
+        Returns the latest synthesizer output from completed task executions.
+        Use this to answer follow-up questions about completed research.
         """
         try:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.services.research_report import ResearchReportService
-            svc = ResearchReportService(ctx.deps.db_session)
+            from sqlalchemy import select
+            from modules.backend.models.execution_record import (
+                ExecutionRecord,
+                TaskExecution,
+            )
 
-            if report_id:
-                report = await svc.get_report(report_id)
-            else:
-                reports = await svc.list_for_mission(
-                    ctx.deps.mission_id, limit=1
+            # Find the latest completed execution for this mission
+            # that has a synthesizer task
+            result = await ctx.deps.db_session.execute(
+                select(TaskExecution)
+                .join(ExecutionRecord, TaskExecution.execution_record_id == ExecutionRecord.id)
+                .where(
+                    ExecutionRecord.mission_id == ctx.deps.mission_id,
+                    TaskExecution.agent_name.like("%synthesizer%"),
+                    TaskExecution.status == "COMPLETED",
                 )
-                report = reports[0] if reports else None
+                .order_by(TaskExecution.completed_at.desc())
+                .limit(1)
+            )
+            task = result.scalar_one_or_none()
 
-            if report is None:
+            if task is None or not task.output_data:
                 return json.dumps({
                     "status": "no_reports",
                     "message": "No research reports found for this mission.",
                 })
 
-            structured = report.report_structured or {}
+            out = task.output_data
             return json.dumps({
-                "report_id": report.id,
-                "query": report.query,
-                "status": report.status,
-                "executive_summary": structured.get("executive_summary", ""),
-                "source_count": len(report.sources or []),
-                "citation_count": report.citation_count,
-                "verification_score": report.verification_score,
-                "report_markdown_preview": (report.report_markdown or "")[:2000],
-                "sources": (report.sources or [])[:10],
+                "task_execution_id": task.id,
+                "title": out.get("title", ""),
+                "executive_summary": out.get("executive_summary", ""),
+                "source_count": len(out.get("sources", [])),
+                "report_markdown_preview": out.get("report_markdown", "")[:2000],
+                "sources": out.get("sources", [])[:10],
             }, indent=2, default=str)
 
         except Exception as e:
