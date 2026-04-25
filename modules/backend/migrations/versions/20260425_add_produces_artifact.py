@@ -30,7 +30,7 @@ def upgrade() -> None:
     conn.execute(
         sa.text(
             "UPDATE agent_catalog "
-            "SET produces_artifact = true, artifact_type = 'report' "
+            "SET produces_artifact = true, artifact_type = 'research_report' "
             "WHERE agent_name = 'research.synthesizer.agent'"
         ),
     )
