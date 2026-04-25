@@ -234,7 +234,7 @@ async def execute_research_loop(
         await _emit(_bus, MissionNarrativeEvent,
             session_id=_sid,
             source=f"research:{task_id}",
-            mission_id=mission_id or "",
+            mission_id=mission_id,
             agent_id="research",
             narrative=message,
             phase="research",
@@ -470,7 +470,7 @@ async def execute_research_loop(
             # Gate check: should we continue?
             decision = await _gate.review(GateContext(
                 gate_type="research_iteration",
-                mission_id=mission_id or "",
+                mission_id=mission_id,
                 layer_index=iteration,
                 total_layers=config.max_iterations,
                 total_cost_usd=total_cost,

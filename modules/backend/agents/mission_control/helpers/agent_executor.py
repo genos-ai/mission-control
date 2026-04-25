@@ -426,8 +426,8 @@ async def _call_planning_agent(
             thinking_tokens=fields["thinking_tokens"],
         )
         await record_llm_call(
-            session_id=session_id or "",
-            mission_id=mission_id or "",
+            session_id=session_id,
+            mission_id=mission_id,
             agent_name="system.planning.agent",
             agent_role="system",
             model=model_name, usage=usage, cost_usd=planning_cost,

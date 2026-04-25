@@ -49,7 +49,7 @@ async def execute_with_retry(
     execute_agent_fn: Any,
     execution_id: str = "",
     gate: GateReviewer | None = None,
-    mission_id: str = "",
+    mission_id: str | None = None,
     budget_usd: float = 0.0,
 ) -> TaskResult:
     """Execute a task with 3-tier verification and retry-with-feedback.

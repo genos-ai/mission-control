@@ -141,7 +141,7 @@ async def handle_mission(
                 source="mission_dispatch",
                 level="warning",
                 message=f"Context loading failed (non-fatal): {exc}",
-                mission_id=mission_id or "",
+                mission_id=mission_id,
             )
 
         # Load recent failures so the planner can avoid repeating them
@@ -161,7 +161,7 @@ async def handle_mission(
                 source="mission_dispatch",
                 level="warning",
                 message=f"Failure history loading failed (non-fatal): {exc}",
-                mission_id=mission_id or "",
+                mission_id=mission_id,
             )
         await _phase("context", "Context assembled")
 
@@ -320,7 +320,7 @@ async def handle_mission(
                 source="mission_dispatch",
                 level="warning",
                 message=f"Environment provisioning failed, falling back to local: {exc}",
-                mission_id=mission_id or "",
+                mission_id=mission_id,
             )
             env_handle = None
 

@@ -66,7 +66,7 @@ def _build_agent_deps(
 
     if "mission.director" in agent_name:
         from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-        return MissionDirectorDeps(**common, mission_id=mission_id or "", db_session=db_session)
+        return MissionDirectorDeps(**common, mission_id=mission_id, db_session=db_session)
     if "platform.director" in agent_name:
         from modules.backend.agents.platform.director.deps import PlatformDirectorDeps
         return PlatformDirectorDeps(**common, db_session=db_session)
@@ -76,10 +76,10 @@ def _build_agent_deps(
         return QaAgentDeps(**common)
     if "mission.workflow" in agent_name:
         from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
-        return ArchitectAgentDeps(**common, mission_id=mission_id or "", db_session=db_session)
+        return ArchitectAgentDeps(**common, mission_id=mission_id, db_session=db_session)
     if "mission.supervisor" in agent_name:
         from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
-        return MissionSupervisorDeps(**common, mission_id=mission_id or "", db_session=db_session)
+        return MissionSupervisorDeps(**common, mission_id=mission_id, db_session=db_session)
     if category == "research":
         from modules.backend.agents.research.deps import ResearchAgentDeps
         return ResearchAgentDeps(**common, http_client=_get_research_http_client())

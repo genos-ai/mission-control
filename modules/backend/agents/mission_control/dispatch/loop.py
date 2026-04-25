@@ -682,7 +682,7 @@ async def _dispatch_workflow_task(
             run = await svc.run_workflow(
                 workflow_name=workflow_name,
                 triggered_by="plan_dispatch",
-                mission_id=mission_id or "",
+                mission_id=mission_id,
                 gate=gate,
             )
 

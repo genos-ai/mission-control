@@ -174,7 +174,7 @@ async def execute_convergence_loop(
         # --- Gate check: should we continue? ---
         decision = await _gate.review(GateContext(
             gate_type="convergence_cycle",
-            mission_id=mission_id or "",
+            mission_id=mission_id,
             layer_index=cycle_num,
             total_layers=config.max_iterations,
             task_output=eval_result,
