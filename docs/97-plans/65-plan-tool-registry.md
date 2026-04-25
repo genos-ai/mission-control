@@ -303,11 +303,54 @@ These are unique to one agent and don't make sense as shared tools:
 
 ## 5. Implementation Phases
 
+### Phase 0: Restructure — one tool per file (do first)
+
+The current `agents/tools/` groups tools by domain (`research.py`, `compliance.py`, `filesystem.py`).
+This makes tools hard to find, couples unrelated tools, and prevents clean YAML-per-tool mapping.
+
+**Restructure to one tool per file:**
+
+```
+# BEFORE (domain-grouped, tools buried)
+modules/backend/agents/tools/
+  research.py          ← web_search + fetch_and_extract + search_codebase
+  compliance.py        ← scan_imports + load_project_standards
+  filesystem.py        ← read_file + list_directory
+  codemap.py           ← generate_code_map + run_quality_score
+
+# AFTER (one tool per file, flat)
+modules/backend/tools/
+  __init__.py
+  web_search.py
+  fetch_and_extract.py
+  search_codebase.py
+  read_file.py
+  list_directory.py
+  scan_imports.py
+  load_project_standards.py
+  generate_code_map.py
+  run_quality_score.py
+  search_knowledge.py
+```
+
+Each file exports a single async function with the same name as the file.
+The function signature is the tool's contract — parameters, types, return type.
+Services layer (`services/search/`, `services/code_map/`) stays unchanged — tools call services.
+
+**Migration steps:**
+1. Create `modules/backend/tools/` directory
+2. Extract each function from the domain files into its own file
+3. Update all imports in agent `create_agent()` factories
+4. Delete the old `agents/tools/` domain files
+5. Verify all agents work
+
+**Why now:** The platform has 10+ tools. Every new tool means deciding which domain file to put it in, and every consumer must know the domain grouping to import it. Flat structure scales better and maps 1:1 to the YAML definitions in Phase 1.
+
 ### Phase 1: Tool Registry Core (foundation)
 
 Files to create:
-- `modules/backend/agents/tools/registry.py` — ToolRegistry class
-- `modules/backend/agents/tools/schema.py` — ToolDefinition, ToolParameter dataclasses
+- `modules/backend/tools/registry.py` — ToolRegistry class
+- `modules/backend/tools/schema.py` — ToolDefinition, ToolParameter dataclasses
 - `config/tools/web_search.yaml` — first tool definition
 - `config/tools/fetch_and_extract.yaml`
 
@@ -322,7 +365,7 @@ Validation:
 
 ### Phase 2: Migrate Remaining Shared Tools
 
-Move all reusable tools from hardcoded decorators to YAML definitions:
+Create YAML definitions for all remaining shared tools:
 - `config/tools/read_file.yaml`
 - `config/tools/list_directory.yaml`
 - `config/tools/generate_code_map.yaml`
@@ -335,7 +378,7 @@ Update each agent's `create_agent()` to accept `tool_names` and remove the share
 ### Phase 3: Provider Swappability
 
 - Add `config` section to tool YAML for provider selection
-- Implement `search_perplexity.py` as alternative to `research.py`
+- Implement `search_perplexity.py` as alternative to `web_search.py`
 - Add admin UI for tool configuration (provider selection, API keys)
 
 ### Phase 4: Tool Catalog API + UI
@@ -357,14 +400,23 @@ Update each agent's `create_agent()` to accept `tool_names` and remove the share
 | `modules/backend/agents/software/quality/agent.py` | Same |
 | `modules/backend/agents/mission/director/agent.py` | Keep agent-specific tools, add registry for shared |
 
+### Existing files (delete after Phase 0)
+
+| File | Replaced by |
+|------|-------------|
+| `modules/backend/agents/tools/research.py` | `modules/backend/tools/web_search.py` + `fetch_and_extract.py` + `search_codebase.py` |
+| `modules/backend/agents/tools/compliance.py` | `modules/backend/tools/scan_imports.py` + `load_project_standards.py` |
+| `modules/backend/agents/tools/filesystem.py` | `modules/backend/tools/read_file.py` + `list_directory.py` |
+| `modules/backend/agents/tools/codemap.py` | `modules/backend/tools/generate_code_map.py` + `run_quality_score.py` |
+| `modules/backend/agents/tools/knowledge.py` | `modules/backend/tools/search_knowledge.py` |
+
 ### Existing files (no change needed)
 
 | File | Why |
 |------|-----|
-| `modules/backend/agents/tools/research.py` | Implementation stays — registry wraps it |
-| `modules/backend/agents/tools/compliance.py` | Same |
-| `modules/backend/agents/tools/filesystem.py` | Same |
-| `modules/backend/services/search/web_search.py` | Service layer stays unchanged |
+| `modules/backend/services/search/web_search.py` | Service layer stays unchanged — tools call services |
+| `modules/backend/services/search/content_extract.py` | Same |
+| `modules/backend/services/code_map/` | Same |
 | `modules/backend/agents/config_schema.py` | `tools: list[str]` already exists |
 | `modules/backend/models/agent_catalog.py` | `tools` column already exists |
 | `config/agents/*/agent.yaml` | `tools:` list already exists |
@@ -373,12 +425,27 @@ Update each agent's `create_agent()` to accept `tool_names` and remove the share
 
 | File | Purpose |
 |------|---------|
-| `modules/backend/agents/tools/registry.py` | ToolRegistry singleton |
-| `modules/backend/agents/tools/schema.py` | ToolDefinition dataclass |
+| `modules/backend/tools/__init__.py` | Package init |
+| `modules/backend/tools/web_search.py` | Web search (Tavily/Brave/Perplexity) |
+| `modules/backend/tools/fetch_and_extract.py` | URL fetch + HTML extraction |
+| `modules/backend/tools/search_codebase.py` | Grep-style local code search |
+| `modules/backend/tools/read_file.py` | Read a project file |
+| `modules/backend/tools/list_directory.py` | List directory contents |
+| `modules/backend/tools/scan_imports.py` | Python import scanning |
+| `modules/backend/tools/load_project_standards.py` | Load compliance standards |
+| `modules/backend/tools/generate_code_map.py` | Structural code map |
+| `modules/backend/tools/run_quality_score.py` | PQI quality scoring |
+| `modules/backend/tools/search_knowledge.py` | Platform knowledge search |
+| `modules/backend/tools/registry.py` | ToolRegistry singleton |
+| `modules/backend/tools/schema.py` | ToolDefinition dataclass |
 | `config/tools/web_search.yaml` | Web search tool definition |
 | `config/tools/fetch_and_extract.yaml` | URL fetch tool definition |
 | `config/tools/read_file.yaml` | File read tool definition |
 | `config/tools/list_directory.yaml` | Directory listing tool definition |
+| `config/tools/generate_code_map.yaml` | Code map tool definition |
+| `config/tools/run_quality_score.yaml` | PQI tool definition |
+| `config/tools/scan_imports.yaml` | Import scanning tool definition |
+| `config/tools/search_knowledge.yaml` | Knowledge search tool definition |
 
 ## 7. Constraints
 
