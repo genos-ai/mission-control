@@ -1222,8 +1222,8 @@ def create_agent(model: str | Model) -> Agent:
             kinds: Filter by kind (learning, decision, milestone).
             platform_only: Only search platform-promoted entries.
         """
-        from modules.backend.agents.tools.knowledge import knowledge_query
-        return await knowledge_query(
+        from modules.backend.tools.query_knowledge import query_knowledge
+        return await query_knowledge(
             ctx.deps.mission_id,
             query=query,
             kinds=kinds,
