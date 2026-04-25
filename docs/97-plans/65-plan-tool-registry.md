@@ -27,14 +27,193 @@ Define a tool **once** as a reusable component. Assign it to any agent via catal
 tool defined once → tool registry → assigned via catalog → injected at agent creation
 ```
 
-## 3. Architecture
+## 3. Naming Convention
 
-### 3.1 Tool Definition (config/tools/*.yaml)
+### Pattern: `{verb}_{noun}`
+
+Every tool name is an action. The verb tells the LLM what it can do. The noun tells it what it acts on.
+
+```
+search_web            NOT web_search (noun_verb reads as a label, not an instruction)
+search_codebase       NOT codebase_search
+search_knowledge      NOT knowledge.search (no namespace dots)
+fetch_url             NOT url_fetcher
+read_file             NOT filesystem.read_file (no domain prefix)
+list_directory        NOT ls
+scan_imports          NOT compliance.scan_imports
+generate_code_map     NOT codemap.generate
+score_code_quality    NOT run_quality_score
+extract_content       NOT content_extract
+validate_schema       NOT schema_validator
+```
+
+### Why verb_noun:
+- **AI-friendly**: reads as an instruction — "search the web", "read a file"
+- **Grep-friendly**: `search_*` finds all search tools, `*_file` finds all file tools
+- **No domain coupling**: `search_web` works for research, pentest, or any mission type
+- **No provider coupling**: `search_web` not `tavily_search` — tool identity is stable when providers swap
+- **Scales to anything**: `deploy_container`, `send_notification`, `summarize_document`, `check_compliance`
+
+### Current → Renamed
+
+| Current name | New name | File |
+|-------------|----------|------|
+| `web_search` | `search_web` | `search_web.py` |
+| `fetch_and_extract` | `fetch_url` | `fetch_url.py` |
+| `search_codebase` | `search_codebase` | `search_codebase.py` (already correct) |
+| `read_file` | `read_file` | `read_file.py` (already correct) |
+| `list_directory` | `list_directory` | `list_directory.py` (already correct) |
+| `generate_code_map` | `generate_code_map` | `generate_code_map.py` (already correct) |
+| `run_quality_score` | `score_code_quality` | `score_code_quality.py` |
+| `scan_imports` | `scan_imports` | `scan_imports.py` (already correct) |
+| `load_project_standards` | `load_standards` | `load_standards.py` |
+| `search_knowledge` | `search_knowledge` | `search_knowledge.py` (already correct) |
+
+## 4. Tool Template
+
+Every tool follows the same file structure. A developer copies the template, fills in the blanks, drops it in `modules/backend/tools/`, and it's available to any agent.
+
+### 4.1 Template
+
+```python
+"""
+Tool: {verb}_{noun}
+
+{One-line description of what this tool does.}
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Any
+
+
+# ── Contract ─────────────────────────────────────────────
+
+@dataclass
+class Input:
+    """What the tool receives. Each field becomes a tool parameter."""
+    query: str
+    max_results: int = 10
+
+
+@dataclass
+class Output:
+    """What the tool returns. Documents the shape for the LLM."""
+    url: str
+    title: str
+    snippet: str
+
+
+# ── Dependencies ─────────────────────────────────────────
+
+REQUIRED_DEPS = ["http_client"]  # fields needed from agent RunContext.deps
+
+
+# ── Implementation ───────────────────────────────────────
+
+async def {verb}_{noun}(
+    http_client: Any,
+    query: str,
+    *,
+    max_results: int = 10,
+) -> list[dict]:
+    """{Docstring — this is what the LLM sees as the tool description.}"""
+    from modules.backend.services.{service} import {ServiceClass}
+
+    svc = {ServiceClass}(http_client)
+    results = await svc.{method}(query, max_results=max_results)
+    return [r.model_dump() for r in results]
+```
+
+### 4.2 Rules
+
+1. **One file = one tool.** File name matches function name: `search_web.py` exports `search_web()`
+2. **Input dataclass** — typed parameters with defaults. The registry reads this to generate the PydanticAI tool schema automatically
+3. **Output dataclass** — typed return shape. Documents what the LLM receives. Used by the registry for output schema validation
+4. **REQUIRED_DEPS list** — declares which `RunContext.deps` fields this tool needs (e.g. `["http_client"]`, `["project_root", "scope"]`). The registry validates at registration time that the agent's deps type has these fields
+5. **Single async function** — same name as the file. This IS the tool. No classes, no decorators, no setup code
+6. **Service layer delegation** — the tool function is a thin wrapper. Business logic lives in `services/`. Tools never import PydanticAI
+7. **Return `list[dict]` or `dict`** — always JSON-serializable. No Pydantic models in return types (the LLM sees raw JSON)
+
+### 4.3 Example: search_web.py
+
+```python
+"""
+Tool: search_web
+
+Search the web for information using the configured search provider.
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class Input:
+    query: str
+    max_results: int = 10
+    include_domains: list[str] | None = None
+    exclude_domains: list[str] | None = None
+
+
+@dataclass
+class Output:
+    url: str
+    title: str
+    snippet: str
+    content: str
+    relevance_score: float
+    provider: str
+
+
+REQUIRED_DEPS = ["http_client"]
+
+
+async def search_web(
+    http_client: Any,
+    query: str,
+    *,
+    max_results: int = 10,
+    include_domains: list[str] | None = None,
+    exclude_domains: list[str] | None = None,
+) -> list[dict]:
+    """Search the web for information on a topic.
+
+    Returns ranked results with url, title, snippet, content,
+    and relevance_score. Provider is selected from config.
+    """
+    from modules.backend.services.search.web_search import WebSearchService
+
+    svc = WebSearchService(http_client)
+    results = await svc.search(
+        query,
+        max_results=max_results,
+        include_domains=include_domains,
+        exclude_domains=exclude_domains,
+    )
+    return [r.model_dump() for r in results]
+```
+
+### 4.4 YAML Definition (minimal — module is the source of truth)
+
+```yaml
+# config/tools/search_web.yaml
+tool_name: search_web
+description: "Search the web for information on a topic"
+module: modules.backend.tools.search_web
+```
+
+The registry imports the module, discovers the function (same name as module), reads `Input`/`Output` dataclasses for schema, reads `REQUIRED_DEPS` for validation, and generates the PydanticAI tool wrapper. Zero duplication between Python and YAML.
+
+## 5. Architecture
+
+### 5.1 Tool Definition (config/tools/*.yaml)
 
 Each tool is a YAML file declaring its identity, parameters, and implementation binding:
 
 ```yaml
-# config/tools/web_search.yaml
+# config/tools/search_web.yaml
 tool_name: web_search
 description: "Search the web for information on a topic. Returns ranked results with titles, snippets, and URLs."
 category: search
