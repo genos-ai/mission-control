@@ -222,6 +222,22 @@ def create_agent(model: str | Model) -> Agent:
         deps_type=MissionDirectorDeps,
     )
 
+    # ── Self-introspection ──────────────────────────────────
+
+    @agent.tool
+    async def list_tools(ctx: RunContext[MissionDirectorDeps]) -> str:
+        """List all tools available to you. Call this when unsure what
+        tools you have or before attempting an action you're not sure
+        you can perform. You can ONLY use tools listed here."""
+        # Tool names are collected after all @agent.tool registrations
+        # and stored on the _tool_names class variable by create_agent.
+        tools = getattr(list_tools, "_registered_tools", [])
+        return json.dumps({
+            "available_tools": len(tools),
+            "tools": tools,
+            "note": "You can ONLY call tools in this list. Do not invent tool names.",
+        }, indent=2)
+
     # ── Read Tools ────────────────────────────────────────
 
     @agent.tool
@@ -1230,5 +1246,15 @@ def create_agent(model: str | Model) -> Agent:
         except Exception:
             pass
         return ""
+
+    # Populate list_tools with the registered tool names + descriptions
+    # so the Director can introspect its own capabilities at runtime.
+    tool_info = []
+    for t in agent._function_toolset.tools.values():
+        tool_info.append({
+            "name": t.name,
+            "description": (t.description or "")[:120],
+        })
+    list_tools._registered_tools = sorted(tool_info, key=lambda x: x["name"])
 
     return agent
