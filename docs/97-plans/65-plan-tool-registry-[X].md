@@ -1,6 +1,6 @@
 # Plan 65: Tool Registry — Pluggable, Reusable Agent Tools
 
-## Status: Proposed
+## Status: Done (Phase 0 + Phase 1 shipped 2026-04-25)
 ## Priority: High
 ## Depends on: None (standalone architectural improvement)
 
