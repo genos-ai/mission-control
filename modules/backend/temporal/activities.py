@@ -20,6 +20,31 @@ from modules.backend.temporal.models import (
 logger = get_logger(__name__)
 
 
+def _format_activity_error(exc: Exception) -> str:
+    """Extract a clean, actionable message from activity errors.
+
+    For LLM provider errors (ModelHTTPError, etc.), includes model name,
+    status code, and error detail. For all other exceptions, produces a
+    generic but informative message without the misleading "LLM" prefix.
+    """
+    # pydantic_ai.exceptions.ModelHTTPError
+    model_name = getattr(exc, "model_name", None)
+    status_code = getattr(exc, "status_code", None)
+    body = getattr(exc, "body", None)
+
+    if model_name and status_code:
+        detail = ""
+        if isinstance(body, dict):
+            error_info = body.get("error", {})
+            detail = error_info.get("message", "") if isinstance(error_info, dict) else str(body)
+        return (
+            f"LLM call failed: model={model_name}, status={status_code}"
+            f"{f' — {detail[:200]}' if detail else ''}"
+        )
+
+    return f"{type(exc).__name__}: {str(exc)[:250]}"
+
+
 
 @activity.defn
 async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult:
@@ -81,7 +106,10 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 success_count=len(result.get("updated_task_ids", [])),
                 failed_count=0,
                 execution_record_id=result.get("execution_record_id"),
-                outcome_json=result,
+                # Use the full serialized ExecutionOutcome if dispatch_approved
+                # provided it; otherwise fall back to the summary dict (older
+                # code paths that don't include the full outcome).
+                outcome_json=result.get("outcome_json", result),
             )
 
         except (asyncio.CancelledError, KeyboardInterrupt) as e:
@@ -100,9 +128,17 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             )
 
         except Exception as e:
+            # Produce a clean, structured error message — especially for
+            # LLM provider failures (credits exhausted, auth errors, etc.)
+            clean_msg = _format_activity_error(e)
             activity.logger.error(
                 "Mission execution failed",
-                extra={"mission_run_id": input.mission_run_id, "error": str(e), "mission_id": input.mission_id},
+                extra={
+                    "mission_run_id": input.mission_run_id,
+                    "error": clean_msg,
+                    "error_type": type(e).__name__,
+                    "mission_id": input.mission_id,
+                },
                 exc_info=True,
             )
             # Emit error event so it surfaces in the Console
@@ -115,7 +151,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                         session_id=uuid.uuid4(),
                         source="mission_execution",
                         level="error",
-                        message=f"Mission execution failed: {str(e)[:250]}",
+                        message=clean_msg,
                         mission_id=input.mission_id,
                     ),
                 )
@@ -124,7 +160,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
                 status="failed",
-                outcome_json={"error": str(e)},
+                outcome_json={"error": clean_msg},
             )
         finally:
             await redis.aclose()
@@ -147,22 +183,54 @@ async def persist_mission_outcome(
 
     try:
         outcome = ExecutionOutcome.model_validate(outcome_json)
+
+        # If execution_record_id is set, handle_mission already persisted
+        # inline — this Temporal activity is the backup path. Skip to
+        # avoid duplicate execution_records, task_executions, and artifacts.
+        if outcome.execution_record_id:
+            activity.logger.info(
+                "Skipping persist — already persisted inline",
+                extra={
+                    "execution_record_id": outcome.execution_record_id,
+                    "mission_id": mission_id,
+                },
+            )
+            return True
+
+        # Inline persistence didn't happen (execution_record_id is None) —
+        # this is the crash recovery path. Persist everything.
+        task_plan_ref = outcome_json.get("task_plan_reference")
+        if isinstance(task_plan_ref, str):
+            import json
+            try:
+                task_plan_ref = json.loads(task_plan_ref)
+            except (json.JSONDecodeError, TypeError):
+                task_plan_ref = None
+
         async with get_async_session() as db:
             await persist_mission_results(
                 outcome,
                 session_id=session_id,
                 roster_name=roster_name,
-                task_plan_json=outcome_json.get("task_plan_reference"),
+                task_plan_json=task_plan_ref,
                 thinking_trace=outcome_json.get("planning_trace_reference"),
                 mission_id=mission_id,
                 db_session=db,
             )
             await db.commit()
         return True
-    except (OSError, ValueError, RuntimeError) as e:
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        # Never swallow cancellation — let Temporal handle retry/timeout.
+        raise
+    except Exception as e:
+        error_msg = f"Failed to persist mission results: {type(e).__name__}: {str(e)[:200]}"
         activity.logger.error(
-            "Failed to persist mission results",
-            extra={"mission_run_id": mission_run_id, "error": str(e), "mission_id": mission_id},
+            error_msg,
+            extra={
+                "mission_run_id": mission_run_id,
+                "error_type": type(e).__name__,
+                "mission_id": mission_id,
+            },
         )
         # Emit error event so it surfaces in the Console
         if mission_id:
@@ -182,7 +250,7 @@ async def persist_mission_outcome(
                             session_id=uuid.uuid4(),
                             source="mission_persistence",
                             level="error",
-                            message=f"Failed to persist mission results: {str(e)[:200]}",
+                            message=error_msg,
                             mission_id=mission_id,
                         ),
                     )

@@ -70,13 +70,29 @@
       "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -c l)",
       "Bash(PGPASSWORD=postgres psql -h localhost -U mission_control -d mission_control -c \"SELECT COUNT\\(*\\) as total FROM mission_artifacts;\")",
       "Bash(PGPASSWORD=postgres psql -h localhost -U mission_control -d mission_control -c \"SELECT sm.role, LEFT\\(sm.content, 80\\) as content_preview FROM session_messages sm JOIN sessions s ON sm.session_id = s.id WHERE s.mission_id = ''6c79d683-7d65-493a-8cfd-10c11a9f1c30'' ORDER BY sm.created_at DESC LIMIT 10;\")",
-      "Read(//Users/backend/services/**)"
+      "Read(//Users/backend/services/**)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import copilot; print\\(''OK''\\)\")",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \":*)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/pip show:*)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import psycopg2; print\\(f''psycopg2: {psycopg2.__version__}''\\)\")",
+      "Bash(git commit:*)",
+      "Bash(failed\" when model attributes are present \\(avoids misleading messages for:*)",
+      "Bash(failed, retrying...\" instead of confusing duplicate thinking animations:*)",
+      "Bash(ps -p 18075 -o lstart=)",
+      "Bash(grep -n \"\\\\.count\\(\" modules/backend/services/*.py)",
+      "Read(//^async def _execute_layer/**)",
+      "Bash(grep -rn \"String\\(36\\)\" modules/backend/models/*.py)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import uuid; print\\(hasattr\\(uuid, ''uuid7''\\)\\)\")",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"from uuid import uuid7; print\\(uuid7\\(\\)\\)\")",
+      "Bash(grep -rln \"String\\(36\\)\" modules/backend/models/*.py)",
+      "Bash(do python3:*)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
       "/Users/herman.young/development/mission-control/docs/97-plans",
       "/tmp",
-      "/Users/herman.young/development/mission-control/.claude"
+      "/Users/herman.young/development/mission-control/.claude",
+      "/Users/herman.young/development/mission-control"
     ]
   }
 }

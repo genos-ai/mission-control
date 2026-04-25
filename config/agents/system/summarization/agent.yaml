@@ -10,7 +10,7 @@ agent_name: system.summarization.agent
 agent_type: horizontal
 description: "Compresses mission outcomes into concise milestone summaries"
 enabled: true
-model: anthropic:claude-haiku-4-5-20251001
+model: copilot:claude-haiku-4.5
 max_input_length: 32000
 max_budget_usd: 0.05
 

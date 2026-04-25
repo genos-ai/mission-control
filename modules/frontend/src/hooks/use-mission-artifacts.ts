@@ -19,7 +19,7 @@ import { api } from '@/lib/api'
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-export type ArtifactType = 'report' | 'finding' | 'code' | 'data' | 'file'
+export type ArtifactType = 'report' | 'finding' | 'response' | 'code' | 'data' | 'file'
 
 export type ArtifactContentType = 'text' | 'markdown' | 'json' | 'code'
 

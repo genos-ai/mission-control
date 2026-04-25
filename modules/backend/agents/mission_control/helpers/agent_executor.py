@@ -223,27 +223,35 @@ def _make_agent_executor(
         else:
             output_dict = {"output": str(output)}
 
-        # Emit artifact if agent produced a meaningful textual result
-        _inner = output_dict.get("output", {})
-        _inner = _inner if isinstance(_inner, dict) else {}
-        _artifact_content: str | None = None
-        if isinstance(_inner.get("summary"), str):
-            _artifact_content = _inner["summary"]
-        elif isinstance(_inner.get("result"), str):
-            _artifact_content = _inner["result"]
-        if _artifact_content and _artifact_content.strip():
-            await _emit(
-                event_bus,
-                MissionArtifactFoundEvent,
-                session_id=session_id,
-                source=f"dispatch:{mission_id}",
-                mission_id=mission_id,
-                agent_id=agent_name,
-                artifact_type="report",
-                title=f"{agent_name} — result",
-                content=_artifact_content[:3000],
-                content_type="markdown",
+        # Emit artifact SSE event only for agents that declare
+        # produces_artifact — stops the firehose of junk artifacts
+        # from every agent's summary/result field.
+        if agent_config.produces_artifact:
+            _inner = output_dict.get("output", {})
+            _inner = _inner if isinstance(_inner, dict) else {}
+            _artifact_content = (
+                _inner.get("report_markdown")
+                or _inner.get("summary")
+                or _inner.get("result")
             )
+            if isinstance(_artifact_content, str) and _artifact_content.strip():
+                _title = (
+                    _inner.get("title")
+                    or _inner.get("report_title")
+                    or f"{agent_name} — output"
+                )
+                await _emit(
+                    event_bus,
+                    MissionArtifactFoundEvent,
+                    session_id=session_id,
+                    source=f"dispatch:{mission_id}",
+                    mission_id=mission_id,
+                    agent_id=agent_name,
+                    artifact_type=agent_config.artifact_type or "report",
+                    title=_title,
+                    content=_artifact_content[:3000],
+                    content_type="markdown",
+                )
 
         fields = extract_usage(usage)
         model_name = _get_model_name(agent_config.model)
@@ -336,12 +344,8 @@ async def _call_planning_agent(
         extract_task_plan_json,
     )
     from modules.backend.events.types import AgentResponseChunkEvent
-    from modules.backend.services.code_map.loader import CodeMapLoader
 
     project_root = find_project_root()
-
-    loader = CodeMapLoader(project_root)
-    code_map = loader.ensure_fresh()
 
     registry = get_registry()
     planning_cfg = registry.get("system.planning.agent")
@@ -355,7 +359,6 @@ async def _call_planning_agent(
         mission_id=mission_id or "pending",
         roster_description=roster_desc,
         upstream_context=upstream_context,
-        code_map=code_map,
         current_plan=current_plan,
         refinement_instructions=refinement_instructions,
         plan_version=plan_version,
@@ -367,7 +370,6 @@ async def _call_planning_agent(
         mission_brief=prompt,
         roster_description=roster_desc,
         upstream_context=upstream_context,
-        code_map=code_map,
     )
 
     planning_agent_id = "system.planning.agent"

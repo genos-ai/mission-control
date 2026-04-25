@@ -472,7 +472,7 @@ class MissionsSchema(_StrictBase):
 class GateAiSchema(_StrictBase):
     """AI reviewer model and budget settings."""
 
-    model: str = "anthropic:claude-haiku-4-5-20251001"
+    model: str = "copilot:claude-haiku-4.5"
     temperature: float = 0.0
     max_tokens: int = 1024
     budget_per_review_usd: float = Field(
@@ -574,7 +574,7 @@ class CostSchema(_StrictBase):
 
     default_cache_ttl: str = "1h"
     alerts: CostAlertsSchema = Field(default_factory=CostAlertsSchema)
-    emergency_downgrade_model: str = "anthropic:claude-haiku-4-5-20251001"
+    emergency_downgrade_model: str = "copilot:claude-haiku-4.5"
     output_efficiency: OutputEfficiencySchema = Field(
         default_factory=OutputEfficiencySchema,
     )

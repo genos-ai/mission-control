@@ -149,13 +149,15 @@ def _rule_3_dag_validation(plan: TaskPlan, result: ValidationResult) -> None:
 def _rule_4_dependency_consistency(plan: TaskPlan, result: ValidationResult) -> None:
     """Every from_upstream source_task must be in the task's dependencies."""
     for task in plan.tasks:
-        for field_name, ref in task.inputs.from_upstream.items():
-            if ref.source_task not in task.dependencies:
-                result.add_error(
-                    "dependency_consistency",
-                    f"Task '{task.task_id}': from_upstream field '{field_name}' "
-                    f"references task '{ref.source_task}' which is not in dependencies",
-                )
+        for field_name, ref_or_list in task.inputs.from_upstream.items():
+            refs = ref_or_list if isinstance(ref_or_list, list) else [ref_or_list]
+            for ref in refs:
+                if ref.source_task not in task.dependencies:
+                    result.add_error(
+                        "dependency_consistency",
+                        f"Task '{task.task_id}': from_upstream field '{field_name}' "
+                        f"references task '{ref.source_task}' which is not in dependencies",
+                    )
 
 
 def _rule_5_input_compatibility(
@@ -168,23 +170,25 @@ def _rule_5_input_compatibility(
         # Plan 53: workflow tasks don't have roster output contracts
         if task.agent.startswith("workflow:"):
             continue
-        for field_name, ref in task.inputs.from_upstream.items():
-            source_agent_name = task_agent_map.get(ref.source_task)
-            if source_agent_name is None:
-                continue  # Rule 3 catches missing tasks
+        for field_name, ref_or_list in task.inputs.from_upstream.items():
+            refs = ref_or_list if isinstance(ref_or_list, list) else [ref_or_list]
+            for ref in refs:
+                source_agent_name = task_agent_map.get(ref.source_task)
+                if source_agent_name is None:
+                    continue  # Rule 3 catches missing tasks
 
-            source_entry = roster.get_agent_by_name(source_agent_name)
-            if source_entry is None:
-                continue  # Rule 2 catches missing agents
+                source_entry = roster.get_agent_by_name(source_agent_name)
+                if source_entry is None:
+                    continue  # Rule 2 catches missing agents
 
-            if ref.source_field not in source_entry.interface.output:
-                result.add_error(
-                    "input_compatibility",
-                    f"Task '{task.task_id}': from_upstream field '{field_name}' "
-                    f"references source_field '{ref.source_field}' which does not "
-                    f"exist in agent '{source_agent_name}' output contract "
-                    f"(available: {list(source_entry.interface.output.keys())})",
-                )
+                if ref.source_field not in source_entry.interface.output:
+                    result.add_error(
+                        "input_compatibility",
+                        f"Task '{task.task_id}': from_upstream field '{field_name}' "
+                        f"references source_field '{ref.source_field}' which does not "
+                        f"exist in agent '{source_agent_name}' output contract "
+                        f"(available: {list(source_entry.interface.output.keys())})",
+                    )
 
 
 def _rule_6_check_registry(plan: TaskPlan, result: ValidationResult) -> None:

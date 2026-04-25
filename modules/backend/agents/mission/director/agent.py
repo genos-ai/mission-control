@@ -222,6 +222,22 @@ def create_agent(model: str | Model) -> Agent:
         deps_type=MissionDirectorDeps,
     )
 
+    # ── Self-introspection ──────────────────────────────────
+
+    @agent.tool
+    async def list_tools(ctx: RunContext[MissionDirectorDeps]) -> str:
+        """List all tools available to you. Call this when unsure what
+        tools you have or before attempting an action you're not sure
+        you can perform. You can ONLY use tools listed here."""
+        # Tool names are collected after all @agent.tool registrations
+        # and stored on the _tool_names class variable by create_agent.
+        tools = getattr(list_tools, "_registered_tools", [])
+        return json.dumps({
+            "available_tools": len(tools),
+            "tools": tools,
+            "note": "You can ONLY call tools in this list. Do not invent tool names.",
+        }, indent=2)
+
     # ── Read Tools ────────────────────────────────────────
 
     @agent.tool
@@ -671,57 +687,58 @@ def create_agent(model: str | Model) -> Agent:
             return json.dumps({"error": str(e)})
 
     @agent.tool
-    async def get_research_findings(
+    async def get_artifacts(
         ctx: RunContext[MissionDirectorDeps],
-        report_id: str | None = None,
+        artifact_type: str | None = None,
     ) -> str:
-        """Get research findings for this mission.
+        """Get artifacts (reports, findings) produced by this mission.
 
-        Returns the executive summary, key findings, source count, and
-        verification score from the latest research report (or a specific
-        report by ID). Use this to answer follow-up questions about
-        completed research.
+        Returns the latest artifacts from the mission_artifacts table.
+        Use this to answer follow-up questions about completed research,
+        code reviews, or any other agent-produced deliverables.
 
         Args:
-            report_id: Optional specific report ID. If None, returns the
-                       latest report for this mission.
+            artifact_type: Optional filter (e.g. 'research_report',
+                          'vulnerability_report'). If None, returns all.
         """
         try:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.services.research_report import ResearchReportService
-            svc = ResearchReportService(ctx.deps.db_session)
+            from sqlalchemy import select
+            from modules.backend.models.mission_artifact import MissionArtifact
 
-            if report_id:
-                report = await svc.get_report(report_id)
-            else:
-                reports = await svc.list_for_mission(
-                    ctx.deps.mission_id, limit=1
-                )
-                report = reports[0] if reports else None
+            query = (
+                select(MissionArtifact)
+                .where(MissionArtifact.mission_id == ctx.deps.mission_id)
+                .order_by(MissionArtifact.created_at.desc())
+                .limit(5)
+            )
+            if artifact_type:
+                query = query.where(MissionArtifact.artifact_type == artifact_type)
 
-            if report is None:
+            result = await ctx.deps.db_session.execute(query)
+            artifacts = result.scalars().all()
+
+            if not artifacts:
                 return json.dumps({
-                    "status": "no_reports",
-                    "message": "No research reports found for this mission.",
+                    "status": "no_artifacts",
+                    "message": "No artifacts found for this mission.",
                 })
 
-            structured = report.report_structured or {}
-            return json.dumps({
-                "report_id": report.id,
-                "query": report.query,
-                "status": report.status,
-                "executive_summary": structured.get("executive_summary", ""),
-                "source_count": len(report.sources or []),
-                "citation_count": report.citation_count,
-                "verification_score": report.verification_score,
-                "report_markdown_preview": (report.report_markdown or "")[:2000],
-                "sources": (report.sources or [])[:10],
-            }, indent=2, default=str)
+            return json.dumps([
+                {
+                    "id": a.id,
+                    "artifact_type": a.artifact_type,
+                    "title": a.title,
+                    "content_preview": (a.content_text or "")[:2000],
+                    "created_at": str(a.created_at),
+                }
+                for a in artifacts
+            ], indent=2, default=str)
 
         except Exception as e:
-            logger.error("get_research_findings failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error("get_artifacts failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -1229,5 +1246,15 @@ def create_agent(model: str | Model) -> Agent:
         except Exception:
             pass
         return ""
+
+    # Populate list_tools with the registered tool names + descriptions
+    # so the Director can introspect its own capabilities at runtime.
+    tool_info = []
+    for t in agent._function_toolset.tools.values():
+        tool_info.append({
+            "name": t.name,
+            "description": (t.description or "")[:120],
+        })
+    list_tools._registered_tools = sorted(tool_info, key=lambda x: x["name"])
 
     return agent

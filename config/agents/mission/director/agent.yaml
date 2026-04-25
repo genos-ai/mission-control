@@ -3,8 +3,8 @@
 #   the mission, triggers runs, queries history, and manages the mission
 #   on behalf of the user.
 #
-#   Model: Opus 4.6 — best reasoning for conversational delegation.
-#   Model is PINNED — no runtime override (P2).
+#   Model: Sonnet 4.6 — fast, cost-effective for tool routing and delegation.
+#   Opus not needed — the Director delegates work, it doesn't reason deeply.
 
 agent_name: mission.director.agent
 agent_type: horizontal
@@ -17,7 +17,7 @@ chat_enabled: true
 version: "1.0.0"
 
 model:
-  name: "anthropic:claude-sonnet-4-6"
+  name: "copilot:claude-sonnet-4.6"
   temperature: 0.0
   max_tokens: 16384
 

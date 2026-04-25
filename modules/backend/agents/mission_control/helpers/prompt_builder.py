@@ -89,7 +89,6 @@ def _build_planning_prompt(
     mission_id: str,
     roster_description: str,
     upstream_context: dict | None,
-    code_map: dict | None = None,
     project_context: dict | None = None,
     recent_failures: list | None = None,
     current_plan: dict | None = None,
@@ -161,20 +160,6 @@ def _build_planning_prompt(
         parts.append(
             f"## Upstream Context\n\n```json\n"
             f"{json.dumps(upstream_context, indent=2)}\n```\n"
-        )
-
-    if code_map:
-        parts.append(
-            "## Code Map (Structural Overview)\n\n"
-            "The following JSON contains the complete structural map of the codebase.\n"
-            "Use it to:\n"
-            "- Identify which files exist and what they contain\n"
-            "- Trace dependencies via the import_graph\n"
-            "- Generate file_manifest entries for coding tasks\n"
-            "- Understand which modules are most important (highest PageRank rank)\n\n"
-            "```json\n"
-            f"{json.dumps(code_map, indent=None)}\n"
-            "```\n"
         )
 
     parts.append(

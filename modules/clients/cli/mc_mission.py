@@ -188,6 +188,209 @@ async def set_gate(api: CliApiClient, mission_id: str, mode: str) -> None:
     console.print(f"[green]Gate mode set:[/green] {mode}")
 
 
+async def set_budget(api: CliApiClient, mission_id: str, amount: float) -> None:
+    """Set the budget ceiling for the current mission."""
+    console = get_console()
+    await api.patch(
+        f"/missions/{mission_id}/plan",
+        body={"budget_usd_ceiling": amount},
+    )
+    console.print(f"[green]Budget set:[/green] ${amount:.2f}")
+
+
+# ── Artifacts ─────────────────────────────────────────────────────────
+
+
+async def list_artifacts(api: CliApiClient, mission_id: str) -> None:
+    """List artifacts for the current mission."""
+    console = get_console()
+    data = await api.get(f"/missions/{mission_id}/artifacts")
+    artifacts = data.get("artifacts", [])
+    if not artifacts:
+        console.print("[dim]No artifacts found.[/dim]")
+        return
+
+    from rich.table import Table
+
+    table = Table(title=f"Artifacts ({len(artifacts)})")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Type", width=10)
+    table.add_column("Agent", width=30)
+    table.add_column("Title", width=50)
+    table.add_column("Created", width=16)
+
+    for i, a in enumerate(artifacts, 1):
+        table.add_row(
+            str(i),
+            a.get("artifact_type", ""),
+            a.get("agent_id", ""),
+            a.get("title", "")[:50],
+            str(a.get("created_at", ""))[:16],
+        )
+
+    console.print(table)
+
+
+async def show_artifact(api: CliApiClient, mission_id: str, num: int) -> None:
+    """Show a specific artifact by its list number."""
+    console = get_console()
+    data = await api.get(f"/missions/{mission_id}/artifacts")
+    artifacts = data.get("artifacts", [])
+
+    if not artifacts:
+        console.print("[dim]No artifacts found.[/dim]")
+        return
+
+    if num < 1 or num > len(artifacts):
+        console.print(f"[red]Artifact #{num} not found. Available: 1-{len(artifacts)}[/red]")
+        return
+
+    a = artifacts[num - 1]
+    console.print(f"\n[bold]Artifact #{num}[/bold]")
+    console.print(f"[bold]ID:[/bold] {a.get('id', '')}")
+    console.print(f"[bold]Type:[/bold] {a.get('artifact_type', '')}")
+    console.print(f"[bold]Agent:[/bold] {a.get('agent_id', '')}")
+    console.print(f"[bold]Title:[/bold] {a.get('title', '')}")
+    console.print(f"[bold]Created:[/bold] {a.get('created_at', '')}")
+    console.print()
+
+    content = a.get("content_text", "")
+    if content:
+        if a.get("content_type") == "markdown":
+            from rich.markdown import Markdown
+            console.print(Markdown(content))
+        else:
+            console.print(content)
+    else:
+        console.print("[dim](no content)[/dim]")
+
+
+# ── Reports ───────────────────────────────────────────────────────────
+
+
+async def list_reports(api: CliApiClient, mission_id: str) -> None:
+    """List research reports from completed runs."""
+    console = get_console()
+
+    execs = await api.get("/executions", params={"limit": 50})
+    all_records = execs.get("executions", [])
+    completed = [
+        r for r in all_records
+        if r.get("status") == "completed" and r.get("mission_id") == mission_id
+    ]
+
+    if not completed:
+        console.print("[dim]No completed runs found.[/dim]")
+        return
+
+    from rich.table import Table
+
+    table = Table(title=f"Reports ({len(completed)} completed runs)")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("When", width=16)
+    table.add_column("Cost", width=10)
+    table.add_column("Objective", width=70)
+
+    for i, r in enumerate(completed, 1):
+        table.add_row(
+            str(i),
+            str(r.get("created_at", ""))[:16],
+            f"${r.get('total_cost_usd', 0):.4f}",
+            str(r.get("objective_statement", ""))[:70],
+        )
+
+    console.print(table)
+    console.print("\n[dim]Use: mc.py report --run N  to view a report[/dim]")
+
+
+async def show_report(api: CliApiClient, mission_id: str, run: int | None) -> None:
+    """Show the research report from the latest (or specified) run."""
+    console = get_console()
+
+    # Get executions and filter by mission
+    execs = await api.get("/executions", params={"limit": 50})
+    all_records = execs.get("executions", [])
+    completed = [
+        r for r in all_records
+        if r.get("status") == "completed" and r.get("mission_id") == mission_id
+    ]
+
+    if not completed:
+        console.print("[dim]No completed runs found.[/dim]")
+        return
+
+    if run is not None:
+        if run < 1 or run > len(completed):
+            console.print(f"[red]Run #{run} not found. Available: 1-{len(completed)}[/red]")
+            return
+        target = completed[run - 1]
+    else:
+        target = completed[0]
+
+    eid = target["id"]
+    detail = await api.get(f"/executions/{eid}")
+    tasks = detail.get("task_executions", [])
+
+    # Find synthesizer output (the report)
+    report_task = None
+    search_task = None
+    for t in tasks:
+        agent = t.get("agent_name", "")
+        if "synthesizer" in agent:
+            report_task = t
+        elif "searcher" in agent:
+            search_task = t
+
+    obj = target.get("objective_statement", "")
+    console.print(f"\n[bold]Run:[/bold] {eid[:12]}  [dim]{target.get('created_at', '')[:16]}[/dim]")
+    console.print(f"[bold]Objective:[/bold] {obj}")
+    console.print(f"[bold]Cost:[/bold] ${target.get('total_cost_usd', 0):.4f}\n")
+
+    if report_task:
+        out = report_task.get("output_data") or {}
+        title = out.get("title", "Research Report")
+        summary = out.get("executive_summary", "")
+        sections = out.get("sections", [])
+        sources = out.get("sources", [])
+        report_md = out.get("report_markdown", "")
+
+        console.print(f"[bold cyan]# {title}[/bold cyan]\n")
+
+        if summary:
+            console.print(f"[bold]Executive Summary[/bold]\n{summary}\n")
+
+        if report_md:
+            from rich.markdown import Markdown
+            console.print(Markdown(report_md))
+        elif sections:
+            for sec in sections:
+                heading = sec.get("heading", sec.get("title", ""))
+                body = sec.get("content", sec.get("body", ""))
+                console.print(f"\n[bold]## {heading}[/bold]\n{body}")
+
+        if sources:
+            console.print(f"\n[bold]Sources ({len(sources)})[/bold]")
+            for s in sources[:10]:
+                url = s.get("url", "")
+                title = s.get("title", url)
+                console.print(f"  • {title}")
+                if url and url != title:
+                    console.print(f"    [dim]{url}[/dim]")
+    elif search_task:
+        # No synthesizer — show raw search findings
+        out = search_task.get("output_data") or {}
+        findings = out.get("findings", [])
+        console.print(f"[bold]Search Findings ({len(findings)})[/bold]\n")
+        for f in findings[:10]:
+            claim = f.get("claim", "")
+            evidence = f.get("evidence", "")
+            console.print(f"  • {claim}")
+            if evidence:
+                console.print(f"    [dim]{evidence[:200]}[/dim]")
+    else:
+        console.print("[dim]No research output found in this run.[/dim]")
+
+
 async def context_show(api: CliApiClient, mission_id: str) -> None:
     """View the Mission Context Document."""
     console = get_console()

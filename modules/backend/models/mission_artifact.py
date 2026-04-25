@@ -34,23 +34,32 @@ from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 class ArtifactType(str, enum.Enum):
     """Typed artifact categories.
 
-    ``report``  — free-form markdown summary from an agent (the v1 default
-                  and only type currently emitted in practice).
-    ``finding`` — a structured security/quality finding. Reserved for
-                  future emission sites where agents produce structured
-                  output with severity, CVE, evidence, etc.
-    ``code``    — generated or modified source code. Reserved.
-    ``data``    — structured data dump (JSON, CSV, table). Reserved.
-    ``file``    — binary or large file artifact. Reserved for v2; will
-                  require a storage decision (DB blob / filesystem /
-                  object store) when the first real use case lands.
+    Each value corresponds to an agent's ``artifact_type`` catalog field.
+    Only agents with ``produces_artifact: true`` create artifacts — these
+    are user-facing deliverables, not intermediate execution data.
+
+    Domain-specific report types:
+    ``research_report``       — research synthesizer output (executive summary, sections, sources)
+    ``vulnerability_report``  — pentest/security scan findings with severity and remediation
+    ``quality_audit``         — code quality assessment with scores and issues
+    ``architecture_review``   — architecture analysis with recommendations
+
+    Generic types (for agents that don't fit a specific domain):
+    ``report``    — general-purpose report
+    ``code``      — generated or modified source code
+    ``data``      — structured data dump (JSON, CSV, table)
     """
 
+    # Domain-specific
+    RESEARCH_REPORT = "research_report"
+    VULNERABILITY_REPORT = "vulnerability_report"
+    QUALITY_AUDIT = "quality_audit"
+    ARCHITECTURE_REVIEW = "architecture_review"
+
+    # Generic
     REPORT = "report"
-    FINDING = "finding"
     CODE = "code"
     DATA = "data"
-    FILE = "file"
 
 
 class ArtifactContentType(str, enum.Enum):
@@ -116,7 +125,7 @@ class MissionArtifact(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
     artifact_type: Mapped[str] = mapped_column(
-        String(20),
+        String(50),
         default=ArtifactType.REPORT.value,
         server_default=ArtifactType.REPORT.value,
         nullable=False,

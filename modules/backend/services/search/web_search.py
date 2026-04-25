@@ -1,9 +1,12 @@
 """
 Web search service (Plan 40 §4.1).
 
-Provides web search with automatic fallback: Tavily → Brave.
-Tavily returns content snippets directly; Brave returns URLs only
-(content extraction needed separately via ContentExtractService).
+Provides web search with automatic fallback chain:
+  perplexity → tavily → brave
+
+Each provider returns SearchResult objects. Perplexity and Tavily include
+content directly; Brave returns URLs only (use ContentExtractService
+separately for full content).
 """
 
 from __future__ import annotations
@@ -16,18 +19,35 @@ from modules.backend.schemas.research import SearchResult
 
 logger = get_logger(__name__)
 
-# Tavily search depth options
 _TAVILY_DEPTHS = {"basic", "advanced"}
+
+# Provider priority — first available key wins
+_PROVIDER_CHAIN = ["perplexity", "tavily", "brave"]
 
 
 class WebSearchService:
-    """Web search with Tavily primary, Brave fallback."""
+    """Web search with automatic provider fallback."""
 
     def __init__(self, http_client: httpx.AsyncClient) -> None:
         self._client = http_client
         settings = get_settings()
+        self._perplexity_key = settings.perplexity_api_key
         self._tavily_key = settings.tavily_api_key
         self._brave_key = settings.brave_api_key
+
+    def _get_key(self, provider: str) -> str:
+        return {
+            "perplexity": self._perplexity_key,
+            "tavily": self._tavily_key,
+            "brave": self._brave_key,
+        }.get(provider, "")
+
+    def _default_provider(self) -> str:
+        """First provider in the chain that has a key configured."""
+        for p in _PROVIDER_CHAIN:
+            if self._get_key(p):
+                return p
+        return "none"
 
     async def search(
         self,
@@ -39,46 +59,172 @@ class WebSearchService:
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
     ) -> list[SearchResult]:
-        """Search with automatic fallback: tavily → brave.
+        """Search with automatic fallback through the provider chain.
 
         Args:
             query: Search query string.
             max_results: Maximum number of results to return.
             search_depth: Tavily search depth — "basic" or "advanced".
-            provider: Force a specific provider ("tavily" or "brave").
-                      If None, tries Tavily first, falls back to Brave.
+            provider: Force a specific provider. If None, uses the
+                      fallback chain: perplexity → tavily → brave.
             include_domains: Only return results from these domains.
             exclude_domains: Exclude results from these domains.
 
         Returns:
-            List of SearchResult with url, title, snippet, and content
-            (content populated for Tavily results, empty for Brave).
+            List of SearchResult with url, title, snippet, and content.
         """
-        chosen = provider or ("tavily" if self._tavily_key else "brave")
+        if provider:
+            return await self._search_provider(
+                provider, query,
+                max_results=max_results,
+                search_depth=search_depth,
+                include_domains=include_domains,
+                exclude_domains=exclude_domains,
+            )
 
-        if chosen == "tavily" and self._tavily_key:
+        # Fallback chain — try each provider in order
+        errors: list[tuple[str, Exception]] = []
+        for p in _PROVIDER_CHAIN:
+            if not self._get_key(p):
+                continue
             try:
-                return await self._search_tavily(
-                    query,
+                return await self._search_provider(
+                    p, query,
                     max_results=max_results,
                     search_depth=search_depth,
                     include_domains=include_domains,
                     exclude_domains=exclude_domains,
                 )
-            except Exception:
-                logger.warning("Tavily search failed, falling back to Brave", exc_info=True)
-                if self._brave_key:
-                    return await self._search_brave(
-                        query,
-                        max_results=max_results,
-                    )
-                raise
+            except Exception as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                logger.warning(
+                    f"{p.capitalize()} search failed"
+                    + (f", falling back" if len(errors) < len(_PROVIDER_CHAIN) - 1 else ""),
+                    extra={
+                        "provider": p,
+                        "query": query[:80],
+                        "status_code": status,
+                        "error": str(e)[:200],
+                    },
+                )
+                errors.append((p, e))
 
-        if chosen == "brave" and self._brave_key:
-            return await self._search_brave(query, max_results=max_results)
+        if errors:
+            logger.error(
+                "All search providers failed",
+                extra={
+                    "query": query[:80],
+                    "providers_tried": [p for p, _ in errors],
+                    "errors": {p: str(e)[:150] for p, e in errors},
+                },
+            )
+            # Raise the last error
+            raise errors[-1][1]
 
-        logger.error("No search provider available (set TAVILY_API_KEY or BRAVE_API_KEY)")
+        logger.error("No search provider available (set PERPLEXITY_API_KEY, TAVILY_API_KEY, or BRAVE_API_KEY)")
         return []
+
+    async def _search_provider(
+        self,
+        provider: str,
+        query: str,
+        **kwargs,
+    ) -> list[SearchResult]:
+        """Route to the correct provider method."""
+        dispatch = {
+            "perplexity": self._search_perplexity,
+            "tavily": self._search_tavily,
+            "brave": self._search_brave,
+        }
+        fn = dispatch.get(provider)
+        if not fn:
+            raise ValueError(f"Unknown search provider: {provider}")
+        return await fn(query, **kwargs)
+
+    # ── Perplexity ────────────────────────────────────────────────────
+
+    async def _search_perplexity(
+        self,
+        query: str,
+        *,
+        max_results: int = 10,
+        search_depth: str = "advanced",
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
+    ) -> list[SearchResult]:
+        """Search via Perplexity Sonar API.
+
+        Uses the chat completions endpoint with the sonar model.
+        Returns results with content from citations.
+        """
+        messages = [{"role": "user", "content": query}]
+
+        payload: dict = {
+            "model": "sonar",
+            "messages": messages,
+        }
+        if include_domains:
+            payload["search_domain_filter"] = include_domains
+        if search_depth == "basic":
+            payload["search_recency_filter"] = "week"
+
+        resp = await self._client.post(
+            "https://api.perplexity.ai/chat/completions",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {self._perplexity_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract the response content and citations
+        content = ""
+        citations: list[str] = []
+
+        choices = data.get("choices", [])
+        if choices:
+            message = choices[0].get("message", {})
+            content = message.get("content", "")
+
+        citations = data.get("citations", [])
+
+        # Build results — one per citation with the full response as context
+        results = []
+        for i, url in enumerate(citations[:max_results]):
+            results.append(SearchResult(
+                url=url,
+                title=url.split("/")[-1].replace("-", " ").title() if "/" in url else url,
+                snippet=content[:500] if i == 0 else "",
+                content=content if i == 0 else "",
+                relevance_score=1.0 - (i * 0.05),
+                provider="perplexity",
+            ))
+
+        # If no citations but we got content, return as a single result
+        if not results and content:
+            results.append(SearchResult(
+                url="",
+                title="Perplexity response",
+                snippet=content[:500],
+                content=content,
+                relevance_score=1.0,
+                provider="perplexity",
+            ))
+
+        logger.info(
+            "Perplexity search complete",
+            extra={
+                "query": query[:80],
+                "results": len(results),
+                "citations": len(citations),
+            },
+        )
+        return results
+
+    # ── Tavily ────────────────────────────────────────────────────────
 
     async def _search_tavily(
         self,
@@ -128,11 +274,14 @@ class WebSearchService:
         )
         return results
 
+    # ── Brave ─────────────────────────────────────────────────────────
+
     async def _search_brave(
         self,
         query: str,
         *,
         max_results: int = 10,
+        **kwargs,
     ) -> list[SearchResult]:
         """Search via Brave Search API. Returns URLs + snippets (no content)."""
         resp = await self._client.get(
@@ -153,7 +302,7 @@ class WebSearchService:
                 url=item.get("url", ""),
                 title=item.get("title", ""),
                 snippet=item.get("description", ""),
-                content="",  # Brave doesn't return content — use ContentExtractService
+                content="",
                 relevance_score=0.0,
                 provider="brave",
             ))

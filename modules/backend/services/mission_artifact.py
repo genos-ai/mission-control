@@ -166,39 +166,73 @@ class MissionArtifactService(BaseService):
     ) -> MissionArtifact | None:
         """Extract an artifact from one completed task result, if any.
 
-        Uses the same heuristic as the live SSE emission site in
-        ``agents/mission_control/helpers/agent_executor.py``: if the
-        task's ``output_reference`` dict has a non-empty ``summary`` or
-        ``result`` string field, persist it as a ``report`` artifact.
+        Handles three output shapes:
+
+        1. **Research loop** — ``output_reference = {"report": {...}, "report_title": ...}``
+           → artifact_type ``report``, title from report metadata.
+        2. **Standard agent** (via execute_agent_fn) —
+           ``output_reference = {"output": {"summary": ...}, "_meta": {...}}``
+           → artifact_type ``finding``, title derived from content.
+        3. **Legacy flat** — ``output_reference = {"summary": ...}``
+           → same as (2), kept for backwards compatibility.
 
         Returns the created artifact, or ``None`` if the task_result has
-        no extractable content (no summary, no result, or both empty).
-
-        This is the extraction hook called from
-        ``persist_mission_results``. Failure is best-effort — caller
-        wraps in a try/except and logs, never raises.
+        no extractable content. Best-effort — caller wraps in try/except.
         """
         output = task_result.output_reference or {}
         if not isinstance(output, dict):
             return None
 
         content: str | None = None
-        if isinstance(output.get("summary"), str) and output["summary"].strip():
-            content = output["summary"]
-        elif isinstance(output.get("result"), str) and output["result"].strip():
-            content = output["result"]
+        title_override: str | None = None
+        artifact_type = "finding"
+
+        # Path 1: Research loop — report dict at top level
+        if isinstance(output.get("report"), dict):
+            artifact_type = "report"
+            report = output["report"]
+            if isinstance(report.get("report_markdown"), str) and report["report_markdown"].strip():
+                content = report["report_markdown"]
+            elif isinstance(report.get("executive_summary"), str) and report["executive_summary"].strip():
+                content = report["executive_summary"]
+            title_override = (
+                output.get("report_title")
+                or report.get("title")
+                or None
+            )
+        else:
+            # Path 2: Standard agent — unwrap {"output": {...}, "_meta": {...}}
+            inner = output.get("output", {})
+            inner = inner if isinstance(inner, dict) else {}
+            # Also check top-level for legacy/custom dispatchers (Path 3)
+            for src in (inner, output):
+                if isinstance(src.get("summary"), str) and src["summary"].strip():
+                    content = src["summary"]
+                    break
+                if isinstance(src.get("result"), str) and src["result"].strip():
+                    content = src["result"]
+                    break
 
         if not content:
             return None
 
         agent_name = task_result.agent_name or ""
+        if not title_override:
+            # Derive title from first non-empty line of content
+            first_line = next(
+                (ln.lstrip("#").strip() for ln in content.splitlines() if ln.strip()),
+                "",
+            )
+            title_override = first_line[:120] if first_line else None
+
+        title = title_override or (f"{agent_name} — output" if agent_name else "Agent output")
         return await self.create_artifact(
             mission_id=mission_id,
             execution_record_id=execution_record_id,
             task_execution_id=task_execution_id,
             agent_id=agent_name,
-            artifact_type="report",
-            title=f"{agent_name} — result" if agent_name else "Agent result",
+            artifact_type=artifact_type,
+            title=title,
             content_text=content,
             content_type="markdown",
         )

@@ -31,7 +31,6 @@ class PlanningAgentDeps(BaseAgentDeps):
     mission_brief: str = ""
     roster_description: str = ""
     upstream_context: dict[str, Any] | None = None
-    code_map: dict | None = None
 
 
 def create_agent(model: str | Model) -> Agent:

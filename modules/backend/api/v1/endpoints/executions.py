@@ -330,30 +330,57 @@ async def cancel_execution(
     request_id: RequestId,
     reason: str = "Cancelled by user",
 ) -> ApiResponse:
-    """Cancel a pending or running execution."""
+    """Cancel a pending or running execution.
+
+    Accepts either an executions ID or an execution_records ID (the
+    frontend's run-live page uses execution_record IDs from the URL).
+    """
     from modules.backend.services.execution import ExecutionService
 
     service = ExecutionService(db)
 
+    # Try the executions table first (legacy/direct dispatch path)
     execution = await service.get_execution_or_none(execution_id)
-    if not execution:
-        raise NotFoundError(f"Execution '{execution_id}' not found")
-
-    status = execution.status.value if hasattr(execution.status, "value") else str(execution.status)
-    if status in ("completed", "failed", "cancelled"):
+    if execution:
+        status = execution.status.value if hasattr(execution.status, "value") else str(execution.status)
+        if status in ("completed", "failed", "cancelled"):
+            return ApiResponse(
+                success=True,
+                data={"id": str(execution.id), "status": status, "message": "Already terminal"},
+                metadata={"request_id": request_id},
+            )
+        execution = await service.cancel_execution(execution_id, reason)
         return ApiResponse(
             success=True,
-            data={"id": str(execution.id), "status": status, "message": "Already terminal"},
+            data={"id": str(execution.id), "status": "cancelled"},
             metadata={"request_id": request_id},
         )
 
-    execution = await service.cancel_execution(execution_id, reason)
+    # Try execution_records (Temporal/plan-dispatch path — what the frontend uses)
+    from modules.backend.repositories.execution_record import ExecutionRecordRepository
+    record_repo = ExecutionRecordRepository(db)
+    record = await record_repo.get_by_id_or_none(execution_id)
+    if record:
+        status = record.status.value if hasattr(record.status, "value") else str(record.status)
+        if status in ("completed", "failed", "cancelled", "COMPLETED", "FAILED", "CANCELLED"):
+            return ApiResponse(
+                success=True,
+                data={"id": str(record.id), "status": status, "message": "Already terminal"},
+                metadata={"request_id": request_id},
+            )
+        # Cancel by updating status — the Temporal workflow will detect this
+        await persistence.complete_execution(
+            execution_record_id=str(record.id),
+            status="cancelled",
+        )
+        await db.commit()
+        return ApiResponse(
+            success=True,
+            data={"id": str(record.id), "status": "cancelled"},
+            metadata={"request_id": request_id},
+        )
 
-    return ApiResponse(
-        success=True,
-        data={"id": str(execution.id), "status": "cancelled"},
-        metadata={"request_id": request_id},
-    )
+    raise NotFoundError(f"Execution '{execution_id}' not found")
 
 
 @router.post(

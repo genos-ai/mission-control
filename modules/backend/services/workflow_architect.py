@@ -176,12 +176,8 @@ class WorkflowArchitectService(BaseService):
     def _create_agent(self):
         """Create the architect agent from the registry config."""
         registry = get_registry()
-        if registry.has(ARCHITECT_AGENT_NAME):
-            config = registry.get(ARCHITECT_AGENT_NAME)
-            model = _build_model(config.model)
-        else:
-            model = _build_model("anthropic:claude-opus-4-20250514")
-
+        config = registry.get(ARCHITECT_AGENT_NAME)  # raises KeyError if missing
+        model = _build_model(config.model)
         return create_agent(model)
 
     def _build_deps(

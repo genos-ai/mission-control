@@ -541,6 +541,13 @@ async def handle(
         is_error = metadata.get("error") is True
         is_substantive = len(full_content) > 100
         if mission_id and is_substantive and not is_error:
+            # Derive a title from the first non-empty line of content
+            _title_line = next(
+                (ln.lstrip("#").strip() for ln in full_content.splitlines() if ln.strip()),
+                "Director response",
+            )
+            _artifact_title = _title_line[:120] if len(_title_line) > 120 else _title_line
+
             # SSE event — triggers live artifact panel update
             try:
                 artifact_event = MissionArtifactFoundEvent(
@@ -548,8 +555,8 @@ async def handle(
                     source=source,
                     mission_id=mission_id,
                     agent_id=agent_name,
-                    artifact_type="report",
-                    title=f"{agent_name} — result",
+                    artifact_type="response",
+                    title=_artifact_title,
                     content=full_content[:3000],
                     content_type="markdown",
                 )
@@ -566,9 +573,9 @@ async def handle(
                     await artifact_svc.create_artifact(
                         mission_id=mission_id,
                         agent_id=agent_name,
-                        title=f"{agent_name} — result",
+                        title=_artifact_title,
                         content_text=full_content,
-                        artifact_type="report",
+                        artifact_type="response",
                         content_type="markdown",
                     )
                 except Exception:

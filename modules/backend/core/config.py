@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str
     anthropic_api_key: str
     admin_api_key: str = ""
+    perplexity_api_key: str = ""
     tavily_api_key: str = ""
     brave_api_key: str = ""
 

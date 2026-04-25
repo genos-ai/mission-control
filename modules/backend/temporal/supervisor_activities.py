@@ -89,13 +89,20 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     try:
         return await _do_evaluate_post_run(input)
     except Exception as e:
+        from modules.backend.temporal.activities import _format_activity_error
+        clean_msg = _format_activity_error(e)
         activity.logger.error(
             "evaluate_post_run failed",
-            extra={"plan_id": input.plan_id, "error": str(e), "mission_id": input.mission_id},
+            extra={
+                "plan_id": input.plan_id,
+                "error": clean_msg,
+                "error_type": type(e).__name__,
+                "mission_id": input.mission_id,
+            },
             exc_info=True,
         )
         await _emit_supervisor_error(
-            input.mission_id, f"Post-run evaluation failed: {e}",
+            input.mission_id, f"Post-run evaluation failed: {clean_msg}",
         )
         raise
 

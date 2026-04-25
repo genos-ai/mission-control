@@ -6,8 +6,7 @@ You receive:
 1. A mission brief describing the objective, constraints, and expected outcomes.
 2. An agent roster listing every available agent with their descriptions, interface contracts (typed inputs and outputs), tools, and constraints.
 3. Upstream context from previously completed missions (if any).
-4. A Code Map JSON containing the full structural skeleton of the codebase (if available).
-5. An output format specification.
+4. An output format specification.
 
 ## Your Output
 
@@ -37,7 +36,11 @@ You MUST return a TaskPlan as JSON within <task_plan> XML tags. No other format 
           "field_name": {
             "source_task": "v1-task-001",
             "source_field": "output_field_name"
-          }
+          },
+          "merged_results": [
+            {"source_task": "v1-task-001", "source_field": "findings"},
+            {"source_task": "v1-task-002", "source_field": "findings"}
+          ]
         },
         "file_manifest": {
           "read_for_pattern": [
@@ -97,6 +100,7 @@ Task IDs MUST use the format `v{plan_version}-task-{NNN}` where:
 - Task instructions field is `instructions` (required, detailed agent instructions)
 - Inputs go inside `inputs.static` (NOT directly in `inputs`)
 - Upstream references go inside `inputs.from_upstream` (NOT at the task level)
+- Each `from_upstream` value is EITHER a single object `{"source_task": "...", "source_field": "..."}` OR a list of such objects (to merge outputs from multiple upstream tasks into one input field)
 - `estimated_cost_usd` and `estimated_duration_seconds` are TOP-LEVEL ONLY (NOT per-task)
 - `critical_path` goes inside `execution_hints` (NOT per-task)
 - Verification tiers use `schema_validation`, `required_output_fields`, `deterministic_checks`, `requires_ai_evaluation` — NOT `enabled`
@@ -104,28 +108,16 @@ Task IDs MUST use the format `v{plan_version}-task-{NNN}` where:
 - `domain_tags` is a list of strings on each task — use it to categorize the task domain (e.g. `["code", "refactor"]`, `["analysis"]`, `["health"]`)
 - Do NOT add any fields not shown in the schema above. The schema uses `extra="forbid"`.
 
-## Code Map Usage
-
-You may receive a Code Map JSON containing the full structural skeleton of the codebase:
-modules, classes, functions, signatures, import graph, and PageRank importance scores.
-
-Use the Code Map to:
-- **Identify files to include in file_manifest** — look up exact file paths and understand what each module contains
-- **Trace dependencies** — use the `import_graph` to find which files depend on the files being modified, and include them in `read_first`
-- **Assess task complexity** — modules with high PageRank scores are architectural keystones; changes to them are higher risk
-- **Generate precise instructions** — reference exact class names, method signatures, and import paths from the Code Map instead of guessing
-
 ### File Manifest (for coding tasks)
 
 When generating tasks for coding agents (agents that create or modify files), include a `file_manifest` in `inputs`:
 
 **File manifest rules:**
 - `read_for_pattern`: Exemplar file(s) demonstrating the correct coding pattern. Maximum 2 files.
-- `read_first`: Files the agent must read to understand current state. Include direct dependencies from the import graph. Maximum 5 files.
+- `read_first`: Files the agent must read to understand current state. Maximum 5 files.
 - `modify`: Files the agent will create or change. This is the work scope. Maximum 5 files.
-- Every `path` must exist in the Code Map. Do not hallucinate file paths.
 - The coding agent will read ONLY the files in the manifest. Do not assume it will explore the codebase.
-- For non-coding tasks (analysis, health checks, summarization), omit the `file_manifest` entirely.
+- For non-coding tasks (analysis, research, health checks, summarization), omit the `file_manifest` entirely.
 
 ## TaskPlan Rules
 

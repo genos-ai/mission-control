@@ -227,6 +227,7 @@ async def execute_research_loop(
         ResearchStartedEvent,
         ResearchSubQuestionUpdatedEvent,
         ResearchSynthesizingEvent,
+        SystemEvent,
     )
 
     async def _narrative(phase: str, message: str, iteration: int | None = None) -> None:
@@ -357,8 +358,15 @@ async def execute_research_loop(
 
             for sq, result in zip(gap_questions, search_results):
                 if isinstance(result, Exception):
+                    error_msg = str(result)[:200]
                     logger.warning("Searcher failed for sub-question",
-                                   extra={"sq_id": sq.id, "error": str(result)})
+                                   extra={"sq_id": sq.id, "error": error_msg})
+                    await _emit(_bus, SystemEvent,
+                        session_id=_sid, source=f"research:{mission_id}",
+                        level="warning",
+                        message=f"Search failed for '{sq.text[:60]}': {error_msg}",
+                        mission_id=mission_id,
+                    )
                     continue
                 findings_list, searcher_cost = result
                 round_findings.extend(findings_list)

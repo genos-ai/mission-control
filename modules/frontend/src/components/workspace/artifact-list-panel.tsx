@@ -15,6 +15,7 @@ import {
   File,
   FileText,
   Loader2,
+  MessageSquare,
   Package,
   Search,
 } from 'lucide-react'
@@ -26,15 +27,16 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { StreamingArtifactCard } from '@/components/workspace/streaming-artifact-card'
 
 const TYPE_META: Record<string, { icon: typeof FileText; label: string }> = {
-  report:  { icon: FileText, label: 'Reports' },
-  finding: { icon: Search,   label: 'Findings' },
-  code:    { icon: Code,     label: 'Code' },
-  data:    { icon: Database,  label: 'Data' },
-  file:    { icon: File,     label: 'Files' },
+  report:   { icon: FileText,      label: 'Reports' },
+  finding:  { icon: Search,        label: 'Findings' },
+  response: { icon: MessageSquare, label: 'Responses' },
+  code:     { icon: Code,          label: 'Code' },
+  data:     { icon: Database,      label: 'Data' },
+  file:     { icon: File,          label: 'Files' },
 }
 
 // Stable display order for groups
-const TYPE_ORDER = ['report', 'finding', 'code', 'data', 'file']
+const TYPE_ORDER = ['report', 'finding', 'response', 'code', 'data', 'file']
 
 export function ArtifactListPanel({
   artifacts,

@@ -241,6 +241,21 @@ def mission_set_gate(ctx, mode):
     asyncio.run(_run())
 
 
+@mission.command("set-budget")
+@click.argument("amount", type=float)
+@click.pass_obj
+def mission_set_budget(ctx, amount):
+    """Set the budget ceiling for the current mission."""
+    from modules.clients.cli.mc_mission import set_budget
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await set_budget(api, mid, amount)
+
+    asyncio.run(_run())
+
+
 @mission.command("archive")
 @click.pass_obj
 def mission_archive(ctx):
@@ -380,6 +395,78 @@ def history(ctx, n):
         async with api_client() as api:
             mid = await require_mission(api)
             await show_history(api, n, mission_id=mid, verbose=ctx.verbose)
+
+    asyncio.run(_run())
+
+
+@mc.group()
+@click.pass_context
+def artifacts(ctx):
+    """View mission artifacts."""
+    pass
+
+
+@artifacts.command("list")
+@click.pass_obj
+def artifacts_list(ctx):
+    """List all artifacts for the current mission."""
+    from modules.clients.cli.mc_mission import list_artifacts
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await list_artifacts(api, mid)
+
+    asyncio.run(_run())
+
+
+@artifacts.command("show")
+@click.argument("num", type=int)
+@click.pass_obj
+def artifacts_show(ctx, num):
+    """Show artifact #N (from artifacts list)."""
+    from modules.clients.cli.mc_mission import show_artifact
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await show_artifact(api, mid, num)
+
+    asyncio.run(_run())
+
+
+@mc.group()
+@click.pass_context
+def report(ctx):
+    """View research reports."""
+    pass
+
+
+@report.command("list")
+@click.pass_obj
+def report_list(ctx):
+    """List completed runs with reports."""
+    from modules.clients.cli.mc_mission import list_reports
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await list_reports(api, mid)
+
+    asyncio.run(_run())
+
+
+@report.command("show")
+@click.option("--run", "n", type=int, default=None, help="Show report from run #N (default: latest).")
+@click.pass_obj
+def report_show(ctx, n):
+    """View the research report from a completed run."""
+    from modules.clients.cli.mc_mission import show_report
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await show_report(api, mid, n)
 
     asyncio.run(_run())
 

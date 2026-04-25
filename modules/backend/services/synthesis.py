@@ -19,7 +19,6 @@ import json
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
-from pydantic_ai.models import Model
 
 from modules.backend.agents.mission_control.helpers import _build_model
 from modules.backend.core.logging import get_logger
@@ -29,7 +28,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MODEL = "anthropic:claude-haiku-4-5-20251001"
+_MODEL = "copilot:claude-haiku-4.5"
 
 _INSTRUCTIONS = """\
 You are a concise technical writer. Given structured execution outcome data,
@@ -43,17 +42,11 @@ Rules:
 - Do not use markdown headers. Plain text only.
 """
 
-_agent: Agent[None, str] | None = None
 
-
-def _get_agent() -> Agent[None, str]:
-    """Lazily create and cache the synthesis agent."""
-    global _agent
-    if _agent is None:
-        model = _build_model(_MODEL)
-        _agent = Agent(model, output_type=str, instructions=_INSTRUCTIONS)
-        logger.info("Synthesis service initialized", extra={"model": _MODEL})
-    return _agent
+def _create_agent() -> Agent[None, str]:
+    """Create a fresh synthesis agent (no caching — avoids stale model singletons)."""
+    model = _build_model(_MODEL)
+    return Agent(model, output_type=str, instructions=_INSTRUCTIONS)
 
 
 def _build_prompt(outcome: ExecutionOutcome) -> str:
@@ -101,7 +94,7 @@ async def summarize_outcome(outcome: ExecutionOutcome) -> str:
     never blocks or fails the execution.
     """
     try:
-        agent = _get_agent()
+        agent = _create_agent()
         prompt = _build_prompt(outcome)
         result = await agent.run(prompt)
         summary = result.output.strip()

@@ -136,12 +136,18 @@ async def derive_roster_from_team(
         if member.custom_constraints:
             constraints_cfg = {**constraints_cfg, **member.custom_constraints}
 
+        if not model_cfg.get("name"):
+            raise ValueError(
+                f"Agent '{catalog_entry.agent_name}' has no model name "
+                f"in model_config_json. Fix the agent_catalog row."
+            )
+
         entries.append(RosterAgentEntry(
             agent_name=catalog_entry.agent_name,
             agent_version=catalog_entry.version,
             description=catalog_entry.description,
             model=RosterModelSchema(
-                name=model_cfg.get("name", "anthropic:claude-haiku-4-5-20251001"),
+                name=model_cfg["name"],
                 temperature=model_cfg.get("temperature", 0.0),
                 max_tokens=model_cfg.get("max_tokens", 4096),
             ),

@@ -126,14 +126,12 @@ async def persist_mission_results(
                 domain_tags=domain_tags,
             )
 
-            # Plan 43: extract artifact from this task's output. Same
-            # heuristic as the live SSE emission site
-            # (agent_executor.py) — summary field first, fall back to
-            # result. Best-effort: an extraction failure is logged and
-            # swallowed so it cannot block the ExecutionRecord save.
+            # Create artifact if the agent declares produces_artifact.
+            # Driven by catalog config, not output heuristics.
             if artifact_svc is not None and mission_id is not None:
                 try:
-                    await artifact_svc.extract_from_task_result(
+                    await _maybe_create_artifact(
+                        artifact_svc=artifact_svc,
                         mission_id=mission_id,
                         execution_record_id=record.id,
                         task_execution_id=execution.id,
@@ -141,7 +139,7 @@ async def persist_mission_results(
                     )
                 except Exception as artifact_exc:  # noqa: BLE001
                     logger.warning(
-                        "Failed to extract artifact from task result",
+                        "Failed to create artifact",
                         extra={
                             "task_id": task_result.task_id,
                             "agent": task_result.agent_name,
@@ -168,15 +166,6 @@ async def persist_mission_results(
                     feedback_provided=retry_entry.feedback_provided,
                 )
 
-        # Plan 40: persist research reports from research_loop tasks
-        if mission_id:
-            await _persist_research_reports(
-                db_session=db_session,
-                mission_id=mission_id,
-                execution_record_id=record.id,
-                task_results=outcome.task_results,
-            )
-
         await db_session.commit()
 
         logger.info(
@@ -196,64 +185,97 @@ async def persist_mission_results(
         return None
 
 
-async def _persist_research_reports(
+async def _maybe_create_artifact(
     *,
-    db_session: "AsyncSession",
+    artifact_svc: "MissionArtifactService",
     mission_id: str,
     execution_record_id: str,
-    task_results: list,
+    task_execution_id: str,
+    task_result,
 ) -> None:
-    """Persist research reports from research_loop task results (Plan 40).
+    """Create a mission_artifact if the agent declares produces_artifact.
 
-    Best-effort — failures are logged but never block execution persistence.
-    Detects research loop tasks by agent_name starting with "research(".
+    Looks up the agent in the registry. If produces_artifact is true,
+    extracts content from the task output and writes an artifact row.
+    No heuristics — the catalog flag is the single source of truth.
     """
-    from modules.backend.services.research_report import ResearchReportService
+    from modules.backend.agents.mission_control.registry import get_registry
+    import re
 
-    svc = ResearchReportService(db_session)
+    agent_name = task_result.agent_name or ""
+    if not agent_name:
+        return
 
-    for task_result in task_results:
-        if not getattr(task_result, "agent_name", "").startswith("research("):
-            continue
+    # Research loop wraps agent names: "research(research.strategist.agent)"
+    # Strip the wrapper to find the catalog entry, but check all agents
+    # involved in the research loop — the synthesizer produces the artifact.
+    registry = get_registry()
+    catalog_name = agent_name
 
-        output = getattr(task_result, "output_reference", None)
-        if not isinstance(output, dict):
-            continue
+    # For research loop tasks, check if the synthesizer (which produces
+    # the artifact) was involved. The output contains the synthesizer's
+    # report regardless of which agent name the loop is tagged with.
+    is_research_loop = agent_name.startswith("research(")
+    if is_research_loop:
+        # The synthesizer is the artifact producer in research loops
+        catalog_name = "research.synthesizer.agent"
 
-        report_data = output.get("report")
-        if not isinstance(report_data, dict):
-            continue
+    if not registry.has(catalog_name):
+        return
 
-        try:
-            await svc.create_report(
-                mission_id=mission_id,
-                execution_id=execution_record_id,
-                query=report_data.get("title", output.get("report_title", "")),
-                report_markdown=report_data.get("report_markdown", ""),
-                report_structured={
-                    "sections": report_data.get("sections", []),
-                    "executive_summary": report_data.get("executive_summary", ""),
-                    "methodology": report_data.get("methodology", ""),
-                    "limitations": report_data.get("limitations", ""),
-                },
-                sources=report_data.get("sources", []),
-                metadata_json={
-                    "total_sources": output.get("total_sources", 0),
-                    "total_iterations": output.get("total_iterations", 0),
-                    "total_findings": output.get("total_findings", 0),
-                    "coverage_ratio": output.get("coverage_ratio", 0),
-                },
-                status="verified" if output.get("verification_score") else "draft",
-                citation_count=len(report_data.get("sources", [])),
-                verification_score=output.get("verification_score"),
-            )
-            logger.info(
-                "Research report persisted",
-                extra={"mission_id": mission_id, "title": report_data.get("title", "")[:80]},
-            )
-        except Exception:
-            logger.warning(
-                "Failed to persist research report (non-fatal)",
-                extra={"mission_id": mission_id, "task_id": getattr(task_result, "task_id", "")},
-                exc_info=True,
-            )
+    config = registry.get(catalog_name)
+    if not config.produces_artifact:
+        return
+
+    output = task_result.output_reference or {}
+    if not isinstance(output, dict):
+        return
+
+    # Extract content — handle both direct output and research loop
+    # output where the report is nested under a "report" key.
+    report = output.get("report", {}) if isinstance(output.get("report"), dict) else {}
+
+    content = (
+        report.get("report_markdown")
+        or output.get("report_markdown")
+        or report.get("executive_summary")
+        or output.get("executive_summary")
+        or output.get("summary")
+        or output.get("result")
+    )
+    if not content and output:
+        import json
+        content = json.dumps(output, indent=2, default=str)
+
+    if not content:
+        return
+
+    title = (
+        report.get("title")
+        or output.get("title")
+        or output.get("report_title")
+        or f"{catalog_name} — output"
+    )
+
+    await artifact_svc.create_artifact(
+        mission_id=mission_id,
+        execution_record_id=execution_record_id,
+        task_execution_id=task_execution_id,
+        agent_id=agent_name,
+        artifact_type=config.artifact_type or "report",
+        title=title,
+        content_text=content,
+        content_type="markdown",
+    )
+
+    logger.info(
+        "Artifact created",
+        extra={
+            "agent": agent_name,
+            "artifact_type": config.artifact_type,
+            "title": title[:80],
+            "mission_id": mission_id,
+        },
+    )
+
+
