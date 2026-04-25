@@ -29,7 +29,7 @@ interface:
     sources: array
 
 produces_artifact: true
-artifact_type: research_report
+artifact_type: report
 
 scope:
   read: []
