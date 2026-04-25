@@ -286,7 +286,7 @@ async def _execute_layer(
                 resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
             except KeyError as e:
                 task_results.append(failed_result(task, str(e)))
-                await _emit_task_failure(_bus, _sid, mission_id, task.task_id, task.agent, str(e))
+                await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(e))
                 continue
             resolved_inputs = dict(resolved_inputs)
             layer_tasks.append(task)
@@ -318,7 +318,7 @@ async def _execute_layer(
                 resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
             except KeyError as e:
                 task_results.append(failed_result(task, str(e)))
-                await _emit_task_failure(_bus, _sid, mission_id, task.task_id, task.agent, str(e))
+                await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(e))
                 continue
             resolved_inputs = dict(resolved_inputs)
             layer_tasks.append(task)
@@ -358,14 +358,14 @@ async def _execute_layer(
         roster_entry = roster.get_agent_by_name(task.agent)
         if roster_entry is None:
             task_results.append(failed_result(task, "Agent not found in roster"))
-            await _emit_task_failure(_bus, _sid, mission_id, task.task_id, task.agent, "Agent not found in roster")
+            await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, "Agent not found in roster")
             continue
 
         try:
             resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
         except KeyError as e:
             task_results.append(failed_result(task, str(e)))
-            await _emit_task_failure(_bus, _sid, mission_id, task.task_id, task.agent, str(e))
+            await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(e))
             continue
 
         resolved_inputs = dict(resolved_inputs)
@@ -443,7 +443,7 @@ async def _execute_layer(
     for task, result in zip(layer_tasks, results):
         if isinstance(result, Exception):
             task_results.append(failed_result(task, str(result)))
-            await _emit_task_failure(_bus, _sid, mission_id, task.task_id, task.agent, str(result))
+            await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(result))
             continue
 
         task_result: TaskResult = result

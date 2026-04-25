@@ -398,6 +398,7 @@ class MissionPlanDispatchMixin:
                 mission_run_id=plan.id,
                 mission_brief=prompt,
                 session_service=SessionService(self._session),  # type: ignore[arg-type]
+                event_bus=self._event_bus,
                 session_id=session_id,
                 mission_id=mission_id,
                 db_session=self._session,
