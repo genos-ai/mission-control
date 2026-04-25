@@ -41,7 +41,7 @@ def _get_agent() -> Agent[None, str]:
     )
 
 
-def create_agent(model: str | Model | None = None) -> Agent[None, str]:
+def create_agent(model: str | Model | None = None, tool_names: list[str] | None = None) -> Agent[None, str]:
     """Create a synthesis agent with the given model.
 
     Args:

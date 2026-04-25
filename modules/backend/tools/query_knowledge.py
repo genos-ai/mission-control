@@ -4,6 +4,8 @@ Tool: query_knowledge
 Query the knowledge platform for relevant entries.
 """
 
+from pydantic_ai import RunContext
+
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -65,3 +67,39 @@ async def query_knowledge(
         results.append(entry_str)
 
     return f"Found {len(entries)} knowledge entries:\n\n" + "\n\n".join(results)
+
+
+# ── Registry integration ─────────────────────────────────
+
+TOOL_DEF = {
+    "name": "query_knowledge",
+    "description": "Query the knowledge platform for relevant entries",
+    "category": "knowledge",
+    "deps": ["mission_id"],
+}
+
+_impl = query_knowledge
+
+
+def register(agent):
+    """Register this tool on a PydanticAI agent."""
+    @agent.tool
+    async def query_knowledge(
+        ctx: RunContext,
+        query: str,
+        domain_tags: list[str] | None = None,
+        kinds: list[str] | None = None,
+        platform_only: bool = False,
+    ) -> str:
+        """Query the knowledge platform for relevant entries.
+
+        Returns matching learnings, decisions, and milestones.
+        """
+        mission_id = getattr(ctx.deps, "mission_id", None)
+        if not mission_id:
+            return "No mission context available."
+        return await _impl(
+            mission_id, query=query,
+            kinds=kinds, domain_tags=domain_tags,
+            platform_only=platform_only,
+        )

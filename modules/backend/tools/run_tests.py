@@ -8,6 +8,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pydantic_ai import RunContext
+
+
+TOOL_DEF = {
+    "name": "run_tests",
+    "description": "Run the unit test suite and return results",
+    "category": "code",
+    "deps": ["project_root"],
+}
+
 
 async def run_tests(project_root: Path) -> dict:
     """Run the unit test suite and return results.
@@ -31,3 +41,16 @@ async def run_tests(project_root: Path) -> dict:
         "exit_code": result.returncode,
         "output": tail,
     }
+
+
+# ── Registry integration ─────────────────────────────────
+
+_impl = run_tests
+
+
+def register(agent):
+    """Register this tool on a PydanticAI agent."""
+    @agent.tool
+    async def run_tests(ctx: RunContext) -> dict:
+        """Run the unit test suite and return results."""
+        return await _impl(ctx.deps.project_root)

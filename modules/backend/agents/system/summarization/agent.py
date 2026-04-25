@@ -66,7 +66,7 @@ def _get_agent() -> Agent[None, SummarizationOutput]:
     )
 
 
-def create_agent(model: Model | None = None) -> Agent[None, SummarizationOutput]:
+def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, SummarizationOutput]:
     """Get or create the summarization agent.
 
     Args:

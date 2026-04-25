@@ -30,7 +30,7 @@ from modules.backend.events.types import WorkflowGraphEvent
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model) -> Agent:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent:
     """Create the Workflow Architect agent instance.
 
     Model resolved from caller (registry or direct). System prompt

@@ -209,7 +209,7 @@ async def _get_research_team_config(db_session, mission_id: str) -> dict:
         return {}
 
 
-def create_agent(model: str | Model) -> Agent:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent:
     """Create the Mission Director agent with all tools registered."""
     if isinstance(model, str):
         model = _build_model(model)

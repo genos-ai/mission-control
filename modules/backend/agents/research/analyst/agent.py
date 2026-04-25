@@ -18,7 +18,7 @@ from modules.backend.schemas.research import CoverageAnalysisData
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model) -> Agent[BaseAgentDeps, CoverageAnalysisData]:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[BaseAgentDeps, CoverageAnalysisData]:
     """Factory: create analyst agent.
 
     Called by AgentRegistry.get_instance() on first use. Cached.

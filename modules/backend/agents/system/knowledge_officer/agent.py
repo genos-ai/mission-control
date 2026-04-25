@@ -124,7 +124,7 @@ def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
     return agent
 
 
-def create_agent(model: Model | None = None) -> Agent[None, KnowledgeOfficerReport]:
+def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, KnowledgeOfficerReport]:
     """Get or create the Knowledge Officer agent."""
     if model is not None:
         instructions = assemble_instructions("system", "knowledge_officer")

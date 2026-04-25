@@ -6,23 +6,25 @@ context window (context isolation). Searches, extracts content,
 produces structured findings with citations.
 """
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.research.deps import ResearchAgentDeps
-from modules.backend.tools.fetch_url import fetch_url as _fetch_url
-from modules.backend.tools.search_web import search_web as _search_web
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import SearchFindings
 
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]:
+def create_agent(
+    model: str | Model,
+    tool_names: list[str] | None = None,
+) -> Agent[ResearchAgentDeps, SearchFindings]:
     """Factory: create searcher agent with web search tools.
 
     Called by AgentRegistry.get_instance() on first use. Cached.
+    Tools are injected from the registry based on the agent's config.
     """
     instructions = assemble_instructions("research", "searcher")
 
@@ -34,52 +36,10 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
         output_retries=3,
     )
 
-    @agent.tool
-    async def search_web(
-        ctx: RunContext[ResearchAgentDeps],
-        query: str,
-        max_results: int = 10,
-        include_domains: list[str] | None = None,
-        exclude_domains: list[str] | None = None,
-    ) -> list[dict]:
-        """Search the web for information on a topic.
-
-        Returns results with url, title, snippet, content, and relevance_score.
-        Provider is selected from config (perplexity > tavily > brave).
-        For results with empty content, use fetch_url to get the page content.
-
-        Args:
-            query: Search query string.
-            max_results: Max results to return.
-            include_domains: Only return results from these domains.
-            exclude_domains: Exclude results from these domains.
-        """
-        if not ctx.deps.http_client:
-            return [{"error": "No HTTP client available"}]
-        return await _search_web(
-            ctx.deps.http_client,
-            query,
-            max_results=max_results,
-            include_domains=include_domains,
-            exclude_domains=exclude_domains,
-        )
-
-    @agent.tool
-    async def fetch_url(
-        ctx: RunContext[ResearchAgentDeps],
-        url: str,
-    ) -> dict:
-        """Fetch a URL and extract readable text content.
-
-        Use this when a search result's content is empty or too short (< 500 chars).
-        Returns extracted text, title, word_count, and quality_score.
-        """
-        if not ctx.deps.http_client:
-            return {"error": "No HTTP client available"}
-        return await _fetch_url(
-            ctx.deps.http_client,
-            url,
-        )
+    # Shared tools from registry (driven by agent YAML config)
+    if tool_names:
+        from modules.backend.tools.registry import get_tool_registry
+        get_tool_registry().register_on_agent(agent, tool_names)
 
     logger.info("Research searcher agent created", extra={"model": str(model)})
     return agent

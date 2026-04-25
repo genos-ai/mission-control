@@ -6,6 +6,8 @@ Replace exact text in a file within the allowed scope.
 
 from pathlib import Path
 
+from pydantic_ai import RunContext
+
 from modules.backend.agents.deps.base import FileScope
 
 
@@ -48,3 +50,28 @@ async def apply_fix(
     full_path.write_text(new_content, encoding="utf-8")
 
     return {"success": True, "file": file_path}
+
+
+# ── Registry integration ─────────────────────────────────
+
+TOOL_DEF = {
+    "name": "apply_fix",
+    "description": "Replace exact text in a file within the allowed scope",
+    "category": "code",
+    "deps": ["project_root", "scope"],
+}
+
+_impl = apply_fix
+
+
+def register(agent):
+    """Register this tool on a PydanticAI agent."""
+    @agent.tool
+    async def apply_fix(
+        ctx: RunContext,
+        file_path: str,
+        old_text: str,
+        new_text: str,
+    ) -> dict:
+        """Replace exact text in a file. old_text must appear exactly once."""
+        return await _impl(ctx.deps.project_root, file_path, old_text, new_text, ctx.deps.scope)

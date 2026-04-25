@@ -8,9 +8,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic_ai import RunContext
+
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+TOOL_DEF = {
+    "name": "run_command",
+    "description": "Run a shell command in the execution environment",
+    "category": "execution",
+    "deps": ["environment_handle"],
+}
 
 
 async def run_command(
@@ -107,3 +117,24 @@ async def _run_local(command: str, timeout_seconds: int) -> dict[str, Any]:
             "environment": "local",
             "success": False,
         }
+
+
+# ── Registry integration ─────────────────────────────────
+
+_impl = run_command
+
+
+def register(agent):
+    """Register this tool on a PydanticAI agent."""
+    @agent.tool
+    async def run_command(
+        ctx: RunContext,
+        command: str,
+        timeout_seconds: int = 120,
+    ) -> dict:
+        """Run a shell command in the execution environment.
+
+        Returns exit_code, stdout, stderr, and duration.
+        """
+        handle = getattr(ctx.deps, "environment_handle", None)
+        return await _impl(command, environment_handle=handle, timeout_seconds=timeout_seconds)

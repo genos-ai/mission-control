@@ -132,7 +132,7 @@ def create_event_agent(
     return agent
 
 
-def create_agent(model: str | Model) -> Agent[MissionSupervisorDeps, str]:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[MissionSupervisorDeps, str]:
     """Chat-mode variant for the agent registry.
 
     Called when the user opens a chat with mission.supervisor.agent.

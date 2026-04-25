@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic_ai import RunContext
+
 from modules.backend.agents.deps.base import FileScope
 
 
@@ -42,3 +44,27 @@ async def list_files(
             files.append(rel)
 
     return files
+
+
+# ── Registry integration ─────────────────────────────────
+
+TOOL_DEF = {
+    "name": "list_files",
+    "description": "List all Python files in scope",
+    "category": "filesystem",
+    "deps": ["project_root", "scope"],
+}
+
+_impl = list_files
+
+
+def register(agent):
+    """Register this tool on a PydanticAI agent."""
+    @agent.tool
+    async def list_files(ctx: RunContext) -> list[str]:
+        """List all Python files in scope, respecting exclusion patterns."""
+        exclusions = set()
+        config = getattr(ctx.deps, "config", None)
+        if config and getattr(config, "exclusions", None):
+            exclusions = set(config.exclusions.paths)
+        return await _impl(ctx.deps.project_root, ctx.deps.scope, exclusions)

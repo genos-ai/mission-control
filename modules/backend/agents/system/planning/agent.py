@@ -33,7 +33,7 @@ class PlanningAgentDeps(BaseAgentDeps):
     upstream_context: dict[str, Any] | None = None
 
 
-def create_agent(model: str | Model) -> Agent:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent:
     """Create the Planning Agent instance.
 
     Model resolved from caller (registry or direct). System prompt

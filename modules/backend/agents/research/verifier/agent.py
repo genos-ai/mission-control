@@ -20,7 +20,7 @@ from modules.backend.schemas.research import CitationVerificationResult
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model) -> Agent[BaseAgentDeps, CitationVerificationResult]:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[BaseAgentDeps, CitationVerificationResult]:
     """Factory: create verifier agent.
 
     Called by AgentRegistry.get_instance() on first use. Cached.

@@ -20,7 +20,7 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model) -> Agent[HealthAgentDeps, HealthCheckResult]:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[HealthAgentDeps, HealthCheckResult]:
     """Factory: create a health agent with all tools registered.
 
     Called by AgentRegistry.get_instance() on first use.

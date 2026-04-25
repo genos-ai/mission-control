@@ -63,7 +63,7 @@ def _make_agent_executor(
 
         module = _import_agent_module(agent_name)
         model = _build_model(agent_config.model)
-        agent = module.create_agent(model)
+        agent = module.create_agent(model, tool_names=agent_config.tools or [])
         model_settings = build_model_settings(agent_config)
         deps = _build_agent_deps(agent_name, agent_config)
 

@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 _BASELINE_PATH = "config/qa-baseline.json"
 
 
-def create_agent(model: str | Model) -> Agent[QaAgentDeps, ArchitectureReviewResult]:
+def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[QaAgentDeps, ArchitectureReviewResult]:
     """Factory: create an architecture review agent with file reading tools.
 
     Called by AgentRegistry.get_instance() on first use.
