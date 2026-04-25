@@ -1,11 +1,11 @@
 # Plan 64 — Database Integrity & Performance Hardening
 
-**Version:** 1.1.0
+**Version:** 2.0.0
 **Date:** 2026-04-25
-**Author:** Herman + Data Architecture Review + Adversarial Review Pass
+**Author:** Herman + Data Architecture Review + Adversarial Review Pass + Full Schema Review (Opus 4.6)
 **Status:** Ready to implement
 **Depends on:** None (all changes are additive migrations + model edits)
-**Unlocks:** Safe mission deletion without raw SQL, query performance at scale
+**Unlocks:** Safe mission deletion without raw SQL, JSONB GIN indexes, query performance at scale, correct cost accounting
 
 ### v1.1 changelog (adversarial review)
 
@@ -36,11 +36,31 @@
    denormalised (no FK), but `delete_mission()` already handles it in the Level 1
    direct-children loop. No action needed beyond documenting it.
 
+### v2.0 changelog (full schema review)
+
+1. **Added Phase G** — Fix Alembic `env.py` model imports. 12 models are missing from
+   `env.py`, making `alembic autogenerate` blind to schema drift on those tables. Critical
+   finding — 30-second fix.
+2. **Added Phase H** — Float → Numeric for all 22 monetary columns across 8 models.
+   IEEE 754 floats cause rounding errors in cost accounting. Changes to `Numeric(12, 6)`.
+3. **Added Phase I** — Timezone-aware timestamps in `TimestampMixin`. The mixin uses
+   naive `DateTime` (no timezone). Only `ModelPricing` uses `DateTime(timezone=True)`.
+   Affects every table that uses the mixin (~25 tables).
+4. **Added Phase J** — Standardise status column storage. Two incompatible patterns:
+   `Enum(X, native_enum=False)` stores uppercase NAME, `String(20)` with `.value`
+   default stores lowercase value. Cross-table queries silently return wrong results.
+5. **Added Phase K** — Additional bare-string FK columns not covered by Phase D:
+   `Execution.workflow_run_id`, `WorkflowRun.session_id`, `Execution.session_id`,
+   `ContextChange.mission_id`.
+6. **Added Phase L** — Miscellaneous model fixes: `Embedding.created_at` type annotation,
+   `MissionArtifact.artifact_type` enum enforcement, missing FK indexes on
+   `PlanTaskState`, `SessionMessage`/`SessionChannel` timestamp convention.
+
 ---
 
 ## 0. Problem Statement
 
-A full architectural review of the 28-table schema identified three categories of
+A full architectural review of the 30-table schema identified seven categories of
 technical debt that will cause increasing pain as data volume and concurrency grow:
 
 1. **Missing FK cascade rules** — 8 foreign keys lack explicit `ondelete` behaviour,
@@ -59,14 +79,34 @@ technical debt that will cause increasing pain as data volume and concurrency gr
    composite indexes, and 3 FK-like columns (`Mission.owner_id`, `Session.mission_id`,
    `Session.user_id`) are bare strings with no referential constraint.
 
+4. **Alembic `env.py` blind spot** — 12 models are not imported in the migration
+   environment, making `alembic autogenerate` and `alembic check` unable to detect
+   schema drift on those tables. Production may already have diverged.
+
+5. **Float for money** — All 22 monetary columns (`cost_usd`, `budget_ceiling_usd`,
+   `price_per_mtok_*`, etc.) use IEEE 754 `Float`. Rounding errors accumulate across
+   thousands of LLM calls and will cause cost dashboards and budget enforcement to
+   report incorrect values.
+
+6. **Naive timestamps** — `TimestampMixin` uses `DateTime` without `timezone=True`,
+   propagating naive timestamps to every table. Only `ModelPricing` correctly uses
+   timezone-aware columns. Workers in different timezone contexts will produce
+   inconsistent timestamps.
+
+7. **Status storage split** — Two incompatible patterns for status columns:
+   `Enum(X, native_enum=False)` stores the uppercase NAME (`ACTIVE`), while
+   `String(20)` with `.value` default stores the lowercase value (`active`).
+   Cross-table queries silently return wrong results.
+
 Additionally: inconsistent timestamp storage (6 columns use `String(30)` instead of
 `DateTime`), `MilestoneSummary.mission_ids` is a misleading name (stores execution
 record IDs), and the `Execution` table duplicates fields already present on
 `ExecutionRecord`.
 
 **Risk of doing nothing:** silent data corruption from orphaned rows, unbounded
-query latency on growing tables, and an ever-expanding manual delete cascade that
-is one missed table away from a broken mission deletion.
+query latency on growing tables, incorrect cost accounting, timezone bugs as the
+system scales to containers and workers, and an ever-expanding manual delete cascade
+that is one missed table away from a broken mission deletion.
 
 ---
 
@@ -79,6 +119,12 @@ is one missed table away from a broken mission deletion.
 - [ ] `Mission.owner_id`, `Session.mission_id`, `Session.user_id` have FK constraints
 - [ ] All `String(30)` timestamp columns converted to `DateTime(timezone=True)`
 - [ ] `MilestoneSummary.mission_ids` renamed to `execution_ids`
+- [ ] Alembic `env.py` imports all models (no blind spots for autogenerate)
+- [ ] All 22 monetary columns use `Numeric(12, 6)` instead of `Float`
+- [ ] `TimestampMixin` uses `DateTime(timezone=True)` for `created_at`/`updated_at`
+- [ ] Status columns use a single consistent storage pattern across all tables
+- [ ] Additional bare-string FK columns (`Execution.workflow_run_id`, etc.) constrained
+- [ ] `Embedding.created_at` type annotation fixed; `MissionArtifact.artifact_type` enforced
 - [ ] All existing tests pass after migration (both SQLite and Postgres)
 - [ ] `alembic upgrade head` succeeds from current head (`widen_artifact_type`)
 
@@ -94,8 +140,15 @@ is one missed table away from a broken mission deletion.
 | **D** | Add FK constraints on soft references | ~1 hour | Low — migration adds constraints; backfill fixes orphans |
 | **E** | Standardise `String(30)` timestamps to `DateTime` | ~2 hours | Medium — data migration required for existing rows |
 | **F** | Rename `mission_ids` column + `Execution` deprecation note | ~1 hour | Low |
+| **G** | Fix Alembic `env.py` model imports | ~5 min | Zero — import-only change, no schema change |
+| **H** | Float → Numeric for monetary columns | ~2 hours | Medium — type change migration, service layer updates |
+| **I** | Timezone-aware timestamps in `TimestampMixin` | ~3 hours | Medium — touches ~25 tables via mixin, data migration |
+| **J** | Standardise status column storage pattern | ~2 hours | Medium — data migration to normalise casing |
+| **K** | Additional bare-string FK constraints | ~1 hour | Low — same pattern as Phase D |
+| **L** | Type annotations, enum enforcement, missing FK indexes | ~1 hour | Low — model-only changes + 1 migration |
 
-**Total:** ~8.5 hours across 6 independent phases (can be parallelised).
+**Total:** ~17 hours across 12 phases. Phases A–F and G–L are independently orderable.
+Phase G should be done first (30-second fix, highest-severity finding).
 
 ---
 
@@ -702,6 +755,602 @@ class Execution(UUIDMixin, TimestampMixin, Base):
 
 ---
 
+## Phase G — Fix Alembic `env.py` Model Imports
+
+**Goal:** Ensure all ORM models are imported in the Alembic migration environment so
+`alembic autogenerate` and `alembic check` can detect schema drift on every table.
+
+**Severity:** Critical — this is a 30-second fix for the highest-severity finding.
+
+### G.1 The problem
+
+**File:** `modules/backend/migrations/env.py`, lines 20-44
+
+`env.py` imports 18 models individually. The schema has 30+ models. The following 12
+are missing — `alembic autogenerate` cannot detect drift on these tables:
+
+| # | Model | Table |
+|---|-------|-------|
+| 1 | `MissionEvent` | `mission_events` |
+| 2 | `MissionIntent` | `mission_intents` |
+| 3 | `MissionLearning` | `mission_learnings` |
+| 4 | `MissionPlan` | `mission_plans` |
+| 5 | `PlanTaskState` | `plan_task_states` |
+| 6 | `MissionArtifact` | `mission_artifacts` |
+| 7 | `SessionFollowup` | `session_followups` |
+| 8 | `LlmCall` | `llm_calls` |
+| 9 | `ModelPricing` | `model_pricing` |
+| 10 | `Embedding` | `embeddings` |
+| 11 | `ExecutionEnvironmentModel` | `execution_environments` |
+| 12 | `ContextMilestone` | `context_milestones` |
+
+### G.2 Fix
+
+Replace the 24 individual imports with a single package import. `models/__init__.py`
+already imports and re-exports every model, so this registers them all on
+`Base.metadata`:
+
+**File:** `modules/backend/migrations/env.py`
+
+```python
+# Before (lines 17-44): 24 individual model imports
+
+# After: single import that registers all models
+from modules.backend.models.base import Base
+import modules.backend.models  # noqa: F401 — registers all models on Base.metadata
+```
+
+### G.3 Verification
+
+- [ ] **G.3.1** `alembic check` reports no unexpected drift (or reports real drift that was previously invisible)
+- [ ] **G.3.2** `python -c "from modules.backend.migrations.env import target_metadata; print(len(target_metadata.tables))"` returns 30+
+- [ ] **G.3.3** All existing tests pass
+
+---
+
+## Phase H — Float → Numeric for Monetary Columns
+
+**Goal:** Replace all `Float` columns storing USD values or per-million-token prices
+with `Numeric(12, 6)` to eliminate IEEE 754 rounding errors in cost accounting.
+
+### H.1 Columns to change (22 columns across 8 models)
+
+| # | Model file | Table | Column | Current |
+|---|------------|-------|--------|---------|
+| 1 | `execution.py:115` | `workflow_runs` | `total_cost_usd` | `Float` |
+| 2 | `execution.py:118` | `workflow_runs` | `budget_usd` | `Float` |
+| 3 | `execution.py:196` | `executions` | `total_cost_usd` | `Float` |
+| 4 | `execution.py:199` | `executions` | `cost_ceiling_usd` | `Float` |
+| 5 | `execution_record.py:139` | `execution_records` | `total_cost_usd` | `Float` |
+| 6 | `execution_record.py:271` | `task_executions` | `cost_usd` | `Float` |
+| 7 | `execution_record.py:277` | `task_executions` | `duration_seconds` | `Float` |
+| 8 | `execution_record.py:383` | `task_attempts` | `cost_usd` | `Float` |
+| 9 | `session.py:75` | `sessions` | `total_cost_usd` | `Float` |
+| 10 | `session.py:77` | `sessions` | `cost_budget_usd` | `Float` |
+| 11 | `session.py:177` | `session_messages` | `cost_usd` | `Float` |
+| 12 | `mission.py:76` | `missions` | `budget_ceiling_usd` | `Float` |
+| 13 | `mission_plan.py:147` | `mission_plans` | `budget_usd_ceiling` | `Float` |
+| 14 | `mission_plan.py:153` | `mission_plans` | `total_spent_usd` | `Float` |
+| 15 | `mission_plan.py:293` | `plan_task_states` | `cost_usd` | `Float` |
+| 16 | `mission_plan.py:296` | `plan_task_states` | `duration_seconds` | `Float` |
+| 17 | `mission_learning.py:82` | `mission_learnings` | `confidence` | `Float` |
+| 18 | `workflow_schedule.py:58` | `workflow_schedules` | `budget_per_run_usd` | `Float` |
+| 19 | `llm_call.py:71` | `llm_calls` | `cost_usd` | `Float` |
+| 20-22 | `model_pricing.py:34-46` | `model_pricing` | `price_per_mtok_*` (5 cols) | `Float` |
+
+**Note:** `duration_seconds` (rows 7, 16) and `confidence` (row 17) are not monetary.
+They can stay as `Float` since sub-microsecond precision and 0-1 confidence don't
+require exact decimal representation. **Exclude them from the migration.** This
+reduces the scope to 19 monetary columns.
+
+### H.2 Migration
+
+**File:** `modules/backend/migrations/versions/plan64_006_float_to_numeric.py`
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+# (model, table, column) tuples — monetary columns only
+MONETARY_COLUMNS = [
+    ("workflow_runs", "total_cost_usd"),
+    ("workflow_runs", "budget_usd"),
+    ("executions", "total_cost_usd"),
+    ("executions", "cost_ceiling_usd"),
+    ("execution_records", "total_cost_usd"),
+    ("task_executions", "cost_usd"),
+    ("task_attempts", "cost_usd"),
+    ("sessions", "total_cost_usd"),
+    ("sessions", "cost_budget_usd"),
+    ("session_messages", "cost_usd"),
+    ("missions", "budget_ceiling_usd"),
+    ("mission_plans", "budget_usd_ceiling"),
+    ("mission_plans", "total_spent_usd"),
+    ("plan_task_states", "cost_usd"),
+    ("workflow_schedules", "budget_per_run_usd"),
+    ("llm_calls", "cost_usd"),
+]
+
+PRICING_COLUMNS = [
+    ("model_pricing", "price_per_mtok_input"),
+    ("model_pricing", "price_per_mtok_output"),
+    ("model_pricing", "price_per_mtok_cache_write_5m"),
+    ("model_pricing", "price_per_mtok_cache_write_1h"),
+    ("model_pricing", "price_per_mtok_cache_read"),
+]
+
+
+def upgrade() -> None:
+    for table, col in MONETARY_COLUMNS:
+        op.alter_column(
+            table, col,
+            type_=sa.Numeric(12, 6),
+            existing_type=sa.Float(),
+        )
+    for table, col in PRICING_COLUMNS:
+        op.alter_column(
+            table, col,
+            type_=sa.Numeric(12, 8),
+            existing_type=sa.Float(),
+        )
+
+
+def downgrade() -> None:
+    for table, col in MONETARY_COLUMNS + PRICING_COLUMNS:
+        op.alter_column(
+            table, col,
+            type_=sa.Float(),
+            existing_type=sa.Numeric(),
+        )
+```
+
+### H.3 Model changes
+
+Update each model to use `Numeric`:
+
+```python
+from sqlalchemy import Numeric
+
+# Before
+total_cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+# After
+total_cost_usd: Mapped[float] = mapped_column(
+    Numeric(12, 6), default=0.0, nullable=False,
+)
+```
+
+For pricing columns, use `Numeric(12, 8)` (prices are per-million-token, need
+sub-cent precision).
+
+**Note:** `Mapped[float]` type hint remains `float` — SQLAlchemy returns `Decimal`
+from `Numeric` columns, but `Decimal` is float-compatible for all practical purposes.
+If strict typing is desired, change to `Mapped[Decimal]` and update service code.
+
+### H.4 Service layer impact
+
+Search for any code that compares cost values with `==`:
+
+```bash
+rg "cost_usd ==" modules/backend/services/ --type py
+rg "total_cost ==" modules/backend/services/ --type py
+```
+
+`Numeric` comparison with `==` works correctly (unlike Float). No service changes
+expected unless code explicitly assumes `float` type via `isinstance()`.
+
+### H.5 Verification
+
+- [ ] **H.5.1** Migration succeeds; existing float values are preserved
+- [ ] **H.5.2** `SELECT pg_typeof(cost_usd) FROM llm_calls LIMIT 1` returns `numeric`
+- [ ] **H.5.3** Cost dashboard shows same totals before and after (within rounding)
+- [ ] **H.5.4** All existing tests pass
+
+---
+
+## Phase I — Timezone-Aware Timestamps in `TimestampMixin`
+
+**Goal:** Change `TimestampMixin.created_at` and `updated_at` from naive `DateTime`
+to `DateTime(timezone=True)` so all timestamps are stored as `TIMESTAMPTZ`.
+
+### I.1 The problem
+
+**File:** `modules/backend/models/base.py`, lines 25-35
+
+```python
+# Current — naive DateTime (no timezone info stored)
+created_at: Mapped[datetime] = mapped_column(DateTime, ...)
+updated_at: Mapped[datetime] = mapped_column(DateTime, ...)
+```
+
+Every table inheriting `TimestampMixin` (~25 tables) stores naive timestamps.
+`ModelPricing` is the only table that correctly uses `DateTime(timezone=True)`.
+
+### I.2 Model change
+
+**File:** `modules/backend/models/base.py`
+
+```python
+# After
+class TimestampMixin:
+    """Mixin that adds created_at and updated_at timestamps."""
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+```
+
+### I.3 Migration
+
+**File:** `modules/backend/migrations/versions/plan64_007_timestamptz.py`
+
+All tables using `TimestampMixin` need their `created_at` and `updated_at` columns
+converted. PostgreSQL handles `TIMESTAMP → TIMESTAMPTZ` by assuming the current
+`timezone` setting (default UTC), so no data loss if the server is UTC.
+
+```python
+TIMESTAMPED_TABLES = [
+    "notes", "missions", "mission_members", "mission_contexts",
+    "context_changes", "context_milestones", "mission_decisions",
+    "milestone_summaries", "sessions", "execution_records",
+    "task_executions", "task_attempts", "execution_decisions",
+    "workflow_runs", "executions", "agent_catalog",
+    "mission_team_members", "prompt_versions", "workflow_definitions",
+    "workflow_schedules", "users", "api_keys", "mission_plans",
+    "plan_task_states", "session_followups", "mission_events",
+    "mission_intents", "mission_learnings", "mission_artifacts",
+    "llm_calls", "execution_environments", "embeddings",
+]
+
+
+def upgrade() -> None:
+    for table in TIMESTAMPED_TABLES:
+        for col in ("created_at", "updated_at"):
+            op.execute(
+                f"ALTER TABLE {table} "
+                f"ALTER COLUMN {col} TYPE TIMESTAMPTZ "
+                f"USING {col} AT TIME ZONE 'UTC'"
+            )
+```
+
+**Note:** `SessionMessage`, `SessionChannel`, `MissionIntent`, and `Embedding` define
+their own `created_at`/`updated_at` outside the mixin. These are handled in the same
+migration by including their tables in the list above. The `USING ... AT TIME ZONE 'UTC'`
+clause ensures existing naive timestamps are interpreted as UTC.
+
+### I.4 Tables with custom timestamp columns
+
+These tables also have `DateTime` columns outside the mixin that should be converted:
+
+| Table | Column | Notes |
+|-------|--------|-------|
+| `execution_records` | `started_at`, `completed_at` | Already `DateTime` (naive) |
+| `task_executions` | `started_at`, `completed_at` | Already `DateTime` (naive) |
+| `workflow_runs` | `started_at`, `completed_at` | Converted from String in earlier migration |
+| `executions` | `started_at`, `completed_at` | Converted from String in earlier migration |
+| `sessions` | `last_activity_at`, `expires_at` | Already `DateTime` (naive) |
+| `api_keys` | `expires_at`, `revoked_at`, `last_used_at` | Already `DateTime` (naive) |
+| `users` | `last_login_at` | Already `DateTime` (naive) |
+| `plan_task_states` | `approved_at`, `last_attempt_at`, `veto_expires_at` | Already `DateTime` (naive) |
+| `session_followups` | `expires_at`, `consumed_at` | Already `DateTime` (naive) |
+| `session_channels` | `bound_at` | Already `DateTime` (naive) |
+| `mission_learnings` | `promoted_at` | Already `DateTime` (naive) |
+
+Include all of these in the migration. Total: ~50 columns across 30 tables.
+
+### I.5 Verification
+
+- [ ] **I.5.1** `SELECT pg_typeof(created_at) FROM missions LIMIT 1` returns `timestamp with time zone`
+- [ ] **I.5.2** New rows have `+00` suffix in `created_at`
+- [ ] **I.5.3** Existing timestamps are preserved (interpreted as UTC)
+- [ ] **I.5.4** All existing tests pass (SQLite ignores timezone parameter)
+
+---
+
+## Phase J — Standardise Status Column Storage Pattern
+
+**Goal:** Ensure all status/enum columns use a single storage pattern so cross-table
+queries and application code don't need to know per-table casing rules.
+
+### J.1 The problem
+
+Two incompatible patterns exist:
+
+**Pattern A** — `Enum(X, native_enum=False)`: Stores the enum **name** (uppercase).
+Used by: `Mission.status`, `WorkflowRun.status`, `Execution.status`,
+`ExecutionRecord.status`, `TaskExecution.status`, `TaskAttempt.status`,
+`ExecutionDecision.decision_type`, `ContextChange.change_type`,
+`ExecutionEnvironmentModel.status`, `MissionMember.role`, `TaskAttempt.failure_tier`.
+
+**Pattern B** — `String(N)` with `default=EnumClass.VALUE.value`: Stores the enum
+**value** (lowercase). Used by: `Session.status`, `MissionPlan.status`,
+`PlanTaskState.status`, `MissionDecision.status`, `MissionLearning.status`,
+`MissionArtifact.artifact_type`, `MissionArtifact.content_type`.
+
+### J.2 Recommended standard: Pattern B (String with lowercase values)
+
+Rationale:
+- More portable — no SQLAlchemy `Enum` type negotiation
+- Lowercase values are what the API serializes, so no casing translation needed
+- Easier to add new values (no migration to alter the enum type)
+- Already used by the newer tables (Plan 42, Plan 43, Plan 51)
+
+### J.3 Migration strategy
+
+For each Pattern A column, the existing database values are uppercase (e.g., `ACTIVE`).
+Convert to lowercase:
+
+**File:** `modules/backend/migrations/versions/plan64_008_status_lowercase.py`
+
+```python
+ENUM_COLUMNS = [
+    # (table, column, {old_name: new_value})
+    ("missions", "status", {"ACTIVE": "active", "PAUSED": "paused", "ARCHIVED": "archived"}),
+    ("workflow_runs", "status", {"PENDING": "pending", "RUNNING": "running", "COMPLETED": "completed", "FAILED": "failed", "CANCELLED": "cancelled"}),
+    ("executions", "status", {"PENDING": "pending", "RUNNING": "running", "COMPLETED": "completed", "FAILED": "failed", "CANCELLED": "cancelled"}),
+    ("execution_records", "status", {"PENDING": "pending", "RUNNING": "running", "COMPLETED": "completed", "FAILED": "failed", "CANCELLED": "cancelled", "TIMED_OUT": "timed_out"}),
+    ("task_executions", "status", {"COMPLETED": "completed", "FAILED": "failed", "SKIPPED": "skipped"}),
+    ("task_attempts", "status", {"PASSED": "passed", "FAILED": "failed"}),
+    ("execution_decisions", "decision_type", {"RETRY": "retry", "FAIL": "fail", "PASS": "pass", "RE_PLAN": "re_plan", "SKIP": "skip", "ESCALATE": "escalate", "POST_RUN_SUPERVISOR": "post_run_supervisor"}),
+    ("context_changes", "change_type", {"ADD": "add", "REPLACE": "replace", "REMOVE": "remove", "PRUNE": "prune", "ARCHIVE": "archive"}),
+    ("execution_environments", "status", {"CREATING": "creating", "RUNNING": "running", "STOPPED": "stopped", "FAILED": "failed", "DESTROYED": "destroyed"}),
+    ("mission_members", "role", {"OWNER": "owner", "MAINTAINER": "maintainer", "VIEWER": "viewer"}),
+    ("task_attempts", "failure_tier", {"TIER_1_STRUCTURAL": "tier_1_structural", "TIER_2_QUALITY": "tier_2_quality", "TIER_3_INTEGRATION": "tier_3_integration", "AGENT_ERROR": "agent_error", "TIMEOUT": "timeout"}),
+]
+
+
+def upgrade() -> None:
+    for table, column, mapping in ENUM_COLUMNS:
+        # Step 1: Convert column from VARCHAR-backed Enum to plain String
+        op.alter_column(table, column, type_=sa.String(50), existing_type=sa.String(50))
+        # Step 2: Update values
+        for old, new in mapping.items():
+            op.execute(
+                sa.text(f"UPDATE {table} SET {column} = :new WHERE {column} = :old"),
+                {"old": old, "new": new},
+            )
+```
+
+### J.4 Model changes
+
+Convert Pattern A columns from `Enum(X, native_enum=False)` to `String` with `.value`
+defaults. Example:
+
+```python
+# Before
+status: Mapped[str] = mapped_column(
+    Enum(MissionStatus, native_enum=False),
+    default=MissionStatus.ACTIVE,
+    nullable=False,
+)
+
+# After
+status: Mapped[str] = mapped_column(
+    String(20),
+    default=MissionStatus.ACTIVE.value,
+    nullable=False,
+)
+```
+
+**Files to change:**
+- [ ] **J.4.1** `mission.py` — `Mission.status`, `MissionMember.role`
+- [ ] **J.4.2** `execution.py` — `WorkflowRun.status`, `Execution.status`
+- [ ] **J.4.3** `execution_record.py` — `ExecutionRecord.status`, `TaskExecution.status`,
+  `TaskAttempt.status`, `TaskAttempt.failure_tier`, `ExecutionDecision.decision_type`
+- [ ] **J.4.4** `mission_context.py` — `ContextChange.change_type`
+- [ ] **J.4.5** `execution_environment.py` — `ExecutionEnvironmentModel.status`
+
+### J.5 Service layer impact
+
+Search for any code that compares status values using the enum NAME:
+
+```bash
+rg "\.ACTIVE\b|\.PENDING\b|\.RUNNING\b|\.COMPLETED\b|\.FAILED\b" \
+    modules/backend/services/ --type py
+```
+
+These comparisons will still work because `MissionStatus.ACTIVE` is `"active"` (the
+`str, enum.Enum` value). The change is in what SQLAlchemy writes to the database,
+not in what the Python code compares against. **However**, any raw SQL queries that
+filter by `status = 'ACTIVE'` (uppercase) will break and must be updated.
+
+### J.6 Verification
+
+- [ ] **J.6.1** `SELECT DISTINCT status FROM missions` returns lowercase values
+- [ ] **J.6.2** `SELECT DISTINCT status FROM executions` returns lowercase values
+- [ ] **J.6.3** No raw SQL queries filter by uppercase status values
+- [ ] **J.6.4** All existing tests pass
+
+---
+
+## Phase K — Additional Bare-String FK Constraints
+
+**Goal:** Add FK constraints to 4 remaining FK-like columns not covered by Phase D.
+
+### K.1 Columns
+
+| # | Model file | Table | Column | FK target | `ondelete` |
+|---|------------|-------|--------|-----------|------------|
+| 1 | `execution.py:153` | `executions` | `workflow_run_id` | `workflow_runs.id` | `SET NULL` |
+| 2 | `execution.py:181` | `executions` | `session_id` | `sessions.id` | `SET NULL` |
+| 3 | `execution.py:103` | `workflow_runs` | `session_id` | `sessions.id` | `SET NULL` |
+| 4 | `mission_context.py:136` | `context_changes` | `mission_id` | `missions.id` | `CASCADE` |
+
+### K.2 Migration
+
+**File:** `modules/backend/migrations/versions/plan64_009_additional_fks.py`
+
+```python
+def upgrade() -> None:
+    # Pre-check: null out orphans
+    for table, col, parent_table in [
+        ("executions", "workflow_run_id", "workflow_runs"),
+        ("executions", "session_id", "sessions"),
+        ("workflow_runs", "session_id", "sessions"),
+    ]:
+        conn = op.get_bind()
+        conn.execute(sa.text(
+            f"UPDATE {table} SET {col} = NULL "
+            f"WHERE {col} IS NOT NULL "
+            f"AND {col} NOT IN (SELECT id FROM {parent_table})"
+        ))
+
+    # context_changes.mission_id — delete orphans (CASCADE semantics)
+    conn.execute(sa.text(
+        "DELETE FROM context_changes "
+        "WHERE mission_id IS NOT NULL "
+        "AND mission_id NOT IN (SELECT id FROM missions)"
+    ))
+
+    # Add FK constraints
+    op.create_foreign_key(
+        "fk_executions_workflow_run_id",
+        "executions", "workflow_runs",
+        ["workflow_run_id"], ["id"],
+        ondelete="SET NULL",
+    )
+    op.create_foreign_key(
+        "fk_executions_session_id",
+        "executions", "sessions",
+        ["session_id"], ["id"],
+        ondelete="SET NULL",
+    )
+    op.create_foreign_key(
+        "fk_workflow_runs_session_id",
+        "workflow_runs", "sessions",
+        ["session_id"], ["id"],
+        ondelete="SET NULL",
+    )
+    op.create_foreign_key(
+        "fk_context_changes_mission_id",
+        "context_changes", "missions",
+        ["mission_id"], ["id"],
+        ondelete="CASCADE",
+    )
+```
+
+### K.3 Model changes
+
+- [ ] **K.3.1** `execution.py:153` — add `ForeignKey("workflow_runs.id", ondelete="SET NULL")`
+- [ ] **K.3.2** `execution.py:181` — add `ForeignKey("sessions.id", ondelete="SET NULL")`
+- [ ] **K.3.3** `execution.py:103` — add `ForeignKey("sessions.id", ondelete="SET NULL")`
+- [ ] **K.3.4** `mission_context.py:136` — add `ForeignKey("missions.id", ondelete="CASCADE")`
+
+### K.4 Verification
+
+- [ ] **K.4.1** Migration succeeds on a database with existing data
+- [ ] **K.4.2** Deleting a session sets `executions.session_id` to NULL
+- [ ] **K.4.3** Deleting a mission cascades to `context_changes` via `mission_id`
+
+---
+
+## Phase L — Type Annotations, Enum Enforcement, Missing FK Indexes
+
+**Goal:** Fix miscellaneous model-level issues found in the full schema review.
+
+### L.1 `Embedding.created_at` type annotation
+
+**File:** `modules/backend/models/embedding.py`, line 69
+
+```python
+# Before — type annotation says str, column is DateTime
+created_at: Mapped[str] = mapped_column(DateTime, ...)
+
+# After
+created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), ...)
+```
+
+Also add `from datetime import datetime` if not already imported (it's imported via
+`utc_now` but should be explicit for the type hint).
+
+### L.2 `MissionArtifact.artifact_type` — enforce via CHECK constraint
+
+**File:** `modules/backend/models/mission_artifact.py`, lines 127-132
+
+The `ArtifactType` enum exists but the column is `String(50)` with no enforcement.
+Add a `CheckConstraint`:
+
+```python
+from sqlalchemy import CheckConstraint
+
+__table_args__ = (
+    CheckConstraint(
+        "artifact_type IN ('research_report', 'vulnerability_report', "
+        "'quality_audit', 'architecture_review', 'report', 'code', 'data')",
+        name="ck_mission_artifacts_type",
+    ),
+)
+```
+
+**Migration:** Add the CHECK constraint in a migration:
+
+```python
+op.create_check_constraint(
+    "ck_mission_artifacts_type",
+    "mission_artifacts",
+    "artifact_type IN ('research_report', 'vulnerability_report', "
+    "'quality_audit', 'architecture_review', 'report', 'code', 'data')",
+)
+```
+
+### L.3 Missing FK indexes on `PlanTaskState`
+
+**File:** `modules/backend/models/mission_plan.py`, lines 249-269
+
+Two FK columns lack indexes:
+
+```python
+# Add index=True to these columns:
+approved_by_user_id: Mapped[str | None] = mapped_column(
+    String(36),
+    ForeignKey("users.id", ondelete="RESTRICT"),
+    nullable=True,
+    index=True,  # <-- add
+)
+task_execution_id: Mapped[str | None] = mapped_column(
+    String(36),
+    ForeignKey("task_executions.id", ondelete="SET NULL"),
+    nullable=True,
+    index=True,  # <-- add
+)
+```
+
+**Migration:**
+
+```python
+op.create_index("ix_plan_task_states_approved_by", "plan_task_states", ["approved_by_user_id"])
+op.create_index("ix_plan_task_states_task_execution", "plan_task_states", ["task_execution_id"])
+```
+
+### L.4 `Mission.owner_id` column width
+
+**File:** `modules/backend/models/mission.py`, line 67
+
+```python
+# Before — 200 chars for a UUID
+owner_id: Mapped[str] = mapped_column(String(200), ...)
+
+# After — Phase D already changes this to String(36) + FK
+# No additional action needed if Phase D is implemented.
+```
+
+### L.5 Verification
+
+- [ ] **L.5.1** `Embedding.created_at` returns `datetime` objects, not strings
+- [ ] **L.5.2** Inserting a `MissionArtifact` with `artifact_type='invalid'` raises `IntegrityError`
+- [ ] **L.5.3** `\di+ ix_plan_task_states_*` shows the two new indexes
+- [ ] **L.5.4** All existing tests pass
+
+---
+
 ## 3. Files Changed Summary
 
 | Phase | Files modified | Files created |
@@ -712,8 +1361,14 @@ class Execution(UUIDMixin, TimestampMixin, Base):
 | **D** | `mission.py` (model), `session.py` (model), `llm_call.py`, `session_followup.py`, `mission.py` (service) | 1 migration |
 | **E** | `mission_history.py`, `execution_environment.py`, `workflow_schedule.py`, `workflow_definition.py`, + 4 service files | 1 migration |
 | **F** | `mission_history.py`, `summarization.py`, `execution.py` (comment only) | 1 migration |
+| **G** | `migrations/env.py` | 0 |
+| **H** | 8 model files (`execution.py`, `execution_record.py`, `session.py`, `mission.py`, `mission_plan.py`, `workflow_schedule.py`, `llm_call.py`, `model_pricing.py`) | 1 migration |
+| **I** | `models/base.py`, + ~10 models with custom DateTime columns | 1 migration |
+| **J** | `mission.py`, `execution.py`, `execution_record.py`, `mission_context.py`, `execution_environment.py` | 1 migration |
+| **K** | `execution.py`, `mission_context.py` | 1 migration |
+| **L** | `embedding.py`, `mission_artifact.py`, `mission_plan.py` | 1 migration |
 
-**Total:** ~24 files modified, 5 migration files created.
+**Total:** ~40 files modified, 10 migration files created.
 
 ---
 
@@ -724,13 +1379,19 @@ All migrations chain from the current head:
 ```
 widen_artifact_type
   └── plan64_001_fk_cascades              (Phase A)
-        └── plan64_002_composite_indexes  (Phase C — no dependency on B)
+        └── plan64_002_composite_indexes  (Phase C)
               └── plan64_003_soft_ref_fks     (Phase D)
                     └── plan64_004_timestamp_types  (Phase E)
                           └── plan64_005_rename_column    (Phase F)
+                                └── plan64_006_float_to_numeric  (Phase H)
+                                      └── plan64_007_timestamptz       (Phase I)
+                                            └── plan64_008_status_lowercase  (Phase J)
+                                                  └── plan64_009_additional_fks  (Phase K)
+                                                        └── plan64_010_misc_fixes      (Phase L)
 ```
 
-Phase B requires no migration (import-only change) and can be done at any time.
+Phases B and G require no migration (import/model-only changes) and can be done at
+any time. Phase G should be done **first** regardless of migration ordering.
 
 ---
 
@@ -742,6 +1403,10 @@ Every migration has a `downgrade()` function that reverses the change:
 - FK constraints: `op.drop_constraint()`
 - Timestamp conversion: `ALTER COLUMN ... TYPE VARCHAR(30) USING to_char(column, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
 - Column rename: `op.alter_column(..., new_column_name="mission_ids")`
+- Numeric → Float: `op.alter_column(..., type_=sa.Float(), existing_type=sa.Numeric())`
+- TIMESTAMPTZ → TIMESTAMP: `ALTER COLUMN ... TYPE TIMESTAMP WITHOUT TIME ZONE`
+- Status lowercase → uppercase: reverse the UPDATE mapping
+- CHECK constraints: `op.drop_constraint()`
 
 If a migration fails mid-apply, Alembic's transaction wrapping ensures atomicity
 (all-or-nothing per migration step).
@@ -756,3 +1421,8 @@ If a migration fails mid-apply, Alembic's transaction wrapping ensures atomicity
 - [ ] Service smoke test: `mc db status` shows all tables with correct row counts
 - [ ] No `sqlalchemy.dialects.sqlite` imports remain: `rg "dialects.sqlite" modules/backend/models/`
 - [ ] SQLite test suite passes (verifies Phase B didn't break test infra)
+- [ ] `alembic check` detects no unexpected drift (verifies Phase G)
+- [ ] Cost values are exact: `SELECT total_cost_usd FROM sessions` returns `numeric` type
+- [ ] Timestamps are timezone-aware: `SELECT pg_typeof(created_at) FROM missions` returns `timestamptz`
+- [ ] Status values are lowercase: `SELECT DISTINCT status FROM missions` returns `active`, `paused`, `archived`
+- [ ] No raw SQL queries use uppercase status strings: `rg "'ACTIVE'|'PENDING'|'RUNNING'" modules/backend/`
