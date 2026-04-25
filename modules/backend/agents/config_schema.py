@@ -166,6 +166,12 @@ class AgentConfigSchema(_StrictBase):
     # None = use default from config/settings/cost.yaml.
     cache_ttl: str | None = None
 
+    # Artifact production — when true, the persistence layer creates a
+    # mission_artifact row from this agent's output. Only report-writer
+    # agents (synthesizer, report generator) should set this.
+    produces_artifact: bool = False
+    artifact_type: str | None = None  # research_report, vulnerability_report, etc.
+
     @field_validator("model", mode="before")
     @classmethod
     def _normalize_model(cls, v: str | dict) -> str | dict:

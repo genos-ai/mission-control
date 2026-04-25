@@ -671,57 +671,58 @@ def create_agent(model: str | Model) -> Agent:
             return json.dumps({"error": str(e)})
 
     @agent.tool
-    async def get_research_findings(
+    async def get_artifacts(
         ctx: RunContext[MissionDirectorDeps],
+        artifact_type: str | None = None,
     ) -> str:
-        """Get research findings for this mission.
+        """Get artifacts (reports, findings) produced by this mission.
 
-        Returns the latest synthesizer output from completed task executions.
-        Use this to answer follow-up questions about completed research.
+        Returns the latest artifacts from the mission_artifacts table.
+        Use this to answer follow-up questions about completed research,
+        code reviews, or any other agent-produced deliverables.
+
+        Args:
+            artifact_type: Optional filter (e.g. 'research_report',
+                          'vulnerability_report'). If None, returns all.
         """
         try:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
             from sqlalchemy import select
-            from modules.backend.models.execution_record import (
-                ExecutionRecord,
-                TaskExecution,
-            )
+            from modules.backend.models.mission_artifact import MissionArtifact
 
-            # Find the latest completed execution for this mission
-            # that has a synthesizer task
-            result = await ctx.deps.db_session.execute(
-                select(TaskExecution)
-                .join(ExecutionRecord, TaskExecution.execution_record_id == ExecutionRecord.id)
-                .where(
-                    ExecutionRecord.mission_id == ctx.deps.mission_id,
-                    TaskExecution.agent_name.like("%synthesizer%"),
-                    TaskExecution.status == "COMPLETED",
-                )
-                .order_by(TaskExecution.completed_at.desc())
-                .limit(1)
+            query = (
+                select(MissionArtifact)
+                .where(MissionArtifact.mission_id == ctx.deps.mission_id)
+                .order_by(MissionArtifact.created_at.desc())
+                .limit(5)
             )
-            task = result.scalar_one_or_none()
+            if artifact_type:
+                query = query.where(MissionArtifact.artifact_type == artifact_type)
 
-            if task is None or not task.output_data:
+            result = await ctx.deps.db_session.execute(query)
+            artifacts = result.scalars().all()
+
+            if not artifacts:
                 return json.dumps({
-                    "status": "no_reports",
-                    "message": "No research reports found for this mission.",
+                    "status": "no_artifacts",
+                    "message": "No artifacts found for this mission.",
                 })
 
-            out = task.output_data
-            return json.dumps({
-                "task_execution_id": task.id,
-                "title": out.get("title", ""),
-                "executive_summary": out.get("executive_summary", ""),
-                "source_count": len(out.get("sources", [])),
-                "report_markdown_preview": out.get("report_markdown", "")[:2000],
-                "sources": out.get("sources", [])[:10],
-            }, indent=2, default=str)
+            return json.dumps([
+                {
+                    "id": a.id,
+                    "artifact_type": a.artifact_type,
+                    "title": a.title,
+                    "content_preview": (a.content_text or "")[:2000],
+                    "created_at": str(a.created_at),
+                }
+                for a in artifacts
+            ], indent=2, default=str)
 
         except Exception as e:
-            logger.error("get_research_findings failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error("get_artifacts failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
 
     @agent.tool

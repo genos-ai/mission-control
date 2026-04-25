@@ -28,6 +28,9 @@ interface:
     report_markdown: string
     sources: array
 
+produces_artifact: true
+artifact_type: research_report
+
 scope:
   read: []
   write: []

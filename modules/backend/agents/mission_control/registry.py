@@ -86,6 +86,8 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
         thinking_budget=getattr(row, "thinking_budget_json", None),
         engine=getattr(row, "engine", "pydantic_ai") or "pydantic_ai",
         effort=getattr(row, "effort", None),
+        produces_artifact=getattr(row, "produces_artifact", False),
+        artifact_type=getattr(row, "artifact_type", None),
     )
 
 

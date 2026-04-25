@@ -110,6 +110,14 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
         String(10), nullable=True,
         comment="Cache TTL for Anthropic prompt caching: 5m or 1h (None = cost.yaml default)",
     )
+    produces_artifact: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        comment="When true, persistence layer creates a mission_artifact from this agent's output",
+    )
+    artifact_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True,
+        comment="Artifact type: research_report, vulnerability_report, quality_audit",
+    )
 
     def __repr__(self) -> str:
         return (

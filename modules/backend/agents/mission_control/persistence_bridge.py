@@ -126,14 +126,12 @@ async def persist_mission_results(
                 domain_tags=domain_tags,
             )
 
-            # Plan 43: extract artifact from this task's output. Same
-            # heuristic as the live SSE emission site
-            # (agent_executor.py) — summary field first, fall back to
-            # result. Best-effort: an extraction failure is logged and
-            # swallowed so it cannot block the ExecutionRecord save.
+            # Create artifact if the agent declares produces_artifact.
+            # Driven by catalog config, not output heuristics.
             if artifact_svc is not None and mission_id is not None:
                 try:
-                    await artifact_svc.extract_from_task_result(
+                    await _maybe_create_artifact(
+                        artifact_svc=artifact_svc,
                         mission_id=mission_id,
                         execution_record_id=record.id,
                         task_execution_id=execution.id,
@@ -141,7 +139,7 @@ async def persist_mission_results(
                     )
                 except Exception as artifact_exc:  # noqa: BLE001
                     logger.warning(
-                        "Failed to extract artifact from task result",
+                        "Failed to create artifact",
                         extra={
                             "task_id": task_result.task_id,
                             "agent": task_result.agent_name,
@@ -185,5 +183,79 @@ async def persist_mission_results(
             extra={"session_id": session_id, "error": str(e), "mission_id": mission_id},
         )
         return None
+
+
+async def _maybe_create_artifact(
+    *,
+    artifact_svc: "MissionArtifactService",
+    mission_id: str,
+    execution_record_id: str,
+    task_execution_id: str,
+    task_result,
+) -> None:
+    """Create a mission_artifact if the agent declares produces_artifact.
+
+    Looks up the agent in the registry. If produces_artifact is true,
+    extracts content from the task output and writes an artifact row.
+    No heuristics — the catalog flag is the single source of truth.
+    """
+    from modules.backend.agents.mission_control.registry import get_registry
+
+    agent_name = task_result.agent_name or ""
+    if not agent_name:
+        return
+
+    registry = get_registry()
+    if not registry.has(agent_name):
+        return
+
+    config = registry.get(agent_name)
+    if not config.produces_artifact:
+        return
+
+    output = task_result.output_reference or {}
+    if not isinstance(output, dict):
+        return
+
+    # Extract content — look for report_markdown, then summary, then
+    # stringify the full output as JSON fallback.
+    content = (
+        output.get("report_markdown")
+        or output.get("summary")
+        or output.get("result")
+    )
+    if not content and output:
+        import json
+        content = json.dumps(output, indent=2, default=str)
+
+    if not content:
+        return
+
+    title = (
+        output.get("title")
+        or output.get("report_title")
+        or f"{agent_name} — output"
+    )
+
+    await artifact_svc.create_artifact(
+        mission_id=mission_id,
+        execution_record_id=execution_record_id,
+        task_execution_id=task_execution_id,
+        agent_id=agent_name,
+        artifact_type=config.artifact_type or "report",
+        title=title,
+        content_text=content,
+        content_type="markdown",
+    )
+
+    logger.info(
+        "Artifact created",
+        extra={
+            "agent": agent_name,
+            "artifact_type": config.artifact_type,
+            "title": title[:80],
+            "mission_id": mission_id,
+        },
+    )
 
 
