@@ -52,8 +52,8 @@ keywords:
   - complexity
   - coupling
 tools:
-  - filesystem.read_file
-  - filesystem.list_files
+  - read_file
+  - list_files
 
 interface:
   input:

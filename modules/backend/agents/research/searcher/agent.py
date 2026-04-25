@@ -11,7 +11,8 @@ from pydantic_ai.models import Model
 
 from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.research.deps import ResearchAgentDeps
-from modules.backend.agents.tools import research as research_tools
+from modules.backend.tools.fetch_url import fetch_url as _fetch_url
+from modules.backend.tools.search_web import search_web as _search_web
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import SearchFindings
 
@@ -34,7 +35,7 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
     )
 
     @agent.tool
-    async def web_search(
+    async def search_web(
         ctx: RunContext[ResearchAgentDeps],
         query: str,
         max_results: int = 10,
@@ -44,8 +45,8 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
         """Search the web for information on a topic.
 
         Returns results with url, title, snippet, content, and relevance_score.
-        Tavily results include content directly. For Brave results (empty content),
-        use fetch_and_extract to get the page content.
+        Provider is selected from config (perplexity > tavily > brave).
+        For results with empty content, use fetch_url to get the page content.
 
         Args:
             query: Search query string.
@@ -55,7 +56,7 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
         """
         if not ctx.deps.http_client:
             return [{"error": "No HTTP client available"}]
-        return await research_tools.web_search(
+        return await _search_web(
             ctx.deps.http_client,
             query,
             max_results=max_results,
@@ -64,7 +65,7 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
         )
 
     @agent.tool
-    async def fetch_and_extract(
+    async def fetch_url(
         ctx: RunContext[ResearchAgentDeps],
         url: str,
     ) -> dict:
@@ -75,7 +76,7 @@ def create_agent(model: str | Model) -> Agent[ResearchAgentDeps, SearchFindings]
         """
         if not ctx.deps.http_client:
             return {"error": "No HTTP client available"}
-        return await research_tools.fetch_and_extract(
+        return await _fetch_url(
             ctx.deps.http_client,
             url,
         )

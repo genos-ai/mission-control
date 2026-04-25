@@ -172,7 +172,7 @@ class IsolationVerifier:
             return
 
         from modules.backend.agents.deps.base import FileScope
-        from modules.backend.agents.tools.filesystem import read_file
+        from modules.backend.tools.read_file import read_file
 
         sentinel_rel = "modules/_plan47_isolation_sentinel.py"
         sentinel_content = f"# Plan 47 isolation sentinel — mission {self._mission_id}\n"
@@ -293,7 +293,7 @@ class IsolationVerifier:
     async def check_read_blocked_outside_scope(self) -> None:
         """FileScope blocks reads of paths outside the agent's scope."""
         from modules.backend.agents.deps.base import FileScope
-        from modules.backend.agents.tools.filesystem import read_file
+        from modules.backend.tools.read_file import read_file
 
         scope = FileScope(read_paths=["modules/"])
         try:

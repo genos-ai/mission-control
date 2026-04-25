@@ -17,8 +17,8 @@ invocation:
 
 keywords: []
 tools:
-  - research.web_search
-  - research.fetch_and_extract
+  - search_web
+  - fetch_url
 
 interface:
   input:

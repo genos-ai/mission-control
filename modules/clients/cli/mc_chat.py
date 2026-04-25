@@ -28,21 +28,22 @@ async def chat_repl(
     """
     console = get_console()
 
+    # Default to mission director when no agent specified
+    if not agent_name:
+        agent_name = "mission.director.agent"
+
     # Resolve or create session
     session_id = None
 
     if not new_thread:
-        params: dict = {"mission_id": mission_id, "limit": 1}
-        if agent_name:
-            params["agent_id"] = agent_name
+        params: dict = {"mission_id": mission_id, "limit": 1, "agent_id": agent_name}
         sessions = await api.get("/sessions", params=params)
         session_list = sessions if isinstance(sessions, list) else sessions.get("items", [])
         if session_list:
             session_id = session_list[0].get("id")
 
     if not session_id:
-        agent_label = agent_name or "mission.director.agent"
-        goal = f"{agent_label.split('.')[-2]} Chat" if "." in agent_label else f"{agent_label} Chat"
+        goal = f"{agent_name.split('.')[-2]} Chat" if "." in agent_name else f"{agent_name} Chat"
         session = await api.post("/sessions", body={
             "goal": goal,
             "agent_id": agent_name,
@@ -52,10 +53,10 @@ async def chat_repl(
 
     # Display header
     mission = await api.get(f"/missions/{mission_id}")
-    agent_label = (agent_name or "director").split(".")[-2] if agent_name and "." in agent_name else (agent_name or "director")
+    agent_label = agent_name.split(".")[-2] if "." in agent_name else agent_name
 
     if verbose:
-        click.echo(f"Mission Control \u2014 {mission.get('name', '')} [{agent_name or 'director'}]")
+        click.echo(f"Mission Control \u2014 {mission.get('name', '')} [{agent_name}]")
     else:
         console.print(
             f"[bold cyan]Mission Control[/bold cyan] \u2014 {mission.get('name', '')} "
@@ -85,9 +86,8 @@ async def chat_repl(
                 "message": user_input,
                 "mission_id": mission_id,
                 "session_id": session_id,
+                "agent": agent_name,
             }
-            if agent_name:
-                body["agent"] = agent_name
 
             saw_chunks = False
             async for sse in api.stream_sse("POST", "/agents/chat/stream", body=body):

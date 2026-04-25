@@ -15,7 +15,9 @@ from pydantic_ai.models import Model
 from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.deps.base import QaAgentDeps
 from modules.backend.agents.schemas import PqiDimensionScore, PqiScore, QaAuditResult
-from modules.backend.agents.tools import codemap, compliance, filesystem
+from modules.backend.agents.tools import codemap, compliance
+from modules.backend.tools.list_files import list_files as _list_files
+from modules.backend.tools.read_file import read_file as _read_file
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -55,7 +57,7 @@ def create_agent(model: str | Model) -> Agent[QaAgentDeps, QaAuditResult]:
         """List all Python files in scope, respecting exclusion patterns."""
         ctx.deps.emit({"type": "tool_start", "tool": "list_python_files"})
         exclusions = set(ctx.deps.config.exclusions.paths) if ctx.deps.config and ctx.deps.config.exclusions else set()
-        files = await filesystem.list_files(ctx.deps.project_root, ctx.deps.scope, exclusions)
+        files = await _list_files(ctx.deps.project_root, ctx.deps.scope, exclusions)
         ctx.deps.emit({"type": "tool_done", "tool": "list_python_files", "detail": f"{len(files)} files"})
         return files
 
@@ -111,7 +113,7 @@ def create_agent(model: str | Model) -> Agent[QaAgentDeps, QaAuditResult]:
     async def read_source_file(ctx: RunContext[QaAgentDeps], file_path: str) -> str:
         """Read a source file and return its contents with line numbers."""
         ctx.deps.emit({"type": "tool_start", "tool": "read_source_file", "detail": file_path})
-        return await filesystem.read_file(ctx.deps.project_root, file_path, ctx.deps.scope)
+        return await _read_file(ctx.deps.project_root, file_path, ctx.deps.scope)
 
     # ── Code Map & PQI tools ──────────────────────────────────────────
 

@@ -7,7 +7,8 @@ Tests use real temporary files — no mocks.
 import pytest
 
 from modules.backend.agents.deps.base import FileScope
-from modules.backend.agents.tools.filesystem import list_files, read_file
+from modules.backend.tools.list_files import list_files
+from modules.backend.tools.read_file import read_file
 
 
 @pytest.fixture

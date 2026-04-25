@@ -329,7 +329,7 @@ async def execute_research_loop(
                 domains = ", ".join(config.include_domains)
                 domain_hint = (
                     f"\n\nIMPORTANT: Only search these trusted domains: {domains}. "
-                    f"Pass include_domains={config.include_domains} to web_search."
+                    f"Pass include_domains={config.include_domains} to search_web."
                 )
 
             async def _search_one(
