@@ -200,16 +200,30 @@ async def _maybe_create_artifact(
     No heuristics — the catalog flag is the single source of truth.
     """
     from modules.backend.agents.mission_control.registry import get_registry
+    import re
 
     agent_name = task_result.agent_name or ""
     if not agent_name:
         return
 
+    # Research loop wraps agent names: "research(research.strategist.agent)"
+    # Strip the wrapper to find the catalog entry, but check all agents
+    # involved in the research loop — the synthesizer produces the artifact.
     registry = get_registry()
-    if not registry.has(agent_name):
+    catalog_name = agent_name
+
+    # For research loop tasks, check if the synthesizer (which produces
+    # the artifact) was involved. The output contains the synthesizer's
+    # report regardless of which agent name the loop is tagged with.
+    is_research_loop = agent_name.startswith("research(")
+    if is_research_loop:
+        # The synthesizer is the artifact producer in research loops
+        catalog_name = "research.synthesizer.agent"
+
+    if not registry.has(catalog_name):
         return
 
-    config = registry.get(agent_name)
+    config = registry.get(catalog_name)
     if not config.produces_artifact:
         return
 
@@ -217,10 +231,15 @@ async def _maybe_create_artifact(
     if not isinstance(output, dict):
         return
 
-    # Extract content — look for report_markdown, then summary, then
-    # stringify the full output as JSON fallback.
+    # Extract content — handle both direct output and research loop
+    # output where the report is nested under a "report" key.
+    report = output.get("report", {}) if isinstance(output.get("report"), dict) else {}
+
     content = (
-        output.get("report_markdown")
+        report.get("report_markdown")
+        or output.get("report_markdown")
+        or report.get("executive_summary")
+        or output.get("executive_summary")
         or output.get("summary")
         or output.get("result")
     )
@@ -232,9 +251,10 @@ async def _maybe_create_artifact(
         return
 
     title = (
-        output.get("title")
+        report.get("title")
+        or output.get("title")
         or output.get("report_title")
-        or f"{agent_name} — output"
+        or f"{catalog_name} — output"
     )
 
     await artifact_svc.create_artifact(
