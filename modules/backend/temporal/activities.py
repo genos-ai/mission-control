@@ -184,9 +184,21 @@ async def persist_mission_outcome(
     try:
         outcome = ExecutionOutcome.model_validate(outcome_json)
 
-        # task_plan_reference may be a JSON string (from model_dump_json)
-        # or a dict. persist_mission_results expects a dict for domain_tags
-        # lookup, so parse if needed.
+        # If execution_record_id is set, handle_mission already persisted
+        # inline — this Temporal activity is the backup path. Skip to
+        # avoid duplicate execution_records, task_executions, and artifacts.
+        if outcome.execution_record_id:
+            activity.logger.info(
+                "Skipping persist — already persisted inline",
+                extra={
+                    "execution_record_id": outcome.execution_record_id,
+                    "mission_id": mission_id,
+                },
+            )
+            return True
+
+        # Inline persistence didn't happen (execution_record_id is None) —
+        # this is the crash recovery path. Persist everything.
         task_plan_ref = outcome_json.get("task_plan_reference")
         if isinstance(task_plan_ref, str):
             import json

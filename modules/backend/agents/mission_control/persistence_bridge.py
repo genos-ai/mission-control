@@ -257,15 +257,6 @@ async def _maybe_create_artifact(
         or f"{catalog_name} — output"
     )
 
-    # Dedup: handle_mission persists internally, then the Temporal
-    # workflow's persist_mission_outcome persists again. Skip if an
-    # artifact already exists for this task execution.
-    existing = await artifact_svc.list_for_mission(
-        mission_id, artifact_type=config.artifact_type,
-    )
-    if any(a.task_execution_id == task_execution_id for a in existing):
-        return
-
     await artifact_svc.create_artifact(
         mission_id=mission_id,
         execution_record_id=execution_record_id,
