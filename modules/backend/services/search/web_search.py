@@ -65,13 +65,33 @@ class WebSearchService:
                     include_domains=include_domains,
                     exclude_domains=exclude_domains,
                 )
-            except Exception:
-                logger.warning("Tavily search failed, falling back to Brave", exc_info=True)
+            except Exception as tavily_err:
+                # Extract HTTP status if available (httpx.HTTPStatusError)
+                status = getattr(getattr(tavily_err, "response", None), "status_code", None)
+                logger.warning(
+                    "Tavily search failed, falling back to Brave",
+                    extra={
+                        "query": query[:80],
+                        "status_code": status,
+                        "error": str(tavily_err)[:200],
+                    },
+                )
                 if self._brave_key:
-                    return await self._search_brave(
-                        query,
-                        max_results=max_results,
-                    )
+                    try:
+                        return await self._search_brave(
+                            query,
+                            max_results=max_results,
+                        )
+                    except Exception as brave_err:
+                        logger.error(
+                            "Both search providers failed",
+                            extra={
+                                "query": query[:80],
+                                "tavily_error": str(tavily_err)[:150],
+                                "brave_error": str(brave_err)[:150],
+                            },
+                        )
+                        raise brave_err from tavily_err
                 raise
 
         if chosen == "brave" and self._brave_key:
