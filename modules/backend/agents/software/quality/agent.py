@@ -15,7 +15,7 @@ from pydantic_ai.models import Model
 from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.deps.base import QaAgentDeps
 from modules.backend.agents.schemas import PqiDimensionScore, PqiScore, QaAuditResult
-from modules.backend.agents.tools import codemap, compliance
+from modules.backend.agents.adapters import codemap, compliance
 from modules.backend.tools.list_files import list_files as _list_files
 from modules.backend.tools.read_file import read_file as _read_file
 from modules.backend.core.logging import get_logger

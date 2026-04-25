@@ -48,7 +48,7 @@ def _register_tools(agent: Agent) -> None:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.agents.tools.plan_introspection import get_plan_state
+            from modules.backend.agents.adapters.plan_introspection import get_plan_state
 
             result = await get_plan_state(
                 ctx.deps.db_session, mission_id=ctx.deps.mission_id,
@@ -68,7 +68,7 @@ def _register_tools(agent: Agent) -> None:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.agents.tools.supervisor_introspection import (
+            from modules.backend.agents.adapters.supervisor_introspection import (
                 get_recent_run_outcomes as _get_outcomes,
             )
 
@@ -92,7 +92,7 @@ def _register_tools(agent: Agent) -> None:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.agents.tools.supervisor_introspection import (
+            from modules.backend.agents.adapters.supervisor_introspection import (
                 get_past_decisions as _get_decisions,
             )
 

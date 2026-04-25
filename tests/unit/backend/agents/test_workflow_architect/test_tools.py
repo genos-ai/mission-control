@@ -2,7 +2,7 @@
 
 import pytest
 
-from modules.backend.agents.tools.workflow_design import (
+from modules.backend.agents.adapters.workflow_design import (
     build_graph_structure,
     validate_workflow_proposal,
 )

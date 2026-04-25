@@ -28,9 +28,9 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-# get_plan extracted to agents/tools/plan_introspection.py (shared
+# get_plan extracted to agents/adapters/plan_introspection.py (shared
 # with Director). Re-export for backwards compatibility.
-from modules.backend.agents.tools.plan_introspection import get_plan_state as get_plan  # noqa: F401
+from modules.backend.agents.adapters.plan_introspection import get_plan_state as get_plan  # noqa: F401
 
 
 async def get_recent_run_outcomes(

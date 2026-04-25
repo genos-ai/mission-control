@@ -14,7 +14,7 @@ from pydantic_ai.models import Model
 from modules.backend.agents.deps.base import HealthAgentDeps
 from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.schemas import HealthCheckResult
-from modules.backend.agents.tools import system
+from modules.backend.agents.adapters import system
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)

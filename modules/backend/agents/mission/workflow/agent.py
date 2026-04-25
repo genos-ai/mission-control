@@ -23,7 +23,7 @@ from modules.backend.agents.mission_control.helpers import (
     _build_model,
     assemble_instructions,
 )
-from modules.backend.agents.tools import workflow_design
+from modules.backend.agents.adapters import workflow_design
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import WorkflowGraphEvent
 

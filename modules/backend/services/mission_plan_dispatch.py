@@ -315,7 +315,7 @@ class MissionPlanDispatchMixin:
         try:
             from modules.backend.agents.mission_control.gate_models import GateContext
             from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
-            from modules.backend.agents.tools.supervisor_introspection import get_recent_run_outcomes
+            from modules.backend.agents.adapters.supervisor_introspection import get_recent_run_outcomes
 
             recent = await get_recent_run_outcomes(self._session, mission_id=plan.mission_id, limit=5)
             task_states_now = await self.get_task_states(plan.id)

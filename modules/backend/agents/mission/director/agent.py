@@ -115,7 +115,7 @@ async def _schedule_director_followup(
     if db_session is None or session_id is None:
         return
     try:
-        from modules.backend.agents.tools.followup import schedule_followup
+        from modules.backend.agents.adapters.followup import schedule_followup
 
         await schedule_followup(
             db_session,
@@ -850,7 +850,7 @@ def create_agent(model: str | Model) -> Agent:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.agents.tools.plan_introspection import get_plan_state
+            from modules.backend.agents.adapters.plan_introspection import get_plan_state
 
             result = await get_plan_state(
                 ctx.deps.db_session, mission_id=ctx.deps.mission_id,
@@ -1178,7 +1178,7 @@ def create_agent(model: str | Model) -> Agent:
             scope_out: What's out of scope (optional list of items).
             reason: Why the intent changed.
         """
-        from modules.backend.agents.tools.intent import capture_intent
+        from modules.backend.agents.adapters.intent import capture_intent
         scope = {}
         if scope_in:
             scope["in"] = scope_in
@@ -1197,7 +1197,7 @@ def create_agent(model: str | Model) -> Agent:
         ctx: RunContext[MissionDirectorDeps],
     ) -> str:
         """Retrieve the current mission intent and scope."""
-        from modules.backend.agents.tools.intent import restate_current_intent
+        from modules.backend.agents.adapters.intent import restate_current_intent
         return await restate_current_intent(ctx.deps.mission_id)
 
     # ── Knowledge Query Tool (Plan 57 Phase D) ──────────────
@@ -1238,7 +1238,7 @@ def create_agent(model: str | Model) -> Agent:
         ctx: RunContext[MissionDirectorDeps],
     ) -> str:
         """Inject the current intent into every Director turn."""
-        from modules.backend.agents.tools.intent import restate_current_intent
+        from modules.backend.agents.adapters.intent import restate_current_intent
         try:
             intent_text = await restate_current_intent(ctx.deps.mission_id)
             if intent_text and "No intent set" not in intent_text:

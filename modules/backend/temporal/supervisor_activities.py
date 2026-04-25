@@ -113,7 +113,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     from modules.backend.agents.mission_control.gate_post_run import (
         AutonomousPostRunReviewer,
     )
-    from modules.backend.agents.tools.supervisor_introspection import (
+    from modules.backend.agents.adapters.supervisor_introspection import (
         get_recent_run_outcomes,
     )
     from modules.backend.core.database import get_async_session
