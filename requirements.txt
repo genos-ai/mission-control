@@ -49,6 +49,7 @@ langfuse>=2.40.0
 # AI Agents
 pydantic-ai>=1.63.0
 jsonschema>=4.20.0
+json-repair>=0.30.0
 
 # Durable Execution
 temporalio>=1.20.0

@@ -42,6 +42,53 @@ from pydantic_ai.usage import RequestUsage
 
 from modules.backend.core.logging import get_logger
 
+# ---------------------------------------------------------------------------
+# JSON repair for prompted structured output
+# ---------------------------------------------------------------------------
+
+
+def _repair_json_in_text(text: str) -> str:
+    """Attempt to repair malformed JSON in LLM responses.
+
+    CopilotModel uses prompted structured output (schema injected into the
+    system prompt). The LLM occasionally produces JSON with missing commas,
+    trailing commas, or unescaped characters. This function finds JSON blocks
+    in the text and repairs them using json_repair.
+
+    Only runs when the text contains JSON-like content. Falls back to the
+    original text if repair fails or json_repair is unavailable.
+    """
+    try:
+        from json_repair import repair_json
+    except ImportError:
+        return text
+
+    import re
+
+    # Find JSON block (possibly wrapped in ```json ... ```)
+    json_match = re.search(r"```json\s*([\s\S]*?)```", text)
+    if json_match:
+        raw_json = json_match.group(1).strip()
+        repaired = repair_json(raw_json)
+        if repaired != raw_json:
+            return text[:json_match.start(1)] + repaired + text[json_match.end(1):]
+        return text
+
+    # Try to find a top-level JSON object or array
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace >= 0 and last_brace > first_brace:
+        raw_json = text[first_brace:last_brace + 1]
+        try:
+            json.loads(raw_json)
+            return text  # Already valid
+        except json.JSONDecodeError:
+            repaired = repair_json(raw_json)
+            if repaired and repaired != raw_json:
+                return text[:first_brace] + repaired + text[last_brace + 1:]
+
+    return text
+
 logger = get_logger(__name__)
 
 
@@ -560,8 +607,16 @@ class CopilotModel(Model):
             },
         )
 
+        # Repair malformed JSON in prompted structured output responses.
+        # CopilotModel uses prompted mode (schema in system prompt), and the
+        # LLM occasionally produces JSON with missing commas or trailing commas.
+        # json_repair fixes these before PydanticAI's Pydantic validation runs.
+        text = self._response_text
+        if text and "{" in text:
+            text = _repair_json_in_text(text)
+
         return ModelResponse(
-            parts=[TextPart(content=self._response_text)],
+            parts=[TextPart(content=text)],
             usage=usage,
             model_name=self._model_id,
             timestamp=datetime.now(timezone.utc),
