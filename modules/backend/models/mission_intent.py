@@ -9,6 +9,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,7 +39,7 @@ class MissionIntent(UUIDMixin, Base):
     __tablename__ = "mission_intents"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -56,7 +57,7 @@ class MissionIntent(UUIDMixin, Base):
         String(32), nullable=False,
     )
     revised_from: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("mission_intents.id"),
         nullable=True,
     )
@@ -67,7 +68,7 @@ class MissionIntent(UUIDMixin, Base):
         String(200), nullable=True,
     )
     session_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("sessions.id", ondelete="SET NULL"),
         nullable=True,
     )

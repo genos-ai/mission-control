@@ -26,6 +26,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -100,19 +101,19 @@ class MissionArtifact(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "mission_artifacts"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     execution_record_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("execution_records.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     task_execution_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("task_executions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,

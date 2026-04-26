@@ -7,6 +7,7 @@ Each edit creates a new row with a monotonically increasing version number.
 """
 
 from sqlalchemy import Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -28,7 +29,7 @@ class PromptVersion(UUIDMixin, TimestampMixin, Base):
         comment="agent_catalog or mission_team_member",
     )
     entity_id: Mapped[str] = mapped_column(
-        String(36), nullable=False,
+        PgUUID(as_uuid=False), nullable=False,
         comment="UUID of the owning entity (polymorphic FK)",
     )
     prompt_type: Mapped[str] = mapped_column(

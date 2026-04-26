@@ -14,6 +14,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -79,14 +80,14 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "execution_records"
 
     session_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         nullable=False,
         index=True,
         comment="Session that triggered this execution",
     )
 
     mission_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -159,7 +160,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     )
 
     parent_execution_record_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("execution_records.id"),
         nullable=True,
         index=True,
@@ -232,7 +233,7 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "task_executions"
 
     execution_record_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("execution_records.id"),
         nullable=False,
         index=True,
@@ -294,7 +295,7 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
     )
 
     execution_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         nullable=True,
         index=True,
         comment="Globally unique execution ID assigned at dispatch time",
@@ -335,7 +336,7 @@ class TaskAttempt(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "task_attempts"
 
     task_execution_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("task_executions.id"),
         nullable=False,
         index=True,
@@ -408,7 +409,7 @@ class ExecutionDecision(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "execution_decisions"
 
     execution_record_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("execution_records.id"),
         nullable=False,
         index=True,

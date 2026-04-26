@@ -7,6 +7,7 @@ mission-specific constraint overrides.
 """
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,13 +26,13 @@ class MissionTeamMember(UUIDMixin, TimestampMixin, Base):
     )
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     agent_catalog_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("agent_catalog.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

@@ -7,6 +7,7 @@ Read by the /narrative endpoint for historical timeline display.
 """
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,13 +20,13 @@ class MissionEvent(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "mission_events"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     session_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         nullable=True,
         index=True,
     )

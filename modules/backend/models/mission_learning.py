@@ -9,6 +9,7 @@ Mission-scoped by default; promoted to platform scope via
 import enum
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,7 +45,7 @@ class MissionLearning(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "mission_learnings"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -98,7 +99,7 @@ class MissionLearning(UUIDMixin, TimestampMixin, Base):
 
     # Contradiction tracking
     contradicts_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("mission_learnings.id"),
         nullable=True,
     )

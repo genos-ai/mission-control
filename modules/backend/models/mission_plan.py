@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -103,7 +104,7 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "mission_plans"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
@@ -226,7 +227,7 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
     )
 
     mission_plan_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("mission_plans.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -247,7 +248,7 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
 
     # Approval metadata
     approved_by_user_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
@@ -257,13 +258,13 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
 
     # Execution linkage (set when the task actually runs)
     execution_record_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("execution_records.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     task_execution_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("task_executions.id", ondelete="SET NULL"),
         nullable=True,
     )

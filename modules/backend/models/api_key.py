@@ -7,6 +7,7 @@ Per-user, named, revocable API keys with optional expiry.
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, JSON, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -22,7 +23,7 @@ class ApiKey(UUIDMixin, TimestampMixin, Base):
     )
 
     user_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

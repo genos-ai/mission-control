@@ -10,6 +10,7 @@ agents operate within a single mission at a time.
 import enum
 
 from sqlalchemy import Enum, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -120,13 +121,13 @@ class MissionMember(UUIDMixin, TimestampMixin, Base):
     )
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     user_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,

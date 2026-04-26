@@ -10,6 +10,7 @@ and creates WorkflowRuns when they fire.
 """
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -29,13 +30,13 @@ class WorkflowSchedule(UUIDMixin, TimestampMixin, Base):
     )
 
     workflow_definition_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("workflow_definitions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

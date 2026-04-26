@@ -11,6 +11,7 @@ mission is deleted.
 """
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.core.utils import utc_now
@@ -41,10 +42,10 @@ class Embedding(UUIDMixin, Base):
         String(64), nullable=False, index=True,
     )
     source_id: Mapped[str] = mapped_column(
-        String(36), nullable=False,
+        PgUUID(as_uuid=False), nullable=False,
     )
     mission_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=True,
         index=True,

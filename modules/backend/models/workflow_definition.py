@@ -9,6 +9,7 @@ System workflow templates have mission_id=NULL.
 """
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,7 +28,7 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
     )
 
     mission_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=True,
         index=True,

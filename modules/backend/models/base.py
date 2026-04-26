@@ -8,6 +8,7 @@ from datetime import datetime
 from uuid import uuid5, uuid7, UUID
 
 from sqlalchemy import DateTime
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from modules.backend.core.utils import utc_now
@@ -54,9 +55,10 @@ class TimestampMixin:
 
 
 class UUIDMixin:
-    """Mixin that adds a UUID primary key."""
+    """Mixin that adds a UUID primary key (native PostgreSQL UUID type)."""
 
     id: Mapped[str] = mapped_column(
+        PgUUID(as_uuid=False),
         primary_key=True,
         default=lambda: str(uuid7()),
     )

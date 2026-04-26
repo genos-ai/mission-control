@@ -10,6 +10,7 @@ completed execution batches into concise records.
 import enum
 
 from sqlalchemy import Enum, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,7 +36,7 @@ class MissionDecision(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "mission_decisions"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -56,7 +57,7 @@ class MissionDecision(UUIDMixin, TimestampMixin, Base):
         String(200), nullable=False,
     )
     execution_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True,
+        PgUUID(as_uuid=False), nullable=True,
     )
     status: Mapped[str] = mapped_column(
         Enum(DecisionStatus, native_enum=False),
@@ -85,7 +86,7 @@ class MilestoneSummary(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "milestone_summaries"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

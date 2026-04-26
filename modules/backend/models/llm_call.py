@@ -6,6 +6,7 @@ truth for token economics — all dashboard queries read from here.
 """
 
 from sqlalchemy import Float, Index, Integer, String
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -18,13 +19,13 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
 
     # Context
     session_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True, index=True,
+        PgUUID(as_uuid=False), nullable=True, index=True,
     )
     mission_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True, index=True,
+        PgUUID(as_uuid=False), nullable=True, index=True,
     )
     execution_record_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True,
+        PgUUID(as_uuid=False), nullable=True,
     )
     agent_name: Mapped[str] = mapped_column(
         String(200), nullable=False, index=True,

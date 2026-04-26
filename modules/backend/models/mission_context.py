@@ -10,6 +10,7 @@ every MCD mutation.
 import enum
 
 from sqlalchemy import Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,7 +37,7 @@ class MissionContext(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "mission_contexts"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
@@ -75,7 +76,7 @@ class ContextMilestone(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "context_milestones"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -109,7 +110,7 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "context_changes"
 
     context_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("mission_contexts.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -133,13 +134,13 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
         String(200), nullable=True,
     )
     mission_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True,
+        PgUUID(as_uuid=False), nullable=True,
     )
     task_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True,
     )
     execution_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True, index=True,
+        PgUUID(as_uuid=False), nullable=True, index=True,
     )
     reason: Mapped[str] = mapped_column(
         Text, nullable=False,

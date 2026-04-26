@@ -9,6 +9,7 @@ up on mission archive/delete or idle timeout.
 import enum
 
 from sqlalchemy import Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,7 +32,7 @@ class ExecutionEnvironmentModel(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "execution_environments"
 
     mission_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

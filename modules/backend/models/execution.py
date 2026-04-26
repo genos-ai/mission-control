@@ -15,6 +15,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -88,7 +89,7 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         Integer, nullable=False,
     )
     mission_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -100,7 +101,7 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     session_id: Mapped[str] = mapped_column(
-        String(36), nullable=False, index=True,
+        PgUUID(as_uuid=False), nullable=False, index=True,
     )
     trigger_type: Mapped[str] = mapped_column(
         String(50), default="on_demand", nullable=False,
@@ -131,7 +132,7 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
     )
 
     execution_record_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("execution_records.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -151,13 +152,13 @@ class Execution(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "executions"
 
     workflow_run_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True, index=True,
+        PgUUID(as_uuid=False), nullable=True, index=True,
     )
     workflow_step_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True,
     )
     mission_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("missions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -178,7 +179,7 @@ class Execution(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     session_id: Mapped[str] = mapped_column(
-        String(36), nullable=False, index=True,
+        PgUUID(as_uuid=False), nullable=False, index=True,
     )
     trigger_type: Mapped[str] = mapped_column(
         String(50), default="on_demand", nullable=False,

@@ -38,6 +38,7 @@ for the full design rationale.
 from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
@@ -55,14 +56,14 @@ class SessionFollowup(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "session_followups"
 
     session_id: Mapped[str] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         ForeignKey("sessions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         comment="Session that owns the followup. Cascade on delete.",
     )
     mission_id: Mapped[str | None] = mapped_column(
-        String(36),
+        PgUUID(as_uuid=False),
         nullable=True,
         index=True,
         comment=(

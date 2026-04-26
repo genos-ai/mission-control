@@ -4,6 +4,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, Boolean
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.core.utils import utc_now
@@ -50,9 +51,9 @@ class Session(UUIDMixin, TimestampMixin, Base):
     )
 
     # Identity
-    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(PgUUID(as_uuid=False), nullable=True, index=True)
     mission_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True, index=True
+        PgUUID(as_uuid=False), nullable=True, index=True
     )  # Mission this session belongs to
     agent_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True
@@ -63,7 +64,7 @@ class Session(UUIDMixin, TimestampMixin, Base):
         String(2000), nullable=True
     )  # What this session is trying to achieve
     plan_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True
+        PgUUID(as_uuid=False), nullable=True
     )  # Active plan (Phase 5)
     session_metadata: Mapped[dict | None] = mapped_column(
         JSON, nullable=True, default=dict
@@ -127,7 +128,7 @@ class SessionChannel(UUIDMixin, Base):
     __tablename__ = "session_channels"
 
     session_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("sessions.id"), nullable=False, index=True
+        PgUUID(as_uuid=False), ForeignKey("sessions.id"), nullable=False, index=True
     )
     channel_type: Mapped[str] = mapped_column(
         String(50), nullable=False
@@ -160,7 +161,7 @@ class SessionMessage(UUIDMixin, Base):
     __tablename__ = "session_messages"
 
     session_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("sessions.id"), nullable=False, index=True
+        PgUUID(as_uuid=False), ForeignKey("sessions.id"), nullable=False, index=True
     )
     role: Mapped[str] = mapped_column(
         String(20), nullable=False
