@@ -1,11 +1,45 @@
 # Plan 64 — Database Integrity & Performance Hardening
 
-**Version:** 2.0.0
-**Date:** 2026-04-25
+**Version:** 3.0.0
+**Date:** 2026-04-26
 **Author:** Herman + Data Architecture Review + Adversarial Review Pass + Full Schema Review (Opus 4.6)
-**Status:** Ready to implement
+**Status:** Partially complete — see v3.0 changelog
 **Depends on:** None (all changes are additive migrations + model edits)
 **Unlocks:** Safe mission deletion without raw SQL, JSONB GIN indexes, query performance at scale, correct cost accounting
+
+### v3.0 changelog (2026-04-26 — post UUID v7 migration audit)
+
+**Completed by UUID v7 migration (commits 4fee116, 5bf5f68):**
+- All 93 varchar/varchar(36) ID columns converted to native PostgreSQL UUID type
+- All 41 FK constraints dropped and re-created with correct ondelete rules
+- UUIDMixin switched from uuid4() to uuid7() (Python 3.14 native)
+- System account string IDs ("system:cli" etc.) replaced with deterministic UUID v5
+- Empty string values in nullable columns cleaned to NULL
+- Notes table dropped (legacy BFF artifact)
+
+**Phase status update after audit:**
+- **Phase A (CASCADE delete):** PARTIALLY DONE — 13/33 FKs use CASCADE, 11 SET NULL, 2 RESTRICT. Strategy is reasonable; document it.
+- **Phase B (JSONB):** CHECK — needs re-audit after UUID migration.
+- **Phase C (Indexes):** NOT STARTED — 7 new indexes still needed.
+- **Phase D+K (Missing FKs):** CRITICAL — 5 bare UUID columns still lack FK constraints: `Execution.workflow_run_id`, `WorkflowRun.session_id`, `Execution.session_id`, `ExecutionRecord.session_id`, `ContextChange.mission_id`. These were never FKs in the old schema and the UUID migration didn't add them.
+- **Phase E (Timestamp types in models):** NOT STARTED.
+- **Phase F (Column renames):** NOT STARTED.
+- **Phase G (env.py imports):** MOSTLY DONE — Note removed. Still missing: LlmCall, ModelPricing, MissionPlan, PlanTaskState, SessionFollowup, MissionArtifact, MissionLearning, MissionIntent, Embedding, ExecutionEnvironment.
+- **Phase H (Float → Numeric):** NOT STARTED — 21 monetary columns remain Float across 9 models.
+- **Phase I (Timezone timestamps):** NOT STARTED — TimestampMixin uses naive DateTime. Only ModelPricing has timezone=True.
+- **Phase J (Status column storage):** NOT STARTED — MissionPlan.status and PlanTaskState.status use String(20), not Enum(native_enum=False). Session.status same.
+- **Phase K:** Merged with Phase D above.
+- **Phase L (Misc fixes):** NOT STARTED.
+
+**Recommended implementation order:**
+1. Phase G (env.py imports) — 30 seconds, zero risk
+2. Phase D+K (5 missing FKs) — one migration, low risk
+3. Phase H (Float → Numeric) — one migration, fixes cost rounding
+4. Phase J (Status Enum consistency) — one migration, prevents silent bugs
+5. Phase C (Indexes) — one migration, performance
+6. Phase I (Timezone timestamps) — one migration, affects 25+ tables
+7. Phase A (CASCADE audit) — documentation + targeted changes
+8. Phases B, E, F, L — lower priority cleanup
 
 ### v1.1 changelog (adversarial review)
 
