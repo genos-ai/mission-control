@@ -17,9 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import NotFoundError, ValidationError
-from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
 from modules.backend.core.logging import get_logger
-from modules.backend.core.protocols import ExecutionDispatchProtocol
+from modules.backend.core.protocols import EventBusProtocol, ExecutionDispatchProtocol, NoOpEventBus
 from modules.backend.core.utils import utc_now
 from modules.backend.models.execution import (
     Execution,

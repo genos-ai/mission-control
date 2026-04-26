@@ -45,11 +45,8 @@ from typing import Any, Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.agents.mission_control.models import (
-    EventBusProtocol,
-    NoOpEventBus,
-)
 from modules.backend.core.exceptions import ValidationError
+from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import SessionFollowupFiredEvent

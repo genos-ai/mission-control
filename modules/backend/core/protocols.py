@@ -3,13 +3,57 @@
 Protocols that decouple the services layer from the agents layer.
 Both layers import from core — neither imports from the other.
 
+EventBusProtocol / NoOpEventBus: event emission interface used by
+    services, agents, and temporal activities.
 SessionServiceProtocol: agents layer depends on this instead of
     the concrete SessionService.
 ExecutionDispatchProtocol: services layer depends on this instead of
     the concrete MissionControlDispatchAdapter.
 """
 
-from typing import Any, Protocol
+from __future__ import annotations
+
+from typing import Any, Protocol, runtime_checkable
+
+from modules.backend.core.logging import get_logger
+from modules.backend.events.types import SessionEvent
+
+_logger = get_logger(__name__)
+
+
+@runtime_checkable
+class EventBusProtocol(Protocol):
+    """Interface for event bus implementations (SessionEventBus, mocks, etc.)."""
+
+    async def publish(self, event: SessionEvent) -> None: ...
+
+    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None: ...
+
+
+class NoOpEventBus:
+    """Null-object event bus — satisfies EventBusProtocol, drops all events.
+
+    Logs a warning on first use so silent event loss is visible.
+    Use explicitly in tests. Production code should pass a real SessionEventBus.
+    """
+
+    _warned = False
+
+    async def publish(self, event: SessionEvent) -> None:
+        if not NoOpEventBus._warned:
+            _logger.warning(
+                "NoOpEventBus in use — events are being silently dropped. "
+                "Pass a real SessionEventBus for production visibility.",
+            )
+            NoOpEventBus._warned = True
+
+    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
+        if not NoOpEventBus._warned:
+            _logger.warning(
+                "NoOpEventBus in use — events are being silently dropped. "
+                "Pass a real SessionEventBus for production visibility.",
+            )
+            NoOpEventBus._warned = True
 
 
 class SessionServiceProtocol(Protocol):

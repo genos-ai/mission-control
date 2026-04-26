@@ -11,12 +11,17 @@ to eliminate Any annotations while avoiding circular imports.
 
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypedDict, runtime_checkable
+from typing import Any, Protocol, TypedDict
 
 from pydantic_ai import UsageLimits
 
 from modules.backend.core.logging import get_logger
-from modules.backend.core.protocols import ExecutionDispatchProtocol, SessionServiceProtocol
+from modules.backend.core.protocols import (
+    EventBusProtocol,
+    ExecutionDispatchProtocol,
+    NoOpEventBus,
+    SessionServiceProtocol,
+)
 from modules.backend.events.types import SessionEvent
 
 logger = get_logger(__name__)
@@ -70,42 +75,6 @@ class MissionControlResponse:
 # ---------------------------------------------------------------------------
 # Protocol types — eliminate Any across mission control interfaces
 # ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class EventBusProtocol(Protocol):
-    """Interface for event bus implementations (SessionEventBus, mocks, etc.)."""
-
-    async def publish(self, event: SessionEvent) -> None: ...
-
-    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None: ...
-
-
-class NoOpEventBus:
-    """Null-object event bus — satisfies EventBusProtocol, drops all events.
-
-    Logs a warning on first use so silent event loss is visible.
-    Use explicitly in tests. Production code should pass a real SessionEventBus.
-    """
-
-    _warned = False
-
-    async def publish(self, event: SessionEvent) -> None:
-        if not NoOpEventBus._warned:
-            logger.warning(
-                "NoOpEventBus in use — events are being silently dropped. "
-                "Pass a real SessionEventBus for production visibility.",
-            )
-            NoOpEventBus._warned = True
-
-    async def publish_to_mission(self, mission_id: str, event: SessionEvent) -> None:
-        if not NoOpEventBus._warned:
-            logger.warning(
-                "NoOpEventBus in use — events are being silently dropped. "
-                "Pass a real SessionEventBus for production visibility.",
-            )
-            NoOpEventBus._warned = True
-
 
 
 class ExecuteAgentFn(Protocol):
