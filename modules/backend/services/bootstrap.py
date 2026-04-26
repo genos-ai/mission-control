@@ -117,6 +117,76 @@ class BootstrapService:
         logger.info("Admin user bootstrapped", extra={"email": email, "user_id": str(user.id)})
         return user, full_key
 
+    # Well-known dev/test users seeded by ensure_dev_users().
+    # Credentials are in config/.env for reference.
+    DEV_USERS = [
+        {
+            "email": "sysadmin@missioncontrol.dev",
+            "display_name": "Sysadmin",
+            "system_role": "sysadmin",
+            "password": "sysadmin123",
+        },
+        {
+            "email": "admin@missioncontrol.dev",
+            "display_name": "Admin",
+            "system_role": "admin",
+            "password": "admin123",
+        },
+        {
+            "email": "user@missioncontrol.dev",
+            "display_name": "Test User",
+            "system_role": "user",
+            "password": "user123",
+        },
+    ]
+
+    async def ensure_dev_users(self) -> list[User]:
+        """Create well-known dev/test users if they don't exist.
+
+        Idempotent — safe to call repeatedly. Skips users that already
+        exist (matched by email). Does NOT update passwords for existing
+        users. Also ensures system service accounts exist.
+
+        Returns:
+            List of newly created users (empty if all already existed).
+        """
+        await self.ensure_system_accounts()
+
+        created = []
+        for acct in self.DEV_USERS:
+            existing = await self._user_repo.get_by_email(acct["email"])
+            if existing:
+                continue
+
+            hashed_password = await asyncio.to_thread(
+                security.hash_password, acct["password"],
+            )
+            user = await self._user_repo.create(
+                email=acct["email"],
+                display_name=acct["display_name"],
+                hashed_password=hashed_password,
+                system_role=acct["system_role"],
+            )
+
+            # Create a bootstrap API key for each
+            full_key, hashed_key = await asyncio.to_thread(security.generate_api_key)
+            await self._api_key_repo.create(
+                user_id=user.id,
+                name="bootstrap",
+                key_prefix=full_key[:8],
+                hashed_key=hashed_key,
+            )
+
+            created.append(user)
+            logger.info(
+                "Dev user created",
+                extra={"email": acct["email"], "role": acct["system_role"]},
+            )
+
+        if created:
+            await self._session.flush()
+        return created
+
     async def reset_password_by_email(self, email: str, new_password: str) -> None:
         """Reset a user's password by email. CLI admin operation.
 

@@ -14,11 +14,16 @@ from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class SystemRole(str, enum.Enum):
-    """System-wide role for authorization."""
+    """System-wide role for authorization.
+
+    Hierarchy: viewer < user < admin < sysadmin.
+    Each level includes all permissions of the levels below it.
+    """
 
     VIEWER = "viewer"
     USER = "user"
     ADMIN = "admin"
+    SYSADMIN = "sysadmin"
 
 
 class User(UUIDMixin, TimestampMixin, Base):

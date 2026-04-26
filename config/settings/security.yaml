@@ -103,6 +103,9 @@ roles:
   admin:
     level: 3
     description: "Full system access"
+  sysadmin:
+    level: 4
+    description: "Platform-level operations: locked prompts, system agents, infra config"
 
 # -----------------------------------------------------------------------------
 # User Role Mapping (Telegram user ID → role name)

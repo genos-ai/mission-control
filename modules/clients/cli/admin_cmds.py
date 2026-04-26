@@ -39,6 +39,7 @@ def run_admin_cmd(
         "bootstrap-user": _action_bootstrap_user,
         "reset-password": _action_reset_password,
         "ensure-system-accounts": _action_ensure_system_accounts,
+        "seed-dev-users": _action_seed_dev_users,
     }
     fn = actions.get(action)
     if not fn:
@@ -360,3 +361,21 @@ async def _action_ensure_system_accounts(cli_logger, **_):
             console.print(f"  [green]Created:[/green] {user.id} ({user.display_name})")
     else:
         console.print("[dim]All system accounts already exist.[/dim]")
+
+
+async def _action_seed_dev_users(cli_logger, **_):
+    """Create dev/test users (sysadmin, admin, user) with known passwords."""
+    from modules.backend.services.bootstrap import BootstrapService
+
+    console = get_console()
+
+    async with BootstrapService.factory() as svc:
+        created = await svc.ensure_dev_users()
+
+    if created:
+        for user in created:
+            console.print(f"  [green]Created:[/green] {user.email} ({user.system_role})")
+        console.print(f"\n[bold]{len(created)} dev user(s) created.[/bold]")
+        console.print("[dim]Passwords are in config/.env under Dev/Test Users.[/dim]")
+    else:
+        console.print("[dim]All dev users already exist.[/dim]")

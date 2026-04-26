@@ -1026,6 +1026,14 @@ def admin_bootstrap_user(ctx, email, display_name, password):
     )
 
 
+@admin.command("seed-dev-users")
+@click.pass_obj
+def admin_seed_dev_users(ctx):
+    """Create dev/test users (sysadmin, admin, user) with known passwords."""
+    from modules.clients.cli.admin_cmds import run_admin_cmd
+    run_admin_cmd(ctx.logger, "seed-dev-users", output_format=ctx.output_format)
+
+
 @admin.command("reset-password")
 @click.option("--email", required=True, help="User email address.")
 @click.option("--password", default=None, help="New password (prompted if omitted).")
