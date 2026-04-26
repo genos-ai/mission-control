@@ -290,6 +290,22 @@ class WorkflowNotificationSentEvent(SessionEvent):
     success: bool
 
 
+class WorkflowToolCallCompletedEvent(SessionEvent):
+    event_type: str = "workflow.tool_call.completed"
+    workflow_run_id: str
+    step_id: str
+    tool_name: str
+    success: bool
+
+
+class WorkflowLlmCallCompletedEvent(SessionEvent):
+    event_type: str = "workflow.llm_call.completed"
+    workflow_run_id: str
+    step_id: str
+    model: str
+    success: bool
+
+
 class WorkflowStepSkippedEvent(SessionEvent):
     event_type: str = "workflow.step.skipped"
     workflow_run_id: str
@@ -766,6 +782,8 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.run.failed": WorkflowRunFailedEvent,
     "workflow.condition.evaluated": WorkflowConditionEvaluatedEvent,
     "workflow.notification.sent": WorkflowNotificationSentEvent,
+    "workflow.tool_call.completed": WorkflowToolCallCompletedEvent,
+    "workflow.llm_call.completed": WorkflowLlmCallCompletedEvent,
     "workflow.step.skipped": WorkflowStepSkippedEvent,
     "workflow.human_input.requested": WorkflowHumanInputRequestedEvent,
     "workflow.human_input.responded": WorkflowHumanInputRespondedEvent,

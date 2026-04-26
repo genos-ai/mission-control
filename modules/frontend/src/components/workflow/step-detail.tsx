@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, Bot, GitBranch, Bell, UserRound, Trash2 } from 'lucide-react'
+import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +35,8 @@ export function StepDetail({ step, onClose, onUpdate, onDelete }: StepDetailProp
   const NodeIcon = nodeType === 'condition' ? GitBranch
     : nodeType === 'notification' ? Bell
     : nodeType === 'human_input' ? UserRound
+    : nodeType === 'tool_call' ? Wrench
+    : nodeType === 'llm_call' ? Sparkles
     : Bot
 
   return (
@@ -268,6 +270,117 @@ export function StepDetail({ step, onClose, onUpdate, onDelete }: StepDetailProp
                 }
               />
             </Field>
+          </>
+        )}
+
+        {/* ── Tool call fields ─────────────────────────────── */}
+        {nodeType === 'tool_call' && draft.tool_call_config && (
+          <>
+            <Field label="Tool name">
+              <Input
+                className="h-8 text-xs"
+                value={draft.tool_call_config.tool_name}
+                placeholder="e.g. search_web"
+                onChange={(e) =>
+                  update({
+                    tool_call_config: { ...draft.tool_call_config!, tool_name: e.target.value },
+                  })
+                }
+              />
+            </Field>
+            <Field label="Arguments (JSON)">
+              <Textarea
+                className="min-h-[80px] font-mono text-xs"
+                value={JSON.stringify(draft.tool_call_config.tool_args, null, 2)}
+                placeholder='{"query": "{{@node.step-id.output}}"}'
+                onChange={(e) => {
+                  try {
+                    const parsed = JSON.parse(e.target.value)
+                    update({
+                      tool_call_config: { ...draft.tool_call_config!, tool_args: parsed },
+                    })
+                  } catch {
+                    // Allow typing invalid JSON mid-edit
+                  }
+                }}
+              />
+            </Field>
+          </>
+        )}
+
+        {/* ── LLM call fields ──────────────────────────────── */}
+        {nodeType === 'llm_call' && draft.llm_call_config && (
+          <>
+            <Field label="Model">
+              <Input
+                className="h-8 text-xs"
+                value={draft.llm_call_config.model}
+                placeholder="e.g. copilot:claude-haiku-4.5"
+                onChange={(e) =>
+                  update({
+                    llm_call_config: { ...draft.llm_call_config!, model: e.target.value },
+                  })
+                }
+              />
+            </Field>
+            <Field label="System prompt">
+              <Textarea
+                className="min-h-[40px] text-xs"
+                value={draft.llm_call_config.system_prompt ?? ''}
+                placeholder="Optional system instructions"
+                onChange={(e) =>
+                  update({
+                    llm_call_config: { ...draft.llm_call_config!, system_prompt: e.target.value || null },
+                  })
+                }
+              />
+            </Field>
+            <Field label="Prompt template">
+              <Textarea
+                className="min-h-[80px] text-xs"
+                value={draft.llm_call_config.prompt_template}
+                placeholder="Use {{@node.step-id.field}} for variables"
+                onChange={(e) =>
+                  update({
+                    llm_call_config: { ...draft.llm_call_config!, prompt_template: e.target.value },
+                  })
+                }
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Temperature">
+                <Input
+                  className="h-8 text-xs"
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={draft.llm_call_config.temperature}
+                  onChange={(e) =>
+                    update({
+                      llm_call_config: { ...draft.llm_call_config!, temperature: parseFloat(e.target.value) || 0 },
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Max tokens">
+                <Input
+                  className="h-8 text-xs"
+                  type="number"
+                  min={1}
+                  value={draft.llm_call_config.max_tokens ?? ''}
+                  placeholder="Default"
+                  onChange={(e) =>
+                    update({
+                      llm_call_config: {
+                        ...draft.llm_call_config!,
+                        max_tokens: e.target.value ? parseInt(e.target.value) : null,
+                      },
+                    })
+                  }
+                />
+              </Field>
+            </div>
           </>
         )}
       </div>

@@ -117,6 +117,14 @@ export const NODE_TYPE_STYLES = {
     border: 'border-orange-500/60 border-dashed',
     bg: 'bg-orange-500/5',
   },
+  tool_call: {
+    border: 'border-slate-500/60',
+    bg: 'bg-slate-500/5',
+  },
+  llm_call: {
+    border: 'border-amber-400/60',
+    bg: 'bg-amber-400/5',
+  },
 } as const
 
 // ── Layout ────────────────────────────────────────────────────────────────

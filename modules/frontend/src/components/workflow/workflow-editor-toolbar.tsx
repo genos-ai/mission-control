@@ -12,7 +12,9 @@ import {
   Play,
   Save,
   Loader2,
+  Sparkles,
   UserRound,
+  Wrench,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -98,6 +100,14 @@ export function WorkflowEditorToolbar({
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add human input"
           onClick={() => onAddNode('human_input')}>
           <UserRound className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add tool call"
+          onClick={() => onAddNode('tool_call')}>
+          <Wrench className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add LLM call"
+          onClick={() => onAddNode('llm_call')}>
+          <Sparkles className="h-3.5 w-3.5" />
         </Button>
       </div>
 

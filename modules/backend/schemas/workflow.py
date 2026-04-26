@@ -101,6 +101,27 @@ class HumanInputConfig(BaseModel):
     choices: list[str] | None = None
 
 
+class ToolCallConfig(BaseModel):
+    """Configuration for a tool_call node — invoke a registered tool directly."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool_name: str = Field(..., min_length=1, max_length=100)
+    tool_args: dict[str, Any] = Field(default_factory=dict)
+
+
+class LlmCallConfig(BaseModel):
+    """Configuration for an llm_call node — raw LLM prompt, no agent framework."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(..., min_length=1, max_length=100)
+    system_prompt: str | None = Field(None, max_length=5000)
+    prompt_template: str = Field(..., min_length=1, max_length=10000)
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(None, ge=1, le=128000)
+
+
 class WorkflowStepSchema(BaseModel):
     """A single step in a workflow.
 
@@ -120,7 +141,7 @@ class WorkflowStepSchema(BaseModel):
     description: str | None = Field(None, max_length=500)
     node_type: str = Field(
         default="agent_step",
-        pattern=r"^(agent_step|condition|notification|human_input)$",
+        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call)$",
     )
     capability: str | None = Field(
         None,
@@ -129,6 +150,8 @@ class WorkflowStepSchema(BaseModel):
     condition_config: ConditionConfig | None = None
     notification_config: NotificationConfig | None = None
     human_input_config: HumanInputConfig | None = None
+    tool_call_config: ToolCallConfig | None = None
+    llm_call_config: LlmCallConfig | None = None
     roster: str = Field(
         default="default",
         pattern=r"^[a-z][a-z0-9_-]*$",
@@ -170,6 +193,10 @@ class WorkflowStepSchema(BaseModel):
             raise ValueError("notification_config is required for notification nodes")
         if self.node_type == "human_input" and self.human_input_config is None:
             raise ValueError("human_input_config is required for human_input nodes")
+        if self.node_type == "tool_call" and self.tool_call_config is None:
+            raise ValueError("tool_call_config is required for tool_call nodes")
+        if self.node_type == "llm_call" and self.llm_call_config is None:
+            raise ValueError("llm_call_config is required for llm_call nodes")
         return self
 
 

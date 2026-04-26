@@ -6,7 +6,7 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Bot, GitBranch, Bell, UserRound, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
+import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
 import type { WorkflowStep } from '@/types'
 import type { NodeStatus } from '@/hooks/use-workflow-run-status'
 import { NODE_WIDTH, getDomainBorder, getDomainBg, NODE_TYPE_STYLES } from './workflow-editor-types'
@@ -275,9 +275,103 @@ function HumanInputNodeRaw({ data, selected }: NodeProps) {
   )
 }
 
+// ── Tool Call Node ──────────────────────────────────────────────────────
+
+function ToolCallNodeRaw({ data, selected }: NodeProps) {
+  const step = (data as StepNodeData).step
+  const status = (data as StepNodeData).status ?? 'idle'
+  const config = step.tool_call_config
+  const argsKeys = Object.keys(config?.tool_args ?? {})
+  const argsPreview = argsKeys.length > 0
+    ? argsKeys.slice(0, 3).join(', ') + (argsKeys.length > 3 ? '…' : '')
+    : '—'
+
+  return (
+    <div
+      className={[
+        'relative rounded-xl border-2 px-3 py-2 shadow-sm transition-all',
+        NODE_TYPE_STYLES.tool_call.border,
+        NODE_TYPE_STYLES.tool_call.bg,
+        selected ? selectedRing : '',
+        STATUS_RING[status],
+      ].join(' ')}
+      style={{ width: NODE_WIDTH }}
+    >
+      <TargetHandle />
+      {status !== 'idle' && (
+        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
+          <StatusIcon status={status} />
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <Wrench className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
+          {config?.tool_name ?? '—'}
+        </span>
+      </div>
+
+      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+        {argsPreview}
+      </p>
+
+      <SourceHandle />
+    </div>
+  )
+}
+
+// ── LLM Call Node ───────────────────────────────────────────────────────
+
+function LlmCallNodeRaw({ data, selected }: NodeProps) {
+  const step = (data as StepNodeData).step
+  const status = (data as StepNodeData).status ?? 'idle'
+  const config = step.llm_call_config
+  const promptShort = (config?.prompt_template ?? '').length > 40
+    ? (config?.prompt_template ?? '').slice(0, 37) + '…'
+    : config?.prompt_template ?? ''
+  const modelShort = config?.model?.split(':').pop()?.split('-').slice(0, 2).join('-') ?? '—'
+
+  return (
+    <div
+      className={[
+        'relative rounded-xl border-2 px-3 py-2 shadow-sm transition-all',
+        NODE_TYPE_STYLES.llm_call.border,
+        NODE_TYPE_STYLES.llm_call.bg,
+        selected ? selectedRing : '',
+        STATUS_RING[status],
+      ].join(' ')}
+      style={{ width: NODE_WIDTH }}
+    >
+      <TargetHandle />
+      {status !== 'idle' && (
+        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
+          <StatusIcon status={status} />
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
+          {modelShort}
+        </span>
+      </div>
+
+      <p className="mt-1 truncate text-[10px] text-muted-foreground" title={config?.prompt_template}>
+        {promptShort}
+      </p>
+
+      <SourceHandle />
+    </div>
+  )
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────
 
 export const WorkflowEditorNode = memo(AgentStepNodeRaw)
 export const ConditionNode = memo(ConditionNodeRaw)
 export const NotificationNode = memo(NotificationNodeRaw)
 export const HumanInputNode = memo(HumanInputNodeRaw)
+export const ToolCallNode = memo(ToolCallNodeRaw)
+export const LlmCallNode = memo(LlmCallNodeRaw)

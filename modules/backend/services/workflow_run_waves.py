@@ -24,9 +24,11 @@ from modules.backend.events.types import (
     WorkflowConditionEvaluatedEvent,
     WorkflowExecutionCompletedEvent,
     WorkflowExecutionStartedEvent,
+    WorkflowLlmCallCompletedEvent,
     WorkflowNotificationSentEvent,
     WorkflowRunStartedEvent,
     WorkflowStepSkippedEvent,
+    WorkflowToolCallCompletedEvent,
 )
 
 if TYPE_CHECKING:
@@ -230,6 +232,10 @@ class WorkflowRunWavesMixin:
             return await self._execute_notification_step(run, step, completed_outcomes)
         if node_type == "human_input":
             return await self._execute_human_input_step(run, step, completed_outcomes)
+        if node_type == "tool_call":
+            return await self._execute_tool_call_step(run, step, completed_outcomes)
+        if node_type == "llm_call":
+            return await self._execute_llm_call_step(run, step, completed_outcomes)
 
         # Default: agent_step — existing logic
         # Resolve upstream context from dependencies
@@ -369,6 +375,108 @@ class WorkflowRunWavesMixin:
             workflow_run_id=run.id, step_id=step.id, channel=channel, success=success,
         ))
         outputs = {"sent": success, "channel": channel}
+        return VirtualExecution(id=step.id), outputs
+
+    async def _execute_tool_call_step(
+        self,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+    ) -> tuple[VirtualExecution, dict]:
+        """Invoke a registered tool directly without an agent wrapper."""
+        from modules.backend.services.condition_evaluator import resolve_template
+        from modules.backend.tools.registry import get_tool_registry
+
+        config = step.tool_call_config
+        tool_name = config.tool_name if config else ""
+        tool_args = dict(config.tool_args) if config else {}
+
+        registry = get_tool_registry()
+        if not registry.has(tool_name):
+            raise RuntimeError(f"Tool '{tool_name}' not found in registry (step '{step.id}')")
+
+        tool_info = registry.get(tool_name)
+        tool_mod = tool_info["module"]
+        impl = getattr(tool_mod, "_impl", None)
+        if impl is None:
+            raise RuntimeError(f"Tool '{tool_name}' has no _impl function (step '{step.id}')")
+
+        # Resolve @node/@context variable references in string arg values
+        resolved_args: dict[str, Any] = {}
+        for k, v in tool_args.items():
+            if isinstance(v, str):
+                resolved_args[k] = resolve_template(v, completed_outcomes, run.context)
+            else:
+                resolved_args[k] = v
+
+        # Provision tool dependencies (V1: http_client only)
+        deps = tool_info.get("deps", [])
+        try:
+            import httpx
+            if "http_client" in deps:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resolved_args["http_client"] = client
+                    result = await impl(**resolved_args)
+            else:
+                unsupported = [d for d in deps if d != "http_client"]
+                if unsupported:
+                    raise RuntimeError(
+                        f"Tool '{tool_name}' requires unsupported deps: {unsupported} (step '{step.id}')"
+                    )
+                result = await impl(**resolved_args)
+            success = True
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.warning("Tool call step failed", extra={"step_id": step.id, "tool": tool_name}, exc_info=True)
+            result = {"error": str(e)}
+            success = False
+
+        logger.info("Tool call completed", extra={"step_id": step.id, "tool": tool_name, "success": success})
+        await self._publish_workflow_event(run.mission_id, WorkflowToolCallCompletedEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id, tool_name=tool_name, success=success,
+        ))
+        outputs = {"output": result, "tool_name": tool_name}
+        return VirtualExecution(id=step.id), outputs
+
+    async def _execute_llm_call_step(
+        self,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+    ) -> tuple[VirtualExecution, dict]:
+        """Make a raw LLM call with template substitution — no agent framework."""
+        from modules.backend.services.condition_evaluator import resolve_template
+
+        config = step.llm_call_config
+        if not config:
+            raise RuntimeError(f"llm_call_config missing for step '{step.id}'")
+
+        # Resolve templates
+        prompt = resolve_template(config.prompt_template, completed_outcomes, run.context)
+        system = resolve_template(config.system_prompt, completed_outcomes, run.context) if config.system_prompt else None
+
+        try:
+            from modules.backend.core.model_builder import _build_model
+            from pydantic_ai import Agent as PydanticAgent
+
+            model = _build_model(config.model)
+            agent = PydanticAgent(model, output_type=str, instructions=system or "")
+            result = await agent.run(prompt)
+            text = result.output
+            success = True
+        except Exception as e:
+            logger.warning("LLM call step failed", extra={"step_id": step.id, "model": config.model}, exc_info=True)
+            text = f"Error: {e}"
+            success = False
+
+        logger.info("LLM call completed", extra={"step_id": step.id, "model": config.model, "success": success})
+        await self._publish_workflow_event(run.mission_id, WorkflowLlmCallCompletedEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id, model=config.model, success=success,
+        ))
+        outputs = {"output": text, "model": config.model}
         return VirtualExecution(id=step.id), outputs
 
     async def _execute_human_input_step(

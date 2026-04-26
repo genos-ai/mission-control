@@ -19,7 +19,7 @@ export interface WorkflowListItem {
 export interface WorkflowStep {
   id: string
   description: string | null
-  node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input'
+  node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input' | 'tool_call' | 'llm_call'
   capability: string | null
   condition_config?: {
     expression: string
@@ -37,6 +37,17 @@ export interface WorkflowStep {
     timeout_hours: number | null
     default_response: string | null
     choices: string[] | null
+  } | null
+  tool_call_config?: {
+    tool_name: string
+    tool_args: Record<string, unknown>
+  } | null
+  llm_call_config?: {
+    model: string
+    system_prompt: string | null
+    prompt_template: string
+    temperature: number
+    max_tokens: number | null
   } | null
   roster: string
   complexity_tier: string

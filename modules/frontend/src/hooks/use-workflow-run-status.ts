@@ -34,6 +34,8 @@ const WORKFLOW_EVENT_TYPES = new Set([
   'workflow.step.skipped',
   'workflow.condition.evaluated',
   'workflow.notification.sent',
+  'workflow.tool_call.completed',
+  'workflow.llm_call.completed',
   'workflow.human_input.requested',
   'workflow.human_input.responded',
   'workflow.run.completed',
@@ -90,6 +92,8 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
           break
 
         case 'workflow.notification.sent':
+        case 'workflow.tool_call.completed':
+        case 'workflow.llm_call.completed':
           setNodeStatuses((prev) => ({
             ...prev,
             [String(d.step_id)]: d.success ? 'completed' : 'failed',

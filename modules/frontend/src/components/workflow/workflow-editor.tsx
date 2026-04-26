@@ -25,7 +25,7 @@ import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { useWorkflowRuns } from '@/hooks/use-workflows'
 import { StepDetail } from './step-detail'
 import { WorkflowRunHistory } from './workflow-run-history'
-import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode } from './workflow-editor-node'
+import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import {
   dagreLayout,
@@ -42,6 +42,8 @@ const STEP_NODE_TYPE_MAP: Record<string, string> = {
   condition: 'conditionStep',
   notification: 'notificationStep',
   human_input: 'humanInputStep',
+  tool_call: 'toolCallStep',
+  llm_call: 'llmCallStep',
 }
 
 function stepsToNodes(
@@ -131,6 +133,8 @@ const nodeTypes = {
   conditionStep: ConditionNode,
   notificationStep: NotificationNode,
   humanInputStep: HumanInputNode,
+  toolCallStep: ToolCallNode,
+  llmCallStep: LlmCallNode,
 }
 
 interface WorkflowEditorProps {
@@ -373,6 +377,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       const prefix = nodeType === 'agent_step' ? 'step'
         : nodeType === 'condition' ? 'check'
         : nodeType === 'notification' ? 'notify'
+        : nodeType === 'tool_call' ? 'tool'
+        : nodeType === 'llm_call' ? 'llm'
         : 'input'
       const suffix = Math.random().toString(36).slice(2, 6)
       const stepId = `${prefix}-${suffix}`
@@ -401,6 +407,12 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         } : {}),
         ...(nodeType === 'human_input' ? {
           human_input_config: { prompt_message: 'Please respond', channel: 'telegram', timeout_hours: null, default_response: null, choices: null },
+        } : {}),
+        ...(nodeType === 'tool_call' ? {
+          tool_call_config: { tool_name: 'search_web', tool_args: {} },
+        } : {}),
+        ...(nodeType === 'llm_call' ? {
+          llm_call_config: { model: 'copilot:claude-haiku-4.5', system_prompt: null, prompt_template: 'Summarize the following:\n{{@node.step-id.output}}', temperature: 0.0, max_tokens: null },
         } : {}),
       }
 
