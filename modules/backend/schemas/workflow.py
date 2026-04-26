@@ -122,6 +122,14 @@ class LlmCallConfig(BaseModel):
     max_tokens: int | None = Field(None, ge=1, le=128000)
 
 
+class MergeConfig(BaseModel):
+    """Configuration for a merge (join) node — sync barrier for parallel paths."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: str = Field(default="wait_all", pattern=r"^(wait_all|wait_any)$")
+
+
 class WorkflowStepSchema(BaseModel):
     """A single step in a workflow.
 
@@ -141,7 +149,7 @@ class WorkflowStepSchema(BaseModel):
     description: str | None = Field(None, max_length=500)
     node_type: str = Field(
         default="agent_step",
-        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call)$",
+        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call|branch|merge)$",
     )
     capability: str | None = Field(
         None,
@@ -152,6 +160,7 @@ class WorkflowStepSchema(BaseModel):
     human_input_config: HumanInputConfig | None = None
     tool_call_config: ToolCallConfig | None = None
     llm_call_config: LlmCallConfig | None = None
+    merge_config: MergeConfig | None = None
     roster: str = Field(
         default="default",
         pattern=r"^[a-z][a-z0-9_-]*$",

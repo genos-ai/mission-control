@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Trash2 } from 'lucide-react'
+import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +37,8 @@ export function StepDetail({ step, onClose, onUpdate, onDelete }: StepDetailProp
     : nodeType === 'human_input' ? UserRound
     : nodeType === 'tool_call' ? Wrench
     : nodeType === 'llm_call' ? Sparkles
+    : nodeType === 'branch' ? Split
+    : nodeType === 'merge' ? Merge
     : Bot
 
   return (
@@ -382,6 +384,27 @@ export function StepDetail({ step, onClose, onUpdate, onDelete }: StepDetailProp
               </Field>
             </div>
           </>
+        )}
+        {/* ── Branch fields ──────────────────────────────────── */}
+        {nodeType === 'branch' && (
+          <p className="text-xs text-muted-foreground">
+            Fork node — splits into parallel paths. Connect outgoing edges to downstream steps.
+          </p>
+        )}
+
+        {/* ── Merge fields ──────────────────────────────────── */}
+        {nodeType === 'merge' && (
+          <Field label="Strategy">
+            <Select
+              value={draft.merge_config?.strategy ?? 'wait_all'}
+              onChange={(v) =>
+                update({
+                  merge_config: { ...draft.merge_config, strategy: v },
+                })
+              }
+              options={['wait_all', 'wait_any']}
+            />
+          </Field>
         )}
       </div>
 

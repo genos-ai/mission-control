@@ -9,8 +9,10 @@ import {
   GitBranch,
   History,
   LayoutDashboard,
+  Merge,
   Play,
   Save,
+  Split,
   Loader2,
   Sparkles,
   UserRound,
@@ -108,6 +110,15 @@ export function WorkflowEditorToolbar({
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add LLM call"
           onClick={() => onAddNode('llm_call')}>
           <Sparkles className="h-3.5 w-3.5" />
+        </Button>
+        <div className="mx-0.5 h-4 w-px bg-border" />
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add fork (branch)"
+          onClick={() => onAddNode('branch')}>
+          <Split className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add join (merge)"
+          onClick={() => onAddNode('merge')}>
+          <Merge className="h-3.5 w-3.5" />
         </Button>
       </div>
 

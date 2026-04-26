@@ -25,7 +25,7 @@ import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { useWorkflowRuns } from '@/hooks/use-workflows'
 import { StepDetail } from './step-detail'
 import { WorkflowRunHistory } from './workflow-run-history'
-import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode } from './workflow-editor-node'
+import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode, BranchNode, MergeNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import {
   dagreLayout,
@@ -44,6 +44,8 @@ const STEP_NODE_TYPE_MAP: Record<string, string> = {
   human_input: 'humanInputStep',
   tool_call: 'toolCallStep',
   llm_call: 'llmCallStep',
+  branch: 'branchStep',
+  merge: 'mergeStep',
 }
 
 function stepsToNodes(
@@ -135,6 +137,8 @@ const nodeTypes = {
   humanInputStep: HumanInputNode,
   toolCallStep: ToolCallNode,
   llmCallStep: LlmCallNode,
+  branchStep: BranchNode,
+  mergeStep: MergeNode,
 }
 
 interface WorkflowEditorProps {
@@ -440,6 +444,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         : nodeType === 'notification' ? 'notify'
         : nodeType === 'tool_call' ? 'tool'
         : nodeType === 'llm_call' ? 'llm'
+        : nodeType === 'branch' ? 'fork'
+        : nodeType === 'merge' ? 'join'
         : 'input'
       const suffix = Math.random().toString(36).slice(2, 6)
       const stepId = `${prefix}-${suffix}`
@@ -474,6 +480,9 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         } : {}),
         ...(nodeType === 'llm_call' ? {
           llm_call_config: { model: 'copilot:claude-haiku-4.5', system_prompt: null, prompt_template: 'Summarize the following:\n{{@node.step-id.output}}', temperature: 0.0, max_tokens: null },
+        } : {}),
+        ...(nodeType === 'merge' ? {
+          merge_config: { strategy: 'wait_all' },
         } : {}),
       }
 

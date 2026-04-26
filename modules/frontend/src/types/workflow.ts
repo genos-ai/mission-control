@@ -19,7 +19,7 @@ export interface WorkflowListItem {
 export interface WorkflowStep {
   id: string
   description: string | null
-  node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input' | 'tool_call' | 'llm_call'
+  node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input' | 'tool_call' | 'llm_call' | 'branch' | 'merge'
   capability: string | null
   condition_config?: {
     expression: string
@@ -48,6 +48,9 @@ export interface WorkflowStep {
     prompt_template: string
     temperature: number
     max_tokens: number | null
+  } | null
+  merge_config?: {
+    strategy: string
   } | null
   roster: string
   complexity_tier: string

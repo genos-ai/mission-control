@@ -21,10 +21,12 @@ from typing import TYPE_CHECKING, Any
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import (
+    WorkflowBranchPassedEvent,
     WorkflowConditionEvaluatedEvent,
     WorkflowExecutionCompletedEvent,
     WorkflowExecutionStartedEvent,
     WorkflowLlmCallCompletedEvent,
+    WorkflowMergeCompletedEvent,
     WorkflowNotificationSentEvent,
     WorkflowRunStartedEvent,
     WorkflowStepSkippedEvent,
@@ -236,6 +238,10 @@ class WorkflowRunWavesMixin:
             return await self._execute_tool_call_step(run, step, completed_outcomes)
         if node_type == "llm_call":
             return await self._execute_llm_call_step(run, step, completed_outcomes)
+        if node_type == "branch":
+            return await self._execute_branch_step(run, step, completed_outcomes)
+        if node_type == "merge":
+            return await self._execute_merge_step(run, step, completed_outcomes)
 
         # Default: agent_step — existing logic
         # Resolve upstream context from dependencies
@@ -477,6 +483,56 @@ class WorkflowRunWavesMixin:
             workflow_run_id=run.id, step_id=step.id, model=config.model, success=success,
         ))
         outputs = {"output": text, "model": config.model}
+        return VirtualExecution(id=step.id), outputs
+
+    async def _execute_branch_step(
+        self,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+    ) -> tuple[VirtualExecution, dict]:
+        """Pass-through fork node. Downstream steps run in parallel via wave scheduling."""
+        # Forward all upstream outputs so downstream forks can reference them
+        upstream_data: dict[str, Any] = {}
+        for dep_id in step.depends_on:
+            dep_out = completed_outcomes.get(dep_id, {})
+            upstream_data[dep_id] = dep_out
+
+        # Count outgoing edges (fork_count) — not available here, use 0 as placeholder
+        logger.info("Branch passed", extra={"step_id": step.id, "run_id": run.id})
+        await self._publish_workflow_event(run.mission_id, WorkflowBranchPassedEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id, fork_count=0,
+        ))
+        outputs = {"_passthrough": True, **upstream_data}
+        return VirtualExecution(id=step.id), outputs
+
+    async def _execute_merge_step(
+        self,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+    ) -> tuple[VirtualExecution, dict]:
+        """Sync barrier — collects outputs from all incoming paths into a combined object."""
+        merged: dict[str, Any] = {}
+        for dep_id in step.depends_on:
+            dep_out = completed_outcomes.get(dep_id, {})
+            if not dep_out.get("_skipped"):
+                merged[dep_id] = dep_out
+
+        strategy = "wait_all"
+        if step.merge_config:
+            strategy = step.merge_config.strategy
+
+        logger.info(
+            "Merge completed",
+            extra={"step_id": step.id, "run_id": run.id, "strategy": strategy, "inputs": len(merged)},
+        )
+        await self._publish_workflow_event(run.mission_id, WorkflowMergeCompletedEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id, strategy=strategy, inputs_merged=len(merged),
+        ))
+        outputs = {"merged": merged, "input_count": len(merged)}
         return VirtualExecution(id=step.id), outputs
 
     async def _execute_human_input_step(

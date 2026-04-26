@@ -6,7 +6,7 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
+import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
 import type { WorkflowStep } from '@/types'
 import type { NodeStatus } from '@/hooks/use-workflow-run-status'
 import { NODE_WIDTH, getDomainBorder, getDomainBg, NODE_TYPE_STYLES } from './workflow-editor-types'
@@ -367,6 +367,117 @@ function LlmCallNodeRaw({ data, selected }: NodeProps) {
   )
 }
 
+// ── Branch Node (Fork) ─────────────────────────────────────────────────
+
+const BRANCH_WIDTH = 100
+
+function BranchNodeRaw({ data, selected }: NodeProps) {
+  const step = (data as StepNodeData).step
+  const status = (data as StepNodeData).status ?? 'idle'
+
+  return (
+    <div
+      className={[
+        'relative flex flex-col items-center justify-center rounded-lg border-2 px-2 py-3 shadow-sm transition-all',
+        NODE_TYPE_STYLES.branch.border,
+        NODE_TYPE_STYLES.branch.bg,
+        selected ? selectedRing : '',
+        STATUS_RING[status],
+      ].join(' ')}
+      style={{ width: BRANCH_WIDTH }}
+    >
+      <TargetHandle />
+      {status !== 'idle' && (
+        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
+          <StatusIcon status={status} />
+        </div>
+      )}
+
+      <Split className="h-4 w-4 text-zinc-400" />
+      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.id}</span>
+
+      {/* Multiple source handles for parallel outputs */}
+      <Handle
+        type="source"
+        id="fork-1"
+        position={Position.Right}
+        style={{ top: '30%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
+      />
+      <Handle
+        type="source"
+        id="fork-2"
+        position={Position.Right}
+        style={{ top: '50%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
+      />
+      <Handle
+        type="source"
+        id="fork-3"
+        position={Position.Right}
+        style={{ top: '70%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
+      />
+    </div>
+  )
+}
+
+// ── Merge Node (Join) ──────────────────────────────────────────────────
+
+function MergeNodeRaw({ data, selected }: NodeProps) {
+  const step = (data as StepNodeData).step
+  const status = (data as StepNodeData).status ?? 'idle'
+  const strategy = step.merge_config?.strategy ?? 'wait_all'
+
+  return (
+    <div
+      className={[
+        'relative flex flex-col items-center justify-center rounded-lg border-2 px-2 py-3 shadow-sm transition-all',
+        NODE_TYPE_STYLES.merge.border,
+        NODE_TYPE_STYLES.merge.bg,
+        selected ? selectedRing : '',
+        STATUS_RING[status],
+      ].join(' ')}
+      style={{ width: BRANCH_WIDTH }}
+    >
+      {/* Multiple target handles for parallel inputs */}
+      <Handle
+        type="target"
+        id="join-1"
+        position={Position.Left}
+        style={{ top: '30%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
+      />
+      <Handle
+        type="target"
+        id="join-2"
+        position={Position.Left}
+        style={{ top: '50%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
+      />
+      <Handle
+        type="target"
+        id="join-3"
+        position={Position.Left}
+        style={{ top: '70%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
+      />
+
+      {status !== 'idle' && (
+        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
+          <StatusIcon status={status} />
+        </div>
+      )}
+
+      <Merge className="h-4 w-4 text-zinc-400" />
+      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.id}</span>
+      <span className="text-[9px] text-muted-foreground/60">{strategy === 'wait_any' ? 'any' : 'all'}</span>
+
+      <SourceHandle />
+    </div>
+  )
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────
 
 export const WorkflowEditorNode = memo(AgentStepNodeRaw)
@@ -375,3 +486,5 @@ export const NotificationNode = memo(NotificationNodeRaw)
 export const HumanInputNode = memo(HumanInputNodeRaw)
 export const ToolCallNode = memo(ToolCallNodeRaw)
 export const LlmCallNode = memo(LlmCallNodeRaw)
+export const BranchNode = memo(BranchNodeRaw)
+export const MergeNode = memo(MergeNodeRaw)

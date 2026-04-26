@@ -306,6 +306,21 @@ class WorkflowLlmCallCompletedEvent(SessionEvent):
     success: bool
 
 
+class WorkflowBranchPassedEvent(SessionEvent):
+    event_type: str = "workflow.branch.passed"
+    workflow_run_id: str
+    step_id: str
+    fork_count: int
+
+
+class WorkflowMergeCompletedEvent(SessionEvent):
+    event_type: str = "workflow.merge.completed"
+    workflow_run_id: str
+    step_id: str
+    strategy: str
+    inputs_merged: int
+
+
 class WorkflowStepSkippedEvent(SessionEvent):
     event_type: str = "workflow.step.skipped"
     workflow_run_id: str
@@ -784,6 +799,8 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.notification.sent": WorkflowNotificationSentEvent,
     "workflow.tool_call.completed": WorkflowToolCallCompletedEvent,
     "workflow.llm_call.completed": WorkflowLlmCallCompletedEvent,
+    "workflow.branch.passed": WorkflowBranchPassedEvent,
+    "workflow.merge.completed": WorkflowMergeCompletedEvent,
     "workflow.step.skipped": WorkflowStepSkippedEvent,
     "workflow.human_input.requested": WorkflowHumanInputRequestedEvent,
     "workflow.human_input.responded": WorkflowHumanInputRespondedEvent,

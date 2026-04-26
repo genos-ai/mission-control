@@ -125,6 +125,14 @@ export const NODE_TYPE_STYLES = {
     border: 'border-amber-400/60',
     bg: 'bg-amber-400/5',
   },
+  branch: {
+    border: 'border-zinc-500/60',
+    bg: 'bg-zinc-500/5',
+  },
+  merge: {
+    border: 'border-zinc-500/60',
+    bg: 'bg-zinc-500/5',
+  },
 } as const
 
 // ── Layout ────────────────────────────────────────────────────────────────
