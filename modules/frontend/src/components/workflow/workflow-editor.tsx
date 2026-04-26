@@ -143,6 +143,13 @@ interface WorkflowEditorProps {
   onRun: () => Promise<void>
 }
 
+interface HistoryEntry {
+  nodes: Node[]
+  edges: Edge[]
+}
+
+const MAX_HISTORY = 50
+
 export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorProps) {
   const { id: missionId } = useParams<{ id: string }>()
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
@@ -152,6 +159,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const [showHistory, setShowHistory] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyRef = useRef<HistoryEntry[]>([])
+  const redoRef = useRef<HistoryEntry[]>([])
   const runOverlay = useWorkflowRunStatus()
   const { data: runs = [], isLoading: runsLoading } = useWorkflowRuns(missionId, workflow.name)
 
@@ -216,6 +225,32 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     )
   }, [selectedRunId, runOverlay.isActive, setNodes])
 
+  // ── Undo / Redo ──────────────────────────────────────────────────────────
+
+  const pushHistory = useCallback(() => {
+    historyRef.current.push({ nodes: [...nodes], edges: [...edges] })
+    if (historyRef.current.length > MAX_HISTORY) historyRef.current.shift()
+    redoRef.current = [] // clear redo on new action
+  }, [nodes, edges])
+
+  const handleUndo = useCallback(() => {
+    const entry = historyRef.current.pop()
+    if (!entry) return
+    redoRef.current.push({ nodes: [...nodes], edges: [...edges] })
+    setNodes(entry.nodes)
+    setEdges(entry.edges)
+    setIsDirty(true)
+  }, [nodes, edges, setNodes, setEdges])
+
+  const handleRedo = useCallback(() => {
+    const entry = redoRef.current.pop()
+    if (!entry) return
+    historyRef.current.push({ nodes: [...nodes], edges: [...edges] })
+    setNodes(entry.nodes)
+    setEdges(entry.edges)
+    setIsDirty(true)
+  }, [nodes, edges, setNodes, setEdges])
+
   // Track dirty state on node drag
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -231,12 +266,15 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   // Track dirty state on edge changes (removal)
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      if (changes.some((c) => c.type === 'remove')) {
+        pushHistory()
+      }
       onEdgesChange(changes)
       if (changes.some((c) => c.type === 'remove')) {
         setIsDirty(true)
       }
     },
-    [onEdgesChange],
+    [onEdgesChange, pushHistory],
   )
 
   // Connect nodes — create edge on drag
@@ -264,6 +302,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
           ? 'hsl(0 84% 60% / 0.5)'
           : 'hsl(var(--muted-foreground) / 0.4)'
 
+      pushHistory()
       setEdges((eds) =>
         addEdge(
           {
@@ -278,7 +317,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       )
       setIsDirty(true)
     },
-    [edges, nodes, setEdges],
+    [edges, nodes, setEdges, pushHistory],
   )
 
   // Node click → select step (hides history panel)
@@ -299,15 +338,17 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
 
   // Node deletion
   const handleNodesDelete = useCallback(() => {
+    pushHistory()
     setSelectedStep(null)
     setIsDirty(true)
-  }, [])
+  }, [pushHistory])
 
   // Auto-layout
   const handleAutoLayout = useCallback(() => {
+    pushHistory()
     setNodes((prev) => dagreLayout(prev, edges))
     setIsDirty(true)
-  }, [edges, setNodes])
+  }, [edges, setNodes, pushHistory])
 
   // Save — send steps + edges + canvas atomically
   const handleSave = useCallback(async () => {
@@ -359,6 +400,25 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     }
   }, [onRun, runOverlay])
 
+  // ── Keyboard shortcuts (Cmd+S, Cmd+Z, Cmd+Shift+Z) ─────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key === 's') {
+        e.preventDefault()
+        if (isDirty && !isSaving) handleSave()
+      } else if (mod && e.shiftKey && e.key === 'z') {
+        e.preventDefault()
+        handleRedo()
+      } else if (mod && e.key === 'z') {
+        e.preventDefault()
+        handleUndo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isDirty, isSaving, handleSave, handleUndo, handleRedo])
+
   // Toggle history panel
   const handleToggleHistory = useCallback(() => {
     setShowHistory((prev) => {
@@ -374,6 +434,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   // Add node from toolbar
   const handleAddNode = useCallback(
     (nodeType: string) => {
+      pushHistory()
       const prefix = nodeType === 'agent_step' ? 'step'
         : nodeType === 'condition' ? 'check'
         : nodeType === 'notification' ? 'notify'
@@ -429,12 +490,13 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       setShowHistory(false)
       setIsDirty(true)
     },
-    [nodes, setNodes],
+    [nodes, setNodes, pushHistory],
   )
 
   // Update step from config panel
   const handleStepUpdate = useCallback(
     (updated: WorkflowStep) => {
+      pushHistory()
       setNodes((prev) =>
         prev.map((node) =>
           node.id === updated.id
@@ -445,19 +507,20 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       setSelectedStep(updated)
       setIsDirty(true)
     },
-    [setNodes],
+    [setNodes, pushHistory],
   )
 
   // Delete selected node
   const handleDeleteSelectedNode = useCallback(() => {
     if (!selectedStep) return
+    pushHistory()
     setNodes((prev) => prev.filter((n) => n.id !== selectedStep.id))
     setEdges((prev) =>
       prev.filter((e) => e.source !== selectedStep.id && e.target !== selectedStep.id),
     )
     setSelectedStep(null)
     setIsDirty(true)
-  }, [selectedStep, setNodes, setEdges])
+  }, [selectedStep, setNodes, setEdges, pushHistory])
 
   return (
     <div className="flex h-full flex-col">
