@@ -70,7 +70,7 @@ class ExecutionRecordResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    session_id: str
+    session_id: str | None = None
     roster_name: str | None
     status: str
     total_cost_usd: float

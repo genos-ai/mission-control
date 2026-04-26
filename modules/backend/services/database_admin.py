@@ -39,7 +39,6 @@ RUN_TABLES = [
     "executions",
     "workflow_runs",
     "sessions",
-    "notes",
 ]
 
 # Execution-only tables
