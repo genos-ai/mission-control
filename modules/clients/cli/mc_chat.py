@@ -198,14 +198,14 @@ def _render_sse_event(
         console.file.flush()
 
     elif evt == "agent.response.complete":
+        full = data.get("full_content", "")
         # Only print body if chunks didn't already stream it
-        if not suppress_body:
-            full = data.get("full_content", "")
-            if full:
-                console.print(full)
+        if not suppress_body and full:
+            console.print(full)
         cost = data.get("cost_usd", 0)
         if data.get("metadata", {}).get("error"):
-            console.print(f"  [bold red]Error:[/bold red] {full}")
+            error_msg = full or data.get("metadata", {}).get("error", "unknown error")
+            console.print(f"  [bold red]Error:[/bold red] {error_msg}")
         elif cost > 0:
             tokens = data.get("input_tokens", 0) + data.get("output_tokens", 0)
             console.print(
