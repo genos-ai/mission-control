@@ -255,7 +255,7 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
         nullable=True,
     )
     approved_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
 
     # Execution linkage (set when the task actually runs)
@@ -273,7 +273,7 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
 
     # Run lifecycle
     last_attempt_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     retry_count: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False,
@@ -281,7 +281,7 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
 
     # Veto window (ai_assisted mode)
     veto_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
 
     # Denormalized run result (for quick Plan tab rendering without joins)

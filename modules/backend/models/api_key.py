@@ -38,16 +38,16 @@ class ApiKey(UUIDMixin, TimestampMixin, Base):
         String(200), nullable=False,
     )
     expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     scopes: Mapped[list | None] = mapped_column(
         JSON, nullable=True,
     )
     last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
 
     # Relationships

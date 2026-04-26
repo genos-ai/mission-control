@@ -91,10 +91,10 @@ class Session(UUIDMixin, TimestampMixin, Base):
 
     # Activity tracking
     last_activity_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now
+        DateTime(timezone=True), nullable=False, default=utc_now
     )
     expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
+        DateTime(timezone=True), nullable=True
     )  # Auto-expire after inactivity
 
     # Relationships
@@ -136,7 +136,7 @@ class SessionChannel(UUIDMixin, Base):
     channel_id: Mapped[str] = mapped_column(
         String(200), nullable=False
     )  # chat_id, connection_id, etc.
-    bound_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    bound_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Relationship
@@ -193,10 +193,10 @@ class SessionMessage(UUIDMixin, Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now
+        DateTime(timezone=True), nullable=False, default=utc_now
     )
     updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, default=None
+        DateTime(timezone=True), nullable=True, default=None
     )
 
     # Relationship

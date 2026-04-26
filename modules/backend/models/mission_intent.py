@@ -73,7 +73,7 @@ class MissionIntent(UUIDMixin, Base):
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now,
+        DateTime(timezone=True), nullable=False, default=utc_now,
     )
 
     def __repr__(self) -> str:

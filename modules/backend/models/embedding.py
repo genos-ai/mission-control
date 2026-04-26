@@ -68,7 +68,7 @@ class Embedding(UUIDMixin, Base):
         String(64), nullable=True,
     )
     created_at: Mapped[str] = mapped_column(
-        DateTime, nullable=False, default=utc_now,
+        DateTime(timezone=True), nullable=False, default=utc_now,
     )
 
     __table_args__ = (

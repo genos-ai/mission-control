@@ -75,10 +75,10 @@ class HumanInputRequest(UUIDMixin, TimestampMixin, Base):
         String(200), nullable=True,
     )
     timeout_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
 
     def __repr__(self) -> str:

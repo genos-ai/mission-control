@@ -122,10 +122,10 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         Numeric(12, 6), nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     error_data: Mapped[dict | None] = mapped_column(
         JSON, nullable=True,
@@ -207,10 +207,10 @@ class Execution(UUIDMixin, TimestampMixin, Base):
         Numeric(12, 6), nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     error_data: Mapped[dict | None] = mapped_column(
         JSON, nullable=True,

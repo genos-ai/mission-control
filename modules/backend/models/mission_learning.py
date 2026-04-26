@@ -91,7 +91,7 @@ class MissionLearning(UUIDMixin, TimestampMixin, Base):
         Boolean, nullable=False, default=False,
     )
     promoted_at: Mapped[str | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     promoted_by: Mapped[str | None] = mapped_column(
         String(200), nullable=True,

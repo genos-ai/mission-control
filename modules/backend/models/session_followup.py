@@ -120,7 +120,7 @@ class SessionFollowup(UUIDMixin, TimestampMixin, Base):
 
     # Lifecycle fields.
     expires_at: Mapped[datetime] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         index=True,
         comment=(
@@ -130,7 +130,7 @@ class SessionFollowup(UUIDMixin, TimestampMixin, Base):
         ),
     )
     consumed_at: Mapped[datetime | None] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment=(
             "Set when the followup has fired max_fires times. Row "

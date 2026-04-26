@@ -51,7 +51,7 @@ class User(UUIDMixin, TimestampMixin, Base):
         Boolean, default=False, nullable=False,
     )
     last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
     )
     current_mission_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
