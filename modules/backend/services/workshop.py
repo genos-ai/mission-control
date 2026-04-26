@@ -27,7 +27,7 @@ from modules.backend.agents.mission_control.helpers import (
     assemble_instructions,
 )
 from modules.backend.agents.mission_control.cost import compute_cost_usd
-from modules.backend.agents.mission_control.registry import get_registry
+from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now

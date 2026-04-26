@@ -17,6 +17,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
 from modules.backend.core.utils import utc_now
@@ -903,7 +904,6 @@ class MissionPlanService(MissionPlanDispatchMixin, BaseService):
 
         # Look up agent version from registry so the plan validator
         # doesn't reject "latest" as not matching the roster entry.
-        from modules.backend.agents.mission_control.registry import get_registry
         registry = get_registry()
         agent_version = "1.0.0"
         if registry.has(agent):

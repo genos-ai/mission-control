@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import func, select
 
+from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.logging import get_logger
 from modules.backend.core.exceptions import ConflictError, NotFoundError
 from modules.backend.models.mission import (
@@ -142,7 +143,6 @@ class MissionService(BaseService):
         team_svc = MissionTeamService(self._session)
 
         # Collect agents to auto-assign from the registry
-        from modules.backend.agents.mission_control.registry import get_registry
         registry = get_registry()
 
         auto_agents: list[str] = []

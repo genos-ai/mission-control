@@ -1,0 +1,363 @@
+"""
+Agent Configuration Schemas.
+
+Pydantic models defining the expected structure of agent and mission control
+YAML config files. Used by AgentRegistry and middleware to validate
+configuration at load time.
+
+Each top-level class corresponds to one config file:
+    AgentConfigSchema              -> config/agents/**/agent.yaml
+    MissionControlConfigSchema     -> config/agents/mission_control.yaml
+"""
+
+from typing import Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class _StrictBase(BaseModel):
+    """Base with extra='forbid' so unknown YAML keys are caught immediately."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# =============================================================================
+# Agent config schemas (config/agents/**/agent.yaml)
+# =============================================================================
+
+
+class FileScopeConfigSchema(_StrictBase):
+    """Filesystem access control for an agent."""
+
+    read: list[str] = Field(default_factory=list)
+    write: list[str] = Field(default_factory=list)
+
+
+class InvocationSchema(_StrictBase):
+    """Who can invoke this agent.
+
+    Tiers:
+        user     — any authenticated user (default)
+        platform — admin role required, platform missions only
+        system   — dispatch infrastructure, not user-invocable
+    """
+
+    tier: Literal["user", "platform", "system"] = "user"
+    required_role: Literal["admin", "user"] | None = None
+
+
+class ExecutionSchema(_StrictBase):
+    """Agent execution environment."""
+
+    mode: str
+    prefer: Literal["local", "worktree", "container"] | None = None
+    template: str | None = None
+
+
+class ComplianceRuleSchema(_StrictBase):
+    """A single compliance rule definition."""
+
+    id: str
+    description: str
+    severity: str
+    enabled: bool
+
+
+class ExclusionsSchema(_StrictBase):
+    """Paths and patterns excluded from scanning."""
+
+    paths: list[str] = Field(default_factory=list)
+    patterns: list[str] = Field(default_factory=list)
+
+
+class AgentInterfaceSchema(_StrictBase):
+    """Typed input/output contract for an agent.
+
+    Defines the fields an agent expects as input and produces as output.
+    Used by Mission Control for Tier 1 structural validation (Plan 14)
+    and by the Planning Agent for input compatibility checks (Plan 13).
+    """
+
+    input: dict[str, str] = Field(
+        default_factory=dict,
+        description="Input fields: field_name → type_name",
+    )
+    output: dict[str, str] = Field(
+        default_factory=dict,
+        description="Output fields: field_name → type_name",
+    )
+
+
+class AgentModelSchema(_StrictBase):
+    """Pinned model configuration. Immutable at runtime.
+
+    Models are pinned to agents as non-overridable properties (research doc 11).
+    Model upgrades are agent version bumps: create agent_v2 with new model,
+    validate, then update roster. No runtime model override path exists.
+    """
+
+    name: str = Field(
+        ...,
+        description="Model identifier, e.g. 'anthropic:claude-sonnet-4-20250514'",
+    )
+    temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        description="Temperature. Pinned, non-overridable.",
+    )
+    max_tokens: int = Field(
+        default=4096,
+        ge=1,
+        description="Max output tokens. Pinned, non-overridable.",
+    )
+
+
+class AgentConfigSchema(_StrictBase):
+    """Schema for config/agents/**/agent.yaml files.
+
+    Common fields are required. Agent-specific fields (rules, exclusions,
+    file_size_limit) are optional — absent in agents that don't need them.
+    """
+
+    agent_name: str
+    agent_type: str
+    description: str
+    enabled: bool
+    model: str | AgentModelSchema
+    keywords: list[str] = Field(default_factory=list)
+    tools: list[str] = Field(default_factory=list)
+    max_input_length: int
+    max_budget_usd: float
+    execution: ExecutionSchema
+    invocation: InvocationSchema = Field(default_factory=InvocationSchema)
+    scope: FileScopeConfigSchema = Field(default_factory=FileScopeConfigSchema)
+    interface: AgentInterfaceSchema | None = None
+    version: str = "1.0.0"
+
+    # Per-agent usage limits (override system defaults from mission_control.yaml)
+    max_tokens: int | None = None
+    max_requests: int | None = None
+
+    # Agent-specific optional fields
+    file_size_limit: int | None = None
+    rules: list[ComplianceRuleSchema] | None = None
+    exclusions: ExclusionsSchema | None = None
+
+    # Conversational chat support
+    chat_enabled: bool = False
+
+    # Horizontal agent fields (Plan 13)
+    thinking_budget: dict[str, int] | None = None
+
+    # Execution engine — determines how the agent runs (Plan 55).
+    # "pydantic_ai" (default): in-process PydanticAI agent.run_stream()
+    # "claude_code": subprocess via claude-agent-sdk
+    # "codex": subprocess via codex exec CLI
+    # "copilot": subprocess via copilot -p CLI
+    engine: str = "pydantic_ai"
+
+    # Effort level for CLI engines that support it (claude_code).
+    # Ignored for pydantic_ai engine.
+    effort: str | None = None
+
+    # Cache TTL for Anthropic prompt caching (Plan 60).
+    # "5m" for tight loops, "1h" for agents with human-approval pauses.
+    # None = use default from config/settings/cost.yaml.
+    cache_ttl: str | None = None
+
+    # Artifact production — when true, the persistence layer creates a
+    # mission_artifact row from this agent's output. Only report-writer
+    # agents (synthesizer, report generator) should set this.
+    produces_artifact: bool = False
+    artifact_type: str | None = None  # research_report, vulnerability_report, etc.
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def _normalize_model(cls, v: str | dict) -> str | dict:
+        """Accept flat string model specs as-is; dicts become AgentModelSchema."""
+        return v
+
+    @field_validator("engine")
+    @classmethod
+    def _validate_engine(cls, v: str) -> str:
+        valid = {"pydantic_ai", "claude_code", "codex", "copilot"}
+        if v not in valid:
+            raise ValueError(f"engine must be one of {valid}, got '{v}'")
+        return v
+
+    @field_validator("effort")
+    @classmethod
+    def _validate_effort(cls, v: str | None) -> str | None:
+        if v is not None and v not in {"low", "medium", "high"}:
+            raise ValueError(f"effort must be low/medium/high, got '{v}'")
+        return v
+
+    @model_validator(mode="after")
+    def _validate_model_config(self) -> Self:
+        """Validate model configuration consistency."""
+        # Extract model name
+        model_name = self.model if isinstance(self.model, str) else self.model.name
+        bare_name = model_name.split(":")[-1] if ":" in model_name else model_name
+
+        # Must have a provider prefix
+        if isinstance(self.model, str) and ":" not in self.model:
+            raise ValueError(
+                f"Model '{self.model}' must have a provider prefix "
+                f"(e.g. 'anthropic:{self.model}')"
+            )
+
+        # Model name must not be empty
+        if not bare_name:
+            raise ValueError(f"Agent '{self.agent_name}' has an empty model name")
+
+        # Known provider check
+        provider = model_name.split(":")[0] if ":" in model_name else ""
+        known_providers = {"anthropic", "openai", "google", "bedrock", "copilot"}
+        if provider and provider not in known_providers:
+            raise ValueError(
+                f"Unknown model provider '{provider}' for agent '{self.agent_name}'. "
+                f"Known: {', '.join(sorted(known_providers))}"
+            )
+
+        # Thinking requires temperature >= 1.0 for Anthropic models only
+        if self.thinking_budget and isinstance(self.model, AgentModelSchema):
+            if provider == "anthropic" and self.model.temperature < 1.0:
+                raise ValueError(
+                    f"Agent '{self.agent_name}' has thinking_budget but temperature "
+                    f"{self.model.temperature} < 1.0. Anthropic requires temperature=1.0 "
+                    f"when extended thinking is enabled."
+                )
+
+        return self
+
+    @model_validator(mode="after")
+    def _validate_invocation_tier(self) -> Self:
+        """Enforce naming ↔ tier constraints."""
+        prefix = self.agent_name.split(".")[0]
+        tier = self.invocation.tier
+
+        if prefix == "platform":
+            if tier != "platform":
+                raise ValueError("platform.* agents must have invocation.tier: platform")
+            if self.invocation.required_role != "admin":
+                raise ValueError("platform.* agents must set required_role: admin")
+            if self.execution.mode != "local":
+                raise ValueError("platform.* agents must use execution.mode: local")
+
+        if prefix == "system" and tier != "system":
+            raise ValueError("system.* agents must have invocation.tier: system")
+
+        if tier == "platform" and prefix != "platform":
+            raise ValueError("only platform.* agents can use tier: platform")
+
+        if tier == "system" and prefix != "system":
+            raise ValueError("only system.* agents can use tier: system")
+
+        return self
+
+    @model_validator(mode="after")
+    def _validate_cli_engine_interface(self) -> Self:
+        """CLI engines cannot have strict interface.output requirements."""
+        if self.engine != "pydantic_ai" and self.interface:
+            output_fields = getattr(self.interface, "output", None)
+            if output_fields:
+                raise ValueError(
+                    f"Agent '{self.agent_name}' has engine='{self.engine}' but declares "
+                    f"interface.output fields. CLI engines return unstructured output — "
+                    f"remove interface.output or set engine to pydantic_ai."
+                )
+        return self
+
+
+# =============================================================================
+# Mission Control config schema (config/agents/mission_control.yaml)
+# =============================================================================
+
+
+class ModelPricingRateSchema(_StrictBase):
+    """Cost per million tokens for a specific model."""
+
+    input: float
+    output: float
+    cache_read: float = 0.0
+    cache_write_5m: float = 0.0
+    cache_write_1h: float = 0.0
+
+
+class RoutingSchema(_StrictBase):
+    """Agent routing configuration."""
+
+    strategy: str
+    llm_model: str
+    complex_request_agent: str
+    fallback_agent: str
+    chat_agent: str
+    max_routing_depth: int
+
+
+class MissionControlLimitsSchema(_StrictBase):
+    """Budget and safety limits."""
+
+    max_requests_per_task: int
+    max_tool_calls_per_task: int
+    max_tokens_per_task: int
+    max_cost_per_plan: float
+    max_cost_per_user_daily: float
+    task_timeout_seconds: int
+    plan_timeout_seconds: int
+
+
+class GuardrailsSchema(_StrictBase):
+    """Input validation and injection blocking."""
+
+    max_input_length: int
+    injection_patterns: list[str]
+
+
+class RedisTtlSchema(_StrictBase):
+    """Redis key TTLs in seconds."""
+
+    session: int
+    approval: int
+    lock: int
+    result: int
+
+
+class ApprovalSchema(_StrictBase):
+    """Human-in-the-loop approval settings."""
+
+    poll_interval_seconds: int
+    timeout_seconds: int
+
+
+class DispatchSchema(_StrictBase):
+    """Dispatch loop execution defaults for Mission Control."""
+
+    default_request_limit: int = 50
+    token_cost_factor: int = 333_333  # tokens per dollar of cost ceiling
+    context_token_budget: int = 50_000  # assembled context packet budget
+    history_reserve_tokens: int = 1_500  # reserved for Layer 2 history
+
+
+class EscalationThresholdsSchema(_StrictBase):
+    """Deterministic risk thresholds for automated approval decisions."""
+
+    max_auto_approve_cost_usd: float = 1.00
+    max_medium_approve_cost_usd: float = 10.00
+    max_auto_approve_retries: int = 3
+
+
+class MissionControlConfigSchema(_StrictBase):
+    """Schema for config/agents/mission_control.yaml."""
+
+    model_pricing: dict[str, ModelPricingRateSchema]
+    routing: RoutingSchema
+    limits: MissionControlLimitsSchema
+    guardrails: GuardrailsSchema
+    redis_ttl: RedisTtlSchema
+    approval: ApprovalSchema
+    dispatch: DispatchSchema = Field(default_factory=DispatchSchema)
+    escalation: EscalationThresholdsSchema = Field(
+        default_factory=EscalationThresholdsSchema,
+    )

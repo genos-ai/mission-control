@@ -18,7 +18,7 @@ from modules.backend.agents.mission.workflow.agent import (
 )
 from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
 from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
-from modules.backend.agents.mission_control.registry import get_registry
+from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import SessionEvent

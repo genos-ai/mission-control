@@ -22,6 +22,15 @@ import { ResearchLiveView } from '@/components/research/research-live-view'
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'timed_out'])
 const PENDING_STATUSES = new Set(['pending', 'created'])
 
+// TODO: Run detail page shows very little when navigating into an already-running
+//       or completed run. The UI is entirely SSE-driven — if you missed earlier
+//       events (late join, page refresh, reconnect), the store starts empty and
+//       panels show "Waiting for events..." / "No results yet...".
+//       Fix: hydrate the live-run store from the polled execution record
+//       (task_executions, decisions, cost) so the page is useful even without SSE
+//       history. Show execution metadata (objective, agent roster, plan steps,
+//       created_at, duration), backfill taskResults from task_executions, and
+//       display the final output for completed runs.
 export default function RunLivePage() {
   const { id: missionId, runId } = useParams<{ id: string; runId: string }>()
   const navigate = useNavigate()

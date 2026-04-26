@@ -66,6 +66,8 @@ const tabs = [
   { label: 'Chat',      icon: MessageSquare, path: 'chat' },
   { label: 'Plan',      icon: Kanban,        path: 'plan' },
   { label: 'Narrative', icon: Radio,         path: 'narrative' },
+  // TODO: Look at collapsing Context and Knowledge tabs together in a
+  //       meaningful, intuitive way.
   { label: 'Context',   icon: FileText,      path: 'context' },
   { label: 'Knowledge', icon: Lightbulb,     path: 'knowledge' },
   { label: 'Artifacts', icon: Package,       path: 'artifacts' },
