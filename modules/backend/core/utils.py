@@ -23,15 +23,12 @@ def estimate_tokens(data: Any) -> int:
 
 def utc_now() -> datetime:
     """
-    Return current UTC time as timezone-naive datetime.
+    Return current UTC time as timezone-aware datetime.
 
-    All datetime values in the application should be timezone-naive
-    and assumed to be UTC. This ensures consistent behavior across
-    the codebase and simplifies database storage.
+    All datetime values in the application use UTC with explicit
+    timezone info. Database columns are timestamptz (Plan 64 Phase I).
 
     Returns:
-        Current UTC time with tzinfo stripped
+        Current UTC time with tzinfo=timezone.utc
     """
-    return datetime.fromtimestamp(
-        time.time(), tz=timezone.utc
-    ).replace(tzinfo=None)
+    return datetime.fromtimestamp(time.time(), tz=timezone.utc)

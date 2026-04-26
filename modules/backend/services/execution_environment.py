@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from modules.backend.core.logging import get_logger
+from modules.backend.core.utils import utc_now
 
 logger = get_logger(__name__)
 
@@ -43,7 +44,7 @@ class EnvironmentHandle:
     host_working_dir: Path | None = None  # host-side worktree (used by agent tools)
     branch_name: str | None = None
     container_id: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utc_now)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
