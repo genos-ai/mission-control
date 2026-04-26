@@ -39,8 +39,23 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.absolute()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-BACKEND_PORT = 8100
-FRONTEND_PORT = 5174
+def _read_backend_port() -> int:
+    """Read backend port from config/settings/application.yaml.
+
+    Uses raw YAML parsing (no backend imports) so services.py works
+    even before the backend is fully installed.
+    """
+    try:
+        import yaml
+        config_path = PROJECT_ROOT / "config" / "settings" / "application.yaml"
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        return int(cfg.get("server", {}).get("port", 8100))
+    except Exception:
+        return 8100
+
+BACKEND_PORT = _read_backend_port()
+FRONTEND_PORT = 5174  # defined in modules/frontend/vite.config.ts
 TEMPORAL_PORT = 7233
 TEMPORAL_UI_PORT = 8233
 
@@ -307,50 +322,24 @@ def run_migrations() -> bool:
 # ---------------------------------------------------------------------------
 
 def ensure_dev_user() -> None:
-    """Create a default admin user if none exists."""
-    print("\nChecking dev user...")
+    """Create dev/test users (sysadmin, admin, user) if they don't exist.
+
+    Delegates to BootstrapService.ensure_dev_users() which handles
+    system accounts and all three dev users idempotently.
+    """
+    print("\nChecking dev users...")
 
     async def _ensure():
-        from modules.backend.core.database import get_session_factory
-        from modules.backend.core.security import hash_password
-        from sqlalchemy import text
+        from modules.backend.services.bootstrap import BootstrapService
 
-        session_factory = get_session_factory()
+        async with BootstrapService.factory() as svc:
+            created = await svc.ensure_dev_users()
 
-        async with session_factory() as session:
-            row = (await session.execute(
-                text("SELECT id FROM users WHERE email = :email"),
-                {"email": "admin@missioncontrol.dev"},
-            )).first()
-
-            if row:
-                print("  admin@missioncontrol.dev .... exists")
-                return
-
-            import uuid
-            from datetime import datetime
-
-            pw_hash = hash_password("admin")
-            user_id = str(uuid.uuid4())
-            now = datetime.utcnow()
-            await session.execute(
-                text("""
-                    INSERT INTO users (id, email, display_name, hashed_password,
-                                       system_role, is_active, is_service_account,
-                                       created_at, updated_at)
-                    VALUES (:id, :email, :name, :pw, :role, true, false, :now, :now)
-                """),
-                {
-                    "id": user_id,
-                    "email": "admin@missioncontrol.dev",
-                    "name": "Admin",
-                    "pw": pw_hash,
-                    "role": "admin",
-                    "now": now,
-                },
-            )
-            await session.commit()
-            print("  admin@missioncontrol.dev .... CREATED (password: admin)")
+        if created:
+            for user in created:
+                print(f"  {user.email} .... CREATED ({user.system_role})")
+        else:
+            print("  All dev users already exist.")
 
     asyncio.run(_ensure())
 
