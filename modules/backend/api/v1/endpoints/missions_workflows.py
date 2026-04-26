@@ -64,6 +64,62 @@ async def list_mission_workflows(
     )
 
 
+@router.get(
+    "/{mission_id}/workflow-runs",
+    response_model=ApiResponse,
+    summary="List workflow runs for a mission",
+)
+async def list_workflow_runs(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+    workflow_name: str | None = Query(None),
+    status: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> ApiResponse:
+    """List past and in-flight workflow runs for a mission."""
+    from modules.backend.models.execution import WorkflowRunState
+    from modules.backend.repositories.workflow_run import WorkflowRunRepository
+
+    repo = WorkflowRunRepository(db)
+    status_filter = None
+    if status:
+        try:
+            status_filter = WorkflowRunState[status.upper()]
+        except KeyError:
+            pass
+
+    runs, total = await repo.list_runs(
+        mission_id=mission_id,
+        workflow_name=workflow_name,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        {
+            "id": r.id,
+            "workflow_name": r.workflow_name,
+            "workflow_version": r.workflow_version,
+            "status": r.status.name if hasattr(r.status, "name") else str(r.status),
+            "trigger_type": r.trigger_type,
+            "triggered_by": r.triggered_by,
+            "total_cost_usd": float(r.total_cost_usd or 0),
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "error_data": r.error_data,
+            "result_summary": r.result_summary,
+        }
+        for r in runs
+    ]
+    return ApiResponse(
+        success=True,
+        data={"runs": items, "total": total},
+        metadata={"request_id": request_id},
+    )
+
+
 @router.post(
     "/{mission_id}/workflows/import",
     response_model=ApiResponse,

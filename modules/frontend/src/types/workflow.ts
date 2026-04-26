@@ -141,6 +141,21 @@ export interface WorkflowScheduleUpdateRequest {
   cooldown_seconds?: number
 }
 
+// Workflow run record (from /workflow-runs API)
+export interface WorkflowRunRecord {
+  id: string
+  workflow_name: string
+  workflow_version: number
+  status: string
+  trigger_type: string
+  triggered_by: string
+  total_cost_usd: number
+  started_at: string | null
+  completed_at: string | null
+  error_data: Record<string, unknown> | null
+  result_summary: string | null
+}
+
 // Architect types
 export interface ArchitectChatResponse {
   response: string

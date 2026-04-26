@@ -4,6 +4,7 @@
 
 import {
   ArrowLeft,
+  History,
   LayoutDashboard,
   Play,
   Save,
@@ -20,9 +21,12 @@ interface WorkflowEditorToolbarProps {
   isRunning: boolean
   isRunActive?: boolean
   runProgress?: [number, number]
+  showHistory: boolean
+  runCount: number
   onAutoLayout: () => void
   onSave: () => void
   onRun: () => void
+  onToggleHistory: () => void
 }
 
 export function WorkflowEditorToolbar({
@@ -32,9 +36,12 @@ export function WorkflowEditorToolbar({
   isRunning,
   isRunActive,
   runProgress,
+  showHistory,
+  runCount,
   onAutoLayout,
   onSave,
   onRun,
+  onToggleHistory,
 }: WorkflowEditorToolbarProps) {
   const navigate = useNavigate()
   const { id: missionId } = useParams<{ id: string }>()
@@ -76,6 +83,19 @@ export function WorkflowEditorToolbar({
       >
         <LayoutDashboard className="h-3.5 w-3.5" />
         Auto-layout
+      </Button>
+
+      <Button
+        variant={showHistory ? 'secondary' : 'ghost'}
+        size="sm"
+        className="h-7 gap-1 px-2 text-xs"
+        onClick={onToggleHistory}
+      >
+        <History className="h-3.5 w-3.5" />
+        History
+        {runCount > 0 && (
+          <span className="ml-0.5 text-[10px] text-muted-foreground">{runCount}</span>
+        )}
       </Button>
 
       <Button

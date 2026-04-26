@@ -27,11 +27,14 @@ class WorkflowRunRepository(BaseRepository[WorkflowRun]):
         self,
         workflow_name: str | None = None,
         status: WorkflowRunState | None = None,
+        mission_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[WorkflowRun], int]:
         """List workflow runs with optional filters."""
         conditions = []
+        if mission_id:
+            conditions.append(WorkflowRun.mission_id == mission_id)
         if workflow_name:
             conditions.append(WorkflowRun.workflow_name == workflow_name)
         if status:

@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import {
   ReactFlow,
   Background,
@@ -18,7 +19,9 @@ import '@xyflow/react/dist/style.css'
 import toast from 'react-hot-toast'
 import type { WorkflowStep } from '@/types'
 import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
+import { useWorkflowRuns } from '@/hooks/use-workflows'
 import { StepDetail } from './step-detail'
+import { WorkflowRunHistory } from './workflow-run-history'
 import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import {
@@ -104,12 +107,16 @@ interface WorkflowEditorProps {
 }
 
 export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorProps) {
+  const { id: missionId } = useParams<{ id: string }>()
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const runOverlay = useWorkflowRunStatus()
+  const { data: runs = [], isLoading: runsLoading } = useWorkflowRuns(missionId, workflow.name)
 
   // Build initial nodes + edges
   const { initNodes, initEdges } = useMemo(() => {
@@ -145,6 +152,33 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     )
   }, [runOverlay.nodeStatuses, runOverlay.isActive, setNodes])
 
+  // Replay overlay for historical runs — set all nodes to the run's final status
+  useEffect(() => {
+    if (!selectedRunId || runOverlay.isActive) return
+    const run = runs.find((r) => r.id === selectedRunId)
+    if (!run) return
+    const status = run.status === 'COMPLETED' ? 'completed'
+      : run.status === 'FAILED' ? 'failed'
+      : 'idle'
+    setNodes((prev) =>
+      prev.map((node) => {
+        if ((node.data as Record<string, unknown>).status === status) return node
+        return { ...node, data: { ...node.data, status } }
+      }),
+    )
+  }, [selectedRunId, runs, runOverlay.isActive, setNodes])
+
+  // Clear replay overlay when deselecting a historical run
+  useEffect(() => {
+    if (selectedRunId || runOverlay.isActive) return
+    setNodes((prev) =>
+      prev.map((node) => {
+        if ((node.data as Record<string, unknown>).status === 'idle') return node
+        return { ...node, data: { ...node.data, status: 'idle' } }
+      }),
+    )
+  }, [selectedRunId, runOverlay.isActive, setNodes])
+
   // Track dirty state on node drag
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -157,11 +191,13 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     [onNodesChange],
   )
 
-  // Node click → select step
+  // Node click → select step (hides history panel)
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       const step = (node.data as { step: WorkflowStep }).step
       setSelectedStep(step)
+      setShowHistory(false)
+      setSelectedRunId(null)
     },
     [],
   )
@@ -224,6 +260,18 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     }
   }, [onRun, runOverlay])
 
+  // Toggle history panel
+  const handleToggleHistory = useCallback(() => {
+    setShowHistory((prev) => {
+      if (!prev) {
+        setSelectedStep(null) // hide step detail when opening history
+      } else {
+        setSelectedRunId(null)
+      }
+      return !prev
+    })
+  }, [])
+
   return (
     <div className="flex h-full flex-col">
       <WorkflowEditorToolbar
@@ -233,9 +281,12 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         isRunning={isRunning}
         isRunActive={runOverlay.isActive}
         runProgress={runOverlay.progress}
+        showHistory={showHistory}
+        runCount={runs.length}
         onAutoLayout={handleAutoLayout}
         onSave={handleSave}
         onRun={handleRun}
+        onToggleHistory={handleToggleHistory}
       />
 
       <div className="relative flex flex-1 overflow-hidden">
@@ -272,12 +323,23 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
           </ReactFlow>
         </div>
 
-        {/* Step detail panel (slide-in from right) */}
-        {selectedStep && (
+        {/* Right panel — step detail or run history (mutually exclusive) */}
+        {selectedStep && !showHistory && (
           <div className="w-[320px] shrink-0 overflow-y-auto border-l bg-background p-3">
             <StepDetail
               step={selectedStep}
               onClose={() => setSelectedStep(null)}
+            />
+          </div>
+        )}
+        {showHistory && (
+          <div className="w-[320px] shrink-0 overflow-y-auto border-l bg-background">
+            <WorkflowRunHistory
+              runs={runs}
+              isLoading={runsLoading}
+              selectedRunId={selectedRunId}
+              onSelectRun={setSelectedRunId}
+              onClose={() => { setShowHistory(false); setSelectedRunId(null) }}
             />
           </div>
         )}

@@ -5,6 +5,7 @@ import type {
   WorkflowDetail,
   WorkflowEdge,
   MissionWorkflow,
+  WorkflowRunRecord,
   WorkflowSchedule,
   WorkflowScheduleCreateRequest,
   WorkflowScheduleUpdateRequest,
@@ -102,6 +103,36 @@ export function useImportTemplate(missionId: string) {
   })
 }
 
+// ---- Workflow runs (history) ----
+
+export const workflowRunKeys = {
+  list: (missionId: string, workflowName?: string) =>
+    ['missions', missionId, 'workflow-runs', workflowName ?? ''] as const,
+}
+
+export function useWorkflowRuns(missionId: string | undefined, workflowName?: string) {
+  return useQuery({
+    queryKey: workflowRunKeys.list(missionId!, workflowName),
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (workflowName) params.set('workflow_name', workflowName)
+      params.set('limit', '50')
+      const qs = params.toString()
+      return api.get<{ runs: WorkflowRunRecord[]; total: number }>(
+        `/missions/${missionId}/workflow-runs?${qs}`,
+      )
+    },
+    select: (data) => data.runs,
+    enabled: !!missionId,
+    refetchInterval: (query) => {
+      const runs = query.state.data?.runs
+      if (runs?.some((r) => r.status === 'RUNNING' || r.status === 'PENDING' || r.status === 'AWAITING_INPUT'))
+        return 5000
+      return false
+    },
+  })
+}
+
 // ---- Run workflow ----
 
 export function useRunWorkflow(missionId: string) {
@@ -118,6 +149,7 @@ export function useRunWorkflow(missionId: string) {
       // Invalidate executions so the Runs tab picks up the new run
       qc.invalidateQueries({ queryKey: ['executions'] })
       qc.invalidateQueries({ queryKey: ['missions', missionId] })
+      qc.invalidateQueries({ queryKey: ['missions', missionId, 'workflow-runs'] })
     },
   })
 }
