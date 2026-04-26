@@ -131,11 +131,11 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
         task_states = await svc.get_task_states(plan.id)
 
         summary = {
-            "approved": sum(1 for s in task_states if s.status == PlanTaskStatus.APPROVED.name),
-            "proposed": sum(1 for s in task_states if s.status == PlanTaskStatus.PROPOSED.name),
-            "running": sum(1 for s in task_states if s.status == PlanTaskStatus.RUNNING.name),
-            "completed": sum(1 for s in task_states if s.status in (PlanTaskStatus.COMPLETED.name,)),
-            "failed": sum(1 for s in task_states if s.status == PlanTaskStatus.FAILED.name),
+            "approved": sum(1 for s in task_states if s.status == PlanTaskStatus.APPROVED),
+            "proposed": sum(1 for s in task_states if s.status == PlanTaskStatus.PROPOSED),
+            "running": sum(1 for s in task_states if s.status == PlanTaskStatus.RUNNING),
+            "completed": sum(1 for s in task_states if s.status in (PlanTaskStatus.COMPLETED,)),
+            "failed": sum(1 for s in task_states if s.status == PlanTaskStatus.FAILED),
             "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
             "execution_record_id": input.execution_record_id,
             "max_supervisor_iterations": input.max_supervisor_iterations,
@@ -234,17 +234,17 @@ async def fetch_plan_task_counts(mission_id: str) -> PlanTaskCounts:
 
     counts = PlanTaskCounts()
     for s in task_states:
-        if s.status == PlanTaskStatus.APPROVED.name:
+        if s.status == PlanTaskStatus.APPROVED:
             counts.approved += 1
-        elif s.status == PlanTaskStatus.PROPOSED.name:
+        elif s.status == PlanTaskStatus.PROPOSED:
             counts.proposed += 1
-        elif s.status == PlanTaskStatus.RUNNING.name:
+        elif s.status == PlanTaskStatus.RUNNING:
             counts.running += 1
-        elif s.status == PlanTaskStatus.COMPLETED.name:
+        elif s.status == PlanTaskStatus.COMPLETED:
             counts.completed += 1
-        elif s.status == PlanTaskStatus.FAILED.name:
+        elif s.status == PlanTaskStatus.FAILED:
             counts.failed += 1
-        elif s.status == PlanTaskStatus.QUEUED.name:
+        elif s.status == PlanTaskStatus.QUEUED:
             counts.queued += 1
 
     return counts
@@ -264,7 +264,7 @@ async def check_plan_active(mission_id: str) -> bool:
         svc = MissionPlanService(db)
         plan = await svc.get_or_create_plan(mission_id)
         from modules.backend.models.mission_plan import MissionPlanStatus
-        return plan.status == MissionPlanStatus.ACTIVE.name
+        return plan.status == MissionPlanStatus.ACTIVE
 
 
 @activity.defn

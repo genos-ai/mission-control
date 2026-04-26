@@ -124,24 +124,24 @@ async def reconcile_orphaned_task_states(
         mission_id = state.plan.mission_id  # eager-loaded
         plan_id = state.mission_plan_id
 
-        if state.status == PlanTaskStatus.RUNNING.name:
-            state.status = PlanTaskStatus.FAILED.name
+        if state.status == PlanTaskStatus.RUNNING:
+            state.status = PlanTaskStatus.FAILED
             state.failure_reason = ORPHAN_FAILURE_REASON
             state.task_execution_id = None
             state.last_attempt_at = utc_now()
             running_to_failed += 1
             emit_buffer.append(
-                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.FAILED.name)
+                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.FAILED)
             )
-        elif state.status == PlanTaskStatus.QUEUED.name:
+        elif state.status == PlanTaskStatus.QUEUED:
             # Queued means dispatched by plan-level gating but the
             # agent never picked it up. No partial work to worry about;
             # restore to approved so the daemon (or user) can re-queue.
-            state.status = PlanTaskStatus.APPROVED.name
+            state.status = PlanTaskStatus.APPROVED
             state.task_execution_id = None
             queued_to_approved += 1
             emit_buffer.append(
-                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.APPROVED.name)
+                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.APPROVED)
             )
 
     await session.flush()
@@ -248,8 +248,8 @@ async def reconcile_orphaned_execution_records(
         select(ExecutionRecord)
         .where(
             or_(
-                ExecutionRecord.status == ExecutionRecordStatus.RUNNING.name,
-                ExecutionRecord.status == ExecutionRecordStatus.PENDING.name,
+                ExecutionRecord.status == ExecutionRecordStatus.RUNNING,
+                ExecutionRecord.status == ExecutionRecordStatus.PENDING,
             )
         )
     )
@@ -257,7 +257,7 @@ async def reconcile_orphaned_execution_records(
     orphans = list(result.scalars().all())
 
     for record in orphans:
-        record.status = ExecutionRecordStatus.FAILED.name
+        record.status = ExecutionRecordStatus.FAILED
         record.completed_at = utc_now()
 
     await session.flush()

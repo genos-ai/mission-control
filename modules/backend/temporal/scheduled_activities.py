@@ -45,7 +45,7 @@ async def find_ready_plans() -> list[dict]:
             select(func.count())
             .where(
                 PlanTaskState.mission_plan_id == MissionPlan.id,
-                PlanTaskState.status == PlanTaskStatus.APPROVED.name,
+                PlanTaskState.status == PlanTaskStatus.APPROVED,
             )
             .correlate(MissionPlan)
             .scalar_subquery()
@@ -56,8 +56,8 @@ async def find_ready_plans() -> list[dict]:
             .join(Mission, MissionPlan.mission_id == Mission.id)
             .where(
                 # Only dispatch for active missions — paused/archived skip
-                Mission.status == MissionStatus.ACTIVE.name,
-                MissionPlan.status == MissionPlanStatus.ACTIVE.name,
+                Mission.status == MissionStatus.ACTIVE,
+                MissionPlan.status == MissionPlanStatus.ACTIVE,
                 or_(
                     MissionPlan.gate_mode == "autonomous",
                     MissionPlan.gate_mode == "off",

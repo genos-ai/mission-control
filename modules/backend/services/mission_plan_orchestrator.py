@@ -318,8 +318,8 @@ class MissionPlanOrchestrator(BaseService):
                 # Task survived refinement. If its state is cancelled
                 # (from a prior refinement that removed it), reset to
                 # proposed so it's actionable again.
-                if state.status == PlanTaskStatus.CANCELLED.name:
-                    state.status = PlanTaskStatus.PROPOSED.name
+                if state.status == PlanTaskStatus.CANCELLED:
+                    state.status = PlanTaskStatus.PROPOSED
                     reset_count += 1
                 continue
             # Task disappeared from the new plan
@@ -328,7 +328,7 @@ class MissionPlanOrchestrator(BaseService):
                 continue  # already terminal, leave as-is
             if status_enum == PlanTaskStatus.FAILED:
                 continue  # preserve failed rows for audit
-            state.status = PlanTaskStatus.CANCELLED.name
+            state.status = PlanTaskStatus.CANCELLED
             cancelled_count += 1
 
         # Create fresh PROPOSED rows for new task_ids
@@ -616,7 +616,7 @@ class MissionPlanOrchestrator(BaseService):
         # there's no queue delay in the synchronous dispatch path.
         now = utc_now()
         for state in approved_states:
-            state.status = PlanTaskStatus.RUNNING.name
+            state.status = PlanTaskStatus.RUNNING
             state.last_attempt_at = now
         await self._session.commit()
 
@@ -720,7 +720,7 @@ class MissionPlanOrchestrator(BaseService):
         # both causes double-evaluation and the inline one steals decisions.
         if not skip_post_run_supervisor:
             await self._session.refresh(plan, ["status"])
-            if plan.status != MissionPlanStatus.ACTIVE.name:
+            if plan.status != MissionPlanStatus.ACTIVE:
                 self._log_operation(
                     "Skipping post-run supervisor — plan no longer active",
                     plan_id=mission_plan_id,
@@ -817,11 +817,11 @@ class MissionPlanOrchestrator(BaseService):
             recent = await get_recent_run_outcomes(self._session, mission_id=plan.mission_id, limit=5)
             task_states_now = await self._plan_svc.get_task_states(plan.id)
             summary = {
-                "approved": sum(1 for s in task_states_now if s.status == PlanTaskStatus.APPROVED.name),
-                "proposed": sum(1 for s in task_states_now if s.status == PlanTaskStatus.PROPOSED.name),
-                "running": sum(1 for s in task_states_now if s.status == PlanTaskStatus.RUNNING.name),
-                "completed": sum(1 for s in task_states_now if s.status in (PlanTaskStatus.COMPLETED.name,)),
-                "failed": sum(1 for s in task_states_now if s.status == PlanTaskStatus.FAILED.name),
+                "approved": sum(1 for s in task_states_now if s.status == PlanTaskStatus.APPROVED),
+                "proposed": sum(1 for s in task_states_now if s.status == PlanTaskStatus.PROPOSED),
+                "running": sum(1 for s in task_states_now if s.status == PlanTaskStatus.RUNNING),
+                "completed": sum(1 for s in task_states_now if s.status in (PlanTaskStatus.COMPLETED,)),
+                "failed": sum(1 for s in task_states_now if s.status == PlanTaskStatus.FAILED),
                 "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
                 "execution_record_id": outcome.execution_record_id,
                 "max_supervisor_iterations": plan.max_supervisor_iterations,
@@ -944,7 +944,7 @@ class MissionPlanOrchestrator(BaseService):
         # to advance — only PROPOSE_COMPLETE and ESCALATE (which pause
         # the plan themselves) are safe to apply regardless.
         await self._session.refresh(plan, ["status"])
-        _plan_active = plan.status == MissionPlanStatus.ACTIVE.name
+        _plan_active = plan.status == MissionPlanStatus.ACTIVE
 
         if action in (GateAction.WAIT, GateAction.ADVANCE_APPROVED, GateAction.ADVANCE_REFINE):
             if not _plan_active:
@@ -1004,7 +1004,7 @@ class MissionPlanOrchestrator(BaseService):
                     "pausing plan for human review",
                     exc_info=True,
                 )
-                plan.status = MissionPlanStatus.PAUSED.name
+                plan.status = MissionPlanStatus.PAUSED
             self._log_operation(
                 "Supervisor: ADVANCE_REFINE", plan_id=plan.id,
             )
@@ -1021,7 +1021,7 @@ class MissionPlanOrchestrator(BaseService):
 
         elif action == GateAction.ESCALATE:
             # Pause and escalate — human attention required.
-            plan.status = MissionPlanStatus.PAUSED.name
+            plan.status = MissionPlanStatus.PAUSED
             self._log_operation(
                 "Supervisor: ESCALATE — plan paused for human review",
                 plan_id=plan.id,
@@ -1103,7 +1103,7 @@ class MissionPlanOrchestrator(BaseService):
             new_status = status_map.get(
                 task_result.status, PlanTaskStatus.FAILED,
             )
-            state.status = new_status.name
+            state.status = new_status
             state.execution_record_id = outcome.execution_record_id
             # Look up the actual task_executions.id PK
             state.task_execution_id = await self._resolve_task_execution_id(
@@ -1136,9 +1136,9 @@ class MissionPlanOrchestrator(BaseService):
         # Tasks dispatched but never reported: mark failed
         for task_id in dispatched_task_ids - seen_task_ids:
             state = await self._repo.get_task_state(plan.id, task_id)
-            if state is None or state.status not in (PlanTaskStatus.QUEUED.name, PlanTaskStatus.RUNNING.name):
+            if state is None or state.status not in (PlanTaskStatus.QUEUED, PlanTaskStatus.RUNNING):
                 continue
-            state.status = PlanTaskStatus.FAILED.name
+            state.status = PlanTaskStatus.FAILED
             state.failure_reason = (
                 "Task was dispatched but did not report a result. "
                 "This usually indicates a mid-run abort or dispatcher bug."
@@ -1197,7 +1197,7 @@ class MissionPlanOrchestrator(BaseService):
         all_states = await self._repo.get_task_states(mission_plan_id)
         satisfied_ids = {
             s.task_id for s in all_states
-            if s.status in (PlanTaskStatus.COMPLETED.name, PlanTaskStatus.SKIPPED.name)
+            if s.status in (PlanTaskStatus.COMPLETED, PlanTaskStatus.SKIPPED)
         }
 
         # The "safe" set is: tasks being dispatched now + already done.
