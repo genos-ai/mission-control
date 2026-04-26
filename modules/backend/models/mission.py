@@ -74,7 +74,7 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         String(100), default="default", nullable=False,
     )
     budget_ceiling_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6), nullable=True,
+        Numeric(12, 6, asdecimal=False), nullable=True,
     )
     repo_url: Mapped[str | None] = mapped_column(
         Text, nullable=True,

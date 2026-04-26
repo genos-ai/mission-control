@@ -56,7 +56,7 @@ class WorkflowSchedule(UUIDMixin, TimestampMixin, Base):
         Text, nullable=False, default="",
     )
     budget_per_run_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6), nullable=True,
+        Numeric(12, 6, asdecimal=False), nullable=True,
         comment="USD ceiling per individual run triggered by this schedule",
     )
     max_iterations: Mapped[int | None] = mapped_column(

@@ -73,9 +73,9 @@ class Session(UUIDMixin, TimestampMixin, Base):
     # Cost tracking
     total_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_cost_usd: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False, default=0.0)
+    total_cost_usd: Mapped[float] = mapped_column(Numeric(12, 6, asdecimal=False), nullable=False, default=0.0)
     cost_budget_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6), nullable=True
+        Numeric(12, 6, asdecimal=False), nullable=True
     )  # None = unlimited
 
     # Rolling summary — anchored compression for long sessions (Plan 57 Phase C)
@@ -175,7 +175,7 @@ class SessionMessage(UUIDMixin, Base):
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6, asdecimal=False), nullable=True)
 
     # Agent thinking (populated for assistant messages when thinking is enabled)
     thinking: Mapped[str | None] = mapped_column(Text, nullable=True)

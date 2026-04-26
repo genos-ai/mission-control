@@ -138,7 +138,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     )
 
     total_cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6),
+        Numeric(12, 6, asdecimal=False),
         default=0.0,
         nullable=False,
         comment="Total cost across all task executions",
@@ -270,7 +270,7 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
     )
 
     cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6),
+        Numeric(12, 6, asdecimal=False),
         default=0.0,
         nullable=False,
     )
@@ -382,7 +382,7 @@ class TaskAttempt(UUIDMixin, TimestampMixin, Base):
     )
 
     cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6),
+        Numeric(12, 6, asdecimal=False),
         default=0.0,
         nullable=False,
     )

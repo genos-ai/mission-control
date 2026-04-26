@@ -116,10 +116,10 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         JSON, default=dict, nullable=False,
     )
     total_cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6), default=0.0, nullable=False,
+        Numeric(12, 6, asdecimal=False), default=0.0, nullable=False,
     )
     budget_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6), nullable=True,
+        Numeric(12, 6, asdecimal=False), nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
@@ -201,10 +201,10 @@ class Execution(UUIDMixin, TimestampMixin, Base):
         JSON, default=dict, nullable=False,
     )
     total_cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6), default=0.0, nullable=False,
+        Numeric(12, 6, asdecimal=False), default=0.0, nullable=False,
     )
     cost_ceiling_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6), nullable=True,
+        Numeric(12, 6, asdecimal=False), nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,

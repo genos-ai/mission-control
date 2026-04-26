@@ -80,7 +80,7 @@ class MissionLearning(UUIDMixin, TimestampMixin, Base):
 
     # Confidence and frequency
     confidence: Mapped[float] = mapped_column(
-        Numeric(12, 6), nullable=False, default=0.0,
+        Numeric(12, 6, asdecimal=False), nullable=False, default=0.0,
     )
     occurrence_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1,

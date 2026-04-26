@@ -69,7 +69,7 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
 
     # Cost
     cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6), default=0.0, nullable=False,
+        Numeric(12, 6, asdecimal=False), default=0.0, nullable=False,
     )
 
     # Performance
