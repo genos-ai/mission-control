@@ -24,6 +24,7 @@ from modules.backend.agents.mission_control.helpers import (
     assemble_instructions,
 )
 from modules.backend.agents.adapters import workflow_design
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import WorkflowGraphEvent
 
@@ -176,7 +177,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         objective: dict[str, Any],
         steps: list[dict[str, Any]],
         trigger_type: str = "on_demand",
-        max_cost_usd: float = 10.0,
+        max_cost_usd: float | None = None,
     ) -> str:
         """Save and lock the confirmed workflow definition.
 
@@ -194,6 +195,8 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         Returns:
             JSON with saved workflow id, name, and confirmation.
         """
+        max_cost_usd = max_cost_usd or get_default_budget_usd()
+
         if ctx.deps.db_session is None:
             return json.dumps({"error": "No database session available"})
 

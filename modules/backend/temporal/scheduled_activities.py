@@ -9,6 +9,7 @@ _find_ready_plan_ids but as a Temporal Activity.
 
 from temporalio import activity
 
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -83,7 +84,7 @@ async def find_ready_plans() -> list[dict]:
             "plan_id": plan.id,
             "mission_id": plan.mission_id,
             "brief": mission.brief or mission.description or "",
-            "budget": plan.budget_usd_ceiling or 10.0,
+            "budget": plan.budget_usd_ceiling or get_default_budget_usd(),
             "gate_mode": plan.gate_mode or "autonomous",
             "roster": mission.default_roster or "default",
             "session_id": plan.id,  # Use plan ID as session reference

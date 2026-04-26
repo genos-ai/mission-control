@@ -14,6 +14,7 @@ from typing import Any, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.core.logging import get_logger
 from modules.backend.models.workflow_definition import WorkflowDefinition
@@ -43,6 +44,22 @@ class WorkflowDefinitionService(BaseService):
             yield WorkflowDefinitionService(db)
             await db.commit()
 
+    @staticmethod
+    def _derive_edges(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Derive React Flow edges from steps[].depends_on."""
+        edges: list[dict[str, Any]] = []
+        for step in steps:
+            step_id = step.get("id", "")
+            for dep_id in step.get("depends_on", []):
+                edges.append({
+                    "id": f"{dep_id}->{step_id}",
+                    "source": dep_id,
+                    "target": step_id,
+                    "source_handle": "output",
+                    "target_handle": "input",
+                })
+        return edges
+
     async def create_workflow(
         self,
         mission_id: str | None,
@@ -55,6 +72,7 @@ class WorkflowDefinitionService(BaseService):
         budget_config: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
         designed_by: str | None = None,
+        edges_json: list[dict[str, Any]] | None = None,
     ) -> WorkflowDefinition:
         """Create a new workflow definition for a mission (or system template when None)."""
         if mission_id is not None:
@@ -74,8 +92,9 @@ class WorkflowDefinitionService(BaseService):
             description=description,
             objective=objective,
             steps=steps,
+            edges_json=edges_json if edges_json is not None else self._derive_edges(steps),
             trigger_config=trigger_config or {"type": "on_demand"},
-            budget_config=budget_config or {"max_cost_usd": 10.0},
+            budget_config=budget_config or {"max_cost_usd": get_default_budget_usd()},
             context=context or {},
             designed_by=designed_by,
         )
@@ -122,6 +141,20 @@ class WorkflowDefinitionService(BaseService):
         """Update a workflow definition."""
         if "steps" in updates:
             self._validate_steps(updates["steps"])
+            if "edges_json" not in updates:
+                updates["edges_json"] = self._derive_edges(updates["steps"])
+        return await self._repo.update(workflow_id, **updates)
+
+    async def save_graph(
+        self,
+        workflow_id: str,
+        canvas_state: dict[str, Any],
+        edges_json: list[dict[str, Any]] | None = None,
+    ) -> WorkflowDefinition:
+        """Save canvas state (viewport + node positions) and optionally edges."""
+        updates: dict[str, Any] = {"canvas_state": canvas_state}
+        if edges_json is not None:
+            updates["edges_json"] = edges_json
         return await self._repo.update(workflow_id, **updates)
 
     async def delete_workflow(self, workflow_id: str) -> None:

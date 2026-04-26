@@ -23,6 +23,7 @@ from textual.css.query import NoMatches
 from textual.widgets import Input, Label, Static
 from textual.worker import Worker
 
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 from modules.clients.tui.messages import (
     AgentSelected,
@@ -268,7 +269,7 @@ class MissionControlApp(App):
                 brief=brief,
                 mission_id=self.state.current_mission_id,
                 session_id=self.state.current_session_id,
-                budget_usd=self.state.budget_usd or 10.0,
+                budget_usd=self.state.budget_usd or get_default_budget_usd(),
                 gate=self._gate_reviewer,
             )
 

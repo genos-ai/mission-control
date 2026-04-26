@@ -259,6 +259,15 @@ def get_mission_control_config():
     return MissionControlConfigSchema(**raw)
 
 
+def get_default_budget_usd() -> float:
+    """Return the configured default mission budget from workflows.yaml.
+
+    Used as the fallback when a plan has no explicit budget_usd_ceiling.
+    Never hardcode 10.0 — always call this function.
+    """
+    return get_app_config().workflows.default_budget_usd
+
+
 def get_database_url(async_driver: bool = True) -> str:
     """
     Construct database URL from YAML config and secrets.

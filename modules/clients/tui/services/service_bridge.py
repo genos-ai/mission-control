@@ -15,6 +15,7 @@ from modules.backend.agents.mission_control.mission_control import handle_missio
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
 from modules.backend.agents.mission_control.outcome import ExecutionOutcome
 from modules.backend.agents.mission_control.roster import derive_roster_from_team, Roster
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -137,7 +138,7 @@ class ServiceBridge:
         mission_id: str,
         session_id: str,
         roster_name: str = "default",
-        budget_usd: float = 10.0,
+        budget_usd: float | None = None,
         gate: GateReviewer | None = None,
     ) -> ExecutionOutcome:
         """Execute a dispatch in-process with full event streaming.
@@ -145,6 +146,8 @@ class ServiceBridge:
         This is the TUI's primary execution path. It calls handle_mission()
         directly, wiring the TuiGateReviewer and TuiEventBus.
         """
+        budget_usd = budget_usd or get_default_budget_usd()
+
         from modules.backend.services.session import SessionService
 
         async with SessionService.factory() as session_service:

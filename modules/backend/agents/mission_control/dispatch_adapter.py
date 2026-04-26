@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from modules.backend.agents.mission_control.mission_control import handle_mission
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
-from modules.backend.core.config import find_project_root
+from modules.backend.core.config import find_project_root, get_default_budget_usd
 from modules.backend.core.protocols import SessionServiceProtocol
 from modules.backend.core.logging import get_logger
 
@@ -76,7 +76,7 @@ class MissionControlDispatchAdapter:
         )
 
         mission_run_id = f"mission-{session_id}" if session_id else "mission-adhoc"
-        budget = cost_ceiling_usd or 10.0
+        budget = cost_ceiling_usd or get_default_budget_usd()
 
         # Select roster based on complexity_tier if a tier-specific roster exists
         roster_name = roster_ref

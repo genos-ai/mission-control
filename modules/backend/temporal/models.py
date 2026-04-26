@@ -17,7 +17,7 @@ class MissionWorkflowInput:
     session_id: str
     mission_brief: str
     roster_name: str = "default"
-    mission_budget_usd: float = 10.0
+    mission_budget_usd: float = 10.0  # overridden by callers from config
     mission_id: str | None = None
     execution_mode: str | None = None
     approval_timeout_seconds: int = 14400

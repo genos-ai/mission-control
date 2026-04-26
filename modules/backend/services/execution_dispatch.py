@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ApplicationError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
@@ -224,12 +225,17 @@ class ExecutionDispatchMixin:
 
         brief = ""
         roster = "default"
-        budget = 10.0
+        budget = get_default_budget_usd()
         mission_id = None
         if record:
             brief = record.objective_statement or ""
             roster = record.roster_name or "default"
-            budget = record.total_cost_usd or 10.0
+            # TODO: BUG — record.total_cost_usd is *already-spent* cost, not
+            # the budget ceiling. Using it as the new ceiling means retries
+            # inherit the previous run's spend as their cap. For now we fall
+            # back to the configured default; the correct fix is to read the
+            # budget ceiling from the mission plan or execution record.
+            budget = get_default_budget_usd()
             mission_id = record.mission_id
 
         client = await get_temporal_client()

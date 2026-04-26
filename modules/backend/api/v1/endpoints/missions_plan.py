@@ -17,7 +17,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from modules.backend.core.config import get_app_config
+from modules.backend.core.config import get_app_config, get_default_budget_usd
 from modules.backend.core.logging import get_logger
 
 from modules.backend.core.dependencies import (
@@ -213,7 +213,7 @@ async def refine_plan(
             plan_id=plan.id,
             instructions=data.instructions,
             user_id=current_user.id,
-            mission_budget_usd=plan.budget_usd_ceiling or 10.0,
+            mission_budget_usd=plan.budget_usd_ceiling or get_default_budget_usd(),
         ),
         id=workflow_id,
         task_queue=config.task_queue,

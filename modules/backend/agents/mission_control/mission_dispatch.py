@@ -26,6 +26,7 @@ from modules.backend.agents.mission_control.outcome import ExecutionOutcome, Exe
 from modules.backend.agents.mission_control.persistence_bridge import persist_mission_results
 from modules.backend.agents.mission_control.plan_validator import validate_plan
 from modules.backend.agents.mission_control.roster import derive_roster_from_team
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 from modules.backend.core.protocols import SessionServiceProtocol
 from modules.backend.events.types import (
@@ -50,7 +51,7 @@ async def handle_mission(
     session_service: SessionServiceProtocol,
     event_bus: EventBusProtocol = NoOpEventBus(),
     roster_name: str = "default",
-    mission_budget_usd: float = 10.0,
+    mission_budget_usd: float | None = None,
     upstream_context: dict | None = None,
     session_id: str | None = None,
     mission_id: str | None = None,
@@ -80,6 +81,8 @@ async def handle_mission(
     The plan still flows through validate_plan before dispatch so the
     same 11 rules apply.
     """
+    mission_budget_usd = mission_budget_usd or get_default_budget_usd()
+
     if not mission_id or not db_session:
         raise ValueError(
             "mission_id and db_session are required for dispatch. "

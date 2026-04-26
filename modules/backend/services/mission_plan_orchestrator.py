@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ConflictError, ValidationError
 from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
 from modules.backend.core.utils import utc_now
@@ -93,7 +94,7 @@ class MissionPlanOrchestrator(BaseService):
         instructions: str,
         user_id: str,
         *,
-        mission_budget_usd: float = 10.0,
+        mission_budget_usd: float | None = None,
     ) -> MissionPlan:
         """Refine the plan by delegating to the Planning Agent.
 
@@ -120,8 +121,9 @@ class MissionPlanOrchestrator(BaseService):
             user_id: The user (via the Director) requesting the refinement.
                 Currently used for audit logging only.
             mission_budget_usd: Budget to validate the new plan against.
-                Defaults to 10.0 — callers that have a per-plan budget
-                ceiling should pass it in explicitly.
+                Defaults to get_default_budget_usd() when None — callers
+                that have a per-plan budget ceiling should pass it in
+                explicitly.
 
         Returns:
             The refreshed MissionPlan with the new task_plan_json and
@@ -133,6 +135,8 @@ class MissionPlanOrchestrator(BaseService):
             ValidationError: If the Planning Agent returns an invalid
                 TaskPlan (fails plan_validator's 11 rules).
         """
+        mission_budget_usd = mission_budget_usd or get_default_budget_usd()
+
         from modules.backend.agents.mission_control.helpers.agent_executor import (
             _call_planning_agent,
         )
@@ -400,7 +404,7 @@ class MissionPlanOrchestrator(BaseService):
         await self._plan_svc.check_no_active_tasks(plan.id)
 
         # 4. Refine: Planning Agent decomposes objective into TaskPlan
-        budget = plan.budget_usd_ceiling or 10.0
+        budget = plan.budget_usd_ceiling or get_default_budget_usd()
         plan = await self.refine(
             plan.id,
             objective,
@@ -510,7 +514,7 @@ class MissionPlanOrchestrator(BaseService):
 
         mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
         brief = mission.brief or mission.description or mission.name
-        remaining_budget = (plan.budget_usd_ceiling or 10.0) - plan.total_spent_usd
+        remaining_budget = (plan.budget_usd_ceiling or get_default_budget_usd()) - plan.total_spent_usd
 
         workflow_input = MissionWorkflowInput(
             mission_run_id=plan.id,
@@ -655,7 +659,7 @@ class MissionPlanOrchestrator(BaseService):
         prior_outputs = await self._load_prior_outputs(mission_plan_id)
 
         # Dispatch via the Phase 0 precomputed_plan path
-        budget = plan.budget_usd_ceiling or 10.0
+        budget = plan.budget_usd_ceiling or get_default_budget_usd()
         if plan.budget_usd_ceiling is not None:
             budget = plan.budget_usd_ceiling - plan.total_spent_usd
 
