@@ -18,12 +18,13 @@ export default function WorkflowEditPage() {
   const runWorkflow = useRunWorkflow(missionId!)
 
   const handleSaveGraph = useCallback(
-    async (canvasState: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]) => {
-      await saveGraph.mutateAsync({
+    async (canvasState: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]): Promise<string[]> => {
+      const result = await saveGraph.mutateAsync({
         canvas_state: canvasState,
         ...(steps ? { steps } : {}),
         ...(edges ? { edges_json: edges } : {}),
       })
+      return result.validation_warnings ?? []
     },
     [saveGraph],
   )

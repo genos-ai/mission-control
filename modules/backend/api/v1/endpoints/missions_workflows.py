@@ -295,7 +295,7 @@ async def save_workflow_graph(
     from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     service = WorkflowDefinitionService(db)
-    workflow = await service.save_graph(
+    workflow, warnings = await service.save_graph(
         workflow_id=workflow_id,
         canvas_state=data.canvas_state,
         edges_json=data.edges_json,
@@ -309,6 +309,7 @@ async def save_workflow_graph(
             "canvas_state": workflow.canvas_state,
             "edges_json": workflow.edges_json,
             "steps": workflow.steps,
+            "validation_warnings": warnings,
         },
         metadata={"request_id": request_id},
     )

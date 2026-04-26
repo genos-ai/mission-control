@@ -143,7 +143,7 @@ const nodeTypes = {
 
 interface WorkflowEditorProps {
   workflow: WorkflowDetailFull
-  onSaveGraph: (canvas: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]) => Promise<void>
+  onSaveGraph: (canvas: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]) => Promise<string[]>
   onRun: () => Promise<void>
 }
 
@@ -281,6 +281,34 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     [onEdgesChange, pushHistory],
   )
 
+  // Validate connections in real-time (prevent invalid edges)
+  const isValidConnection = useCallback(
+    (connection: Edge | Connection) => {
+      // No self-loops
+      if (connection.source === connection.target) return false
+      // No duplicate edges
+      if (edges.some((e) => e.source === connection.source && e.target === connection.target)) return false
+      // Prevent cycles: check if target can already reach source
+      const canReach = (from: string, to: string): boolean => {
+        const visited = new Set<string>()
+        const queue = [from]
+        while (queue.length > 0) {
+          const current = queue.pop()!
+          if (current === to) return true
+          if (visited.has(current)) continue
+          visited.add(current)
+          for (const e of edges) {
+            if (e.source === current) queue.push(e.target)
+          }
+        }
+        return false
+      }
+      if (canReach(connection.target!, connection.source!)) return false
+      return true
+    },
+    [edges],
+  )
+
   // Connect nodes — create edge on drag
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -364,9 +392,16 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       const edgesData = flowToEdges(edges)
       let steps = nodesToSteps(nodes)
       steps = syncDependsOn(steps, edgesData)
-      await onSaveGraph(canvasState, steps, edgesData)
+      const warnings = await onSaveGraph(canvasState, steps, edgesData)
       setIsDirty(false)
-      toast.success('Workflow saved')
+      if (warnings.length > 0) {
+        toast.success(`Saved with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}`)
+        for (const w of warnings) {
+          toast(w, { icon: '⚠️', duration: 5000 })
+        }
+      } else {
+        toast.success('Workflow saved')
+      }
     } catch {
       toast.error('Failed to save workflow')
     } finally {
@@ -558,6 +593,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
+            isValidConnection={isValidConnection}
             onNodeClick={handleNodeClick}
             onPaneClick={handlePaneClick}
             onNodeDragStop={handleNodeDragStop}

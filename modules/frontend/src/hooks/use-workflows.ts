@@ -65,7 +65,7 @@ export function useSaveWorkflowGraph(missionId: string, workflowId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { canvas_state: CanvasState; edges_json?: WorkflowEdge[]; steps?: WorkflowStep[] }) =>
-      api.put<{ id: string; canvas_state: CanvasState; edges_json: WorkflowEdge[]; steps: WorkflowStep[] }>(
+      api.put<{ id: string; canvas_state: CanvasState; edges_json: WorkflowEdge[]; steps: WorkflowStep[]; validation_warnings?: string[] }>(
         `/missions/${missionId}/workflows/${workflowId}/graph`,
         data,
       ),

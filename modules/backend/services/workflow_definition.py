@@ -151,10 +151,11 @@ class WorkflowDefinitionService(BaseService):
         canvas_state: dict[str, Any],
         edges_json: list[dict[str, Any]] | None = None,
         steps: list[dict[str, Any]] | None = None,
-    ) -> WorkflowDefinition:
+    ) -> tuple[WorkflowDefinition, list[str]]:
         """Save canvas state, optionally edges and steps.
 
         When steps are provided they are validated and the version is bumped.
+        Returns (workflow, validation_warnings) — warnings are non-blocking.
         """
         updates: dict[str, Any] = {"canvas_state": canvas_state}
         if edges_json is not None:
@@ -162,7 +163,15 @@ class WorkflowDefinitionService(BaseService):
         if steps is not None:
             self._validate_steps(steps)
             updates["steps"] = steps
-        return await self._repo.update(workflow_id, **updates)
+
+        # Run graph validation when both steps and edges are available
+        warnings: list[str] = []
+        if steps is not None and edges_json is not None:
+            from modules.backend.services.workflow_validator import validate_workflow_graph
+            warnings = validate_workflow_graph(steps, edges_json)
+
+        workflow = await self._repo.update(workflow_id, **updates)
+        return workflow, warnings
 
     async def delete_workflow(self, workflow_id: str) -> None:
         """Delete a workflow definition by ID."""
