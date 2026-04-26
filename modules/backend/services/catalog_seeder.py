@@ -164,6 +164,8 @@ async def seed_catalog(
                 thinking_budget_json=config.thinking_budget,
                 max_input_length=config.max_input_length,
                 max_budget_usd=config.max_budget_usd,
+                produces_artifact=config.produces_artifact,
+                artifact_type=config.artifact_type,
             )
 
             # Upsert: update existing entry or create new one.
