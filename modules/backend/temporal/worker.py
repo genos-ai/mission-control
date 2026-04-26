@@ -74,6 +74,11 @@ from modules.backend.temporal.plan_refine_activities import execute_plan_refine
 from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
 from modules.backend.temporal.run_objective_activities import execute_run_objective
 from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
+from modules.backend.temporal.human_input_activities import (
+    mark_human_input_resolved,
+    notify_human_input_needed,
+)
+from modules.backend.temporal.human_input_workflow import HumanInputWorkflow
 from modules.backend.temporal.workflow import AgentMissionWorkflow
 
 logger = get_logger(__name__)
@@ -94,6 +99,8 @@ async def start_worker() -> None:
             ScheduledMissionCheckWorkflow,
             DesignWorkflowWorkflow,
             RunWorkflowWorkflow,
+            # Human input (Plan 45 Phase 4)
+            HumanInputWorkflow,
             # Knowledge platform (Plan 57)
             KnowledgeExtractionWorkflow,
             KnowledgeOfficerWorkflow,
@@ -134,6 +141,9 @@ async def start_worker() -> None:
             execute_run_workflow,
             notify_director_on_completion,
             update_execution_record_status,
+            # Human input (Plan 45 Phase 4)
+            notify_human_input_needed,
+            mark_human_input_resolved,
             # Knowledge platform (Plan 57)
             extract_mission_learnings,
             extract_all_missions,

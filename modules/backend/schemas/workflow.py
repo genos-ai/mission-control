@@ -89,6 +89,18 @@ class NotificationConfig(BaseModel):
     recipient: str | None = None
 
 
+class HumanInputConfig(BaseModel):
+    """Configuration for a human_input node — durable pause until a human responds."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prompt_message: str = Field(..., min_length=1, max_length=2000)
+    channel: str = Field(default="telegram", pattern=r"^(telegram|sse|chat)$")
+    timeout_hours: float | None = Field(None, ge=0.1, le=720)
+    default_response: str | None = Field(None, max_length=2000)
+    choices: list[str] | None = None
+
+
 class WorkflowStepSchema(BaseModel):
     """A single step in a workflow.
 
@@ -108,7 +120,7 @@ class WorkflowStepSchema(BaseModel):
     description: str | None = Field(None, max_length=500)
     node_type: str = Field(
         default="agent_step",
-        pattern=r"^(agent_step|condition|notification)$",
+        pattern=r"^(agent_step|condition|notification|human_input)$",
     )
     capability: str | None = Field(
         None,
@@ -116,6 +128,7 @@ class WorkflowStepSchema(BaseModel):
     )
     condition_config: ConditionConfig | None = None
     notification_config: NotificationConfig | None = None
+    human_input_config: HumanInputConfig | None = None
     roster: str = Field(
         default="default",
         pattern=r"^[a-z][a-z0-9_-]*$",
@@ -155,6 +168,8 @@ class WorkflowStepSchema(BaseModel):
             raise ValueError("condition_config is required for condition nodes")
         if self.node_type == "notification" and self.notification_config is None:
             raise ValueError("notification_config is required for notification nodes")
+        if self.node_type == "human_input" and self.human_input_config is None:
+            raise ValueError("human_input_config is required for human_input nodes")
         return self
 
 

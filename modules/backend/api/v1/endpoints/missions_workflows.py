@@ -12,7 +12,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
-from modules.backend.core.exceptions import AuthorizationError
+from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.workflow_schedule import (
     WorkflowScheduleCreateRequest,
@@ -418,5 +418,123 @@ async def architect_chat(
             "response": result.get("response", ""),
             "usage": str(result.get("usage")) if result.get("usage") else None,
         },
+        metadata={"request_id": request_id},
+    )
+
+
+# ---- Human Input ----
+
+
+class HumanInputSubmission(BaseModel):
+    """Request body for responding to a human input request."""
+    response: str = Field(..., min_length=1, max_length=5000)
+    responder_id: str = ""
+
+
+@router.get(
+    "/{mission_id}/human-input/pending",
+    response_model=ApiResponse,
+    summary="List pending human input requests",
+)
+async def list_pending_human_input(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """List pending human input requests for a mission."""
+    from sqlalchemy import select
+
+    from modules.backend.models.human_input_request import (
+        HumanInputRequest,
+        HumanInputRequestStatus,
+    )
+
+    result = await db.execute(
+        select(HumanInputRequest)
+        .where(
+            HumanInputRequest.mission_id == mission_id,
+            HumanInputRequest.status == HumanInputRequestStatus.PENDING,
+        )
+        .order_by(HumanInputRequest.created_at.desc())
+    )
+    requests = result.scalars().all()
+    items = [
+        {
+            "id": r.id,
+            "workflow_run_id": r.workflow_run_id,
+            "step_id": r.step_id,
+            "prompt_message": r.prompt_message,
+            "channel": r.channel,
+            "choices": r.choices_json,
+            "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in requests
+    ]
+    return ApiResponse(
+        success=True,
+        data={"requests": items, "total": len(items)},
+        metadata={"request_id": request_id},
+    )
+
+
+@router.post(
+    "/{mission_id}/human-input/{input_request_id}/respond",
+    response_model=ApiResponse,
+    summary="Respond to a human input request",
+)
+async def respond_to_human_input(
+    mission_id: str,
+    input_request_id: str,
+    data: HumanInputSubmission,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Submit a response to a pending human input request.
+
+    Sends a Temporal Signal to the HumanInputWorkflow.
+    """
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
+    from modules.backend.models.human_input_request import (
+        HumanInputRequest,
+        HumanInputRequestStatus,
+    )
+
+    result = await db.execute(
+        select(HumanInputRequest).where(HumanInputRequest.id == input_request_id)
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Human input request not found")
+    if req.status != HumanInputRequestStatus.PENDING.value and req.status != HumanInputRequestStatus.PENDING:
+        raise HTTPException(status_code=409, detail=f"Request is not pending (status: {req.status})")
+
+    # Validate response against choices if constrained
+    if req.choices_json and data.response not in req.choices_json:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Response must be one of: {', '.join(req.choices_json)}",
+        )
+
+    # Send Temporal Signal
+    from modules.backend.temporal.client import get_temporal_client
+    from modules.backend.temporal.human_input_models import HumanInputResponse
+    from modules.backend.temporal.human_input_workflow import HumanInputWorkflow
+
+    client = await get_temporal_client()
+    handle = client.get_workflow_handle(req.temporal_workflow_id)
+    await handle.signal(
+        HumanInputWorkflow.submit_human_input,
+        HumanInputResponse(
+            response=data.response,
+            responder_id=data.responder_id,
+        ),
+    )
+
+    return ApiResponse(
+        success=True,
+        data={"request_id": input_request_id, "status": "signal_sent"},
         metadata={"request_id": request_id},
     )

@@ -18,7 +18,7 @@ import '@xyflow/react/dist/style.css'
 import toast from 'react-hot-toast'
 import type { WorkflowStep } from '@/types'
 import { StepDetail } from './step-detail'
-import { WorkflowEditorNode, ConditionNode, NotificationNode } from './workflow-editor-node'
+import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import {
   dagreLayout,
@@ -33,6 +33,7 @@ const STEP_NODE_TYPE_MAP: Record<string, string> = {
   agent_step: 'workflowStep',
   condition: 'conditionStep',
   notification: 'notificationStep',
+  human_input: 'humanInputStep',
 }
 
 function stepsToNodes(
@@ -92,6 +93,7 @@ const nodeTypes = {
   workflowStep: WorkflowEditorNode,
   conditionStep: ConditionNode,
   notificationStep: NotificationNode,
+  humanInputStep: HumanInputNode,
 }
 
 interface WorkflowEditorProps {

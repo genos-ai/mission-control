@@ -19,7 +19,7 @@ export interface WorkflowListItem {
 export interface WorkflowStep {
   id: string
   description: string | null
-  node_type?: 'agent_step' | 'condition' | 'notification'
+  node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input'
   capability: string | null
   condition_config?: {
     expression: string
@@ -30,6 +30,13 @@ export interface WorkflowStep {
     channel: string
     message_template: string
     recipient: string | null
+  } | null
+  human_input_config?: {
+    prompt_message: string
+    channel: string
+    timeout_hours: number | null
+    default_response: string | null
+    choices: string[] | null
   } | null
   roster: string
   complexity_tier: string

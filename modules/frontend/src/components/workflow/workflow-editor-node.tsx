@@ -1,12 +1,12 @@
 /**
  * Custom React Flow nodes for the workflow editor.
  *
- * Three node types: agent_step (default), condition, notification.
+ * Four node types: agent_step (default), condition, notification, human_input.
  */
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Bot, GitBranch, Bell } from 'lucide-react'
+import { Bot, GitBranch, Bell, UserRound } from 'lucide-react'
 import type { WorkflowStep } from '@/types'
 import { NODE_WIDTH, getDomainBorder, getDomainBg, NODE_TYPE_STYLES } from './workflow-editor-types'
 
@@ -156,8 +156,56 @@ function NotificationNodeRaw({ data, selected }: NodeProps) {
   )
 }
 
+// ── Human Input Node ────────────────────────────────────────────────────
+
+function HumanInputNodeRaw({ data, selected }: NodeProps) {
+  const step = (data as StepNodeData).step
+  const config = step.human_input_config
+  const promptShort = (config?.prompt_message ?? '').length > 40
+    ? (config?.prompt_message ?? '').slice(0, 37) + '…'
+    : config?.prompt_message ?? ''
+
+  return (
+    <div
+      className={[
+        'rounded-xl border-2 border-dashed px-3 py-2 shadow-sm transition-all',
+        'border-orange-500/60',
+        'bg-orange-500/5',
+        selected ? selectedRing : '',
+      ].join(' ')}
+      style={{ width: NODE_WIDTH }}
+    >
+      <TargetHandle />
+
+      <div className="flex items-center gap-1.5">
+        <UserRound className="h-3.5 w-3.5 shrink-0 text-orange-500" />
+        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
+          {config?.channel ?? 'telegram'}
+        </span>
+      </div>
+
+      <p className="mt-1 truncate text-[10px] text-muted-foreground" title={config?.prompt_message}>
+        {promptShort}
+      </p>
+
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+        {config?.timeout_hours != null && (
+          <span>{config.timeout_hours}h timeout</span>
+        )}
+        {config?.choices && config.choices.length > 0 && (
+          <span>{config.choices.length} choices</span>
+        )}
+      </div>
+
+      <SourceHandle />
+    </div>
+  )
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────
 
 export const WorkflowEditorNode = memo(AgentStepNodeRaw)
 export const ConditionNode = memo(ConditionNodeRaw)
 export const NotificationNode = memo(NotificationNodeRaw)
+export const HumanInputNode = memo(HumanInputNodeRaw)

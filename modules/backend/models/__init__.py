@@ -38,6 +38,7 @@ from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.models.user import SystemRole, User
 from modules.backend.models.api_key import ApiKey
 from modules.backend.models.workflow_schedule import WorkflowSchedule
+from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
 
 __all__ = [
     "AgentCatalog",
@@ -82,6 +83,8 @@ __all__ = [
     "TaskExecution",
     "User",
     "WorkflowDefinition",
+    "HumanInputRequest",
+    "HumanInputRequestStatus",
     "WorkflowRun",
     "WorkflowSchedule",
 ]

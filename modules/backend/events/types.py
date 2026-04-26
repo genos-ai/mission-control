@@ -297,6 +297,27 @@ class WorkflowStepSkippedEvent(SessionEvent):
     reason: str
 
 
+class WorkflowHumanInputRequestedEvent(SessionEvent):
+    event_type: str = "workflow.human_input.requested"
+    workflow_run_id: str
+    step_id: str
+    request_id: str
+    prompt_message: str
+    channel: str
+    choices: list[str] = Field(default_factory=list)
+    timeout_at: str | None = None
+
+
+class WorkflowHumanInputRespondedEvent(SessionEvent):
+    event_type: str = "workflow.human_input.responded"
+    workflow_run_id: str
+    step_id: str
+    request_id: str
+    response: str
+    responder_id: str = ""
+    timed_out: bool = False
+
+
 # =============================================================================
 # Workflow Design Events
 # =============================================================================
@@ -746,6 +767,8 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.condition.evaluated": WorkflowConditionEvaluatedEvent,
     "workflow.notification.sent": WorkflowNotificationSentEvent,
     "workflow.step.skipped": WorkflowStepSkippedEvent,
+    "workflow.human_input.requested": WorkflowHumanInputRequestedEvent,
+    "workflow.human_input.responded": WorkflowHumanInputRespondedEvent,
     "workflow.graph.updated": WorkflowGraphEvent,
     "convergence.iteration": ConvergenceIterationEvent,
     "convergence.completed": ConvergenceCompletedEvent,

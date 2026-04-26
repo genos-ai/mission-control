@@ -113,6 +113,10 @@ export const NODE_TYPE_STYLES = {
     border: 'border-sky-500/60',
     bg: 'bg-sky-500/5',
   },
+  human_input: {
+    border: 'border-orange-500/60 border-dashed',
+    bg: 'bg-orange-500/5',
+  },
 } as const
 
 // ── Layout ────────────────────────────────────────────────────────────────

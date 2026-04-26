@@ -1,4 +1,4 @@
-import { X, Bot, GitBranch, Bell } from 'lucide-react'
+import { X, Bot, GitBranch, Bell, UserRound } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { WorkflowStep } from '@/types'
@@ -12,6 +12,7 @@ export function StepDetail({ step, onClose }: StepDetailProps) {
   const nodeType = step.node_type ?? 'agent_step'
   const NodeIcon = nodeType === 'condition' ? GitBranch
     : nodeType === 'notification' ? Bell
+    : nodeType === 'human_input' ? UserRound
     : Bot
 
   return (
@@ -90,6 +91,37 @@ export function StepDetail({ step, onClose }: StepDetailProps) {
                 {step.notification_config.message_template}
               </pre>
             </div>
+          </div>
+        )}
+
+        {/* Human input config */}
+        {nodeType === 'human_input' && step.human_input_config && (
+          <div className="space-y-2">
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Prompt</span>
+              <pre className="mt-1 whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono text-xs leading-relaxed">
+                {step.human_input_config.prompt_message}
+              </pre>
+            </div>
+            <Row label="Channel" value={step.human_input_config.channel} />
+            {step.human_input_config.timeout_hours != null && (
+              <Row label="Timeout" value={`${step.human_input_config.timeout_hours}h`} />
+            )}
+            {step.human_input_config.default_response && (
+              <Row label="Default Response" value={step.human_input_config.default_response} />
+            )}
+            {step.human_input_config.choices && step.human_input_config.choices.length > 0 && (
+              <div>
+                <span className="text-xs font-medium text-muted-foreground">Choices</span>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {step.human_input_config.choices.map((c) => (
+                    <Badge key={c} variant="outline" className="text-[10px]">
+                      {c}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
