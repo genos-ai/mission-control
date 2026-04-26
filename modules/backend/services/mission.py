@@ -419,22 +419,6 @@ class MissionService(BaseService):
         self._log_operation("Gate mode updated", mission_id=mission_id, gate_mode=mode)
         return mission
 
-    async def resolve_gate(self, mission_id: str, gate_override: str | None = None):
-        """Resolve gate reviewer: explicit override > mission default > off.
-
-        Returns a GateReviewer instance, or None if mode is off.
-        """
-        mode = gate_override
-        if mode is None:
-            mission = await self.get_mission(mission_id)
-            mode = mission.gate_mode
-
-        if not mode or mode == "off":
-            return None
-
-        from modules.backend.agents.mission_control.gate import create_gate
-        return create_gate(mode_override=mode)
-
     async def archive_mission(self, mission_id: str) -> Mission:
         """Archive a mission. No new executions can be created."""
         return await self._mission_repo.update(
