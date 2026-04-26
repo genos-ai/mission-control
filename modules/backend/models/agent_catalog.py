@@ -9,7 +9,7 @@ Seeded from config/agents/**/agent.yaml + config/prompts/agents/**/system.md
 on first run. After seeding, the database is the source of truth.
 """
 
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, Numeric, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -103,7 +103,7 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
         comment="Maximum input length in characters",
     )
     max_budget_usd: Mapped[float] = mapped_column(
-        default=1.0, nullable=False,
+        Numeric(12, 6, asdecimal=False), default=1.0, nullable=False,
         comment="Per-agent budget ceiling in USD",
     )
     cache_ttl: Mapped[str | None] = mapped_column(

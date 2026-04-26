@@ -276,7 +276,7 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
     )
 
     duration_seconds: Mapped[float | None] = mapped_column(
-        Float,
+        Numeric(12, 6, asdecimal=False),
         nullable=True,
     )
 
