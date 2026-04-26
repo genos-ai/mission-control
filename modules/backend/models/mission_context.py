@@ -134,7 +134,9 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
         String(200), nullable=True,
     )
     mission_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False), nullable=True,
+        PgUUID(as_uuid=False),
+        ForeignKey("missions.id", ondelete="CASCADE"),
+        nullable=True,
     )
     task_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True,

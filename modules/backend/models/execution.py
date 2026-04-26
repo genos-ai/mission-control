@@ -100,8 +100,10 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    session_id: Mapped[str] = mapped_column(
-        PgUUID(as_uuid=False), nullable=False, index=True,
+    session_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("sessions.id", ondelete="SET NULL"),
+        nullable=True, index=True,
     )
     trigger_type: Mapped[str] = mapped_column(
         String(50), default="on_demand", nullable=False,
@@ -152,7 +154,9 @@ class Execution(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "executions"
 
     workflow_run_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False), nullable=True, index=True,
+        PgUUID(as_uuid=False),
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        nullable=True, index=True,
     )
     workflow_step_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True,
@@ -178,8 +182,10 @@ class Execution(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    session_id: Mapped[str] = mapped_column(
-        PgUUID(as_uuid=False), nullable=False, index=True,
+    session_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("sessions.id", ondelete="SET NULL"),
+        nullable=True, index=True,
     )
     trigger_type: Mapped[str] = mapped_column(
         String(50), default="on_demand", nullable=False,

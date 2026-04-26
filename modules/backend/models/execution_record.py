@@ -79,9 +79,10 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "execution_records"
 
-    session_id: Mapped[str] = mapped_column(
+    session_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
-        nullable=False,
+        ForeignKey("sessions.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
         comment="Session that triggered this execution",
     )
