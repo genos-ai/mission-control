@@ -19,7 +19,7 @@ import json
 
 from pydantic_ai import Agent
 
-from modules.backend.agents.mission_control.helpers import _build_model
+from modules.backend.core.model_builder import _build_model
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.execution_outcome import ExecutionOutcome
 

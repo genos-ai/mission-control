@@ -9,7 +9,7 @@ Split from helpers.py into:
   agent_executor.py — execute_agent closure and planning agent caller
 """
 
-from modules.backend.agents.mission_control.helpers.model_builder import (
+from modules.backend.core.model_builder import (
     _build_model,
     _get_model_name,
     build_model_settings,
