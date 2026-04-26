@@ -8,7 +8,8 @@ import { Loader2 } from 'lucide-react'
 import { WorkflowEditor } from '@/components/workflow/workflow-editor'
 import { useMissionWorkflowById, useSaveWorkflowGraph } from '@/hooks/use-workflows'
 import { useRunWorkflow } from '@/hooks/use-workflows'
-import type { CanvasState } from '@/components/workflow/workflow-editor-types'
+import type { WorkflowStep } from '@/types'
+import type { CanvasState, WorkflowEdge } from '@/components/workflow/workflow-editor-types'
 
 export default function WorkflowEditPage() {
   const { id: missionId, workflowId } = useParams<{ id: string; workflowId: string }>()
@@ -17,8 +18,12 @@ export default function WorkflowEditPage() {
   const runWorkflow = useRunWorkflow(missionId!)
 
   const handleSaveGraph = useCallback(
-    async (canvasState: CanvasState) => {
-      await saveGraph.mutateAsync({ canvas_state: canvasState })
+    async (canvasState: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]) => {
+      await saveGraph.mutateAsync({
+        canvas_state: canvasState,
+        ...(steps ? { steps } : {}),
+        ...(edges ? { edges_json: edges } : {}),
+      })
     },
     [saveGraph],
   )

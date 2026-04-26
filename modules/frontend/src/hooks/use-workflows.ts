@@ -4,6 +4,7 @@ import type {
   WorkflowListItem,
   WorkflowDetail,
   WorkflowEdge,
+  WorkflowStep,
   MissionWorkflow,
   WorkflowRunRecord,
   WorkflowSchedule,
@@ -63,8 +64,8 @@ export function useMissionWorkflowById(missionId: string | undefined, workflowId
 export function useSaveWorkflowGraph(missionId: string, workflowId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { canvas_state: CanvasState; edges_json?: WorkflowEdge[] }) =>
-      api.put<{ id: string; canvas_state: CanvasState; edges_json: WorkflowEdge[] }>(
+    mutationFn: (data: { canvas_state: CanvasState; edges_json?: WorkflowEdge[]; steps?: WorkflowStep[] }) =>
+      api.put<{ id: string; canvas_state: CanvasState; edges_json: WorkflowEdge[]; steps: WorkflowStep[] }>(
         `/missions/${missionId}/workflows/${workflowId}/graph`,
         data,
       ),

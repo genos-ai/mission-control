@@ -4,11 +4,15 @@
 
 import {
   ArrowLeft,
+  Bell,
+  Bot,
+  GitBranch,
   History,
   LayoutDashboard,
   Play,
   Save,
   Loader2,
+  UserRound,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -27,6 +31,7 @@ interface WorkflowEditorToolbarProps {
   onSave: () => void
   onRun: () => void
   onToggleHistory: () => void
+  onAddNode: (nodeType: string) => void
 }
 
 export function WorkflowEditorToolbar({
@@ -42,6 +47,7 @@ export function WorkflowEditorToolbar({
   onSave,
   onRun,
   onToggleHistory,
+  onAddNode,
 }: WorkflowEditorToolbarProps) {
   const navigate = useNavigate()
   const { id: missionId } = useParams<{ id: string }>()
@@ -72,6 +78,28 @@ export function WorkflowEditorToolbar({
           <span className="tabular-nums">{runProgress[0]}/{runProgress[1]} steps</span>
         </div>
       )}
+
+      <div className="mx-1 h-4 w-px bg-border" />
+
+      {/* Add node buttons */}
+      <div className="flex items-center gap-0.5">
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add agent step"
+          onClick={() => onAddNode('agent_step')}>
+          <Bot className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add condition"
+          onClick={() => onAddNode('condition')}>
+          <GitBranch className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add notification"
+          onClick={() => onAddNode('notification')}>
+          <Bell className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add human input"
+          onClick={() => onAddNode('human_input')}>
+          <UserRound className="h-3.5 w-3.5" />
+        </Button>
+      </div>
 
       <div className="flex-1" />
 

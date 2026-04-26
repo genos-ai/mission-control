@@ -22,6 +22,7 @@ export interface StepNodeData {
 const TargetHandle = () => (
   <Handle
     type="target"
+    id="input"
     position={Position.Left}
     className="!h-3 !w-3 !rounded-full !border-2 !border-background !bg-muted-foreground"
   />
@@ -29,6 +30,7 @@ const TargetHandle = () => (
 const SourceHandle = () => (
   <Handle
     type="source"
+    id="output"
     position={Position.Right}
     className="!h-3 !w-3 !rounded-full !border-2 !border-background !bg-muted-foreground"
   />
@@ -155,7 +157,21 @@ function ConditionNodeRaw({ data, selected }: NodeProps) {
         <span className="text-red-400">{config?.false_label ?? 'No'}</span>
       </div>
 
-      <SourceHandle />
+      {/* Dual source handles for true/false branches */}
+      <Handle
+        type="source"
+        id="yes"
+        position={Position.Right}
+        style={{ top: '30%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-emerald-500"
+      />
+      <Handle
+        type="source"
+        id="no"
+        position={Position.Right}
+        style={{ top: '70%' }}
+        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-red-400"
+      />
     </div>
   )
 }

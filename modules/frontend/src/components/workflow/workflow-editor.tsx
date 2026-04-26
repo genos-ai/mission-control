@@ -9,11 +9,14 @@ import {
   Background,
   Controls,
   MiniMap,
+  addEdge,
   useNodesState,
   useEdgesState,
   type Node,
   type Edge,
+  type EdgeChange,
   type NodeChange,
+  type Connection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import toast from 'react-hot-toast'
@@ -26,6 +29,7 @@ import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode } f
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import {
   dagreLayout,
+  NODE_WIDTH,
   type WorkflowDetailFull,
   type WorkflowEdge,
   type CanvasState,
@@ -91,6 +95,35 @@ function collectPositions(nodes: Node[]): Record<string, { x: number; y: number 
   return positions
 }
 
+/** Extract WorkflowStep[] from React Flow nodes. */
+function nodesToSteps(nodes: Node[]): WorkflowStep[] {
+  return nodes.map((n) => (n.data as { step: WorkflowStep }).step)
+}
+
+/** Convert React Flow edges back to WorkflowEdge[] for the backend. */
+function flowToEdges(edges: Edge[]): WorkflowEdge[] {
+  return edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    source_handle: (e.sourceHandle as string) ?? 'output',
+    target_handle: (e.targetHandle as string) ?? 'input',
+    label: (e.label as string) ?? null,
+  }))
+}
+
+/** Derive depends_on arrays from edges and patch into steps. */
+function syncDependsOn(steps: WorkflowStep[], edges: WorkflowEdge[]): WorkflowStep[] {
+  const depsMap: Record<string, string[]> = {}
+  for (const e of edges) {
+    if (!depsMap[e.target]) depsMap[e.target] = []
+    if (!depsMap[e.target].includes(e.source)) {
+      depsMap[e.target].push(e.source)
+    }
+  }
+  return steps.map((s) => ({ ...s, depends_on: depsMap[s.id] ?? [] }))
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 const nodeTypes = {
@@ -102,7 +135,7 @@ const nodeTypes = {
 
 interface WorkflowEditorProps {
   workflow: WorkflowDetailFull
-  onSaveGraph: (canvas: CanvasState) => Promise<void>
+  onSaveGraph: (canvas: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]) => Promise<void>
   onRun: () => Promise<void>
 }
 
@@ -132,7 +165,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   }, [workflow])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initNodes)
-  const [edges, , onEdgesChange] = useEdgesState(initEdges)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
 
   // Sync when workflow data changes (e.g. refetch)
   useEffect(() => {
@@ -191,6 +224,59 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     [onNodesChange],
   )
 
+  // Track dirty state on edge changes (removal)
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      onEdgesChange(changes)
+      if (changes.some((c) => c.type === 'remove')) {
+        setIsDirty(true)
+      }
+    },
+    [onEdgesChange],
+  )
+
+  // Connect nodes — create edge on drag
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (connection.source === connection.target) return
+      const exists = edges.some(
+        (e) => e.source === connection.source && e.target === connection.target,
+      )
+      if (exists) return
+
+      // Auto-label edges from condition nodes
+      const sourceNode = nodes.find((n) => n.id === connection.source)
+      const isCondition = sourceNode?.type === 'conditionStep'
+      const label = isCondition
+        ? connection.sourceHandle === 'yes' ? 'Yes'
+          : connection.sourceHandle === 'no' ? 'No'
+          : undefined
+        : undefined
+      const isYes = label === 'Yes'
+      const isNo = label === 'No'
+      const stroke = isYes
+        ? 'hsl(142 71% 45% / 0.6)'
+        : isNo
+          ? 'hsl(0 84% 60% / 0.5)'
+          : 'hsl(var(--muted-foreground) / 0.4)'
+
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...connection,
+            id: `${connection.source}->${connection.target}`,
+            label,
+            labelStyle: (isYes || isNo) ? { fontSize: 10, fontWeight: 600, fill: stroke } : undefined,
+            style: { stroke, strokeWidth: isYes || isNo ? 2 : 1.5 },
+          },
+          eds,
+        ),
+      )
+      setIsDirty(true)
+    },
+    [edges, nodes, setEdges],
+  )
+
   // Node click → select step (hides history panel)
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -207,30 +293,39 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     setSelectedStep(null)
   }, [])
 
+  // Node deletion
+  const handleNodesDelete = useCallback(() => {
+    setSelectedStep(null)
+    setIsDirty(true)
+  }, [])
+
   // Auto-layout
   const handleAutoLayout = useCallback(() => {
     setNodes((prev) => dagreLayout(prev, edges))
     setIsDirty(true)
   }, [edges, setNodes])
 
-  // Save
+  // Save — send steps + edges + canvas atomically
   const handleSave = useCallback(async () => {
     setIsSaving(true)
     try {
       const canvasState: CanvasState = {
         node_positions: collectPositions(nodes),
       }
-      await onSaveGraph(canvasState)
+      const edgesData = flowToEdges(edges)
+      let steps = nodesToSteps(nodes)
+      steps = syncDependsOn(steps, edgesData)
+      await onSaveGraph(canvasState, steps, edgesData)
       setIsDirty(false)
-      toast.success('Canvas saved')
+      toast.success('Workflow saved')
     } catch {
-      toast.error('Failed to save canvas')
+      toast.error('Failed to save workflow')
     } finally {
       setIsSaving(false)
     }
-  }, [nodes, onSaveGraph])
+  }, [nodes, edges, onSaveGraph])
 
-  // Debounced auto-save on drag end
+  // Debounced auto-save on drag end (positions only — lightweight)
   const handleNodeDragStop = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
@@ -272,6 +367,86 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     })
   }, [])
 
+  // Add node from toolbar
+  const handleAddNode = useCallback(
+    (nodeType: string) => {
+      const prefix = nodeType === 'agent_step' ? 'step'
+        : nodeType === 'condition' ? 'check'
+        : nodeType === 'notification' ? 'notify'
+        : 'input'
+      const suffix = Math.random().toString(36).slice(2, 6)
+      const stepId = `${prefix}-${suffix}`
+
+      const step: WorkflowStep = {
+        id: stepId,
+        description: null,
+        node_type: nodeType as WorkflowStep['node_type'],
+        capability: nodeType === 'agent_step' ? 'code.general' : null,
+        roster: 'default',
+        complexity_tier: 'simple',
+        cost_ceiling_usd: null,
+        environment: 'local',
+        input: {},
+        output_mapping: null,
+        depends_on: [],
+        timeout_seconds: null,
+        max_refinement_rounds: 1,
+        termination: 'completion',
+        max_iterations: null,
+        ...(nodeType === 'condition' ? {
+          condition_config: { expression: 'true', true_label: 'Yes', false_label: 'No' },
+        } : {}),
+        ...(nodeType === 'notification' ? {
+          notification_config: { channel: 'sse', message_template: 'Notification', recipient: null },
+        } : {}),
+        ...(nodeType === 'human_input' ? {
+          human_input_config: { prompt_message: 'Please respond', channel: 'telegram', timeout_hours: null, default_response: null, choices: null },
+        } : {}),
+      }
+
+      const maxX = Math.max(...nodes.map((n) => n.position.x), 0)
+      const newNode: Node = {
+        id: stepId,
+        type: STEP_NODE_TYPE_MAP[nodeType] ?? 'workflowStep',
+        position: { x: maxX + NODE_WIDTH + 80, y: 100 },
+        data: { step },
+      }
+
+      setNodes((prev) => [...prev, newNode])
+      setSelectedStep(step)
+      setShowHistory(false)
+      setIsDirty(true)
+    },
+    [nodes, setNodes],
+  )
+
+  // Update step from config panel
+  const handleStepUpdate = useCallback(
+    (updated: WorkflowStep) => {
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === updated.id
+            ? { ...node, data: { ...node.data, step: updated } }
+            : node,
+        ),
+      )
+      setSelectedStep(updated)
+      setIsDirty(true)
+    },
+    [setNodes],
+  )
+
+  // Delete selected node
+  const handleDeleteSelectedNode = useCallback(() => {
+    if (!selectedStep) return
+    setNodes((prev) => prev.filter((n) => n.id !== selectedStep.id))
+    setEdges((prev) =>
+      prev.filter((e) => e.source !== selectedStep.id && e.target !== selectedStep.id),
+    )
+    setSelectedStep(null)
+    setIsDirty(true)
+  }, [selectedStep, setNodes, setEdges])
+
   return (
     <div className="flex h-full flex-col">
       <WorkflowEditorToolbar
@@ -287,6 +462,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         onSave={handleSave}
         onRun={handleRun}
         onToggleHistory={handleToggleHistory}
+        onAddNode={handleAddNode}
       />
 
       <div className="relative flex flex-1 overflow-hidden">
@@ -296,17 +472,20 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
             nodes={nodes}
             edges={edges}
             onNodesChange={handleNodesChange}
-            onEdgesChange={onEdgesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={handleConnect}
             onNodeClick={handleNodeClick}
             onPaneClick={handlePaneClick}
             onNodeDragStop={handleNodeDragStop}
+            onNodesDelete={handleNodesDelete}
             nodeTypes={nodeTypes}
             fitView
             fitViewOptions={{ padding: 0.15 }}
             proOptions={{ hideAttribution: true }}
             nodesDraggable
-            nodesConnectable={false}
+            nodesConnectable
             elementsSelectable
+            deleteKeyCode={['Backspace', 'Delete']}
             minZoom={0.2}
             maxZoom={2}
             defaultEdgeOptions={{
@@ -329,6 +508,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
             <StepDetail
               step={selectedStep}
               onClose={() => setSelectedStep(null)}
+              onUpdate={handleStepUpdate}
+              onDelete={handleDeleteSelectedNode}
             />
           </div>
         )}

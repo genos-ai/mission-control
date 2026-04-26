@@ -150,11 +150,18 @@ class WorkflowDefinitionService(BaseService):
         workflow_id: str,
         canvas_state: dict[str, Any],
         edges_json: list[dict[str, Any]] | None = None,
+        steps: list[dict[str, Any]] | None = None,
     ) -> WorkflowDefinition:
-        """Save canvas state (viewport + node positions) and optionally edges."""
+        """Save canvas state, optionally edges and steps.
+
+        When steps are provided they are validated and the version is bumped.
+        """
         updates: dict[str, Any] = {"canvas_state": canvas_state}
         if edges_json is not None:
             updates["edges_json"] = edges_json
+        if steps is not None:
+            self._validate_steps(steps)
+            updates["steps"] = steps
         return await self._repo.update(workflow_id, **updates)
 
     async def delete_workflow(self, workflow_id: str) -> None:

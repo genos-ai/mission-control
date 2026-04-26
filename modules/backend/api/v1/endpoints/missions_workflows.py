@@ -273,9 +273,10 @@ async def delete_mission_workflow(
 
 
 class SaveGraphRequest(BaseModel):
-    """Request body for saving workflow canvas state."""
+    """Request body for saving workflow canvas state, edges, and optionally steps."""
     canvas_state: dict[str, Any] = Field(default_factory=dict)
     edges_json: list[dict[str, Any]] | None = None
+    steps: list[dict[str, Any]] | None = None
 
 
 @router.put(
@@ -298,13 +299,16 @@ async def save_workflow_graph(
         workflow_id=workflow_id,
         canvas_state=data.canvas_state,
         edges_json=data.edges_json,
+        steps=data.steps,
     )
     return ApiResponse(
         success=True,
         data={
             "id": workflow.id,
+            "version": workflow.version,
             "canvas_state": workflow.canvas_state,
             "edges_json": workflow.edges_json,
+            "steps": workflow.steps,
         },
         metadata={"request_id": request_id},
     )
