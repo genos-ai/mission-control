@@ -41,14 +41,14 @@ async def execute_run_objective(input: RunObjectiveInput) -> RunObjectiveResult:
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
-    from modules.backend.services.mission_plan import MissionPlanService
+    from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
     redis = AsyncRedis.from_url(get_redis_url())
     try:
         event_bus = SessionEventBus(redis, mission_id=input.mission_id)
 
         async with get_async_session() as db:
-            service = MissionPlanService(db, event_bus=event_bus)
+            service = MissionPlanOrchestrator(db, event_bus=event_bus)
             result = await service.run_objective(
                 mission_id=input.mission_id,
                 objective=input.objective,

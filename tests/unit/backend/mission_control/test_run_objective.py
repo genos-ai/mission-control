@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.exceptions import ConflictError
 from modules.backend.models.mission_plan import PlanTaskStatus
 from modules.backend.services.mission_plan import MissionPlanService
+from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,11 @@ async def mission_id(db_session: AsyncSession) -> str:
 @pytest.fixture
 def service(db_session: AsyncSession) -> MissionPlanService:
     return MissionPlanService(db_session)
+
+
+@pytest.fixture
+def orchestrator(db_session: AsyncSession) -> MissionPlanOrchestrator:
+    return MissionPlanOrchestrator(db_session)
 
 
 def _mock_planning_agent_result(task_count: int = 1, plan_version: int = 1) -> dict:
@@ -213,7 +219,7 @@ def _patch_planning():
 
     return [
         patch(
-            "modules.backend.services.mission_plan.MissionPlanService.refine",
+            "modules.backend.services.mission_plan_orchestrator.MissionPlanOrchestrator.refine",
         ),
         patch(
             "modules.backend.agents.mission_control.roster.derive_roster_from_team",
@@ -226,14 +232,14 @@ def _patch_planning():
 class TestRunObjectiveInteractive:
     @pytest.mark.asyncio
     async def test_interactive_stops_after_refine(
-        self, service: MissionPlanService, mission_id: str, db_session: AsyncSession,
+        self, orchestrator: MissionPlanOrchestrator, mission_id: str, db_session: AsyncSession,
     ):
         """Interactive gate mode creates plan but does not dispatch."""
         mock_result = _mock_planning_agent_result(2)
 
         # Mock refine to set task_plan_json directly (avoids Planning Agent + roster)
         async def mock_refine(plan_id, instructions, user_id, **kwargs):
-            plan = await service._repo.get_by_id(plan_id)
+            plan = await orchestrator._repo.get_by_id(plan_id)
             plan.task_plan_json = mock_result["task_plan"]
             plan.version += 1
             from modules.backend.repositories.mission_plan import MissionPlanRepository
@@ -243,8 +249,8 @@ class TestRunObjectiveInteractive:
             await db_session.flush()
             return plan
 
-        with patch.object(service, "refine", side_effect=mock_refine):
-            result = await service.run_objective(
+        with patch.object(orchestrator, "refine", side_effect=mock_refine):
+            result = await orchestrator.run_objective(
                 mission_id=mission_id,
                 objective="Test objective",
                 user_id="test-user",
@@ -265,13 +271,13 @@ class TestRunObjectiveInteractive:
 class TestRunObjectiveAsync:
     @pytest.mark.asyncio
     async def test_async_dispatch_returns_dispatching(
-        self, service: MissionPlanService, mission_id: str, db_session: AsyncSession,
+        self, orchestrator: MissionPlanOrchestrator, mission_id: str, db_session: AsyncSession,
     ):
         """async_dispatch=True approves tasks and returns without dispatching."""
         mock_result = _mock_planning_agent_result(1)
 
         async def mock_refine(plan_id, instructions, user_id, **kwargs):
-            plan = await service._repo.get_by_id(plan_id)
+            plan = await orchestrator._repo.get_by_id(plan_id)
             plan.task_plan_json = mock_result["task_plan"]
             plan.version += 1
             from modules.backend.repositories.mission_plan import MissionPlanRepository
@@ -281,8 +287,8 @@ class TestRunObjectiveAsync:
             await db_session.flush()
             return plan
 
-        with patch.object(service, "refine", side_effect=mock_refine):
-            result = await service.run_objective(
+        with patch.object(orchestrator, "refine", side_effect=mock_refine):
+            result = await orchestrator.run_objective(
                 mission_id=mission_id,
                 objective="Quick task",
                 user_id="test-user",
@@ -310,13 +316,13 @@ class TestRunObjectiveBudget:
 
     @pytest.mark.asyncio
     async def test_budget_override(
-        self, service: MissionPlanService, mission_id: str, db_session: AsyncSession,
+        self, orchestrator: MissionPlanOrchestrator, service: MissionPlanService, mission_id: str, db_session: AsyncSession,
     ):
         """Explicit budget_ceiling_usd overrides mission default."""
         mock_result = _mock_planning_agent_result(1)
 
         async def mock_refine(plan_id, instructions, user_id, **kwargs):
-            plan = await service._repo.get_by_id(plan_id)
+            plan = await orchestrator._repo.get_by_id(plan_id)
             plan.task_plan_json = mock_result["task_plan"]
             plan.version += 1
             from modules.backend.repositories.mission_plan import MissionPlanRepository
@@ -326,8 +332,8 @@ class TestRunObjectiveBudget:
             await db_session.flush()
             return plan
 
-        with patch.object(service, "refine", side_effect=mock_refine):
-            result = await service.run_objective(
+        with patch.object(orchestrator, "refine", side_effect=mock_refine):
+            result = await orchestrator.run_objective(
                 mission_id=mission_id,
                 objective="Budget test",
                 user_id="test-user",

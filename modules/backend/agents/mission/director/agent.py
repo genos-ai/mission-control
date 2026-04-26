@@ -633,6 +633,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             # Add a plan task with type=research_loop — shows on kanban
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
             plan_svc = MissionPlanService(ctx.deps.db_session)
             plan = await plan_svc.get_or_create_plan(mission_id)
@@ -658,7 +659,8 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             approved_ids = await plan_svc.approve_all_proposed(plan.id, acting_user_id)
             await ctx.deps.db_session.commit()
 
-            workflow_id = await plan_svc._start_temporal_run_workflow(
+            orchestrator = MissionPlanOrchestrator(ctx.deps.db_session)
+            workflow_id = await orchestrator._start_temporal_run_workflow(
                 plan, ctx.deps.session_id,
             )
 
@@ -758,9 +760,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             mission_id = ctx.deps.mission_id
 
             from modules.backend.services.mission import MissionService
-            from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
             acting_user_id = (await MissionService(ctx.deps.db_session).get_mission(mission_id)).owner_id
-            svc = MissionPlanService(ctx.deps.db_session)
+            svc = MissionPlanOrchestrator(ctx.deps.db_session)
             result = await svc.run_objective(
                 mission_id=mission_id,
                 objective=objective,
@@ -895,13 +897,15 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
             mission_svc = MissionService(ctx.deps.db_session)
             mission = await mission_svc.get_mission(ctx.deps.mission_id)
 
-            svc = MissionPlanService(ctx.deps.db_session)
-            plan = await svc.get_or_create_plan(ctx.deps.mission_id)
-            refined = await svc.refine(
+            plan_svc = MissionPlanService(ctx.deps.db_session)
+            plan = await plan_svc.get_or_create_plan(ctx.deps.mission_id)
+            orchestrator = MissionPlanOrchestrator(ctx.deps.db_session)
+            refined = await orchestrator.refine(
                 plan.id,
                 instructions,
                 user_id=mission.owner_id,

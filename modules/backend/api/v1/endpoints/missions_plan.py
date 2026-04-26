@@ -320,10 +320,13 @@ async def dispatch_approved(
     """
     await _require_mission_access(db, mission_id, current_user)
 
-    service = MissionPlanService(db, event_bus=event_bus)
-    plan = await service.get_or_create_plan(mission_id)
+    from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
-    result = await service.dispatch_autonomous(
+    plan_svc = MissionPlanService(db, event_bus=event_bus)
+    plan = await plan_svc.get_or_create_plan(mission_id)
+
+    orchestrator = MissionPlanOrchestrator(db, event_bus=event_bus)
+    result = await orchestrator.dispatch_autonomous(
         plan.id, session_id=str(request_id),
     )
     response = DispatchApprovedResponse(**result)

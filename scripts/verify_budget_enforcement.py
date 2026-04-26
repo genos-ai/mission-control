@@ -209,10 +209,10 @@ class BudgetEnforcementVerifier:
         """
         from modules.backend.core.database import get_async_session
         from modules.backend.core.exceptions import ValidationError
-        from modules.backend.services.mission_plan import MissionPlanService
+        from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
         async with get_async_session() as db:
-            svc = MissionPlanService(db)
+            svc = MissionPlanOrchestrator(db)
             try:
                 await svc.dispatch_approved(
                     self._original_plan_id,

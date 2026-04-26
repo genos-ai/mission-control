@@ -67,7 +67,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.services.mission import MissionService
-    from modules.backend.services.mission_plan import MissionPlanService
+    from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
     activity.logger.info(
         "execute_mission started",
@@ -86,7 +86,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             # Look up mission owner for audit trail
             mission = await MissionService(db).get_mission(input.mission_id)
 
-            svc = MissionPlanService(db, event_bus=event_bus)
+            svc = MissionPlanOrchestrator(db, event_bus=event_bus)
             activity.logger.info(
                 "execute_mission dispatching",
                 extra={"plan_id": input.mission_run_id, "owner": str(mission.owner_id)},
