@@ -42,6 +42,17 @@ from modules.backend.models.workflow_schedule import WorkflowSchedule  # noqa: F
 from modules.backend.models.user import User  # noqa: F401
 from modules.backend.models.api_key import ApiKey  # noqa: F401
 
+# Phase 4+: Plan, artifacts, knowledge, LLM tracking, embeddings
+from modules.backend.models.embedding import Embedding  # noqa: F401
+from modules.backend.models.execution_environment import ExecutionEnvironmentModel  # noqa: F401
+from modules.backend.models.llm_call import LlmCall  # noqa: F401
+from modules.backend.models.mission_artifact import MissionArtifact  # noqa: F401
+from modules.backend.models.mission_intent import MissionIntent  # noqa: F401
+from modules.backend.models.mission_learning import MissionLearning  # noqa: F401
+from modules.backend.models.mission_plan import MissionPlan, PlanTaskState  # noqa: F401
+from modules.backend.models.model_pricing import ModelPricing  # noqa: F401
+from modules.backend.models.session_followup import SessionFollowup  # noqa: F401
+
 # Alembic Config object
 config = context.config
 
