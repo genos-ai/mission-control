@@ -762,10 +762,10 @@ async def admin_emergency_stop(
     stmt = (
         update(MissionPlan)
         .where(
-            MissionPlan.status == MissionPlanStatus.ACTIVE.value,
+            MissionPlan.status == MissionPlanStatus.ACTIVE.name,
             MissionPlan.gate_mode.in_({"autonomous", "off"}),
         )
-        .values(status=MissionPlanStatus.PAUSED.value)
+        .values(status=MissionPlanStatus.PAUSED.name)
     )
     result = await db.execute(stmt)
     paused_count = result.rowcount

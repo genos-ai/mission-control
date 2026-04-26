@@ -19,6 +19,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     DateTime,
+    Enum,
     Float,
     ForeignKey,
     Integer,
@@ -131,9 +132,9 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
     )
 
     status: Mapped[str] = mapped_column(
-        String(20),
-        default=MissionPlanStatus.ACTIVE.value,
-        server_default=MissionPlanStatus.ACTIVE.value,
+        Enum(MissionPlanStatus, native_enum=False),
+        default=MissionPlanStatus.ACTIVE,
+        server_default=MissionPlanStatus.ACTIVE.name,
         nullable=False,
     )
 
@@ -241,9 +242,9 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
     )
 
     status: Mapped[str] = mapped_column(
-        String(20),
-        default=PlanTaskStatus.PROPOSED.value,
-        server_default=PlanTaskStatus.PROPOSED.value,
+        Enum(PlanTaskStatus, native_enum=False),
+        default=PlanTaskStatus.PROPOSED,
+        server_default=PlanTaskStatus.PROPOSED.name,
         nullable=False,
     )
 

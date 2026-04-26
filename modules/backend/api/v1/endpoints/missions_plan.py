@@ -408,7 +408,7 @@ async def approve_task(
     response = TaskTransitionResponse(
         target_task_id=task_id,
         transitioned_task_ids=[s.task_id for s in transitioned],
-        new_status=PlanTaskStatus.APPROVED.value,
+        new_status=PlanTaskStatus.APPROVED.name,
     )
     return ApiResponse(
         success=True,
@@ -444,7 +444,7 @@ async def reject_task(
     response = TaskTransitionResponse(
         target_task_id=task_id,
         transitioned_task_ids=[s.task_id for s in transitioned],
-        new_status=PlanTaskStatus.CANCELLED.value,
+        new_status=PlanTaskStatus.CANCELLED.name,
     )
     return ApiResponse(
         success=True,

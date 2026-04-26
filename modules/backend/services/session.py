@@ -67,7 +67,7 @@ class SessionService(BaseService):
             self.repo.create(
                 user_id=user_id,
                 mission_id=data.mission_id,
-                status=SessionStatus.ACTIVE.value,
+                status=SessionStatus.ACTIVE.name,
                 goal=data.goal,
                 agent_id=data.agent_id,
                 cost_budget_usd=cost_budget,
@@ -156,7 +156,7 @@ class SessionService(BaseService):
     ) -> Session:
         """Transition a session to a new status with state machine validation."""
         session = await self.repo.get_by_id(session_id)
-        current = SessionStatus(session.status)
+        current = SessionStatus[session.status]
 
         if target_status not in VALID_TRANSITIONS.get(current, set()):
             raise ValidationError(
@@ -168,7 +168,7 @@ class SessionService(BaseService):
             f"session_{target_status.value}",
             self.repo.update(
                 session_id,
-                status=target_status.value,
+                status=target_status.name,
                 **({"session_metadata": {
                     **(session.session_metadata or {}),
                     f"{target_status.value}_reason": reason,

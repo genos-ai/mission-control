@@ -75,7 +75,7 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
             mission_id=mission_id,
             task_plan_json=None,
             gate_mode=gate_mode,
-            status=MissionPlanStatus.ACTIVE.value,
+            status=MissionPlanStatus.ACTIVE.name,
             version=1,
             budget_usd_ceiling=budget_usd_ceiling,
             total_spent_usd=0.0,
@@ -102,7 +102,7 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
             PlanTaskState.mission_plan_id == mission_plan_id
         )
         if status is not None:
-            query = query.where(PlanTaskState.status == status.value)
+            query = query.where(PlanTaskState.status == status.name)
         query = query.order_by(PlanTaskState.created_at)
         result = await self.session.execute(query)
         return list(result.scalars().all())
@@ -125,8 +125,8 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
             select(PlanTaskState)
             .where(
                 PlanTaskState.status.in_([
-                    PlanTaskStatus.RUNNING.value,
-                    PlanTaskStatus.QUEUED.value,
+                    PlanTaskStatus.RUNNING.name,
+                    PlanTaskStatus.QUEUED.name,
                 ])
             )
             .options(selectinload(PlanTaskState.plan))
@@ -175,7 +175,7 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
         state = PlanTaskState(
             mission_plan_id=mission_plan_id,
             task_id=task_id,
-            status=status.value,
+            status=status.name,
         )
         self.session.add(state)
         await self.session.flush()

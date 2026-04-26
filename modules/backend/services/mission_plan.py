@@ -41,14 +41,14 @@ from modules.backend.services.base import BaseService
 # States a task can transition *out of* when the user approves it.
 # Tasks already approved/running/completed are not touched by an approval
 # call — this makes "approve with transitive deps" idempotent.
-_APPROVABLE_FROM = frozenset({PlanTaskStatus.PROPOSED.value})
+_APPROVABLE_FROM = frozenset({PlanTaskStatus.PROPOSED.name})
 
 # States a task can be rejected *out of*. Rejecting a running task is
 # explicitly not supported here — cancelling an in-flight run goes through
 # the execution layer.
 _REJECTABLE_FROM = frozenset({
-    PlanTaskStatus.PROPOSED.value,
-    PlanTaskStatus.APPROVED.value,
+    PlanTaskStatus.PROPOSED.name,
+    PlanTaskStatus.APPROVED.name,
 })
 
 
@@ -214,12 +214,12 @@ class MissionPlanService(BaseService):
     ) -> MissionPlan:
         """Update the plan's lifecycle status (active/paused/completed/archived)."""
         plan = await self._repo.get_by_id(mission_plan_id)
-        plan.status = status.value
+        plan.status = status.name
         await self._session.flush()
         self._log_operation(
             "MissionPlan status changed",
             plan_id=mission_plan_id,
-            status=status.value,
+            status=status.name,
         )
         return plan
 
@@ -268,7 +268,7 @@ class MissionPlanService(BaseService):
                 # Already approved / running / done — skip silently.
                 continue
             previous = state.status
-            state.status = PlanTaskStatus.APPROVED.value
+            state.status = PlanTaskStatus.APPROVED.name
             state.approved_by_user_id = user_id
             state.approved_at = now
             transitioned.append(state)
@@ -285,7 +285,7 @@ class MissionPlanService(BaseService):
         await self._emit_task_transitions(
             plan.mission_id, plan.id,
             transition_pairs,
-            PlanTaskStatus.APPROVED.value,
+            PlanTaskStatus.APPROVED.name,
             actor=f"user:{user_id}",
         )
         return transitioned
@@ -324,7 +324,7 @@ class MissionPlanService(BaseService):
         Prevents refine() from clobbering in-progress tasks when a second
         run_objective() is called on the same mission concurrently.
         """
-        active_statuses = (PlanTaskStatus.QUEUED.value, PlanTaskStatus.RUNNING.value)
+        active_statuses = (PlanTaskStatus.QUEUED.name, PlanTaskStatus.RUNNING.name)
         all_states = await self._repo.get_task_states(mission_plan_id)
         active = [s for s in all_states if s.status in active_statuses]
         if active:
@@ -374,7 +374,7 @@ class MissionPlanService(BaseService):
                 # don't cancel them as a side effect of rejecting a peer.
                 continue
             previous = state.status
-            state.status = PlanTaskStatus.CANCELLED.value
+            state.status = PlanTaskStatus.CANCELLED.name
             transitioned.append(state)
             transition_pairs.append((state.task_id, previous))
 
@@ -389,7 +389,7 @@ class MissionPlanService(BaseService):
         await self._emit_task_transitions(
             plan.mission_id, plan.id,
             transition_pairs,
-            PlanTaskStatus.CANCELLED.value,
+            PlanTaskStatus.CANCELLED.name,
             actor=f"user:{user_id}",
         )
         return transitioned
@@ -410,13 +410,13 @@ class MissionPlanService(BaseService):
         state = await self._repo.get_task_state_required(
             mission_plan_id, task_id,
         )
-        if state.status != PlanTaskStatus.FAILED.value:
+        if state.status != PlanTaskStatus.FAILED.name:
             raise ValidationError(
                 f"Cannot retry task in state {state.status!r}. "
                 f"Only failed tasks can be retried."
             )
         plan = await self._repo.get_by_id(mission_plan_id)
-        state.status = PlanTaskStatus.APPROVED.value
+        state.status = PlanTaskStatus.APPROVED.name
         state.approved_by_user_id = user_id
         state.approved_at = utc_now()
         state.retry_count += 1
@@ -430,8 +430,8 @@ class MissionPlanService(BaseService):
         )
         await self._emit_task_transitions(
             plan.mission_id, plan.id,
-            [(state.task_id, PlanTaskStatus.FAILED.value)],
-            PlanTaskStatus.APPROVED.value,
+            [(state.task_id, PlanTaskStatus.FAILED.name)],
+            PlanTaskStatus.APPROVED.name,
             actor=f"user:{user_id}",
         )
         return state
@@ -504,7 +504,7 @@ class MissionPlanService(BaseService):
             id=str(uuid.uuid4()),
             mission_plan_id=plan.id,
             task_id=task_id,
-            status=PlanTaskStatus.PROPOSED.value,
+            status=PlanTaskStatus.PROPOSED.name,
         )
         self._session.add(task_state)
         await self._session.flush()

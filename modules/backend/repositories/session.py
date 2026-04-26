@@ -35,8 +35,8 @@ class SessionRepository(BaseRepository[Session]):
             .where(
                 Session.user_id == user_id,
                 Session.status.in_([
-                    SessionStatus.ACTIVE.value,
-                    SessionStatus.SUSPENDED.value,
+                    SessionStatus.ACTIVE.name,
+                    SessionStatus.SUSPENDED.name,
                 ]),
             )
             .order_by(Session.last_activity_at.desc())
@@ -104,8 +104,8 @@ class SessionRepository(BaseRepository[Session]):
                 Session.expires_at.isnot(None),
                 Session.expires_at <= now,
                 Session.status.in_([
-                    SessionStatus.ACTIVE.value,
-                    SessionStatus.SUSPENDED.value,
+                    SessionStatus.ACTIVE.name,
+                    SessionStatus.SUSPENDED.name,
                 ]),
             )
         )
@@ -177,8 +177,8 @@ class SessionRepository(BaseRepository[Session]):
                 SessionChannel.channel_id == channel_id,
                 SessionChannel.is_active == True,  # noqa: E712
                 Session.status.in_([
-                    SessionStatus.ACTIVE.value,
-                    SessionStatus.SUSPENDED.value,
+                    SessionStatus.ACTIVE.name,
+                    SessionStatus.SUSPENDED.name,
                 ]),
             )
         )

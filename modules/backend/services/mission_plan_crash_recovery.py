@@ -124,24 +124,24 @@ async def reconcile_orphaned_task_states(
         mission_id = state.plan.mission_id  # eager-loaded
         plan_id = state.mission_plan_id
 
-        if state.status == PlanTaskStatus.RUNNING.value:
-            state.status = PlanTaskStatus.FAILED.value
+        if state.status == PlanTaskStatus.RUNNING.name:
+            state.status = PlanTaskStatus.FAILED.name
             state.failure_reason = ORPHAN_FAILURE_REASON
             state.task_execution_id = None
             state.last_attempt_at = utc_now()
             running_to_failed += 1
             emit_buffer.append(
-                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.FAILED.value)
+                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.FAILED.name)
             )
-        elif state.status == PlanTaskStatus.QUEUED.value:
+        elif state.status == PlanTaskStatus.QUEUED.name:
             # Queued means dispatched by plan-level gating but the
             # agent never picked it up. No partial work to worry about;
             # restore to approved so the daemon (or user) can re-queue.
-            state.status = PlanTaskStatus.APPROVED.value
+            state.status = PlanTaskStatus.APPROVED.name
             state.task_execution_id = None
             queued_to_approved += 1
             emit_buffer.append(
-                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.APPROVED.value)
+                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.APPROVED.name)
             )
 
     await session.flush()

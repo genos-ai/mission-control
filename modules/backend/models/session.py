@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text, Boolean
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,7 +47,7 @@ class Session(UUIDMixin, TimestampMixin, Base):
 
     # Status
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=SessionStatus.ACTIVE.value
+        Enum(SessionStatus, native_enum=False), nullable=False, default=SessionStatus.ACTIVE
     )
 
     # Identity
