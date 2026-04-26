@@ -148,6 +148,65 @@ markers = [
 ]
 
 # =============================================================================
+# =============================================================================
+# import-linter — Layer Enforcement
+# =============================================================================
+# Prevents the service ↔ agent import cycle from regrowing.
+# Run: lint-imports (or: python -m importlinter)
+# =============================================================================
+[tool.importlinter]
+root_packages = ["modules"]
+
+# Rule 1: services must not import from agents
+# The remaining exceptions are the dispatch cycle (handle_mission etc.)
+# and agent wrapper services (workflow_architect, workshop) that are
+# coupled by design. Each is documented. No new exceptions without review.
+[[tool.importlinter.contracts]]
+name = "Services layer must not import from agents layer"
+type = "forbidden"
+source_modules = ["modules.backend.services"]
+forbidden_modules = ["modules.backend.agents"]
+ignore_imports = [
+    # Dispatch cycle — services call into agent dispatch (needs service layer split)
+    "modules.backend.services.mission_plan_dispatch -> modules.backend.agents.mission_control.mission_control",
+    "modules.backend.services.mission_plan_dispatch -> modules.backend.agents.mission_control.gate",
+    "modules.backend.services.mission_plan_dispatch -> modules.backend.agents.mission_control.gate_post_run",
+    "modules.backend.services.mission_plan_dispatch -> modules.backend.agents.adapters.supervisor_introspection",
+    "modules.backend.services.mission_plan -> modules.backend.agents.mission_control.helpers.agent_executor",
+    "modules.backend.services.mission_plan -> modules.backend.agents.mission_control.plan_validator",
+    "modules.backend.services.mission_plan -> modules.backend.agents.mission_control.roster",
+    "modules.backend.services.mission_plan -> modules.backend.agents.mission_control.helpers.prompt_builder",
+    "modules.backend.services.mission -> modules.backend.agents.mission_control.gate",
+    "modules.backend.services.execution -> modules.backend.agents.mission_control.dispatch_adapter",
+    "modules.backend.services.context_assembler -> modules.backend.agents.mission_control.middleware",
+    "modules.backend.services.session_memory -> modules.backend.agents.system.summarization.agent",
+    # Agent wrapper services — coupled by design (they ARE agent orchestrators)
+    "modules.backend.services.workflow_architect -> modules.backend.agents.mission.workflow.agent",
+    "modules.backend.services.workflow_architect -> modules.backend.agents.mission.workflow.deps",
+    "modules.backend.services.workflow_architect -> modules.backend.agents.deps.base",
+    "modules.backend.services.workflow_architect -> modules.backend.agents.mission_control.helpers",
+    "modules.backend.services.workshop -> modules.backend.agents.mission_control.helpers",
+    "modules.backend.services.workshop -> modules.backend.agents.mission_control.cost",
+    # Transitive through temporal (lazy imports inside activities)
+    "modules.backend.services.mission_learning -> modules.backend.temporal.knowledge_activities",
+    "modules.backend.services.mission_plan -> modules.backend.temporal.mission_run_workflow",
+    "modules.backend.services.execution_dispatch -> modules.backend.temporal.workflow",
+]
+
+# Rule 2: core must not import from services (auth DI is the exception)
+[[tool.importlinter.contracts]]
+name = "Core layer must not import from agents or services"
+type = "forbidden"
+source_modules = ["modules.backend.core"]
+forbidden_modules = [
+    "modules.backend.agents",
+    "modules.backend.services",
+]
+ignore_imports = [
+    # FastAPI dependency injection — core/dependencies.py resolves auth
+    "modules.backend.core.dependencies -> modules.backend.services.auth",
+]
+
 # pytest-cov — Coverage
 # =============================================================================
 [tool.coverage.run]
