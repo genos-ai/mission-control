@@ -19,7 +19,7 @@ from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-CLI_USER_ID = "system:cli"
+from modules.backend.models.base import SYSTEM_CLI_ID as CLI_USER_ID
 
 
 @asynccontextmanager
@@ -347,7 +347,7 @@ class ServiceBridge:
 
         async with MissionTeamService.factory() as svc:
             member = await svc.update_user_prompt(
-                member_id, user_prompt, changed_by="system:cli",
+                member_id, user_prompt, changed_by=CLI_USER_ID,
             )
             return {"id": str(member.id), "user_prompt": member.user_prompt}
 

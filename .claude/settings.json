@@ -85,7 +85,9 @@
       "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import uuid; print\\(hasattr\\(uuid, ''uuid7''\\)\\)\")",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"from uuid import uuid7; print\\(uuid7\\(\\)\\)\")",
       "Bash(grep -rln \"String\\(36\\)\" modules/backend/models/*.py)",
-      "Bash(do python3:*)"
+      "Bash(do python3:*)",
+      "Bash(python3.14 --version)",
+      "Bash(python3.14 -c \"import uuid; print\\(hasattr\\(uuid, ''uuid7''\\)\\)\")"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

@@ -7,6 +7,7 @@ Thin renderer over WorkflowScheduleService. Handles list, create, toggle, delete
 import asyncio
 import sys
 
+from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.clients.cli.report import get_console, build_table, styled_status
 
 
@@ -122,7 +123,7 @@ async def _action_create(
             budget_per_run_usd=budget,
             max_iterations=max_iterations,
             cooldown_seconds=cooldown,
-            created_by="system:cli",
+            created_by=SYSTEM_CLI_ID,
         )
 
     console.print(f"[green]Schedule created:[/green] {schedule.id}")

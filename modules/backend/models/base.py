@@ -5,12 +5,30 @@ Base class for all database models with common fields and utilities.
 """
 
 from datetime import datetime
-from uuid import uuid4
+from uuid import uuid5, uuid7, UUID
 
 from sqlalchemy import DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from modules.backend.core.utils import utc_now
+
+
+# ── System account UUIDs ──────────────────────────────────
+# Deterministic UUID v5 from a fixed namespace. Same value in every
+# environment (dev, staging, prod). Used as users.id for service
+# accounts that own automated missions, workflows, and schedules.
+
+SYSTEM_NAMESPACE = UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+SYSTEM_CLI_ID = str(uuid5(SYSTEM_NAMESPACE, "system:cli"))
+SYSTEM_WORKFLOW_ID = str(uuid5(SYSTEM_NAMESPACE, "system:workflow"))
+SYSTEM_SCHEDULER_ID = str(uuid5(SYSTEM_NAMESPACE, "system:scheduler"))
+
+SYSTEM_ACCOUNTS = {
+    SYSTEM_CLI_ID: {"display_name": "CLI Runner", "system_role": "user"},
+    SYSTEM_WORKFLOW_ID: {"display_name": "Workflow Runner", "system_role": "user"},
+    SYSTEM_SCHEDULER_ID: {"display_name": "Scheduler", "system_role": "user"},
+}
 
 
 class Base(DeclarativeBase):
@@ -40,7 +58,7 @@ class UUIDMixin:
 
     id: Mapped[str] = mapped_column(
         primary_key=True,
-        default=lambda: str(uuid4()),
+        default=lambda: str(uuid7()),
     )
 
 

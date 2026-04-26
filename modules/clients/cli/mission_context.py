@@ -14,7 +14,7 @@ from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-CLI_SERVICE_ACCOUNT_ID = "system:cli"
+from modules.backend.models.base import SYSTEM_CLI_ID as CLI_SERVICE_ACCOUNT_ID
 
 
 async def _async_resolve_current_mission_id() -> str | None:

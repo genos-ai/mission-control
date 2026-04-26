@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.models.base import SYSTEM_WORKFLOW_ID
 from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.execution import ExecutionState
 from modules.backend.services.execution import ExecutionService
@@ -342,7 +343,7 @@ class TestWorkflowRunMissionName:
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["name"] == "brand-new-app"
-        assert call_kwargs["owner_id"] == "system:workflow"
+        assert call_kwargs["owner_id"] == SYSTEM_WORKFLOW_ID
 
     @pytest.mark.asyncio
     async def test_run_workflow_requires_mission_name(

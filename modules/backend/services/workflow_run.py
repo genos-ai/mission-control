@@ -27,6 +27,7 @@ from modules.backend.core.utils import utc_now
 from modules.backend.models.execution import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
 from modules.backend.schemas.workflow import WorkflowSchema
+from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.backend.services.base import BaseService
 from modules.backend.services.execution import ExecutionService
 from modules.backend.services.workflow import WorkflowService
@@ -82,7 +83,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
     async def run_workflow(
         self,
         workflow_name: str,
-        triggered_by: str = "system:cli",
+        triggered_by: str = SYSTEM_CLI_ID,
         context_overrides: dict[str, Any] | None = None,
         on_progress: Any | None = None,
         mission_id: str | None = None,

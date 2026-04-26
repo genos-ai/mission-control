@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core import security
 from modules.backend.core.exceptions import ConflictError, NotFoundError
 from modules.backend.core.logging import get_logger
+from modules.backend.models.base import SYSTEM_ACCOUNTS
 from modules.backend.models.user import User
 from modules.backend.repositories.api_key import ApiKeyRepository
 from modules.backend.repositories.user import UserRepository
@@ -23,14 +24,6 @@ logger = get_logger(__name__)
 
 class BootstrapService:
     """CLI-only admin operations: initial setup, password resets."""
-
-    # Well-known service accounts used by internal subsystems.
-    # These must exist before any mission can be created.
-    SYSTEM_ACCOUNTS = [
-        {"id": "system:workflow", "display_name": "Workflow Runner", "system_role": "user"},
-        {"id": "system:cli", "display_name": "CLI Runner", "system_role": "user"},
-        {"id": "system:scheduler", "display_name": "Scheduler", "system_role": "user"},
-    ]
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -58,21 +51,21 @@ class BootstrapService:
             List of newly created users (empty if all already existed).
         """
         created = []
-        for acct in self.SYSTEM_ACCOUNTS:
-            existing = await self._user_repo.get_by_id_or_none(acct["id"])
+        for acct_id, acct_meta in SYSTEM_ACCOUNTS.items():
+            existing = await self._user_repo.get_by_id_or_none(acct_id)
             if existing:
                 continue
             user = User(
-                id=acct["id"],
-                email=f"{acct['id'].replace(':', '-')}@system.local",
-                display_name=acct["display_name"],
-                system_role=acct["system_role"],
+                id=acct_id,
+                email=f"{acct_meta['display_name'].lower().replace(' ', '-')}@system.local",
+                display_name=acct_meta["display_name"],
+                system_role=acct_meta["system_role"],
                 is_active=True,
                 is_service_account=True,
             )
             self._session.add(user)
             created.append(user)
-            logger.info("System account created", extra={"id": acct["id"]})
+            logger.info("System account created", extra={"id": acct_id})
 
         if created:
             await self._session.flush()

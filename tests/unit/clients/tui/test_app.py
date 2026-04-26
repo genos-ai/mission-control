@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.clients.tui.app import MissionControlApp
 from modules.clients.tui.messages import (
     MissionStartRequested,
@@ -26,7 +27,7 @@ def _mock_bridge():
     bridge.list_missions = AsyncMock(return_value=[])
     bridge.create_mission = AsyncMock(return_value={"id": "p-new", "name": "Test"})
     bridge.get_current_user = AsyncMock(return_value={
-        "id": "system:cli",
+        "id": SYSTEM_CLI_ID,
         "current_mission_id": None,
         "current_mission_name": None,
     })

@@ -24,6 +24,7 @@ from textual.widgets import (
 )
 
 from modules.backend.core.logging import get_logger
+from modules.backend.models.base import SYSTEM_CLI_ID
 
 logger = get_logger(__name__)
 
@@ -38,7 +39,7 @@ class ProfileScreen(Screen):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._is_service_account = True
-        self._user_id = "system:cli"
+        self._user_id = SYSTEM_CLI_ID
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -130,7 +131,7 @@ class ProfileScreen(Screen):
             self._is_service_account = profile.get(
                 "is_service_account", True,
             )
-            self._user_id = profile.get("id", "system:cli")
+            self._user_id = profile.get("id", SYSTEM_CLI_ID)
 
             # Populate display name
             try:
