@@ -141,7 +141,7 @@ function StepNode({
       </div>
       <div className="mt-1 flex items-center gap-1">
         <Badge variant="outline" className="text-[10px]">
-          {step.capability.split('.').pop()}
+          {step.capability?.split('.').pop() ?? step.node_type ?? '—'}
         </Badge>
         <span className="text-[10px] text-muted-foreground">{step.environment}</span>
       </div>

@@ -3,12 +3,14 @@ import { api } from '@/lib/api'
 import type {
   WorkflowListItem,
   WorkflowDetail,
+  WorkflowEdge,
   MissionWorkflow,
   WorkflowSchedule,
   WorkflowScheduleCreateRequest,
   WorkflowScheduleUpdateRequest,
   ArchitectChatResponse,
 } from '@/types'
+import type { WorkflowDetailFull, CanvasState } from '@/components/workflow/workflow-editor-types'
 
 // ---- Query keys ----
 
@@ -46,23 +48,30 @@ export function useMissionWorkflow(missionId: string | undefined, name: string |
   return useQuery({
     queryKey: [...workflowKeys.missionWorkflows(missionId!), name] as const,
     queryFn: () =>
-      api.get<{
-        id: string
-        name: string
-        description: string
-        version: number
-        enabled: boolean
-        trigger_type: string
-        step_count: number
-        designed_by: string
-        locked_at: string | null
-        steps: import('@/types').WorkflowStep[]
-        objective: Record<string, unknown>
-        budget_config: Record<string, unknown>
-        trigger_config: Record<string, unknown>
-        context: Record<string, unknown>
-      }>(`/missions/${missionId}/workflows/${name}`),
+      api.get<WorkflowDetailFull>(`/missions/${missionId}/workflows/${name}`),
     enabled: !!missionId && !!name,
+  })
+}
+
+export function useMissionWorkflowById(missionId: string | undefined, workflowId: string | undefined) {
+  const { data: workflows } = useMissionWorkflows(missionId)
+  const workflow = workflows?.find((w) => w.id === workflowId)
+  return useMissionWorkflow(missionId, workflow?.name)
+}
+
+export function useSaveWorkflowGraph(missionId: string, workflowId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { canvas_state: CanvasState; edges_json?: WorkflowEdge[] }) =>
+      api.put<{ id: string; canvas_state: CanvasState; edges_json: WorkflowEdge[] }>(
+        `/missions/${missionId}/workflows/${workflowId}/graph`,
+        data,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: workflowKeys.missionWorkflows(missionId),
+      })
+    },
   })
 }
 

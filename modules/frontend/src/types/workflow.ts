@@ -19,7 +19,18 @@ export interface WorkflowListItem {
 export interface WorkflowStep {
   id: string
   description: string | null
-  capability: string
+  node_type?: 'agent_step' | 'condition' | 'notification'
+  capability: string | null
+  condition_config?: {
+    expression: string
+    true_label: string
+    false_label: string
+  } | null
+  notification_config?: {
+    channel: string
+    message_template: string
+    recipient: string | null
+  } | null
   roster: string
   complexity_tier: string
   cost_ceiling_usd: number | null
@@ -59,6 +70,16 @@ export interface WorkflowDetail {
   steps: WorkflowStep[]
 }
 
+// Edge type for React Flow graph
+export interface WorkflowEdge {
+  id: string
+  source: string
+  target: string
+  source_handle?: string
+  target_handle?: string
+  label?: string | null
+}
+
 // Mission workflow (DB-stored) types
 export interface MissionWorkflow {
   id: string
@@ -70,6 +91,7 @@ export interface MissionWorkflow {
   step_count: number
   designed_by: string
   locked_at: string | null
+  edges_json: WorkflowEdge[]
 }
 
 // Workflow Schedule types

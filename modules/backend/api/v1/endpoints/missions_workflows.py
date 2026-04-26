@@ -6,7 +6,10 @@ Includes the Workflow Architect chat endpoint.
 Split from missions.py for file size compliance.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 
 from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
 from modules.backend.core.exceptions import AuthorizationError
@@ -50,6 +53,7 @@ async def list_mission_workflows(
             "step_count": w.step_count,
             "designed_by": w.designed_by,
             "locked_at": w.locked_at,
+            "edges_json": w.edges_json,
         }
         for w in workflows
     ]
@@ -122,6 +126,8 @@ async def get_mission_workflow(
             "designed_by": w.designed_by,
             "locked_at": w.locked_at,
             "steps": w.steps,
+            "edges_json": w.edges_json,
+            "canvas_state": w.canvas_state,
             "objective": w.objective,
             "budget_config": w.budget_config,
             "trigger_config": w.trigger_config,
@@ -203,6 +209,47 @@ async def delete_mission_workflow(
     return ApiResponse(
         success=True,
         data={"deleted": workflow_id},
+        metadata={"request_id": request_id},
+    )
+
+
+# ---- Workflow graph (visual editor) ----
+
+
+class SaveGraphRequest(BaseModel):
+    """Request body for saving workflow canvas state."""
+    canvas_state: dict[str, Any] = Field(default_factory=dict)
+    edges_json: list[dict[str, Any]] | None = None
+
+
+@router.put(
+    "/{mission_id}/workflows/{workflow_id}/graph",
+    response_model=ApiResponse,
+    summary="Save workflow graph canvas state",
+)
+async def save_workflow_graph(
+    mission_id: str,
+    workflow_id: str,
+    data: SaveGraphRequest,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Save canvas viewport, node positions, and optionally edges for the visual editor."""
+    from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+    service = WorkflowDefinitionService(db)
+    workflow = await service.save_graph(
+        workflow_id=workflow_id,
+        canvas_state=data.canvas_state,
+        edges_json=data.edges_json,
+    )
+    return ApiResponse(
+        success=True,
+        data={
+            "id": workflow.id,
+            "canvas_state": workflow.canvas_state,
+            "edges_json": workflow.edges_json,
+        },
         metadata={"request_id": request_id},
     )
 

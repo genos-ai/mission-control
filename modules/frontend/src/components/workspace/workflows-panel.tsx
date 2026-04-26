@@ -28,7 +28,6 @@ import {
   Pencil,
   Copy,
   Sparkles,
-  AlertCircle,
   CheckCircle2,
   Circle,
   Loader2,
@@ -87,7 +86,6 @@ export function WorkflowsPanel({ missionId }: { missionId: string }) {
             templates={templates}
             loading={loadingTemplates}
           />
-          <PlaceholderNote />
         </div>
       </div>
     </div>
@@ -234,9 +232,9 @@ function MissionWorkflowRow({
         />
         <IconButton
           icon={<Pencil className="h-3 w-3" />}
-          title="Edit workflow — opens the visual editor (Plan 45 Phase 4)"
+          title="Edit workflow in visual editor"
           onClick={() => {
-            navigate(ROUTES.MISSION_WORKFLOWS(missionId))
+            navigate(ROUTES.MISSION_WORKFLOW_EDIT(missionId, workflow.id))
           }}
           tone="muted"
         />
@@ -355,27 +353,6 @@ function TemplateRow({
         )}
         Use template
       </Button>
-    </div>
-  )
-}
-
-// ── Placeholder note ───────────────────────────────────────────────────
-
-function PlaceholderNote() {
-  return (
-    <div className="rounded-md border border-amber-500/25 bg-amber-500/5 p-3">
-      <div className="mb-1 flex items-center gap-1.5">
-        <AlertCircle className="h-3 w-3 text-amber-400" />
-        <span className="text-[11px] font-semibold text-amber-400">
-          Visual editor coming in Plan 45
-        </span>
-      </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground/70">
-        Run workflows directly with the <span className="font-mono">▶</span> button,
-        or add them as plan tasks via chat (<span className="font-mono">agent: workflow:name</span>).
-        Results appear in the Runs tab. The React Flow visual editor
-        (drag-drop node palette, conditionals, run history drawer) lands in Plan 45.
-      </p>
     </div>
   )
 }

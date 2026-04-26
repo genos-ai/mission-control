@@ -16,7 +16,7 @@ import NewMissionPage from '@/pages/mission/new'
 import MissionLayout from '@/pages/mission/layout'
 import OverviewPage from '@/pages/mission/overview'
 import TeamPage from '@/pages/mission/team'
-import WorkflowsPage from '@/pages/mission/workflows'
+import WorkflowEditPage from '@/pages/mission/workflow-edit'
 import RunLivePage from '@/pages/mission/run-live'
 
 import ChatTab from '@/pages/mission/tabs/chat-tab'
@@ -90,8 +90,8 @@ export default function App() {
             <Route path="runs/:runId" element={<RunLivePage />} />
             <Route path="workflows" element={<WorkflowsTab />} />
             <Route path="costs" element={<CostsTab />} />
-            {/* Legacy drill-in: full workflows DAG viz */}
-            <Route path="workflows/:workflowId" element={<WorkflowsPage />} />
+            {/* Visual workflow editor (Plan 45) */}
+            <Route path="workflows/:workflowId/edit" element={<WorkflowEditPage />} />
           </Route>
 
           {/* Admin section */}

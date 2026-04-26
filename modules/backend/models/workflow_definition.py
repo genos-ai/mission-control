@@ -54,6 +54,14 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
         JSON, nullable=False,
         comment="Array of WorkflowStepSchema dicts",
     )
+    edges_json: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False,
+        comment="React Flow edges derived from steps[].depends_on",
+    )
+    canvas_state: Mapped[dict] = mapped_column(
+        JSON, default=dict, nullable=False,
+        comment="Viewport + node positions for the visual editor",
+    )
     trigger_config: Mapped[dict] = mapped_column(
         JSON, default=dict, nullable=False,
         comment='WorkflowTriggerSchema: {type, schedule, event_type, match_patterns}',

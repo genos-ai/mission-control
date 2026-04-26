@@ -15,6 +15,8 @@ export const ROUTES = {
   MISSION_CONTEXT: (id: string) => `/missions/${id}/context`,
   MISSION_RUNS: (id: string) => `/missions/${id}/runs`,
   MISSION_WORKFLOWS: (id: string) => `/missions/${id}/workflows`,
+  MISSION_WORKFLOW_EDIT: (id: string, workflowId: string) =>
+    `/missions/${id}/workflows/${workflowId}/edit`,
   MISSION_RUN_LIVE: (missionId: string, runId: string) =>
     `/missions/${missionId}/runs/${runId}`,
 

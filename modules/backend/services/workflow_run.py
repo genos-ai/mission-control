@@ -237,6 +237,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         try:
             await self._execute_steps(
                 run, workflow, session.id, on_progress, gate=gate,
+                edges=defn.edges_json if hasattr(defn, "edges_json") else None,
             )
             run.status = WorkflowRunState.COMPLETED
             run.completed_at = utc_now()

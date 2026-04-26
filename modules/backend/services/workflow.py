@@ -198,6 +198,8 @@ class WorkflowService:
         """
         errors: list[str] = []
         for step in workflow.steps:
+            if not step.capability:
+                continue  # condition/notification nodes have no capability
             try:
                 self.resolve_capability(step.capability)
             except ValueError as e:
@@ -216,6 +218,8 @@ class WorkflowService:
         app_config = get_app_config()
 
         for i, step in enumerate(workflow.steps):
+            if not step.capability:
+                continue  # condition/notification nodes don't produce mission briefs
             agent_name = self.resolve_capability(step.capability)
 
             brief: dict[str, Any] = {

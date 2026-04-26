@@ -11,7 +11,7 @@ defines the anti-corruption layer for inter-execution data flow.
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WorkflowOutputFieldMapping(BaseModel):
@@ -56,10 +56,45 @@ class WorkflowStepOutputMapping(BaseModel):
     )
 
 
+class WorkflowEdgeSchema(BaseModel):
+    """A visual edge in the workflow graph (React Flow)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(..., description="Unique edge ID, e.g. 'step-a->step-b'")
+    source: str = Field(..., description="Source node (step) ID")
+    target: str = Field(..., description="Target node (step) ID")
+    source_handle: str = Field(default="output")
+    target_handle: str = Field(default="input")
+    label: str | None = Field(None, description="Optional edge label")
+
+
+class ConditionConfig(BaseModel):
+    """Configuration for a condition node."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expression: str = Field(..., min_length=1, max_length=500)
+    true_label: str = Field(default="Yes")
+    false_label: str = Field(default="No")
+
+
+class NotificationConfig(BaseModel):
+    """Configuration for a notification node."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    channel: str = Field(default="telegram", pattern=r"^(telegram|sse)$")
+    message_template: str = Field(..., min_length=1, max_length=2000)
+    recipient: str | None = None
+
+
 class WorkflowStepSchema(BaseModel):
     """A single step in a workflow.
 
     Each step becomes an Execution with its own Mission Control instance.
+    Non-agent node types (condition, notification) are executed inline by the
+    wave engine without creating an Execution record.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -71,10 +106,16 @@ class WorkflowStepSchema(BaseModel):
         pattern=r"^[a-z][a-z0-9_-]*$",
     )
     description: str | None = Field(None, max_length=500)
-    capability: str = Field(
-        ...,
+    node_type: str = Field(
+        default="agent_step",
+        pattern=r"^(agent_step|condition|notification)$",
+    )
+    capability: str | None = Field(
+        None,
         pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$",
     )
+    condition_config: ConditionConfig | None = None
+    notification_config: NotificationConfig | None = None
     roster: str = Field(
         default="default",
         pattern=r"^[a-z][a-z0-9_-]*$",
@@ -105,6 +146,16 @@ class WorkflowStepSchema(BaseModel):
         None, ge=1,
         description="For termination=max_iterations: how many internal cycles",
     )
+
+    @model_validator(mode="after")
+    def _validate_node_type_config(self) -> "WorkflowStepSchema":
+        if self.node_type == "agent_step" and not self.capability:
+            raise ValueError("capability is required for agent_step nodes")
+        if self.node_type == "condition" and self.condition_config is None:
+            raise ValueError("condition_config is required for condition nodes")
+        if self.node_type == "notification" and self.notification_config is None:
+            raise ValueError("notification_config is required for notification nodes")
+        return self
 
 
 class WorkflowTriggerSchema(BaseModel):

@@ -273,6 +273,30 @@ class WorkflowRunFailedEvent(SessionEvent):
     total_cost_usd: float = 0.0
 
 
+class WorkflowConditionEvaluatedEvent(SessionEvent):
+    event_type: str = "workflow.condition.evaluated"
+    workflow_run_id: str
+    step_id: str
+    expression: str
+    result: bool
+    branch: str  # "Yes" or "No"
+
+
+class WorkflowNotificationSentEvent(SessionEvent):
+    event_type: str = "workflow.notification.sent"
+    workflow_run_id: str
+    step_id: str
+    channel: str
+    success: bool
+
+
+class WorkflowStepSkippedEvent(SessionEvent):
+    event_type: str = "workflow.step.skipped"
+    workflow_run_id: str
+    step_id: str
+    reason: str
+
+
 # =============================================================================
 # Workflow Design Events
 # =============================================================================
@@ -719,6 +743,9 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.execution.completed": WorkflowExecutionCompletedEvent,
     "workflow.run.completed": WorkflowRunCompletedEvent,
     "workflow.run.failed": WorkflowRunFailedEvent,
+    "workflow.condition.evaluated": WorkflowConditionEvaluatedEvent,
+    "workflow.notification.sent": WorkflowNotificationSentEvent,
+    "workflow.step.skipped": WorkflowStepSkippedEvent,
     "workflow.graph.updated": WorkflowGraphEvent,
     "convergence.iteration": ConvergenceIterationEvent,
     "convergence.completed": ConvergenceCompletedEvent,
