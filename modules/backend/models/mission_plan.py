@@ -22,6 +22,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -145,13 +146,13 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
     )
 
     budget_usd_ceiling: Mapped[float | None] = mapped_column(
-        Float,
+        Numeric(12, 6),
         nullable=True,
         comment="Cumulative cap across all runs from this plan",
     )
 
     total_spent_usd: Mapped[float] = mapped_column(
-        Float,
+        Numeric(12, 6),
         default=0.0,
         server_default="0.0",
         nullable=False,
@@ -291,10 +292,10 @@ class PlanTaskState(UUIDMixin, TimestampMixin, Base):
     # MissionPlanService._write_back_task_results. Defaults to 0.0 —
     # pre-run statuses legitimately show "no cost incurred yet".
     cost_usd: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0", nullable=False,
+        Numeric(12, 6), default=0.0, server_default="0.0", nullable=False,
     )
     duration_seconds: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0", nullable=False,
+        Numeric(12, 6), default=0.0, server_default="0.0", nullable=False,
     )
 
     # Relationships

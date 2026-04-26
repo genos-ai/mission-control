@@ -9,7 +9,7 @@ agents operate within a single mission at a time.
 
 import enum
 
-from sqlalchemy import Enum, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Enum, Float, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -74,7 +74,7 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         String(100), default="default", nullable=False,
     )
     budget_ceiling_usd: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Numeric(12, 6), nullable=True,
     )
     repo_url: Mapped[str | None] = mapped_column(
         Text, nullable=True,

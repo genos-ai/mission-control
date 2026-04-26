@@ -8,7 +8,7 @@ Mission-scoped by default; promoted to platform scope via
 
 import enum
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
@@ -80,7 +80,7 @@ class MissionLearning(UUIDMixin, TimestampMixin, Base):
 
     # Confidence and frequency
     confidence: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.0,
+        Numeric(12, 6), nullable=False, default=0.0,
     )
     occurrence_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1,

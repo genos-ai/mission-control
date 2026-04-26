@@ -14,7 +14,7 @@ import enum
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column
@@ -72,6 +72,7 @@ class WorkflowRunState(str, enum.Enum):
 
     PENDING = "pending"
     RUNNING = "running"
+    AWAITING_INPUT = "awaiting_input"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -115,10 +116,10 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
         JSON, default=dict, nullable=False,
     )
     total_cost_usd: Mapped[float] = mapped_column(
-        Float, default=0.0, nullable=False,
+        Numeric(12, 6), default=0.0, nullable=False,
     )
     budget_usd: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Numeric(12, 6), nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True,
@@ -200,10 +201,10 @@ class Execution(UUIDMixin, TimestampMixin, Base):
         JSON, default=dict, nullable=False,
     )
     total_cost_usd: Mapped[float] = mapped_column(
-        Float, default=0.0, nullable=False,
+        Numeric(12, 6), default=0.0, nullable=False,
     )
     cost_ceiling_usd: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Numeric(12, 6), nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True,

@@ -9,7 +9,7 @@ The scheduler service reads enabled schedules, evaluates cron expressions,
 and creates WorkflowRuns when they fire.
 """
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -56,7 +56,7 @@ class WorkflowSchedule(UUIDMixin, TimestampMixin, Base):
         Text, nullable=False, default="",
     )
     budget_per_run_usd: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Numeric(12, 6), nullable=True,
         comment="USD ceiling per individual run triggered by this schedule",
     )
     max_iterations: Mapped[int | None] = mapped_column(

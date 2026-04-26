@@ -5,7 +5,7 @@ that involve tool loops produce multiple rows. This is the source of
 truth for token economics — all dashboard queries read from here.
 """
 
-from sqlalchemy import Float, Index, Integer, String
+from sqlalchemy import Float, Index, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -69,7 +69,7 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
 
     # Cost
     cost_usd: Mapped[float] = mapped_column(
-        Float, default=0.0, nullable=False,
+        Numeric(12, 6), default=0.0, nullable=False,
     )
 
     # Performance

@@ -7,7 +7,7 @@ to the change date. Old rows stay for historical cost accuracy.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, String
+from sqlalchemy import DateTime, Float, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base
@@ -31,17 +31,17 @@ class ModelPricing(Base):
         DateTime(timezone=True), nullable=False, default=FAR_FUTURE,
     )
     price_per_mtok_input: Mapped[float] = mapped_column(
-        Float, nullable=False,
+        Numeric(12, 6), nullable=False,
     )
     price_per_mtok_output: Mapped[float] = mapped_column(
-        Float, nullable=False,
+        Numeric(12, 6), nullable=False,
     )
     price_per_mtok_cache_write_5m: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Numeric(12, 6), nullable=True,
     )
     price_per_mtok_cache_write_1h: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Numeric(12, 6), nullable=True,
     )
     price_per_mtok_cache_read: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Numeric(12, 6), nullable=True,
     )

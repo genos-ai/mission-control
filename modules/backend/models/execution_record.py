@@ -13,7 +13,7 @@ are persisted here.
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -138,7 +138,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     )
 
     total_cost_usd: Mapped[float] = mapped_column(
-        Float,
+        Numeric(12, 6),
         default=0.0,
         nullable=False,
         comment="Total cost across all task executions",
@@ -270,7 +270,7 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
     )
 
     cost_usd: Mapped[float] = mapped_column(
-        Float,
+        Numeric(12, 6),
         default=0.0,
         nullable=False,
     )
@@ -382,7 +382,7 @@ class TaskAttempt(UUIDMixin, TimestampMixin, Base):
     )
 
     cost_usd: Mapped[float] = mapped_column(
-        Float,
+        Numeric(12, 6),
         default=0.0,
         nullable=False,
     )
