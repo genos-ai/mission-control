@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from modules.backend.agents.config_schema import AgentConfigSchema, AgentModelSchema
+from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 from modules.backend.services.agent_catalog import AgentCatalogService
