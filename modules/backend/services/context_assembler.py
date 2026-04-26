@@ -30,10 +30,8 @@ logger = get_logger(__name__)
 def _get_dispatch_config() -> tuple[int, int]:
     """Load context budget settings from mission_control config."""
     try:
-        from modules.backend.agents.mission_control.middleware import (
-            _load_mission_control_config,
-        )
-        cfg = _load_mission_control_config()
+        from modules.backend.core.config import get_mission_control_config
+        cfg = get_mission_control_config()
         return cfg.dispatch.context_token_budget, cfg.dispatch.history_reserve_tokens
     except Exception as e:
         logger.debug("Config unavailable for context budget, using defaults", extra={"error": str(e)})

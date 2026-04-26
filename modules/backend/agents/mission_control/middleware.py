@@ -19,13 +19,10 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-@lru_cache(maxsize=1)
 def _load_mission_control_config() -> MissionControlConfigSchema:
-    """Load, validate, and cache mission control configuration from YAML."""
-    config_path = find_project_root() / "config" / "agents" / "mission_control.yaml"
-    with open(config_path) as f:
-        raw = yaml.safe_load(f)
-    return MissionControlConfigSchema(**raw)
+    """Load mission control config. Delegates to core.config."""
+    from modules.backend.core.config import get_mission_control_config
+    return get_mission_control_config()
 
 
 def check_guardrails(

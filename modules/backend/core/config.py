@@ -243,6 +243,22 @@ def get_app_config() -> AppConfig:
     return AppConfig()
 
 
+@lru_cache
+def get_mission_control_config():
+    """Load and cache mission_control.yaml configuration.
+
+    Returns a MissionControlConfigSchema with routing, guardrails,
+    dispatch, and other mission control settings.
+    """
+    from modules.backend.schemas.agent_config import MissionControlConfigSchema
+
+    config_path = find_project_root() / "config" / "agents" / "mission_control.yaml"
+    import yaml
+    with open(config_path) as f:
+        raw = yaml.safe_load(f)
+    return MissionControlConfigSchema(**raw)
+
+
 def get_database_url(async_driver: bool = True) -> str:
     """
     Construct database URL from YAML config and secrets.

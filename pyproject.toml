@@ -177,7 +177,6 @@ ignore_imports = [
     "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.roster",
     "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.helpers.prompt_builder",
     "modules.backend.services.execution -> modules.backend.agents.mission_control.dispatch_adapter",
-    "modules.backend.services.context_assembler -> modules.backend.agents.mission_control.middleware",
     "modules.backend.services.session_memory -> modules.backend.agents.system.summarization.agent",
     # Agent wrapper services — coupled by design (they ARE agent orchestrators)
     "modules.backend.services.workflow_architect -> modules.backend.agents.mission.workflow.agent",
