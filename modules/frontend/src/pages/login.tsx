@@ -91,11 +91,25 @@ export default function LoginPage() {
             <div className="flex gap-2">
               <Button
                 variant="outline"
+                className="flex-1 border-red-500/30 text-red-600 hover:bg-red-50"
+                disabled={loading}
+                onClick={() => {
+                  setEmail('sysadmin@missioncontrol.dev')
+                  setPassword('sysadmin123')
+                  setTimeout(() => {
+                    document.querySelector<HTMLFormElement>('form')?.requestSubmit()
+                  }, 50)
+                }}
+              >
+                Sysadmin
+              </Button>
+              <Button
+                variant="outline"
                 className="flex-1 border-amber-500/30 text-amber-600 hover:bg-amber-50"
                 disabled={loading}
                 onClick={() => {
                   setEmail('admin@missioncontrol.dev')
-                  setPassword('admin')
+                  setPassword('admin123')
                   setTimeout(() => {
                     document.querySelector<HTMLFormElement>('form')?.requestSubmit()
                   }, 50)
@@ -109,7 +123,7 @@ export default function LoginPage() {
                 disabled={loading}
                 onClick={() => {
                   setEmail('user@missioncontrol.dev')
-                  setPassword('user')
+                  setPassword('user123')
                   setTimeout(() => {
                     document.querySelector<HTMLFormElement>('form')?.requestSubmit()
                   }, 50)
