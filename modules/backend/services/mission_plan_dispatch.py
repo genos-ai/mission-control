@@ -23,6 +23,8 @@ from modules.backend.models.mission_plan import (
     MissionPlanStatus,
     PlanTaskStatus,
 )
+from modules.backend.schemas.execution_outcome import TaskStatus
+from modules.backend.schemas.gate import GateAction, GateContext
 from modules.backend.schemas.task_plan import TaskPlan
 
 if TYPE_CHECKING:
@@ -77,7 +79,6 @@ class MissionPlanDispatchMixin:
         from modules.backend.agents.mission_control.mission_control import (
             handle_mission,
         )
-        from modules.backend.agents.mission_control.outcome import TaskStatus
         from modules.backend.repositories.mission import MissionRepository
 
         plan = await self._repo.get_by_id(mission_plan_id)
@@ -264,11 +265,9 @@ class MissionPlanDispatchMixin:
         execution_records row, emits the run-completed event, and
         fires any matching session followups in-process.
         """
-        from modules.backend.agents.mission_control.outcome import TaskStatus as _TS
-
         _task_results = getattr(outcome, "task_results", []) or []
-        _completed = sum(1 for r in _task_results if r.status == _TS.SUCCESS)
-        _failed = sum(1 for r in _task_results if r.status == _TS.FAILED)
+        _completed = sum(1 for r in _task_results if r.status == TaskStatus.SUCCESS)
+        _failed = sum(1 for r in _task_results if r.status == TaskStatus.FAILED)
 
         # Persist denormalised counts on the execution_records row.
         if outcome.execution_record_id:
@@ -313,7 +312,6 @@ class MissionPlanDispatchMixin:
 
         # Plan 52: inline supervisor for non-Temporal dispatch paths
         try:
-            from modules.backend.agents.mission_control.gate_models import GateContext
             from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
             from modules.backend.agents.adapters.supervisor_introspection import get_recent_run_outcomes
 
@@ -436,7 +434,6 @@ class MissionPlanDispatchMixin:
         routing. ADVANCE_APPROVED and ADVANCE_REFINE prepare state for
         the next dispatch cycle without looping.
         """
-        from modules.backend.agents.mission_control.gate_models import GateAction
         from modules.backend.models.mission_plan import (
             PlanTaskStatus as _PTS,
         )
@@ -584,8 +581,6 @@ class MissionPlanDispatchMixin:
         Plan 42 §10.5 batch write-back — no modification to the
         dispatch loop or persistence_bridge.
         """
-        from modules.backend.agents.mission_control.outcome import TaskStatus
-
         status_map = {
             TaskStatus.SUCCESS: PlanTaskStatus.COMPLETED,
             TaskStatus.FAILED: PlanTaskStatus.FAILED,

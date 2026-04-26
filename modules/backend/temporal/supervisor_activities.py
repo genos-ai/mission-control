@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from temporalio import activity
 
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.gate import GateContext
 
 logger = get_logger(__name__)
 
@@ -109,7 +110,6 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
 
 async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     """Inner logic for evaluate_post_run — separated for error wrapping."""
-    from modules.backend.agents.mission_control.gate_models import GateContext
     from modules.backend.agents.mission_control.gate_post_run import (
         AutonomousPostRunReviewer,
     )

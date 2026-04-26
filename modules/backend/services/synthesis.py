@@ -16,15 +16,12 @@ Usage:
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
 
 from modules.backend.agents.mission_control.helpers import _build_model
 from modules.backend.core.logging import get_logger
-
-if TYPE_CHECKING:
-    from modules.backend.agents.mission_control.outcome import ExecutionOutcome
+from modules.backend.schemas.execution_outcome import ExecutionOutcome
 
 logger = get_logger(__name__)
 

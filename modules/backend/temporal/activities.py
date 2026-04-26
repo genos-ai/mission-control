@@ -11,6 +11,7 @@ import asyncio
 from temporalio import activity
 
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.execution_outcome import ExecutionOutcome
 from modules.backend.temporal.models import (
     MissionExecutionResult,
     MissionWorkflowInput,
@@ -175,7 +176,6 @@ async def persist_mission_outcome(
     mission_id: str | None = None,
 ) -> bool:
     """Persist mission results to PostgreSQL. Best-effort."""
-    from modules.backend.agents.mission_control.outcome import ExecutionOutcome
     from modules.backend.agents.mission_control.persistence_bridge import (
         persist_mission_results,
     )

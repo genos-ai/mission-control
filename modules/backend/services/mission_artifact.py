@@ -13,8 +13,6 @@ live SSE emission site already reads).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ValidationError
@@ -25,10 +23,8 @@ from modules.backend.models.mission_artifact import (
     MissionArtifact,
 )
 from modules.backend.repositories.mission_artifact import MissionArtifactRepository
+from modules.backend.schemas.execution_outcome import TaskResult
 from modules.backend.services.base import BaseService
-
-if TYPE_CHECKING:
-    from modules.backend.agents.mission_control.outcome import TaskResult
 
 logger = get_logger(__name__)
 
