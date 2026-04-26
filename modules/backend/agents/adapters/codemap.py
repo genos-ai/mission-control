@@ -11,6 +11,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from modules.backend.agents.deps.base import FileScope
+from modules.backend.services.code_map.assembler import find_circular_deps
+from modules.backend.services.code_map.loader import CodeMapLoader
+from modules.backend.services.pqi.scorer import score_project
+from modules.backend.services.pqi.tools.bandit import is_available as bandit_available
+from modules.backend.services.pqi.tools.radon import is_available as radon_available
 
 
 async def generate_code_map(
@@ -23,7 +28,6 @@ async def generate_code_map(
     Fast (~2-5s for typical projects).
     """
     scope.check_read("modules/")
-    from modules.backend.services.code_map.loader import CodeMapLoader
 
     loader = CodeMapLoader(project_root)
     code_map = loader.regenerate()
@@ -52,7 +56,6 @@ async def load_code_map(
     understand codebase structure.
     """
     scope.check_read("modules/")
-    from modules.backend.services.code_map.loader import CodeMapLoader
 
     loader = CodeMapLoader(project_root)
     code_map = loader.ensure_fresh()
@@ -71,8 +74,6 @@ async def get_dependency_analysis(
     Returns circular dependency cycles and top-ranked modules by PageRank.
     """
     scope.check_read("modules/")
-    from modules.backend.services.code_map.loader import CodeMapLoader
-    from modules.backend.services.code_map.assembler import find_circular_deps
 
     loader = CodeMapLoader(project_root)
     code_map = loader.ensure_fresh()
@@ -113,8 +114,6 @@ async def run_quality_score(
     breakdowns with recommendations.
     """
     scope.check_read("modules/")
-    from modules.backend.services.code_map.loader import CodeMapLoader
-    from modules.backend.services.pqi.scorer import score_project
 
     # Load code map for modularity/reusability scoring
     loader = CodeMapLoader(project_root)
@@ -122,8 +121,6 @@ async def run_quality_score(
 
     # Auto-detect available tools for deeper analysis
     tools = []
-    from modules.backend.services.pqi.tools.bandit import is_available as bandit_available
-    from modules.backend.services.pqi.tools.radon import is_available as radon_available
     if bandit_available():
         tools.append("bandit")
     if radon_available():

@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
+from modules.backend.services.mission_plan import MissionPlanService
 
 logger = get_logger(__name__)
 
@@ -31,8 +32,6 @@ async def get_plan_state(
     window, and supervisor counters. Used by both Director and
     Supervisor agents.
     """
-    from modules.backend.services.mission_plan import MissionPlanService
-
     svc = MissionPlanService(session)
     plan = await svc.get_or_create_plan(mission_id)
     task_states = await svc.get_task_states(plan.id)

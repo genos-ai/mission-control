@@ -7,6 +7,7 @@ Thin wrappers registered as @agent.tool in the Director's agent.py.
 
 from modules.backend.core.logging import get_logger
 from modules.backend.models.mission_intent import IntentSource
+from modules.backend.services.mission_intent import MissionIntentService
 
 logger = get_logger(__name__)
 
@@ -24,8 +25,6 @@ async def capture_intent(
     Called by the Director when the user's scope changes.
     Returns the intent ID or a dedup message.
     """
-    from modules.backend.services.mission_intent import MissionIntentService
-
     async with MissionIntentService.factory() as svc:
         result = await svc.create_intent(
             mission_id,
@@ -53,8 +52,6 @@ async def restate_current_intent(mission_id: str) -> str:
     Called by the Director to check the current scope before responding.
     Returns a formatted string for injection into the conversation.
     """
-    from modules.backend.services.mission_intent import MissionIntentService
-
     async with MissionIntentService.factory() as svc:
         current = await svc.get_current(mission_id)
 

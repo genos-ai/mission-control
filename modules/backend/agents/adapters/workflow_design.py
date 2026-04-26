@@ -11,6 +11,9 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
+from modules.backend.services.agent_catalog import AgentCatalogService
+from modules.backend.services.mission_team import MissionTeamService
+from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
 logger = get_logger(__name__)
 
@@ -28,8 +31,6 @@ async def browse_agent_catalog(
     each entry includes an ``on_team`` boolean indicating whether the
     agent is assigned to the mission.
     """
-    from modules.backend.services.agent_catalog import AgentCatalogService
-
     svc = AgentCatalogService(session)
 
     if keyword:
@@ -43,7 +44,6 @@ async def browse_agent_catalog(
     team_names: set[str] = set()
     if mission_id:
         from modules.backend.repositories.agent_catalog import AgentCatalogRepository
-        from modules.backend.services.mission_team import MissionTeamService
 
         team_svc = MissionTeamService(session)
         catalog_repo = AgentCatalogRepository(session)
@@ -199,8 +199,6 @@ async def persist_workflow(
 
     Returns the saved workflow's id and name, or raises on failure.
     """
-    from modules.backend.services.workflow_definition import WorkflowDefinitionService
-
     svc = WorkflowDefinitionService(session)
     workflow = await svc.create_workflow(
         mission_id=mission_id,
@@ -250,7 +248,6 @@ async def update_workflow(
     Returns the updated workflow summary, or raises on failure.
     """
     from modules.backend.core.utils import utc_now
-    from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     svc = WorkflowDefinitionService(session)
     workflow = await svc.get_workflow(mission_id, name)
@@ -309,8 +306,6 @@ async def list_mission_workflows(
     Returns a summary list with id, name, version, step_count,
     enabled, locked_at, and designed_by.
     """
-    from modules.backend.services.workflow_definition import WorkflowDefinitionService
-
     svc = WorkflowDefinitionService(session)
     workflows = await svc.list_workflows(mission_id, enabled_only=False)
 
