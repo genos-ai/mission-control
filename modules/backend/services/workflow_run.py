@@ -246,6 +246,27 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 f"${run.total_cost_usd:.4f}"
             )
             exec_record.status = ExecutionRecordStatus.COMPLETED
+            # Publish completion event to SSE stream
+            if self._event_bus and mission_id:
+                try:
+                    import uuid as _uuid
+                    from modules.backend.events.types import WorkflowRunCompletedEvent
+                    elapsed = (run.completed_at - run.started_at).total_seconds() if run.completed_at and run.started_at else None
+                    await self._event_bus.publish_to_mission(
+                        mission_id,
+                        WorkflowRunCompletedEvent(
+                            session_id=_uuid.UUID(session.id),
+                            source="workflow_run_service",
+                            workflow_run_id=run.id,
+                            workflow_name=run.workflow_name,
+                            total_cost_usd=run.total_cost_usd,
+                            mission_count=len(workflow.steps),
+                            elapsed_seconds=elapsed,
+                            result_summary=run.result_summary,
+                        ),
+                    )
+                except Exception:
+                    pass  # best-effort
         except (RuntimeError, ValueError, OSError) as e:
             run.status = WorkflowRunState.FAILED
             run.completed_at = utc_now()
@@ -256,19 +277,31 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 "DB workflow run failed",
                 extra={"run_id": run.id, "error": str(e), "mission_id": mission_id},
             )
-            # Emit error event so it surfaces in the console
+            # Emit error + failure events so they surface in the console/editor
             if self._event_bus and mission_id:
                 try:
                     import uuid as _uuid
-                    from modules.backend.events.types import SystemEvent
+                    from modules.backend.events.types import SystemEvent, WorkflowRunFailedEvent
+                    _sid = _uuid.UUID(session.id) if session else _uuid.uuid4()
                     await self._event_bus.publish_to_mission(
                         mission_id,
                         SystemEvent(
-                            session_id=_uuid.UUID(session.id) if session else _uuid.uuid4(),
+                            session_id=_sid,
                             source="workflow_run_service",
                             level="error",
                             message=f"Workflow '{run.workflow_name}' failed: {str(e)[:200]}",
                             mission_id=mission_id,
+                        ),
+                    )
+                    await self._event_bus.publish_to_mission(
+                        mission_id,
+                        WorkflowRunFailedEvent(
+                            session_id=_sid,
+                            source="workflow_run_service",
+                            workflow_run_id=run.id,
+                            workflow_name=run.workflow_name,
+                            error=str(e)[:200],
+                            total_cost_usd=run.total_cost_usd,
                         ),
                     )
                 except Exception:

@@ -17,6 +17,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import toast from 'react-hot-toast'
 import type { WorkflowStep } from '@/types'
+import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { StepDetail } from './step-detail'
 import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
@@ -108,6 +109,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const [isSaving, setIsSaving] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const runOverlay = useWorkflowRunStatus()
 
   // Build initial nodes + edges
   const { initNodes, initEdges } = useMemo(() => {
@@ -129,6 +131,19 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   useEffect(() => {
     setNodes(initNodes)
   }, [initNodes, setNodes])
+
+  // Inject execution overlay status into node data
+  useEffect(() => {
+    const statuses = runOverlay.nodeStatuses
+    if (!runOverlay.isActive && Object.keys(statuses).length === 0) return
+    setNodes((prev) =>
+      prev.map((node) => {
+        const status = statuses[node.id] ?? 'idle'
+        if ((node.data as Record<string, unknown>).status === status) return node
+        return { ...node, data: { ...node.data, status } }
+      }),
+    )
+  }, [runOverlay.nodeStatuses, runOverlay.isActive, setNodes])
 
   // Track dirty state on node drag
   const handleNodesChange = useCallback(
@@ -197,6 +212,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
 
   // Run
   const handleRun = useCallback(async () => {
+    runOverlay.reset()
     setIsRunning(true)
     try {
       await onRun()
@@ -206,7 +222,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     } finally {
       setIsRunning(false)
     }
-  }, [onRun])
+  }, [onRun, runOverlay])
 
   return (
     <div className="flex h-full flex-col">
@@ -215,6 +231,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         isDirty={isDirty}
         isSaving={isSaving}
         isRunning={isRunning}
+        isRunActive={runOverlay.isActive}
+        runProgress={runOverlay.progress}
         onAutoLayout={handleAutoLayout}
         onSave={handleSave}
         onRun={handleRun}

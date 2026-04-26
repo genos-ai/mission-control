@@ -18,6 +18,8 @@ interface WorkflowEditorToolbarProps {
   isDirty: boolean
   isSaving: boolean
   isRunning: boolean
+  isRunActive?: boolean
+  runProgress?: [number, number]
   onAutoLayout: () => void
   onSave: () => void
   onRun: () => void
@@ -28,6 +30,8 @@ export function WorkflowEditorToolbar({
   isDirty,
   isSaving,
   isRunning,
+  isRunActive,
+  runProgress,
   onAutoLayout,
   onSave,
   onRun,
@@ -53,6 +57,13 @@ export function WorkflowEditorToolbar({
 
       {isDirty && (
         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Unsaved changes" />
+      )}
+
+      {isRunActive && runProgress && (
+        <div className="flex items-center gap-1.5 text-xs text-amber-400">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          <span className="tabular-nums">{runProgress[0]}/{runProgress[1]} steps</span>
+        </div>
       )}
 
       <div className="flex-1" />
@@ -87,7 +98,7 @@ export function WorkflowEditorToolbar({
         size="sm"
         className="h-7 gap-1 px-3 text-xs"
         onClick={onRun}
-        disabled={isRunning}
+        disabled={isRunning || isRunActive}
       >
         {isRunning ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -13,12 +13,21 @@ Mixed into WorkflowRunService — do not instantiate directly.
 from __future__ import annotations
 
 import asyncio
+import uuid as _uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
+from modules.backend.events.types import (
+    WorkflowConditionEvaluatedEvent,
+    WorkflowExecutionCompletedEvent,
+    WorkflowExecutionStartedEvent,
+    WorkflowNotificationSentEvent,
+    WorkflowRunStartedEvent,
+    WorkflowStepSkippedEvent,
+)
 
 if TYPE_CHECKING:
     from modules.backend.models.execution import WorkflowRun
@@ -46,6 +55,15 @@ class WorkflowRunWavesMixin:
     self._workflow_service which are set by
     WorkflowRunService.__init__().
     """
+
+    async def _publish_workflow_event(self, mission_id: str | None, event: Any) -> None:
+        """Best-effort publish to mission SSE stream."""
+        if not self._event_bus or not mission_id:
+            return
+        try:
+            await self._event_bus.publish_to_mission(mission_id, event)
+        except Exception:
+            logger.debug("Workflow event publish failed", exc_info=True)
 
     async def _execute_steps(
         self,
@@ -78,6 +96,12 @@ class WorkflowRunWavesMixin:
                 on_progress(event)
 
         _emit({"type": "workflow_start", "workflow": workflow.workflow_name, "total_steps": total_steps})
+        await self._publish_workflow_event(run.mission_id, WorkflowRunStartedEvent(
+            session_id=_uuid.UUID(session_id), source="workflow_run_service",
+            workflow_run_id=run.id, workflow_name=workflow.workflow_name,
+            workflow_version=run.workflow_version or 1, step_count=total_steps,
+            trigger_type=run.trigger_type or "on_demand", triggered_by=run.triggered_by or "",
+        ))
 
         for wave_num, wave_step_ids in enumerate(waves):
             logger.info(
@@ -106,6 +130,10 @@ class WorkflowRunWavesMixin:
                         "step_id": step_id,
                         "reason": "condition branch not taken",
                     })
+                    await self._publish_workflow_event(run.mission_id, WorkflowStepSkippedEvent(
+                        session_id=_uuid.UUID(session_id), source="workflow_run_service",
+                        workflow_run_id=run.id, step_id=step_id, reason="condition branch not taken",
+                    ))
                     logger.info("Skipping step (condition branch)", extra={"step_id": step_id, "run_id": run.id})
                 else:
                     executable_ids.append(step_id)
@@ -119,6 +147,12 @@ class WorkflowRunWavesMixin:
                     "capability": step.capability,
                     "description": step.description or step_id,
                 })
+                await self._publish_workflow_event(run.mission_id, WorkflowExecutionStartedEvent(
+                    session_id=_uuid.UUID(session_id), source="workflow_run_service",
+                    workflow_run_id=run.id, mission_id=run.mission_id or "",
+                    step_id=step_id, roster_ref=step.roster or "",
+                    complexity_tier=step.complexity_tier or "standard",
+                ))
 
             # Execute all steps in this wave concurrently
             wave_steps = [step_map[sid] for sid in executable_ids]
@@ -141,6 +175,12 @@ class WorkflowRunWavesMixin:
                     "completed_steps": len(completed_outcomes),
                     "total_steps": total_steps,
                 })
+                await self._publish_workflow_event(run.mission_id, WorkflowExecutionCompletedEvent(
+                    session_id=_uuid.UUID(session_id), source="workflow_run_service",
+                    workflow_run_id=run.id, mission_id=run.mission_id or "",
+                    step_id=step.id, success=(status_str != "FAILED"),
+                    cost_usd=execution.total_cost_usd,
+                ))
 
     async def _execute_wave(
         self,
@@ -289,6 +329,11 @@ class WorkflowRunWavesMixin:
         )
 
         outputs = {"result": result, "branch": branch, "_branch": branch}
+        await self._publish_workflow_event(run.mission_id, WorkflowConditionEvaluatedEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id,
+            expression=expression, result=result, branch=branch,
+        ))
         return VirtualExecution(id=step.id), outputs
 
     async def _execute_notification_step(
@@ -319,6 +364,10 @@ class WorkflowRunWavesMixin:
             success = False
 
         logger.info("Notification sent", extra={"step_id": step.id, "channel": channel, "success": success})
+        await self._publish_workflow_event(run.mission_id, WorkflowNotificationSentEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id, channel=channel, success=success,
+        ))
         outputs = {"sent": success, "channel": channel}
         return VirtualExecution(id=step.id), outputs
 

@@ -1,0 +1,130 @@
+/**
+ * Hook that consumes mission SSE events and tracks per-node execution status
+ * for the workflow editor overlay.
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMissionStreamContext } from '@/context/mission-stream'
+
+export type NodeStatus =
+  | 'idle'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'awaiting_input'
+
+export interface WorkflowRunOverlay {
+  /** Per-node status keyed by step_id */
+  nodeStatuses: Record<string, NodeStatus>
+  /** Is a workflow currently running? */
+  isActive: boolean
+  /** The active workflow_run_id (if any) */
+  activeRunId: string | null
+  /** Progress: [completed, total] */
+  progress: [number, number]
+  /** Reset all status (call before starting a new run) */
+  reset: () => void
+}
+
+const WORKFLOW_EVENT_TYPES = new Set([
+  'workflow.run.started',
+  'workflow.execution.started',
+  'workflow.execution.completed',
+  'workflow.step.skipped',
+  'workflow.condition.evaluated',
+  'workflow.notification.sent',
+  'workflow.human_input.requested',
+  'workflow.human_input.responded',
+  'workflow.run.completed',
+  'workflow.run.failed',
+])
+
+export function useWorkflowRunStatus(): WorkflowRunOverlay {
+  const stream = useMissionStreamContext()
+  const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [progress, setProgress] = useState<[number, number]>([0, 0])
+  const processedRef = useRef(0)
+
+  useEffect(() => {
+    if (!stream) return
+    const events = stream.events
+    if (events.length <= processedRef.current) return
+
+    const newEvents = events.slice(processedRef.current)
+    processedRef.current = events.length
+
+    for (const ev of newEvents) {
+      if (!WORKFLOW_EVENT_TYPES.has(ev.event_type)) continue
+      // SSE wire format: event_type at top level, event-specific fields in ev.data
+      const d = ev.data as Record<string, unknown>
+
+      switch (ev.event_type) {
+        case 'workflow.run.started':
+          setActiveRunId(String(d.workflow_run_id ?? ''))
+          setProgress([0, Number(d.step_count ?? 0)])
+          setNodeStatuses({})
+          break
+
+        case 'workflow.execution.started':
+          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'running' }))
+          break
+
+        case 'workflow.execution.completed':
+          setNodeStatuses((prev) => ({
+            ...prev,
+            [String(d.step_id)]: d.success ? 'completed' : 'failed',
+          }))
+          setProgress((prev) => [prev[0] + 1, prev[1]])
+          break
+
+        case 'workflow.step.skipped':
+          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'skipped' }))
+          setProgress((prev) => [prev[0] + 1, prev[1]])
+          break
+
+        case 'workflow.condition.evaluated':
+          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'completed' }))
+          setProgress((prev) => [prev[0] + 1, prev[1]])
+          break
+
+        case 'workflow.notification.sent':
+          setNodeStatuses((prev) => ({
+            ...prev,
+            [String(d.step_id)]: d.success ? 'completed' : 'failed',
+          }))
+          setProgress((prev) => [prev[0] + 1, prev[1]])
+          break
+
+        case 'workflow.human_input.requested':
+          setNodeStatuses((prev) => ({
+            ...prev,
+            [String(d.step_id)]: 'awaiting_input',
+          }))
+          break
+
+        case 'workflow.human_input.responded':
+          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'completed' }))
+          setProgress((prev) => [prev[0] + 1, prev[1]])
+          break
+
+        case 'workflow.run.completed':
+        case 'workflow.run.failed':
+          setActiveRunId(null)
+          break
+      }
+    }
+  }, [stream?.events.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reset = useCallback(() => {
+    setNodeStatuses({})
+    setActiveRunId(null)
+    setProgress([0, 0])
+    processedRef.current = stream?.events.length ?? 0
+  }, [stream?.events.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isActive = activeRunId !== null
+
+  return { nodeStatuses, isActive, activeRunId, progress, reset }
+}
