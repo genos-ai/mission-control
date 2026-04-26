@@ -137,7 +137,6 @@ COLUMNS = [
     ("mission_team_members", "id"),
     ("mission_team_members", "mission_id"),
     ("missions", "id"),
-    ("notes", "id"),
     ("plan_task_states", "approved_by_user_id"),
     ("plan_task_states", "execution_record_id"),
     ("plan_task_states", "id"),

@@ -17,7 +17,6 @@ from modules.backend.api.v1.endpoints import (
     knowledge,
     mission_knowledge,
     missions,
-    notes,
     sessions,
     streams,
     workflows,
@@ -25,9 +24,6 @@ from modules.backend.api.v1.endpoints import (
 )
 
 router = APIRouter()
-
-# Notes endpoints
-router.include_router(notes.router, prefix="/notes", tags=["notes"])
 
 # Agent endpoints
 router.include_router(agents.router, prefix="/agents", tags=["agents"])

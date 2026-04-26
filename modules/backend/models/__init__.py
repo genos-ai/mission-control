@@ -9,7 +9,6 @@ from modules.backend.models.execution_record import (
     TaskExecution,
 )
 from modules.backend.models.mission_team import MissionTeamMember
-from modules.backend.models.note import Note
 from modules.backend.models.mission import Mission, MissionMember
 from modules.backend.models.mission_context import ContextChange, ContextMilestone, MissionContext
 from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
@@ -74,7 +73,6 @@ __all__ = [
     "VALID_ARTIFACT_TYPES",
     "VALID_CONTENT_TYPES",
     "VALID_GATE_MODES",
-    "Note",
     "PromptVersion",
     "Session",
     "SessionChannel",

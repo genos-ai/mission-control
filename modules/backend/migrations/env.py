@@ -26,7 +26,6 @@ from modules.backend.models.execution_record import (  # noqa: F401
     TaskAttempt,
     TaskExecution,
 )
-from modules.backend.models.note import Note  # noqa: F401
 from modules.backend.models.mission import Mission, MissionMember  # noqa: F401
 from modules.backend.models.mission_context import MissionContext, ContextChange  # noqa: F401
 from modules.backend.models.mission_history import MissionDecision, MilestoneSummary  # noqa: F401
