@@ -8,7 +8,9 @@ up on mission archive/delete or idle timeout.
 
 import enum
 
-from sqlalchemy import JSON, Enum, Float, ForeignKey, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, JSON, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -65,7 +67,7 @@ class ExecutionEnvironmentModel(UUIDMixin, TimestampMixin, Base):
     execution_count: Mapped[int] = mapped_column(
         Integer, default=0, nullable=False,
     )
-    last_execution_at: Mapped[str | None] = mapped_column(
+    last_execution_at: Mapped[datetime | None] = mapped_column(
         String(30), nullable=True,
         comment="ISO timestamp of last execution in this environment",
     )

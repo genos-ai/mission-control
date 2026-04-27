@@ -8,7 +8,9 @@ budget limits, and objective metadata.
 System workflow templates have mission_id=NULL.
 """
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import DateTime, JSON, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -77,7 +79,7 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
         String(200), nullable=True,
         comment="architect:<agent_id> or user:<user_id>",
     )
-    locked_at: Mapped[str | None] = mapped_column(
+    locked_at: Mapped[datetime | None] = mapped_column(
         String(30), nullable=True,
         comment="ISO timestamp when the user confirmed the workflow",
     )
