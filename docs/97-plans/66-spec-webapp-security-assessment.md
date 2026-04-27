@@ -562,10 +562,10 @@ async def run_security_tool(
 
 async def run_capability(
     capability: ToolCapability,
-    args: dict,
+    input: CapabilityInput,
     registry: SecurityToolRegistry,
     config: SecurityAssessmentConfig,
-) -> list[ToolResult]:
+) -> list[SarifCapabilityOutput | ReconCapabilityOutput | ExploitCapabilityOutput]:
     """Run a capability using registered engines. Handles fallback and ensemble modes.
 
     FALLBACK mode: try engines in order; stop at first success.
@@ -583,51 +583,92 @@ async def run_capability(
     mode = specs[0].mode  # mode is set per-capability, same across all engines
 
     if mode == CapabilityMode.ENSEMBLE:
-        # Run all engines concurrently
-        tasks = [run_security_tool(spec, args, config) for spec in specs]
+        # Run all engines concurrently — each gets a unique output path
+        tasks = [
+            run_security_tool(
+                spec,
+                input.model_copy(update={"output_path": f"{input.output_path}.{spec.name}"}),
+                config,
+            )
+            for spec in specs
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        return [r for r in results if isinstance(r, ToolResult) and r.status == "completed"]
+        return [r for r in results if not isinstance(r, BaseException)]
 
     # FALLBACK mode: try in order, stop at first success
     for spec in specs:
         if not registry.check_installed(spec):
             logging.warning(f"{spec.name} not installed, trying next engine for {capability}")
             continue
-        result = await run_security_tool(spec, args, config)
-        if result.status == "completed":
+        try:
+            result = await run_security_tool(spec, input, config)
             return [result]
-        logging.warning(f"{spec.name} failed (exit {result.exit_code}), trying next engine for {capability}")
+        except TypedFailureError:
+            logging.warning(f"{spec.name} failed, trying next engine for {capability}")
     return []  # all engines failed
 ```
 
 **How this changes the agent interaction:**
 
-The scanner agent no longer calls `security.run_opengrep` or `security.run_betterleaks`. It calls `security.run_capability("security.code.scan")` and the registry resolves the engine.
+Agents never call a generic dispatcher. Each capability is registered as a named PydanticAI tool. The director and humans see the capability names in the agent's tool list — not engine names.
+
+```yaml
+# config/agents/security/webapp/scanner/agent.yaml (excerpt)
+tools:
+  - security.code.scan              # "I can scan source code for vulnerabilities"
+  - security.code.lint              # "I can lint code for security issues"
+  - security.deps.scan              # "I can scan dependencies for CVEs"
+  - security.secrets.detect         # "I can detect hardcoded credentials"
+  - security.container.scan         # "I can scan containers for CVEs"
+  - security.dockerfile.lint        # "I can lint Dockerfiles"
+  - security.infra.scan             # "I can scan infrastructure config"
+  - security.merge_sarif            # utility — merges SARIF from all tools above
+  - security.detect_surface         # utility — detects file types and applicable capabilities
+```
+
+Each tool is a thin PydanticAI registration that delegates to the internal `run_capability` function. The agent calls `security.code.scan(target_path)`, not `run_capability("security.code.scan", target_path)`.
 
 ```python
-# In the scanner agent's tool set:
+# modules/backend/agents/adapters/security_scanning.py
+# One registration per capability. Internal plumbing (run_capability, run_security_tool)
+# is never exposed to agents.
 
-@agent.tool
-async def run_capability(ctx: RunContext[ScanDeps], capability: str, target_path: str) -> str:
-    """Run a security capability against the target. The registry resolves which engine to use.
-
-    The capability name describes the job: "security.code.scan", "security.secrets.detect", etc.
-    The engine (Opengrep, Betterleaks, nmap) is an implementation detail — swap via YAML config.
-    If the primary engine fails, fallback engines are tried automatically.
-
-    Args:
-        capability: Capability name (e.g., "security.code.scan", "security.network.discover").
-        target_path: Path or URL to assess.
+@agent.tool(name="security.code.scan")
+async def scan_code(ctx: RunContext[ScanDeps], target_path: str) -> str:
+    """Scan source code for security vulnerabilities (OWASP Top 10, taint analysis).
+    The engine (Opengrep, CodeQL) is resolved by the tool registry — swap via YAML config.
     """
-    results = await run_capability(
-        ToolCapability(capability),
-        {"target_path": target_path, "output_path": f"{ctx.deps.evidence_path}/{capability.replace('.', '_')}.sarif"},
-        ctx.deps.tool_registry,
-        ctx.deps.config,
+    input = CapabilityInput(
+        target_path=target_path,
+        output_path=f"{ctx.deps.evidence_path}/security_code_scan.sarif",
     )
+    results = await run_capability(ToolCapability.CODE_SCAN, input, ctx.deps.tool_registry, ctx.deps.config)
     if not results:
-        return f"{capability}: all engines failed"
-    return f"{capability} ({results[0].name}): {results[0].status}, findings at {results[0].output_path}"
+        return "security.code.scan: all engines failed"
+    r = results[0]
+    return f"security.code.scan ({r.engine_name}): {r.finding_count} findings at {r.sarif_path}"
+
+
+@agent.tool(name="security.secrets.detect")
+async def detect_secrets(ctx: RunContext[ScanDeps], target_path: str) -> str:
+    """Detect hardcoded secrets, API keys, and credentials in source code.
+    The engine (Betterleaks, TruffleHog) is resolved by the tool registry.
+    """
+    input = CapabilityInput(
+        target_path=target_path,
+        output_path=f"{ctx.deps.evidence_path}/security_secrets_detect.sarif",
+    )
+    results = await run_capability(ToolCapability.SECRETS_DETECT, input, ctx.deps.tool_registry, ctx.deps.config)
+    if not results:
+        return "security.secrets.detect: all engines failed"
+    r = results[0]
+    return f"security.secrets.detect ({r.engine_name}): {r.finding_count} findings at {r.sarif_path}"
+
+# Same pattern for: security.code.lint, security.deps.scan, security.container.scan,
+# security.dockerfile.lint, security.infra.scan, security.network.discover,
+# security.web.discover, security.web.scan, security.injection.test_sqli,
+# security.tls.audit, security.params.discover, security.routes.discover,
+# security.auth.test_jwt
 ```
 
 #### 1.2.1 Anti-patterns (Tool Registry)
@@ -635,7 +676,7 @@ async def run_capability(ctx: RunContext[ScanDeps], capability: str, target_path
 - **Do not hardcode tool binary names in agent prompts or adapter code.** Reference capabilities. The registry resolves the binary.
 - **Do not add tool-specific config fields to `SecurityAssessmentConfig` for each new tool.** Tool-specific defaults live in `config/security/tools.yaml` under `default_args`. Only cross-cutting config (timeouts, rate limits, evidence paths) belongs in the Python config.
 - **Do not call `asyncio.create_subprocess_exec` directly from agents or adapters.** All subprocess execution goes through `run_security_tool()` which handles exit codes, SARIF conversion, redaction, and evidence hashing uniformly.
-- **Do not create per-tool adapter files.** The `SecurityToolRunner` + registry replaces `security_scanner.py` as the execution layer. Adapters become thin PydanticAI tool registrations that delegate to `run_security_tool()`.
+- **Do not create per-engine adapter files.** No `opengrep_adapter.py`, `betterleaks_adapter.py`, `nmap_adapter.py`. The `SecurityToolRunner` + registry handles all engines. Adapters are organised by job domain: `security_scanning.py` (registry capabilities), `security_proxy.py` (HTTP interception), `security_auth.py` (session lifecycle).
 
 ### 1.3 Python Dependencies
 
@@ -651,7 +692,7 @@ opa-python-client>=1.0.0
 # hadolint, checkov, testssl.sh, arjun, kiterunner, jwt-cli, mitmproxy, jq, pup, htmlq
 ```
 
-### 1.3 Infrastructure Dependencies
+### 1.4 Infrastructure Dependencies
 
 ```dockerfile
 # Dockerfile: security-assessment-worker
@@ -680,7 +721,7 @@ USER pentester
 WORKDIR /home/pentester
 ```
 
-### 1.4 Unified Configuration Model
+### 1.5 Unified Configuration Model
 
 ```python
 # modules/backend/agents/security/config.py
@@ -721,14 +762,11 @@ class SecurityAssessmentConfig(BaseSettings):
     # Rationale: LLM triage on >500 findings exceeds useful token budget.
 
     # ── Recon Phase ──
-    recon_nmap_top_ports: int = Field(default=1000, ge=100, le=65535)
-    # Rationale: Top 1000 covers 93.5% of open ports in practice.
-
-    recon_ffuf_threads: int = Field(default=40, ge=1, le=100)
-    # Rationale: 40 is aggressive but below most WAF thresholds.
+    # Tool-specific recon defaults (nmap top_ports, ffuf threads) live in
+    # config/security/tools.yaml under each tool's default_args. Only cross-cutting below.
 
     recon_rate_limit_rps: int = Field(default=50, ge=1, le=200)
-    # Rationale: 50 rps prevents target degradation while maintaining coverage speed.
+    # Rationale: 50 rps prevents target degradation. Cross-cutting — applies to ALL recon tools.
 
     # ── DAST Phase ──
     # Tool-specific DAST defaults (nuclei templates, sqlmap risk/level) live in
@@ -811,7 +849,7 @@ class SecurityAssessmentConfig(BaseSettings):
     # Rationale: All evidence in workspace-scoped directory with structured subdirectories.
 ```
 
-#### 1.4.1 Anti-patterns (Configuration)
+#### 1.5.1 Anti-patterns (Configuration)
 
 - **Do not hardcode tool paths, thresholds, or rate limits in agent code.** Import from `SecurityAssessmentConfig`.
 - **Do not use `os.environ` directly.** Pydantic-settings handles loading and type coercion.
@@ -895,13 +933,13 @@ modules/backend/agents/security/
   │     └── reuses → tools/run_command.py for container-dispatched execution
 
 modules/backend/agents/adapters/
-  ├── security_tools.py   → PydanticAI tool registrations that delegate to run_security_tool()
+  ├── security_scanning.py → PydanticAI tool registrations for all registry capabilities
   │     └── imports → tool_registry.py, tool_runner.py, roe.py (validate_scope)
-  │     └── exposes → run_tool(capability, target_path), merge_sarif(), detect_surface()
-  ├── security_burp.py    → Burp MCP client (proxy_history, send_request, collaborator)
-  │     └── calls → Burp MCP Server (SSE, 127.0.0.1:9876)
-  └── security_auth.py    → session management (cookie jars, JWT, OAuth, CSRF)
-        └── imports → config.py
+  │     └── exposes → security.code.scan, security.secrets.detect, security.deps.scan, etc.
+  ├── security_proxy.py    → HTTP interception: traffic capture, request replay, collaborator
+  │     └── today: Burp MCP Server (SSE, 127.0.0.1:9876). Tomorrow: Caido, mitmproxy MCP.
+  └── security_auth.py     → session lifecycle: login, refresh, logout detection, cookie jars
+        └── imports → config.py, Vault client
 
 # Existing platform code reused (DO NOT DUPLICATE — see Section 2.8):
 modules/backend/agents/mission_control/helpers/cli_executor.py     → _run_subprocess()
@@ -1028,9 +1066,9 @@ modules/backend/agents/
     tool_registry.py                          # Section 1.2 — SecurityToolRegistry, ToolCapability
     tool_runner.py                            # Section 1.2 — run_security_tool(), unified execution
   adapters/
-    security_tools.py                         # PydanticAI tool registrations → delegates to tool_runner
-    security_burp.py                          # Burp MCP client
-    security_auth.py                          # Session/JWT/OAuth management
+    security_scanning.py                      # PydanticAI tool registrations for registry capabilities
+    security_proxy.py                         # HTTP interception (Burp MCP today, swappable)
+    security_auth.py                          # Session lifecycle, credential management
 
 config/
   security/
@@ -1594,7 +1632,7 @@ The WASA system builds on existing Mission Control infrastructure. This section 
 | **Subprocess execution** | `agents/mission_control/helpers/cli_executor.py` (`_run_subprocess()` with async + timeout + cleanup), `tools/run_command.py` (PydanticAI tool dispatching to `ExecutionEnvironmentService`) | Use `_run_subprocess()` for async CLI tool calls in local mode. Use `run_command` tool for container-dispatched execution. | Security-specific exit code handling (Opengrep exit 1 = findings, not failure) |
 | **Verification pipeline** | `agents/mission_control/verification.py` (3-tier: structural → deterministic → AI), `verification_tiers.py` (pluggable check registry), `agents/system/verification/agent.py` | Extend Tier 2 check registry with WASA-specific checks: `poc_reproducer_valid`, `curl_command_parseable`, `finding_has_location`. Use existing Tier 1 for Pydantic schema validation. | WASA Tier 2 checks registered in existing `CheckRegistry`; dedicated `security.webapp.verifier` evaluator for Tier 3 PoC validation |
 | **Tool wrapper pattern** | `services/pqi/tools/runner.py` (`Finding`, `ToolResult`, `check_installed()`, `run_command()`), `services/pqi/tools/bandit.py` (Bandit security wrapper) | The WASA `SecurityToolRunner` (Section 1.2) replaces per-tool wrappers with a single unified runner driven by `config/security/tools.yaml`. Follows the `ToolResult` pattern but is config-driven, not code-driven. New tools = YAML entry + binary install. | `tool_registry.py`, `tool_runner.py`, `config/security/tools.yaml` |
-| **Adapter pattern** | `agents/adapters/compliance.py` (wraps `ComplianceScannerService`), `agents/adapters/environment.py` (re-exports `run_command`) | Follow existing adapter pattern for WASA adapters. Each adapter is a thin async wrapper exposing tools to PydanticAI agents. | `security_scanner.py`, `security_recon.py`, `security_dast.py`, `security_burp.py`, `security_auth.py` |
+| **Adapter pattern** | `agents/adapters/compliance.py` (wraps `ComplianceScannerService`), `agents/adapters/environment.py` (re-exports `run_command`) | Follow existing adapter pattern: one adapter per job domain, named by job not product. | `security_scanning.py` (registry capabilities), `security_proxy.py` (HTTP interception), `security_auth.py` (session lifecycle) |
 | **Execution environment resolution** | `agents/mission_control/dispatch/environment.py` (`resolve_execution_mode()` with priority chain: task override > agent YAML > mission default > auto) | WASA agent YAMLs declare `execution.mode`. Dispatch loop resolves automatically. | No changes needed — existing resolution handles WASA agents |
 
 **What WASA builds from scratch (no existing code):**
@@ -1603,9 +1641,9 @@ The WASA system builds on existing Mission Control infrastructure. This section 
 - URL validation / SSRF prevention (`validate_url()`, `validate_scope()`, `resolve_and_pin()`)
 - SARIF parsing, merging, and severity normalisation
 - Evidence integrity system (`evidence.py` with SHA-256 manifest)
-- Burp MCP client (`security_burp.py`)
+- HTTP interception proxy adapter (`security_proxy.py` — Burp MCP today, swappable)
 - Session/JWT/OAuth management (`security_auth.py`)
-- All 7 WASA agent implementations and prompts
+- All 9 WASA agent implementations and prompts
 
 #### 2.8.1 Anti-patterns (Reuse)
 
