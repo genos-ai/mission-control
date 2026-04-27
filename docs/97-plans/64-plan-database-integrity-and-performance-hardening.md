@@ -1,9 +1,9 @@
 # Plan 64 — Database Integrity & Performance Hardening
 
-**Version:** 3.0.0
-**Date:** 2026-04-26
+**Version:** 4.0.0
+**Date:** 2026-04-27
 **Author:** Herman + Data Architecture Review + Adversarial Review Pass + Full Schema Review (Opus 4.6)
-**Status:** Partially complete — see v3.0 changelog
+**Status:** Core phases complete (G, D+K, H, J, C, I). Low-priority cleanup deferred (A, B, E, F, L).
 **Depends on:** None (all changes are additive migrations + model edits)
 **Unlocks:** Safe mission deletion without raw SQL, JSONB GIN indexes, query performance at scale, correct cost accounting
 
@@ -17,29 +17,21 @@
 - Empty string values in nullable columns cleaned to NULL
 - Notes table dropped (legacy BFF artifact)
 
-**Phase status update after audit:**
-- **Phase A (CASCADE delete):** PARTIALLY DONE — 13/33 FKs use CASCADE, 11 SET NULL, 2 RESTRICT. Strategy is reasonable; document it.
-- **Phase B (JSONB):** CHECK — needs re-audit after UUID migration.
-- **Phase C (Indexes):** NOT STARTED — 7 new indexes still needed.
-- **Phase D+K (Missing FKs):** CRITICAL — 5 bare UUID columns still lack FK constraints: `Execution.workflow_run_id`, `WorkflowRun.session_id`, `Execution.session_id`, `ExecutionRecord.session_id`, `ContextChange.mission_id`. These were never FKs in the old schema and the UUID migration didn't add them.
-- **Phase E (Timestamp types in models):** NOT STARTED.
-- **Phase F (Column renames):** NOT STARTED.
-- **Phase G (env.py imports):** MOSTLY DONE — Note removed. Still missing: LlmCall, ModelPricing, MissionPlan, PlanTaskState, SessionFollowup, MissionArtifact, MissionLearning, MissionIntent, Embedding, ExecutionEnvironment.
-- **Phase H (Float → Numeric):** NOT STARTED — 21 monetary columns remain Float across 9 models.
-- **Phase I (Timezone timestamps):** NOT STARTED — TimestampMixin uses naive DateTime. Only ModelPricing has timezone=True.
-- **Phase J (Status column storage):** NOT STARTED — MissionPlan.status and PlanTaskState.status use String(20), not Enum(native_enum=False). Session.status same.
-- **Phase K:** Merged with Phase D above.
-- **Phase L (Misc fixes):** NOT STARTED.
+**Phase status (2026-04-27):**
+- **Phase A (CASCADE delete):** DEFERRED — 13/33 FKs use CASCADE, 11 SET NULL, 2 RESTRICT. Strategy is reasonable; needs documentation only.
+- **Phase B (JSONB):** DEFERRED — needs audit of sqlite JSON imports.
+- **Phase C (Indexes):** DONE — 4 composite indexes added (mission_artifacts, llm_calls, session_followups, execution_records).
+- **Phase D+K (Missing FKs):** DONE — 5 FK constraints added (executions.workflow_run_id, workflow_runs.session_id, executions.session_id, execution_records.session_id, context_changes.mission_id). 953 orphaned references cleaned.
+- **Phase E (Timestamp types in models):** DEFERRED — some String timestamp columns may remain in non-mixin fields.
+- **Phase F (Column renames):** DEFERRED — low priority.
+- **Phase G (env.py imports):** DONE — 10 missing models added. 33 tables in sync.
+- **Phase H (Float → Numeric):** DONE — 23 monetary columns converted to Numeric(12,6,asdecimal=False). 2 additional columns (agent_catalog.max_budget_usd, task_executions.duration_seconds) fixed separately.
+- **Phase I (Timezone timestamps):** DONE — 84 columns converted to timestamptz. TimestampMixin updated. utc_now() returns timezone-aware datetime. mission_events.timestamp converted from varchar(30) to timestamptz (was silently truncating timezone-aware ISO strings).
+- **Phase J (Status column storage):** DONE — MissionPlan.status, PlanTaskState.status, Session.status converted to Enum(native_enum=False). All code updated to use enum members. Existing data uppercased.
+- **Phase K:** Merged with Phase D — DONE.
+- **Phase L (Misc fixes):** DEFERRED — low priority.
 
-**Recommended implementation order:**
-1. Phase G (env.py imports) — 30 seconds, zero risk
-2. Phase D+K (5 missing FKs) — one migration, low risk
-3. Phase H (Float → Numeric) — one migration, fixes cost rounding
-4. Phase J (Status Enum consistency) — one migration, prevents silent bugs
-5. Phase C (Indexes) — one migration, performance
-6. Phase I (Timezone timestamps) — one migration, affects 25+ tables
-7. Phase A (CASCADE audit) — documentation + targeted changes
-8. Phases B, E, F, L — lower priority cleanup
+**Deferred phases (A, B, E, F, L)** are documentation and cleanup — no functional impact. Core integrity and performance phases are complete.
 
 ### v1.1 changelog (adversarial review)
 
