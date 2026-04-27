@@ -6,7 +6,7 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
+import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
 import type { WorkflowStep } from '@/types'
 import type { NodeStatus } from '@/hooks/use-workflow-run-status'
 import { NODE_WIDTH, getDomainBorder, getDomainBg, NODE_TYPE_STYLES } from './workflow-editor-types'
@@ -478,6 +478,52 @@ function MergeNodeRaw({ data, selected }: NodeProps) {
   )
 }
 
+// ── Sub-Workflow Node ───────────────────────────────────────────────────
+
+function SubWorkflowNodeRaw({ data, selected }: NodeProps) {
+  const step = (data as StepNodeData).step
+  const status = (data as StepNodeData).status ?? 'idle'
+  const config = step.sub_workflow_config
+  const wfName = config?.workflow_name || config?.workflow_id || '—'
+  const nameShort = wfName.length > 28 ? wfName.slice(0, 25) + '…' : wfName
+
+  return (
+    <div
+      className={[
+        'relative rounded-xl border-[3px] border-double px-3 py-2 shadow-sm transition-all',
+        NODE_TYPE_STYLES.sub_workflow.border,
+        NODE_TYPE_STYLES.sub_workflow.bg,
+        selected ? selectedRing : '',
+        STATUS_RING[status],
+      ].join(' ')}
+      style={{ width: NODE_WIDTH }}
+    >
+      <TargetHandle />
+      {status !== 'idle' && (
+        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
+          <StatusIcon status={status} />
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <Layers className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+        <span className="truncate text-sm font-medium">{step.id}</span>
+      </div>
+
+      <p className="mt-1 truncate text-[10px] text-muted-foreground" title={wfName}>
+        {nameShort}
+      </p>
+
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+        {config?.pass_context && <span>ctx</span>}
+        <span>depth ≤{config?.max_depth ?? 3}</span>
+      </div>
+
+      <SourceHandle />
+    </div>
+  )
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────
 
 export const WorkflowEditorNode = memo(AgentStepNodeRaw)
@@ -488,3 +534,4 @@ export const ToolCallNode = memo(ToolCallNodeRaw)
 export const LlmCallNode = memo(LlmCallNodeRaw)
 export const BranchNode = memo(BranchNodeRaw)
 export const MergeNode = memo(MergeNodeRaw)
+export const SubWorkflowNode = memo(SubWorkflowNodeRaw)

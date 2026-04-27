@@ -321,6 +321,15 @@ class WorkflowMergeCompletedEvent(SessionEvent):
     inputs_merged: int
 
 
+class WorkflowSubWorkflowCompletedEvent(SessionEvent):
+    event_type: str = "workflow.sub_workflow.completed"
+    workflow_run_id: str
+    step_id: str
+    child_run_id: str
+    success: bool
+    child_cost_usd: float
+
+
 class WorkflowStepSkippedEvent(SessionEvent):
     event_type: str = "workflow.step.skipped"
     workflow_run_id: str
@@ -801,6 +810,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.llm_call.completed": WorkflowLlmCallCompletedEvent,
     "workflow.branch.passed": WorkflowBranchPassedEvent,
     "workflow.merge.completed": WorkflowMergeCompletedEvent,
+    "workflow.sub_workflow.completed": WorkflowSubWorkflowCompletedEvent,
     "workflow.step.skipped": WorkflowStepSkippedEvent,
     "workflow.human_input.requested": WorkflowHumanInputRequestedEvent,
     "workflow.human_input.responded": WorkflowHumanInputRespondedEvent,

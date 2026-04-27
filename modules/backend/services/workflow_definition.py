@@ -168,7 +168,7 @@ class WorkflowDefinitionService(BaseService):
         warnings: list[str] = []
         if steps is not None and edges_json is not None:
             from modules.backend.services.workflow_validator import validate_workflow_graph
-            warnings = validate_workflow_graph(steps, edges_json)
+            warnings = validate_workflow_graph(steps, edges_json, current_workflow_id=workflow_id)
 
         workflow = await self._repo.update(workflow_id, **updates)
         return workflow, warnings

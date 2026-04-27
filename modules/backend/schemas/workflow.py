@@ -130,6 +130,17 @@ class MergeConfig(BaseModel):
     strategy: str = Field(default="wait_all", pattern=r"^(wait_all|wait_any)$")
 
 
+class SubWorkflowConfig(BaseModel):
+    """Configuration for a sub_workflow node — invoke another saved workflow."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_id: str = Field(..., min_length=1, max_length=100)
+    workflow_name: str = Field(default="", max_length=200)
+    pass_context: bool = Field(default=True)
+    max_depth: int = Field(default=3, ge=1, le=10)
+
+
 class WorkflowStepSchema(BaseModel):
     """A single step in a workflow.
 
@@ -149,7 +160,7 @@ class WorkflowStepSchema(BaseModel):
     description: str | None = Field(None, max_length=500)
     node_type: str = Field(
         default="agent_step",
-        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call|branch|merge)$",
+        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call|branch|merge|sub_workflow)$",
     )
     capability: str | None = Field(
         None,
@@ -161,6 +172,7 @@ class WorkflowStepSchema(BaseModel):
     tool_call_config: ToolCallConfig | None = None
     llm_call_config: LlmCallConfig | None = None
     merge_config: MergeConfig | None = None
+    sub_workflow_config: SubWorkflowConfig | None = None
     roster: str = Field(
         default="default",
         pattern=r"^[a-z][a-z0-9_-]*$",
@@ -206,6 +218,8 @@ class WorkflowStepSchema(BaseModel):
             raise ValueError("tool_call_config is required for tool_call nodes")
         if self.node_type == "llm_call" and self.llm_call_config is None:
             raise ValueError("llm_call_config is required for llm_call nodes")
+        if self.node_type == "sub_workflow" and self.sub_workflow_config is None:
+            raise ValueError("sub_workflow_config is required for sub_workflow nodes")
         return self
 
 

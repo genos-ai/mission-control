@@ -38,6 +38,7 @@ const WORKFLOW_EVENT_TYPES = new Set([
   'workflow.llm_call.completed',
   'workflow.branch.passed',
   'workflow.merge.completed',
+  'workflow.sub_workflow.completed',
   'workflow.human_input.requested',
   'workflow.human_input.responded',
   'workflow.run.completed',
@@ -106,6 +107,14 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
         case 'workflow.branch.passed':
         case 'workflow.merge.completed':
           setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'completed' }))
+          setProgress((prev) => [prev[0] + 1, prev[1]])
+          break
+
+        case 'workflow.sub_workflow.completed':
+          setNodeStatuses((prev) => ({
+            ...prev,
+            [String(d.step_id)]: d.success ? 'completed' : 'failed',
+          }))
           setProgress((prev) => [prev[0] + 1, prev[1]])
           break
 

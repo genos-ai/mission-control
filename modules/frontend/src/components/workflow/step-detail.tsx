@@ -3,11 +3,14 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Trash2, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useMissionWorkflows } from '@/hooks/use-workflows'
+import { ROUTES } from '@/lib/constants'
 import type { WorkflowStep } from '@/types'
 
 interface StepDetailProps {
@@ -15,10 +18,14 @@ interface StepDetailProps {
   onClose: () => void
   onUpdate: (updated: WorkflowStep) => void
   onDelete: () => void
+  missionId?: string
+  currentWorkflowId?: string
 }
 
-export function StepDetail({ step, onClose, onUpdate, onDelete }: StepDetailProps) {
+export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, currentWorkflowId }: StepDetailProps) {
+  const navigate = useNavigate()
   const [draft, setDraft] = useState<WorkflowStep>(step)
+  const { data: workflows = [] } = useMissionWorkflows(missionId)
 
   // Sync when a different step is selected
   useEffect(() => {
@@ -39,6 +46,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete }: StepDetailProp
     : nodeType === 'llm_call' ? Sparkles
     : nodeType === 'branch' ? Split
     : nodeType === 'merge' ? Merge
+    : nodeType === 'sub_workflow' ? Layers
     : Bot
 
   return (
@@ -405,6 +413,83 @@ export function StepDetail({ step, onClose, onUpdate, onDelete }: StepDetailProp
               options={['wait_all', 'wait_any']}
             />
           </Field>
+        )}
+
+        {/* ── Sub-workflow fields ──────────────────────────── */}
+        {nodeType === 'sub_workflow' && draft.sub_workflow_config && (
+          <>
+            <Field label="Target workflow">
+              <select
+                value={draft.sub_workflow_config.workflow_id}
+                onChange={(e) => {
+                  const wf = workflows.find((w) => w.id === e.target.value)
+                  update({
+                    sub_workflow_config: {
+                      ...draft.sub_workflow_config!,
+                      workflow_id: e.target.value,
+                      workflow_name: wf?.name ?? '',
+                    },
+                  })
+                }}
+                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">Select a workflow…</option>
+                {workflows
+                  .filter((w) => w.id !== currentWorkflowId)
+                  .map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            {draft.sub_workflow_config.workflow_id && missionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5 text-xs"
+                onClick={() =>
+                  navigate(ROUTES.MISSION_WORKFLOW_EDIT(missionId, draft.sub_workflow_config!.workflow_id))
+                }
+              >
+                <ExternalLink className="h-3 w-3" />
+                Open Sub-Workflow
+              </Button>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="pass-context"
+                checked={draft.sub_workflow_config.pass_context}
+                onChange={(e) =>
+                  update({
+                    sub_workflow_config: { ...draft.sub_workflow_config!, pass_context: e.target.checked },
+                  })
+                }
+                className="rounded border-input"
+              />
+              <label htmlFor="pass-context" className="text-xs text-muted-foreground">
+                Pass parent context to child
+              </label>
+            </div>
+            <Field label="Max depth">
+              <Input
+                className="h-8 text-xs"
+                type="number"
+                min={1}
+                max={10}
+                value={draft.sub_workflow_config.max_depth}
+                onChange={(e) =>
+                  update({
+                    sub_workflow_config: {
+                      ...draft.sub_workflow_config!,
+                      max_depth: parseInt(e.target.value) || 3,
+                    },
+                  })
+                }
+              />
+            </Field>
+          </>
         )}
       </div>
 

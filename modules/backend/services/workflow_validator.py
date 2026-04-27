@@ -18,6 +18,7 @@ from collections import defaultdict
 def validate_workflow_graph(
     steps: list[dict],
     edges: list[dict],
+    current_workflow_id: str | None = None,
 ) -> list[str]:
     """Validate a workflow graph and return a list of error messages.
 
@@ -39,6 +40,8 @@ def validate_workflow_graph(
     errors += _check_condition_outputs(step_types, edges)
     errors += _check_branch_outputs(step_types, edges)
     errors += _check_merge_inputs(step_types, edges)
+    if current_workflow_id:
+        errors += _check_sub_workflow_self_reference(steps, current_workflow_id)
 
     return errors
 
@@ -180,4 +183,18 @@ def _check_merge_inputs(
             continue
         if in_count.get(sid, 0) < 2:
             errors.append(f"Merge '{sid}' needs at least 2 incoming edges (has {in_count.get(sid, 0)})")
+    return errors
+
+
+def _check_sub_workflow_self_reference(
+    steps: list[dict], current_workflow_id: str,
+) -> list[str]:
+    """Sub-workflow nodes must not reference the current workflow (direct recursion)."""
+    errors = []
+    for s in steps:
+        if s.get("node_type") != "sub_workflow":
+            continue
+        config = s.get("sub_workflow_config") or {}
+        if config.get("workflow_id") == current_workflow_id:
+            errors.append(f"Sub-workflow '{s['id']}' references itself (direct recursion)")
     return errors

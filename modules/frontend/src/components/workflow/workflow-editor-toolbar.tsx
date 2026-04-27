@@ -8,6 +8,7 @@ import {
   Bot,
   GitBranch,
   History,
+  Layers,
   LayoutDashboard,
   Merge,
   Play,
@@ -119,6 +120,11 @@ export function WorkflowEditorToolbar({
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add join (merge)"
           onClick={() => onAddNode('merge')}>
           <Merge className="h-3.5 w-3.5" />
+        </Button>
+        <div className="mx-0.5 h-4 w-px bg-border" />
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add sub-workflow"
+          onClick={() => onAddNode('sub_workflow')}>
+          <Layers className="h-3.5 w-3.5" />
         </Button>
       </div>
 

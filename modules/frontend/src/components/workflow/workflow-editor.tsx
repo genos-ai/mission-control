@@ -25,7 +25,7 @@ import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { useWorkflowRuns } from '@/hooks/use-workflows'
 import { StepDetail } from './step-detail'
 import { WorkflowRunHistory } from './workflow-run-history'
-import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode, BranchNode, MergeNode } from './workflow-editor-node'
+import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode, BranchNode, MergeNode, SubWorkflowNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import { NodePalette } from './node-palette'
 import {
@@ -47,6 +47,7 @@ const STEP_NODE_TYPE_MAP: Record<string, string> = {
   llm_call: 'llmCallStep',
   branch: 'branchStep',
   merge: 'mergeStep',
+  sub_workflow: 'subWorkflowStep',
 }
 
 function stepsToNodes(
@@ -140,6 +141,7 @@ const nodeTypes = {
   llmCallStep: LlmCallNode,
   branchStep: BranchNode,
   mergeStep: MergeNode,
+  subWorkflowStep: SubWorkflowNode,
 }
 
 interface WorkflowEditorProps {
@@ -490,6 +492,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         : nodeType === 'llm_call' ? 'llm'
         : nodeType === 'branch' ? 'fork'
         : nodeType === 'merge' ? 'join'
+        : nodeType === 'sub_workflow' ? 'sub'
         : 'input'
       const suffix = Math.random().toString(36).slice(2, 6)
       const stepId = `${prefix}-${suffix}`
@@ -527,6 +530,9 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         } : {}),
         ...(nodeType === 'merge' ? {
           merge_config: { strategy: 'wait_all' },
+        } : {}),
+        ...(nodeType === 'sub_workflow' ? {
+          sub_workflow_config: { workflow_id: '', workflow_name: '', pass_context: true, max_depth: 3 },
         } : {}),
       }
 
@@ -656,6 +662,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
               onClose={() => setSelectedStep(null)}
               onUpdate={handleStepUpdate}
               onDelete={handleDeleteSelectedNode}
+              missionId={missionId}
+              currentWorkflowId={workflow.id}
             />
           </div>
         )}

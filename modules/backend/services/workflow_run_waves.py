@@ -30,6 +30,7 @@ from modules.backend.events.types import (
     WorkflowNotificationSentEvent,
     WorkflowRunStartedEvent,
     WorkflowStepSkippedEvent,
+    WorkflowSubWorkflowCompletedEvent,
     WorkflowToolCallCompletedEvent,
 )
 
@@ -242,6 +243,8 @@ class WorkflowRunWavesMixin:
             return await self._execute_branch_step(run, step, completed_outcomes)
         if node_type == "merge":
             return await self._execute_merge_step(run, step, completed_outcomes)
+        if node_type == "sub_workflow":
+            return await self._execute_sub_workflow_step(run, step, session_id, completed_outcomes, execution_service)
 
         # Default: agent_step — existing logic
         # Resolve upstream context from dependencies
@@ -534,6 +537,73 @@ class WorkflowRunWavesMixin:
         ))
         outputs = {"merged": merged, "input_count": len(merged)}
         return VirtualExecution(id=step.id), outputs
+
+    async def _execute_sub_workflow_step(
+        self,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
+        session_id: str,
+        completed_outcomes: dict[str, dict],
+        execution_service: ExecutionService,
+    ) -> tuple[VirtualExecution, dict]:
+        """Invoke another saved workflow as a child and await its completion."""
+        config = step.sub_workflow_config
+        if not config:
+            raise RuntimeError(f"sub_workflow_config missing for step '{step.id}'")
+
+        # Depth guard — prevent unbounded recursion
+        parent_depth = (run.context or {}).get("_sub_workflow_depth", 0)
+        if parent_depth >= config.max_depth:
+            raise RuntimeError(
+                f"Sub-workflow depth limit reached ({config.max_depth}) at step '{step.id}'"
+            )
+
+        # Build child context
+        child_context: dict[str, Any] = {"_sub_workflow_depth": parent_depth + 1}
+        if config.pass_context:
+            child_context.update(run.context or {})
+            child_context["_sub_workflow_depth"] = parent_depth + 1
+
+        logger.info(
+            "Starting sub-workflow",
+            extra={
+                "step_id": step.id,
+                "run_id": run.id,
+                "child_workflow_id": config.workflow_id,
+                "depth": parent_depth + 1,
+            },
+        )
+
+        child_run = await self.run_workflow_from_definition(
+            workflow_definition_id=config.workflow_id,
+            mission_id=run.mission_id,
+            triggered_by=f"sub_workflow:{step.id}",
+            context_overrides=child_context,
+        )
+
+        child_status = child_run.status if isinstance(child_run.status, str) else child_run.status.value
+        success = child_status.upper() != "FAILED"
+
+        await self._publish_workflow_event(run.mission_id, WorkflowSubWorkflowCompletedEvent(
+            session_id=_uuid.UUID(session_id), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id,
+            child_run_id=child_run.id, success=success,
+            child_cost_usd=child_run.total_cost_usd,
+        ))
+
+        outputs = {
+            "child_run_id": child_run.id,
+            "status": child_status,
+            "result_summary": child_run.result_summary or "",
+            "total_cost_usd": child_run.total_cost_usd,
+        }
+
+        if not success:
+            raise RuntimeError(
+                f"Sub-workflow step '{step.id}' child run failed: {child_run.error_data}"
+            )
+
+        return VirtualExecution(id=step.id, total_cost_usd=child_run.total_cost_usd), outputs
 
     async def _execute_human_input_step(
         self,
