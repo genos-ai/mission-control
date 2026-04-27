@@ -25,6 +25,8 @@ from modules.backend.events.types import (
     WorkflowConditionEvaluatedEvent,
     WorkflowExecutionCompletedEvent,
     WorkflowExecutionStartedEvent,
+    WorkflowHumanInputRequestedEvent,
+    WorkflowHumanInputRespondedEvent,
     WorkflowLlmCallCompletedEvent,
     WorkflowMergeCompletedEvent,
     WorkflowNotificationSentEvent,
@@ -672,6 +674,16 @@ class WorkflowRunWavesMixin:
             extra={"step_id": step.id, "temporal_wf_id": temporal_wf_id, "timeout_s": timeout_seconds},
         )
 
+        # Notify frontend that we're waiting for human input
+        from datetime import datetime, timezone, timedelta
+        timeout_at = (datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)).isoformat()
+        await self._publish_workflow_event(run.mission_id, WorkflowHumanInputRequestedEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id, request_id=request_id,
+            prompt_message=prompt, channel=wf_input.channel,
+            choices=wf_input.choices, timeout_at=timeout_at,
+        ))
+
         # Block until human responds or timeout
         result: HumanInputResult = await handle.result()
 
@@ -688,6 +700,14 @@ class WorkflowRunWavesMixin:
                 "response_len": len(result.response),
             },
         )
+
+        # Notify frontend that human has responded
+        await self._publish_workflow_event(run.mission_id, WorkflowHumanInputRespondedEvent(
+            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
+            workflow_run_id=run.id, step_id=step.id, request_id=request_id,
+            response=result.response, responder_id=result.responder_id or "",
+            timed_out=result.timed_out,
+        ))
 
         outputs = {
             "response": result.response,

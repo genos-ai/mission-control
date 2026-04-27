@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useCatalog } from '@/hooks/use-catalog'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { ROUTES } from '@/lib/constants'
 import type { WorkflowStep } from '@/types'
@@ -25,6 +26,7 @@ interface StepDetailProps {
 export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, currentWorkflowId }: StepDetailProps) {
   const navigate = useNavigate()
   const [draft, setDraft] = useState<WorkflowStep>(step)
+  const { data: agents = [] } = useCatalog()
   const { data: workflows = [] } = useMissionWorkflows(missionId)
 
   // Sync when a different step is selected
@@ -80,13 +82,19 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
         {/* ── Agent step fields ──────────────────────────── */}
         {nodeType === 'agent_step' && (
           <>
-            <Field label="Capability">
-              <Input
-                className="h-8 text-xs"
+            <Field label="Agent">
+              <select
                 value={draft.capability ?? ''}
-                placeholder="e.g. code.general"
                 onChange={(e) => update({ capability: e.target.value || null })}
-              />
+                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">Select an agent…</option>
+                {agents.map((a) => (
+                  <option key={a.agent_name} value={a.agent_name}>
+                    {a.agent_name}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="Environment">
               <Select
@@ -280,6 +288,22 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                 }
               />
             </Field>
+            <Field label="Choices (one per line)">
+              <Textarea
+                className="min-h-[50px] text-xs"
+                value={(draft.human_input_config.choices ?? []).join('\n')}
+                placeholder="Leave empty for free text"
+                onChange={(e) => {
+                  const lines = e.target.value.split('\n').filter((l) => l.trim())
+                  update({
+                    human_input_config: {
+                      ...draft.human_input_config!,
+                      choices: lines.length > 0 ? lines : null,
+                    },
+                  })
+                }}
+              />
+            </Field>
           </>
         )}
 
@@ -391,6 +415,29 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                 />
               </Field>
             </div>
+            <Field label="Structured output (JSON schema)">
+              <Textarea
+                className="min-h-[60px] font-mono text-xs"
+                value={draft.llm_call_config.structured_output ? JSON.stringify(draft.llm_call_config.structured_output, null, 2) : ''}
+                placeholder="Optional JSON schema for structured output"
+                onChange={(e) => {
+                  if (!e.target.value.trim()) {
+                    update({
+                      llm_call_config: { ...draft.llm_call_config!, structured_output: null },
+                    })
+                    return
+                  }
+                  try {
+                    const parsed = JSON.parse(e.target.value)
+                    update({
+                      llm_call_config: { ...draft.llm_call_config!, structured_output: parsed },
+                    })
+                  } catch {
+                    // Allow typing invalid JSON mid-edit
+                  }
+                }}
+              />
+            </Field>
           </>
         )}
         {/* ── Branch fields ──────────────────────────────────── */}

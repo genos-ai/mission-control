@@ -89,6 +89,22 @@ export function useMissionWorkflows(missionId: string | undefined) {
   })
 }
 
+export function useCreateWorkflow(missionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { name: string; description?: string }) =>
+      api.post<{ id: string; name: string }>(
+        `/missions/${missionId}/workflows`,
+        data,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: workflowKeys.missionWorkflows(missionId),
+      })
+    },
+  })
+}
+
 export function useImportTemplate(missionId: string) {
   const qc = useQueryClient()
   return useMutation({

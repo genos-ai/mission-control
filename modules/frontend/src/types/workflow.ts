@@ -48,6 +48,7 @@ export interface WorkflowStep {
     prompt_template: string
     temperature: number
     max_tokens: number | null
+    structured_output: Record<string, unknown> | null
   } | null
   merge_config?: {
     strategy: string
@@ -177,7 +178,22 @@ export interface WorkflowRunRecord {
 }
 
 // Architect types
+export interface ArchitectGraphProposal {
+  nodes: Array<{
+    id: string
+    label: string
+    capability: string
+    complexity_tier?: string
+    environment?: string
+  }>
+  edges: Array<{
+    source: string
+    target: string
+  }>
+}
+
 export interface ArchitectChatResponse {
   response: string
   usage: string | null
+  graph_proposal?: ArchitectGraphProposal | null
 }

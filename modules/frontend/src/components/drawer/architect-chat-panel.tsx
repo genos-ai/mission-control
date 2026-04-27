@@ -1,15 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send } from 'lucide-react'
+import { Send, Wand2 } from 'lucide-react'
 import { useDrawerStore } from '@/stores/drawer'
 import { useArchitectChat } from '@/hooks/use-workflows'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
+import type { ArchitectGraphProposal } from '@/types'
 
 interface Message {
   role: 'user' | 'architect'
   content: string
+  graphProposal?: ArchitectGraphProposal | null
 }
 
 export function ArchitectChatPanel() {
@@ -24,6 +26,10 @@ export function ArchitectChatPanel() {
 }
 
 function ArchitectChat({ missionId }: { missionId: string }) {
+  const { context } = useDrawerStore()
+  const onApplyProposal = context.onApplyProposal as
+    | ((proposal: ArchitectGraphProposal) => void)
+    | undefined
   const chatMutation = useArchitectChat(missionId)
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -44,7 +50,11 @@ function ArchitectChat({ missionId }: { missionId: string }) {
       onSuccess: (data) => {
         setMessages((prev) => [
           ...prev,
-          { role: 'architect', content: data.response },
+          {
+            role: 'architect',
+            content: data.response,
+            graphProposal: data.graph_proposal ?? null,
+          },
         ])
       },
       onError: (err) => {
@@ -90,6 +100,17 @@ function ArchitectChat({ missionId }: { missionId: string }) {
               <MarkdownRenderer content={msg.content} />
             ) : (
               <div className="whitespace-pre-wrap">{msg.content}</div>
+            )}
+            {msg.graphProposal && onApplyProposal && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="mt-2 gap-1.5 text-xs"
+                onClick={() => onApplyProposal(msg.graphProposal!)}
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                Apply to Canvas
+              </Button>
             )}
           </div>
         ))}

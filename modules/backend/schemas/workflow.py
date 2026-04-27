@@ -120,6 +120,7 @@ class LlmCallConfig(BaseModel):
     prompt_template: str = Field(..., min_length=1, max_length=10000)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_tokens: int | None = Field(None, ge=1, le=128000)
+    structured_output: dict[str, Any] | None = Field(None)
 
 
 class MergeConfig(BaseModel):

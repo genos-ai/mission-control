@@ -27,7 +27,7 @@ import {
   Play,
   Pencil,
   Copy,
-  Sparkles,
+  Plus,
   CheckCircle2,
   Circle,
   Loader2,
@@ -41,6 +41,7 @@ import {
   useMissionWorkflows,
   useWorkflowTemplates,
   useImportTemplate,
+  useCreateWorkflow,
   useRunWorkflow,
   useDeleteWorkflow,
 } from '@/hooks/use-workflows'
@@ -51,8 +52,24 @@ import type { MissionWorkflow, WorkflowListItem } from '@/types'
 // ── Root ────────────────────────────────────────────────────────────────
 
 export function WorkflowsPanel({ missionId }: { missionId: string }) {
+  const navigate = useNavigate()
   const { data: missionWorkflows, isLoading: loadingMission } = useMissionWorkflows(missionId)
   const { data: templates, isLoading: loadingTemplates } = useWorkflowTemplates()
+  const createWorkflow = useCreateWorkflow(missionId)
+
+  const handleCreate = () => {
+    const name = window.prompt('Workflow name (lowercase, hyphens, underscores):')
+    if (!name) return
+    const sanitized = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '')
+    if (!sanitized) return
+    createWorkflow.mutate({ name: sanitized }, {
+      onSuccess: (data) => {
+        toast.success(`Created workflow: ${data.name}`)
+        navigate(ROUTES.MISSION_WORKFLOW_EDIT(missionId, data.id))
+      },
+      onError: () => toast.error('Failed to create workflow'),
+    })
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -65,10 +82,10 @@ export function WorkflowsPanel({ missionId }: { missionId: string }) {
           size="sm"
           variant="ghost"
           className="h-5 gap-1 px-2 text-[11px]"
-          disabled
-          title="Plan 45 Phase 4 — visual editor"
+          onClick={handleCreate}
+          disabled={createWorkflow.isPending}
         >
-          <Sparkles className="h-3 w-3" />
+          {createWorkflow.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
           New workflow
         </Button>
       </div>

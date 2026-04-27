@@ -20,7 +20,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import toast from 'react-hot-toast'
-import type { WorkflowStep } from '@/types'
+import type { WorkflowStep, ArchitectGraphProposal } from '@/types'
+import { useDrawerStore } from '@/stores/drawer'
 import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { useWorkflowRuns } from '@/hooks/use-workflows'
 import { StepDetail } from './step-detail'
@@ -308,9 +309,18 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         return false
       }
       if (canReach(connection.target!, connection.source!)) return false
+
+      // Node-type-specific constraints
+      const sourceNode = nodes.find((n) => n.id === connection.source)
+      if (sourceNode) {
+        const outgoing = edges.filter((e) => e.source === connection.source).length
+        // Condition nodes: max 2 outgoing (Yes/No)
+        if (sourceNode.type === 'conditionStep' && outgoing >= 2) return false
+      }
+
       return true
     },
-    [edges],
+    [edges, nodes],
   )
 
   // Connect nodes — create edge on drag
@@ -526,7 +536,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
           tool_call_config: { tool_name: 'search_web', tool_args: {} },
         } : {}),
         ...(nodeType === 'llm_call' ? {
-          llm_call_config: { model: 'copilot:claude-haiku-4.5', system_prompt: null, prompt_template: 'Summarize the following:\n{{@node.step-id.output}}', temperature: 0.0, max_tokens: null },
+          llm_call_config: { model: 'copilot:claude-haiku-4.5', system_prompt: null, prompt_template: 'Summarize the following:\n{{@node.step-id.output}}', temperature: 0.0, max_tokens: null, structured_output: null },
         } : {}),
         ...(nodeType === 'merge' ? {
           merge_config: { strategy: 'wait_all' },
@@ -551,6 +561,76 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     },
     [nodes, setNodes, pushHistory],
   )
+
+  // ── Architect integration ────────────────────────────────────────────────
+
+  const drawerStore = useDrawerStore()
+
+  const handleApplyProposal = useCallback(
+    (proposal: ArchitectGraphProposal) => {
+      pushHistory()
+
+      // Convert proposal nodes to WorkflowStep + React Flow nodes
+      const newSteps: WorkflowStep[] = proposal.nodes.map((n) => ({
+        id: n.id,
+        description: n.label,
+        node_type: 'agent_step',
+        capability: n.capability || null,
+        roster: 'default',
+        complexity_tier: (n.complexity_tier as 'simple' | 'complex') ?? 'simple',
+        cost_ceiling_usd: null,
+        environment: (n.environment as 'local' | 'container') ?? 'local',
+        input: {},
+        output_mapping: null,
+        depends_on: [],
+        timeout_seconds: null,
+        max_refinement_rounds: 1,
+        termination: 'completion',
+        max_iterations: null,
+      }))
+
+      const newFlowEdges: Edge[] = proposal.edges.map((e) => ({
+        id: `${e.source}->${e.target}`,
+        source: e.source,
+        target: e.target,
+        style: { stroke: 'hsl(var(--muted-foreground) / 0.4)', strokeWidth: 1.5 },
+      }))
+
+      // Build depends_on from edges
+      const depsMap: Record<string, string[]> = {}
+      for (const e of proposal.edges) {
+        if (!depsMap[e.target]) depsMap[e.target] = []
+        depsMap[e.target].push(e.source)
+      }
+      for (const s of newSteps) {
+        s.depends_on = depsMap[s.id] ?? []
+      }
+
+      let newNodes: Node[] = newSteps.map((step) => ({
+        id: step.id,
+        type: STEP_NODE_TYPE_MAP[step.node_type ?? 'agent_step'] ?? 'workflowStep',
+        position: { x: 0, y: 0 },
+        data: { step },
+      }))
+
+      // Auto-layout the proposed graph
+      newNodes = dagreLayout(newNodes, newFlowEdges)
+
+      setNodes(newNodes)
+      setEdges(newFlowEdges)
+      setIsDirty(true)
+      setSelectedStep(null)
+      toast.success(`Applied workflow proposal (${newNodes.length} nodes)`)
+    },
+    [setNodes, setEdges, pushHistory],
+  )
+
+  const handleOpenArchitect = useCallback(() => {
+    drawerStore.open('architect-chat', {
+      missionId,
+      onApplyProposal: handleApplyProposal,
+    })
+  }, [drawerStore, missionId, handleApplyProposal])
 
   // Palette selection → add node + close palette
   const handlePaletteSelect = useCallback(
@@ -606,6 +686,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         onRun={handleRun}
         onToggleHistory={handleToggleHistory}
         onAddNode={handleAddNode}
+        onOpenArchitect={handleOpenArchitect}
       />
 
       <div className="relative flex flex-1 overflow-hidden">

@@ -120,6 +120,46 @@ async def list_workflow_runs(
     )
 
 
+class CreateWorkflowRequest(BaseModel):
+    """Request body for creating a new blank workflow."""
+    name: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_-]+$")
+    description: str = Field(default="", max_length=500)
+
+
+@router.post(
+    "/{mission_id}/workflows",
+    response_model=ApiResponse,
+    summary="Create a new blank workflow",
+)
+async def create_workflow(
+    mission_id: str,
+    data: CreateWorkflowRequest,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Create a new blank workflow definition for a mission."""
+    from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+    service = WorkflowDefinitionService(db)
+    workflow = await service.create_workflow(
+        mission_id=mission_id,
+        name=data.name,
+        description=data.description,
+        objective={"statement": data.description or data.name, "category": "general", "owner": "user", "priority": "medium"},
+        steps=[],
+    )
+    return ApiResponse(
+        success=True,
+        data={
+            "id": workflow.id,
+            "name": workflow.name,
+            "description": workflow.description,
+            "mission_id": workflow.mission_id,
+        },
+        metadata={"request_id": request_id},
+    )
+
+
 @router.post(
     "/{mission_id}/workflows/import",
     response_model=ApiResponse,
@@ -315,6 +355,78 @@ async def save_workflow_graph(
     )
 
 
+class ValidateGraphRequest(BaseModel):
+    """Request body for validating a workflow graph."""
+    steps: list[dict[str, Any]]
+    edges_json: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post(
+    "/{mission_id}/workflows/{workflow_id}/validate",
+    response_model=ApiResponse,
+    summary="Validate workflow graph",
+)
+async def validate_workflow_graph_endpoint(
+    mission_id: str,
+    workflow_id: str,
+    data: ValidateGraphRequest,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Validate a workflow graph without saving. Returns validation errors/warnings."""
+    from modules.backend.services.workflow_validator import validate_workflow_graph
+
+    errors = validate_workflow_graph(data.steps, data.edges_json, current_workflow_id=workflow_id)
+    return ApiResponse(
+        success=len(errors) == 0,
+        data={
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "step_count": len(data.steps),
+        },
+        metadata={"request_id": request_id},
+    )
+
+
+@router.get(
+    "/{mission_id}/workflow-runs/{run_id}",
+    response_model=ApiResponse,
+    summary="Get single workflow run detail",
+)
+async def get_workflow_run(
+    mission_id: str,
+    run_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Get a single workflow run by ID."""
+    from modules.backend.repositories.workflow_run import WorkflowRunRepository
+
+    repo = WorkflowRunRepository(db)
+    run = await repo.get_by_id(run_id)
+    if run.mission_id != mission_id:
+        raise NotFoundError(f"Workflow run {run_id} not found in mission {mission_id}")
+
+    return ApiResponse(
+        success=True,
+        data={
+            "id": run.id,
+            "workflow_name": run.workflow_name,
+            "workflow_version": run.workflow_version,
+            "status": run.status.name if hasattr(run.status, "name") else str(run.status),
+            "trigger_type": run.trigger_type,
+            "triggered_by": run.triggered_by,
+            "total_cost_usd": float(run.total_cost_usd or 0),
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+            "error_data": run.error_data,
+            "result_summary": run.result_summary,
+            "context": run.context,
+        },
+        metadata={"request_id": request_id},
+    )
+
+
 # ---- Workflow schedules ----
 
 
@@ -451,12 +563,22 @@ async def architect_chat(
     from pydantic_ai.exceptions import ModelHTTPError
     from modules.backend.services.workflow_architect import WorkflowArchitectService
 
+    # Capture graph events emitted by the render_graph tool
+    from modules.backend.events.types import WorkflowGraphEvent
+
+    captured_graphs: list[dict] = []
+
+    async def capture_event(event):
+        if isinstance(event, WorkflowGraphEvent):
+            captured_graphs.append(event.graph_data)
+
     service = WorkflowArchitectService(db)
     try:
         result = await service.chat(
             mission_id=mission_id,
             message=message,
             session_id=session_id,
+            on_event=capture_event,
         )
     except ModelHTTPError as e:
         body = e.body if isinstance(e.body, dict) else {}
@@ -473,12 +595,16 @@ async def architect_chat(
             ).model_dump(),
         )
 
+    data: dict = {
+        "response": result.get("response", ""),
+        "usage": str(result.get("usage")) if result.get("usage") else None,
+    }
+    if captured_graphs:
+        data["graph_proposal"] = captured_graphs[-1]  # last rendered graph
+
     return ApiResponse(
         success=True,
-        data={
-            "response": result.get("response", ""),
-            "usage": str(result.get("usage")) if result.get("usage") else None,
-        },
+        data=data,
         metadata={"request_id": request_id},
     )
 

@@ -17,6 +17,7 @@ import {
   Loader2,
   Sparkles,
   UserRound,
+  Wand2,
   Wrench,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -37,6 +38,7 @@ interface WorkflowEditorToolbarProps {
   onRun: () => void
   onToggleHistory: () => void
   onAddNode: (nodeType: string) => void
+  onOpenArchitect?: () => void
 }
 
 export function WorkflowEditorToolbar({
@@ -53,6 +55,7 @@ export function WorkflowEditorToolbar({
   onRun,
   onToggleHistory,
   onAddNode,
+  onOpenArchitect,
 }: WorkflowEditorToolbarProps) {
   const navigate = useNavigate()
   const { id: missionId } = useParams<{ id: string }>()
@@ -127,6 +130,21 @@ export function WorkflowEditorToolbar({
           <Layers className="h-3.5 w-3.5" />
         </Button>
       </div>
+
+      {onOpenArchitect && (
+        <>
+          <div className="mx-0.5 h-4 w-px bg-border" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={onOpenArchitect}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            Architect
+          </Button>
+        </>
+      )}
 
       <div className="flex-1" />
 
