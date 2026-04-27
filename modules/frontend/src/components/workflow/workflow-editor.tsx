@@ -27,6 +27,7 @@ import { StepDetail } from './step-detail'
 import { WorkflowRunHistory } from './workflow-run-history'
 import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode, BranchNode, MergeNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
+import { NodePalette } from './node-palette'
 import {
   dagreLayout,
   NODE_WIDTH,
@@ -162,6 +163,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const [isRunning, setIsRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [showPalette, setShowPalette] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRef = useRef<HistoryEntry[]>([])
   const redoRef = useRef<HistoryEntry[]>([])
@@ -452,6 +454,13 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       } else if (mod && e.key === 'z') {
         e.preventDefault()
         handleUndo()
+      } else if (e.key === ' ' && !mod) {
+        // Space opens node palette (only when not typing in an input/textarea)
+        const tag = (e.target as HTMLElement).tagName
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+          e.preventDefault()
+          setShowPalette(true)
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -537,6 +546,15 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     [nodes, setNodes, pushHistory],
   )
 
+  // Palette selection → add node + close palette
+  const handlePaletteSelect = useCallback(
+    (nodeType: string) => {
+      setShowPalette(false)
+      handleAddNode(nodeType)
+    },
+    [handleAddNode],
+  )
+
   // Update step from config panel
   const handleStepUpdate = useCallback(
     (updated: WorkflowStep) => {
@@ -620,6 +638,14 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
               maskColor="hsl(var(--background) / 0.8)"
             />
           </ReactFlow>
+
+          {/* Node palette (Space key) */}
+          {showPalette && (
+            <NodePalette
+              onSelect={handlePaletteSelect}
+              onClose={() => setShowPalette(false)}
+            />
+          )}
         </div>
 
         {/* Right panel — step detail or run history (mutually exclusive) */}
