@@ -9,8 +9,7 @@ Seeded from config/agents/**/agent.yaml + config/prompts/agents/**/system.md
 on first run. After seeding, the database is the source of truth.
 """
 
-from sqlalchemy import Boolean, Numeric, String, Text
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy import JSON, Boolean, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
