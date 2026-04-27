@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCatalog } from '@/hooks/use-catalog'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { ROUTES } from '@/lib/constants'
+import { VariableAutocomplete } from './variable-autocomplete'
 import type { WorkflowStep } from '@/types'
 
 interface StepDetailProps {
@@ -21,9 +22,10 @@ interface StepDetailProps {
   onDelete: () => void
   missionId?: string
   currentWorkflowId?: string
+  upstreamNodeIds?: string[]
 }
 
-export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, currentWorkflowId }: StepDetailProps) {
+export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, currentWorkflowId, upstreamNodeIds = [] }: StepDetailProps) {
   const navigate = useNavigate()
   const [draft, setDraft] = useState<WorkflowStep>(step)
   const { data: agents = [] } = useCatalog()
@@ -154,14 +156,17 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
         {nodeType === 'condition' && draft.condition_config && (
           <>
             <Field label="Expression">
-              <Textarea
+              <VariableAutocomplete
                 className="min-h-[50px] font-mono text-xs"
                 value={draft.condition_config.expression}
-                onChange={(e) =>
+                onChange={(v) =>
                   update({
-                    condition_config: { ...draft.condition_config!, expression: e.target.value },
+                    condition_config: { ...draft.condition_config!, expression: v },
                   })
                 }
+                upstreamNodeIds={upstreamNodeIds}
+                templateMode={false}
+                placeholder="@node.step-id.field >= 0.7"
               />
             </Field>
             <div className="grid grid-cols-2 gap-2">
@@ -218,14 +223,16 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
               />
             </Field>
             <Field label="Message template">
-              <Textarea
+              <VariableAutocomplete
                 className="min-h-[60px] text-xs"
                 value={draft.notification_config.message_template}
-                onChange={(e) =>
+                onChange={(v) =>
                   update({
-                    notification_config: { ...draft.notification_config!, message_template: e.target.value },
+                    notification_config: { ...draft.notification_config!, message_template: v },
                   })
                 }
+                upstreamNodeIds={upstreamNodeIds}
+                placeholder="Use {{@node.step-id.field}} for variables"
               />
             </Field>
           </>
@@ -235,14 +242,16 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
         {nodeType === 'human_input' && draft.human_input_config && (
           <>
             <Field label="Prompt message">
-              <Textarea
+              <VariableAutocomplete
                 className="min-h-[60px] text-xs"
                 value={draft.human_input_config.prompt_message}
-                onChange={(e) =>
+                onChange={(v) =>
                   update({
-                    human_input_config: { ...draft.human_input_config!, prompt_message: e.target.value },
+                    human_input_config: { ...draft.human_input_config!, prompt_message: v },
                   })
                 }
+                upstreamNodeIds={upstreamNodeIds}
+                placeholder="Use {{@node.step-id.field}} for variables"
               />
             </Field>
             <Field label="Channel">
@@ -370,15 +379,16 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
               />
             </Field>
             <Field label="Prompt template">
-              <Textarea
+              <VariableAutocomplete
                 className="min-h-[80px] text-xs"
                 value={draft.llm_call_config.prompt_template}
                 placeholder="Use {{@node.step-id.field}} for variables"
-                onChange={(e) =>
+                onChange={(v) =>
                   update({
-                    llm_call_config: { ...draft.llm_call_config!, prompt_template: e.target.value },
+                    llm_call_config: { ...draft.llm_call_config!, prompt_template: v },
                   })
                 }
+                upstreamNodeIds={upstreamNodeIds}
               />
             </Field>
             <div className="grid grid-cols-2 gap-2">

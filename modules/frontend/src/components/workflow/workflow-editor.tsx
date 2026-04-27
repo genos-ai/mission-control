@@ -745,6 +745,9 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
               onDelete={handleDeleteSelectedNode}
               missionId={missionId}
               currentWorkflowId={workflow.id}
+              upstreamNodeIds={edges
+                .filter((e) => e.target === selectedStep.id)
+                .map((e) => e.source)}
             />
           </div>
         )}
