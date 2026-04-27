@@ -10,6 +10,8 @@ with ON DELETE CASCADE so orphan embeddings are cleaned when a
 mission is deleted.
 """
 
+from datetime import datetime
+
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -67,7 +69,7 @@ class Embedding(UUIDMixin, Base):
     content_hash: Mapped[str | None] = mapped_column(
         String(64), nullable=True,
     )
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now,
     )
 
