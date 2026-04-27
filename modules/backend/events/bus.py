@@ -13,6 +13,7 @@ import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator
+from datetime import datetime
 
 from redis.asyncio import Redis
 
@@ -99,9 +100,9 @@ class SessionEventBus:
                         "mid": mission_id,
                         "sid": str(event.session_id),
                         "etype": event.event_type,
-                        "ts": event.timestamp.isoformat()
+                        "ts": event.timestamp
                             if hasattr(event.timestamp, "isoformat")
-                            else str(event.timestamp),
+                            else datetime.fromisoformat(str(event.timestamp)),
                         "src": getattr(event, "agent_id", None)
                             or getattr(event, "source", ""),
                         "data": event.model_dump_json(),
@@ -109,7 +110,7 @@ class SessionEventBus:
                 )
                 await db.commit()
         except Exception:
-            logger.debug("Event persistence failed (non-fatal)", exc_info=True)
+            logger.warning("Event persistence failed (non-fatal)", exc_info=True)
 
     async def subscribe_mission(self, mission_id: str) -> AsyncIterator[SessionEvent]:
         """Subscribe to all events for a mission."""

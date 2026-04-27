@@ -36,7 +36,7 @@ class MissionEvent(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     timestamp: Mapped[str] = mapped_column(
-        String(30),
+        DateTime(timezone=True),
         nullable=False,
     )
     source: Mapped[str] = mapped_column(
