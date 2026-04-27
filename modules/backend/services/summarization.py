@@ -156,7 +156,7 @@ class SummarizationService(BaseService):
             summary="; ".join(
                 m if isinstance(m, str) else str(m) for m in to_archive
             ),
-            mission_ids=[],
+            execution_ids=[],
             key_outcomes={"milestones": to_archive},
             domain_tags=[],
             period_end=utc_now().isoformat(),
@@ -228,7 +228,7 @@ class SummarizationService(BaseService):
         total_summarized = 0
         for i in range(0, len(records), batch_size):
             batch = records[i : i + batch_size]
-            mission_ids = [r.id for r in batch]
+            execution_ids = [r.id for r in batch]
             objectives = [
                 r.objective_statement or "(no objective)"
                 for r in batch
@@ -272,7 +272,7 @@ class SummarizationService(BaseService):
                 mission_id=mission_id,
                 title=f"Executions batch ({len(batch)} executions)",
                 summary="\n".join(summary_parts),
-                mission_ids=mission_ids,
+                execution_ids=execution_ids,
                 key_outcomes={
                     "completed": completed_count,
                     "failed": failed_count,
@@ -286,7 +286,7 @@ class SummarizationService(BaseService):
 
             await self.session.execute(
                 update(ExecutionRecord)
-                .where(ExecutionRecord.id.in_(mission_ids))
+                .where(ExecutionRecord.id.in_(execution_ids))
                 .values(summarized=True)
             )
 

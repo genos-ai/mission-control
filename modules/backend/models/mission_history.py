@@ -96,7 +96,7 @@ class MilestoneSummary(UUIDMixin, TimestampMixin, Base):
     summary: Mapped[str] = mapped_column(
         Text, nullable=False,
     )
-    mission_ids: Mapped[list] = mapped_column(
+    execution_ids: Mapped[list] = mapped_column(
         JSON, default=list, nullable=False,
     )
     key_outcomes: Mapped[dict] = mapped_column(
@@ -115,5 +115,5 @@ class MilestoneSummary(UUIDMixin, TimestampMixin, Base):
     def __repr__(self) -> str:
         return (
             f"<MilestoneSummary(title={self.title!r}, "
-            f"missions={len(self.mission_ids)})>"
+            f"missions={len(self.execution_ids)})>"
         )
