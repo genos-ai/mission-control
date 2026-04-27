@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Done |
 | **Created** | 2026-04-24 |
 | **Depends on** | Plan 53 (Workflow DB + Plan Integration — done), Plan 52 (Temporal Backbone — done), Plan 42 (Mission Backlog Model — done) |
 | **Coordinates** | Plan 44 (Plan Tasks Invoke Workflows — TODO candidate), Plan 46 (Autonomous Mission Roadmap — Phase 5) |
