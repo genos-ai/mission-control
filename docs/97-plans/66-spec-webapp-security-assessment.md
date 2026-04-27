@@ -1059,7 +1059,7 @@ config/
 modules/backend/agents/
   security/
     __init__.py
-    config.py                                 # Section 1.4
+    config.py                                 # Section 1.5
     models.py                                 # Section 4.3
     roe.py                                    # ROE schema + OPA client
     evidence.py                               # SHA-256 hashing, manifest
