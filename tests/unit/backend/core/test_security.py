@@ -15,7 +15,6 @@ import pytest
 from modules.backend.core.config_schema import JwtSchema
 from modules.backend.core.exceptions import AuthenticationError
 from modules.backend.core.security import (
-from tests.conftest import TEST_USER_ID
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -24,6 +23,7 @@ from tests.conftest import TEST_USER_ID
     verify_api_key,
     verify_password,
 )
+from tests.conftest import TEST_USER_ID
 
 TEST_JWT_SECRET = "test-secret-key-that-is-long-enough-for-testing-purposes"
 

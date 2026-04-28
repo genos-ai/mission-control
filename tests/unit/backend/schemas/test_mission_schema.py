@@ -4,11 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from modules.backend.schemas.mission import (
-from tests.conftest import TEST_USER_ID
     MissionCreate,
     MissionResponse,
     MissionUpdate,
 )
+from tests.conftest import TEST_USER_ID
 
 
 class TestMissionCreate:

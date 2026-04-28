@@ -10,10 +10,10 @@ from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.services.workflow_schedule import (
-from tests.conftest import TEST_USER_ID
     WorkflowScheduleService,
     _validate_cron,
 )
+from tests.conftest import TEST_USER_ID
 
 
 def _mock_app_config(**overrides) -> MagicMock:

@@ -15,10 +15,10 @@ from modules.backend.core.database import get_db_session
 from modules.backend.core.dependencies import get_current_user
 from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.schemas.user import (
-from tests.conftest import TEST_USER_ID
     SetCurrentMissionRequest,
     UserResponse,
 )
+from tests.conftest import TEST_USER_ID
 
 
 # ── Schema tests ──────────────────────────────────────────────────────
