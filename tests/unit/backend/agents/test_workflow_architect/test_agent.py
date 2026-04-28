@@ -63,7 +63,7 @@ class TestArchitectAgentDeps:
             project_root=Path("/tmp"),
             scope=MagicMock(),
         )
-        assert deps.mission_id == ""
+        assert deps.mission_id is None
         assert deps.mission_brief == ""
         assert deps.team_summary == ""
         assert deps.db_session is None

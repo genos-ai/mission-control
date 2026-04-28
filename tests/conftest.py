@@ -211,7 +211,8 @@ async def test_user(db_session: AsyncSession) -> "modules.backend.models.user.Us
     """Create a test user in the database.
 
     Many service tests create missions/sessions that FK to users.id.
-    This fixture ensures the referenced user row exists.
+    This fixture ensures the referenced user row exists. Uses merge()
+    so it's safe to call multiple times across session-scoped loops.
     """
     from modules.backend.core import security
     from modules.backend.models.user import User
@@ -224,7 +225,7 @@ async def test_user(db_session: AsyncSession) -> "modules.backend.models.user.Us
         system_role="user",
         is_active=True,
     )
-    db_session.add(user)
+    user = await db_session.merge(user)
     await db_session.flush()
     return user
 
@@ -243,7 +244,7 @@ async def test_user_2(db_session: AsyncSession) -> "modules.backend.models.user.
         system_role="user",
         is_active=True,
     )
-    db_session.add(user)
+    user = await db_session.merge(user)
     await db_session.flush()
     return user
 

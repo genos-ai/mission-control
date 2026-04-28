@@ -25,7 +25,7 @@ async def admin_user(db_session: AsyncSession) -> User:
         system_role="admin",
         is_active=True,
     )
-    db_session.add(user)
+    user = await db_session.merge(user)
     await db_session.flush()
     return user
 
@@ -42,7 +42,7 @@ async def regular_user(db_session: AsyncSession) -> User:
         system_role="user",
         is_active=True,
     )
-    db_session.add(user)
+    user = await db_session.merge(user)
     await db_session.flush()
     return user
 
@@ -61,7 +61,7 @@ async def inactive_user(db_session: AsyncSession) -> User:
         system_role="user",
         is_active=False,
     )
-    db_session.add(user)
+    user = await db_session.merge(user)
     await db_session.flush()
     return user
 
@@ -76,7 +76,7 @@ async def test_mission(db_session: AsyncSession, regular_user: User) -> Mission:
         owner_id=regular_user.id,
         status=MissionStatus.ACTIVE,
     )
-    db_session.add(mission)
+    mission = await db_session.merge(mission)
     await db_session.flush()
     return mission
 
@@ -93,6 +93,6 @@ async def archived_mission(db_session: AsyncSession, regular_user: User) -> Miss
         owner_id=regular_user.id,
         status=MissionStatus.ARCHIVED,
     )
-    db_session.add(mission)
+    mission = await db_session.merge(mission)
     await db_session.flush()
     return mission

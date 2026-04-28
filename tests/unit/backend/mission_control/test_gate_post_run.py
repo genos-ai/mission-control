@@ -472,11 +472,25 @@ class TestCachedDecision:
             ExecutionRecord,
             ExecutionRecordStatus,
         )
+        from modules.backend.models.session import Session, SessionStatus
+        from modules.backend.core.utils import utc_now
+
+        # Create a real session (FK target for execution_records)
+        malformed_session = Session(
+            status=SessionStatus.ACTIVE.value,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_cost_usd=0.0,
+            last_activity_at=utc_now(),
+            session_metadata={},
+        )
+        db_session.add(malformed_session)
+        await db_session.flush()
 
         record_id = str(uuid.uuid4())
         record = ExecutionRecord(
             id=record_id,
-            session_id=str(uuid.uuid4()),
+            session_id=malformed_session.id,
             status=ExecutionRecordStatus.COMPLETED.value,
         )
         db_session.add(record)

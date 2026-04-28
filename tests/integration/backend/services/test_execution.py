@@ -10,8 +10,9 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import NotFoundError, ValidationError
-from modules.backend.models.execution import Execution, ExecutionState
+from modules.backend.models.execution import Execution, ExecutionState, WorkflowRun
 from modules.backend.models.mission import Mission
+from modules.backend.models.session import Session
 from modules.backend.models.user import User
 from modules.backend.core.utils import utc_now
 from modules.backend.services.execution import ExecutionService
@@ -23,10 +24,28 @@ _SID = lambda tag: str(uuid5(_TEST_NS, f"session:exec-{tag}"))
 _NIL_UUID = "00000000-0000-0000-0000-000000000000"
 _WFR_001 = str(uuid5(_TEST_NS, "wfrun:001"))
 
+# All session tags used in this file
+_SESSION_TAGS = [
+    "1", "a", "b", "cancel", "complete", "extract", "fail", "get",
+    "nomap", "noout", "opt", "pending", "standalone", "wf",
+] + [f"page-{i}" for i in range(5)]
+
 
 def _make_service(db_session: AsyncSession) -> ExecutionService:
     """Create an ExecutionService without dispatch adapter."""
     return ExecutionService(session=db_session)
+
+
+@pytest.fixture(autouse=True)
+async def _ensure_sessions(test_user, db_session: AsyncSession):
+    """Create Session rows that executions.session_id FKs to."""
+    for tag in _SESSION_TAGS:
+        await db_session.merge(Session(id=_SID(tag), status="ACTIVE"))
+    await db_session.merge(WorkflowRun(
+        id=_WFR_001, workflow_name="test-wf", workflow_version=1,
+        status="PENDING", triggered_by="test",
+    ))
+    await db_session.flush()
 
 
 class TestCreateAdhocExecution:
@@ -69,7 +88,7 @@ class TestCreateAdhocExecution:
         assert execution.cost_ceiling_usd == 25.0
         assert execution.upstream_context == {"branch": "main"}
 
-    async def test_create_auto_generates_session_id(
+    async def test_create_without_session_id_sets_none(
         self, db_session: AsyncSession, test_mission: Mission,
     ):
         svc = _make_service(db_session)
@@ -79,8 +98,7 @@ class TestCreateAdhocExecution:
             mission_id=test_mission.id,
         )
 
-        assert execution.session_id is not None
-        assert len(execution.session_id) > 0
+        assert execution.session_id is None
 
     async def test_create_without_mission(self, db_session: AsyncSession):
         svc = _make_service(db_session)

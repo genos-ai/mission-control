@@ -193,9 +193,6 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
         mission_id: str | None = None,
     ) -> Execution:
         """Create an ad-hoc execution (not from a workflow)."""
-        if not session_id:
-            from uuid import uuid4
-            session_id = str(uuid4())
 
         async def _create() -> Execution:
             app_config = get_app_config()

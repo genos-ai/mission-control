@@ -11,11 +11,12 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config_schema import WorkflowsSchema
-from modules.backend.models.execution import Execution, ExecutionState
+from modules.backend.models.execution import Execution, ExecutionState, WorkflowRun, WorkflowRunState
 from modules.backend.models.session import Session
 from modules.backend.repositories.execution import ExecutionRepository
 from modules.backend.services.execution import ExecutionService
 from tests.conftest import TEST_USER_ID, TEST_SESSION_ID
+from datetime import datetime as _dt, timezone as _tz
 
 from uuid import uuid5, UUID
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
@@ -33,9 +34,22 @@ def _mock_app_config(**overrides):
 
 @pytest.fixture(autouse=True)
 async def _ensure_parent_rows(test_user, db_session: AsyncSession):
-    """Create Session rows that Execution.session_id FKs to."""
+    """Create Session + WorkflowRun rows that Execution FKs to."""
     for sid in (TEST_SESSION_ID, _SESS_1, _SESS_2):
         db_session.add(Session(id=sid, status="ACTIVE"))
+    await db_session.flush()
+    # WorkflowRun parent for TestCreateExecutionFromStep
+    db_session.add(WorkflowRun(
+        id=_RUN_123,
+        workflow_name="test-workflow",
+        workflow_version=1,
+        status=WorkflowRunState.RUNNING,
+        session_id=TEST_SESSION_ID,
+        trigger_type="manual",
+        triggered_by=TEST_USER_ID,
+        context={},
+        total_cost_usd=0.0,
+    ))
     await db_session.flush()
 
 
@@ -198,7 +212,7 @@ class TestExecutionStateTransitions:
             # Transition to running first
             m = await service._get_execution(execution.id)
             m.status = ExecutionState.RUNNING
-            m.started_at = "2026-01-01T00:00:00"
+            m.started_at = _dt(2026, 1, 1, tzinfo=_tz.utc)
             await db_session.flush()
 
             completed = await service.complete_execution(execution.id)

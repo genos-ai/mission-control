@@ -25,6 +25,11 @@ from tests.conftest import TEST_USER_ID
 
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 
+_MISSION_ABC = str(uuid5(_TEST_NS, "mission:proj-abc"))
+_MISSION_XYZ = str(uuid5(_TEST_NS, "mission:proj-xyz"))
+_MISSION_RESOLVED = str(uuid5(_TEST_NS, "mission:resolved"))
+_MISSION_NEW = str(uuid5(_TEST_NS, "mission:new"))
+
 _SESS_1 = "5714117c-eaed-5ce3-9c56-73949f03aa3d"
 _SESS_2 = "bac9134a-a913-50f4-adec-9725086b8998"
 _SESS_3 = "80d00060-470d-5db0-aa70-5adc526200ea"
@@ -70,10 +75,10 @@ class TestExecutionServiceMissionId:
                 cost_ceiling_usd=1.0,
                 upstream_context={},
                 session_id=_SESS_1,
-                mission_id="proj-abc",
+                mission_id=_MISSION_ABC,
             )
 
-        assert mission.mission_id == "proj-abc"
+        assert mission.mission_id == _MISSION_ABC
 
     @pytest.mark.asyncio
     async def test_create_execution_from_step_mission_id_defaults_none(
@@ -129,7 +134,7 @@ class TestExecutionServiceMissionId:
                 cost_ceiling_usd=1.0,
                 upstream_context={},
                 session_id=_SESS_3,
-                mission_id="proj-xyz",
+                mission_id=_MISSION_XYZ,
             )
 
             await service.run_execution(mission.id)
@@ -137,7 +142,7 @@ class TestExecutionServiceMissionId:
         # Verify mission_id was forwarded to the adapter
         mock_dispatch.execute.assert_called_once()
         call_kwargs = mock_dispatch.execute.call_args.kwargs
-        assert call_kwargs["mission_id"] == "proj-xyz"
+        assert call_kwargs["mission_id"] == _MISSION_XYZ
 
     @pytest.mark.asyncio
     async def test_run_execution_passes_none_mission_id(
@@ -261,8 +266,8 @@ class TestDispatchAdapterMissionId:
 # =============================================================================
 
 
-class TestWorkflowRunMissionName:
-    """Tests for name-based mission resolution in WorkflowRunService."""
+class TestWorkflowRunMissionId:
+    """Tests for mission_id parameter in WorkflowRunService.run_workflow()."""
 
     def _mock_workflow_service(self):
         mock_workflow_service = MagicMock()
@@ -280,95 +285,61 @@ class TestWorkflowRunMissionName:
         return mock_workflow_service, mock_workflow
 
     @pytest.mark.asyncio
-    async def test_run_workflow_resolves_mission_by_name(
+    async def test_run_workflow_passes_mission_id(
         self, db_session: AsyncSession,
     ):
-        """--mission my-app resolves to a mission UUID via _resolve_mission."""
+        """run_workflow() passes mission_id through to the run record."""
         from modules.backend.services.workflow_run import WorkflowRunService
+        from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
         mock_ws, _ = self._mock_workflow_service()
 
-        mock_project = MagicMock()
-        mock_project.id = "resolved-uuid-123"
+        mock_defn = MagicMock()
+        mock_defn.id = _MISSION_RESOLVED
+        mock_defn.name = "test-workflow"
+        mock_defn.version = "1.0"
+        mock_defn.enabled = True
+        mock_defn.description = "Test"
+        mock_defn.objective = {"statement": "t", "category": "code", "owner": "o", "priority": "standard"}
+        mock_defn.trigger_config = {"type": "on_demand"}
+        mock_defn.budget_config = {"max_cost_usd": 10.0}
+        mock_defn.context = {}
+        mock_defn.steps = []
+        mock_defn.edges_json = None
 
         with (
-            patch(
-                "modules.backend.services.session.SessionService",
-            ) as mock_ss_cls,
-            patch(
-                "modules.backend.services.mission.MissionService.get_mission_by_name",
+            patch.object(
+                WorkflowDefinitionService, "get_workflow",
                 new_callable=AsyncMock,
-                return_value=mock_project,
+                return_value=mock_defn,
             ),
+            patch.object(
+                WorkflowRunService, "run_workflow_from_definition",
+                new_callable=AsyncMock,
+            ) as mock_run_from_def,
         ):
-            mock_ss = AsyncMock()
-            mock_session = MagicMock()
-            mock_session.id = "sess-workflow"
-            mock_ss.create_session = AsyncMock(return_value=mock_session)
-            mock_ss_cls.return_value = mock_ss
+            mock_run = MagicMock()
+            mock_run.mission_id = _MISSION_RESOLVED
+            mock_run_from_def.return_value = mock_run
 
             service = WorkflowRunService(
                 session=db_session, workflow_service=mock_ws,
             )
             run = await service.run_workflow(
                 workflow_name="test-workflow",
-                mission_name="my-app",
+                mission_id=_MISSION_RESOLVED,
             )
 
-        assert run.mission_id == "resolved-uuid-123"
+        assert run.mission_id == _MISSION_RESOLVED
+        mock_run_from_def.assert_called_once()
+        call_kwargs = mock_run_from_def.call_args.kwargs
+        assert call_kwargs.get("mission_id") or mock_run_from_def.call_args.args[1] == _MISSION_RESOLVED
 
     @pytest.mark.asyncio
-    async def test_run_workflow_creates_mission_when_new(
+    async def test_run_workflow_requires_mission_id(
         self, db_session: AsyncSession,
     ):
-        """A new mission is auto-created when the name doesn't exist yet."""
-        from modules.backend.services.workflow_run import WorkflowRunService
-
-        mock_ws, _ = self._mock_workflow_service()
-
-        created_project = MagicMock()
-        created_project.id = "new-uuid-456"
-
-        with (
-            patch(
-                "modules.backend.services.session.SessionService",
-            ) as mock_ss_cls,
-            patch(
-                "modules.backend.services.mission.MissionService.get_mission_by_name",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "modules.backend.services.mission.MissionService.create_mission",
-                new_callable=AsyncMock,
-                return_value=created_project,
-            ) as mock_create,
-        ):
-            mock_ss = AsyncMock()
-            mock_session = MagicMock()
-            mock_session.id = "sess-workflow"
-            mock_ss.create_session = AsyncMock(return_value=mock_session)
-            mock_ss_cls.return_value = mock_ss
-
-            service = WorkflowRunService(
-                session=db_session, workflow_service=mock_ws,
-            )
-            run = await service.run_workflow(
-                workflow_name="test-workflow",
-                mission_name="brand-new-app",
-            )
-
-        assert run.mission_id == "new-uuid-456"
-        mock_create.assert_called_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["name"] == "brand-new-app"
-        assert call_kwargs["owner_id"] == SYSTEM_WORKFLOW_ID
-
-    @pytest.mark.asyncio
-    async def test_run_workflow_requires_mission_name(
-        self, db_session: AsyncSession,
-    ):
-        """Omitting --mission raises ValueError."""
+        """Omitting mission_id raises ValueError."""
         from modules.backend.services.workflow_run import WorkflowRunService
 
         mock_ws, _ = self._mock_workflow_service()
@@ -376,5 +347,5 @@ class TestWorkflowRunMissionName:
         service = WorkflowRunService(
             session=db_session, workflow_service=mock_ws,
         )
-        with pytest.raises(ValueError, match="Mission name is required"):
+        with pytest.raises(ValueError, match="mission_id is required"):
             await service.run_workflow(workflow_name="test-workflow")

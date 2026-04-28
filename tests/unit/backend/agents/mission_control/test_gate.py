@@ -288,7 +288,7 @@ class TestGateSchema:
     def test_defaults(self):
         schema = GateSchema()
         assert schema.mode == "off"
-        assert schema.ai.model == "anthropic:claude-haiku-4-5-20251001"
+        assert schema.ai.model == "copilot:claude-haiku-4.5"
         assert schema.ai.temperature == 0.0
         assert schema.points.pre_dispatch.enabled is True
         assert schema.points.verification_failed.mode is None

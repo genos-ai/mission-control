@@ -18,6 +18,8 @@ from tests.conftest import TEST_USER_ID
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
 _MID = lambda tag: str(uuid5(_NS, f"mission:curator-{tag}"))
+_MISSION_REF = str(uuid5(_NS, "mission:ref"))
+_NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
 # Mission slugs that need parent rows (exclude "nonexistent-project" — tests not-found path).
 _MISSION_SLUGS = [
@@ -46,9 +48,9 @@ def _clear_cache():
 @pytest.fixture(autouse=True)
 async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     """Create Mission rows that MissionContext.mission_id FKs to."""
-    for slug in _MISSION_SLUGS:
+    for mid in _MISSION_SLUGS:
         db_session.add(
-            Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID)
+            Mission(id=mid, name=mid, description="test", owner_id=TEST_USER_ID)
         )
     await db_session.flush()
 
@@ -73,7 +75,7 @@ class TestApplyTaskUpdates:
             [{"op": "add", "path": "identity.tech_stack",
               "value": ["python"], "reason": "agent discovered stack"}],
             agent_id="code.analyzer",
-            mission_id_ref="mission-1",
+            mission_id_ref=_MISSION_REF,
             task_id="task-1",
         )
         assert version == 2
@@ -135,7 +137,7 @@ class TestApplyTaskUpdates:
     async def test_nonexistent_project_returns_error(self, curator):
         """Updates to a nonexistent project return error."""
         version, errors = await curator.apply_task_updates(
-            "nonexistent-project",
+            _NIL_UUID,
             [{"op": "add", "path": "x", "value": 1, "reason": "test"}],
         )
         assert version == 0
@@ -151,7 +153,7 @@ class TestApplyTaskUpdates:
             [{"op": "add", "path": "architecture.components.api",
               "value": {"type": "fastapi"}, "reason": "discovered API"}],
             agent_id="code.analyzer",
-            mission_id_ref="mission-1",
+            mission_id_ref=_MISSION_REF,
             task_id="task-1",
         )
 

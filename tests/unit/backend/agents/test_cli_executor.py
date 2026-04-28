@@ -109,6 +109,13 @@ def _make_fake_agent_config(engine: str = "pydantic_ai", effort: str | None = No
     config.scope.read = ["src/"]
     config.scope.write = ["src/"]
     config.agent_name = "test.dummy.agent"
+    config.tools = []
+    config.cache_ttl = None
+    config.thinking_budget = None
+    config.max_tokens = 4096
+    config.produces_artifact = False
+    config.artifact_type = None
+    config.agent_type = "user"
     return config
 
 
