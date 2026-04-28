@@ -1,5 +1,5 @@
 """
-Integration Tests for cli.py CLI.
+Integration Tests for admin.py CLI.
 
 Tests the CLI as a whole with real execution paths.
 """
@@ -16,12 +16,12 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class TestExampleCLI:
-    """Integration tests for cli.py command-line interface."""
+    """Integration tests for admin.py command-line interface."""
 
     def test_help_returns_zero_exit_code(self):
         """Should return exit code 0 for --help."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "--help"],
+            [sys.executable, "admin.py", "--help"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -34,7 +34,7 @@ class TestExampleCLI:
     def test_info_action_succeeds(self):
         """Should successfully display info."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "info"],
+            [sys.executable, "admin.py", "info"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -46,7 +46,7 @@ class TestExampleCLI:
     def test_config_action_displays_yaml_settings(self):
         """Should display configuration from YAML files."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "config"],
+            [sys.executable, "admin.py", "config"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -59,7 +59,7 @@ class TestExampleCLI:
     def test_health_action_checks_components(self):
         """Should run health checks and report results."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "health"],
+            [sys.executable, "admin.py", "health"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -73,7 +73,7 @@ class TestExampleCLI:
     def test_verbose_flag_produces_more_output(self):
         """Should produce more output with --verbose flag."""
         result_verbose = subprocess.run(
-            [sys.executable, "cli.py", "--verbose", "health"],
+            [sys.executable, "admin.py", "--verbose", "health"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -86,7 +86,7 @@ class TestExampleCLI:
     def test_debug_flag_produces_debug_output(self):
         """Should produce debug-level output with --debug flag."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "--debug", "health"],
+            [sys.executable, "admin.py", "--debug", "health"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -98,7 +98,7 @@ class TestExampleCLI:
     def test_invalid_command_shows_error(self):
         """Should show error for invalid command."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "invalid"],
+            [sys.executable, "admin.py", "invalid"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -110,7 +110,7 @@ class TestExampleCLI:
     def test_test_action_runs_pytest(self):
         """Should run pytest via the test command."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "test", "unit"],
+            [sys.executable, "admin.py", "test", "unit"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -122,7 +122,7 @@ class TestExampleCLI:
     def test_subcommand_help(self):
         """Should show focused help for subcommand groups."""
         result = subprocess.run(
-            [sys.executable, "cli.py", "execution", "--help"],
+            [sys.executable, "admin.py", "execution", "--help"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -139,7 +139,7 @@ class TestExampleCLIFromDifferentDirectory:
 
     def test_fails_gracefully_outside_project(self, tmp_path):
         """Should fail gracefully when config cannot be loaded from different directory."""
-        example_script = PROJECT_ROOT / "cli.py"
+        example_script = PROJECT_ROOT / "admin.py"
 
         result = subprocess.run(
             [sys.executable, str(example_script), "info"],
