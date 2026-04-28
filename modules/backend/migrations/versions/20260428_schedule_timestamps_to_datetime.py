@@ -1,9 +1,9 @@
-"""Convert workflow_schedules.last_fired_at and next_fire_at from varchar to timestamp.
+"""Convert workflow_schedules.last_fired_at and next_fire_at from varchar to timestamptz.
 
 These columns were created as String(30) storing ISO-formatted strings,
-but should be proper DateTime columns consistent with the rest of the schema.
-The timezone-aware timestamps migration (Plan 64) missed them because they
-were varchar, not timestamp. Existing ISO strings are cast to timestamp.
+but should be proper DateTime(timezone=True) columns consistent with every
+other timestamp in the schema (Plan 64 Phase I). Existing ISO strings are
+cast to timestamptz, interpreted as UTC.
 
 Revision ID: schedule_timestamps_to_datetime
 Revises: plan45_001
@@ -24,12 +24,13 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # Cast existing ISO strings to timestamp. NULLs pass through unchanged.
+    # Cast existing ISO strings to timestamptz, interpreting as UTC.
+    # NULLs pass through unchanged.
     for column in ("last_fired_at", "next_fire_at"):
         conn.execute(sa.text(
             f'ALTER TABLE workflow_schedules '
-            f'ALTER COLUMN "{column}" TYPE timestamp '
-            f'USING "{column}"::timestamp'
+            f'ALTER COLUMN "{column}" TYPE timestamptz '
+            f"USING \"{column}\"::timestamp AT TIME ZONE 'UTC'"
         ))
 
 
@@ -40,5 +41,5 @@ def downgrade() -> None:
         conn.execute(sa.text(
             f'ALTER TABLE workflow_schedules '
             f'ALTER COLUMN "{column}" TYPE varchar(30) '
-            f"USING to_char(\"{column}\", 'YYYY-MM-DD\"T\"HH24:MI:SS')"
+            f"USING to_char(\"{column}\" AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS')"
         ))

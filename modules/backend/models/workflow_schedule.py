@@ -74,11 +74,11 @@ class WorkflowSchedule(UUIDMixin, TimestampMixin, Base):
         comment="Minimum seconds between consecutive runs (prevents rapid-fire)",
     )
     last_fired_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
         comment="UTC datetime of the last time this schedule created a run",
     )
     next_fire_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime(timezone=True), nullable=True,
         comment="Precomputed UTC datetime of the next expected fire time",
     )
     created_by: Mapped[str] = mapped_column(

@@ -8,7 +8,7 @@ mission-scoped listing, and iteration tracking.
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.workflow_schedule import WorkflowSchedule
