@@ -25,7 +25,7 @@ AI-first autonomous agent platform. FastAPI backend, PydanticAI agents, PostgreS
 - **No hardcoded values.** All configuration from `config/settings/*.yaml`. All secrets from `config/.env`. No hardcoded fallbacks in code, ever.
 - **Absolute imports only.** Always `from modules.backend.core.config import ...`. Never relative imports.
 - **Centralized logging only.** Always `from modules.backend.core.logging import get_logger`. Never `import logging` directly.
-- **Timezone-naive UTC datetimes.** Use `from modules.backend.core.utils import utc_now`. Never `datetime.utcnow()` (deprecated) or `datetime.now()` (local time).
+- **Timezone-aware UTC datetimes.** Use `from modules.backend.core.utils import utc_now`. All datetimes carry `tzinfo=timezone.utc`. All DB columns are `DateTime(timezone=True)` (timestamptz). Never `datetime.utcnow()` (deprecated) or `datetime.now()` (local time).
 - **`.project_root` marker** determines the project root. Use `find_project_root()` from `modules.backend.core.config`.
 - **CLI uses Click groups and subcommands.** Two entry points: `mc.py` (user-facing) and `admin.py` (ops/infrastructure). Both use `tree` command for full discoverability. Every group shows help when called bare — no default actions. `--verbose` and `--debug` on root group only.
 - **CLI display is centralized in `report.py`.** All Rich tables, panels, formatting, and styling use shared primitives from `modules/clients/cli/report.py`. Never create `Console`, `Table`, or `Panel` directly in handlers — use `get_console()` from `report.py`.
