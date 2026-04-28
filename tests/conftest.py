@@ -38,7 +38,6 @@ import modules.backend.models.mission  # noqa: F401 — register tables
 import modules.backend.models.mission_context  # noqa: F401 — register tables
 import modules.backend.models.mission_history  # noqa: F401 — register tables
 import modules.backend.models.mission_team  # noqa: F401 — register tables
-import modules.backend.models.note  # noqa: F401 — register tables
 import modules.backend.models.prompt_version  # noqa: F401 — register tables
 import modules.backend.models.session  # noqa: F401 — register tables
 import modules.backend.models.user  # noqa: F401 — register tables

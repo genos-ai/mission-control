@@ -11,7 +11,7 @@ and creates WorkflowRuns when they fire.
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -74,12 +74,12 @@ class WorkflowSchedule(UUIDMixin, TimestampMixin, Base):
         comment="Minimum seconds between consecutive runs (prevents rapid-fire)",
     )
     last_fired_at: Mapped[datetime | None] = mapped_column(
-        String(30), nullable=True,
-        comment="ISO timestamp of the last time this schedule created a run",
+        DateTime, nullable=True,
+        comment="UTC datetime of the last time this schedule created a run",
     )
     next_fire_at: Mapped[datetime | None] = mapped_column(
-        String(30), nullable=True,
-        comment="Precomputed ISO timestamp of the next expected fire time",
+        DateTime, nullable=True,
+        comment="Precomputed UTC datetime of the next expected fire time",
     )
     created_by: Mapped[str] = mapped_column(
         String(200), nullable=False,

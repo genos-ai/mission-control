@@ -10,7 +10,7 @@ periodically to find and fire ready schedules.
 """
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,21 +62,20 @@ def _validate_cron(expression: str) -> None:
                 )
 
 
-def _compute_next_fire(cron_expression: str, after: datetime) -> str | None:
+def _compute_next_fire(cron_expression: str, after: datetime) -> datetime | None:
     """Compute the next fire time for a cron expression.
 
-    Uses a simplified evaluator that handles common patterns.
-    For production use, this should be replaced with a proper cron
-    library (e.g., croniter). Returns ISO-formatted string.
+    Returns a timezone-naive UTC datetime. Uses croniter if available,
+    otherwise falls back to after + 1 hour.
     """
     try:
         from croniter import croniter
-        cron = croniter(cron_expression, after)
+        cron = croniter(cron_expression, after.replace(tzinfo=None))
         next_dt = cron.get_next(datetime)
-        return next_dt.replace(tzinfo=None).isoformat()
+        return next_dt.replace(tzinfo=None)
     except ImportError:
         next_time = after + timedelta(hours=1)
-        return next_time.replace(tzinfo=None).isoformat()
+        return next_time.replace(tzinfo=None)
 
 
 class WorkflowScheduleService(BaseService):
@@ -249,19 +248,18 @@ class WorkflowScheduleService(BaseService):
         - Per-schedule max_iterations
         """
         now = utc_now()
-        current_iso = now.isoformat()
+        now_naive = now.replace(tzinfo=None)
         app_config = get_app_config()
         max_per_day = app_config.workflows.max_scheduled_runs_per_day
 
-        due = await self._repo.list_due(current_iso)
+        due = await self._repo.list_due(now_naive)
         fired: list[dict] = []
 
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = now_naive.replace(hour=0, minute=0, second=0, microsecond=0)
 
         for schedule in due:
             if schedule.cooldown_seconds > 0 and schedule.last_fired_at:
-                last_fired = datetime.fromisoformat(schedule.last_fired_at)
-                if (now - last_fired).total_seconds() < schedule.cooldown_seconds:
+                if (now_naive - schedule.last_fired_at).total_seconds() < schedule.cooldown_seconds:
                     logger.debug(
                         "Schedule in cooldown, skipping",
                         extra={"schedule_id": schedule.id},
@@ -269,7 +267,7 @@ class WorkflowScheduleService(BaseService):
                     continue
 
             daily_count = await self._repo.count_by_mission_today(
-                schedule.mission_id, today_start.isoformat(),
+                schedule.mission_id, today_start,
             )
             if daily_count >= max_per_day:
                 logger.warning(
@@ -282,11 +280,11 @@ class WorkflowScheduleService(BaseService):
                 )
                 continue
 
-            next_fire = _compute_next_fire(schedule.cron_expression, now)
+            next_fire = _compute_next_fire(schedule.cron_expression, now_naive)
             await self._repo.record_fire(
                 schedule.id,
-                fired_at_iso=current_iso,
-                next_fire_at_iso=next_fire,
+                fired_at=now_naive,
+                next_fire_at=next_fire,
             )
 
             fired.append({
@@ -294,7 +292,7 @@ class WorkflowScheduleService(BaseService):
                 "workflow_definition_id": schedule.workflow_definition_id,
                 "mission_id": schedule.mission_id,
                 "budget_per_run_usd": schedule.budget_per_run_usd,
-                "fired_at": current_iso,
+                "fired_at": now_naive.isoformat(),
             })
 
             logger.info(

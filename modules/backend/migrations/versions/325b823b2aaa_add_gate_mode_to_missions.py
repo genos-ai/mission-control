@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # Revision identifiers
-revision: str = '325b823b2aaa'
-down_revision: Union[str, None] = 'phase4_001'
+revision: str = "325b823b2aaa"
+down_revision: Union[str, None] = "phase4_001"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

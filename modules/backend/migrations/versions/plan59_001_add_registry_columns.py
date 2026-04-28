@@ -10,8 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = 'plan59_001'
-down_revision: Union[str, None] = 'e9ab4bbdf568'
+revision: str = "plan59_001"
+down_revision: Union[str, None] = "e9ab4bbdf568"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

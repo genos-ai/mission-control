@@ -6,6 +6,8 @@ Provides queries for the scheduler service (due schedules),
 mission-scoped listing, and iteration tracking.
 """
 
+from datetime import datetime
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,7 +51,7 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
         )
         return list(result.scalars().all())
 
-    async def list_due(self, current_time_iso: str) -> list[WorkflowSchedule]:
+    async def list_due(self, current_time: datetime) -> list[WorkflowSchedule]:
         """List enabled schedules whose next_fire_at <= current_time.
 
         Used by the scheduler service to find schedules that need to fire.
@@ -59,7 +61,7 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
             .where(
                 WorkflowSchedule.enabled.is_(True),
                 WorkflowSchedule.next_fire_at.isnot(None),
-                WorkflowSchedule.next_fire_at <= current_time_iso,
+                WorkflowSchedule.next_fire_at <= current_time,
             )
             .order_by(WorkflowSchedule.next_fire_at)
         )
@@ -68,8 +70,8 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
     async def record_fire(
         self,
         schedule_id: str,
-        fired_at_iso: str,
-        next_fire_at_iso: str | None,
+        fired_at: datetime,
+        next_fire_at: datetime | None,
     ) -> WorkflowSchedule:
         """Record that a schedule has fired and update iteration count.
 
@@ -78,9 +80,9 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
         """
         schedule = await self.get_by_id(schedule_id)
 
-        schedule.last_fired_at = fired_at_iso
+        schedule.last_fired_at = fired_at
         schedule.iteration_count += 1
-        schedule.next_fire_at = next_fire_at_iso
+        schedule.next_fire_at = next_fire_at
 
         if (
             schedule.max_iterations is not None
@@ -95,7 +97,7 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
     async def count_by_mission_today(
         self,
         mission_id: str,
-        today_start_iso: str,
+        today_start: datetime,
     ) -> int:
         """Count how many times schedules in a mission have fired today.
 
@@ -106,7 +108,7 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
             .where(
                 WorkflowSchedule.mission_id == mission_id,
                 WorkflowSchedule.last_fired_at.isnot(None),
-                WorkflowSchedule.last_fired_at >= today_start_iso,
+                WorkflowSchedule.last_fired_at >= today_start,
             )
         )
         return len(list(result.scalars().all()))
