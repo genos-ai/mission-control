@@ -20,6 +20,7 @@ from modules.backend.models.mission import Mission
 from modules.backend.models.session import Session
 from modules.backend.services.history_query import HistoryQueryService
 from uuid import uuid5, UUID
+from datetime import datetime as _dt, timezone as _tz
 from tests.conftest import TEST_USER_ID
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
@@ -66,8 +67,8 @@ async def _create_mission(
         status=status,
         objective_statement=objective,
         total_cost_usd=cost,
-        started_at="2025-01-01T00:00:00Z",
-        completed_at="2025-01-01T00:01:00Z",
+        started_at=_dt(2025, 1, 1, tzinfo=_tz.utc),
+        completed_at=_dt(2025, 1, 1, 0, 1, 0, tzinfo=_tz.utc),
     )
     db.add(record)
     await db.flush()
@@ -94,7 +95,7 @@ async def _create_execution(
         cost_usd=cost_usd,
         duration_seconds=duration_seconds,
         domain_tags=domain_tags,
-        completed_at="2025-01-01T00:00:30Z",
+        completed_at=_dt(2025, 1, 1, 0, 0, 30, tzinfo=_tz.utc),
     )
     db.add(execution)
     await db.flush()

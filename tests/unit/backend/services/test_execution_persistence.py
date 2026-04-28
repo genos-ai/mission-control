@@ -19,6 +19,7 @@ from modules.backend.models.execution_record import (
 )
 from modules.backend.models.session import Session
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
+from datetime import datetime as _dt, timezone as _tz
 from tests.conftest import TEST_SESSION_ID, TEST_USER_ID
 
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")

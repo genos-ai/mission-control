@@ -20,6 +20,7 @@ from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.execution import ExecutionState
 from modules.backend.models.session import Session
 from modules.backend.services.execution import ExecutionService
+from datetime import datetime as _dt, timezone as _tz
 from tests.conftest import TEST_USER_ID
 
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")

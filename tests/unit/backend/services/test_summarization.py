@@ -30,6 +30,7 @@ from modules.backend.services.mission_context import (
 )
 from modules.backend.services.summarization import SummarizationService
 from uuid import uuid5, UUID
+from datetime import datetime as _dt, timezone as _tz
 from tests.conftest import TEST_USER_ID
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
@@ -276,7 +277,7 @@ async def _create_old_mission(
     mission_id: str,
     objective: str = "Test mission",
     cost: float = 0.5,
-    completed_at: str = "2020-01-01T00:00:00Z",
+    completed_at: "_dt | None" = None,
     status: ExecutionRecordStatus = ExecutionRecordStatus.COMPLETED,
 ) -> ExecutionRecord:
     """Helper to create an old ExecutionRecord for summarization tests."""
@@ -286,8 +287,8 @@ async def _create_old_mission(
         status=status,
         objective_statement=objective,
         total_cost_usd=cost,
-        started_at="2020-01-01T00:00:00Z",
-        completed_at=completed_at,
+        started_at=_dt(2020, 1, 1, tzinfo=_tz.utc),
+        completed_at=completed_at or _dt(2020, 1, 1, tzinfo=_tz.utc),
     )
     db.add(record)
     await db.flush()
@@ -311,11 +312,11 @@ class TestSummarizeMissionRecords:
         """Old completed missions are compressed into milestone summaries."""
         m1 = await _create_old_mission(
             db_session, _MID("proj-smr"), objective="Build API",
-            cost=1.0, completed_at="2020-01-01T00:00:00Z",
+            cost=1.0, completed_at=_dt(2020, 1, 1, tzinfo=_tz.utc),
         )
         m2 = await _create_old_mission(
             db_session, _MID("proj-smr"), objective="Fix auth",
-            cost=0.5, completed_at="2020-02-01T00:00:00Z",
+            cost=0.5, completed_at=_dt(2020, 2, 1, tzinfo=_tz.utc),
         )
 
         result = await summarization_service.summarize_execution_records(
@@ -343,7 +344,7 @@ class TestSummarizeMissionRecords:
         # Far future date — should not be summarized
         await _create_old_mission(
             db_session, _MID("proj-recent-m"),
-            completed_at="2099-01-01T00:00:00Z",
+            completed_at=_dt(2099, 1, 1, tzinfo=_tz.utc),
         )
 
         result = await summarization_service.summarize_execution_records(
@@ -468,7 +469,7 @@ class TestMilestoneSummaryRepository:
             mission_id=_MID("proj-ms"),
             title="Phase 1",
             summary="Completed auth",
-            mission_ids=["m1"],
+            execution_ids=["m1"],
             key_outcomes={"done": True},
             domain_tags=["auth"],
             period_end="2025-01-01",
@@ -477,7 +478,7 @@ class TestMilestoneSummaryRepository:
             mission_id=_MID("proj-ms"),
             title="Phase 2",
             summary="Completed API",
-            mission_ids=["m2"],
+            execution_ids=["m2"],
             key_outcomes={"done": True},
             domain_tags=["api"],
             period_end="2025-02-01",
@@ -486,7 +487,7 @@ class TestMilestoneSummaryRepository:
             mission_id=_MID("proj-other"),
             title="Other",
             summary="Other project",
-            mission_ids=[],
+            execution_ids=[],
             key_outcomes={},
             domain_tags=[],
             period_end="2025-03-01",
@@ -504,7 +505,7 @@ class TestMilestoneSummaryRepository:
                 mission_id=_MID("proj-lim"),
                 title=f"Phase {i}",
                 summary=f"Summary {i}",
-                mission_ids=[],
+                execution_ids=[],
                 key_outcomes={},
                 domain_tags=[],
                 period_end=f"2025-0{i+1}-01",
