@@ -52,10 +52,10 @@ class TestMissionDirectorAgent:
         )
 
     def test_agent_tool_count(self):
-        """Agent should have exactly 8 tools (6 read + 2 action)."""
+        """Agent should have exactly 20 tools."""
         agent = create_agent(TestModel())
         tool_names = {t.name for t in agent._function_toolset.tools.values()}
-        assert len(tool_names) == 8, f"Expected 8 tools, got {len(tool_names)}: {tool_names}"
+        assert len(tool_names) == 20, f"Expected 20 tools, got {len(tool_names)}: {tool_names}"
 
     def test_gate_tools_not_registered(self):
         """Gate tools should NOT be registered (deferred to Phase 2)."""
@@ -75,7 +75,7 @@ class TestMissionDirectorDeps:
             project_root=find_project_root(),
             scope=FileScope(read_paths=[], write_paths=[]),
         )
-        assert deps.mission_id == ""
+        assert deps.mission_id is None
         assert deps.db_session is None
         assert deps.session_id is None
 
