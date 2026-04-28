@@ -181,7 +181,7 @@ class WorkflowDefinitionService(BaseService):
         """Lock a workflow (user confirmed the design)."""
         from modules.backend.core.utils import utc_now
         return await self._repo.update(
-            workflow_id, locked_at=utc_now().isoformat(),
+            workflow_id, locked_at=utc_now().replace(microsecond=0).isoformat(),
         )
 
     async def import_from_template(

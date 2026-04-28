@@ -159,7 +159,7 @@ class SummarizationService(BaseService):
             execution_ids=[],
             key_outcomes={"milestones": to_archive},
             domain_tags=[],
-            period_end=utc_now().isoformat(),
+            period_end=utc_now().replace(microsecond=0).isoformat(),
         )
 
         # Update MCD with pruned milestones list
@@ -237,8 +237,10 @@ class SummarizationService(BaseService):
             completed_dates = [
                 r.completed_at for r in batch if r.completed_at
             ]
-            period_start = min(completed_dates) if completed_dates else None
-            period_end = max(completed_dates) if completed_dates else None
+            _pstart = min(completed_dates) if completed_dates else None
+            _pend = max(completed_dates) if completed_dates else None
+            period_start = _pstart.replace(microsecond=0).isoformat() if _pstart else None
+            period_end = _pend.replace(microsecond=0).isoformat() if _pend else None
 
             # Collect domain tags from task executions
             all_domain_tags: set[str] = set()
