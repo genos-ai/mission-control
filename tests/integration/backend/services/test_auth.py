@@ -34,8 +34,10 @@ class TestLogin:
 
     async def test_login_no_password_set(self, db_session: AsyncSession):
         """Service accounts have no password — login should fail."""
+        from uuid import uuid5, UUID
+        svc_id = str(uuid5(UUID("00000000-0000-0000-0000-000000000000"), "user:svc-account"))
         user = User(
-            id="svc-account",
+            id=svc_id,
             email="svc@test.dev",
             display_name="Service Account",
             hashed_password=None,

@@ -22,10 +22,30 @@ from uuid import uuid5, UUID
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 _MID = lambda tag: str(uuid5(_TEST_NS, f"mission:ctx-{tag}"))
 
+# Tags used in this file that need Mission parent rows.
+# "nonexistent" and "nonexistent-mission" are deliberately omitted
+# because those tests verify not-found behaviour.
+_MISSION_TAGS = [
+    "1", "2", "get", "cache", "ver", "size", "add", "rep", "rm",
+    "restricted", "guard", "nopath", "noop", "unk", "inv", "hist",
+]
+
 
 @pytest.fixture(autouse=True)
-async def _ensure_test_user(test_user):
-    pass
+async def _ensure_parent_rows(test_user, db_session: AsyncSession):
+    """Create Mission rows that MissionContext.mission_id FKs to."""
+    from modules.backend.models.mission import Mission
+
+    for tag in _MISSION_TAGS:
+        db_session.add(
+            Mission(
+                id=_MID(tag),
+                name=f"ctx-{tag}",
+                description="test",
+                owner_id=TEST_USER_ID,
+            )
+        )
+    await db_session.flush()
 
 
 @pytest.fixture

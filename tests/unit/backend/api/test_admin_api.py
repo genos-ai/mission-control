@@ -66,6 +66,10 @@ class TestCatalogCRUD:
             id="id-1", agent_name="test.agent", agent_type="vertical",
             version="1.0.0", description="Test", enabled=True,
             visibility="public", tools=[], keywords=[],
+            model_config_json={"name": "test-model"},
+            scope={"read": [], "write": []},
+            engine="pydantic_ai",
+            effort=None,
         )
         MockCatalog.return_value.list_catalog = AsyncMock(return_value=[mock_entry])
 

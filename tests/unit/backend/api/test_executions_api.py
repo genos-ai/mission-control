@@ -109,6 +109,10 @@ class TestGetExecution:
         mock_execution.planning_thinking_trace = None
         mock_execution.task_executions = []
         mock_execution.decisions = []
+        mock_execution.task_type = None
+        mock_execution.task_params = None
+        mock_execution.temporal_workflow_id = None
+        mock_execution.mission_id = None
 
         with patch(
             "modules.backend.api.v1.endpoints.executions.ExecutionPersistenceService",

@@ -37,7 +37,7 @@ class TestRequestIdHeader:
     @pytest.mark.asyncio
     async def test_request_id_consistent_across_endpoints(self, client: AsyncClient):
         """Should use same request ID format across all endpoints."""
-        endpoints = ["/health", "/health/ready", "/api/v1/notes"]
+        endpoints = ["/health", "/health/ready", "/api/v1/sessions"]
 
         for endpoint in endpoints:
             response = await client.get(endpoint)
@@ -71,7 +71,7 @@ class TestResponseTimeHeader:
     @pytest.mark.asyncio
     async def test_response_time_on_error(self, client: AsyncClient):
         """Should include response time even on error responses."""
-        response = await client.get("/api/v1/notes/nonexistent-id")
+        response = await client.get("/api/v1/sessions/00000000-0000-0000-0000-000000000000")
 
         # Should be 404 but still have timing header
         assert response.status_code == 404
@@ -87,7 +87,7 @@ class TestRequestContextInErrors:
         custom_id = "error-test-request-id"
 
         response = await client.get(
-            "/api/v1/notes/nonexistent",
+            "/api/v1/sessions/00000000-0000-0000-0000-000000000000",
             headers={"X-Request-ID": custom_id},
         )
 
@@ -103,8 +103,8 @@ class TestRequestContextInErrors:
         custom_id = "validation-error-request-id"
 
         response = await client.post(
-            "/api/v1/notes",
-            json={},  # Missing required 'title' field
+            "/api/v1/sessions",
+            json={"cost_budget_usd": "not-a-number"},  # Invalid type triggers validation error
             headers={"X-Request-ID": custom_id},
         )
 

@@ -10,17 +10,22 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
-from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.agents.deps.base import FileScope
 from modules.backend.agents.schemas import QaAuditResult, Violation
 from modules.backend.services.compliance import ComplianceScannerService
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_QA_YAML = _PROJECT_ROOT / "config" / "agents" / "software" / "quality" / "agent.yaml"
+
+
 @pytest.fixture
 def qa_config():
-    """Load the real QA agent config from the registry."""
-    return get_registry().get("software.quality.agent")
+    """Load the real QA agent config directly from the YAML file."""
+    with open(_QA_YAML) as f:
+        return yaml.safe_load(f)
 
 
 @pytest.fixture
@@ -132,24 +137,24 @@ class TestScannerViaService:
     """Tests for scanner functionality via ComplianceScannerService."""
 
     def test_finds_relative_import(self, project_with_violations, qa_config):
-        scanner = ComplianceScannerService(project_with_violations, qa_config.model_dump())
+        scanner = ComplianceScannerService(project_with_violations, qa_config)
         findings = scanner.scan_import_violations()
         relative = [f for f in findings if f["rule_id"] == "no_relative_imports"]
         assert len(relative) >= 1
 
     def test_finds_direct_logging(self, project_with_violations, qa_config):
-        scanner = ComplianceScannerService(project_with_violations, qa_config.model_dump())
+        scanner = ComplianceScannerService(project_with_violations, qa_config)
         findings = scanner.scan_import_violations()
         logging_v = [f for f in findings if f["rule_id"] == "no_direct_logging"]
         assert len(logging_v) >= 1
 
     def test_finds_datetime_violations(self, project_with_violations, qa_config):
-        scanner = ComplianceScannerService(project_with_violations, qa_config.model_dump())
+        scanner = ComplianceScannerService(project_with_violations, qa_config)
         findings = scanner.scan_datetime_violations()
         assert len(findings) >= 2
 
     def test_finds_hardcoded_skips_dunders(self, project_with_violations, qa_config):
-        scanner = ComplianceScannerService(project_with_violations, qa_config.model_dump())
+        scanner = ComplianceScannerService(project_with_violations, qa_config)
         findings = scanner.scan_hardcoded_values()
         names = [f["message"].split(" = ")[0] for f in findings]
         assert "MAX_RETRIES" in names
@@ -160,22 +165,22 @@ class TestConfigLoading:
     """Tests for agent config loading from YAML."""
 
     def test_loads_config_from_yaml(self, qa_config):
-        assert qa_config.agent_name == "software.quality.agent"
-        assert qa_config.enabled is True
+        assert qa_config["agent_name"] == "software.quality.agent"
+        assert qa_config["enabled"] is True
 
     def test_config_has_rules(self, qa_config):
-        assert len(qa_config.rules) > 0
+        assert len(qa_config["rules"]) > 0
 
     def test_config_has_exclusions(self, qa_config):
-        assert qa_config.exclusions is not None
-        assert len(qa_config.exclusions.paths) > 0
+        assert qa_config["exclusions"] is not None
+        assert len(qa_config["exclusions"]["paths"]) > 0
 
     def test_config_has_keywords(self, qa_config):
-        assert "compliance" in qa_config.keywords
+        assert "compliance" in qa_config["keywords"]
 
     def test_config_has_model(self, qa_config):
-        assert "anthropic:" in qa_config.model
+        assert "copilot:" in qa_config["model"]
 
     def test_config_has_scope(self, qa_config):
-        assert len(qa_config.scope.read) > 0
-        assert qa_config.scope.write == []
+        assert len(qa_config["scope"]["read"]) > 0
+        assert qa_config["scope"]["write"] == []

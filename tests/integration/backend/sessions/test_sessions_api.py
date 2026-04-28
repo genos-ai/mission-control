@@ -69,7 +69,7 @@ class TestGetSession:
     @pytest.mark.asyncio
     async def test_get_session_not_found(self, client: AsyncClient, api):
         """Should return 404 for nonexistent session."""
-        response = await client.get("/api/v1/sessions/nonexistent-id")
+        response = await client.get("/api/v1/sessions/00000000-0000-0000-0000-000000000000")
         api.assert_error(response, 404, "RES_NOT_FOUND")
 
 

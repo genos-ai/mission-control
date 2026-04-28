@@ -11,19 +11,37 @@ Only mocks dispatch execution (external agent calls — not infra we operate).
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid5, UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.base import SYSTEM_WORKFLOW_ID
 from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.execution import ExecutionState
+from modules.backend.models.session import Session
 from modules.backend.services.execution import ExecutionService
+from tests.conftest import TEST_USER_ID
+
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+
+_SESS_1 = "5714117c-eaed-5ce3-9c56-73949f03aa3d"
+_SESS_2 = "bac9134a-a913-50f4-adec-9725086b8998"
+_SESS_3 = "80d00060-470d-5db0-aa70-5adc526200ea"
+_SESS_4 = str(uuid5(_TEST_NS, "session:proj-thread-4"))
 
 
 def _mock_app_config(**overrides):
     config = MagicMock()
     config.workflows = WorkflowsSchema(**overrides)
     return config
+
+
+@pytest.fixture(autouse=True)
+async def _ensure_parent_rows(test_user, db_session: AsyncSession):
+    """Create Session rows that Execution.session_id FKs to."""
+    for sid in (_SESS_1, _SESS_2, _SESS_3, _SESS_4):
+        db_session.add(Session(id=sid, status="ACTIVE"))
+    await db_session.flush()
 
 
 # =============================================================================
@@ -50,7 +68,7 @@ class TestExecutionServiceMissionId:
                 complexity_tier="simple",
                 cost_ceiling_usd=1.0,
                 upstream_context={},
-                session_id="5714117c-eaed-5ce3-9c56-73949f03aa3d",
+                session_id=_SESS_1,
                 mission_id="proj-abc",
             )
 
@@ -74,7 +92,7 @@ class TestExecutionServiceMissionId:
                 complexity_tier="simple",
                 cost_ceiling_usd=1.0,
                 upstream_context={},
-                session_id="bac9134a-a913-50f4-adec-9725086b8998",
+                session_id=_SESS_2,
             )
 
         assert mission.mission_id is None
@@ -109,7 +127,7 @@ class TestExecutionServiceMissionId:
                 complexity_tier="simple",
                 cost_ceiling_usd=1.0,
                 upstream_context={},
-                session_id="80d00060-470d-5db0-aa70-5adc526200ea",
+                session_id=_SESS_3,
                 mission_id="proj-xyz",
             )
 
@@ -150,7 +168,7 @@ class TestExecutionServiceMissionId:
                 complexity_tier="simple",
                 cost_ceiling_usd=1.0,
                 upstream_context={},
-                session_id="sess-4",
+                session_id=_SESS_4,
             )
 
             await service.run_execution(mission.id)

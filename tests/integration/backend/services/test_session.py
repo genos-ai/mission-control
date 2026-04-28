@@ -68,7 +68,7 @@ class TestGetSession:
     async def test_get_nonexistent_session_raises(self, db_session: AsyncSession):
         service = SessionService(db_session)
         with pytest.raises(NotFoundError):
-            await service.get_session("nonexistent-session-id")
+            await service.get_session("00000000-0000-0000-0000-000000000000")
 
 
 class TestEnsureSession:

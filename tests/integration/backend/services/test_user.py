@@ -44,7 +44,7 @@ class TestGetUserByIdOrNone:
 
     async def test_returns_none_for_missing(self, db_session: AsyncSession):
         service = UserService(db_session)
-        result = await service.get_user_by_id_or_none("nonexistent-id")
+        result = await service.get_user_by_id_or_none("00000000-0000-0000-0000-000000000000")
         assert result is None
 
 
@@ -68,7 +68,7 @@ class TestGetCurrentMissionId:
 
     async def test_returns_none_for_nonexistent_user(self, db_session: AsyncSession):
         service = UserService(db_session)
-        result = await service.get_current_mission_id("ghost-user")
+        result = await service.get_current_mission_id("00000000-0000-0000-0000-000000000000")
         assert result is None
 
 
@@ -105,7 +105,7 @@ class TestSetCurrentMission:
         service = UserService(db_session)
         with pytest.raises(NotFoundError):
             await service.set_current_mission(
-                regular_user.id, "nonexistent-mission", regular_user,
+                regular_user.id, "00000000-0000-0000-0000-000000000000", regular_user,
             )
 
     async def test_user_cannot_set_other_users_mission(

@@ -59,7 +59,7 @@ class TestGetMission:
     async def test_get_nonexistent_mission_raises(self, db_session: AsyncSession):
         service = MissionService(db_session)
         with pytest.raises(NotFoundError):
-            await service.get_mission("nonexistent-id")
+            await service.get_mission("00000000-0000-0000-0000-000000000000")
 
 
 class TestResolveMission:
@@ -80,7 +80,7 @@ class TestResolveMission:
     async def test_resolve_nonexistent_raises(self, db_session: AsyncSession):
         service = MissionService(db_session)
         with pytest.raises(NotFoundError):
-            await service.resolve_mission("no-such-mission")
+            await service.resolve_mission("00000000-0000-0000-0000-ffffffffffff")
 
 
 class TestListMissions:

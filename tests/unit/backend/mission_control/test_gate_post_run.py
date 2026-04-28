@@ -10,6 +10,7 @@ The cached-decision test (A.2.11) inserts real DB rows.
 
 import json
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -309,7 +310,7 @@ class TestRulePlanExhausted:
     async def test_haiku_failure_falls_through_to_escalate(
         self, db_session: AsyncSession,
     ):
-        """When Haiku import/call fails, reviewer falls through to ESCALATE."""
+        """When Haiku classification fails, reviewer falls through to ESCALATE."""
         reviewer = AutonomousPostRunReviewer(db_session)
         ctx = _context(
             approved=0,
@@ -317,10 +318,10 @@ class TestRulePlanExhausted:
             recent_run_outcomes=[{"completed_task_count": 2}],
         )
 
-        # Haiku will fail because the supervisor agent import requires
-        # dependencies not available in unit tests. The except clause
-        # in _classify_with_haiku returns None → fallthrough to ESCALATE.
-        decision = await reviewer.review(ctx)
+        # Mock _classify_with_haiku to return None (simulates failure)
+        # so the reviewer falls through to ESCALATE.
+        with patch.object(reviewer, "_classify_with_haiku", new_callable=AsyncMock, return_value=None):
+            decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
         assert _parse_rule(decision) == "fallthrough"
@@ -400,7 +401,7 @@ class TestCachedDecision:
     @pytest.mark.asyncio
     async def test_no_cached_row_returns_none(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(db_session)
-        result = await reviewer._get_cached_decision("nonexistent-id")
+        result = await reviewer._get_cached_decision("00000000-0000-0000-0000-000000000000")
         assert result is None
 
     @pytest.mark.asyncio
@@ -413,12 +414,26 @@ class TestCachedDecision:
             ExecutionRecord,
             ExecutionRecordStatus,
         )
+        from modules.backend.models.session import Session, SessionStatus
+        from modules.backend.core.utils import utc_now
+
+        # Create a real session (FK target for execution_records)
+        session = Session(
+            status=SessionStatus.ACTIVE.value,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_cost_usd=0.0,
+            last_activity_at=utc_now(),
+            session_metadata={},
+        )
+        db_session.add(session)
+        await db_session.flush()
 
         # Insert parent ExecutionRecord (required by FK)
         record_id = str(uuid.uuid4())
         record = ExecutionRecord(
             id=record_id,
-            session_id=str(uuid.uuid4()),
+            session_id=session.id,
             status=ExecutionRecordStatus.COMPLETED.value,
         )
         db_session.add(record)

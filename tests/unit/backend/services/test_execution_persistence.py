@@ -6,6 +6,7 @@ with transaction rollback for isolation. Only mocks: get_app_config()
 """
 
 from unittest.mock import MagicMock, patch
+from uuid import uuid5, UUID
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,14 @@ from modules.backend.models.execution_record import (
     ExecutionRecordStatus,
     TaskExecutionStatus,
 )
+from modules.backend.models.session import Session
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
+from tests.conftest import TEST_SESSION_ID, TEST_USER_ID
+
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+_SESS_PERSIST = "f3a9815c-ca38-5868-b8eb-899b31dabb9f"
+_SESS_EID_1 = str(uuid5(_TEST_NS, "session:eid-1"))
+_SESS_EID_2 = str(uuid5(_TEST_NS, "session:eid-2"))
 
 
 def _mock_app_config(**overrides) -> MagicMock:
@@ -39,6 +47,14 @@ def _patch_config():
         return_value=_mock_app_config(),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+async def _ensure_parent_rows(test_user, db_session: AsyncSession):
+    """Create Session rows that ExecutionRecord.session_id FKs to."""
+    for sid in (_SESS_PERSIST, _SESS_EID_1, _SESS_EID_2):
+        db_session.add(Session(id=sid, status="ACTIVE"))
+    await db_session.flush()
 
 
 async def _create_execution(service, **overrides):
@@ -328,7 +344,7 @@ class TestExecutionId:
     async def test_execution_id_persisted(self, service):
         """execution_id flows from save_task_execution to TaskExecution row."""
         execution_record = await service.save_execution(
-            session_id="sess-eid",
+            session_id=_SESS_EID_1,
             status="completed",
             total_cost_usd=0.01,
         )
@@ -347,7 +363,7 @@ class TestExecutionId:
     async def test_execution_id_defaults_none(self, service):
         """execution_id is None when not provided."""
         execution_record = await service.save_execution(
-            session_id="sess-eid2",
+            session_id=_SESS_EID_2,
             status="completed",
             total_cost_usd=0.01,
         )

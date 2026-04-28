@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.execution import Execution, ExecutionState
+from modules.backend.models.session import Session
 from modules.backend.repositories.execution import ExecutionRepository
 from modules.backend.services.execution import ExecutionService
 from tests.conftest import TEST_USER_ID, TEST_SESSION_ID
@@ -28,6 +29,14 @@ def _mock_app_config(**overrides):
     config = MagicMock()
     config.workflows = WorkflowsSchema(**overrides)
     return config
+
+
+@pytest.fixture(autouse=True)
+async def _ensure_parent_rows(test_user, db_session: AsyncSession):
+    """Create Session rows that Execution.session_id FKs to."""
+    for sid in (TEST_SESSION_ID, _SESS_1, _SESS_2):
+        db_session.add(Session(id=sid, status="ACTIVE"))
+    await db_session.flush()
 
 
 @pytest.fixture

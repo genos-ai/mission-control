@@ -23,8 +23,8 @@ from modules.backend.services.mission_plan_orchestrator import MissionPlanOrches
 
 
 @pytest.fixture
-async def mission_id(db_session: AsyncSession) -> str:
-    """Create a real user + mission and return the mission ID."""
+async def mission_context(db_session: AsyncSession) -> dict:
+    """Create a real user + mission and return both IDs."""
     from modules.backend.models.mission import Mission
     from modules.backend.models.user import User
 
@@ -48,7 +48,17 @@ async def mission_id(db_session: AsyncSession) -> str:
     )
     db_session.add(m)
     await db_session.flush()
-    return m.id
+    return {"mission_id": m.id, "user_id": user_id}
+
+
+@pytest.fixture
+def mission_id(mission_context: dict) -> str:
+    return mission_context["mission_id"]
+
+
+@pytest.fixture
+def user_id(mission_context: dict) -> str:
+    return mission_context["user_id"]
 
 
 @pytest.fixture
@@ -112,7 +122,7 @@ class TestConcurrencyGuard:
         await db_session.flush()
 
         with pytest.raises(ConflictError, match="in-progress"):
-            await service._check_no_active_tasks(plan.id)
+            await service.check_no_active_tasks(plan.id)
 
     @pytest.mark.asyncio
     async def test_rejects_when_running_tasks(
@@ -129,7 +139,7 @@ class TestConcurrencyGuard:
         await db_session.flush()
 
         with pytest.raises(ConflictError, match="in-progress"):
-            await service._check_no_active_tasks(plan.id)
+            await service.check_no_active_tasks(plan.id)
 
     @pytest.mark.asyncio
     async def test_allows_when_only_terminal_tasks(
@@ -146,7 +156,7 @@ class TestConcurrencyGuard:
         await db_session.flush()
 
         # Should not raise
-        await service._check_no_active_tasks(plan.id)
+        await service.check_no_active_tasks(plan.id)
 
     @pytest.mark.asyncio
     async def test_allows_empty_plan(
@@ -154,7 +164,7 @@ class TestConcurrencyGuard:
     ):
         """No error when plan has no tasks at all."""
         plan = await service.get_or_create_plan(mission_id)
-        await service._check_no_active_tasks(plan.id)
+        await service.check_no_active_tasks(plan.id)
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +175,7 @@ class TestConcurrencyGuard:
 class TestApproveAllProposed:
     @pytest.mark.asyncio
     async def test_approves_all_proposed_tasks(
-        self, service: MissionPlanService, mission_id: str, db_session: AsyncSession,
+        self, service: MissionPlanService, mission_id: str, user_id: str, db_session: AsyncSession,
     ):
         plan = await service.get_or_create_plan(mission_id)
 
@@ -181,7 +191,7 @@ class TestApproveAllProposed:
         await repo.create_task_state(plan.id, "v1-task-002")
         await db_session.flush()
 
-        approved = await service.approve_all_proposed(plan.id, "test-user")
+        approved = await service.approve_all_proposed(plan.id, user_id)
 
         assert len(approved) >= 2
         assert "v1-task-001" in approved
@@ -189,10 +199,10 @@ class TestApproveAllProposed:
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_proposed(
-        self, service: MissionPlanService, mission_id: str,
+        self, service: MissionPlanService, mission_id: str, user_id: str,
     ):
         plan = await service.get_or_create_plan(mission_id)
-        approved = await service.approve_all_proposed(plan.id, "test-user")
+        approved = await service.approve_all_proposed(plan.id, user_id)
         assert approved == []
 
 
@@ -232,13 +242,13 @@ def _patch_planning():
 class TestRunObjectiveInteractive:
     @pytest.mark.asyncio
     async def test_interactive_stops_after_refine(
-        self, orchestrator: MissionPlanOrchestrator, mission_id: str, db_session: AsyncSession,
+        self, orchestrator: MissionPlanOrchestrator, mission_id: str, user_id: str, db_session: AsyncSession,
     ):
         """Interactive gate mode creates plan but does not dispatch."""
         mock_result = _mock_planning_agent_result(2)
 
         # Mock refine to set task_plan_json directly (avoids Planning Agent + roster)
-        async def mock_refine(plan_id, instructions, user_id, **kwargs):
+        async def mock_refine(plan_id, instructions, uid, **kwargs):
             plan = await orchestrator._repo.get_by_id(plan_id)
             plan.task_plan_json = mock_result["task_plan"]
             plan.version += 1
@@ -253,7 +263,7 @@ class TestRunObjectiveInteractive:
             result = await orchestrator.run_objective(
                 mission_id=mission_id,
                 objective="Test objective",
-                user_id="test-user",
+                user_id=user_id,
                 gate_mode="interactive",
             )
 
@@ -268,15 +278,15 @@ class TestRunObjectiveInteractive:
 # ---------------------------------------------------------------------------
 
 
-class TestRunObjectiveAsync:
+class TestRunObjectiveDispatch:
     @pytest.mark.asyncio
-    async def test_async_dispatch_returns_dispatching(
-        self, orchestrator: MissionPlanOrchestrator, mission_id: str, db_session: AsyncSession,
+    async def test_dispatch_returns_dispatching(
+        self, orchestrator: MissionPlanOrchestrator, mission_id: str, user_id: str, db_session: AsyncSession,
     ):
-        """async_dispatch=True approves tasks and returns without dispatching."""
+        """run_objective approves tasks and dispatches via Temporal."""
         mock_result = _mock_planning_agent_result(1)
 
-        async def mock_refine(plan_id, instructions, user_id, **kwargs):
+        async def mock_refine(plan_id, instructions, uid, **kwargs):
             plan = await orchestrator._repo.get_by_id(plan_id)
             plan.task_plan_json = mock_result["task_plan"]
             plan.version += 1
@@ -287,12 +297,15 @@ class TestRunObjectiveAsync:
             await db_session.flush()
             return plan
 
-        with patch.object(orchestrator, "refine", side_effect=mock_refine):
+        async def mock_temporal(*args, **kwargs):
+            return "mock-workflow-id"
+
+        with patch.object(orchestrator, "refine", side_effect=mock_refine), \
+             patch.object(orchestrator, "_start_temporal_run_workflow", side_effect=mock_temporal):
             result = await orchestrator.run_objective(
                 mission_id=mission_id,
                 objective="Quick task",
-                user_id="test-user",
-                async_dispatch=True,
+                user_id=user_id,
             )
 
         assert result["outcome_status"] == "dispatching"
@@ -316,12 +329,12 @@ class TestRunObjectiveBudget:
 
     @pytest.mark.asyncio
     async def test_budget_override(
-        self, orchestrator: MissionPlanOrchestrator, service: MissionPlanService, mission_id: str, db_session: AsyncSession,
+        self, orchestrator: MissionPlanOrchestrator, service: MissionPlanService, mission_id: str, user_id: str, db_session: AsyncSession,
     ):
         """Explicit budget_ceiling_usd overrides mission default."""
         mock_result = _mock_planning_agent_result(1)
 
-        async def mock_refine(plan_id, instructions, user_id, **kwargs):
+        async def mock_refine(plan_id, instructions, uid, **kwargs):
             plan = await orchestrator._repo.get_by_id(plan_id)
             plan.task_plan_json = mock_result["task_plan"]
             plan.version += 1
@@ -332,13 +345,16 @@ class TestRunObjectiveBudget:
             await db_session.flush()
             return plan
 
-        with patch.object(orchestrator, "refine", side_effect=mock_refine):
+        async def mock_temporal(*args, **kwargs):
+            return "mock-workflow-id"
+
+        with patch.object(orchestrator, "refine", side_effect=mock_refine), \
+             patch.object(orchestrator, "_start_temporal_run_workflow", side_effect=mock_temporal):
             result = await orchestrator.run_objective(
                 mission_id=mission_id,
                 objective="Budget test",
-                user_id="test-user",
+                user_id=user_id,
                 budget_ceiling_usd=25.0,
-                async_dispatch=True,
             )
 
         # Verify plan has the overridden budget

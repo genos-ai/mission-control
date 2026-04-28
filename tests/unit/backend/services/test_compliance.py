@@ -5,17 +5,23 @@ Tests use real temporary files — no mocks.
 """
 
 import textwrap
+from pathlib import Path
 
 import pytest
+import yaml
 
-from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.services.compliance import ComplianceScannerService
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_QA_YAML = _PROJECT_ROOT / "config" / "agents" / "software" / "quality" / "agent.yaml"
 
 
 @pytest.fixture
 def qa_config():
-    """Load the real QA agent config from the registry."""
-    return get_registry().get("software.quality.agent")
+    """Load the real QA agent config directly from the YAML file."""
+    with open(_QA_YAML) as f:
+        return yaml.safe_load(f)
 
 
 @pytest.fixture
@@ -167,15 +173,15 @@ class TestConfigLoading:
     """Tests for agent config loading from YAML."""
 
     def test_loads_config_from_yaml(self, qa_config):
-        assert qa_config.agent_name == "software.quality.agent"
-        assert qa_config.enabled is True
+        assert qa_config["agent_name"] == "software.quality.agent"
+        assert qa_config["enabled"] is True
 
     def test_config_has_rules(self, qa_config):
-        assert len(qa_config.rules) > 0
+        assert len(qa_config["rules"]) > 0
 
     def test_config_has_exclusions(self, qa_config):
-        assert qa_config.exclusions is not None
-        assert len(qa_config.exclusions.paths) > 0
+        assert qa_config["exclusions"] is not None
+        assert len(qa_config["exclusions"]["paths"]) > 0
 
     def test_config_has_scope(self, qa_config):
-        assert len(qa_config.scope.read) > 0
+        assert len(qa_config["scope"]["read"]) > 0
