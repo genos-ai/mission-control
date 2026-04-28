@@ -18,6 +18,15 @@ from modules.backend.services.mission_context import (
 )
 from tests.conftest import TEST_USER_ID
 
+from uuid import uuid5, UUID
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+_MID = lambda tag: str(uuid5(_TEST_NS, f"mission:ctx-{tag}"))
+
+
+@pytest.fixture(autouse=True)
+async def _ensure_test_user(test_user):
+    pass
+
 
 @pytest.fixture
 def manager(db_session: AsyncSession) -> MissionContextManager:
@@ -67,11 +76,11 @@ class TestCreateContext:
     @pytest.mark.asyncio
     async def test_creates_seed_mcd(self, manager):
         ctx = await manager.create_context(
-            mission_id="mission-1",
+            mission_id=_MID("1"),
             mission_name="test-mission",
             description="A test mission",
         )
-        assert ctx.mission_id == "mission-1"
+        assert ctx.mission_id == _MID("1")
         assert ctx.version == 1
         assert ctx.size_characters > 0
         assert ctx.context_data["identity"]["name"] == "test-mission"
@@ -80,7 +89,7 @@ class TestCreateContext:
     @pytest.mark.asyncio
     async def test_seed_has_expected_sections(self, manager):
         ctx = await manager.create_context(
-            mission_id="mission-2",
+            mission_id=_MID("2"),
             mission_name="sections-test",
             description="Test sections",
         )

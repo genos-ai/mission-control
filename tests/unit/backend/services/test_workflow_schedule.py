@@ -65,6 +65,11 @@ async def _seed_workflow_definition(
     return wf
 
 
+@pytest.fixture(autouse=True)
+async def _ensure_test_user(test_user):
+    pass
+
+
 @pytest.fixture
 def service(db_session: AsyncSession) -> WorkflowScheduleService:
     return WorkflowScheduleService(db_session)
@@ -134,7 +139,7 @@ class TestCreateSchedule:
 
         with pytest.raises(NotFoundError, match="not found"):
             await service.create_schedule(
-                workflow_definition_id="nonexistent-id",
+                workflow_definition_id="00000000-0000-0000-0000-000000000000",
                 mission_id=mission.id,
                 cron_expression="0 5 * * *",
                 created_by=TEST_USER_ID,
@@ -173,7 +178,7 @@ class TestGetSchedule:
     @pytest.mark.asyncio
     async def test_not_found(self, service):
         with pytest.raises(NotFoundError, match="not found"):
-            await service.get_schedule("nonexistent-id")
+            await service.get_schedule("00000000-0000-0000-0000-000000000000")
 
 
 class TestListByMission:

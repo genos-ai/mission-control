@@ -12,7 +12,7 @@ class TestTemporalSchema:
     def test_defaults(self):
         config = TemporalSchema()
         assert config.enabled is False
-        assert config.server_url == "localhost:7233"
+        assert config.server_url is None
         assert config.namespace == "default"
         assert config.task_queue == "agent-missions"
         assert config.workflow_execution_timeout_days == 30
@@ -30,9 +30,9 @@ class TestTemporalSchema:
         with pytest.raises(ValueError, match="server_url must be explicitly configured"):
             TemporalSchema(enabled=True)
 
-    def test_disabled_allows_default_server_url(self):
+    def test_disabled_allows_none_server_url(self):
         config = TemporalSchema(enabled=False)
-        assert config.server_url == "localhost:7233"
+        assert config.server_url is None
 
     def test_custom_values(self):
         config = TemporalSchema(

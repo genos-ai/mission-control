@@ -114,12 +114,12 @@ class TestResponseTime:
 class TestRequestState:
     """Tests for request.state population."""
 
-    def test_start_time_is_timezone_naive_utc(self, client):
+    def test_start_time_is_timezone_aware_utc(self, client):
         response = client.get("/test")
         start_time_str = response.json()["start_time"]
         assert start_time_str is not None
         dt = datetime.fromisoformat(start_time_str)
-        assert dt.tzinfo is None
+        assert dt.tzinfo is not None
 
 
 class TestErrorHandling:
