@@ -10,10 +10,11 @@ import pytest
 
 from modules.backend.core.exceptions import AuthenticationError, AuthorizationError
 from modules.backend.services.auth import AuthService
+from tests.conftest import TEST_USER_ID
 
 
 def _make_user(
-    user_id: str = "user-1",
+    user_id: str = TEST_USER_ID,
     role: str = "user",
     email: str = "test@example.com",
     is_active: bool = True,
@@ -35,7 +36,7 @@ def _make_user(
 
 def _make_api_key(
     key_id: str = "key-1",
-    user_id: str = "user-1",
+    user_id: str = TEST_USER_ID,
     user: MagicMock | None = None,
     hashed_key: str = "$2b$12$hashedkey",
 ) -> MagicMock:
@@ -119,7 +120,7 @@ class TestRefreshToken:
         service.user_repo.get_active = AsyncMock(return_value=user)
 
         with patch("modules.backend.services.auth.security.decode_token",
-                    return_value={"type": "refresh", "sub": "user-1"}), \
+                    return_value={"type": "refresh", "sub": TEST_USER_ID}), \
              patch("modules.backend.services.auth.security.create_access_token", return_value="new-access"), \
              patch("modules.backend.services.auth.security.create_refresh_token", return_value="new-refresh"):
             result = await service.refresh_token("old-refresh-token")
@@ -130,7 +131,7 @@ class TestRefreshToken:
     @pytest.mark.asyncio
     async def test_refresh_with_access_token_type_fails(self, service):
         with patch("modules.backend.services.auth.security.decode_token",
-                    return_value={"type": "access", "sub": "user-1"}):
+                    return_value={"type": "access", "sub": TEST_USER_ID}):
             with pytest.raises(AuthenticationError, match="Invalid token type"):
                 await service.refresh_token("access-token-not-refresh")
 
@@ -146,7 +147,7 @@ class TestRefreshToken:
         service.user_repo.get_active = AsyncMock(return_value=None)
 
         with patch("modules.backend.services.auth.security.decode_token",
-                    return_value={"type": "refresh", "sub": "user-1"}):
+                    return_value={"type": "refresh", "sub": TEST_USER_ID}):
             with pytest.raises(AuthenticationError, match="User not found or inactive"):
                 await service.refresh_token("token")
 
@@ -204,7 +205,7 @@ class TestResolveJwt:
         service.user_repo.get_active = AsyncMock(return_value=user)
 
         with patch("modules.backend.services.auth.security.decode_token",
-                    return_value={"type": "access", "sub": "user-1"}):
+                    return_value={"type": "access", "sub": TEST_USER_ID}):
             result = await service.resolve_jwt("valid-jwt")
 
         assert result == user
@@ -212,7 +213,7 @@ class TestResolveJwt:
     @pytest.mark.asyncio
     async def test_refresh_token_rejected(self, service):
         with patch("modules.backend.services.auth.security.decode_token",
-                    return_value={"type": "refresh", "sub": "user-1"}):
+                    return_value={"type": "refresh", "sub": TEST_USER_ID}):
             with pytest.raises(AuthenticationError, match="Invalid token type"):
                 await service.resolve_jwt("refresh-not-access")
 
@@ -221,7 +222,7 @@ class TestResolveJwt:
         service.user_repo.get_active = AsyncMock(return_value=None)
 
         with patch("modules.backend.services.auth.security.decode_token",
-                    return_value={"type": "access", "sub": "user-1"}):
+                    return_value={"type": "access", "sub": TEST_USER_ID}):
             with pytest.raises(AuthenticationError, match="User not found or inactive"):
                 await service.resolve_jwt("token")
 
@@ -229,14 +230,14 @@ class TestResolveJwt:
 class TestCreateApiKey:
     @pytest.mark.asyncio
     async def test_owner_creates_key(self, service):
-        user = _make_user(user_id="user-1", role="user")
+        user = _make_user(user_id=TEST_USER_ID, role="user")
         mock_key = _make_api_key()
         service.api_key_repo.create = AsyncMock(return_value=mock_key)
 
         with patch("modules.backend.services.auth.security.generate_api_key",
                     return_value=("app_fullkey1234rest", "$2b$12$hashed")):
             full_key, api_key = await service.create_api_key(
-                user_id="user-1", name="my-key",
+                user_id=TEST_USER_ID, name="my-key",
                 expires_in_days=30, requesting_user=user,
             )
 
@@ -276,9 +277,9 @@ class TestCreateApiKey:
 class TestRevokeApiKey:
     @pytest.mark.asyncio
     async def test_owner_revokes(self, service):
-        user = _make_user(user_id="user-1", role="user")
-        key = _make_api_key(user_id="user-1")
-        revoked_key = _make_api_key(user_id="user-1")
+        user = _make_user(user_id=TEST_USER_ID, role="user")
+        key = _make_api_key(user_id=TEST_USER_ID)
+        revoked_key = _make_api_key(user_id=TEST_USER_ID)
         service.api_key_repo.get_by_id = AsyncMock(return_value=key)
         service.api_key_repo.revoke = AsyncMock(return_value=revoked_key)
 

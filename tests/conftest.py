@@ -15,6 +15,18 @@ pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 
 from collections.abc import AsyncGenerator
 from typing import Any
+from uuid import uuid5, UUID
+
+# Deterministic test UUIDs — use these instead of arbitrary strings in tests.
+# Generated via uuid5 from a fixed namespace so they're stable across runs.
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+TEST_USER_ID = str(uuid5(_TEST_NS, "user:test"))
+TEST_USER_ID_2 = str(uuid5(_TEST_NS, "user:test-2"))
+TEST_OWNER_ID = str(uuid5(_TEST_NS, "user:owner"))
+TEST_ALICE_ID = str(uuid5(_TEST_NS, "user:alice"))
+TEST_BOB_ID = str(uuid5(_TEST_NS, "user:bob"))
+TEST_MISSION_ID = str(uuid5(_TEST_NS, "mission:test"))
+TEST_SESSION_ID = str(uuid5(_TEST_NS, "session:test"))
 
 import pytest
 from sqlalchemy.ext.asyncio import (
@@ -186,6 +198,53 @@ async def db_session_committed(
     async with db_session_factory() as session:
         yield session
         await session.commit()
+
+
+# =============================================================================
+# Test User Fixture
+# =============================================================================
+
+
+@pytest.fixture
+async def test_user(db_session: AsyncSession) -> "modules.backend.models.user.User":
+    """Create a test user in the database.
+
+    Many service tests create missions/sessions that FK to users.id.
+    This fixture ensures the referenced user row exists.
+    """
+    from modules.backend.core import security
+    from modules.backend.models.user import User
+
+    user = User(
+        id=TEST_USER_ID,
+        email="test@mission-control.dev",
+        display_name="Test User",
+        hashed_password=security.hash_password("test-password"),
+        system_role="user",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    return user
+
+
+@pytest.fixture
+async def test_user_2(db_session: AsyncSession) -> "modules.backend.models.user.User":
+    """Create a second test user for tests that need multiple users."""
+    from modules.backend.core import security
+    from modules.backend.models.user import User
+
+    user = User(
+        id=TEST_USER_ID_2,
+        email="test2@mission-control.dev",
+        display_name="Test User 2",
+        hashed_password=security.hash_password("test-password-2"),
+        system_role="user",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    return user
 
 
 # =============================================================================

@@ -9,6 +9,7 @@ from modules.backend.models.execution_record import ExecutionRecord, TaskExecuti
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
 from modules.backend.models.session import Session
 from modules.backend.services.platform_metrics import PlatformMetricsService
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture
@@ -20,7 +21,7 @@ async def _seed_mission(db: AsyncSession) -> Mission:
     m = Mission(
         name="metrics-test",
         description="For metrics tests",
-        owner_id="user:test",
+        owner_id=TEST_USER_ID,
         status="active",
         default_roster="default",
     )
@@ -28,7 +29,7 @@ async def _seed_mission(db: AsyncSession) -> Mission:
     await db.flush()
     member = MissionMember(
         mission_id=m.id,
-        user_id="user:test",
+        user_id=TEST_USER_ID,
         role=MissionMemberRole.OWNER,
     )
     db.add(member)

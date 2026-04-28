@@ -10,6 +10,7 @@ from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.services.workflow_schedule import (
+from tests.conftest import TEST_USER_ID
     WorkflowScheduleService,
     _validate_cron,
 )
@@ -27,7 +28,7 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
     mission = Mission(
         name="schedule-test",
         description="Schedule test mission",
-        owner_id="user:test",
+        owner_id=TEST_USER_ID,
         status="active",
         default_roster="default",
     )
@@ -36,7 +37,7 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
 
     member = MissionMember(
         mission_id=mission.id,
-        user_id="user:test",
+        user_id=TEST_USER_ID,
         role=MissionMemberRole.OWNER,
     )
     db_session.add(member)
@@ -105,7 +106,7 @@ class TestCreateSchedule:
             workflow_definition_id=wf.id,
             mission_id=mission.id,
             cron_expression="0 5 * * *",
-            created_by="user:test",
+            created_by=TEST_USER_ID,
             description="Daily at 5am",
         )
         assert schedule.cron_expression == "0 5 * * *"
@@ -124,7 +125,7 @@ class TestCreateSchedule:
                 workflow_definition_id=wf.id,
                 mission_id=mission.id,
                 cron_expression="bad",
-                created_by="user:test",
+                created_by=TEST_USER_ID,
             )
 
     @pytest.mark.asyncio
@@ -136,7 +137,7 @@ class TestCreateSchedule:
                 workflow_definition_id="nonexistent-id",
                 mission_id=mission.id,
                 cron_expression="0 5 * * *",
-                created_by="user:test",
+                created_by=TEST_USER_ID,
             )
 
     @pytest.mark.asyncio
@@ -149,7 +150,7 @@ class TestCreateSchedule:
                 workflow_definition_id=wf.id,
                 mission_id=mission.id,
                 cron_expression="0 5 * * *",
-                created_by="user:test",
+                created_by=TEST_USER_ID,
                 budget_per_run_usd=999.99,
             )
 
@@ -163,7 +164,7 @@ class TestGetSchedule:
             workflow_definition_id=wf.id,
             mission_id=mission.id,
             cron_expression="0 5 * * *",
-            created_by="user:test",
+            created_by=TEST_USER_ID,
         )
 
         result = await service.get_schedule(created.id)
@@ -185,13 +186,13 @@ class TestListByMission:
             workflow_definition_id=wf.id,
             mission_id=mission.id,
             cron_expression="0 5 * * *",
-            created_by="user:test",
+            created_by=TEST_USER_ID,
         )
         s2 = await service.create_schedule(
             workflow_definition_id=wf.id,
             mission_id=mission.id,
             cron_expression="0 12 * * *",
-            created_by="user:test",
+            created_by=TEST_USER_ID,
         )
         await service.toggle_enabled(s2.id, False)
 
@@ -209,7 +210,7 @@ class TestToggleEnabled:
             workflow_definition_id=wf.id,
             mission_id=mission.id,
             cron_expression="0 5 * * *",
-            created_by="user:test",
+            created_by=TEST_USER_ID,
         )
 
         disabled = await service.toggle_enabled(created.id, False)
@@ -229,7 +230,7 @@ class TestUpdateSchedule:
             workflow_definition_id=wf.id,
             mission_id=mission.id,
             cron_expression="0 5 * * *",
-            created_by="user:test",
+            created_by=TEST_USER_ID,
         )
         original_next = created.next_fire_at
 
@@ -248,7 +249,7 @@ class TestDeleteSchedule:
             workflow_definition_id=wf.id,
             mission_id=mission.id,
             cron_expression="0 5 * * *",
-            created_by="user:test",
+            created_by=TEST_USER_ID,
         )
 
         await service.delete_schedule(created.id)

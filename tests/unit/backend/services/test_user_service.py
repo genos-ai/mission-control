@@ -14,10 +14,11 @@ from modules.backend.core.exceptions import (
     ValidationError,
 )
 from modules.backend.services.user import UserService
+from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
 
 def _make_user(
-    user_id: str = "user-1",
+    user_id: str = TEST_USER_ID,
     role: str = "admin",
     email: str = "admin@example.com",
     is_active: bool = True,
@@ -58,7 +59,7 @@ class TestCreateUser:
     async def test_admin_creates_user(self, service):
         admin = _make_user(role="admin")
         service.user_repo.get_by_email = AsyncMock(return_value=None)
-        new_user = _make_user(user_id="user-2", email="new@example.com", role="user")
+        new_user = _make_user(user_id=TEST_USER_ID_2, email="new@example.com", role="user")
         service.user_repo.create = AsyncMock(return_value=new_user)
 
         with patch("modules.backend.services.user.security.hash_password", return_value="hashed"):

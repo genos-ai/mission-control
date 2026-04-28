@@ -14,6 +14,7 @@ from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.execution import Execution, ExecutionState
 from modules.backend.repositories.execution import ExecutionRepository
 from modules.backend.services.execution import ExecutionService
+from tests.conftest import TEST_USER_ID
 
 
 def _mock_app_config(**overrides):
@@ -41,7 +42,7 @@ class TestCreateAdhocExecution:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Test objective",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="test-session-id",
             )
 
@@ -50,7 +51,7 @@ class TestCreateAdhocExecution:
         assert execution.status == ExecutionState.PENDING
         assert execution.roster_ref == "default"
         assert execution.complexity_tier == "simple"
-        assert execution.triggered_by == "user:test"
+        assert execution.triggered_by == TEST_USER_ID
         assert execution.trigger_type == "on_demand"
         assert execution.total_cost_usd == 0.0
 
@@ -63,7 +64,7 @@ class TestCreateAdhocExecution:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Complex task",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="test-session-id",
                 roster_ref="research_team",
                 complexity_tier="complex",
@@ -85,7 +86,7 @@ class TestCreateAdhocExecution:
             # Create first execution (should succeed)
             await service.create_adhoc_execution(
                 objective="First",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
 
@@ -94,7 +95,7 @@ class TestCreateAdhocExecution:
             with pytest.raises(ValidationError, match="Maximum concurrent"):
                 await service.create_adhoc_execution(
                     objective="Second",
-                    triggered_by="user:test",
+                    triggered_by=TEST_USER_ID,
                     session_id="sess-2",
                 )
 
@@ -135,7 +136,7 @@ class TestExecutionStateTransitions:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Cancellable",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
 
@@ -156,7 +157,7 @@ class TestExecutionStateTransitions:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Test",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
             await service.cancel_execution(execution.id, reason="done")
@@ -174,7 +175,7 @@ class TestExecutionStateTransitions:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Complete me",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
 
@@ -198,7 +199,7 @@ class TestExecutionStateTransitions:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Fail me",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
 
@@ -224,7 +225,7 @@ class TestOutputExtraction:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Extract test",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
             execution.execution_outcome = {"summary": "All done"}
@@ -243,7 +244,7 @@ class TestOutputExtraction:
             service = ExecutionService(session=db_session)
             execution = await service.create_adhoc_execution(
                 objective="Extract fields",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
             execution.execution_outcome = {
@@ -288,12 +289,12 @@ class TestListAndGetExecutions:
             service = ExecutionService(session=db_session)
             await service.create_adhoc_execution(
                 objective="Execution 1",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-1",
             )
             await service.create_adhoc_execution(
                 objective="Execution 2",
-                triggered_by="user:test",
+                triggered_by=TEST_USER_ID,
                 session_id="sess-2",
             )
 

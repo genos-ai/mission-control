@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from modules.backend.core.database import get_db_session
 from modules.backend.core.dependencies import require_admin
+from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
 USER_SVC = "modules.backend.services.user.UserService"
 AUTH_SVC = "modules.backend.services.auth.AuthService"
@@ -24,7 +25,7 @@ NOW = datetime(2026, 3, 20, 12, 0, 0)
 def _mock_user(**overrides):
     """Create a mock User ORM object."""
     defaults = dict(
-        id="user-1",
+        id=TEST_USER_ID,
         email="alice@example.com",
         display_name="Alice",
         system_role="user",
@@ -49,7 +50,7 @@ def _mock_api_key(**overrides):
         id="key-1",
         name="dev-key",
         key_prefix="mc_abcde",
-        user_id="user-1",
+        user_id=TEST_USER_ID,
         expires_at=None,
         revoked_at=None,
         last_used_at=None,
@@ -145,7 +146,7 @@ class TestListUsers:
     @pytest.mark.asyncio
     @patch(USER_SVC)
     async def test_list_users(self, MockUserSvc, client):
-        users = [_mock_user(), _mock_user(id="user-2", email="bob@example.com")]
+        users = [_mock_user(), _mock_user(id=TEST_USER_ID_2, email="bob@example.com")]
         MockUserSvc.return_value.list_users = AsyncMock(return_value=users)
 
         resp = await client.get("/admin/users/")
@@ -176,7 +177,7 @@ class TestGetUser:
 
         resp = await client.get("/admin/users/user-1")
         assert resp.status_code == 200
-        assert resp.json()["data"]["id"] == "user-1"
+        assert resp.json()["data"]["id"] == TEST_USER_ID
 
     @pytest.mark.asyncio
     @patch(USER_SVC)

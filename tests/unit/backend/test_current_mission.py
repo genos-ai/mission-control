@@ -15,6 +15,7 @@ from modules.backend.core.database import get_db_session
 from modules.backend.core.dependencies import get_current_user
 from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.schemas.user import (
+from tests.conftest import TEST_USER_ID
     SetCurrentMissionRequest,
     UserResponse,
 )
@@ -47,7 +48,7 @@ class TestUserResponseFromUser:
         mission.name = "Alpha"
 
         user = MagicMock()
-        user.id = "user-1"
+        user.id = TEST_USER_ID
         user.email = "a@b.com"
         user.display_name = "Test"
         user.system_role = "user"
@@ -65,7 +66,7 @@ class TestUserResponseFromUser:
 
     def test_without_current_mission(self):
         user = MagicMock()
-        user.id = "user-1"
+        user.id = TEST_USER_ID
         user.email = "a@b.com"
         user.display_name = "Test"
         user.system_role = "user"
@@ -94,7 +95,7 @@ class TestUserServiceSetCurrentMission:
         service = UserService(mock_session)
 
         requesting_user = MagicMock()
-        requesting_user.id = "user-1"
+        requesting_user.id = TEST_USER_ID
         requesting_user.has_role = MagicMock(return_value=False)
 
         mock_mission = MagicMock()
@@ -109,14 +110,14 @@ class TestUserServiceSetCurrentMission:
             mock_user_repo.update = AsyncMock(return_value=updated_user)
 
             result = await service.set_current_mission(
-                user_id="user-1",
+                user_id=TEST_USER_ID,
                 mission_id="mission-1",
                 requesting_user=requesting_user,
             )
 
             mock_mission_repo.get_by_id_or_none.assert_awaited_once_with("mission-1")
             mock_user_repo.update.assert_awaited_once_with(
-                "user-1", current_mission_id="mission-1",
+                TEST_USER_ID, current_mission_id="mission-1",
             )
             assert result is updated_user
 
@@ -128,7 +129,7 @@ class TestUserServiceSetCurrentMission:
         service = UserService(mock_session)
 
         requesting_user = MagicMock()
-        requesting_user.id = "user-1"
+        requesting_user.id = TEST_USER_ID
         requesting_user.has_role = MagicMock(return_value=False)
 
         with patch.object(service, "user_repo") as mock_user_repo:
@@ -136,13 +137,13 @@ class TestUserServiceSetCurrentMission:
             mock_user_repo.update = AsyncMock(return_value=updated_user)
 
             result = await service.set_current_mission(
-                user_id="user-1",
+                user_id=TEST_USER_ID,
                 mission_id=None,
                 requesting_user=requesting_user,
             )
 
             mock_user_repo.update.assert_awaited_once_with(
-                "user-1", current_mission_id=None,
+                TEST_USER_ID, current_mission_id=None,
             )
 
     @pytest.mark.asyncio
@@ -153,7 +154,7 @@ class TestUserServiceSetCurrentMission:
         service = UserService(mock_session)
 
         requesting_user = MagicMock()
-        requesting_user.id = "user-1"
+        requesting_user.id = TEST_USER_ID
         requesting_user.has_role = MagicMock(return_value=False)
 
         with patch("modules.backend.repositories.mission.MissionRepository") as MockMissionRepo:
@@ -162,7 +163,7 @@ class TestUserServiceSetCurrentMission:
 
             with pytest.raises(NotFoundError):
                 await service.set_current_mission(
-                    user_id="user-1",
+                    user_id=TEST_USER_ID,
                     mission_id="nonexistent",
                     requesting_user=requesting_user,
                 )
@@ -175,7 +176,7 @@ class TestUserServiceSetCurrentMission:
         service = UserService(mock_session)
 
         requesting_user = MagicMock()
-        requesting_user.id = "user-1"
+        requesting_user.id = TEST_USER_ID
         requesting_user.has_role = MagicMock(return_value=False)
 
         mock_mission = MagicMock()
@@ -187,7 +188,7 @@ class TestUserServiceSetCurrentMission:
 
             with pytest.raises(ValidationError):
                 await service.set_current_mission(
-                    user_id="user-1",
+                    user_id=TEST_USER_ID,
                     mission_id="archived-mission",
                     requesting_user=requesting_user,
                 )
@@ -206,7 +207,7 @@ class TestUserServiceSetCurrentMission:
 
         with pytest.raises(AuthorizationError):
             await service.set_current_mission(
-                user_id="user-1",
+                user_id=TEST_USER_ID,
                 mission_id="mission-1",
                 requesting_user=requesting_user,
             )
@@ -247,7 +248,7 @@ class TestSetCurrentMissionEndpoint:
     @pytest.mark.asyncio
     async def test_set_returns_200(self, app):
         mock_user = MagicMock()
-        mock_user.id = "user-1"
+        mock_user.id = TEST_USER_ID
         mock_user.email = "a@b.com"
         mock_user.display_name = "Test"
         mock_user.system_role = "user"

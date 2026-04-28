@@ -1,6 +1,6 @@
 """Shared fixtures for service integration tests.
 
-All tests use a real in-memory SQLite database — no mocks.
+All tests use a real PostgreSQL database — no mocks.
 Each test gets an isolated session that rolls back on teardown.
 """
 
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core import security
 from modules.backend.models.mission import Mission, MissionStatus
 from modules.backend.models.user import User
+from tests.conftest import TEST_USER_ID, TEST_USER_ID_2, TEST_MISSION_ID
 
 
 @pytest.fixture
@@ -17,7 +18,7 @@ async def admin_user(db_session: AsyncSession) -> User:
     """Create a real admin user in the database."""
     hashed = security.hash_password("admin-password-123")
     user = User(
-        id="admin-001",
+        id=TEST_USER_ID_2,
         email="admin@test.dev",
         display_name="Test Admin",
         hashed_password=hashed,
@@ -34,7 +35,7 @@ async def regular_user(db_session: AsyncSession) -> User:
     """Create a real regular user in the database."""
     hashed = security.hash_password("user-password-123")
     user = User(
-        id="user-001",
+        id=TEST_USER_ID,
         email="user@test.dev",
         display_name="Test User",
         hashed_password=hashed,
@@ -49,9 +50,11 @@ async def regular_user(db_session: AsyncSession) -> User:
 @pytest.fixture
 async def inactive_user(db_session: AsyncSession) -> User:
     """Create a deactivated user in the database."""
+    from uuid import uuid5, UUID
+    inactive_id = str(uuid5(UUID("00000000-0000-0000-0000-000000000000"), "user:inactive"))
     hashed = security.hash_password("inactive-pass-123")
     user = User(
-        id="user-inactive",
+        id=inactive_id,
         email="inactive@test.dev",
         display_name="Inactive User",
         hashed_password=hashed,
@@ -67,7 +70,7 @@ async def inactive_user(db_session: AsyncSession) -> User:
 async def test_mission(db_session: AsyncSession, regular_user: User) -> Mission:
     """Create a real mission owned by regular_user."""
     mission = Mission(
-        id="mission-001",
+        id=TEST_MISSION_ID,
         name="test-mission",
         description="A test mission for integration tests",
         owner_id=regular_user.id,
@@ -81,8 +84,10 @@ async def test_mission(db_session: AsyncSession, regular_user: User) -> Mission:
 @pytest.fixture
 async def archived_mission(db_session: AsyncSession, regular_user: User) -> Mission:
     """Create an archived mission."""
+    from uuid import uuid5, UUID
+    archived_id = str(uuid5(UUID("00000000-0000-0000-0000-000000000000"), "mission:archived"))
     mission = Mission(
-        id="mission-archived",
+        id=archived_id,
         name="archived-mission",
         description="An archived mission",
         owner_id=regular_user.id,

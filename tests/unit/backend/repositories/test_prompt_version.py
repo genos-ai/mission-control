@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.repositories.prompt_version import PromptVersionRepository
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture
@@ -19,7 +20,7 @@ class TestCreateVersion:
             entity_id="agent-001",
             prompt_type="system",
             content="Version 1 prompt",
-            changed_by="user:admin",
+            changed_by=TEST_USER_ID,
         )
         assert v1.version == 1
 
@@ -28,7 +29,7 @@ class TestCreateVersion:
             entity_id="agent-001",
             prompt_type="system",
             content="Version 2 prompt",
-            changed_by="user:admin",
+            changed_by=TEST_USER_ID,
             change_reason="Added context",
         )
         assert v2.version == 2

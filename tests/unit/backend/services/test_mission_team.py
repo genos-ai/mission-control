@@ -7,6 +7,7 @@ from modules.backend.core.exceptions import ConflictError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
 from modules.backend.services.agent_catalog import AgentCatalogService
 from modules.backend.services.mission_team import MissionTeamService
+from tests.conftest import TEST_USER_ID
 
 
 async def _seed_mission(db_session: AsyncSession) -> Mission:
@@ -16,7 +17,7 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
     mission = Mission(
         name="test-mission",
         description="Test mission",
-        owner_id="user:test",
+        owner_id=TEST_USER_ID,
         status="active",
         default_roster="default",
     )
@@ -25,7 +26,7 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
 
     member = MissionMember(
         mission_id=mission.id,
-        user_id="user:test",
+        user_id=TEST_USER_ID,
         role=MissionMemberRole.OWNER,
     )
     db_session.add(member)
@@ -102,7 +103,7 @@ class TestUpdateUserPrompt:
         member = await service.add_agent(mission.id, agent_id)
 
         updated = await service.update_user_prompt(
-            member.id, "New prompt", changed_by="user:test",
+            member.id, "New prompt", changed_by=TEST_USER_ID,
         )
         assert updated.user_prompt == "New prompt"
         assert updated.user_prompt_version == 2

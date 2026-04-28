@@ -7,6 +7,7 @@ from modules.backend.core.exceptions import BudgetExceededError, NotFoundError, 
 from modules.backend.models.session import SessionStatus
 from modules.backend.schemas.session import SessionCreate, SessionMessageCreate, SessionUpdate
 from modules.backend.services.session import SessionService
+from tests.conftest import TEST_USER_ID
 
 
 def _mock_session_model(**overrides):
@@ -14,7 +15,7 @@ def _mock_session_model(**overrides):
     defaults = {
         "id": "sess-123",
         "status": SessionStatus.ACTIVE.value,
-        "user_id": "user-1",
+        "user_id": TEST_USER_ID,
         "agent_id": None,
         "goal": None,
         "plan_id": None,
@@ -66,7 +67,7 @@ class TestCreateSession:
         mock_session = _mock_session_model(cost_budget_usd=50.0)
         with patch.object(service.repo, "create", return_value=mock_session):
             data = SessionCreate()
-            result = await service.create_session(data, user_id="user-1")
+            result = await service.create_session(data, user_id=TEST_USER_ID)
             assert result.id == "sess-123"
 
     @pytest.mark.asyncio
@@ -75,7 +76,7 @@ class TestCreateSession:
         mock_session = _mock_session_model(cost_budget_usd=500.0)
         with patch.object(service.repo, "create", return_value=mock_session) as mock_create:
             data = SessionCreate(cost_budget_usd=9999.0)
-            await service.create_session(data, user_id="user-1")
+            await service.create_session(data, user_id=TEST_USER_ID)
             call_kwargs = mock_create.call_args.kwargs
             assert call_kwargs["cost_budget_usd"] == 500.0
 

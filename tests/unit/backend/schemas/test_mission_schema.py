@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from modules.backend.schemas.mission import (
+from tests.conftest import TEST_USER_ID
     MissionCreate,
     MissionResponse,
     MissionUpdate,
@@ -15,7 +16,7 @@ class TestMissionCreate:
         schema = MissionCreate(
             name="my-mission",
             description="A test mission",
-            owner_id="user:test",
+            owner_id=TEST_USER_ID,
         )
         assert schema.name == "my-mission"
         assert schema.default_roster == "default"
@@ -24,7 +25,7 @@ class TestMissionCreate:
         schema = MissionCreate(
             name="full-mission",
             description="Full mission",
-            owner_id="user:test",
+            owner_id=TEST_USER_ID,
             team_id="team-alpha",
             default_roster="research",
             budget_ceiling_usd=50.0,
@@ -38,7 +39,7 @@ class TestMissionCreate:
             MissionCreate(
                 name="MyMission",
                 description="Bad name",
-                owner_id="user:test",
+                owner_id=TEST_USER_ID,
             )
 
     def test_invalid_name_starts_with_number(self):
@@ -46,7 +47,7 @@ class TestMissionCreate:
             MissionCreate(
                 name="1mission",
                 description="Bad name",
-                owner_id="user:test",
+                owner_id=TEST_USER_ID,
             )
 
     def test_empty_name_rejected(self):
@@ -54,7 +55,7 @@ class TestMissionCreate:
             MissionCreate(
                 name="",
                 description="No name",
-                owner_id="user:test",
+                owner_id=TEST_USER_ID,
             )
 
     def test_budget_must_be_positive(self):
@@ -62,7 +63,7 @@ class TestMissionCreate:
             MissionCreate(
                 name="cheap-mission",
                 description="Negative budget",
-                owner_id="user:test",
+                owner_id=TEST_USER_ID,
                 budget_ceiling_usd=0.0,
             )
 
@@ -71,7 +72,7 @@ class TestMissionCreate:
             MissionCreate(
                 name="strict-mission",
                 description="No extras",
-                owner_id="user:test",
+                owner_id=TEST_USER_ID,
                 unknown_field="bad",
             )
 
@@ -100,7 +101,7 @@ class TestMissionResponse:
             brief=None,
             status="active",
             tier="user",
-            owner_id="user:test",
+            owner_id=TEST_USER_ID,
             team_id=None,
             default_roster="default",
             budget_ceiling_usd=None,

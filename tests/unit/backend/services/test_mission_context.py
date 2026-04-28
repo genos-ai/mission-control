@@ -16,6 +16,7 @@ from modules.backend.services.mission_context import (
     _SENTINEL,
     _set_nested,
 )
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture
@@ -309,7 +310,7 @@ class TestMCDCreationViaMissionService:
         mission = await svc.create_mission(
             name="mcd-seeded",
             description="Test MCD seeding",
-            owner_id="user:test",
+            owner_id=TEST_USER_ID,
         )
 
         mgr = MissionContextManager(db_session)

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.utils import utc_now
 from modules.backend.models.session import Session, SessionChannel, SessionMessage, SessionStatus
 from modules.backend.repositories.session import SessionRepository
+from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
 
 @pytest.fixture
@@ -23,7 +24,7 @@ async def _create_session(db_session: AsyncSession, **overrides) -> Session:
     """Helper to create a session directly in the DB."""
     defaults = {
         "status": SessionStatus.ACTIVE.value,
-        "user_id": "user-1",
+        "user_id": TEST_USER_ID,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
         "total_cost_usd": 0.0,
@@ -43,12 +44,12 @@ class TestGetActiveByUser:
     @pytest.mark.asyncio
     async def test_returns_active_and_suspended(self, repo, db_session):
         """Should return only ACTIVE and SUSPENDED sessions for the user."""
-        await _create_session(db_session, user_id="user-1", status=SessionStatus.ACTIVE.value)
-        await _create_session(db_session, user_id="user-1", status=SessionStatus.SUSPENDED.value)
-        await _create_session(db_session, user_id="user-1", status=SessionStatus.COMPLETED.value)
-        await _create_session(db_session, user_id="user-2", status=SessionStatus.ACTIVE.value)
+        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.ACTIVE.value)
+        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.SUSPENDED.value)
+        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.COMPLETED.value)
+        await _create_session(db_session, user_id=TEST_USER_ID_2, status=SessionStatus.ACTIVE.value)
 
-        results = await repo.get_active_by_user("user-1")
+        results = await repo.get_active_by_user(TEST_USER_ID)
         assert len(results) == 2
         statuses = {s.status for s in results}
         assert statuses == {SessionStatus.ACTIVE.value, SessionStatus.SUSPENDED.value}
@@ -60,10 +61,10 @@ class TestGetByUser:
     @pytest.mark.asyncio
     async def test_filter_by_status(self, repo, db_session):
         """Should filter sessions by status."""
-        await _create_session(db_session, user_id="user-1", status=SessionStatus.ACTIVE.value)
-        await _create_session(db_session, user_id="user-1", status=SessionStatus.COMPLETED.value)
+        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.ACTIVE.value)
+        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.COMPLETED.value)
 
-        results = await repo.get_by_user(user_id="user-1", status_filter=SessionStatus.ACTIVE.value)
+        results = await repo.get_by_user(user_id=TEST_USER_ID, status_filter=SessionStatus.ACTIVE.value)
         assert len(results) == 1
         assert results[0].status == SessionStatus.ACTIVE.value
 

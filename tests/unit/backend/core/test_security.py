@@ -15,6 +15,7 @@ import pytest
 from modules.backend.core.config_schema import JwtSchema
 from modules.backend.core.exceptions import AuthenticationError
 from modules.backend.core.security import (
+from tests.conftest import TEST_USER_ID
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -116,12 +117,12 @@ class TestCreateAccessToken:
         assert payload["role"] == "admin"
 
     def test_token_includes_access_type(self):
-        token = create_access_token({"sub": "user-1"})
+        token = create_access_token({"sub": TEST_USER_ID})
         payload = decode_token(token)
         assert payload["type"] == "access"
 
     def test_token_includes_expiration(self):
-        token = create_access_token({"sub": "user-1"})
+        token = create_access_token({"sub": TEST_USER_ID})
         payload = decode_token(token)
         assert "exp" in payload
 
@@ -133,9 +134,9 @@ class TestCreateAccessToken:
         assert long_exp > short_exp
 
     def test_does_not_mutate_input_data(self):
-        data = {"sub": "user-1"}
+        data = {"sub": TEST_USER_ID}
         create_access_token(data)
-        assert data == {"sub": "user-1"}
+        assert data == {"sub": TEST_USER_ID}
 
 
 # =============================================================================
@@ -153,7 +154,7 @@ class TestCreateRefreshToken:
         assert payload["sub"] == "user-99"
 
     def test_token_includes_refresh_type(self):
-        token = create_refresh_token({"sub": "user-1"})
+        token = create_refresh_token({"sub": TEST_USER_ID})
         payload = decode_token(token)
         assert payload["type"] == "refresh"
 
@@ -165,9 +166,9 @@ class TestCreateRefreshToken:
         assert refresh_exp > access_exp
 
     def test_does_not_mutate_input_data(self):
-        data = {"sub": "user-1"}
+        data = {"sub": TEST_USER_ID}
         create_refresh_token(data)
-        assert data == {"sub": "user-1"}
+        assert data == {"sub": TEST_USER_ID}
 
 
 # =============================================================================
@@ -188,7 +189,7 @@ class TestDecodeToken:
             decode_token("")
 
     def test_tampered_token_raises_authentication_error(self):
-        token = create_access_token({"sub": "user-1"})
+        token = create_access_token({"sub": TEST_USER_ID})
         tampered = token[:-4] + "XXXX"
         with pytest.raises(AuthenticationError):
             decode_token(tampered)
@@ -197,7 +198,7 @@ class TestDecodeToken:
         from jose import jwt as jose_jwt
 
         wrong_token = jose_jwt.encode(
-            {"sub": "user-1", "type": "access"},
+            {"sub": TEST_USER_ID, "type": "access"},
             "completely-different-secret",
             algorithm="HS256",
         )
@@ -206,7 +207,7 @@ class TestDecodeToken:
 
     def test_expired_token_raises_authentication_error(self):
         token = create_access_token(
-            {"sub": "user-1"},
+            {"sub": TEST_USER_ID},
             expires_delta=timedelta(seconds=-1),
         )
         with pytest.raises(AuthenticationError):

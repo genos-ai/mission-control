@@ -9,6 +9,7 @@ bypassing the broker registration which requires Redis.
 import pytest
 
 from modules.backend.tasks.example import (
+from tests.conftest import TEST_USER_ID
     send_notification,
     process_data,
     cleanup_expired_records,
@@ -24,13 +25,13 @@ class TestSendNotification:
     async def test_send_notification_returns_delivery_status(self):
         """Task returns delivery status with metadata."""
         result = await send_notification(
-            user_id="user-123",
+            user_id=TEST_USER_ID,
             message="Test message",
             channel="email",
         )
 
         assert result["status"] == "delivered"
-        assert result["user_id"] == "user-123"
+        assert result["user_id"] == TEST_USER_ID
         assert result["channel"] == "email"
         assert "sent_at" in result
 
@@ -38,7 +39,7 @@ class TestSendNotification:
     async def test_send_notification_default_channel_is_email(self):
         """Default channel is email."""
         result = await send_notification(
-            user_id="user-123",
+            user_id=TEST_USER_ID,
             message="Test message",
         )
 
@@ -49,7 +50,7 @@ class TestSendNotification:
         """Task supports different notification channels."""
         for channel in ["email", "sms", "push"]:
             result = await send_notification(
-                user_id="user-123",
+                user_id=TEST_USER_ID,
                 message="Test",
                 channel=channel,
             )
@@ -159,12 +160,12 @@ class TestGenerateReport:
         result = await generate_report(
             report_type="monthly_summary",
             parameters={"month": "2024-01"},
-            user_id="user-123",
+            user_id=TEST_USER_ID,
         )
 
         assert result["status"] == "completed"
         assert result["report_type"] == "monthly_summary"
-        assert result["user_id"] == "user-123"
+        assert result["user_id"] == TEST_USER_ID
         assert "report_id" in result
         assert "file_path" in result
         assert "generated_at" in result
@@ -175,7 +176,7 @@ class TestGenerateReport:
         result = await generate_report(
             report_type="sales",
             parameters={},
-            user_id="user-123",
+            user_id=TEST_USER_ID,
         )
 
         assert "sales" in result["report_id"]
@@ -187,7 +188,7 @@ class TestGenerateReport:
         result = await generate_report(
             report_type="inventory",
             parameters={},
-            user_id="user-123",
+            user_id=TEST_USER_ID,
         )
 
         assert result["file_path"].startswith("/reports/")

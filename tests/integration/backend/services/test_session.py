@@ -13,16 +13,16 @@ from modules.backend.services.session import SessionService
 
 class TestCreateSession:
     async def test_create_basic_session(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self, db_session: AsyncSession, test_mission: Mission, regular_user: User,
     ):
         service = SessionService(db_session)
         data = SessionCreate(mission_id=test_mission.id)
-        session = await service.create_session(data, user_id="user-001")
+        session = await service.create_session(data, user_id=regular_user.id)
 
         assert session.id is not None
         assert session.status == SessionStatus.ACTIVE.value
         assert session.mission_id == test_mission.id
-        assert session.user_id == "user-001"
+        assert session.user_id == regular_user.id
         assert session.expires_at is not None
 
     async def test_create_session_with_goal(

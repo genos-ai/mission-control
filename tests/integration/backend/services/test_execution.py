@@ -15,6 +15,7 @@ from modules.backend.models.mission import Mission
 from modules.backend.models.user import User
 from modules.backend.core.utils import utc_now
 from modules.backend.services.execution import ExecutionService
+from tests.conftest import TEST_USER_ID
 
 
 def _make_service(db_session: AsyncSession) -> ExecutionService:
@@ -29,7 +30,7 @@ class TestCreateAdhocExecution:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="Run unit tests",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-1",
             mission_id=test_mission.id,
         )
@@ -37,7 +38,7 @@ class TestCreateAdhocExecution:
         assert execution.id is not None
         assert execution.objective == "Run unit tests"
         assert execution.status == ExecutionState.PENDING
-        assert execution.triggered_by == "user:user-001"
+        assert execution.triggered_by == TEST_USER_ID
         assert execution.session_id == "sess-1"
         assert execution.mission_id == test_mission.id
         assert execution.trigger_type == "on_demand"
@@ -49,7 +50,7 @@ class TestCreateAdhocExecution:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="Deploy to staging",
-            triggered_by="user:admin-001",
+            triggered_by=TEST_USER_ID,
             roster_ref="devops",
             complexity_tier="complex",
             cost_ceiling_usd=25.0,
@@ -68,7 +69,7 @@ class TestCreateAdhocExecution:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="Quick check",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             mission_id=test_mission.id,
         )
 
@@ -117,7 +118,7 @@ class TestGetExecution:
         svc = _make_service(db_session)
         created = await svc.create_adhoc_execution(
             objective="Find it",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-get",
             mission_id=test_mission.id,
         )
@@ -142,7 +143,7 @@ class TestGetExecution:
         svc = _make_service(db_session)
         created = await svc.create_adhoc_execution(
             objective="Optional find",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-opt",
             mission_id=test_mission.id,
         )
@@ -159,7 +160,7 @@ class TestStateTransitions:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="To be cancelled",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-cancel",
             mission_id=test_mission.id,
         )
@@ -176,7 +177,7 @@ class TestStateTransitions:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="Will fail",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-fail",
             mission_id=test_mission.id,
         )
@@ -199,7 +200,7 @@ class TestStateTransitions:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="Will complete",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-complete",
             mission_id=test_mission.id,
         )
@@ -220,13 +221,13 @@ class TestListExecutions:
         svc = _make_service(db_session)
         await svc.create_adhoc_execution(
             objective="Task A",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-a",
             mission_id=test_mission.id,
         )
         await svc.create_adhoc_execution(
             objective="Task B",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-b",
             mission_id=test_mission.id,
         )
@@ -243,7 +244,7 @@ class TestListExecutions:
         svc = _make_service(db_session)
         await svc.create_adhoc_execution(
             objective="Pending task",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-pending",
             mission_id=test_mission.id,
         )
@@ -263,7 +264,7 @@ class TestListExecutions:
         for i in range(5):
             await svc.create_adhoc_execution(
                 objective=f"Task {i}",
-                triggered_by="user:user-001",
+                triggered_by=TEST_USER_ID,
                 session_id=f"sess-page-{i}",
                 mission_id=test_mission.id,
             )
@@ -291,7 +292,7 @@ class TestOutputExtraction:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="Generate report",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-extract",
             mission_id=test_mission.id,
         )
@@ -313,7 +314,7 @@ class TestOutputExtraction:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="No mapping",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-nomap",
             mission_id=test_mission.id,
         )
@@ -327,7 +328,7 @@ class TestOutputExtraction:
         svc = _make_service(db_session)
         execution = await svc.create_adhoc_execution(
             objective="No outcome",
-            triggered_by="user:user-001",
+            triggered_by=TEST_USER_ID,
             session_id="sess-noout",
             mission_id=test_mission.id,
         )
