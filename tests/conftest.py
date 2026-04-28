@@ -107,7 +107,7 @@ async def db_engine() -> AsyncGenerator[AsyncEngine, None]:
             connect_args={"check_same_thread": False},
         )
     else:
-        # PostgreSQL or other databases
+        # PostgreSQL
         engine = create_async_engine(
             url,
             echo=False,
@@ -115,8 +115,10 @@ async def db_engine() -> AsyncGenerator[AsyncEngine, None]:
             max_overflow=10,
         )
 
-    # Create all tables
+    # Drop and recreate all tables for a clean slate.
+    # Prevents stale data from prior runs contaminating tests.
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
