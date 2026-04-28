@@ -86,6 +86,10 @@ class ContainerBackend:
             branch_name: Git branch for the worktree (required if git_aware)
             cpu_limit: CPU limit in cores (default: 2.0)
             memory_limit_mb: Memory limit in MB (default: 2048)
+            extra_volumes: Additional bind mounts beyond the worktree.
+                List of dicts with keys: host_path, container_path, mode (ro|rw).
+                Example: [{"host_path": "/data/target", "container_path": "/workspace/target", "mode": "ro"}]
+            network_mode: Docker network mode (default: None → Docker default)
 
         Args:
             name: Unique name for this environment (mission_id or test name).
@@ -105,6 +109,8 @@ class ContainerBackend:
         branch_name = config.get("branch_name")
         cpu_limit = config.get("cpu_limit", 2.0)
         memory_limit_mb = config.get("memory_limit_mb", 2048)
+        extra_volumes: list[dict[str, str]] = config.get("extra_volumes", [])
+        network_mode: str | None = config.get("network_mode")
 
         container_name = f"mc-{name}-{uuid4().hex[:8]}"
 
@@ -127,22 +133,41 @@ class ContainerBackend:
                     "mode": "rw",
                 }
 
+        # --- Extra volumes (e.g. read-only target mount, evidence dir) ---
+        for vol in extra_volumes:
+            hp = vol.get("host_path")
+            cp = vol.get("container_path")
+            mode = vol.get("mode", "rw")
+            if not hp or not cp:
+                raise ValueError(
+                    f"extra_volumes entry missing host_path or container_path: {vol}"
+                )
+            if mode not in ("ro", "rw"):
+                raise ValueError(
+                    f"extra_volumes mode must be 'ro' or 'rw', got '{mode}'"
+                )
+            volumes[str(hp)] = {"bind": cp, "mode": mode}
+
         # --- Create and start container ---
+        create_kwargs: dict[str, Any] = {
+            "image": image,
+            "name": container_name,
+            "command": "sleep infinity",
+            "volumes": volumes,
+            "mem_limit": f"{memory_limit_mb}m",
+            "nano_cpus": int(cpu_limit * 1e9),
+            "working_dir": _CONTAINER_WORKSPACE,
+            "detach": True,
+            "labels": {
+                "mission-control": "true",
+                "mc-environment": name,
+            },
+        }
+        if network_mode:
+            create_kwargs["network_mode"] = network_mode
+
         def _create() -> Any:
-            return client.containers.create(
-                image=image,
-                name=container_name,
-                command="sleep infinity",
-                volumes=volumes,
-                mem_limit=f"{memory_limit_mb}m",
-                nano_cpus=int(cpu_limit * 1e9),
-                working_dir=_CONTAINER_WORKSPACE,
-                detach=True,
-                labels={
-                    "mission-control": "true",
-                    "mc-environment": name,
-                },
-            )
+            return client.containers.create(**create_kwargs)
 
         container = await asyncio.get_running_loop().run_in_executor(None, _create)
         await asyncio.get_running_loop().run_in_executor(None, container.start)
@@ -159,6 +184,8 @@ class ContainerBackend:
                 "git_aware": git_aware,
                 "cpu_limit": cpu_limit,
                 "memory_limit_mb": memory_limit_mb,
+                "extra_volumes_count": len(extra_volumes),
+                "network_mode": network_mode,
             },
         )
 

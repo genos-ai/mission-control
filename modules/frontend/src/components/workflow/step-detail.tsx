@@ -149,6 +149,16 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                 onChange={(e) => update({ timeout_seconds: e.target.value ? parseInt(e.target.value) : null })}
               />
             </Field>
+            <Field label="Condition (skip when false)">
+              <VariableAutocomplete
+                className="min-h-[40px] font-mono text-xs"
+                value={draft.condition ?? ''}
+                onChange={(v) => update({ condition: v || null })}
+                upstreamNodeIds={upstreamNodeIds}
+                templateMode={false}
+                placeholder='@context.target_path != null'
+              />
+            </Field>
           </>
         )}
 

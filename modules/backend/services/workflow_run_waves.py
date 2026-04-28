@@ -130,18 +130,24 @@ class WorkflowRunWavesMixin:
             # Partition wave into skipped and executable steps
             executable_ids: list[str] = []
             for step_id in wave_step_ids:
-                if self._should_skip(step_id, step_map, completed_outcomes, edges_map):
+                if self._should_skip(step_id, step_map, completed_outcomes, edges_map, run.context):
                     completed_outcomes[step_id] = {"_skipped": True}
+                    step_obj = step_map[step_id]
+                    reason = (
+                        f"inline condition false: {step_obj.condition}"
+                        if step_obj.condition
+                        else "condition branch not taken"
+                    )
                     _emit({
                         "type": "step_skipped",
                         "step_id": step_id,
-                        "reason": "condition branch not taken",
+                        "reason": reason,
                     })
                     await self._publish_workflow_event(run.mission_id, WorkflowStepSkippedEvent(
                         session_id=_uuid.UUID(session_id), source="workflow_run_service",
-                        workflow_run_id=run.id, step_id=step_id, reason="condition branch not taken",
+                        workflow_run_id=run.id, step_id=step_id, reason=reason,
                     ))
-                    logger.info("Skipping step (condition branch)", extra={"step_id": step_id, "run_id": run.id})
+                    logger.info("Skipping step", extra={"step_id": step_id, "run_id": run.id, "reason": reason})
                 else:
                     executable_ids.append(step_id)
 
@@ -274,6 +280,8 @@ class WorkflowRunWavesMixin:
             upstream_context=upstream,
             session_id=session_id,
             mission_id=run.mission_id,
+            container_image=step.container_image,
+            extra_volumes=step.extra_volumes,
         )
 
         logger.info(
@@ -722,14 +730,47 @@ class WorkflowRunWavesMixin:
         step_map: dict[str, WorkflowStepSchema],
         completed_outcomes: dict[str, dict],
         edges_map: dict[tuple[str, str], str | None],
+        workflow_context: dict[str, Any] | None = None,
     ) -> bool:
-        """Check if a step should be skipped because a condition dependency took a different branch.
+        """Check if a step should be skipped.
 
-        A step is skipped when ANY of its dependencies is a condition node
-        whose branch result does not match the edge label connecting them.
-        If no edge label exists, the step always runs (backward-compatible).
+        A step is skipped when:
+        1. It has an inline ``condition`` expression that evaluates to false, OR
+        2. ANY of its dependencies is a condition node whose branch result
+           does not match the edge label connecting them, OR
+        3. ANY of its dependencies was itself skipped (propagation).
+
+        If no edge label exists on a condition-node edge the step always runs
+        (backward-compatible).
         """
         step = step_map[step_id]
+
+        # ── Inline step-level condition guard ──
+        if step.condition:
+            from modules.backend.services.condition_evaluator import (
+                ConditionEvaluationError,
+                evaluate_condition,
+            )
+
+            try:
+                result = evaluate_condition(
+                    step.condition, completed_outcomes, workflow_context or {},
+                )
+                if not result:
+                    logger.info(
+                        "Step skipped by inline condition",
+                        extra={"step_id": step_id, "condition": step.condition},
+                    )
+                    return True
+            except ConditionEvaluationError:
+                logger.error(
+                    "Inline condition evaluation failed — skipping step",
+                    extra={"step_id": step_id, "condition": step.condition},
+                    exc_info=True,
+                )
+                return True
+
+        # ── Graph-based condition-node routing ──
         for dep_id in step.depends_on:
             dep = step_map.get(dep_id)
             if dep is None:

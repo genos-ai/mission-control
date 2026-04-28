@@ -46,6 +46,8 @@ class MissionControlDispatchAdapter:
         mission_id: str | None = None,
         gate: object | None = None,
         execution_mode: str | None = None,
+        container_image: str | None = None,
+        extra_volumes: list[dict[str, str]] | None = None,
     ) -> dict:
         """Execute a mission via handle_mission() and return result dict."""
         from modules.backend.agents.mission_control.dispatch.environment import (
@@ -109,6 +111,8 @@ class MissionControlDispatchAdapter:
             db_session=self._db_session,
             gate=gate,
             execution_mode=resolved_mode,
+            container_image=container_image,
+            extra_volumes=extra_volumes,
         )
 
         outcome_dict = outcome.model_dump()

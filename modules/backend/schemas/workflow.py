@@ -142,6 +142,46 @@ class SubWorkflowConfig(BaseModel):
     max_depth: int = Field(default=3, ge=1, le=10)
 
 
+class AgentStepConfig(BaseModel):
+    """Configuration for an agent_step node — optional overrides beyond capability."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_tokens: int | None = Field(None, ge=1, le=128000)
+    temperature: float | None = Field(None, ge=0.0, le=2.0)
+    system_prompt_override: str | None = Field(None, max_length=5000)
+
+
+class BranchConfig(BaseModel):
+    """Configuration for a branch (fork) node — fan-out to parallel paths."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: str = Field(default="all", pattern=r"^(all|conditional)$")
+
+
+class RetryPolicy(BaseModel):
+    """Retry policy for a workflow step."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_retries: int = Field(default=0, ge=0, le=10)
+    backoff_seconds: float = Field(default=5.0, ge=0.0, le=3600.0)
+    retry_on: list[str] = Field(
+        default_factory=lambda: ["error"],
+        description="Conditions to retry on: error, timeout",
+    )
+
+    @field_validator("retry_on")
+    @classmethod
+    def _validate_retry_on(cls, v: list[str]) -> list[str]:
+        allowed = {"error", "timeout"}
+        bad = [x for x in v if x not in allowed]
+        if bad:
+            raise ValueError(f"Invalid retry_on values: {bad}. Allowed: {sorted(allowed)}")
+        return v
+
+
 class WorkflowStepSchema(BaseModel):
     """A single step in a workflow.
 
@@ -158,6 +198,7 @@ class WorkflowStepSchema(BaseModel):
         max_length=100,
         pattern=r"^[a-z][a-z0-9_-]*$",
     )
+    label: str | None = Field(None, max_length=200, description="Human-readable display label")
     description: str | None = Field(None, max_length=500)
     node_type: str = Field(
         default="agent_step",
@@ -174,6 +215,9 @@ class WorkflowStepSchema(BaseModel):
     llm_call_config: LlmCallConfig | None = None
     merge_config: MergeConfig | None = None
     sub_workflow_config: SubWorkflowConfig | None = None
+    agent_step_config: AgentStepConfig | None = None
+    branch_config: BranchConfig | None = None
+    retry_policy: RetryPolicy | None = None
     roster: str = Field(
         default="default",
         pattern=r"^[a-z][a-z0-9_-]*$",
@@ -187,8 +231,34 @@ class WorkflowStepSchema(BaseModel):
         default="local",
         pattern=r"^(local|worktree|container|sandbox|auto)$",
     )
+    container_image: str | None = Field(
+        None,
+        max_length=200,
+        description=(
+            "Docker image for container-mode execution. "
+            "Overrides the default code-workspace:latest. "
+            "Only used when environment is 'container'."
+        ),
+    )
+    extra_volumes: list[dict[str, str]] | None = Field(
+        None,
+        description=(
+            "Additional bind mounts for container-mode execution. "
+            "Each entry: {host_path, container_path, mode (ro|rw)}."
+        ),
+    )
     input: dict[str, Any] = Field(default_factory=dict)
     output_mapping: WorkflowStepOutputMapping | None = None
+    condition: str | None = Field(
+        None,
+        max_length=500,
+        description=(
+            "Optional guard expression evaluated before dispatch. "
+            "Uses the same syntax as condition nodes "
+            '(e.g. \'@context.target_path != null\'). '
+            "If the expression evaluates to false the step is skipped."
+        ),
+    )
     depends_on: list[str] = Field(default_factory=list)
     timeout_seconds: int | None = Field(None, ge=10, le=86400)
     max_refinement_rounds: int = Field(

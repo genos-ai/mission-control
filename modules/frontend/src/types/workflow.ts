@@ -18,6 +18,7 @@ export interface WorkflowListItem {
 
 export interface WorkflowStep {
   id: string
+  label?: string | null
   description: string | null
   node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input' | 'tool_call' | 'llm_call' | 'branch' | 'merge' | 'sub_workflow'
   capability: string | null
@@ -63,11 +64,14 @@ export interface WorkflowStep {
   complexity_tier: string
   cost_ceiling_usd: number | null
   environment: string
+  container_image?: string | null
+  extra_volumes?: { host_path: string; container_path: string; mode: string }[] | null
   input: Record<string, unknown>
   output_mapping: {
     summary_key: string | null
     field_mappings: { source_task: string; source_field: string; target_key: string }[]
   } | null
+  condition?: string | null
   depends_on: string[]
   timeout_seconds: number | null
   max_refinement_rounds: number

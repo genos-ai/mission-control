@@ -114,6 +114,8 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
         session_id: str,
         environment: str = "local",
         mission_id: str | None = None,
+        container_image: str | None = None,
+        extra_volumes: list[dict[str, str]] | None = None,
     ) -> Execution:
         """Create an execution from a workflow step."""
 
@@ -129,6 +131,15 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
                     ),
                 )
 
+            # Store container config in the execution context so
+            # run_execution → dispatch adapter → handle_mission can
+            # forward them to the ContainerBackend.
+            exec_context: dict = {}
+            if container_image:
+                exec_context["container_image"] = container_image
+            if extra_volumes:
+                exec_context["extra_volumes"] = extra_volumes
+
             execution = Execution(
                 workflow_run_id=workflow_run_id,
                 workflow_step_id=step_id,
@@ -140,7 +151,7 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
                 trigger_type="workflow",
                 triggered_by=f"workflow_run:{workflow_run_id}",
                 upstream_context=upstream_context,
-                context={},
+                context=exec_context,
                 total_cost_usd=0.0,
                 cost_ceiling_usd=cost_ceiling_usd,
                 mission_id=mission_id,

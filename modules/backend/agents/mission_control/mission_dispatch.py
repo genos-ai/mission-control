@@ -62,6 +62,8 @@ async def handle_mission(
     mission_repo_root: str | None = None,
     prior_outputs: dict[str, dict] | None = None,
     execution_record_id: str | None = None,
+    container_image: str | None = None,
+    extra_volumes: list[dict[str, str]] | None = None,
 ) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
@@ -293,15 +295,18 @@ async def handle_mission(
             env_service.register_backend("container", ContainerBackend())
 
             repo_root = mission_repo_root or str(find_project_root())
+            container_config: dict[str, Any] = {
+                "image": container_image or "code-workspace:latest",
+                "git_aware": True,
+                "repo_root": repo_root,
+                "branch_name": f"agent/{(mission_id or mission_run_id)[:8]}/dispatch",
+            }
+            if extra_volumes:
+                container_config["extra_volumes"] = extra_volumes
             env_handle = await env_service.get_or_create_for_mission(
                 mission_id=mission_id or mission_run_id,
                 mode=execution_mode,
-                config={
-                    "image": "code-workspace:latest",
-                    "git_aware": True,
-                    "repo_root": repo_root,
-                    "branch_name": f"agent/{(mission_id or mission_run_id)[:8]}/dispatch",
-                },
+                config=container_config,
             )
             logger.info(
                 "Execution environment ready",

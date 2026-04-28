@@ -286,3 +286,63 @@ class TestWorkflowSchema:
     def test_empty_steps_rejected(self):
         with pytest.raises(ValueError):
             WorkflowSchema(**_minimal_workflow(steps=[]))
+
+
+class TestStepConditionField:
+    """Tests for the inline ``condition`` field on WorkflowStepSchema."""
+
+    def test_condition_none_by_default(self):
+        step = WorkflowStepSchema(id="step-one", capability="test.agent")
+        assert step.condition is None
+
+    def test_condition_accepted(self):
+        step = WorkflowStepSchema(
+            id="step-one",
+            capability="test.agent",
+            condition='@context.target_path != null',
+        )
+        assert step.condition == '@context.target_path != null'
+
+    def test_condition_max_length(self):
+        with pytest.raises(ValueError):
+            WorkflowStepSchema(
+                id="step-one",
+                capability="test.agent",
+                condition="x" * 501,
+            )
+
+    def test_condition_empty_string_accepted(self):
+        """Empty string is accepted by schema (evaluator handles it)."""
+        step = WorkflowStepSchema(
+            id="step-one",
+            capability="test.agent",
+            condition="",
+        )
+        assert step.condition == ""
+
+    def test_condition_in_full_workflow(self):
+        workflow = WorkflowSchema(**_minimal_workflow(
+            steps=[
+                {"id": "step-a", "capability": "test.agent"},
+                {
+                    "id": "step-b",
+                    "capability": "test.agent",
+                    "depends_on": ["step-a"],
+                    "condition": '@context.mode == "full"',
+                },
+            ],
+        ))
+        assert workflow.steps[1].condition == '@context.mode == "full"'
+
+    def test_condition_does_not_break_existing_steps(self):
+        """Existing steps without condition continue to work."""
+        workflow = WorkflowSchema(**_minimal_workflow(
+            steps=[
+                {"id": "step-a", "capability": "test.agent",
+                 "output_mapping": {"summary_key": "a_result"}},
+                {"id": "step-b", "capability": "test.agent",
+                 "depends_on": ["step-a"]},
+            ],
+        ))
+        assert workflow.steps[0].condition is None
+        assert workflow.steps[1].condition is None

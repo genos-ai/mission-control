@@ -69,6 +69,10 @@ class ExecutionDispatchMixin:
             return execution
 
         try:
+            # Extract container config from execution.context (set by
+            # create_execution_from_step when a workflow step declares
+            # container_image or extra_volumes).
+            exec_ctx = execution.context or {}
             outcome = await self._mission_control_dispatch.execute(
                 mission_brief=execution.objective,
                 roster_ref=execution.roster_ref,
@@ -78,6 +82,8 @@ class ExecutionDispatchMixin:
                 session_id=execution.session_id,
                 mission_id=execution.mission_id,
                 gate=gate,
+                container_image=exec_ctx.get("container_image"),
+                extra_volumes=exec_ctx.get("extra_volumes"),
             )
 
             execution.execution_outcome = (
