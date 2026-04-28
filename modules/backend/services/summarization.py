@@ -198,9 +198,7 @@ class SummarizationService(BaseService):
         Raw data is never deleted — only excluded from default queries.
         Returns count of missions summarized.
         """
-        cutoff = (
-            utc_now() - timedelta(days=max_age_days)
-        ).isoformat()
+        cutoff = utc_now() - timedelta(days=max_age_days)
 
         result = await self.session.execute(
             select(ExecutionRecord)
