@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.base import SYSTEM_WORKFLOW_ID
 from modules.backend.core.config_schema import WorkflowsSchema
-from modules.backend.models.execution import ExecutionState
+from modules.backend.models.execution import ExecutionState, WorkflowRun, WorkflowRunState
+from modules.backend.models.mission import Mission
 from modules.backend.models.session import Session
 from modules.backend.services.execution import ExecutionService
 from datetime import datetime as _dt, timezone as _tz
@@ -35,6 +36,12 @@ _SESS_2 = "bac9134a-a913-50f4-adec-9725086b8998"
 _SESS_3 = "80d00060-470d-5db0-aa70-5adc526200ea"
 _SESS_4 = str(uuid5(_TEST_NS, "session:proj-thread-4"))
 
+# WorkflowRun IDs used as FK targets in create_execution_from_step tests
+_WR_1 = "eb91e1a8-65fe-557d-a7ea-144f9b2baa61"
+_WR_2 = "58f17d89-d819-5068-b33f-4e4b93be9e51"
+_WR_3 = "9472c408-004d-50c4-ac6e-c2fc28c3c42e"
+_WR_4 = "285eaa29-1d3b-5500-9bb5-0f52e2f54860"
+
 
 def _mock_app_config(**overrides):
     config = MagicMock()
@@ -44,9 +51,27 @@ def _mock_app_config(**overrides):
 
 @pytest.fixture(autouse=True)
 async def _ensure_parent_rows(test_user, db_session: AsyncSession):
-    """Create Session rows that Execution.session_id FKs to."""
+    """Create Session, Mission, and WorkflowRun rows that Execution FKs to."""
     for sid in (_SESS_1, _SESS_2, _SESS_3, _SESS_4):
         db_session.add(Session(id=sid, status="ACTIVE"))
+    await db_session.flush()
+    for mid in (_MISSION_ABC, _MISSION_XYZ, _MISSION_RESOLVED, _MISSION_NEW):
+        db_session.add(Mission(
+            id=mid, name=mid, description="test", owner_id=TEST_USER_ID,
+        ))
+    await db_session.flush()
+    for wrid in (_WR_1, _WR_2, _WR_3, _WR_4):
+        db_session.add(WorkflowRun(
+            id=wrid,
+            workflow_name="test-workflow",
+            workflow_version=1,
+            status=WorkflowRunState.RUNNING,
+            session_id=_SESS_1,
+            trigger_type="manual",
+            triggered_by=TEST_USER_ID,
+            context={},
+            total_cost_usd=0.0,
+        ))
     await db_session.flush()
 
 

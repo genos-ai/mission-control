@@ -75,7 +75,7 @@ class TestApplyTaskUpdates:
             [{"op": "add", "path": "identity.tech_stack",
               "value": ["python"], "reason": "agent discovered stack"}],
             agent_id="code.analyzer",
-            mission_id_ref=_MISSION_REF,
+            mission_id_ref=_MID("proj-curator"),
             task_id="task-1",
         )
         assert version == 2
@@ -153,7 +153,7 @@ class TestApplyTaskUpdates:
             [{"op": "add", "path": "architecture.components.api",
               "value": {"type": "fastapi"}, "reason": "discovered API"}],
             agent_id="code.analyzer",
-            mission_id_ref=_MISSION_REF,
+            mission_id_ref=_MID("proj-audit"),
             task_id="task-1",
         )
 
