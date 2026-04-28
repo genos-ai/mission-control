@@ -14,11 +14,17 @@ from modules.backend.core import security
 from modules.backend.services.mission_intent import MissionIntentService
 
 
+from uuid import uuid5, UUID
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+_INTENT_USER_ID = str(uuid5(_TEST_NS, "user:intent-tester"))
+_INTENT_MISSION_ID = str(uuid5(_TEST_NS, "mission:intent-test"))
+
+
 @pytest.fixture
 async def user(db_session: AsyncSession) -> User:
     hashed = security.hash_password("test-pass")
     user = User(
-        id="intent-user-001",
+        id=_INTENT_USER_ID,
         email="intent-test@test.dev",
         display_name="Intent Tester",
         hashed_password=hashed,
@@ -33,7 +39,7 @@ async def user(db_session: AsyncSession) -> User:
 @pytest.fixture
 async def mission(db_session: AsyncSession, user: User) -> Mission:
     m = Mission(
-        id="intent-mission-001",
+        id=_INTENT_MISSION_ID,
         name="intent-test-mission",
         description="A mission for intent tests",
         owner_id=user.id,

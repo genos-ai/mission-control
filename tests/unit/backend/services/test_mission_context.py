@@ -105,35 +105,35 @@ class TestCreateContext:
 class TestGetContext:
     @pytest.mark.asyncio
     async def test_get_existing(self, manager):
-        await manager.create_context("mission-get", "get-test", "desc")
-        data = await manager.get_context("mission-get")
+        await manager.create_context(_MID("get"), "get-test", "desc")
+        data = await manager.get_context(_MID("get"))
         assert data["identity"]["name"] == "get-test"
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_returns_empty(self, manager):
-        data = await manager.get_context("nonexistent")
+        data = await manager.get_context(_MID("nonexistent"))
         assert data == {}
 
     @pytest.mark.asyncio
     async def test_cache_hit(self, manager):
-        await manager.create_context("mission-cache", "cache-test", "desc")
-        await manager.get_context("mission-cache")
-        assert "mission-cache" in _cache
-        data = await manager.get_context("mission-cache")
+        await manager.create_context(_MID("cache"), "cache-test", "desc")
+        await manager.get_context(_MID("cache"))
+        assert _MID("cache") in _cache
+        data = await manager.get_context(_MID("cache"))
         assert data["identity"]["name"] == "cache-test"
 
 
 class TestGetContextWithVersion:
     @pytest.mark.asyncio
     async def test_returns_data_and_version(self, manager):
-        await manager.create_context("mission-ver", "ver-test", "desc")
-        data, version = await manager.get_context_with_version("mission-ver")
+        await manager.create_context(_MID("ver"), "ver-test", "desc")
+        data, version = await manager.get_context_with_version(_MID("ver"))
         assert version == 1
         assert data["identity"]["name"] == "ver-test"
 
     @pytest.mark.asyncio
     async def test_nonexistent_returns_empty(self, manager):
-        data, version = await manager.get_context_with_version("nonexistent")
+        data, version = await manager.get_context_with_version(_MID("nonexistent"))
         assert data == {}
         assert version == 0
 
@@ -141,8 +141,8 @@ class TestGetContextWithVersion:
 class TestGetContextSize:
     @pytest.mark.asyncio
     async def test_returns_size_metrics(self, manager):
-        await manager.create_context("mission-size", "size-test", "desc")
-        size = await manager.get_context_size("mission-size")
+        await manager.create_context(_MID("size"), "size-test", "desc")
+        size = await manager.get_context_size(_MID("size"))
         assert size["size_characters"] > 0
         assert size["size_tokens"] > 0
         assert size["version"] == 1
@@ -150,7 +150,7 @@ class TestGetContextSize:
 
     @pytest.mark.asyncio
     async def test_nonexistent_returns_zeros(self, manager):
-        size = await manager.get_context_size("nonexistent")
+        size = await manager.get_context_size(_MID("nonexistent"))
         assert size["size_characters"] == 0
         assert size["version"] == 0
 
@@ -158,27 +158,27 @@ class TestGetContextSize:
 class TestApplyUpdates:
     @pytest.mark.asyncio
     async def test_add_operation(self, manager):
-        await manager.create_context("mission-add", "add-test", "desc")
+        await manager.create_context(_MID("add"), "add-test", "desc")
         new_ver, errors = await manager.apply_updates(
-            "mission-add",
+            _MID("add"),
             [{"op": "add", "path": "identity.tech_stack", "value": ["python", "fastapi"],
               "reason": "Set tech stack"}],
         )
         assert new_ver == 2
         assert errors == []
-        data = await manager.get_context("mission-add")
+        data = await manager.get_context(_MID("add"))
         assert data["identity"]["tech_stack"] == ["python", "fastapi"]
 
     @pytest.mark.asyncio
     async def test_replace_operation(self, manager):
-        await manager.create_context("mission-rep", "rep-test", "desc")
+        await manager.create_context(_MID("rep"), "rep-test", "desc")
         await manager.apply_updates(
-            "mission-rep",
+            _MID("rep"),
             [{"op": "add", "path": "architecture.data_flow", "value": "initial",
               "reason": "init"}],
         )
         new_ver, errors = await manager.apply_updates(
-            "mission-rep",
+            _MID("rep"),
             [{"op": "replace", "path": "architecture.data_flow", "value": "updated",
               "reason": "update flow"}],
         )
@@ -187,27 +187,27 @@ class TestApplyUpdates:
 
     @pytest.mark.asyncio
     async def test_remove_operation(self, manager):
-        await manager.create_context("mission-rm", "rm-test", "desc")
+        await manager.create_context(_MID("rm"), "rm-test", "desc")
         await manager.apply_updates(
-            "mission-rm",
+            _MID("rm"),
             [{"op": "add", "path": "architecture.components.auth",
               "value": {"type": "jwt"}, "reason": "add auth"}],
         )
         new_ver, errors = await manager.apply_updates(
-            "mission-rm",
+            _MID("rm"),
             [{"op": "remove", "path": "architecture.components.auth",
               "reason": "remove auth"}],
         )
         assert new_ver == 3
         assert errors == []
-        data = await manager.get_context("mission-rm")
+        data = await manager.get_context(_MID("rm"))
         assert "auth" not in data["architecture"]["components"]
 
     @pytest.mark.asyncio
     async def test_restricted_path_rejected(self, manager):
-        await manager.create_context("mission-restricted", "test", "desc")
+        await manager.create_context(_MID("restricted"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
-            "mission-restricted",
+            _MID("restricted"),
             [{"op": "replace", "path": "version", "value": 999,
               "reason": "hack version"}],
         )
@@ -216,14 +216,14 @@ class TestApplyUpdates:
 
     @pytest.mark.asyncio
     async def test_agent_cannot_remove_guardrails(self, manager):
-        await manager.create_context("mission-guard", "test", "desc")
+        await manager.create_context(_MID("guard"), "test", "desc")
         await manager.apply_updates(
-            "mission-guard",
+            _MID("guard"),
             [{"op": "replace", "path": "guardrails",
               "value": {"no_delete": "Never delete production data"}, "reason": "safety"}],
         )
         new_ver, errors = await manager.apply_updates(
-            "mission-guard",
+            _MID("guard"),
             [{"op": "remove", "path": "guardrails.no_delete",
               "reason": "trying to remove"}],
             agent_id="some.agent",
@@ -233,9 +233,9 @@ class TestApplyUpdates:
 
     @pytest.mark.asyncio
     async def test_replace_nonexistent_path_errors(self, manager):
-        await manager.create_context("mission-nopath", "test", "desc")
+        await manager.create_context(_MID("nopath"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
-            "mission-nopath",
+            _MID("nopath"),
             [{"op": "replace", "path": "nonexistent.deep.path",
               "value": "val", "reason": "test"}],
         )
@@ -244,9 +244,9 @@ class TestApplyUpdates:
 
     @pytest.mark.asyncio
     async def test_noop_replace_errors(self, manager):
-        await manager.create_context("mission-noop", "test", "desc")
+        await manager.create_context(_MID("noop"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
-            "mission-noop",
+            _MID("noop"),
             [{"op": "replace", "path": "identity.name", "value": "test",
               "reason": "no change"}],
         )
@@ -255,9 +255,9 @@ class TestApplyUpdates:
 
     @pytest.mark.asyncio
     async def test_unknown_operation(self, manager):
-        await manager.create_context("mission-unk", "test", "desc")
+        await manager.create_context(_MID("unk"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
-            "mission-unk",
+            _MID("unk"),
             [{"op": "patch", "path": "identity.name", "value": "x",
               "reason": "bad op"}],
         )
@@ -267,7 +267,7 @@ class TestApplyUpdates:
     @pytest.mark.asyncio
     async def test_nonexistent_mission_errors(self, manager):
         new_ver, errors = await manager.apply_updates(
-            "nonexistent-mission",
+            _MID("nonexistent-mission"),
             [{"op": "add", "path": "x", "value": 1, "reason": "test"}],
         )
         assert new_ver == 0
@@ -275,28 +275,28 @@ class TestApplyUpdates:
 
     @pytest.mark.asyncio
     async def test_invalidates_cache(self, manager):
-        await manager.create_context("mission-inv", "test", "desc")
-        await manager.get_context("mission-inv")
-        assert "mission-inv" in _cache
+        await manager.create_context(_MID("inv"), "test", "desc")
+        await manager.get_context(_MID("inv"))
+        assert _MID("inv") in _cache
         await manager.apply_updates(
-            "mission-inv",
+            _MID("inv"),
             [{"op": "add", "path": "identity.tech_stack", "value": ["go"],
               "reason": "test"}],
         )
-        assert "mission-inv" not in _cache
+        assert _MID("inv") not in _cache
 
 
 class TestGetHistory:
     @pytest.mark.asyncio
     async def test_returns_changes(self, manager):
-        await manager.create_context("mission-hist", "test", "desc")
+        await manager.create_context(_MID("hist"), "test", "desc")
         await manager.apply_updates(
-            "mission-hist",
+            _MID("hist"),
             [{"op": "add", "path": "identity.tech_stack", "value": ["python"],
               "reason": "added stack"}],
             agent_id="test.agent",
         )
-        changes = await manager.get_history("mission-hist")
+        changes = await manager.get_history(_MID("hist"))
         assert len(changes) == 1
         assert changes[0].change_type == ChangeType.ADD
         assert changes[0].agent_id == "test.agent"
@@ -304,7 +304,7 @@ class TestGetHistory:
 
     @pytest.mark.asyncio
     async def test_empty_history_for_nonexistent(self, manager):
-        changes = await manager.get_history("nonexistent")
+        changes = await manager.get_history(_MID("nonexistent"))
         assert changes == []
 
 

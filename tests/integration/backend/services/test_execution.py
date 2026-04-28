@@ -17,6 +17,12 @@ from modules.backend.core.utils import utc_now
 from modules.backend.services.execution import ExecutionService
 from tests.conftest import TEST_USER_ID
 
+from uuid import uuid5, UUID
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+_SID = lambda tag: str(uuid5(_TEST_NS, f"session:exec-{tag}"))
+_NIL_UUID = "00000000-0000-0000-0000-000000000000"
+_WFR_001 = str(uuid5(_TEST_NS, "wfrun:001"))
+
 
 def _make_service(db_session: AsyncSession) -> ExecutionService:
     """Create an ExecutionService without dispatch adapter."""
@@ -31,7 +37,7 @@ class TestCreateAdhocExecution:
         execution = await svc.create_adhoc_execution(
             objective="Run unit tests",
             triggered_by=TEST_USER_ID,
-            session_id="sess-1",
+            session_id=_SID("1"),
             mission_id=test_mission.id,
         )
 
@@ -39,7 +45,7 @@ class TestCreateAdhocExecution:
         assert execution.objective == "Run unit tests"
         assert execution.status == ExecutionState.PENDING
         assert execution.triggered_by == TEST_USER_ID
-        assert execution.session_id == "sess-1"
+        assert execution.session_id == _SID("1")
         assert execution.mission_id == test_mission.id
         assert execution.trigger_type == "on_demand"
         assert execution.roster_ref == "default"
@@ -81,7 +87,7 @@ class TestCreateAdhocExecution:
         execution = await svc.create_adhoc_execution(
             objective="Standalone task",
             triggered_by="system",
-            session_id="sess-standalone",
+            session_id=_SID("standalone"),
         )
 
         assert execution.id is not None
@@ -94,18 +100,18 @@ class TestCreateFromStep:
     ):
         svc = _make_service(db_session)
         execution = await svc.create_execution_from_step(
-            workflow_run_id="wfr-001",
+            workflow_run_id=_WFR_001,
             step_id="step-001",
             objective="Analyze codebase",
             roster_ref="default",
             complexity_tier="simple",
             cost_ceiling_usd=5.0,
             upstream_context={},
-            session_id="sess-wf",
+            session_id=_SID("wf"),
             mission_id=test_mission.id,
         )
 
-        assert execution.workflow_run_id == "wfr-001"
+        assert execution.workflow_run_id == _WFR_001
         assert execution.workflow_step_id == "step-001"
         assert execution.trigger_type == "workflow"
         assert execution.status == ExecutionState.PENDING
@@ -119,7 +125,7 @@ class TestGetExecution:
         created = await svc.create_adhoc_execution(
             objective="Find it",
             triggered_by=TEST_USER_ID,
-            session_id="sess-get",
+            session_id=_SID("get"),
             mission_id=test_mission.id,
         )
 
@@ -130,11 +136,11 @@ class TestGetExecution:
     async def test_get_nonexistent_raises(self, db_session: AsyncSession):
         svc = _make_service(db_session)
         with pytest.raises(NotFoundError):
-            await svc.get_execution("nonexistent-id")
+            await svc.get_execution(_NIL_UUID)
 
     async def test_get_or_none_returns_none(self, db_session: AsyncSession):
         svc = _make_service(db_session)
-        result = await svc.get_execution_or_none("nonexistent-id")
+        result = await svc.get_execution_or_none(_NIL_UUID)
         assert result is None
 
     async def test_get_or_none_returns_execution(
@@ -144,7 +150,7 @@ class TestGetExecution:
         created = await svc.create_adhoc_execution(
             objective="Optional find",
             triggered_by=TEST_USER_ID,
-            session_id="sess-opt",
+            session_id=_SID("opt"),
             mission_id=test_mission.id,
         )
 
@@ -161,7 +167,7 @@ class TestStateTransitions:
         execution = await svc.create_adhoc_execution(
             objective="To be cancelled",
             triggered_by=TEST_USER_ID,
-            session_id="sess-cancel",
+            session_id=_SID("cancel"),
             mission_id=test_mission.id,
         )
 
@@ -178,7 +184,7 @@ class TestStateTransitions:
         execution = await svc.create_adhoc_execution(
             objective="Will fail",
             triggered_by=TEST_USER_ID,
-            session_id="sess-fail",
+            session_id=_SID("fail"),
             mission_id=test_mission.id,
         )
         # Manually transition to RUNNING first
@@ -201,7 +207,7 @@ class TestStateTransitions:
         execution = await svc.create_adhoc_execution(
             objective="Will complete",
             triggered_by=TEST_USER_ID,
-            session_id="sess-complete",
+            session_id=_SID("complete"),
             mission_id=test_mission.id,
         )
         # Manually transition to RUNNING
@@ -222,13 +228,13 @@ class TestListExecutions:
         await svc.create_adhoc_execution(
             objective="Task A",
             triggered_by=TEST_USER_ID,
-            session_id="sess-a",
+            session_id=_SID("a"),
             mission_id=test_mission.id,
         )
         await svc.create_adhoc_execution(
             objective="Task B",
             triggered_by=TEST_USER_ID,
-            session_id="sess-b",
+            session_id=_SID("b"),
             mission_id=test_mission.id,
         )
 
@@ -245,7 +251,7 @@ class TestListExecutions:
         await svc.create_adhoc_execution(
             objective="Pending task",
             triggered_by=TEST_USER_ID,
-            session_id="sess-pending",
+            session_id=_SID("pending"),
             mission_id=test_mission.id,
         )
 
@@ -265,7 +271,7 @@ class TestListExecutions:
             await svc.create_adhoc_execution(
                 objective=f"Task {i}",
                 triggered_by=TEST_USER_ID,
-                session_id=f"sess-page-{i}",
+                session_id=_SID(f"page-{i}"),
                 mission_id=test_mission.id,
             )
 
@@ -293,7 +299,7 @@ class TestOutputExtraction:
         execution = await svc.create_adhoc_execution(
             objective="Generate report",
             triggered_by=TEST_USER_ID,
-            session_id="sess-extract",
+            session_id=_SID("extract"),
             mission_id=test_mission.id,
         )
         execution.execution_outcome = {
@@ -315,7 +321,7 @@ class TestOutputExtraction:
         execution = await svc.create_adhoc_execution(
             objective="No mapping",
             triggered_by=TEST_USER_ID,
-            session_id="sess-nomap",
+            session_id=_SID("nomap"),
             mission_id=test_mission.id,
         )
 
@@ -329,7 +335,7 @@ class TestOutputExtraction:
         execution = await svc.create_adhoc_execution(
             objective="No outcome",
             triggered_by=TEST_USER_ID,
-            session_id="sess-noout",
+            session_id=_SID("noout"),
             mission_id=test_mission.id,
         )
 

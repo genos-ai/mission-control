@@ -12,6 +12,11 @@ from modules.backend.services.platform_metrics import PlatformMetricsService
 from tests.conftest import TEST_USER_ID
 
 
+@pytest.fixture(autouse=True)
+async def _ensure_test_user(test_user):
+    pass
+
+
 @pytest.fixture
 def service(db_session: AsyncSession) -> PlatformMetricsService:
     return PlatformMetricsService(db_session)

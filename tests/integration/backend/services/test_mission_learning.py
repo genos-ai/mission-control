@@ -27,11 +27,22 @@ from modules.backend.services.mission_learning import (
 )
 
 
+from uuid import uuid5, UUID
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+_LEARN_USER_ID = str(uuid5(_TEST_NS, "user:learn-tester"))
+_LEARN_MISSION_ID = str(uuid5(_TEST_NS, "mission:learn-test"))
+_LEARN_SESSION_ID = str(uuid5(_TEST_NS, "session:learn-test"))
+_EXEC_LEARN_001 = str(uuid5(_TEST_NS, "exec:learn-001"))
+_EXEC_LEARN_002 = str(uuid5(_TEST_NS, "exec:learn-002"))
+_TEX_LEARN_001 = str(uuid5(_TEST_NS, "tex:learn-001"))
+_TEX_LEARN_002 = str(uuid5(_TEST_NS, "tex:learn-002"))
+
+
 @pytest.fixture
 async def user(db_session: AsyncSession) -> User:
     hashed = security.hash_password("test-pass")
     u = User(
-        id="learn-user-001", email="learn@test.dev",
+        id=_LEARN_USER_ID, email="learn@test.dev",
         display_name="Learn Tester", hashed_password=hashed,
         system_role="user", is_active=True,
     )
@@ -43,7 +54,7 @@ async def user(db_session: AsyncSession) -> User:
 @pytest.fixture
 async def mission(db_session: AsyncSession, user: User) -> Mission:
     m = Mission(
-        id="learn-mission-001", name="learn-test",
+        id=_LEARN_MISSION_ID, name="learn-test",
         description="Test mission for learnings",
         owner_id=user.id, status=MissionStatus.ACTIVE,
     )
@@ -56,9 +67,9 @@ async def mission(db_session: AsyncSession, user: User) -> Mission:
 async def test_session(db_session: AsyncSession, mission: Mission) -> Session:
     """Create a session for execution records."""
     s = Session(
-        id="learn-session-001",
+        id=_LEARN_SESSION_ID,
         mission_id=mission.id,
-        user_id="learn-user-001",
+        user_id=_LEARN_USER_ID,
         status="active",
     )
     db_session.add(s)
@@ -72,7 +83,7 @@ async def execution_with_failures(
 ) -> ExecutionRecord:
     """Create an execution record with multiple failed task attempts."""
     record = ExecutionRecord(
-        id="exec-learn-001", mission_id=mission.id,
+        id=_EXEC_LEARN_001, mission_id=mission.id,
         session_id=test_session.id,
         objective_statement="Run quality check",
         status=ExecutionRecordStatus.COMPLETED,
@@ -82,7 +93,7 @@ async def execution_with_failures(
 
     # Task execution with domain tags
     tex = TaskExecution(
-        id="tex-learn-001", execution_record_id=record.id,
+        id=_TEX_LEARN_001, execution_record_id=record.id,
         task_id="task-001", agent_name="software.quality.agent",
         status=TaskExecutionStatus.FAILED,
         domain_tags=["quality", "testing"],
@@ -247,7 +258,7 @@ class TestMissionLearningExtractor:
     ):
         """One failure is below min_occurrence — no learning created."""
         record = ExecutionRecord(
-            id="exec-learn-002", mission_id=mission.id,
+            id=_EXEC_LEARN_002, mission_id=mission.id,
             session_id=test_session.id,
             objective_statement="Single fail",
             status=ExecutionRecordStatus.COMPLETED,
@@ -256,7 +267,7 @@ class TestMissionLearningExtractor:
         await db_session.flush()
 
         tex = TaskExecution(
-            id="tex-learn-002", execution_record_id=record.id,
+            id=_TEX_LEARN_002, execution_record_id=record.id,
             task_id="task-002", agent_name="unique.agent",
             status=TaskExecutionStatus.FAILED,
         )

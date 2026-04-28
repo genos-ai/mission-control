@@ -50,6 +50,11 @@ async def _seed_catalog_agent(
     return entry.id
 
 
+@pytest.fixture(autouse=True)
+async def _ensure_test_user(test_user):
+    pass
+
+
 @pytest.fixture
 def service(db_session: AsyncSession) -> MissionTeamService:
     return MissionTeamService(db_session)

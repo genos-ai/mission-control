@@ -20,11 +20,17 @@ from modules.backend.services.mission_intent import MissionIntentService
 from modules.backend.services.mission_learning import MissionLearningService
 
 
+from uuid import uuid5, UUID
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+_KS_USER_ID = str(uuid5(_TEST_NS, "user:ks-tester"))
+_KS_MISSION_ID = str(uuid5(_TEST_NS, "mission:ks-test"))
+
+
 @pytest.fixture
 async def user(db_session: AsyncSession) -> User:
     hashed = security.hash_password("test-pass")
     u = User(
-        id="ks-user-001", email="ks@test.dev",
+        id=_KS_USER_ID, email="ks@test.dev",
         display_name="KS Tester", hashed_password=hashed,
         system_role="admin", is_active=True,
     )
@@ -36,7 +42,7 @@ async def user(db_session: AsyncSession) -> User:
 @pytest.fixture
 async def mission(db_session: AsyncSession, user: User) -> Mission:
     m = Mission(
-        id="ks-mission-001", name="ks-test",
+        id=_KS_MISSION_ID, name="ks-test",
         description="Knowledge service test mission",
         owner_id=user.id, status=MissionStatus.ACTIVE,
     )

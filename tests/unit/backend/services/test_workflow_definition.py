@@ -53,6 +53,11 @@ def _minimal_objective():
     }
 
 
+@pytest.fixture(autouse=True)
+async def _ensure_test_user(test_user):
+    pass
+
+
 @pytest.fixture
 def service(db_session: AsyncSession) -> WorkflowDefinitionService:
     return WorkflowDefinitionService(db_session)

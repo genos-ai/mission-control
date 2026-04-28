@@ -14,7 +14,14 @@ from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.models.execution import Execution, ExecutionState
 from modules.backend.repositories.execution import ExecutionRepository
 from modules.backend.services.execution import ExecutionService
-from tests.conftest import TEST_USER_ID
+from tests.conftest import TEST_USER_ID, TEST_SESSION_ID
+
+from uuid import uuid5, UUID
+_TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
+_NIL_UUID = "00000000-0000-0000-0000-000000000000"
+_SESS_1 = str(uuid5(_TEST_NS, "session:exec-1"))
+_SESS_2 = str(uuid5(_TEST_NS, "session:exec-2"))
+_RUN_123 = str(uuid5(_TEST_NS, "run:123"))
 
 
 def _mock_app_config(**overrides):
@@ -43,7 +50,7 @@ class TestCreateAdhocExecution:
             execution = await service.create_adhoc_execution(
                 objective="Test objective",
                 triggered_by=TEST_USER_ID,
-                session_id="test-session-id",
+                session_id=TEST_SESSION_ID,
             )
 
         assert execution.id is not None
@@ -65,7 +72,7 @@ class TestCreateAdhocExecution:
             execution = await service.create_adhoc_execution(
                 objective="Complex task",
                 triggered_by=TEST_USER_ID,
-                session_id="test-session-id",
+                session_id=TEST_SESSION_ID,
                 roster_ref="research_team",
                 complexity_tier="complex",
                 cost_ceiling_usd=25.0,
@@ -87,7 +94,7 @@ class TestCreateAdhocExecution:
             await service.create_adhoc_execution(
                 objective="First",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
 
             # Second should fail due to concurrency limit
@@ -96,7 +103,7 @@ class TestCreateAdhocExecution:
                 await service.create_adhoc_execution(
                     objective="Second",
                     triggered_by=TEST_USER_ID,
-                    session_id="sess-2",
+                    session_id=_SESS_2,
                 )
 
 
@@ -109,17 +116,17 @@ class TestCreateExecutionFromStep:
         ):
             service = ExecutionService(session=db_session)
             execution = await service.create_execution_from_step(
-                workflow_run_id="run-123",
+                workflow_run_id=_RUN_123,
                 step_id="scrape",
                 objective="Fetch articles",
                 roster_ref="research_team",
                 complexity_tier="simple",
                 cost_ceiling_usd=0.50,
                 upstream_context={"sources": ["url1"]},
-                session_id="test-session-id",
+                session_id=TEST_SESSION_ID,
             )
 
-        assert execution.workflow_run_id == "run-123"
+        assert execution.workflow_run_id == _RUN_123
         assert execution.workflow_step_id == "scrape"
         assert execution.roster_ref == "research_team"
         assert execution.upstream_context == {"sources": ["url1"]}
@@ -137,7 +144,7 @@ class TestExecutionStateTransitions:
             execution = await service.create_adhoc_execution(
                 objective="Cancellable",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
 
             cancelled = await service.cancel_execution(
@@ -158,7 +165,7 @@ class TestExecutionStateTransitions:
             execution = await service.create_adhoc_execution(
                 objective="Test",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
             await service.cancel_execution(execution.id, reason="done")
 
@@ -176,7 +183,7 @@ class TestExecutionStateTransitions:
             execution = await service.create_adhoc_execution(
                 objective="Complete me",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
 
             # Transition to running first
@@ -200,7 +207,7 @@ class TestExecutionStateTransitions:
             execution = await service.create_adhoc_execution(
                 objective="Fail me",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
 
             m = await service._get_execution(execution.id)
@@ -226,7 +233,7 @@ class TestOutputExtraction:
             execution = await service.create_adhoc_execution(
                 objective="Extract test",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
             execution.execution_outcome = {"summary": "All done"}
             await db_session.flush()
@@ -245,7 +252,7 @@ class TestOutputExtraction:
             execution = await service.create_adhoc_execution(
                 objective="Extract fields",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
             execution.execution_outcome = {
                 "task_results": {
@@ -290,12 +297,12 @@ class TestListAndGetExecutions:
             await service.create_adhoc_execution(
                 objective="Execution 1",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-1",
+                session_id=_SESS_1,
             )
             await service.create_adhoc_execution(
                 objective="Execution 2",
                 triggered_by=TEST_USER_ID,
-                session_id="sess-2",
+                session_id=_SESS_2,
             )
 
             executions, total = await service.list_executions()
@@ -309,7 +316,7 @@ class TestListAndGetExecutions:
 
         from modules.backend.core.exceptions import NotFoundError
         with pytest.raises(NotFoundError):
-            await service.get_execution("nonexistent-id")
+            await service.get_execution(_NIL_UUID)
 
 
 class TestExtractOutputs:
