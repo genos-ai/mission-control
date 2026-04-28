@@ -882,11 +882,14 @@ class SecurityAssessmentConfig(BaseSettings):
 │  Cross-cutting:                                                                       │
 │  └── security.webapp.digest.agent  (quarantined Q-LLM: raw HTTP → typed summary)     │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│  Tool Layer                                                                    │
+│  Container: security-assessment-worker (ALL steps run here, never on host)      │
+│  ├── /workspace/target/   → target codebase (read-only mount)                  │
+│  ├── /workspace/evidence/ → SARIF, JSONL, HAR, PoC evidence (read-write)       │
 │  ├── OPA/Rego scope enforcement (every tool call validated before execution)   │
 │  ├── Burp MCP Server (127.0.0.1:9876) → proxy_history, send_request, collab   │
 │  ├── CLI tools via asyncio.create_subprocess_exec → SARIF/JSONL output         │
-│  └── mitmproxy evidence capture (HAR + JSONL)                                  │
+│  ├── mitmproxy evidence capture (HAR + JSONL)                                  │
+│  └── Network policy: egress only to target URL + OPA + LLM API                │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  Evidence Store (@workspace/evidence/)                                         │
 │  ├── sarif/     → merged scanner SARIF                                        │
@@ -1628,7 +1631,7 @@ The WASA system builds on existing Mission Control infrastructure. This section 
 |---|---|---|---|
 | **Gate / approval** | `schemas/gate.py` (`GateReviewer`, `GateDecision`, `GateAction`), `gate.py` (`ConfigurableGate` with off/interactive/ai_assisted/autonomous modes), `escalation.py` (4-level chain with `RiskThresholds`) | Use existing `ConfigurableGate` with per-step mode. Map WASA stages to gate auto-continue rules: stages in `exploit_auto_approve_stages` → `off`, others → `interactive`. | WASA-specific auto-continue rule checking `ExploitStage` against config |
 | **Audit trail** | `models/execution_record.py` (`ExecutionDecision` with `decision_type`, `task_id`, `reasoning` JSON), `gate_post_run.py` (`_write_audit_row()`) | Extend existing `ExecutionDecision` for all WASA audit events. Use the existing `reasoning` JSONB field for structured assessment metadata (roe_sha256, scope_validated, evidence_hash). | New `DecisionType` values: `scope_validated`, `scope_violated`, `exploit_approved`, `finding_confirmed` |
-| **Container isolation** | `services/execution_environment.py` (`ExecutionEnvironmentService` with local/worktree/container backends), `services/container_backend.py` (Docker with bind mounts, CPU/memory limits, `/workspace` isolation) | Set `execution.mode: container` in DAST agent YAMLs. Use `get_or_create_for_mission()` for persistent container across phases. WASA Dockerfile becomes the container image. | WASA-specific Dockerfile with security tools baked in |
+| **Container isolation** | `services/execution_environment.py` (`ExecutionEnvironmentService` with local/worktree/container backends), `services/container_backend.py` (Docker with bind mounts, CPU/memory limits, `/workspace` isolation) | **ALL WASA steps run in container** — no step runs on the platform host. `execution.mode: container` on every agent YAML. Use `get_or_create_for_mission()` for a persistent container that survives across all 8 workflow phases. Target codebase mounted read-only; evidence workspace persists. Security tools are installed/updated in the container image, never on the host. | WASA-specific Dockerfile with security tools baked in; network policy restricting egress to target + OPA + LLM API only |
 | **Subprocess execution** | `agents/mission_control/helpers/cli_executor.py` (`_run_subprocess()` with async + timeout + cleanup), `tools/run_command.py` (PydanticAI tool dispatching to `ExecutionEnvironmentService`) | Use `_run_subprocess()` for async CLI tool calls in local mode. Use `run_command` tool for container-dispatched execution. | Security-specific exit code handling (Opengrep exit 1 = findings, not failure) |
 | **Verification pipeline** | `agents/mission_control/verification.py` (3-tier: structural → deterministic → AI), `verification_tiers.py` (pluggable check registry), `agents/system/verification/agent.py` | Extend Tier 2 check registry with WASA-specific checks: `poc_reproducer_valid`, `curl_command_parseable`, `finding_has_location`. Use existing Tier 1 for Pydantic schema validation. | WASA Tier 2 checks registered in existing `CheckRegistry`; dedicated `security.webapp.verifier` evaluator for Tier 3 PoC validation |
 | **Tool wrapper pattern** | `services/pqi/tools/runner.py` (`Finding`, `ToolResult`, `check_installed()`, `run_command()`), `services/pqi/tools/bandit.py` (Bandit security wrapper) | The WASA `SecurityToolRunner` (Section 1.2) replaces per-tool wrappers with a single unified runner driven by `config/security/tools.yaml`. Follows the `ToolResult` pattern but is config-driven, not code-driven. New tools = YAML entry + binary install. | `tool_registry.py`, `tool_runner.py`, `config/security/tools.yaml` |
@@ -2391,9 +2394,19 @@ async def validate_finding(
 
 ## 6.0 Orchestrator
 
-### 6.1 Design Principle
+### 6.1 Design Principles
 
-The orchestrator is **plain Python, not an LLM agent**. Concurrency, error handling, timeouts, state management, gate enforcement, and scope validation are code, not prompts. LLMs handle understanding and generation within their phase. The platform's existing dispatch loop orchestrates the workflow steps.
+**The orchestrator is plain Python, not an LLM agent.** Concurrency, error handling, timeouts, state management, gate enforcement, and scope validation are code, not prompts. LLMs handle understanding and generation within their phase. The platform's existing dispatch loop orchestrates the workflow steps.
+
+**The entire mission runs in a container, never on the platform host.** All 8 workflow steps execute inside the `security-assessment-worker` container image. The platform's `get_or_create_for_mission()` creates a persistent container per assessment that survives across all phases. Rationale:
+
+1. **Blast radius.** The WASA mission is offensive security tooling. A scope escape, malicious target code, or tool vulnerability must not reach the platform's database, event bus, or other missions.
+2. **Tool lifecycle.** Security tools (Opengrep, nuclei, sqlmap, Betterleaks, etc.) are installed, updated, and pinned inside the container image. The platform host never installs offensive tooling.
+3. **Network isolation.** Container network policy restricts egress to: target URL (via evidence proxy), OPA endpoint, LLM API (Copilot). No access to platform PostgreSQL, Redis, or internal services.
+4. **Evidence containment.** All evidence files, SARIF output, raw tool output, and mitmproxy captures stay within the container's workspace volume. No contamination of the host filesystem.
+5. **Reproducibility.** The container image is pinned by digest. Every assessment runs in an identical environment regardless of what is installed on the host.
+
+The target codebase is mounted as a **read-only volume** at `/workspace/target/`. Evidence is written to `/workspace/evidence/`. The platform dispatch loop communicates with the container via the existing `ContainerBackend` protocol.
 
 ### 6.2 Workflow Template
 
@@ -2446,7 +2459,7 @@ steps:
     roster: default
     complexity_tier: complex
     cost_ceiling_usd: 3.00
-    environment: local
+    environment: container
     gate: off
     input:
       target_path: "@context.target_path"
@@ -2467,7 +2480,7 @@ steps:
     roster: default
     complexity_tier: simple
     cost_ceiling_usd: 2.00
-    environment: local
+    environment: container
     gate: off
     condition: "@context.target_path != null"
     input:
@@ -2507,7 +2520,7 @@ steps:
     roster: default
     complexity_tier: complex
     cost_ceiling_usd: 5.00
-    environment: local
+    environment: container
     gate: off
     input:
       sarif_path: "@steps.scan.merged_sarif_path"
@@ -2524,7 +2537,7 @@ steps:
     roster: default
     complexity_tier: complex
     cost_ceiling_usd: 14.00
-    environment: local
+    environment: container
     gate: off
     condition: "@context.target_path != null"
     input:
@@ -2584,7 +2597,7 @@ steps:
     roster: default
     complexity_tier: complex
     cost_ceiling_usd: 5.00
-    environment: local
+    environment: container
     gate: off
     input:
       triaged_findings: "@steps.triage.triaged_findings"
@@ -2609,11 +2622,13 @@ steps:
 
 ### 6.3 Anti-patterns (Orchestrator)
 
+- **Do not run any WASA step on the platform host.** Every step runs `environment: container`. No exceptions. Security tools are never installed on the host. If a tool is missing from the container image, the fix is to update the Dockerfile, not install it on the host.
 - **Do not make the orchestrator an LLM agent.** The dispatch loop is deterministic Python. Gates, timeouts, and scope validation are code.
 - **Do not share context between parallel agents.** Scanner and recon run in parallel with isolated context windows. A compromised recon agent cannot influence the scanner.
 - **Do not use a single-agent ReAct loop for the full assessment.** Context collapse at 30-60 minutes wrecks engagements. The planner/executor split with short-lived workers is required.
 - **Do not proceed past cost thresholds.** Check `config.cost_hard_limit_usd` before each phase. Skip to REPORT on budget exhaustion.
 - **Do not catch bare `Exception` and silently discard.** Log with engagement_id and traceback. Every error is an audit event.
+- **Do not mount the target codebase read-write.** The target volume is read-only (`/workspace/target/:ro`). Agents write only to `/workspace/evidence/`. A compromised agent cannot modify the target.
 
 ---
 
