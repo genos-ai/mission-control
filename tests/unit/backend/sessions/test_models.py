@@ -80,9 +80,9 @@ class TestSessionChannelModel:
     def test_channel_repr(self):
         """SessionChannel repr should include session_id and type."""
         channel = SessionChannel()
-        channel.session_id = "sess-1"
+        channel.session_id = "5714117c-eaed-5ce3-9c56-73949f03aa3d"
         channel.channel_type = "telegram"
-        assert "sess-1" in repr(channel)
+        assert "5714117c-eaed-5ce3-9c56-73949f03aa3d" in repr(channel)
         assert "telegram" in repr(channel)
 
 
@@ -92,7 +92,7 @@ class TestSessionMessageModel:
     def test_message_repr(self):
         """SessionMessage repr should include session_id and role."""
         msg = SessionMessage()
-        msg.session_id = "sess-1"
+        msg.session_id = "5714117c-eaed-5ce3-9c56-73949f03aa3d"
         msg.role = "user"
-        assert "sess-1" in repr(msg)
+        assert "5714117c-eaed-5ce3-9c56-73949f03aa3d" in repr(msg)
         assert "user" in repr(msg)

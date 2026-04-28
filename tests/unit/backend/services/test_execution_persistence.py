@@ -44,7 +44,7 @@ def _patch_config():
 async def _create_execution(service, **overrides):
     """Helper to create an execution record via the service."""
     defaults = {
-        "session_id": "sess-123",
+        "session_id": "f3a9815c-ca38-5868-b8eb-899b31dabb9f",
         "status": "completed",
         "roster_name": "code_review",
         "total_cost_usd": 0.05,
@@ -59,7 +59,7 @@ class TestSaveExecution:
         record = await _create_execution(service)
 
         assert record.id is not None
-        assert record.session_id == "sess-123"
+        assert record.session_id == "f3a9815c-ca38-5868-b8eb-899b31dabb9f"
         assert record.roster_name == "code_review"
         assert record.status == ExecutionRecordStatus.COMPLETED
         assert record.total_cost_usd == 0.05
@@ -256,7 +256,7 @@ class TestGetExecutionStatus:
     @pytest.mark.asyncio
     async def test_not_found_raises(self, service):
         with pytest.raises(NotFoundError, match="not found"):
-            await service.get_execution_status("nonexistent-id")
+            await service.get_execution_status("00000000-0000-0000-0000-000000000000")
 
     @pytest.mark.asyncio
     async def test_status_with_executions(self, service):
@@ -297,7 +297,7 @@ class TestGetCostBreakdown:
     @pytest.mark.asyncio
     async def test_not_found_raises(self, service):
         with pytest.raises(NotFoundError, match="not found"):
-            await service.get_cost_breakdown("nonexistent-id")
+            await service.get_cost_breakdown("00000000-0000-0000-0000-000000000000")
 
     @pytest.mark.asyncio
     async def test_aggregates_costs(self, service):

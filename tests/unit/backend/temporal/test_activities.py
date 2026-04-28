@@ -85,7 +85,7 @@ class TestExecuteMission:
             result = await execute_mission(
                 MissionWorkflowInput(
                     mission_run_id="test-1",
-                    session_id="sess-1",
+                    session_id="5714117c-eaed-5ce3-9c56-73949f03aa3d",
                     mission_brief="Test mission",
                 ),
             )
@@ -136,7 +136,7 @@ class TestExecuteMission:
             result = await execute_mission(
                 MissionWorkflowInput(
                     mission_run_id="test-2",
-                    session_id="sess-2",
+                    session_id="bac9134a-a913-50f4-adec-9725086b8998",
                     mission_brief="Partial mission",
                 ),
             )
@@ -174,7 +174,7 @@ class TestExecuteMission:
             result = await execute_mission(
                 MissionWorkflowInput(
                     mission_run_id="test-3",
-                    session_id="sess-3",
+                    session_id="80d00060-470d-5db0-aa70-5adc526200ea",
                     mission_brief="Failing mission",
                 ),
             )

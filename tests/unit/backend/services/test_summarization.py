@@ -253,7 +253,7 @@ async def _create_old_mission(
 ) -> ExecutionRecord:
     """Helper to create an old ExecutionRecord for summarization tests."""
     record = ExecutionRecord(
-        session_id="sess-1",
+        session_id="5714117c-eaed-5ce3-9c56-73949f03aa3d",
         mission_id=mission_id,
         status=status,
         objective_statement=objective,

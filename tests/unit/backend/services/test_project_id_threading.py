@@ -43,14 +43,14 @@ class TestExecutionServiceMissionId:
         ):
             service = ExecutionService(session=db_session)
             mission = await service.create_execution_from_step(
-                workflow_run_id="run-123",
+                workflow_run_id="eb91e1a8-65fe-557d-a7ea-144f9b2baa61",
                 step_id="step-1",
                 objective="Test objective",
                 roster_ref="default",
                 complexity_tier="simple",
                 cost_ceiling_usd=1.0,
                 upstream_context={},
-                session_id="sess-1",
+                session_id="5714117c-eaed-5ce3-9c56-73949f03aa3d",
                 mission_id="proj-abc",
             )
 
@@ -67,14 +67,14 @@ class TestExecutionServiceMissionId:
         ):
             service = ExecutionService(session=db_session)
             mission = await service.create_execution_from_step(
-                workflow_run_id="run-456",
+                workflow_run_id="58f17d89-d819-5068-b33f-4e4b93be9e51",
                 step_id="step-1",
                 objective="No project",
                 roster_ref="default",
                 complexity_tier="simple",
                 cost_ceiling_usd=1.0,
                 upstream_context={},
-                session_id="sess-2",
+                session_id="bac9134a-a913-50f4-adec-9725086b8998",
             )
 
         assert mission.mission_id is None
@@ -102,14 +102,14 @@ class TestExecutionServiceMissionId:
                 mission_control_dispatch=mock_dispatch,
             )
             mission = await service.create_execution_from_step(
-                workflow_run_id="run-789",
+                workflow_run_id="9472c408-004d-50c4-ac6e-c2fc28c3c42e",
                 step_id="step-1",
                 objective="With project",
                 roster_ref="default",
                 complexity_tier="simple",
                 cost_ceiling_usd=1.0,
                 upstream_context={},
-                session_id="sess-3",
+                session_id="80d00060-470d-5db0-aa70-5adc526200ea",
                 mission_id="proj-xyz",
             )
 
@@ -143,7 +143,7 @@ class TestExecutionServiceMissionId:
                 mission_control_dispatch=mock_dispatch,
             )
             mission = await service.create_execution_from_step(
-                workflow_run_id="run-000",
+                workflow_run_id="285eaa29-1d3b-5500-9bb5-0f52e2f54860",
                 step_id="step-1",
                 objective="No project",
                 roster_ref="default",

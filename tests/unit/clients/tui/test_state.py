@@ -79,11 +79,11 @@ class TestTuiStateResetMission:
         state = TuiState()
         state.current_mission_id = "m-1"
         state.current_mission_name = "My Mission"
-        state.current_session_id = "sess-1"
+        state.current_session_id = "5714117c-eaed-5ce3-9c56-73949f03aa3d"
         state.reset_mission()
         assert state.current_mission_id == "m-1"
         assert state.current_mission_name == "My Mission"
-        assert state.current_session_id == "sess-1"
+        assert state.current_session_id == "5714117c-eaed-5ce3-9c56-73949f03aa3d"
 
     def test_reset_preserves_budget(self):
         """Budget is a user setting, not mission state."""

@@ -79,9 +79,9 @@ class TestArchitectAgentDeps:
             mission_brief="Build a code review pipeline",
             team_summary="- code.qa.agent: reviews code",
             db_session=mock_session,
-            session_id="sess-456",
+            session_id="f5fc1ba9-4d30-5ecd-a688-783a3909be84",
         )
         assert deps.mission_id == "m-123"
         assert deps.mission_brief == "Build a code review pipeline"
         assert deps.db_session is mock_session
-        assert deps.session_id == "sess-456"
+        assert deps.session_id == "f5fc1ba9-4d30-5ecd-a688-783a3909be84"

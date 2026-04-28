@@ -13,7 +13,7 @@ from tests.conftest import TEST_USER_ID
 def _mock_session_model(**overrides):
     """Create a mock session model with sensible defaults."""
     defaults = {
-        "id": "sess-123",
+        "id": "f3a9815c-ca38-5868-b8eb-899b31dabb9f",
         "status": SessionStatus.ACTIVE.value,
         "user_id": TEST_USER_ID,
         "agent_id": None,
@@ -68,7 +68,7 @@ class TestCreateSession:
         with patch.object(service.repo, "create", return_value=mock_session):
             data = SessionCreate()
             result = await service.create_session(data, user_id=TEST_USER_ID)
-            assert result.id == "sess-123"
+            assert result.id == "f3a9815c-ca38-5868-b8eb-899b31dabb9f"
 
     @pytest.mark.asyncio
     async def test_create_session_custom_budget_clamped(self, service):
@@ -102,7 +102,7 @@ class TestStateTransitions:
         suspended_session = _mock_session_model(status=SessionStatus.SUSPENDED.value)
         with patch.object(service.repo, "get_by_id", return_value=active_session):
             with patch.object(service.repo, "update", return_value=suspended_session):
-                result = await service.suspend_session("sess-123", reason="waiting for approval")
+                result = await service.suspend_session("f3a9815c-ca38-5868-b8eb-899b31dabb9f", reason="waiting for approval")
                 assert result.status == SessionStatus.SUSPENDED.value
 
     @pytest.mark.asyncio
@@ -112,7 +112,7 @@ class TestStateTransitions:
         active = _mock_session_model(status=SessionStatus.ACTIVE.value)
         with patch.object(service.repo, "get_by_id", return_value=suspended):
             with patch.object(service.repo, "update", return_value=active):
-                result = await service.resume_session("sess-123")
+                result = await service.resume_session("f3a9815c-ca38-5868-b8eb-899b31dabb9f")
                 assert result.status == SessionStatus.ACTIVE.value
 
     @pytest.mark.asyncio
@@ -122,7 +122,7 @@ class TestStateTransitions:
         completed = _mock_session_model(status=SessionStatus.COMPLETED.value)
         with patch.object(service.repo, "get_by_id", return_value=active):
             with patch.object(service.repo, "update", return_value=completed):
-                result = await service.complete_session("sess-123")
+                result = await service.complete_session("f3a9815c-ca38-5868-b8eb-899b31dabb9f")
                 assert result.status == SessionStatus.COMPLETED.value
 
     @pytest.mark.asyncio
@@ -132,7 +132,7 @@ class TestStateTransitions:
         failed = _mock_session_model(status=SessionStatus.FAILED.value)
         with patch.object(service.repo, "get_by_id", return_value=active):
             with patch.object(service.repo, "update", return_value=failed):
-                result = await service.fail_session("sess-123", reason="unrecoverable error")
+                result = await service.fail_session("f3a9815c-ca38-5868-b8eb-899b31dabb9f", reason="unrecoverable error")
                 assert result.status == SessionStatus.FAILED.value
 
     @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestStateTransitions:
         completed = _mock_session_model(status=SessionStatus.COMPLETED.value)
         with patch.object(service.repo, "get_by_id", return_value=completed):
             with pytest.raises(ValidationError, match="Cannot transition"):
-                await service.resume_session("sess-123")
+                await service.resume_session("f3a9815c-ca38-5868-b8eb-899b31dabb9f")
 
     @pytest.mark.asyncio
     async def test_invalid_transition_expired_to_active(self, service):
@@ -149,7 +149,7 @@ class TestStateTransitions:
         expired = _mock_session_model(status=SessionStatus.EXPIRED.value)
         with patch.object(service.repo, "get_by_id", return_value=expired):
             with pytest.raises(ValidationError, match="Cannot transition"):
-                await service.resume_session("sess-123")
+                await service.resume_session("f3a9815c-ca38-5868-b8eb-899b31dabb9f")
 
 
 class TestCostTracking:
@@ -164,7 +164,7 @@ class TestCostTracking:
         )
         with patch.object(service.repo, "get_by_id", return_value=session):
             with patch.object(service.repo, "update", return_value=session) as mock_update:
-                await service.update_cost("sess-123", input_tokens=200, output_tokens=100, cost_usd=0.5)
+                await service.update_cost("f3a9815c-ca38-5868-b8eb-899b31dabb9f", input_tokens=200, output_tokens=100, cost_usd=0.5)
                 call_kwargs = mock_update.call_args.kwargs
                 assert call_kwargs["total_input_tokens"] == 300
                 assert call_kwargs["total_output_tokens"] == 150
@@ -175,7 +175,7 @@ class TestCostTracking:
         """Should not raise when within budget."""
         session = _mock_session_model(total_cost_usd=10.0, cost_budget_usd=50.0)
         with patch.object(service.repo, "get_by_id", return_value=session):
-            await service.enforce_budget("sess-123", estimated_cost=5.0)
+            await service.enforce_budget("f3a9815c-ca38-5868-b8eb-899b31dabb9f", estimated_cost=5.0)
 
     @pytest.mark.asyncio
     async def test_enforce_budget_exceeded(self, service):
@@ -183,14 +183,14 @@ class TestCostTracking:
         session = _mock_session_model(total_cost_usd=48.0, cost_budget_usd=50.0)
         with patch.object(service.repo, "get_by_id", return_value=session):
             with pytest.raises(BudgetExceededError):
-                await service.enforce_budget("sess-123", estimated_cost=5.0)
+                await service.enforce_budget("f3a9815c-ca38-5868-b8eb-899b31dabb9f", estimated_cost=5.0)
 
     @pytest.mark.asyncio
     async def test_enforce_budget_unlimited(self, service):
         """Should not raise when budget is None (unlimited)."""
         session = _mock_session_model(total_cost_usd=99999.0, cost_budget_usd=None)
         with patch.object(service.repo, "get_by_id", return_value=session):
-            await service.enforce_budget("sess-123", estimated_cost=1000.0)
+            await service.enforce_budget("f3a9815c-ca38-5868-b8eb-899b31dabb9f", estimated_cost=1000.0)
 
     @pytest.mark.asyncio
     async def test_enforce_budget_exact_limit(self, service):
@@ -198,7 +198,7 @@ class TestCostTracking:
         session = _mock_session_model(total_cost_usd=45.0, cost_budget_usd=50.0)
         with patch.object(service.repo, "get_by_id", return_value=session):
             with pytest.raises(BudgetExceededError):
-                await service.enforce_budget("sess-123", estimated_cost=5.0)
+                await service.enforce_budget("f3a9815c-ca38-5868-b8eb-899b31dabb9f", estimated_cost=5.0)
 
 
 class TestChannelBinding:
@@ -213,7 +213,7 @@ class TestChannelBinding:
         binding.channel_id = "12345"
         with patch.object(service.repo, "get_by_id", return_value=session):
             with patch.object(service.repo, "bind_channel", return_value=binding):
-                result = await service.bind_channel("sess-123", "telegram", "12345")
+                result = await service.bind_channel("f3a9815c-ca38-5868-b8eb-899b31dabb9f", "telegram", "12345")
                 assert result.channel_type == "telegram"
 
     @pytest.mark.asyncio
@@ -235,7 +235,7 @@ class TestMessages:
         with patch.object(service.repo, "get_by_id", return_value=session):
             with patch.object(service.repo, "add_message", return_value=msg):
                 data = SessionMessageCreate(content="hello", role="user")
-                await service.add_message("sess-123", data)
+                await service.add_message("f3a9815c-ca38-5868-b8eb-899b31dabb9f", data)
 
     @pytest.mark.asyncio
     async def test_get_messages(self, service):
@@ -245,7 +245,7 @@ class TestMessages:
         with patch.object(service.repo, "get_by_id", return_value=session):
             with patch.object(service.repo, "get_messages", return_value=messages):
                 with patch.object(service.repo, "count_messages", return_value=2):
-                    result, total = await service.get_messages("sess-123")
+                    result, total = await service.get_messages("f3a9815c-ca38-5868-b8eb-899b31dabb9f")
                     assert len(result) == 2
                     assert total == 2
 
@@ -256,8 +256,8 @@ class TestExpireInactiveSessions:
     @pytest.mark.asyncio
     async def test_expire_inactive_sessions(self, service):
         """Should find and expire sessions past their TTL."""
-        expired1 = _mock_session_model(id="sess-1", status=SessionStatus.ACTIVE.value)
-        expired2 = _mock_session_model(id="sess-2", status=SessionStatus.ACTIVE.value)
+        expired1 = _mock_session_model(id="5714117c-eaed-5ce3-9c56-73949f03aa3d", status=SessionStatus.ACTIVE.value)
+        expired2 = _mock_session_model(id="bac9134a-a913-50f4-adec-9725086b8998", status=SessionStatus.ACTIVE.value)
         transitioned = _mock_session_model(status=SessionStatus.EXPIRED.value)
 
         with patch.object(service.repo, "find_expired", return_value=[expired1, expired2]):
