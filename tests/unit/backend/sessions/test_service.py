@@ -49,12 +49,8 @@ def service(mock_db):
         mock_sessions.max_cost_budget_usd = 500.0
         mock_sessions.budget_warning_threshold = 0.80
 
-        mock_features = MagicMock()
-        mock_features.events_publish_enabled = False
-
         config = MagicMock()
         config.sessions = mock_sessions
-        config.features = mock_features
         mock_config.return_value = config
 
         svc = SessionService(mock_db)

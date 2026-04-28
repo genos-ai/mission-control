@@ -13,8 +13,7 @@ from pydantic_ai import models as pydantic_ai_models
 
 pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 
-import asyncio
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
@@ -49,17 +48,9 @@ from tests.test_config import get_test_database_url as _get_test_database_url
 from tests.test_config import get_test_redis_url as _get_test_redis_url
 
 
-# =============================================================================
-# Event Loop Fixture
-# =============================================================================
 
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Event loop scope is set to "session" in pyproject.toml via
+# asyncio_default_fixture_loop_scope. No manual event_loop fixture needed.
 
 
 # =============================================================================
@@ -146,25 +137,25 @@ def db_session_factory(db_engine: AsyncEngine) -> async_sessionmaker[AsyncSessio
 
 @pytest.fixture
 async def db_session(
-    db_session_factory: async_sessionmaker[AsyncSession],
+    db_engine: AsyncEngine,
 ) -> AsyncGenerator[AsyncSession, None]:
     """
     Provide a database session for a single test.
 
-    Each test gets its own session. Changes are rolled back after the test
-    to ensure test isolation - no test can affect another.
+    Binds the session to a dedicated connection with an outer transaction
+    that is always rolled back — full test isolation without DDL.
 
-    Usage:
-        async def test_create_user(db_session: AsyncSession):
-            user = User(email="test@example.com")
-            db_session.add(user)
-            await db_session.flush()
-            assert user.id is not None
+    The connection-bound session avoids asyncpg's "another operation
+    is in progress" error that occurs with pooled connections.
     """
-    async with db_session_factory() as session:
-        yield session
-        # Rollback any changes made during the test
-        await session.rollback()
+    async with db_engine.connect() as conn:
+        txn = await conn.begin()
+        session = AsyncSession(bind=conn, expire_on_commit=False)
+        try:
+            yield session
+        finally:
+            await session.close()
+            await txn.rollback()
 
 
 @pytest.fixture

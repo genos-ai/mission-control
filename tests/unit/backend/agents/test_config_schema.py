@@ -137,7 +137,7 @@ class TestFeaturesSchemaValidation:
                 security_headers_enabled=True,
                 security_cors_enforce_production=False,
                 experimental_background_tasks_enabled=False,
-                events_publish_enabled=True,
+                experimental_mission_plan_daemon_enabled=False,
                 typo_feature_flag=True,
             )
 

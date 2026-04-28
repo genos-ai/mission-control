@@ -11,7 +11,9 @@
 # =============================================================================
 
 # Default test database URL when TEST_DATABASE_URL env is unset.
-database_url: "sqlite+aiosqlite:///:memory:"
+# Uses PostgreSQL per P12 (Test Against Real Infrastructure).
+# The test conftest creates/drops tables per session and rolls back per test.
+database_url: "postgresql+asyncpg://postgres:postgres@localhost:5432/mission_control_test"
 
 # Default test Redis URL when TEST_REDIS_URL env is unset.
 # Uses db 1 to isolate test data from development (db 0).

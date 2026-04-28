@@ -189,7 +189,7 @@ def _create_mock_app_config() -> Any:
                 security_headers_enabled=False,
                 security_cors_enforce_production=False,
                 experimental_background_tasks_enabled=False,
-                events_publish_enabled=False,
+                experimental_mission_plan_daemon_enabled=False,
             )
             self.security = SecuritySchema(
                 jwt={

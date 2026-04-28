@@ -223,7 +223,6 @@ class TestSystemOps:
         cfg.features.gateway_enabled = False
         cfg.features.agent_coordinator_enabled = True
         cfg.features.mcp_enabled = False
-        cfg.features.events_publish_enabled = True
         mock_config.return_value = cfg
 
         resp = await client.get("/admin/config")
