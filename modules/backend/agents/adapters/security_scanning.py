@@ -10,8 +10,6 @@ dependency in the adapter itself.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from modules.backend.agents.security.sarif import (
     load_sarif,
     merge_sarif,
@@ -19,14 +17,10 @@ from modules.backend.agents.security.sarif import (
 from modules.backend.agents.security.tool_registry import (
     CapabilityInput,
     SecurityToolRegistry,
-    SurfaceDetectionResult,
     ToolCapability,
     detect_surface,
 )
-from modules.backend.agents.security.tool_runner import (
-    SarifCapabilityOutput,
-    run_capability,
-)
+from modules.backend.agents.security.tool_runner import run_capability
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)

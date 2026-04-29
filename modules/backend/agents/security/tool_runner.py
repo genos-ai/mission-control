@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,12 +31,11 @@ from modules.backend.agents.security.errors import (
     SecurityAssessmentError,
     SecurityErrorCode,
 )
+from modules.backend.agents.security.sarif import SARIF_LEVEL_TO_SEVERITY
 from modules.backend.agents.security.tool_registry import (
-    CAPABILITY_OUTPUT_CONTRACTS,
     CapabilityInput,
     CapabilityMode,
     SarifCapabilityOutput,
-    ReconCapabilityOutput,
     SecurityToolRegistry,
     SecurityToolSpec,
     ToolCapability,
@@ -115,23 +116,14 @@ def count_severities(sarif: dict) -> dict[str, int]:
     counts: dict[str, int] = {}
     for run in sarif.get("runs", []):
         for result in run.get("results", []):
-            level = result.get("level", "warning").upper()
-            # Map SARIF levels to WASA severity
-            severity_map = {
-                "ERROR": "HIGH",
-                "WARNING": "MEDIUM",
-                "NOTE": "LOW",
-                "NONE": "INFORMATIONAL",
-            }
-            severity = severity_map.get(level, "MEDIUM")
+            level = result.get("level", "warning").lower()
+            severity = SARIF_LEVEL_TO_SEVERITY.get(level, "MEDIUM")
             counts[severity] = counts.get(severity, 0) + 1
     return counts
 
 
 def probe_engine_version(spec: SecurityToolSpec) -> str:
     """Run the tool's version command synchronously and return version string."""
-    import subprocess
-
     try:
         result = subprocess.run(
             spec.version_cmd.split(),
@@ -174,8 +166,6 @@ def strip_secret_values(sarif_path: str) -> None:
 
 def _redact_secrets_in_text(text: str) -> str:
     """Replace high-entropy strings that look like secrets with <<REDACTED>>."""
-    import re
-
     # Common secret patterns
     patterns = [
         r'(?:api[_-]?key|secret|token|password|passwd|credential)\s*[:=]\s*["\']?([^\s"\']{8,})',
@@ -195,7 +185,6 @@ def _redact_secrets_in_text(text: str) -> str:
 async def run_security_tool(
     spec: SecurityToolSpec,
     capability_input: CapabilityInput,
-    evidence_sha256_on_write: bool = True,
 ) -> SarifCapabilityOutput:
     """Run a single security tool and return a standardised output contract.
 
@@ -224,12 +213,14 @@ async def run_security_tool(
 
     # Validate exit code
     if result.exit_code not in spec.success_exit_codes:
+        if result.exit_code == -1 and "timed out" in result.stderr:
+            error_code = SecurityErrorCode.SCANNER_TIMEOUT
+        elif result.exit_code == -1:
+            error_code = SecurityErrorCode.SCANNER_BINARY_NOT_FOUND
+        else:
+            error_code = SecurityErrorCode.SCANNER_BINARY_NOT_FOUND
         raise SecurityAssessmentError(
-            code=SecurityErrorCode.SCANNER_BINARY_NOT_FOUND
-            if result.exit_code == -1
-            else SecurityErrorCode.SCANNER_TIMEOUT
-            if result.exit_code == -1 and "timed out" in result.stderr
-            else SecurityErrorCode.SCANNER_BINARY_NOT_FOUND,
+            code=error_code,
             message=f"{spec.name} exited {result.exit_code}: {result.stderr[:200]}",
             details={"tool": spec.name, "exit_code": result.exit_code},
         )
@@ -244,13 +235,9 @@ async def run_security_tool(
     if spec.redact_output and output_path.exists():
         strip_secret_values(str(output_path))
 
-    # Hash evidence
-    if evidence_sha256_on_write and output_path.exists():
-        from modules.backend.agents.security.evidence import sha256_file
-
-        sha256_file(str(output_path))
-        if Path(raw_output_path).exists():
-            sha256_file(raw_output_path)
+    # Note: evidence hashing is done by the orchestrator via
+    # EvidenceManifest.add() at the workflow step level, not here.
+    # The runner produces files; the orchestrator tracks integrity.
 
     # Return standardised contract
     engine_version = probe_engine_version(spec)
@@ -288,7 +275,6 @@ async def run_capability(
     capability: ToolCapability,
     capability_input: CapabilityInput,
     registry: SecurityToolRegistry,
-    evidence_sha256_on_write: bool = True,
 ) -> list[SarifCapabilityOutput]:
     """Run a capability using registered engines. Handles fallback/ensemble."""
     specs = registry.get_all(capability)
@@ -308,7 +294,6 @@ async def run_capability(
                     output_path=f"{capability_input.output_path}.{spec.name}",
                     scope=capability_input.scope,
                 ),
-                evidence_sha256_on_write,
             )
             for spec in specs
         ]
@@ -324,9 +309,7 @@ async def run_capability(
             )
             continue
         try:
-            result = await run_security_tool(
-                spec, capability_input, evidence_sha256_on_write,
-            )
+            result = await run_security_tool(spec, capability_input)
             return [result]
         except SecurityAssessmentError:
             logger.warning(
