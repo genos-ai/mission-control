@@ -229,27 +229,32 @@ class ExecutionDispatchMixin:
         persistence = ExecutionPersistenceService(self._session)
         record = await persistence.get_execution(execution_id)
 
-        brief = ""
-        roster = "default"
+        if not record:
+            raise ApplicationError(
+                f"Execution record '{execution_id}' not found",
+            )
+
+        brief = record.objective_statement or ""
+        roster = record.roster_name or "default"
         budget = get_default_budget_usd()
-        mission_id = None
-        if record:
-            brief = record.objective_statement or ""
-            roster = record.roster_name or "default"
-            # TODO: BUG — record.total_cost_usd is *already-spent* cost, not
-            # the budget ceiling. Using it as the new ceiling means retries
-            # inherit the previous run's spend as their cap. For now we fall
-            # back to the configured default; the correct fix is to read the
-            # budget ceiling from the mission plan or execution record.
-            budget = get_default_budget_usd()
-            mission_id = record.mission_id
+        mission_id = record.mission_id
+        session_id = record.session_id
+
+        if not mission_id:
+            raise ApplicationError(
+                f"Execution record '{execution_id}' has no mission_id",
+            )
+        if not session_id:
+            raise ApplicationError(
+                f"Execution record '{execution_id}' has no session_id",
+            )
 
         client = await get_temporal_client()
         handle = await client.start_workflow(
             AgentMissionWorkflow.run,
             MissionWorkflowInput(
                 mission_run_id=execution_id,
-                session_id=execution_id,
+                session_id=session_id,
                 mission_brief=brief,
                 roster_name=roster,
                 mission_budget_usd=budget,
