@@ -524,6 +524,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     async def run_workflow(
         ctx: RunContext[MissionDirectorDeps],
         workflow_name: str,
+        context_overrides: dict[str, str] | None = None,
     ) -> str:
         """Start a named workflow against the current mission.
 
@@ -535,8 +536,10 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         then system templates. Strips '.workflow' suffix if present.
 
         Args:
-            workflow_name: The workflow identifier (e.g., "system.platform-audit" or
-                          "system.platform-audit.workflow").
+            workflow_name: The workflow identifier (e.g., "security.webapp-assessment"
+                          or "system.platform-audit.workflow").
+            context_overrides: Optional key-value pairs merged into the workflow
+                              context before execution (e.g., {"target_path": "/path/to/code"}).
         """
         try:
             if ctx.deps.db_session is None:
@@ -554,7 +557,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 session_id=ctx.deps.session_id,
                 task_type="run_workflow",
                 objective=f"Run workflow: {clean_name}",
-                params={"workflow_name": clean_name},
+                params={"workflow_name": clean_name, "context_overrides": context_overrides},
             )
 
             from modules.backend.temporal.tool_fork_models import RunWorkflowInput
@@ -565,6 +568,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                     session_id=ctx.deps.session_id,
                     execution_record_id=record.id,
                     workflow_name=clean_name,
+                    context_overrides=context_overrides,
                 ),
                 record_id=record.id,
             )
