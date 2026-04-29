@@ -174,7 +174,7 @@ async def _action_detail(cli_logger, *, workflow_name, run_id, triggered_by, out
     console.print(table)
 
 
-async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output_format, mission_name=None, gate=None, **_):
+async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output_format, mission_name=None, gate=None, context_overrides=None, **_):
     """Execute a workflow."""
     if not workflow_name:
         click.echo(click.style("Error: --workflow-name is required for run.", fg="red"), err=True)
@@ -194,13 +194,26 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
     display = LiveExecutionDisplay()
     event_bus = display.create_event_bus()
 
+    # Resolve mission name → ID
+    mission_id = None
+    if mission_name:
+        from modules.backend.services.mission import MissionService
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            mission_svc = MissionService(db)
+            mission = await mission_svc.get_mission_by_name(mission_name)
+            if not mission:
+                raise click.ClickException(f"Mission '{mission_name}' not found")
+            mission_id = str(mission.id)
+
     async with WorkflowRunService.factory(event_bus=event_bus) as run_service:
         with display.start():
             run = await run_service.run_workflow(
                 workflow_name=workflow_name,
                 triggered_by=triggered_by,
                 on_progress=display.handle_progress,
-                mission_name=mission_name,
+                mission_id=mission_id,
                 gate=gate,
             )
 
