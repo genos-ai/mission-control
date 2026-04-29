@@ -36,7 +36,7 @@ execution:
   template: "security-assessment-worker:latest"
 
 invocation:
-  tier: system
+  tier: user
 
 scope:
   read:
