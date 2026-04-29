@@ -238,10 +238,47 @@ class TaskDefinition(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def normalise_agent_field(cls, data: dict) -> dict:
-        """Accept agent_name as alias for agent (common LLM variation)."""
-        if isinstance(data, dict) and "agent" not in data and "agent_name" in data:
+    def normalise_task_fields(cls, data: dict) -> dict:
+        """Normalise common LLM field-name variations at the task level."""
+        if not isinstance(data, dict):
+            return data
+
+        # task_id: id, task_name → task_id
+        if "task_id" not in data:
+            for alt in ("id", "task_name"):
+                if alt in data:
+                    data["task_id"] = data.pop(alt)
+                    break
+
+        # agent: agent_name → agent
+        if "agent" not in data and "agent_name" in data:
             data["agent"] = data.pop("agent_name")
+
+        # description: title, name → description
+        if "description" not in data:
+            for alt in ("title", "name"):
+                if alt in data:
+                    data["description"] = data.pop(alt)
+                    break
+
+        # inputs: flatten target_path etc. into inputs.static
+        if "inputs" in data and isinstance(data["inputs"], dict):
+            inputs = data["inputs"]
+            # If inputs has non-schema keys directly (not under static),
+            # wrap them in static
+            if "static" not in inputs and "from_upstream" not in inputs:
+                data["inputs"] = {"static": inputs, "from_upstream": {}}
+
+        # Strip unknown fields (extra="forbid")
+        known = {
+            "task_id", "agent", "agent_version", "description",
+            "instructions", "inputs", "dependencies", "verification",
+            "constraints", "domain_tags",
+        }
+        for key in list(data.keys()):
+            if key not in known:
+                data.pop(key)
+
         return data
 
 
@@ -270,7 +307,9 @@ class TaskPlan(BaseModel):
     Mission Control validates and executes this deterministically.
 
     Postel's Law: the model_validator normalises common LLM output
-    variations (version as int, missing summary) before strict validation.
+    variations before strict validation. LLMs produce structurally
+    varied but semantically equivalent output — we normalise rather
+    than fight with prompt engineering.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -282,6 +321,43 @@ class TaskPlan(BaseModel):
     estimated_duration_seconds: int = Field(default=0, ge=0)
     tasks: list[TaskDefinition]
     execution_hints: ExecutionHints = Field(default_factory=ExecutionHints)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_plan_fields(cls, data: dict) -> dict:
+        """Normalise common LLM field-name variations at the plan level."""
+        if not isinstance(data, dict):
+            return data
+
+        # version: plan_version (int) → version (str)
+        if "version" not in data and "plan_version" in data:
+            data["version"] = data.pop("plan_version")
+
+        # summary: objective or approach → summary
+        if not data.get("summary"):
+            data["summary"] = (
+                data.pop("objective", None)
+                or data.pop("approach", None)
+                or ""
+            )
+
+        # estimated_cost_usd: total_cost_estimate_usd, cost_estimate
+        if "estimated_cost_usd" not in data:
+            for alt in ("total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd"):
+                if alt in data:
+                    data["estimated_cost_usd"] = data.pop(alt)
+                    break
+
+        # Strip fields not in schema (extra="forbid" rejects them)
+        known = {
+            "version", "mission_id", "summary", "estimated_cost_usd",
+            "estimated_duration_seconds", "tasks", "execution_hints",
+        }
+        for key in list(data.keys()):
+            if key not in known:
+                data.pop(key)
+
+        return data
 
     @field_validator("version", mode="before")
     @classmethod

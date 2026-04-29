@@ -67,11 +67,15 @@ class TestTaskPlan:
         with pytest.raises(Exception):
             TaskPlan.model_validate(data)
 
-    def test_extra_fields_rejected(self):
+    def test_extra_fields_stripped(self):
+        """Unknown top-level fields are silently stripped (Postel's Law)."""
         data = _make_plan()
         data["unknown_field"] = "bad"
-        with pytest.raises(Exception):
-            TaskPlan.model_validate(data)
+        data["objective"] = "test objective"
+        plan = TaskPlan.model_validate(data)
+        assert not hasattr(plan, "unknown_field")
+        # 'objective' normalised into 'summary' if summary was empty
+        assert plan.summary  # should have a value
 
     def test_full_plan_from_research_doc(self):
         """Validate the full example from the research doc parses."""
