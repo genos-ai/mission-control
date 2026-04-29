@@ -106,12 +106,12 @@ export function getDomainBg(capability: string | null): string {
 /** Fixed colors for non-agent node types. */
 export const NODE_TYPE_STYLES = {
   condition: {
-    border: 'border-amber-500/60',
-    bg: 'bg-amber-500/5',
+    border: 'border-cyan-500/60',
+    bg: 'bg-cyan-500/5',
   },
   notification: {
-    border: 'border-sky-500/60',
-    bg: 'bg-sky-500/5',
+    border: 'border-teal-500/60',
+    bg: 'bg-teal-500/5',
   },
   human_input: {
     border: 'border-orange-500/60 border-dashed',

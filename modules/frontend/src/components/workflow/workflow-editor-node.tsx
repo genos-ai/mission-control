@@ -1,19 +1,20 @@
 /**
  * Custom React Flow nodes for the workflow editor.
  *
- * Four node types: agent_step (default), condition, notification, human_input.
+ * Nine node types: agent_step, condition, notification, human_input, tool_call, llm_call, branch, merge, sub_workflow.
  */
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
 import type { WorkflowStep } from '@/types'
-import type { NodeStatus } from '@/hooks/use-workflow-run-status'
+import type { NodeStatus, NodeMetrics } from '@/hooks/use-workflow-run-status'
 import { NODE_WIDTH, getDomainBorder, getDomainBg, NODE_TYPE_STYLES } from './workflow-editor-types'
 
 export interface StepNodeData {
   step: WorkflowStep
   status?: NodeStatus
+  metrics?: NodeMetrics
   [key: string]: unknown
 }
 
@@ -64,11 +65,25 @@ function StatusIcon({ status }: { status: string }) {
   }
 }
 
+function MetricsBadge({ metrics }: { metrics?: NodeMetrics }) {
+  if (!metrics) return null
+  const parts: string[] = []
+  if (metrics.cost_usd != null) parts.push(`$${metrics.cost_usd.toFixed(4)}`)
+  if (metrics.duration_seconds != null) parts.push(`${metrics.duration_seconds.toFixed(1)}s`)
+  if (parts.length === 0) return null
+  return (
+    <div className="mt-1 text-[9px] tabular-nums text-muted-foreground/60">
+      {parts.join(' · ')}
+    </div>
+  )
+}
+
 // ── Agent Step Node ─────────────────────────────────────────────────────
 
 function AgentStepNodeRaw({ data, selected }: NodeProps) {
   const step = (data as StepNodeData).step
   const status = (data as StepNodeData).status ?? 'idle'
+  const metrics = (data as StepNodeData).metrics
   const capShort = step.capability?.split('.').pop() ?? step.capability ?? '—'
 
   return (
@@ -91,7 +106,7 @@ function AgentStepNodeRaw({ data, selected }: NodeProps) {
 
       <div className="flex items-center gap-1.5">
         <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
         {step.cost_ceiling_usd != null && (
           <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
             ${step.cost_ceiling_usd}
@@ -108,6 +123,8 @@ function AgentStepNodeRaw({ data, selected }: NodeProps) {
           <span className="text-[10px] text-amber-400/80">complex</span>
         )}
       </div>
+
+      {status === 'completed' && <MetricsBadge metrics={metrics} />}
 
       <SourceHandle />
     </div>
@@ -143,8 +160,8 @@ function ConditionNodeRaw({ data, selected }: NodeProps) {
       )}
 
       <div className="flex items-center gap-1.5">
-        <GitBranch className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-        <span className="truncate text-sm font-medium">{step.id}</span>
+        <GitBranch className="h-3.5 w-3.5 shrink-0 text-cyan-500" />
+        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
       </div>
 
       <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground" title={expr}>
@@ -205,8 +222,8 @@ function NotificationNodeRaw({ data, selected }: NodeProps) {
       )}
 
       <div className="flex items-center gap-1.5">
-        <Bell className="h-3.5 w-3.5 shrink-0 text-sky-500" />
-        <span className="truncate text-sm font-medium">{step.id}</span>
+        <Bell className="h-3.5 w-3.5 shrink-0 text-teal-500" />
+        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
         <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
           {config?.channel ?? 'sse'}
         </span>
@@ -251,7 +268,7 @@ function HumanInputNodeRaw({ data, selected }: NodeProps) {
 
       <div className="flex items-center gap-1.5">
         <UserRound className="h-3.5 w-3.5 shrink-0 text-orange-500" />
-        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
         <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
           {config?.channel ?? 'telegram'}
         </span>
@@ -280,6 +297,7 @@ function HumanInputNodeRaw({ data, selected }: NodeProps) {
 function ToolCallNodeRaw({ data, selected }: NodeProps) {
   const step = (data as StepNodeData).step
   const status = (data as StepNodeData).status ?? 'idle'
+  const metrics = (data as StepNodeData).metrics
   const config = step.tool_call_config
   const argsKeys = Object.keys(config?.tool_args ?? {})
   const argsPreview = argsKeys.length > 0
@@ -306,7 +324,7 @@ function ToolCallNodeRaw({ data, selected }: NodeProps) {
 
       <div className="flex items-center gap-1.5">
         <Wrench className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
         <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
           {config?.tool_name ?? '—'}
         </span>
@@ -315,6 +333,8 @@ function ToolCallNodeRaw({ data, selected }: NodeProps) {
       <p className="mt-1 truncate text-[10px] text-muted-foreground">
         {argsPreview}
       </p>
+
+      {status === 'completed' && <MetricsBadge metrics={metrics} />}
 
       <SourceHandle />
     </div>
@@ -326,6 +346,7 @@ function ToolCallNodeRaw({ data, selected }: NodeProps) {
 function LlmCallNodeRaw({ data, selected }: NodeProps) {
   const step = (data as StepNodeData).step
   const status = (data as StepNodeData).status ?? 'idle'
+  const metrics = (data as StepNodeData).metrics
   const config = step.llm_call_config
   const promptShort = (config?.prompt_template ?? '').length > 40
     ? (config?.prompt_template ?? '').slice(0, 37) + '…'
@@ -352,7 +373,7 @@ function LlmCallNodeRaw({ data, selected }: NodeProps) {
 
       <div className="flex items-center gap-1.5">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
         <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
           {modelShort}
         </span>
@@ -361,6 +382,8 @@ function LlmCallNodeRaw({ data, selected }: NodeProps) {
       <p className="mt-1 truncate text-[10px] text-muted-foreground" title={config?.prompt_template}>
         {promptShort}
       </p>
+
+      {status === 'completed' && <MetricsBadge metrics={metrics} />}
 
       <SourceHandle />
     </div>
@@ -394,7 +417,7 @@ function BranchNodeRaw({ data, selected }: NodeProps) {
       )}
 
       <Split className="h-4 w-4 text-zinc-400" />
-      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.id}</span>
+      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.label || step.id}</span>
 
       {/* Multiple source handles for parallel outputs */}
       <Handle
@@ -470,7 +493,7 @@ function MergeNodeRaw({ data, selected }: NodeProps) {
       )}
 
       <Merge className="h-4 w-4 text-zinc-400" />
-      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.id}</span>
+      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.label || step.id}</span>
       <span className="text-[9px] text-muted-foreground/60">{strategy === 'wait_any' ? 'any' : 'all'}</span>
 
       <SourceHandle />
@@ -483,6 +506,7 @@ function MergeNodeRaw({ data, selected }: NodeProps) {
 function SubWorkflowNodeRaw({ data, selected }: NodeProps) {
   const step = (data as StepNodeData).step
   const status = (data as StepNodeData).status ?? 'idle'
+  const metrics = (data as StepNodeData).metrics
   const config = step.sub_workflow_config
   const wfName = config?.workflow_name || config?.workflow_id || '—'
   const nameShort = wfName.length > 28 ? wfName.slice(0, 25) + '…' : wfName
@@ -507,7 +531,7 @@ function SubWorkflowNodeRaw({ data, selected }: NodeProps) {
 
       <div className="flex items-center gap-1.5">
         <Layers className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
-        <span className="truncate text-sm font-medium">{step.id}</span>
+        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
       </div>
 
       <p className="mt-1 truncate text-[10px] text-muted-foreground" title={wfName}>
@@ -518,6 +542,8 @@ function SubWorkflowNodeRaw({ data, selected }: NodeProps) {
         {config?.pass_context && <span>ctx</span>}
         <span>depth ≤{config?.max_depth ?? 3}</span>
       </div>
+
+      {status === 'completed' && <MetricsBadge metrics={metrics} />}
 
       <SourceHandle />
     </div>

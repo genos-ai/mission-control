@@ -183,6 +183,8 @@ async def handle(
         return
 
     agent_name = "unknown"
+    streaming_msg_id: str | None = None
+    full_content = ""
     try:
         # 1. Validate session exists
         session = await session_service.get_session(session_id)

@@ -14,9 +14,16 @@ export type NodeStatus =
   | 'skipped'
   | 'awaiting_input'
 
+export interface NodeMetrics {
+  cost_usd?: number
+  duration_seconds?: number
+}
+
 export interface WorkflowRunOverlay {
   /** Per-node status keyed by step_id */
   nodeStatuses: Record<string, NodeStatus>
+  /** Per-node cost/duration keyed by step_id */
+  nodeMetrics: Record<string, NodeMetrics>
   /** Is a workflow currently running? */
   isActive: boolean
   /** The active workflow_run_id (if any) */
@@ -48,6 +55,7 @@ const WORKFLOW_EVENT_TYPES = new Set([
 export function useWorkflowRunStatus(): WorkflowRunOverlay {
   const stream = useMissionStreamContext()
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
+  const [nodeMetrics, setNodeMetrics] = useState<Record<string, NodeMetrics>>({})
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [progress, setProgress] = useState<[number, number]>([0, 0])
   const processedRef = useRef(0)
@@ -60,6 +68,16 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
     const newEvents = events.slice(processedRef.current)
     processedRef.current = events.length
 
+    const captureMetrics = (stepId: string, d: Record<string, unknown>) => {
+      const m: NodeMetrics = {}
+      if (typeof d.cost_usd === 'number') m.cost_usd = d.cost_usd
+      if (typeof d.duration_seconds === 'number') m.duration_seconds = d.duration_seconds
+      if (typeof d.child_cost_usd === 'number') m.cost_usd = d.child_cost_usd
+      if (m.cost_usd !== undefined || m.duration_seconds !== undefined) {
+        setNodeMetrics((prev) => ({ ...prev, [stepId]: m }))
+      }
+    }
+
     for (const ev of newEvents) {
       if (!WORKFLOW_EVENT_TYPES.has(ev.event_type)) continue
       // SSE wire format: event_type at top level, event-specific fields in ev.data
@@ -70,6 +88,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
           setActiveRunId(String(d.workflow_run_id ?? ''))
           setProgress([0, Number(d.step_count ?? 0)])
           setNodeStatuses({})
+          setNodeMetrics({})
           break
 
         case 'workflow.execution.started':
@@ -81,6 +100,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
             ...prev,
             [String(d.step_id)]: d.success ? 'completed' : 'failed',
           }))
+          captureMetrics(String(d.step_id), d)
           setProgress((prev) => [prev[0] + 1, prev[1]])
           break
 
@@ -101,6 +121,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
             ...prev,
             [String(d.step_id)]: d.success ? 'completed' : 'failed',
           }))
+          captureMetrics(String(d.step_id), d)
           setProgress((prev) => [prev[0] + 1, prev[1]])
           break
 
@@ -115,6 +136,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
             ...prev,
             [String(d.step_id)]: d.success ? 'completed' : 'failed',
           }))
+          captureMetrics(String(d.step_id), d)
           setProgress((prev) => [prev[0] + 1, prev[1]])
           break
 
@@ -140,6 +162,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
 
   const reset = useCallback(() => {
     setNodeStatuses({})
+    setNodeMetrics({})
     setActiveRunId(null)
     setProgress([0, 0])
     processedRef.current = stream?.events.length ?? 0
@@ -147,5 +170,5 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
 
   const isActive = activeRunId !== null
 
-  return { nodeStatuses, isActive, activeRunId, progress, reset }
+  return { nodeStatuses, nodeMetrics, isActive, activeRunId, progress, reset }
 }

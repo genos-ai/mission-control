@@ -17,8 +17,8 @@ interface NodePaletteEntry {
 
 const ENTRIES: NodePaletteEntry[] = [
   { type: 'agent_step', label: 'Agent Step', description: 'Invoke a registered agent', icon: Bot, color: 'text-blue-400' },
-  { type: 'condition', label: 'Condition', description: 'If/else branch on expression', icon: GitBranch, color: 'text-amber-500' },
-  { type: 'notification', label: 'Notification', description: 'Send a message (Telegram, SSE)', icon: Bell, color: 'text-sky-500' },
+  { type: 'condition', label: 'Condition', description: 'If/else branch on expression', icon: GitBranch, color: 'text-cyan-500' },
+  { type: 'notification', label: 'Notification', description: 'Send a message (Telegram, SSE)', icon: Bell, color: 'text-teal-500' },
   { type: 'human_input', label: 'Human Input', description: 'Pause and wait for response', icon: UserRound, color: 'text-orange-500' },
   { type: 'tool_call', label: 'Tool Call', description: 'Call a tool directly', icon: Wrench, color: 'text-slate-400' },
   { type: 'llm_call', label: 'LLM Call', description: 'Raw LLM prompt, no agent', icon: Sparkles, color: 'text-amber-400' },

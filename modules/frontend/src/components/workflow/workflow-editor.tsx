@@ -194,18 +194,34 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     setNodes(initNodes)
   }, [initNodes, setNodes])
 
-  // Inject execution overlay status into node data
+  // Inject execution overlay status + metrics into node data
   useEffect(() => {
     const statuses = runOverlay.nodeStatuses
+    const metrics = runOverlay.nodeMetrics
     if (!runOverlay.isActive && Object.keys(statuses).length === 0) return
     setNodes((prev) =>
       prev.map((node) => {
         const status = statuses[node.id] ?? 'idle'
-        if ((node.data as Record<string, unknown>).status === status) return node
-        return { ...node, data: { ...node.data, status } }
+        const m = metrics[node.id]
+        const prevData = node.data as Record<string, unknown>
+        if (prevData.status === status && prevData.metrics === m) return node
+        return { ...node, data: { ...node.data, status, metrics: m } }
       }),
     )
-  }, [runOverlay.nodeStatuses, runOverlay.isActive, setNodes])
+  }, [runOverlay.nodeStatuses, runOverlay.nodeMetrics, runOverlay.isActive, setNodes])
+
+  // Animate edges whose source node is running
+  useEffect(() => {
+    const statuses = runOverlay.nodeStatuses
+    if (!runOverlay.isActive && Object.keys(statuses).length === 0) return
+    setEdges((prev) =>
+      prev.map((edge) => {
+        const animated = statuses[edge.source] === 'running'
+        if (edge.animated === animated) return edge
+        return { ...edge, animated }
+      }),
+    )
+  }, [runOverlay.nodeStatuses, runOverlay.isActive, setEdges])
 
   // Replay overlay for historical runs — set all nodes to the run's final status
   useEffect(() => {

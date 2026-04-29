@@ -324,7 +324,7 @@ class MissionPlanService(BaseService):
         Prevents refine() from clobbering in-progress tasks when a second
         run_objective() is called on the same mission concurrently.
         """
-        active_statuses = (PlanTaskStatus.QUEUED.name, PlanTaskStatus.RUNNING.name)
+        active_statuses = (PlanTaskStatus.QUEUED.value, PlanTaskStatus.RUNNING.value)
         all_states = await self._repo.get_task_states(mission_plan_id)
         active = [s for s in all_states if s.status in active_statuses]
         if active:

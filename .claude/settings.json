@@ -87,7 +87,12 @@
       "Bash(grep -rln \"String\\(36\\)\" modules/backend/models/*.py)",
       "Bash(do python3:*)",
       "Bash(python3.14 --version)",
-      "Bash(python3.14 -c \"import uuid; print\\(hasattr\\(uuid, ''uuid7''\\)\\)\")"
+      "Bash(python3.14 -c \"import uuid; print\\(hasattr\\(uuid, ''uuid7''\\)\\)\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d mission_control -c \"SELECT id, name, edges_json, canvas_state FROM workflow_definitions LIMIT 5;\")",
+      "Bash(grep -n \"DateTime\\(timezone=True\\)\" /Users/herman.young/development/mission-control/modules/backend/models/*.py)",
+      "Read(//Users/backend.young/development/mission-control/modules/backend/core/**)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py admin seed-catalog --force)",
+      "Bash(node -e \"const l = require\\(''''lucide-react''''\\); console.log\\(''''Layers:'''', !!l.Layers, ''''Workflow:'''', !!l.Workflow, ''''Network:'''', !!l.Network\\)\")"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

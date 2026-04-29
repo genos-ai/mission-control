@@ -156,7 +156,7 @@ class SessionService(BaseService):
     ) -> Session:
         """Transition a session to a new status with state machine validation."""
         session = await self.repo.get_by_id(session_id)
-        current = SessionStatus[session.status]
+        current = SessionStatus(session.status)
 
         if target_status not in VALID_TRANSITIONS.get(current, set()):
             raise ValidationError(

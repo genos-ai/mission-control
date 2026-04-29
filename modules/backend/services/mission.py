@@ -379,7 +379,15 @@ class MissionService(BaseService):
 
     async def resolve_mission(self, id_or_name: str) -> Mission:
         """Resolve a mission by ID or name. Raises NotFoundError."""
-        mission = await self._mission_repo.get_by_id_or_none(id_or_name)
+        from uuid import UUID as _UUID
+
+        mission = None
+        # Only attempt ID lookup if the string is a valid UUID.
+        try:
+            _UUID(id_or_name)
+            mission = await self._mission_repo.get_by_id_or_none(id_or_name)
+        except ValueError:
+            pass
         if mission is None:
             mission = await self._mission_repo.get_by_name(id_or_name)
         if mission is None:
@@ -390,15 +398,24 @@ class MissionService(BaseService):
         self,
         owner_id: str | None = None,
         status: str | None = None,
+        include_archived: bool = False,
         limit: int = 50,
     ) -> list[Mission]:
-        """List missions, optionally filtered by owner and/or status."""
+        """List missions, optionally filtered by owner and/or status.
+
+        By default, archived missions are excluded. Pass include_archived=True
+        or an explicit status to override this.
+        """
         if owner_id:
             status_enum = MissionStatus(status) if status else None
             return await self._mission_repo.list_by_owner(
                 owner_id, status=status_enum, limit=limit,
             )
-        return await self._mission_repo.list_all(limit=limit)
+
+        missions = await self._mission_repo.list_all(limit=limit)
+        if not include_archived and status is None:
+            missions = [m for m in missions if m.status != MissionStatus.ARCHIVED]
+        return missions
 
     async def update_mission(
         self,
