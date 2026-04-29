@@ -206,6 +206,7 @@ async def handle_mission(
             agent_id=planning_agent_id,
         ))
 
+        planning_result = None
         for attempt in range(max_planning_attempts):
             try:
                 planning_result = await _call_planning_agent(
@@ -240,6 +241,13 @@ async def handle_mission(
 
             except (ValueError, Exception) as e:
                 last_error = str(e)
+                # Log the raw plan JSON that failed validation so we can
+                # see what the LLM actually produced.
+                raw_plan = None
+                try:
+                    raw_plan = planning_result.get("task_plan") if planning_result else None
+                except Exception:
+                    pass
                 await _phase("error", f"Attempt {attempt + 1} failed: {last_error}")
                 logger.warning(
                     "Planning Agent error, retrying",
@@ -247,6 +255,7 @@ async def handle_mission(
                         "attempt": attempt + 1,
                         "error": last_error,
                         "mission_id": mission_run_id,
+                        "raw_plan_preview": str(raw_plan)[:500] if raw_plan else None,
                     },
                 )
                 planning_brief = _append_validation_feedback(

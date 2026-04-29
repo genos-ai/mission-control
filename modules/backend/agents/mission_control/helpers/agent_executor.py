@@ -403,6 +403,16 @@ async def _call_planning_agent(
 
     plan_json = extract_task_plan_json(full_content)
 
+    logger.debug(
+        "Planning agent raw response",
+        extra={
+            "mission_id": mission_id,
+            "response_length": len(full_content),
+            "response_preview": full_content[:1000],
+            "extracted_plan_keys": list(plan_json.keys()) if isinstance(plan_json, dict) else None,
+        },
+    )
+
     thinking_trace = None
     if hasattr(stream, "all_messages"):
         for msg in stream.all_messages():
