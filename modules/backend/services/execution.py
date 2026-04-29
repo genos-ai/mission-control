@@ -140,19 +140,6 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
             if extra_volumes:
                 exec_context["extra_volumes"] = extra_volumes
 
-            # Validate session_id FK: workflow dispatch may pass IDs
-            # that don't exist in the sessions table.
-            valid_session_id = session_id
-            if session_id:
-                from sqlalchemy import text as sa_text
-
-                row = await self._session.execute(
-                    sa_text("SELECT 1 FROM sessions WHERE id = :sid"),
-                    {"sid": session_id},
-                )
-                if not row.scalar_one_or_none():
-                    valid_session_id = None
-
             execution = Execution(
                 workflow_run_id=workflow_run_id,
                 workflow_step_id=step_id,
@@ -160,7 +147,7 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
                 roster_ref=roster_ref,
                 complexity_tier=complexity_tier,
                 status=ExecutionState.PENDING,
-                session_id=valid_session_id,
+                session_id=session_id,
                 trigger_type="workflow",
                 triggered_by=f"workflow_run:{workflow_run_id}",
                 upstream_context=upstream_context,

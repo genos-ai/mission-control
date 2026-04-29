@@ -103,22 +103,8 @@ class ExecutionPersistenceService(BaseService):
         elif not config.persist_thinking_trace:
             planning_thinking_trace = None
 
-        # Validate session_id FK: if the session doesn't exist in the
-        # sessions table (e.g. Temporal workflow IDs), set to None to
-        # avoid IntegrityError on the FK constraint.
-        valid_session_id = session_id
-        if session_id:
-            from sqlalchemy import text
-
-            row = await self._session.execute(
-                text("SELECT 1 FROM sessions WHERE id = :sid"),
-                {"sid": session_id},
-            )
-            if not row.scalar_one_or_none():
-                valid_session_id = None
-
         record = ExecutionRecord(
-            session_id=valid_session_id,
+            session_id=session_id,
             roster_name=roster_name,
             status=ExecutionRecordStatus(status),
             task_plan_json=task_plan_json,

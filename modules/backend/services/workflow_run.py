@@ -223,6 +223,12 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         await self._session.flush()
         await self._session.refresh(run)
 
+        # Commit session + exec_record + workflow_run so child DB sessions
+        # (opened by _execute_wave via factory) can see them. Without this,
+        # the session_id FK in create_execution_from_step fails because the
+        # session row exists only in this transaction's uncommitted state.
+        await self._session.commit()
+
         logger.info(
             "DB workflow run started",
             extra={
