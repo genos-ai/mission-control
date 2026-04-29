@@ -14,7 +14,7 @@ automatically via ``TaskInputs.model_validator(mode="before")``.
 
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class FromUpstreamRef(BaseModel):
@@ -224,9 +224,9 @@ class TaskDefinition(BaseModel):
 
     task_id: str
     agent: str
-    agent_version: str
+    agent_version: str = "1.0.0"
     description: str
-    instructions: str
+    instructions: str = ""
     inputs: TaskInputs = Field(default_factory=TaskInputs)
     dependencies: list[str] = Field(default_factory=list)
     verification: TaskVerification = Field(default_factory=TaskVerification)
@@ -235,6 +235,14 @@ class TaskDefinition(BaseModel):
         default_factory=list,
         description="Domain tags for structured history queries (e.g. ['auth', 'api'])",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_agent_field(cls, data: dict) -> dict:
+        """Accept agent_name as alias for agent (common LLM variation)."""
+        if isinstance(data, dict) and "agent" not in data and "agent_name" in data:
+            data["agent"] = data.pop("agent_name")
+        return data
 
 
 class ExecutionHints(BaseModel):
@@ -260,17 +268,30 @@ class TaskPlan(BaseModel):
     This is a directed acyclic graph (DAG) expressed as JSON.
     Each task is a node. Each dependency is a directed edge.
     Mission Control validates and executes this deterministically.
+
+    Postel's Law: the model_validator normalises common LLM output
+    variations (version as int, missing summary) before strict validation.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     version: str = "1.0.0"
     mission_id: str
-    summary: str
-    estimated_cost_usd: float = Field(ge=0.0)
-    estimated_duration_seconds: int = Field(ge=0)
+    summary: str = ""
+    estimated_cost_usd: float = Field(default=0.0, ge=0.0)
+    estimated_duration_seconds: int = Field(default=0, ge=0)
     tasks: list[TaskDefinition]
     execution_hints: ExecutionHints = Field(default_factory=ExecutionHints)
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def coerce_version(cls, v: object) -> str:
+        """Accept int/float versions from LLM (e.g. 1 → '1.0.0')."""
+        if isinstance(v, (int, float)):
+            return f"{int(v)}.0.0"
+        if isinstance(v, str) and re.match(r"^v?\d+$", v):
+            return f"{v.lstrip('v')}.0.0"
+        return str(v)
 
     @property
     def task_ids(self) -> list[str]:
