@@ -13,8 +13,8 @@ enabled: true
 version: "1.0.0"
 
 model:
-  name: "copilot:claude-sonnet-4.6"
-  temperature: 0.0
+  name: "copilot:claude-opus-4.6"
+  temperature: 0.2
   max_tokens: 16384
 
 keywords: []
