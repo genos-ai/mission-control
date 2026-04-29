@@ -326,6 +326,8 @@ async def _call_planning_agent(
     refinement_instructions: str | None = None,
     mission_id: str | None = None,
     plan_version: int = 1,
+    project_context: dict | None = None,
+    recent_failures: list | None = None,
 ) -> dict:
     """Call the Planning Agent and return the raw result.
 
@@ -359,6 +361,8 @@ async def _call_planning_agent(
         mission_id=mission_id or "pending",
         roster_description=roster_desc,
         upstream_context=upstream_context,
+        project_context=project_context,
+        recent_failures=recent_failures,
         current_plan=current_plan,
         refinement_instructions=refinement_instructions,
         plan_version=plan_version,

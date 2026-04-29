@@ -13,8 +13,6 @@ from typing import Any
 from modules.backend.agents.mission_control.dispatch import dispatch
 from modules.backend.agents.mission_control.gate import GateReviewer
 from modules.backend.agents.mission_control.helpers import (
-    _build_planning_prompt,
-    _build_roster_prompt,
     _append_validation_feedback,
     _call_planning_agent,
     _emit,
@@ -106,7 +104,6 @@ async def handle_mission(
                         "event_bus_type": type(event_bus).__name__})
     await _phase("roster", "Deriving agent roster from team")
     roster = await derive_roster_from_team(mission_id, db_session)
-    roster_description = _build_roster_prompt(roster)
     await _phase("roster", f"Roster ready — {len(roster.agents)} agents")
 
     # Create context services BEFORE planning so the planner gets PCD + history
@@ -170,22 +167,17 @@ async def handle_mission(
             )
         await _phase("context", "Context assembled")
 
-    # Build planning prompt WITH project context
-    planning_prompt = _build_planning_prompt(
-        mission_brief=mission_brief,
-        mission_id=mission_run_id,
-        roster_description=roster_description,
-        upstream_context=upstream_context,
-        project_context=project_context,
-        recent_failures=recent_failures,
-    )
-
     # Either use the caller-supplied precomputed plan (Plan 42 dispatch path)
     # or call the Planning Agent with a retry loop (standard path).
+    #
+    # NOTE: _call_planning_agent() builds the full planning prompt internally
+    # via _build_planning_prompt(). We pass the raw mission_brief + context
+    # pieces so they're assembled once, not double-wrapped.
     plan = None
     thinking_trace = None
     last_error = ""
     planning_agent_id = "system.planning.agent"
+    planning_brief = mission_brief  # raw brief for retry loop
 
     if precomputed_plan is not None:
         # Plan 42: MissionPlanService dispatched an approved subset.
@@ -217,8 +209,11 @@ async def handle_mission(
         for attempt in range(max_planning_attempts):
             try:
                 planning_result = await _call_planning_agent(
-                    planning_prompt, roster, upstream_context,
+                    planning_brief, roster, upstream_context,
                     event_bus=event_bus, session_id=session_id,
+                    mission_id=mission_id or mission_run_id,
+                    project_context=project_context,
+                    recent_failures=recent_failures,
                 )
                 thinking_trace = planning_result.get("thinking_trace")
 
@@ -238,8 +233,8 @@ async def handle_mission(
                         "mission_id": mission_run_id,
                     },
                 )
-                planning_prompt = _append_validation_feedback(
-                    planning_prompt, validation.errors,
+                planning_brief = _append_validation_feedback(
+                    planning_brief, validation.errors,
                 )
                 plan = None
 
@@ -254,8 +249,8 @@ async def handle_mission(
                         "mission_id": mission_run_id,
                     },
                 )
-                planning_prompt = _append_validation_feedback(
-                    planning_prompt, [last_error],
+                planning_brief = _append_validation_feedback(
+                    planning_brief, [last_error],
                 )
 
     # Emit planning complete event
