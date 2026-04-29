@@ -1272,8 +1272,22 @@ class MissionPlanOrchestrator(BaseService):
         )
 
         try:
+            # Validate session_id exists in sessions table (FK constraint).
+            # Workflow dispatch may pass a Temporal workflow ID that isn't
+            # a real session — use None to avoid IntegrityError.
+            valid_session_id = None
+            if session_id:
+                from sqlalchemy import text
+
+                row = await self._session.execute(
+                    text("SELECT id FROM sessions WHERE id = :sid"),
+                    {"sid": session_id},
+                )
+                if row.scalar_one_or_none():
+                    valid_session_id = session_id
+
             record = ExecutionRecord(
-                session_id=session_id or str(uuid.uuid4()),
+                session_id=valid_session_id,
                 status=ExecutionRecordStatus.RUNNING,
                 mission_id=plan.mission_id,
                 roster_name=mission.default_roster,
@@ -1291,6 +1305,7 @@ class MissionPlanOrchestrator(BaseService):
             await self._session.commit()
             return record
         except Exception:
+            await self._session.rollback()
             self._logger.warning(
                 "Failed to create early execution record (non-fatal)",
                 exc_info=True,
