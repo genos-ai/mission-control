@@ -1,0 +1,28 @@
+{
+  "findings": [
+    {
+      "rule_id": "generic-api-key",
+      "file": "app/config.py",
+      "line": 5,
+      "match": "sk-live-abc123def456ghi789jkl012mno345pqr678",
+      "entropy": 4.2,
+      "detector": "betterleaks"
+    },
+    {
+      "rule_id": "jwt-secret",
+      "file": "app/config.py",
+      "line": 8,
+      "match": "password123",
+      "entropy": 2.8,
+      "detector": "betterleaks"
+    },
+    {
+      "rule_id": "github-pat",
+      "file": "app/integrations.py",
+      "line": 12,
+      "match": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh",
+      "entropy": 4.5,
+      "detector": "betterleaks"
+    }
+  ]
+}

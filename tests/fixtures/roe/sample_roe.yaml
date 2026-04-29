@@ -1,0 +1,26 @@
+# Sample Rules of Engagement for WASA testing.
+engagement_id: "ENG-TEST-001"
+roe_sha256: "placeholder-will-be-computed-at-runtime"
+scope_allowlist:
+  - "/workspace/target/*"
+  - "https://testapp.example.com/*"
+scope_denylist:
+  - "/workspace/target/.env"
+  - "https://testapp.example.com/admin/*"
+allowed_techniques:
+  - recon
+  - scanning
+  - enumeration
+prohibited_actions:
+  - "DROP/TRUNCATE SQL"
+  - "os-shell"
+  - "lateral_movement"
+  - "DoS"
+  - "data_modification"
+max_tool_calls: 200
+max_cost_usd: 50.0
+time_window_utc: null
+human_gate_stages:
+  - 2
+  - 3
+  - 4

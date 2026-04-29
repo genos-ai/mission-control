@@ -180,7 +180,7 @@ def _redact_secrets_in_text(text: str) -> str:
     patterns = [
         r'(?:api[_-]?key|secret|token|password|passwd|credential)\s*[:=]\s*["\']?([^\s"\']{8,})',
         r'(?:sk|pk|ak|rk)[-_](?:live|test|prod)[-_][a-zA-Z0-9]{16,}',
-        r'ghp_[a-zA-Z0-9]{36}',
+        r'ghp_[a-zA-Z0-9]{20,}',
         r'eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}',
     ]
     for pattern in patterns:
