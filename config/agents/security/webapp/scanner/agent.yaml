@@ -1,0 +1,55 @@
+# WASA Scanner Agent — deterministic SAST tool orchestrator
+#
+# Runs registered security tools by capability against a target codebase
+# and collects their SARIF output. Does NOT assess findings — the triage
+# agent does that. Spec Section 4.2, 5.2.
+
+agent_name: security.webapp.scanner.agent
+agent_type: vertical
+description: >-
+  Deterministic security scanner orchestrator. Runs SAST, SCA, secret
+  detection, container scanning, and infrastructure scanning tools by
+  capability. Produces merged SARIF output for triage.
+enabled: true
+chat_enabled: false
+version: "1.0.0"
+
+model:
+  name: "copilot:claude-haiku-4.5"
+  temperature: 0.0
+  max_tokens: 8192
+
+keywords:
+  - security
+  - scanner
+  - sast
+  - sca
+
+tools:
+  - security.code.scan
+  - security.code.lint
+  - security.deps.scan
+  - security.secrets.detect
+  - security.container.scan
+  - security.dockerfile.lint
+  - security.infra.scan
+  - security.merge_sarif
+  - security.detect_surface
+
+max_input_length: 16000
+max_budget_usd: 1.50
+
+execution:
+  mode: container
+  template: "security-assessment-worker:latest"
+
+invocation:
+  tier: system
+
+scope:
+  read:
+    - "@workspace/target/"
+  write:
+    - "@workspace/evidence/sarif/"
+
+produces_artifact: false

@@ -1,0 +1,97 @@
+# =============================================================================
+# Workflow: Web Application Security Assessment (WASA) — Phase 1
+# =============================================================================
+# SAST-only pipeline: scan → triage → report.
+# Phase 2 adds: planner, recon, appsec.
+# Phase 3 adds: exploit, validator.
+# Spec: docs/97-plans/66-spec-webapp-security-assessment.md Section 6.2
+# =============================================================================
+
+workflow_name: security.webapp-assessment.workflow
+description: "Web application security assessment: SAST scanning, LLM triage, and structured reporting"
+objective:
+  statement: "Perform a security assessment covering OWASP Top 10 and WSTG categories with actionable findings and a prioritised remediation roadmap"
+  category: security
+  owner: security-team
+  priority: high
+  regulatory_reference: "OWASP Top 10 2021, OWASP WSTG v4.2, PTES"
+version: 1
+enabled: true
+mission_name: null
+
+trigger:
+  type: on_demand
+  match_patterns:
+    - "security assessment"
+    - "pentest"
+    - "penetration test"
+    - "vulnerability assessment"
+    - "appsec review"
+    - "security audit"
+    - "security scan"
+
+budget:
+  max_cost_usd: 15.00
+  max_tokens: 2000000
+
+context:
+  target_path: null
+  target_name: "Unknown Target"
+  target_url: null
+  scope_notes: ""
+
+steps:
+  - id: scan
+    description: "Deterministic SAST, SCA, secret detection, and container security scanning"
+    capability: security.webapp.scanner
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 2.00
+    environment: container
+    container_image: "security-assessment-worker:latest"
+    condition: "@context.target_path != null"
+    input:
+      target_path: "@context.target_path"
+    output_mapping:
+      field_mappings:
+        - source_task: security.webapp.scanner.agent
+          source_field: sarif_path
+          target_key: merged_sarif_path
+    timeout_seconds: 600
+    depends_on: []
+
+  - id: triage
+    description: "LLM false-positive triage of scanner findings with code context"
+    capability: security.webapp.triage
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 5.00
+    environment: container
+    container_image: "security-assessment-worker:latest"
+    input:
+      sarif_path: "@steps.scan.merged_sarif_path"
+      target_path: "@context.target_path"
+    timeout_seconds: 600
+    depends_on:
+      - scan
+
+  - id: report
+    description: "Synthesise triaged findings into structured assessment report"
+    capability: security.webapp.reporter
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 5.00
+    environment: container
+    container_image: "security-assessment-worker:latest"
+    input:
+      triaged_findings: "@steps.triage.triaged_findings"
+      target_name: "@context.target_name"
+      scope_notes: "@context.scope_notes"
+    output_mapping:
+      field_mappings:
+        - source_task: security.webapp.reporter.agent
+          source_field: report
+          target_key: security_assessment_report
+    timeout_seconds: 600
+    depends_on:
+      - triage

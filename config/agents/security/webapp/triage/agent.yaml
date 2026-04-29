@@ -1,0 +1,47 @@
+# WASA Triage Agent — LLM false-positive filtering
+#
+# Reads merged SARIF findings, examines code context, and produces
+# triage verdicts (TRUE_POSITIVE, FALSE_POSITIVE, UNCERTAIN).
+# Spec Section 4.2, 5.4.
+
+agent_name: security.webapp.triage.agent
+agent_type: vertical
+description: >-
+  Security finding triage specialist. Assesses scanner-generated SARIF
+  findings for false positives using code context and chain-of-thought
+  reasoning. Produces triaged findings with verdicts and rationale.
+enabled: true
+chat_enabled: false
+version: "1.0.0"
+
+model:
+  name: "copilot:claude-sonnet-4.6"
+  temperature: 0.0
+  max_tokens: 16384
+
+keywords:
+  - security
+  - triage
+  - false-positive
+
+tools:
+  - security.load_sarif
+  - read_file
+
+max_input_length: 64000
+max_budget_usd: 5.00
+
+execution:
+  mode: container
+  template: "security-assessment-worker:latest"
+
+invocation:
+  tier: system
+
+scope:
+  read:
+    - "@workspace/target/"
+    - "@workspace/evidence/sarif/"
+  write: []
+
+produces_artifact: false
