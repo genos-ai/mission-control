@@ -39,6 +39,7 @@ from modules.backend.core.config_schema import (
     WorkflowsSchema,
     MissionsSchema,
     SecuritySchema,
+    SecurityAssessmentSchema,
     SessionsSchema,
     TemporalSchema,
 )
@@ -148,6 +149,9 @@ class AppConfig:
         self._notifications = _load_validated_optional(NotificationsSchema, "notifications.yaml")
         self._providers = _load_validated_optional(ProvidersSchema, "providers.yaml")
         self._cost = _load_validated_optional(CostSchema, "cost.yaml")
+        self._security_assessment = _load_validated_optional(
+            SecurityAssessmentSchema, "security_assessment.yaml",
+        )
 
     @property
     def application(self) -> ApplicationSchema:
@@ -228,6 +232,11 @@ class AppConfig:
     def cost(self) -> CostSchema:
         """Cost management settings (Plan 60)."""
         return self._cost
+
+    @property
+    def security_assessment(self) -> SecurityAssessmentSchema:
+        """WASA security assessment settings (Plan 66/67)."""
+        return self._security_assessment
 
 
 @lru_cache

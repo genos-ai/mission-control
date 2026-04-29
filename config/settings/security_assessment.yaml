@@ -1,0 +1,48 @@
+# =============================================================================
+# WASA — Security Assessment Configuration
+# =============================================================================
+#
+# All options (Phase 1):
+#   roe_opa_endpoint              OPA endpoint for ROE scope validation (required)
+#   scope_validation_mode         "strict" (deny-by-default) | "permissive" (log-only)
+#   scanner_max_file_size_bytes   Max file size for SAST scanners (default: 1MB)
+#   tool_registry_path            Path to security tool registry YAML
+#   triage_fp_confidence_threshold  Min confidence for FP classification (default: 0.75)
+#   triage_code_context_lines     Lines of code context for triage (default: 10)
+#   triage_max_findings_per_run   Max findings per triage run (default: 500)
+#   evidence_sha256_on_write      Hash every evidence file on write (default: true)
+#   evidence_base_path            Base path for evidence files
+#   cost_hard_limit_usd           Hard cost ceiling per engagement (default: 50.0)
+#   cost_alert_threshold_pct      Alert at this % of hard limit (default: 0.80)
+#   report_min_executive_summary_chars  Min chars for exec summary (default: 300)
+#   report_risk_score_weights     Composite risk score weights
+#
+# Phase 2/3 additions (not yet active):
+#   recon_rate_limit_rps, dast_proxy_port, appsec_max_files_per_analysis,
+#   appsec_auth_entry_patterns, exploit_max_tool_calls,
+#   exploit_steps_per_finding, exploit_parallel_trajectories,
+#   exploit_stall_detector_steps, exploit_require_poc,
+#   exploit_auto_approve_stages, auth_max_failed_logins_per_account,
+#   auth_sentinel_account_role
+
+roe_opa_endpoint: "http://localhost:8181/v1/data/roe/allow"
+scope_validation_mode: "strict"
+
+scanner_max_file_size_bytes: 1048576
+tool_registry_path: "config/security/tools.yaml"
+
+triage_fp_confidence_threshold: 0.75
+triage_code_context_lines: 10
+triage_max_findings_per_run: 500
+
+evidence_sha256_on_write: true
+evidence_base_path: "@workspace/evidence/"
+
+cost_hard_limit_usd: 50.0
+cost_alert_threshold_pct: 0.80
+
+report_min_executive_summary_chars: 300
+report_risk_score_weights:
+  cvss: 0.40
+  exploitability: 0.30
+  business_impact: 0.30

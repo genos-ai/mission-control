@@ -578,3 +578,57 @@ class CostSchema(_StrictBase):
     output_efficiency: OutputEfficiencySchema = Field(
         default_factory=OutputEfficiencySchema,
     )
+
+
+# =============================================================================
+# security_assessment.yaml (WASA — Plan 66/67)
+# =============================================================================
+
+
+class SecurityAssessmentRiskWeightsSchema(_StrictBase):
+    """Composite risk score weights for the report."""
+
+    cvss: float = 0.40
+    exploitability: float = 0.30
+    business_impact: float = 0.30
+
+
+class SecurityAssessmentSchema(_StrictBase):
+    """WASA security assessment configuration (security_assessment.yaml).
+
+    Phase 1 fields only. Phase 2/3 additions (recon_rate_limit_rps,
+    dast_proxy_port, appsec_*, exploit_*, auth_*) will be added when
+    those phases are implemented.
+    """
+
+    # Scope enforcement
+    roe_opa_endpoint: str = Field(
+        description="OPA endpoint for ROE scope validation. Required.",
+    )
+    scope_validation_mode: str = Field(
+        default="strict",
+        pattern=r"^(strict|permissive)$",
+    )
+
+    # Scanner phase
+    scanner_max_file_size_bytes: int = Field(default=1_048_576, ge=1024)
+    tool_registry_path: str = Field(default="config/security/tools.yaml")
+
+    # Triage phase
+    triage_fp_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    triage_code_context_lines: int = Field(default=10, ge=3, le=25)
+    triage_max_findings_per_run: int = Field(default=500, ge=10, le=2000)
+
+    # Evidence
+    evidence_sha256_on_write: bool = Field(default=True)
+    evidence_base_path: str = Field(default="@workspace/evidence/")
+
+    # Cost controls
+    cost_hard_limit_usd: float = Field(default=50.0, ge=1.0, le=500.0)
+    cost_alert_threshold_pct: float = Field(default=0.80, ge=0.5, le=0.95)
+
+    # Report
+    report_min_executive_summary_chars: int = Field(default=300, ge=100)
+    report_risk_score_weights: SecurityAssessmentRiskWeightsSchema = Field(
+        default_factory=SecurityAssessmentRiskWeightsSchema,
+    )
