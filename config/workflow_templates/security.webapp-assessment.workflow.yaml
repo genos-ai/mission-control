@@ -51,6 +51,7 @@ steps:
     container_image: "security-assessment-worker:latest"
     condition: "@context.target_path != null"
     input:
+      type: "security_scan"
       target_path: "@context.target_path"
     output_mapping:
       field_mappings:
@@ -69,6 +70,7 @@ steps:
     environment: container
     container_image: "security-assessment-worker:latest"
     input:
+      type: "security_triage"
       sarif_path: "@steps.scan.merged_sarif_path"
       target_path: "@context.target_path"
     timeout_seconds: 600
@@ -84,6 +86,7 @@ steps:
     environment: container
     container_image: "security-assessment-worker:latest"
     input:
+      type: "security_report"
       triaged_findings: "@steps.triage.triaged_findings"
       target_name: "@context.target_name"
       scope_notes: "@context.scope_notes"

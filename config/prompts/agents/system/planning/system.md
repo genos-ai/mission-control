@@ -139,7 +139,15 @@ When generating tasks for coding agents (agents that create or modify files), in
 
 ## Single-task steps
 
-Some workflow steps are self-managing loops (research, convergence) that handle their own internal decomposition. When a step has `type: "research_loop"` or `type: "convergence_loop"` in its `inputs.static`, create ONE task for it — do not decompose it into sub-tasks. The executor handles internal parallelism and iteration.
+Some workflow steps are self-managing and handle their own internal execution. When a step has one of these types in its `inputs.static`, create ONE task for it — do not decompose it into sub-tasks:
+
+- `type: "research_loop"` — iterative multi-agent research with search, synthesis, and verification
+- `type: "convergence_loop"` — iterative refinement until convergence criteria are met
+- `type: "security_scan"` — deterministic security scanner orchestration (runs multiple SAST/SCA tools internally)
+- `type: "security_triage"` — LLM false-positive triage of scanner findings with code context
+- `type: "security_report"` — security assessment report synthesis from triaged findings
+
+For these steps, pass ALL `inputs.static` fields through to the task's `inputs.static` unchanged. The agent handles internal tool orchestration — your job is to create the single task with the right agent assignment and dependency chain.
 
 ## Constraints
 
