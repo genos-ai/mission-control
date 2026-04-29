@@ -403,7 +403,7 @@ async def _call_planning_agent(
 
     plan_json = extract_task_plan_json(full_content)
 
-    logger.debug(
+    logger.info(
         "Planning agent raw response",
         extra={
             "mission_id": mission_id,
