@@ -12,6 +12,7 @@ refresh from DB after admin changes.
 
 import asyncio
 import importlib
+import inspect
 from functools import lru_cache
 from typing import Any
 
@@ -243,11 +244,15 @@ class AgentRegistry:
         return None
 
     def resolve_module_path(self, agent_name: str) -> str:
-        """Derive the Python import path from agent name."""
+        """Derive the Python import path from agent name.
+
+        Supports any depth: security.webapp.scanner.agent resolves to
+        modules.backend.agents.security.webapp.scanner.agent. Backward-
+        compatible — 2-segment names (mission.director.agent) produce
+        the same path as before.
+        """
         parts = agent_name.replace(".agent", "").split(".")
-        category = parts[0]
-        name = parts[1]
-        return f"modules.backend.agents.{category}.{name}.agent"
+        return f"modules.backend.agents.{'.'.join(parts)}.agent"
 
     def get_instance(self, agent_name: str, model: Any) -> Any:
         """Get or create a cached PydanticAI Agent instance.
@@ -261,12 +266,13 @@ class AgentRegistry:
         module_path = self.resolve_module_path(agent_name)
         module = importlib.import_module(module_path)
 
-        # Pass chat_mode for agents that support it (e.g. planning agent)
+        # Pass chat_mode for agents whose create_agent() accepts it
         config = self._agents.get(agent_name)
         chat_enabled = config and getattr(config, "chat_enabled", False)
-        try:
-            agent = module.create_agent(model, chat_mode=chat_enabled)
-        except TypeError:
+        sig = inspect.signature(module.create_agent)
+        if chat_enabled and "chat_mode" in sig.parameters:
+            agent = module.create_agent(model, chat_mode=True)
+        else:
             agent = module.create_agent(model)
 
         self._instances[agent_name] = agent
