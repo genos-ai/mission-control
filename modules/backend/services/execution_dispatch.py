@@ -82,6 +82,7 @@ class ExecutionDispatchMixin:
                 session_id=execution.session_id,
                 mission_id=execution.mission_id,
                 gate=gate,
+                execution_mode=execution.execution_environment,
                 container_image=exec_ctx.get("container_image"),
                 extra_volumes=exec_ctx.get("extra_volumes"),
             )

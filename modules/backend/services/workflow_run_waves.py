@@ -280,6 +280,7 @@ class WorkflowRunWavesMixin:
             upstream_context=upstream,
             session_id=session_id,
             mission_id=run.mission_id,
+            environment=step.environment,
             container_image=step.container_image,
             extra_volumes=step.extra_volumes,
         )
