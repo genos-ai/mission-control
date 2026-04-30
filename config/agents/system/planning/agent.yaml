@@ -36,7 +36,7 @@ max_budget_usd: 5.00
 execution:
   mode: local
 invocation:
-  tier: user
+  tier: system
 
 scope:
   read:
