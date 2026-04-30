@@ -98,6 +98,11 @@ def _build_agent_deps(
                 config_path=find_project_root() / sec_config.tool_registry_path
             )
         except Exception:
+            logger.warning(
+                "Failed to load security tool registry — scanner tools will be unavailable",
+                extra={"agent_name": agent_name},
+                exc_info=True,
+            )
             tool_registry = None
             sec_config = None
 
