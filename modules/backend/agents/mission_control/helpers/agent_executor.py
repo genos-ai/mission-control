@@ -315,6 +315,29 @@ def _make_agent_executor(
     return execute_agent
 
 
+def _format_plan_summary(plan_json: dict) -> str:
+    """Format a TaskPlan dict as a markdown summary for the chat sidebar."""
+    tasks = plan_json.get("tasks", [])
+    version = plan_json.get("version", "?")
+    summary = plan_json.get("summary", "")
+    cost = plan_json.get("estimated_cost_usd", 0)
+    duration = plan_json.get("estimated_duration_seconds", 0)
+
+    lines = [f"## Task Plan v{version} — {summary}", ""]
+    lines.append("| # | Task ID | Description | Agent | Dependencies |")
+    lines.append("|---|---------|-------------|-------|-------------|")
+    for i, task in enumerate(tasks, 1):
+        tid = task.get("task_id", "?")
+        desc = task.get("description", "")[:50]
+        agent = task.get("agent", "?")
+        deps = ", ".join(task.get("dependencies", [])) or "—"
+        lines.append(f"| {i} | {tid} | {desc} | {agent} | {deps} |")
+    lines.append("")
+    duration_min = duration / 60 if duration else 0
+    lines.append(f"**Estimated cost:** ${cost:.2f} | **Duration:** ~{duration_min:.0f} min")
+    return "\n".join(lines)
+
+
 async def _call_planning_agent(
     prompt: str,
     roster: "Roster",
@@ -422,11 +445,24 @@ async def _call_planning_agent(
                         thinking_trace = part.content
 
     if event_bus:
+        # Emit completion event
         await _emit(event_bus, AgentResponseCompleteEvent,
             session_id=str(sid), source="mission_control",
             agent_id=planning_agent_id,
             content=f"Plan generated ({len(plan_json.get('tasks', []))} tasks)" if isinstance(plan_json, dict) else "Plan generated",
         )
+
+        # Surface plan summary in chat sidebar
+        if isinstance(plan_json, dict) and plan_json.get("tasks"):
+            from modules.backend.events.types import PlanCreatedEvent
+            await event_bus.publish(PlanCreatedEvent(
+                session_id=sid,
+                source="mission_control",
+                plan_id=mission_id or "pending",
+                goal=plan_json.get("summary", ""),
+                step_count=len(plan_json["tasks"]),
+                metadata={"plan_markdown": _format_plan_summary(plan_json)},
+            ))
 
     # Record planning agent cost to llm_calls table (was missing — only
     # dispatch agents and Director were recording, not the planner).

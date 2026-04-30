@@ -350,6 +350,88 @@ class MissionPlanOrchestrator(BaseService):
         )
         return {"cancelled": cancelled_count, "new": new_count, "reset": reset_count}
 
+    # ── Direct plan application (chat mode) ─────────────────────────────
+
+    async def apply_plan(
+        self,
+        mission_id: str,
+        plan_dict: dict,
+        user_id: str,
+        *,
+        mission_budget_usd: float | None = None,
+    ) -> dict:
+        """Validate and persist a pre-computed TaskPlan without calling the Planning Agent.
+
+        Used by the Planning Agent's chat-mode `save_plan` tool. The agent
+        itself produces the plan JSON in conversation; this method validates
+        it and applies it to the mission plan, the same way refine() does
+        but without the recursive _call_planning_agent() call.
+
+        Returns a dict with plan_id, version, task_count, and reconciliation stats.
+
+        Raises:
+            ValidationError: If the plan fails schema or semantic validation.
+        """
+        mission_budget_usd = mission_budget_usd or get_default_budget_usd()
+
+        from modules.backend.agents.mission_control.plan_validator import validate_plan
+        from modules.backend.agents.mission_control.roster import (
+            derive_roster_from_team,
+        )
+
+        # Schema validation
+        try:
+            candidate = TaskPlan.model_validate(plan_dict)
+        except Exception as e:
+            raise ValidationError(f"TaskPlan schema validation failed: {e}") from e
+
+        # Semantic validation (11 rules)
+        roster = await derive_roster_from_team(mission_id, self._session)
+        plan = await self._plan_svc.get_or_create_plan(mission_id)
+        budget = plan.budget_usd_ceiling or mission_budget_usd
+
+        validation = validate_plan(candidate, roster, budget)
+        if not validation.is_valid:
+            raise ValidationError(
+                "TaskPlan validation failed: " + "; ".join(validation.errors)
+            )
+
+        # Reconcile task states and persist
+        reconcile_stats = await self._reconcile_task_states(plan, candidate)
+        plan.task_plan_json = candidate.model_dump()
+        plan.version += 1
+        await self._session.flush()
+
+        self._log_operation(
+            "MissionPlan applied (chat mode)",
+            plan_id=plan.id,
+            new_version=plan.version,
+            new_task_count=len(candidate.tasks),
+            user_id=user_id,
+        )
+
+        await self._emit(
+            mission_id,
+            MissionPlanRefinedEvent(
+                session_id=uuid.uuid4(),
+                source="planning_agent_chat",
+                mission_id=mission_id,
+                plan_id=plan.id,
+                version=plan.version,
+                task_count=len(candidate.tasks),
+                cancelled_count=reconcile_stats["cancelled"],
+                new_count=reconcile_stats["new"],
+            ),
+        )
+
+        return {
+            "status": "saved",
+            "plan_id": plan.id,
+            "version": plan.version,
+            "task_count": len(candidate.tasks),
+            "reconciliation": reconcile_stats,
+        }
+
     # ── Unified execution entry point (Plan 62) ────────────────────────
 
     async def run_objective(

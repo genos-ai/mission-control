@@ -250,16 +250,28 @@ class AgentRegistry:
         return f"modules.backend.agents.{category}.{name}.agent"
 
     def get_instance(self, agent_name: str, model: Any) -> Any:
-        """Get or create a cached PydanticAI Agent instance."""
+        """Get or create a cached PydanticAI Agent instance.
+
+        For chat-enabled agents whose create_agent() accepts chat_mode,
+        passes chat_mode=True so tools and chat prompts are registered.
+        """
         if agent_name in self._instances:
             return self._instances[agent_name]
 
         module_path = self.resolve_module_path(agent_name)
         module = importlib.import_module(module_path)
-        agent = module.create_agent(model)
+
+        # Pass chat_mode for agents that support it (e.g. planning agent)
+        config = self._agents.get(agent_name)
+        chat_enabled = config and getattr(config, "chat_enabled", False)
+        try:
+            agent = module.create_agent(model, chat_mode=chat_enabled)
+        except TypeError:
+            agent = module.create_agent(model)
+
         self._instances[agent_name] = agent
 
-        logger.info("Agent instance created", extra={"agent_name": agent_name})
+        logger.info("Agent instance created", extra={"agent_name": agent_name, "chat_mode": chat_enabled})
         return agent
 
     def reset(self) -> None:
