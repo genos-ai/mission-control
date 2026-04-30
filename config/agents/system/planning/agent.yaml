@@ -1,6 +1,6 @@
 # Planning Agent Configuration
 #   The Planning Agent decomposes mission briefs into executable task plans.
-#   Called by Mission Control, not by other agents.
+#   Called by Mission Control (dispatch mode) or by users (chat mode).
 #
 #   Model: Opus 4.6 with extended thinking — best reasoning for task decomposition.
 #   Model is PINNED — no runtime override (P2).
@@ -8,8 +8,9 @@
 
 agent_name: system.planning.agent
 agent_type: horizontal
-description: "Decomposes mission briefs into executable task plans with dependency graphs, verification specs, and cost estimates."
+description: "Decomposes mission briefs into executable task plans with dependency graphs, verification specs, and cost estimates. Chat-enabled for interactive plan inspection and modification."
 enabled: true
+chat_enabled: true
 version: "1.0.0"
 
 model:
@@ -17,8 +18,17 @@ model:
   temperature: 0.2
   max_tokens: 16384
 
-keywords: []
-tools: []
+keywords:
+  - plan
+  - planning
+  - task plan
+  - decompose
+
+tools:
+  - get_current_plan
+  - get_roster
+  - get_mission_info
+  - save_plan
 
 max_input_length: 64000
 max_budget_usd: 5.00
@@ -26,7 +36,7 @@ max_budget_usd: 5.00
 execution:
   mode: local
 invocation:
-  tier: system
+  tier: user
 
 scope:
   read:
@@ -45,7 +55,10 @@ interface:
   output:
     task_plan: object
 
-thinking_budget:
-  simple: 10000
-  standard: 20000
-  complex: 30000
+# thinking_budget disabled — Anthropic API requires temperature=1.0
+# for extended thinking, which conflicts with structured JSON output.
+# Re-enable when using Copilot SDK or when structured output is implemented.
+# thinking_budget:
+#   simple: 10000
+#   standard: 20000
+#   complex: 30000
