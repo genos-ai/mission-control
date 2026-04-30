@@ -248,35 +248,7 @@ class MissionPlanOrchestrator(BaseService):
                 + "; ".join(last_errors)
             )
 
-        # Reconcile task states
-        reconcile_stats = await self._reconcile_task_states(plan, new_plan)
-
-        # Replace the plan body and bump version
-        plan.task_plan_json = new_plan.model_dump()
-        plan.version += 1
-
-        await self._session.flush()
-
-        self._log_operation(
-            "MissionPlan refined",
-            plan_id=mission_plan_id,
-            new_version=plan.version,
-            new_task_count=len(new_plan.tasks),
-        )
-
-        await self._emit(
-            plan.mission_id,
-            MissionPlanRefinedEvent(
-                session_id=uuid.uuid4(),
-                source="mission_plan_orchestrator",
-                mission_id=plan.mission_id,
-                plan_id=plan.id,
-                version=plan.version,
-                task_count=len(new_plan.tasks),
-                cancelled_count=reconcile_stats["cancelled"],
-                new_count=reconcile_stats["new"],
-            ),
-        )
+        await self._persist_plan(plan, new_plan, source="mission_plan_orchestrator")
 
         # Refetch with task_states relationship loaded
         return await self._repo.get_by_mission_id_required(plan.mission_id)
@@ -350,6 +322,47 @@ class MissionPlanOrchestrator(BaseService):
         )
         return {"cancelled": cancelled_count, "new": new_count, "reset": reset_count}
 
+    # ── Shared persist helper ────────────────────────────────────────────
+
+    async def _persist_plan(
+        self,
+        plan: "MissionPlan",
+        candidate: TaskPlan,
+        *,
+        source: str = "mission_plan_orchestrator",
+    ) -> dict[str, int]:
+        """Reconcile task states, persist plan body, bump version, emit event.
+
+        Shared by refine() and apply_plan(). Returns reconciliation stats.
+        """
+        reconcile_stats = await self._reconcile_task_states(plan, candidate)
+        plan.task_plan_json = candidate.model_dump()
+        plan.version += 1
+        await self._session.flush()
+
+        self._log_operation(
+            "MissionPlan persisted",
+            plan_id=plan.id,
+            new_version=plan.version,
+            new_task_count=len(candidate.tasks),
+            source=source,
+        )
+
+        await self._emit(
+            plan.mission_id,
+            MissionPlanRefinedEvent(
+                session_id=uuid.uuid4(),
+                source=source,
+                mission_id=plan.mission_id,
+                plan_id=plan.id,
+                version=plan.version,
+                task_count=len(candidate.tasks),
+                cancelled_count=reconcile_stats["cancelled"],
+                new_count=reconcile_stats["new"],
+            ),
+        )
+        return reconcile_stats
+
     # ── Direct plan application (chat mode) ─────────────────────────────
 
     async def apply_plan(
@@ -396,32 +409,8 @@ class MissionPlanOrchestrator(BaseService):
                 "TaskPlan validation failed: " + "; ".join(validation.errors)
             )
 
-        # Reconcile task states and persist
-        reconcile_stats = await self._reconcile_task_states(plan, candidate)
-        plan.task_plan_json = candidate.model_dump()
-        plan.version += 1
-        await self._session.flush()
-
-        self._log_operation(
-            "MissionPlan applied (chat mode)",
-            plan_id=plan.id,
-            new_version=plan.version,
-            new_task_count=len(candidate.tasks),
-            user_id=user_id,
-        )
-
-        await self._emit(
-            mission_id,
-            MissionPlanRefinedEvent(
-                session_id=uuid.uuid4(),
-                source="planning_agent_chat",
-                mission_id=mission_id,
-                plan_id=plan.id,
-                version=plan.version,
-                task_count=len(candidate.tasks),
-                cancelled_count=reconcile_stats["cancelled"],
-                new_count=reconcile_stats["new"],
-            ),
+        reconcile_stats = await self._persist_plan(
+            plan, candidate, source="planning_agent_chat",
         )
 
         return {

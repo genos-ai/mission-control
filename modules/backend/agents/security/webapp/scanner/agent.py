@@ -14,6 +14,33 @@ from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Scan capabilities: (ToolCapability enum member name, tool function name, docstring)
+_SCAN_CAPABILITIES = [
+    ("CODE_SCAN", "security_code_scan", "Run SAST code scanning via Opengrep."),
+    ("CODE_LINT", "security_code_lint", "Run security lint via Ruff --select S."),
+    ("DEPS_SCAN", "security_deps_scan", "Run dependency CVE scan via pip-audit."),
+    ("SECRETS_DETECT", "security_secrets_detect", "Detect hardcoded credentials via Betterleaks."),
+    ("CONTAINER_SCAN", "security_container_scan", "Run container/filesystem CVE scan via Trivy."),
+    ("DOCKERFILE_LINT", "security_dockerfile_lint", "Lint Dockerfile via Hadolint."),
+    ("INFRA_SCAN", "security_infra_scan", "Run IaC security scan via Checkov."),
+]
+
+
+def _make_scan_tool(capability_name: str, tool_name: str, doc: str):
+    """Factory for uniform scan tool wrappers."""
+    from modules.backend.agents.adapters.security_scanning import run_scan
+    from modules.backend.agents.security.tool_registry import ToolCapability
+
+    capability = ToolCapability[capability_name]
+
+    async def tool_fn(ctx: RunContext[ScanDeps], target_path: str) -> str:
+        return await run_scan(capability, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
+
+    tool_fn.__name__ = tool_name
+    tool_fn.__qualname__ = tool_name
+    tool_fn.__doc__ = doc
+    return tool_fn
+
 
 def create_agent(
     model: str | Model,
@@ -27,47 +54,15 @@ def create_agent(
         instructions=assemble_instructions("security.webapp.scanner"),
     )
 
+    # Register 7 scan capability tools via factory
+    for cap_name, fn_name, doc in _SCAN_CAPABILITIES:
+        agent.tool(_make_scan_tool(cap_name, fn_name, doc))
+
+    # Register utility tools (different signatures, registered inline)
     from modules.backend.agents.adapters.security_scanning import (
-        run_scan,
         run_detect_surface,
         run_merge_sarif,
     )
-    from modules.backend.agents.security.tool_registry import ToolCapability
-
-    @agent.tool
-    async def security_code_scan(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        """Run SAST code scanning via Opengrep."""
-        return await run_scan(ToolCapability.CODE_SCAN, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
-
-    @agent.tool
-    async def security_code_lint(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        """Run security lint via Ruff --select S."""
-        return await run_scan(ToolCapability.CODE_LINT, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
-
-    @agent.tool
-    async def security_deps_scan(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        """Run dependency CVE scan via pip-audit."""
-        return await run_scan(ToolCapability.DEPS_SCAN, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
-
-    @agent.tool
-    async def security_secrets_detect(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        """Detect hardcoded credentials via Betterleaks."""
-        return await run_scan(ToolCapability.SECRETS_DETECT, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
-
-    @agent.tool
-    async def security_container_scan(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        """Run container/filesystem CVE scan via Trivy."""
-        return await run_scan(ToolCapability.CONTAINER_SCAN, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
-
-    @agent.tool
-    async def security_dockerfile_lint(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        """Lint Dockerfile via Hadolint."""
-        return await run_scan(ToolCapability.DOCKERFILE_LINT, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
-
-    @agent.tool
-    async def security_infra_scan(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        """Run IaC security scan via Checkov."""
-        return await run_scan(ToolCapability.INFRA_SCAN, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
 
     @agent.tool
     async def security_detect_surface(ctx: RunContext[ScanDeps], target_path: str) -> str:
