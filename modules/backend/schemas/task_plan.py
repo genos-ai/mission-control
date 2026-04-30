@@ -265,19 +265,20 @@ class TaskDefinition(BaseModel):
         if "inputs" in data and isinstance(data["inputs"], dict):
             inputs = data["inputs"]
             # If inputs has non-schema keys directly (not under static),
-            # wrap them in static
+            # wrap them in static — but preserve file_manifest at the
+            # correct level (it's a peer of static, not inside it)
             if "static" not in inputs and "from_upstream" not in inputs:
+                fm = inputs.pop("file_manifest", None)
                 data["inputs"] = {"static": inputs, "from_upstream": {}}
+                if fm is not None:
+                    data["inputs"]["file_manifest"] = fm
 
-        # Strip unknown fields (extra="forbid")
-        known = {
-            "task_id", "agent", "agent_version", "description",
-            "instructions", "inputs", "dependencies", "verification",
-            "constraints", "domain_tags",
-        }
-        for key in list(data.keys()):
-            if key not in known:
-                data.pop(key)
+        # Only strip aliases that were consumed by normalisation above.
+        # Genuinely unknown fields pass through to extra="forbid" so
+        # Pydantic produces clear error messages.
+        _task_aliases = {"id", "task_name", "agent_name", "title", "name"}
+        for alias in _task_aliases:
+            data.pop(alias, None)
 
         return data
 
@@ -348,14 +349,15 @@ class TaskPlan(BaseModel):
                     data["estimated_cost_usd"] = data.pop(alt)
                     break
 
-        # Strip fields not in schema (extra="forbid" rejects them)
-        known = {
-            "version", "mission_id", "summary", "estimated_cost_usd",
-            "estimated_duration_seconds", "tasks", "execution_hints",
+        # Only strip aliases that were consumed by normalisation above.
+        # Genuinely unknown fields pass through to extra="forbid" so
+        # Pydantic produces clear error messages.
+        _plan_aliases = {
+            "plan_version", "objective", "approach",
+            "total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd",
         }
-        for key in list(data.keys()):
-            if key not in known:
-                data.pop(key)
+        for alias in _plan_aliases:
+            data.pop(alias, None)
 
         return data
 

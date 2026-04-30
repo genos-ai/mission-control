@@ -67,15 +67,20 @@ class TestTaskPlan:
         with pytest.raises(Exception):
             TaskPlan.model_validate(data)
 
-    def test_extra_fields_stripped(self):
-        """Unknown top-level fields are silently stripped (Postel's Law)."""
+    def test_extra_fields_rejected(self):
+        """Genuinely unknown fields are rejected by extra='forbid'."""
         data = _make_plan()
         data["unknown_field"] = "bad"
+        with pytest.raises(Exception):
+            TaskPlan.model_validate(data)
+
+    def test_objective_normalised_to_summary(self):
+        """LLM alias 'objective' is normalised into 'summary'."""
+        data = _make_plan()
+        data.pop("summary")
         data["objective"] = "test objective"
         plan = TaskPlan.model_validate(data)
-        assert not hasattr(plan, "unknown_field")
-        # 'objective' normalised into 'summary' if summary was empty
-        assert plan.summary  # should have a value
+        assert plan.summary == "test objective"
 
     def test_full_plan_from_research_doc(self):
         """Validate the full example from the research doc parses."""
