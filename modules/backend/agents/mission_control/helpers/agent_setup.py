@@ -58,6 +58,7 @@ def _build_agent_deps(
     session_id: str | None = None,
     mission_id: str | None = None,
     db_session: Any | None = None,
+    event_bus: Any | None = None,
 ) -> BaseAgentDeps:
     """Build the appropriate deps dataclass for a given agent."""
     common = build_deps_from_config(agent_config)
@@ -82,7 +83,10 @@ def _build_agent_deps(
         return MissionSupervisorDeps(**common, mission_id=mission_id, db_session=db_session)
     if "system.planning" in agent_name:
         from modules.backend.agents.system.planning.agent import PlanningAgentDeps
-        return PlanningAgentDeps(**common, mission_id=mission_id, db_session=db_session)
+        return PlanningAgentDeps(
+            **common, mission_id=mission_id, db_session=db_session,
+            event_bus=event_bus,
+        )
     if category == "research":
         from modules.backend.agents.research.deps import ResearchAgentDeps
         return ResearchAgentDeps(**common, http_client=_get_research_http_client())

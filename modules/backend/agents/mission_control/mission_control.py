@@ -259,7 +259,7 @@ async def handle(
         registry = get_registry()
         model = _build_model(agent_config.model)
         agent = registry.get_instance(agent_name, model)
-        deps = _build_agent_deps(agent_name, agent_config, session_id, mission_id=mission_id, db_session=db_session)
+        deps = _build_agent_deps(agent_name, agent_config, session_id, mission_id=mission_id, db_session=db_session, event_bus=event_bus)
         limits = _get_usage_limits(agent_name)
 
         # Build model settings (enables thinking when agent config supports it)

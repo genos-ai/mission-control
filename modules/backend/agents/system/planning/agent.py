@@ -35,6 +35,7 @@ class PlanningAgentDeps(BaseAgentDeps):
     mission_brief: str = ""
     roster_description: str = ""
     upstream_context: dict[str, Any] | None = None
+    event_bus: Any = None  # EventBusProtocol — for chat-mode plan events
 
 
 def create_agent(
@@ -54,10 +55,15 @@ def create_agent(
     if isinstance(model, str):
         model = _build_model(model)
 
+    # Chat mode loads BOTH system.md (full TaskPlan schema) and chat.md
+    # (conversational tools/instructions). The schema is essential for the
+    # agent to produce valid JSON when modifying plans via save_plan.
+    base_prompt = assemble_instructions("system", "planning")
     if chat_mode:
-        system_prompt = assemble_instructions("system", "planning", variant="chat")
+        chat_prompt = assemble_instructions("system", "planning", variant="chat")
+        system_prompt = f"{base_prompt}\n\n{chat_prompt}"
     else:
-        system_prompt = assemble_instructions("system", "planning")
+        system_prompt = base_prompt
 
     agent = Agent(
         model,
@@ -147,7 +153,9 @@ def _register_chat_tools(agent: Agent) -> None:
             MissionPlanOrchestrator,
         )
 
-        orchestrator = MissionPlanOrchestrator(ctx.deps.db_session)
+        orchestrator = MissionPlanOrchestrator(
+            ctx.deps.db_session, event_bus=ctx.deps.event_bus,
+        )
         try:
             result = await orchestrator.apply_plan(
                 mission_id=ctx.deps.mission_id,
