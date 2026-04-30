@@ -176,7 +176,7 @@ async def handle_mission(
     plan = None
     thinking_trace = None
     last_error = ""
-    planning_agent_id = "system.planning.agent"
+    planning_agent_id = "mission.planning.agent"
     planning_brief = mission_brief  # raw brief for retry loop
 
     if precomputed_plan is not None:

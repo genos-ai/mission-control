@@ -153,7 +153,7 @@ async def run_health_agent() -> dict:
 async def run_planning_agent() -> dict:
     """Run the Planning Agent with a test mission brief. Returns TaskPlan dict."""
     from modules.backend.agents.deps.base import FileScope
-    from modules.backend.agents.system.planning.agent import (
+    from modules.backend.agents.mission.planning.agent import (
         PlanningAgentDeps,
         create_agent,
         run_agent,

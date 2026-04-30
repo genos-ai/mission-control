@@ -93,6 +93,8 @@ class AgentCatalogService(BaseService):
         thinking_budget_json: dict | None = None,
         max_input_length: int = 32000,
         max_budget_usd: float = 1.0,
+        produces_artifact: bool = False,
+        artifact_type: str | None = None,
     ) -> AgentCatalog:
         """Create a new agent catalog entry."""
         existing = await self._repo.get_by_name(agent_name)
@@ -122,6 +124,8 @@ class AgentCatalogService(BaseService):
             thinking_budget_json=thinking_budget_json,
             max_input_length=max_input_length,
             max_budget_usd=max_budget_usd,
+            produces_artifact=produces_artifact,
+            artifact_type=artifact_type,
         )
 
         self._log_operation(

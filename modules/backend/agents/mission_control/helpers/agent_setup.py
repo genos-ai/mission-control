@@ -81,8 +81,8 @@ def _build_agent_deps(
     if "mission.supervisor" in agent_name:
         from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
         return MissionSupervisorDeps(**common, mission_id=mission_id, db_session=db_session)
-    if "system.planning" in agent_name:
-        from modules.backend.agents.system.planning.agent import PlanningAgentDeps
+    if "mission.planning" in agent_name:
+        from modules.backend.agents.mission.planning.agent import PlanningAgentDeps
         return PlanningAgentDeps(
             **common, mission_id=mission_id, db_session=db_session,
             event_bus=event_bus,

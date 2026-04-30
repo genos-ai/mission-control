@@ -363,7 +363,7 @@ async def _call_planning_agent(
     import uuid as _uuid
 
     from modules.backend.agents.deps.base import FileScope
-    from modules.backend.agents.system.planning.agent import (
+    from modules.backend.agents.mission.planning.agent import (
         PlanningAgentDeps,
         create_agent,
         extract_task_plan_json,
@@ -373,7 +373,7 @@ async def _call_planning_agent(
     project_root = find_project_root()
 
     registry = get_registry()
-    planning_cfg = registry.get("system.planning.agent")
+    planning_cfg = registry.get("mission.planning.agent")
     model = _build_model(planning_cfg.model)
     planning_model_settings = build_model_settings(planning_cfg)
     agent = create_agent(model)
@@ -399,7 +399,7 @@ async def _call_planning_agent(
         upstream_context=upstream_context,
     )
 
-    planning_agent_id = "system.planning.agent"
+    planning_agent_id = "mission.planning.agent"
     sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
     full_content = ""
 
@@ -478,8 +478,8 @@ async def _call_planning_agent(
         await record_llm_call(
             session_id=session_id,
             mission_id=mission_id,
-            agent_name="system.planning.agent",
-            agent_role="system",
+            agent_name=planning_agent_id,
+            agent_role=planning_cfg.agent_type,
             model=model_name, usage=usage, cost_usd=planning_cost,
             latency_ms=0, tool_count=0,
         )

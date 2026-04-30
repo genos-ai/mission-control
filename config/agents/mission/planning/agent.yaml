@@ -6,7 +6,7 @@
 #   Model is PINNED — no runtime override (P2).
 #   System prompt is security-critical — changes require review.
 
-agent_name: system.planning.agent
+agent_name: mission.planning.agent
 agent_type: horizontal
 description: "Decomposes mission briefs into executable task plans with dependency graphs, verification specs, and cost estimates. Chat-enabled for interactive plan inspection and modification."
 enabled: true
@@ -36,7 +36,7 @@ max_budget_usd: 5.00
 execution:
   mode: local
 invocation:
-  tier: system
+  tier: user
 
 scope:
   read:

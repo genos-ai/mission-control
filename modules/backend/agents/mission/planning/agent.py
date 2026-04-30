@@ -58,9 +58,9 @@ def create_agent(
     # Chat mode loads BOTH system.md (full TaskPlan schema) and chat.md
     # (conversational tools/instructions). The schema is essential for the
     # agent to produce valid JSON when modifying plans via save_plan.
-    base_prompt = assemble_instructions("system", "planning")
+    base_prompt = assemble_instructions("mission", "planning")
     if chat_mode:
-        chat_prompt = assemble_instructions("system", "planning", variant="chat")
+        chat_prompt = assemble_instructions("mission", "planning", variant="chat")
         system_prompt = f"{base_prompt}\n\n{chat_prompt}"
     else:
         system_prompt = base_prompt
@@ -160,7 +160,7 @@ def _register_chat_tools(agent: Agent) -> None:
             result = await orchestrator.apply_plan(
                 mission_id=ctx.deps.mission_id,
                 plan_dict=plan_dict,
-                user_id="system.planning.agent",
+                user_id="mission.planning.agent",
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
