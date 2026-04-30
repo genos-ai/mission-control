@@ -1,11 +1,10 @@
 """WASA Triage Agent (security.webapp.triage.agent).
 
 LLM false-positive filtering. Reads merged SARIF findings, examines
-code context, and produces triage verdicts (TRUE_POSITIVE, FALSE_POSITIVE,
-UNCERTAIN) with rationale.
+code context, and produces triage verdicts with rationale.
 """
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 
 from modules.backend.agents.deps.base import BaseAgentDeps
@@ -27,10 +26,18 @@ def create_agent(
         instructions=assemble_instructions("security.webapp.triage"),
     )
 
+    # Register read_file from the platform tool registry
     if tool_names:
         from modules.backend.tools.registry import get_tool_registry
-
         registry = get_tool_registry()
         registry.register_on_agent(agent, tool_names)
+
+    # Register security.load_sarif directly (not in platform registry)
+    from modules.backend.agents.adapters.security_scanning import run_load_sarif
+
+    @agent.tool
+    async def security_load_sarif(ctx: RunContext[BaseAgentDeps], sarif_path: str) -> str:
+        """Load and return SARIF findings as JSON from the given file path."""
+        return await run_load_sarif(sarif_path)
 
     return agent
