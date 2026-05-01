@@ -413,11 +413,11 @@ async def _call_planning_agent(
     plan_dict = result.output.model_dump()
 
     logger.info(
-        "Planning agent response",
+        "Planning agent produced TaskPlan",
         extra={
             "mission_id": mission_id,
             "task_count": len(plan_dict.get("tasks", [])),
-            "plan_keys": list(plan_dict.keys()),
+            "task_plan": plan_dict,
         },
     )
 
@@ -445,7 +445,10 @@ async def _call_planning_agent(
                 plan_id=mission_id or "pending",
                 goal=plan_dict.get("summary", ""),
                 step_count=len(plan_dict["tasks"]),
-                metadata={"plan_markdown": _format_plan_summary(plan_dict)},
+                metadata={
+                    "plan_markdown": _format_plan_summary(plan_dict),
+                    "task_plan": plan_dict,
+                },
             ))
 
     # Record planning agent cost to llm_calls table (was missing — only
