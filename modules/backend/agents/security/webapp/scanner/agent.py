@@ -34,7 +34,10 @@ def _make_scan_tool(capability_name: str, tool_name: str, doc: str):
     capability = ToolCapability[capability_name]
 
     async def tool_fn(ctx: RunContext[ScanDeps], target_path: str) -> str:
-        return await run_scan(capability, target_path, ctx.deps.evidence_path, ctx.deps.tool_registry)
+        return await run_scan(
+            capability, target_path, ctx.deps.evidence_path,
+            ctx.deps.tool_registry, environment_handle=ctx.deps.environment_handle,
+        )
 
     tool_fn.__name__ = tool_name
     tool_fn.__qualname__ = tool_name

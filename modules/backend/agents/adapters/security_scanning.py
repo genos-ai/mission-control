@@ -37,12 +37,14 @@ async def run_scan(
     target_path: str,
     evidence_path: str,
     registry: SecurityToolRegistry,
+    environment_handle: object | None = None,
 ) -> str:
     """Run a single scanning capability and return a summary string.
 
     All Phase 1 scanning capabilities share the same structure:
     build a CapabilityInput, call run_capability, format the result.
     The capability enum determines which tool runs.
+    When environment_handle is set, tools execute inside the container.
     """
     # Derive a stable filename from the capability value
     # e.g. "security.code.scan" → "security_code_scan"
@@ -51,7 +53,9 @@ async def run_scan(
         target_path=target_path,
         output_path=f"{evidence_path}/sarif/{filename}.sarif",
     )
-    results = await run_capability(capability, cap_input, registry)
+    results = await run_capability(
+        capability, cap_input, registry, environment_handle=environment_handle,
+    )
     if not results:
         return f"{capability.value}: all engines failed"
     r = results[0]

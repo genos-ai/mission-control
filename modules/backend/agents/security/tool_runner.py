@@ -67,13 +67,23 @@ async def _run_tool_subprocess(
     cmd: list[str],
     timeout: int,
     cwd: str | None = None,
+    environment_handle: Any | None = None,
 ) -> CommandResult:
     """Run a security tool binary asynchronously and return structured result.
 
-    Follows the asyncio.create_subprocess_exec + wait_for pattern from
-    tools/run_command.py:_run_local(). Independent implementation — does
-    not import the private _run_local function.
+    When environment_handle is set and mode is "container", the command
+    is executed inside the container via ``docker exec``. Otherwise
+    runs locally via subprocess.
     """
+    if (
+        environment_handle is not None
+        and getattr(environment_handle, "mode", None) == "container"
+        and getattr(environment_handle, "container_id", None)
+    ):
+        return await _run_in_container(
+            cmd, environment_handle.container_id, timeout, cwd,
+        )
+
     start = time.monotonic()
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -96,6 +106,51 @@ async def _run_tool_subprocess(
             exit_code=-1,
             stdout="",
             stderr=f"Tool subprocess timed out after {timeout}s",
+            duration_seconds=time.monotonic() - start,
+        )
+    except OSError as e:
+        return CommandResult(
+            exit_code=-1,
+            stdout="",
+            stderr=str(e),
+            duration_seconds=time.monotonic() - start,
+        )
+
+
+async def _run_in_container(
+    cmd: list[str],
+    container_id: str,
+    timeout: int,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Execute a command inside a Docker container via ``docker exec``."""
+    docker_cmd = ["docker", "exec"]
+    if cwd:
+        docker_cmd.extend(["-w", cwd])
+    docker_cmd.append(container_id)
+    docker_cmd.extend(cmd)
+
+    start = time.monotonic()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *docker_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout,
+        )
+        return CommandResult(
+            exit_code=proc.returncode or 0,
+            stdout=stdout_bytes.decode(errors="replace"),
+            stderr=stderr_bytes.decode(errors="replace"),
+            duration_seconds=time.monotonic() - start,
+        )
+    except asyncio.TimeoutError:
+        return CommandResult(
+            exit_code=-1,
+            stdout="",
+            stderr=f"Tool subprocess timed out after {timeout}s (container: {container_id})",
             duration_seconds=time.monotonic() - start,
         )
     except OSError as e:
@@ -185,10 +240,12 @@ def _redact_secrets_in_text(text: str) -> str:
 async def run_security_tool(
     spec: SecurityToolSpec,
     capability_input: CapabilityInput,
+    environment_handle: Any | None = None,
 ) -> SarifCapabilityOutput:
     """Run a single security tool and return a standardised output contract.
 
     This is the ONLY function that executes security tool subprocesses.
+    When environment_handle is set, executes inside the container.
     """
     # Resolve command template
     args: dict[str, Any] = {
@@ -208,7 +265,9 @@ async def run_security_tool(
     cmd = cmd_str.split()
 
     started = datetime.now()
-    result = await _run_tool_subprocess(cmd, timeout=spec.timeout_seconds)
+    result = await _run_tool_subprocess(
+        cmd, timeout=spec.timeout_seconds, environment_handle=environment_handle,
+    )
     duration = (datetime.now() - started).total_seconds()
 
     # Validate exit code
@@ -275,6 +334,7 @@ async def run_capability(
     capability: ToolCapability,
     capability_input: CapabilityInput,
     registry: SecurityToolRegistry,
+    environment_handle: Any | None = None,
 ) -> list[SarifCapabilityOutput]:
     """Run a capability using registered engines. Handles fallback/ensemble."""
     specs = registry.get_all(capability)
@@ -294,6 +354,7 @@ async def run_capability(
                     output_path=f"{capability_input.output_path}.{spec.name}",
                     scope=capability_input.scope,
                 ),
+                environment_handle=environment_handle,
             )
             for spec in specs
         ]
@@ -302,14 +363,16 @@ async def run_capability(
 
     # FALLBACK mode: try in order, stop at first success
     for spec in specs:
-        if not registry.check_installed(spec):
+        if not registry.check_installed(spec) and environment_handle is None:
             logger.warning(
                 "Tool not installed, trying next engine",
                 extra={"tool": spec.name, "capability": capability.value},
             )
             continue
         try:
-            result = await run_security_tool(spec, capability_input)
+            result = await run_security_tool(
+                spec, capability_input, environment_handle=environment_handle,
+            )
             return [result]
         except SecurityAssessmentError:
             logger.warning(
