@@ -80,40 +80,46 @@ def create_agent(
     return agent
 
 
-def extract_task_plan_json(text: str) -> dict:
-    """Extract and validate a TaskPlan dict from the planning agent's text output.
+def extract_task_plan_json(text: str, *, mission_id: str | None = None) -> dict:
+    """Extract, enrich, and validate a TaskPlan dict from planning agent output.
 
     Handles:
       1. Raw JSON (entire output is valid JSON)
       2. JSON inside markdown fences (```json ... ```)
       3. JSON inside <task_plan> XML tags (legacy fallback)
 
+    When mission_id is provided, it's injected before validation — the
+    model doesn't always include it but we know it at dispatch time.
+
     Raises ValueError if no valid JSON found or TaskPlan validation fails.
     """
     # Try 1: entire output is JSON
     stripped = text.strip()
     plan_dict = _try_parse_json(stripped)
-    if plan_dict is not None:
-        return _validate_plan_dict(plan_dict)
 
     # Try 2: markdown code fence
-    fence_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", stripped, re.DOTALL)
-    if fence_match:
-        plan_dict = _try_parse_json(fence_match.group(1).strip())
-        if plan_dict is not None:
-            return _validate_plan_dict(plan_dict)
+    if plan_dict is None:
+        fence_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", stripped, re.DOTALL)
+        if fence_match:
+            plan_dict = _try_parse_json(fence_match.group(1).strip())
 
     # Try 3: <task_plan> XML tags (legacy)
-    xml_match = re.search(r"<task_plan>\s*(.*?)\s*</task_plan>", stripped, re.DOTALL)
-    if xml_match:
-        plan_dict = _try_parse_json(xml_match.group(1).strip())
-        if plan_dict is not None:
-            return _validate_plan_dict(plan_dict)
+    if plan_dict is None:
+        xml_match = re.search(r"<task_plan>\s*(.*?)\s*</task_plan>", stripped, re.DOTALL)
+        if xml_match:
+            plan_dict = _try_parse_json(xml_match.group(1).strip())
 
-    raise ValueError(
-        f"Could not extract valid TaskPlan JSON from planning agent output "
-        f"({len(text)} chars). First 500 chars: {text[:500]}"
-    )
+    if plan_dict is None:
+        raise ValueError(
+            f"Could not extract valid TaskPlan JSON from planning agent output "
+            f"({len(text)} chars). First 500 chars: {text[:500]}"
+        )
+
+    # Inject known fields before validation
+    if mission_id and not plan_dict.get("mission_id"):
+        plan_dict["mission_id"] = mission_id
+
+    return _validate_plan_dict(plan_dict)
 
 
 def _try_parse_json(text: str) -> dict | None:
