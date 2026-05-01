@@ -366,6 +366,7 @@ async def _call_planning_agent(
     from modules.backend.agents.mission.planning.agent import (
         PlanningAgentDeps,
         create_agent,
+        extract_task_plan_json,
     )
 
     project_root = find_project_root()
@@ -406,11 +407,24 @@ async def _call_planning_agent(
             agent_id=planning_agent_id,
         )
 
-    result = await agent.run(
+    full_content = ""
+
+    async with agent.run_stream(
         planning_prompt, deps=deps, model_settings=planning_model_settings,
-    )
-    usage = result.usage()
-    plan_dict = result.output.model_dump()
+    ) as stream:
+        async for text in stream.stream_text(delta=True):
+            full_content += text
+            if event_bus:
+                await event_bus.publish(AgentResponseChunkEvent(
+                    session_id=sid,
+                    source="mission_control",
+                    agent_id=planning_agent_id,
+                    content=text,
+                ))
+
+        usage = stream.usage()
+
+    plan_dict = extract_task_plan_json(full_content)
 
     logger.info(
         "Planning agent produced TaskPlan",
@@ -422,11 +436,12 @@ async def _call_planning_agent(
     )
 
     thinking_trace = None
-    for msg in result.all_messages():
-        for part in getattr(msg, "parts", []):
-            if hasattr(part, "content") and hasattr(part, "part_kind"):
-                if "thinking" in str(getattr(part, "part_kind", "")):
-                    thinking_trace = part.content
+    if hasattr(stream, "all_messages"):
+        for msg in stream.all_messages():
+            for part in getattr(msg, "parts", []):
+                if hasattr(part, "content") and hasattr(part, "part_kind"):
+                    if "thinking" in str(getattr(part, "part_kind", "")):
+                        thinking_trace = part.content
 
     if event_bus:
         # Emit completion event

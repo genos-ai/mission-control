@@ -17,8 +17,6 @@ model:
   name: "anthropic:claude-opus-4-6"
   temperature: 0.2
   max_tokens: 16000
-  betas:
-    - "structured-outputs-2025-11-13"
 
 keywords:
   - plan
