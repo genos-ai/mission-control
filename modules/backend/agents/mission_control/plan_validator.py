@@ -86,8 +86,14 @@ def _rule_2_agent_validation(plan: TaskPlan, roster: Roster, result: ValidationR
         # Plan 53: workflow tasks resolve at dispatch time, not via roster
         if task.agent.startswith("workflow:"):
             continue
-        entry = roster.get_agent(task.agent, task.agent_version)
-        if entry is None and task.agent_version == "latest":
+        # Normalize version: strip leading 'v' (LLMs produce "v1.0.0", roster has "1.0.0")
+        version = task.agent_version.lstrip("v") if task.agent_version else task.agent_version
+        entry = roster.get_agent(task.agent, version)
+        if entry is None and version != task.agent_version:
+            entry = roster.get_agent(task.agent, task.agent_version)
+        if entry is None and task.agent_version not in ("latest", version):
+            entry = roster.get_agent_by_name(task.agent)
+        if entry is None:
             entry = roster.get_agent_by_name(task.agent)
         if entry is None:
             result.add_error(
