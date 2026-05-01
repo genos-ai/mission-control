@@ -65,6 +65,14 @@ async def _run_tool_subprocess(
     or local). Otherwise runs locally via subprocess.
     """
     if environment_handle is not None:
+        logger.info(
+            "Running tool in container",
+            extra={
+                "cmd": " ".join(cmd[:3]),
+                "mode": getattr(environment_handle, "mode", "unknown"),
+                "container_id": getattr(environment_handle, "container_id", None),
+            },
+        )
         return await _run_via_environment_service(
             cmd, environment_handle, timeout,
         )
@@ -350,9 +358,14 @@ async def run_capability(
                 spec, capability_input, environment_handle=environment_handle,
             )
             return [result]
-        except SecurityAssessmentError:
+        except SecurityAssessmentError as exc:
             logger.warning(
                 "Tool failed, trying next engine",
-                extra={"tool": spec.name, "capability": capability.value},
+                extra={
+                    "tool": spec.name,
+                    "capability": capability.value,
+                    "error": str(exc),
+                    "container": environment_handle is not None,
+                },
             )
     return []
