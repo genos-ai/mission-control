@@ -387,6 +387,7 @@ class TaskPlan(BaseModel):
         _plan_aliases = {
             "plan_version", "objective", "approach",
             "total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd",
+            "plan_id",  # LLMs sometimes echo the plan_id from context
         }
         for alias in _plan_aliases:
             data.pop(alias, None)
