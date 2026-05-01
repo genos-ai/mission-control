@@ -102,6 +102,23 @@ async def _run_tool_subprocess(
         )
 
 
+_env_service = None
+
+
+def _get_env_service():
+    """Get or create a cached ExecutionEnvironmentService with container backend."""
+    global _env_service
+    if _env_service is None:
+        from modules.backend.services.execution_environment import (
+            ExecutionEnvironmentService,
+        )
+        from modules.backend.services.container_backend import ContainerBackend
+
+        _env_service = ExecutionEnvironmentService()
+        _env_service.register_backend("container", ContainerBackend())
+    return _env_service
+
+
 async def _run_via_environment_service(
     cmd: list[str],
     handle: Any,
@@ -109,18 +126,10 @@ async def _run_via_environment_service(
 ) -> CommandResult:
     """Execute a command via ExecutionEnvironmentService.
 
-    Reuses the platform's container/worktree/local backend dispatch —
-    no duplicate docker exec logic.
+    Reuses the platform's container/worktree/local backend dispatch.
+    The service and Docker client are cached across calls.
     """
-    from modules.backend.services.execution_environment import (
-        ExecutionEnvironmentService,
-    )
-
-    service = ExecutionEnvironmentService()
-    if handle.mode == "container":
-        from modules.backend.services.container_backend import ContainerBackend
-        service.register_backend("container", ContainerBackend())
-
+    service = _get_env_service()
     return await service.execute(handle, cmd, timeout_seconds=timeout)
 
 
@@ -261,7 +270,12 @@ async def run_security_tool(
     # The runner produces files; the orchestrator tracks integrity.
 
     # Return standardised contract
-    engine_version = probe_engine_version(spec)
+    # probe_engine_version runs locally — skip when in container (tools
+    # aren't on the host). The container image pins tool versions.
+    if environment_handle is not None:
+        engine_version = f"{spec.name}@container"
+    else:
+        engine_version = probe_engine_version(spec)
     sarif: dict = {}
     finding_count = 0
     severity_counts: dict[str, int] = {}
