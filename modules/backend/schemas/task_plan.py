@@ -208,6 +208,29 @@ class TaskVerification(BaseModel):
     tier_2: Tier2Verification = Field(default_factory=Tier2Verification)
     tier_3: Tier3Verification = Field(default_factory=Tier3Verification)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_tier_keys(cls, data: dict) -> dict:
+        """Normalise LLM tier key variations: tier1 → tier_1, etc."""
+        if not isinstance(data, dict):
+            return data
+        aliases = {"tier1": "tier_1", "tier2": "tier_2", "tier3": "tier_3"}
+        for alias, canonical in aliases.items():
+            if alias in data and canonical not in data:
+                data[canonical] = data.pop(alias)
+            elif alias in data:
+                data.pop(alias)
+        # LLMs sometimes put tier fields at the top level (schema_validation, etc.)
+        # Wrap them into tier_1 if tier_1 is missing
+        _tier1_fields = {"schema_validation", "required_output_fields"}
+        if "tier_1" not in data and any(f in data for f in _tier1_fields):
+            tier1 = {}
+            for f in list(_tier1_fields):
+                if f in data:
+                    tier1[f] = data.pop(f)
+            data["tier_1"] = tier1
+        return data
+
 
 class TaskConstraints(BaseModel):
     """Per-task execution constraints."""
