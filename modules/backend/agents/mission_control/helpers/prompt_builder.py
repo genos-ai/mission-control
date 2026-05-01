@@ -180,9 +180,10 @@ def _build_planning_prompt(
         )
 
     parts.append(
-        "## Output Format\n\n"
-        "Return your task plan as JSON within <task_plan> tags.\n"
-        "Follow the TaskPlan schema exactly. See system prompt for rules.\n"
+        "<output_contract>\n"
+        "Output a TaskPlan as raw JSON. No XML tags, no markdown fences.\n"
+        "The schema is enforced by constrained decoding — focus on semantic correctness.\n"
+        "</output_contract>\n"
     )
 
     return "\n".join(parts)

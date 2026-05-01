@@ -13,6 +13,7 @@ automatically via ``TaskInputs.model_validator(mode="before")``.
 """
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -214,7 +215,7 @@ class TaskConstraints(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timeout_override_seconds: int | None = None
-    priority: str = "normal"
+    priority: Literal["normal", "high", "critical"] = "normal"
 
 
 class TaskDefinition(BaseModel):
@@ -290,10 +291,8 @@ class ExecutionHints(BaseModel):
 
     min_success_threshold: float = Field(
         default=1.0,
-        ge=0.0,
-        le=1.0,
-        description="Fraction of tasks that must succeed for partial success",
-    )
+        description="Fraction of tasks that must succeed for partial success (0.0–1.0)",
+    )  # ge/le constraints omitted — grammar compiler strips them; validated at dispatch
     critical_path: list[str] = Field(
         default_factory=list,
         description="Task IDs that must succeed regardless of threshold",
@@ -318,8 +317,8 @@ class TaskPlan(BaseModel):
     version: str = "1.0.0"
     mission_id: str
     summary: str = ""
-    estimated_cost_usd: float = Field(default=0.0, ge=0.0)
-    estimated_duration_seconds: int = Field(default=0, ge=0)
+    estimated_cost_usd: float = 0.0  # ge=0.0 enforced in output_validator (grammar strips Field constraints)
+    estimated_duration_seconds: int = 0  # ge=0 enforced in output_validator
     tasks: list[TaskDefinition]
     execution_hints: ExecutionHints = Field(default_factory=ExecutionHints)
 

@@ -366,9 +366,7 @@ async def _call_planning_agent(
     from modules.backend.agents.mission.planning.agent import (
         PlanningAgentDeps,
         create_agent,
-        extract_task_plan_json,
     )
-    from modules.backend.events.types import AgentResponseChunkEvent
 
     project_root = find_project_root()
 
@@ -401,7 +399,6 @@ async def _call_planning_agent(
 
     planning_agent_id = "mission.planning.agent"
     sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
-    full_content = ""
 
     if event_bus:
         await _emit(event_bus, AgentThinkingEvent,
@@ -409,59 +406,46 @@ async def _call_planning_agent(
             agent_id=planning_agent_id,
         )
 
-    async with agent.run_stream(
+    result = await agent.run(
         planning_prompt, deps=deps, model_settings=planning_model_settings,
-    ) as stream:
-        async for text in stream.stream_text(delta=True):
-            full_content += text
-            if event_bus:
-                await event_bus.publish(AgentResponseChunkEvent(
-                    session_id=sid,
-                    source="mission_control",
-                    agent_id=planning_agent_id,
-                    content=text,
-                ))
-
-        usage = stream.usage()
-
-    plan_json = extract_task_plan_json(full_content)
+    )
+    usage = result.usage()
+    plan_dict = result.output.model_dump()
 
     logger.info(
-        "Planning agent raw response",
+        "Planning agent response",
         extra={
             "mission_id": mission_id,
-            "response_length": len(full_content),
-            "response_preview": full_content[:1000],
-            "extracted_plan_keys": list(plan_json.keys()) if isinstance(plan_json, dict) else None,
+            "task_count": len(plan_dict.get("tasks", [])),
+            "plan_keys": list(plan_dict.keys()),
         },
     )
 
     thinking_trace = None
-    if hasattr(stream, "all_messages"):
-        for msg in stream.all_messages():
-            for part in getattr(msg, "parts", []):
-                if hasattr(part, "content") and hasattr(part, "part_kind"):
-                    if "thinking" in str(getattr(part, "part_kind", "")):
-                        thinking_trace = part.content
+    for msg in result.all_messages():
+        for part in getattr(msg, "parts", []):
+            if hasattr(part, "content") and hasattr(part, "part_kind"):
+                if "thinking" in str(getattr(part, "part_kind", "")):
+                    thinking_trace = part.content
 
     if event_bus:
         # Emit completion event
         await _emit(event_bus, AgentResponseCompleteEvent,
             session_id=str(sid), source="mission_control",
             agent_id=planning_agent_id,
-            content=f"Plan generated ({len(plan_json.get('tasks', []))} tasks)" if isinstance(plan_json, dict) else "Plan generated",
+            full_content=f"Plan generated ({len(plan_dict.get('tasks', []))} tasks)",
         )
 
         # Surface plan summary in chat sidebar
-        if isinstance(plan_json, dict) and plan_json.get("tasks"):
+        if plan_dict.get("tasks"):
             from modules.backend.events.types import PlanCreatedEvent
             await event_bus.publish(PlanCreatedEvent(
                 session_id=sid,
                 source="mission_control",
                 plan_id=mission_id or "pending",
-                goal=plan_json.get("summary", ""),
-                step_count=len(plan_json["tasks"]),
-                metadata={"plan_markdown": _format_plan_summary(plan_json)},
+                goal=plan_dict.get("summary", ""),
+                step_count=len(plan_dict["tasks"]),
+                metadata={"plan_markdown": _format_plan_summary(plan_dict)},
             ))
 
     # Record planning agent cost to llm_calls table (was missing — only
@@ -487,7 +471,7 @@ async def _call_planning_agent(
         logger.warning("Failed to record planning agent LLM call", exc_info=True)
 
     return {
-        "task_plan": plan_json,
+        "task_plan": plan_dict,
         "thinking_trace": thinking_trace,
         "usage": usage,
     }

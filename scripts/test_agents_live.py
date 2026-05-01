@@ -152,19 +152,12 @@ async def run_health_agent() -> dict:
 
 async def run_planning_agent() -> dict:
     """Run the Planning Agent with a test mission brief. Returns TaskPlan dict."""
-    from modules.backend.agents.deps.base import FileScope
-    from modules.backend.agents.mission.planning.agent import (
-        PlanningAgentDeps,
-        create_agent,
-        run_agent,
-    )
-    from modules.backend.agents.mission_control.helpers import _build_roster_prompt
+    from modules.backend.agents.mission_control.helpers.agent_executor import _call_planning_agent
     from modules.backend.agents.mission_control.roster import load_roster
 
     logger.info("=== Planning Agent: starting task decomposition ===")
 
     roster = load_roster("default")
-    roster_prompt = _build_roster_prompt(roster)
 
     mission_brief = (
         "Audit the Mission Control codebase for compliance violations. "
@@ -175,26 +168,12 @@ async def run_planning_agent() -> dict:
         "Produce a structured report of all violations with severity ratings."
     )
 
-    config = {"model": "anthropic:claude-opus-4-20250514"}
-    agent = create_agent(config)
-
-    deps = PlanningAgentDeps(
-        project_root=find_project_root(),
-        scope=FileScope(read_paths=[], write_paths=[]),
-        mission_brief=mission_brief,
-        roster_description=roster_prompt,
+    result = await _call_planning_agent(
+        prompt=mission_brief,
+        roster=roster,
         upstream_context=None,
+        mission_id="live-test",
     )
-
-    prompt = (
-        f"## Mission Brief\n\n{mission_brief}\n\n"
-        f"{roster_prompt}\n\n"
-        "## Output Format\n\n"
-        "Return your task plan as JSON within <task_plan> tags.\n"
-        "Follow the TaskPlan schema exactly.\n"
-    )
-
-    result = await run_agent(agent, deps, prompt)
 
     logger.info(
         "=== Planning Agent: task plan generated ===",

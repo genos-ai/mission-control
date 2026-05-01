@@ -111,6 +111,10 @@ class AgentModelSchema(_StrictBase):
         ge=1,
         description="Max output tokens. Pinned, non-overridable.",
     )
+    betas: list[str] = Field(
+        default_factory=list,
+        description="Provider beta feature flags, e.g. ['structured-outputs-2025-11-13'].",
+    )
 
 
 class AgentConfigSchema(_StrictBase):
@@ -219,15 +223,6 @@ class AgentConfigSchema(_StrictBase):
                 f"Unknown model provider '{provider}' for agent '{self.agent_name}'. "
                 f"Known: {', '.join(sorted(known_providers))}"
             )
-
-        # Thinking requires temperature >= 1.0 for Anthropic models only
-        if self.thinking_budget and isinstance(self.model, AgentModelSchema):
-            if provider == "anthropic" and self.model.temperature < 1.0:
-                raise ValueError(
-                    f"Agent '{self.agent_name}' has thinking_budget but temperature "
-                    f"{self.model.temperature} < 1.0. Anthropic requires temperature=1.0 "
-                    f"when extended thinking is enabled."
-                )
 
         return self
 

@@ -2,12 +2,13 @@
 
 Two modes:
   - **Dispatch mode** (default): Called by _call_planning_agent() in the
-    mission dispatch pipeline. Produces TaskPlan JSON within <task_plan>
-    XML tags. No tools. Thinking trace captured for audit trail.
+    mission dispatch pipeline. Uses NativeOutput(TaskPlan, strict=True) with
+    Anthropic's constrained decoding — the model cannot emit schema-violating
+    output. Thinking trace captured for audit trail. No tools.
   - **Chat mode** (chat_mode=True): Called via handle() for interactive
     plan inspection and modification. Has tools (get_current_plan,
     get_roster, get_mission_info, save_plan). Uses the chat.md prompt
-    variant instead of system.md.
+    variant instead of system.md. Output type is str (conversational).
 """
 
 import json
@@ -15,8 +16,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic_ai import Agent, RunContext
+from pydantic import ValidationError
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
+from pydantic_ai.output import NativeOutput
 
 from modules.backend.agents.deps.base import BaseAgentDeps
 from modules.backend.agents.mission_control.helpers import (
@@ -24,6 +27,7 @@ from modules.backend.agents.mission_control.helpers import (
     assemble_instructions,
 )
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.task_plan import TaskPlan
 
 logger = get_logger(__name__)
 
@@ -50,14 +54,14 @@ def create_agent(
         model: Model resolved from caller (registry or direct).
         tool_names: Ignored (tools are registered inline for chat mode).
         chat_mode: When True, register tools and use the chat prompt variant.
-            When False (default), create a tool-less agent for dispatch.
+            Output type is str — the agent responds conversationally and
+            uses the save_plan tool to persist validated plans.
+            When False (default), use NativeOutput(TaskPlan, strict=True)
+            with Anthropic constrained decoding for dispatch.
     """
     if isinstance(model, str):
         model = _build_model(model)
 
-    # Chat mode loads BOTH system.md (full TaskPlan schema) and chat.md
-    # (conversational tools/instructions). The schema is essential for the
-    # agent to produce valid JSON when modifying plans via save_plan.
     base_prompt = assemble_instructions("mission", "planning")
     if chat_mode:
         chat_prompt = assemble_instructions("mission", "planning", variant="chat")
@@ -65,16 +69,124 @@ def create_agent(
     else:
         system_prompt = base_prompt
 
-    agent = Agent(
-        model,
-        system_prompt=system_prompt,
-        deps_type=PlanningAgentDeps,
-    )
-
     if chat_mode:
+        agent: Agent = Agent(
+            model,
+            system_prompt=system_prompt,
+            deps_type=PlanningAgentDeps,
+        )
         _register_chat_tools(agent)
+    else:
+        agent = Agent(
+            model,
+            output_type=NativeOutput(TaskPlan, strict=True),
+            system_prompt=system_prompt,
+            deps_type=PlanningAgentDeps,
+            output_retries=2,
+        )
+        _register_output_validator(agent)
 
     return agent
+
+
+def _register_output_validator(agent: Agent) -> None:
+    """Register semantic validation on the dispatch-mode agent.
+
+    The grammar (NativeOutput + strict=True) enforces structural correctness.
+    This validator handles semantic rules the grammar cannot: DAG cycles,
+    dangling upstream refs, task_id format, tier_3 consistency, and
+    non-negative cost/duration. Compact error format ensures retry convergence.
+
+    Intentionally overlaps with plan_validator.py — this runs before the plan
+    reaches Mission Control so errors are caught with ModelRetry budget (2
+    attempts) rather than requiring a full new planning call.
+    """
+
+    @agent.output_validator
+    async def validate_plan(ctx: RunContext[PlanningAgentDeps], plan: TaskPlan) -> TaskPlan:
+        errors: list[str] = []
+
+        # Non-negative constraints (ge= stripped by grammar compiler — enforced here)
+        if plan.estimated_cost_usd < 0:
+            errors.append(
+                f"estimated_cost_usd must be >= 0, got {plan.estimated_cost_usd}"
+            )
+        if plan.estimated_duration_seconds < 0:
+            errors.append(
+                f"estimated_duration_seconds must be >= 0, got {plan.estimated_duration_seconds}"
+            )
+
+        # task_id format: v{N}-task-{NNN}
+        id_pattern = re.compile(r"^v\d+-task-\d{3,}$")
+        for task in plan.tasks:
+            if not id_pattern.match(task.task_id):
+                errors.append(
+                    f"tasks[{task.task_id}].task_id: must match v{{N}}-task-{{NNN}}, "
+                    f"got '{task.task_id}'"
+                )
+
+        # Dependency references must exist in plan
+        all_ids = {t.task_id for t in plan.tasks}
+        for task in plan.tasks:
+            for dep in task.dependencies:
+                if dep not in all_ids:
+                    errors.append(
+                        f"tasks[{task.task_id}].dependencies: '{dep}' not in plan"
+                    )
+
+        # from_upstream source_task must be in dependencies
+        for task in plan.tasks:
+            for field_name, ref_or_list in task.inputs.from_upstream.items():
+                refs = ref_or_list if isinstance(ref_or_list, list) else [ref_or_list]
+                for ref in refs:
+                    if ref.source_task not in task.dependencies:
+                        errors.append(
+                            f"tasks[{task.task_id}].inputs.from_upstream[{field_name}]: "
+                            f"source_task '{ref.source_task}' not in dependencies"
+                        )
+
+        # DAG cycle detection (Kahn's algorithm)
+        in_degree: dict[str, int] = {t.task_id: 0 for t in plan.tasks}
+        adjacency: dict[str, list[str]] = {t.task_id: [] for t in plan.tasks}
+        for task in plan.tasks:
+            for dep in task.dependencies:
+                if dep in in_degree:
+                    adjacency[dep].append(task.task_id)
+                    in_degree[task.task_id] += 1
+        queue = [tid for tid, deg in in_degree.items() if deg == 0]
+        sorted_count = 0
+        while queue:
+            node = queue.pop()
+            sorted_count += 1
+            for neighbor in adjacency[node]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+        if sorted_count != len(plan.tasks):
+            errors.append("TaskPlan contains a dependency cycle")
+
+        # Tier 3 consistency
+        for task in plan.tasks:
+            t3 = task.verification.tier_3
+            if t3.requires_ai_evaluation:
+                if not t3.evaluation_criteria:
+                    errors.append(
+                        f"tasks[{task.task_id}].verification.tier_3: "
+                        f"requires_ai_evaluation=true but evaluation_criteria is empty"
+                    )
+                if not t3.evaluator_agent:
+                    errors.append(
+                        f"tasks[{task.task_id}].verification.tier_3: "
+                        f"requires_ai_evaluation=true but evaluator_agent is missing"
+                    )
+
+        if errors:
+            capped = errors[:10]
+            if len(errors) > 10:
+                capped.append(f"… and {len(errors) - 10} more errors")
+            raise ModelRetry("\n".join(f"- {e}" for e in capped))
+
+        return plan
 
 
 def _register_chat_tools(agent: Agent) -> None:
@@ -165,60 +277,3 @@ def _register_chat_tools(agent: Agent) -> None:
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
             return json.dumps({"error": str(e)})
-
-
-async def run_agent(
-    agent: Agent,
-    deps: PlanningAgentDeps,
-    user_prompt: str,
-    **kwargs: Any,
-) -> dict:
-    """Run the Planning Agent. Returns parsed TaskPlan dict and thinking trace.
-
-    The agent returns JSON within <task_plan> tags. This function extracts,
-    parses, and returns the JSON as a dict. The caller (Mission Control)
-    validates it via plan_validator.
-    """
-    result = await agent.run(user_prompt, deps=deps, **kwargs)
-
-    response_text = result.output
-    plan_json = extract_task_plan_json(response_text)
-
-    # Capture thinking trace if available
-    thinking_trace = None
-    if hasattr(result, "all_messages"):
-        for msg in result.all_messages():
-            for part in getattr(msg, "parts", []):
-                if hasattr(part, "content") and hasattr(part, "part_kind"):
-                    if "thinking" in str(getattr(part, "part_kind", "")):
-                        thinking_trace = part.content
-
-    return {
-        "task_plan": plan_json,
-        "thinking_trace": thinking_trace,
-        "usage": result.usage() if hasattr(result, "usage") else None,
-    }
-
-
-def extract_task_plan_json(text: str) -> dict:
-    """Extract TaskPlan JSON from within <task_plan> XML tags.
-
-    Raises ValueError if tags are missing or JSON is malformed.
-    """
-    pattern = r"<task_plan>\s*(.*?)\s*</task_plan>"
-    match = re.search(pattern, text, re.DOTALL)
-
-    if not match:
-        raise ValueError(
-            "Planning Agent response does not contain <task_plan> tags. "
-            "Response must include JSON within <task_plan>...</task_plan> tags."
-        )
-
-    json_str = match.group(1).strip()
-
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Planning Agent response contains invalid JSON within <task_plan> tags: {e}"
-        ) from e

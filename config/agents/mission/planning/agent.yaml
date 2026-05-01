@@ -14,9 +14,11 @@ chat_enabled: true
 version: "1.0.0"
 
 model:
-  name: "anthropic:claude-sonnet-4-6"
+  name: "anthropic:claude-opus-4-6"
   temperature: 0.2
-  max_tokens: 16384
+  max_tokens: 16000
+  betas:
+    - "structured-outputs-2025-11-13"
 
 keywords:
   - plan
@@ -55,10 +57,5 @@ interface:
   output:
     task_plan: object
 
-# thinking_budget disabled — Anthropic API requires temperature=1.0
-# for extended thinking, which conflicts with structured JSON output.
-# Re-enable when using Copilot SDK or when structured output is implemented.
-# thinking_budget:
-#   simple: 10000
-#   standard: 20000
-#   complex: 30000
+thinking_budget:
+  max_thinking_tokens: 10000  # adaptive mode on Opus 4.6 — actual allocation is dynamic
