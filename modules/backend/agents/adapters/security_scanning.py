@@ -62,44 +62,6 @@ async def run_scan(
     return f"{capability.value} ({r.engine_name}): {r.finding_count} findings at {r.sarif_path}"
 
 
-# Convenience aliases for direct tool registration by name.
-# Each is a one-liner delegating to run_scan with the correct enum.
-
-async def scan_code(target_path: str, evidence_path: str, registry: SecurityToolRegistry) -> str:
-    """security.code.scan — SAST via Opengrep/CodeQL."""
-    return await run_scan(ToolCapability.CODE_SCAN, target_path, evidence_path, registry)
-
-
-async def scan_code_lint(target_path: str, evidence_path: str, registry: SecurityToolRegistry) -> str:
-    """security.code.lint — Bandit-equivalent lint via Ruff --select S."""
-    return await run_scan(ToolCapability.CODE_LINT, target_path, evidence_path, registry)
-
-
-async def scan_deps(target_path: str, evidence_path: str, registry: SecurityToolRegistry) -> str:
-    """security.deps.scan — dependency CVE scanning via pip-audit."""
-    return await run_scan(ToolCapability.DEPS_SCAN, target_path, evidence_path, registry)
-
-
-async def detect_secrets(target_path: str, evidence_path: str, registry: SecurityToolRegistry) -> str:
-    """security.secrets.detect — hardcoded credential scanning via Betterleaks."""
-    return await run_scan(ToolCapability.SECRETS_DETECT, target_path, evidence_path, registry)
-
-
-async def scan_container(target_path: str, evidence_path: str, registry: SecurityToolRegistry) -> str:
-    """security.container.scan — filesystem + container CVEs via Trivy."""
-    return await run_scan(ToolCapability.CONTAINER_SCAN, target_path, evidence_path, registry)
-
-
-async def lint_dockerfile(target_path: str, evidence_path: str, registry: SecurityToolRegistry) -> str:
-    """security.dockerfile.lint — Dockerfile best practices via Hadolint."""
-    return await run_scan(ToolCapability.DOCKERFILE_LINT, target_path, evidence_path, registry)
-
-
-async def scan_infra(target_path: str, evidence_path: str, registry: SecurityToolRegistry) -> str:
-    """security.infra.scan — IaC security rules via Checkov."""
-    return await run_scan(ToolCapability.INFRA_SCAN, target_path, evidence_path, registry)
-
-
 # ---------------------------------------------------------------------------
 # Utility tools
 # ---------------------------------------------------------------------------
