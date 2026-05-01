@@ -426,6 +426,10 @@ async def _call_planning_agent(
 
     plan_dict = extract_task_plan_json(full_content)
 
+    # Inject mission_id — the model doesn't always include it but we know it
+    if mission_id and not plan_dict.get("mission_id"):
+        plan_dict["mission_id"] = mission_id
+
     logger.info(
         "Planning agent produced TaskPlan",
         extra={
