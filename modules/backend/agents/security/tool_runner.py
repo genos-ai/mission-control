@@ -6,12 +6,12 @@ Spec Section 1.2.
 
 The runner:
 1. Resolves the command template from the registry spec + standard input
-2. Runs the subprocess asynchronously with timeout
+2. Runs the subprocess asynchronously (locally or in container via
+   ExecutionEnvironmentService)
 3. Handles exit codes (1 = findings for some tools, not failure)
 4. Converts non-SARIF output to SARIF 2.1.0 (for scan capabilities)
 5. Strips secret values if spec.redact_output is True
-6. Hashes evidence for chain of custody
-7. Returns the standardised output contract for the capability
+6. Returns the standardised output contract for the capability
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ import re
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -45,18 +44,8 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Subprocess result
-# ---------------------------------------------------------------------------
-
-@dataclass
-class CommandResult:
-    """Structured result from an async subprocess call."""
-
-    exit_code: int
-    stdout: str
-    stderr: str
-    duration_seconds: float
+# Use the platform's CommandResult — single definition, no duplication.
+from modules.backend.services.execution_environment import CommandResult
 
 
 # ---------------------------------------------------------------------------
@@ -69,19 +58,15 @@ async def _run_tool_subprocess(
     cwd: str | None = None,
     environment_handle: Any | None = None,
 ) -> CommandResult:
-    """Run a security tool binary asynchronously and return structured result.
+    """Run a security tool binary and return structured result.
 
-    When environment_handle is set and mode is "container", the command
-    is executed inside the container via ``docker exec``. Otherwise
-    runs locally via subprocess.
+    When environment_handle is set, delegates to ExecutionEnvironmentService
+    which routes to the correct backend (container via Docker SDK, worktree,
+    or local). Otherwise runs locally via subprocess.
     """
-    if (
-        environment_handle is not None
-        and getattr(environment_handle, "mode", None) == "container"
-        and getattr(environment_handle, "container_id", None)
-    ):
-        return await _run_in_container(
-            cmd, environment_handle.container_id, timeout, cwd,
+    if environment_handle is not None:
+        return await _run_via_environment_service(
+            cmd, environment_handle, timeout,
         )
 
     start = time.monotonic()
@@ -117,49 +102,26 @@ async def _run_tool_subprocess(
         )
 
 
-async def _run_in_container(
+async def _run_via_environment_service(
     cmd: list[str],
-    container_id: str,
+    handle: Any,
     timeout: int,
-    cwd: str | None = None,
 ) -> CommandResult:
-    """Execute a command inside a Docker container via ``docker exec``."""
-    docker_cmd = ["docker", "exec"]
-    if cwd:
-        docker_cmd.extend(["-w", cwd])
-    docker_cmd.append(container_id)
-    docker_cmd.extend(cmd)
+    """Execute a command via ExecutionEnvironmentService.
 
-    start = time.monotonic()
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *docker_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout,
-        )
-        return CommandResult(
-            exit_code=proc.returncode or 0,
-            stdout=stdout_bytes.decode(errors="replace"),
-            stderr=stderr_bytes.decode(errors="replace"),
-            duration_seconds=time.monotonic() - start,
-        )
-    except asyncio.TimeoutError:
-        return CommandResult(
-            exit_code=-1,
-            stdout="",
-            stderr=f"Tool subprocess timed out after {timeout}s (container: {container_id})",
-            duration_seconds=time.monotonic() - start,
-        )
-    except OSError as e:
-        return CommandResult(
-            exit_code=-1,
-            stdout="",
-            stderr=str(e),
-            duration_seconds=time.monotonic() - start,
-        )
+    Reuses the platform's container/worktree/local backend dispatch —
+    no duplicate docker exec logic.
+    """
+    from modules.backend.services.execution_environment import (
+        ExecutionEnvironmentService,
+    )
+
+    service = ExecutionEnvironmentService()
+    if handle.mode == "container":
+        from modules.backend.services.container_backend import ContainerBackend
+        service.register_backend("container", ContainerBackend())
+
+    return await service.execute(handle, cmd, timeout_seconds=timeout)
 
 
 # ---------------------------------------------------------------------------
