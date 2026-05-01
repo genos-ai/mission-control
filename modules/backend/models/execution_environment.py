@@ -68,7 +68,7 @@ class ExecutionEnvironmentModel(UUIDMixin, TimestampMixin, Base):
         Integer, default=0, nullable=False,
     )
     last_execution_at: Mapped[datetime | None] = mapped_column(
-        nullable=True,
+        DateTime(timezone=True), nullable=True,
         comment="Timestamp of last execution in this environment",
     )
     config: Mapped[dict | None] = mapped_column(
