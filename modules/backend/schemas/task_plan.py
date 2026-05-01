@@ -220,15 +220,25 @@ class TaskVerification(BaseModel):
                 data[canonical] = data.pop(alias)
             elif alias in data:
                 data.pop(alias)
-        # LLMs sometimes put tier fields at the top level (schema_validation, etc.)
-        # Wrap them into tier_1 if tier_1 is missing
+        # LLMs flatten tier sub-fields to the top level of verification.
+        # Route each misplaced field into the correct tier.
         _tier1_fields = {"schema_validation", "required_output_fields"}
-        if "tier_1" not in data and any(f in data for f in _tier1_fields):
-            tier1 = {}
-            for f in list(_tier1_fields):
-                if f in data:
-                    tier1[f] = data.pop(f)
-            data["tier_1"] = tier1
+        _tier2_fields = {"deterministic_checks"}
+        _tier3_fields = {"requires_ai_evaluation", "evaluation_criteria",
+                         "evaluator_agent", "min_evaluation_score"}
+
+        for fields, tier_key in [
+            (_tier1_fields, "tier_1"),
+            (_tier2_fields, "tier_2"),
+            (_tier3_fields, "tier_3"),
+        ]:
+            misplaced = {f for f in fields if f in data}
+            if misplaced:
+                tier = data.get(tier_key, {}) if isinstance(data.get(tier_key), dict) else {}
+                for f in misplaced:
+                    tier[f] = data.pop(f)
+                data[tier_key] = tier
+
         return data
 
 
