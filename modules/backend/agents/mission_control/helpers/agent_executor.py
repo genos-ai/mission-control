@@ -134,6 +134,14 @@ def _make_agent_executor(
             ):
                 deps.project_root = effective_handle.host_working_dir
 
+            # Resolve @workspace paths for security agents — evidence_path
+            # must point to the container's /workspace, not create @workspace/
+            # in the project root.
+            if hasattr(deps, "evidence_path") and deps.evidence_path.startswith("@workspace"):
+                deps.evidence_path = deps.evidence_path.replace(
+                    "@workspace", str(effective_handle.working_dir),
+                )
+
         if hasattr(deps, 'on_progress') and event_bus is not None:
             import asyncio as _asyncio
 
