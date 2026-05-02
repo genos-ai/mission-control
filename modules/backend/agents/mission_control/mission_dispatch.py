@@ -285,6 +285,26 @@ async def handle_mission(
             planning_trace_reference=thinking_trace,
         )
 
+    # Persist plan to mission_plans table (Kanban board reads from here)
+    if db_session is not None and mission_id:
+        try:
+            from modules.backend.services.mission_plan import MissionPlanService
+            plan_service = MissionPlanService(db_session, event_bus=event_bus)
+            mission_plan = await plan_service.get_or_create_plan(mission_id)
+            mission_plan.task_plan_json = plan.model_dump()
+            mission_plan.version = (mission_plan.version or 0) + 1
+            await db_session.flush()
+            logger.info(
+                "Plan persisted to mission_plans",
+                extra={"mission_id": mission_id, "task_count": len(plan.tasks)},
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist plan to mission_plans (non-fatal)",
+                extra={"mission_id": mission_id},
+                exc_info=True,
+            )
+
     # Provision execution environment if non-local
     env_handle = None
     if execution_mode != "local":
