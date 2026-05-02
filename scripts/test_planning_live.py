@@ -3,7 +3,7 @@
 Planning Agent Test Harness — exercises the full planning flow without
 needing a running server, database, or workflow dispatch.
 
-Tests: model → prompt assembly → LLM call → JSON extraction →
+Tests: model → prompt assembly → tool calls → PlanBuildingSession →
        schema validation → semantic checks → plan_validator rules.
 
 Usage:
@@ -21,9 +21,6 @@ Usage:
 
     # Show the full prompt sent to the model
     python scripts/test_planning_live.py --show-prompt
-
-    # Show raw model output before parsing
-    python scripts/test_planning_live.py --show-raw
 
     # Dry run — build prompt + roster only, no LLM call
     python scripts/test_planning_live.py --dry-run
@@ -82,11 +79,7 @@ BRIEFS = {
 # ---------------------------------------------------------------------------
 
 def build_roster_from_catalog(agent_names: list[str] | None = None):
-    """Build a Roster from the on-disk agent catalog YAML files.
-
-    If agent_names is None, includes all enabled agents.
-    No database required — reads YAML directly.
-    """
+    """Build a Roster from the on-disk agent catalog YAML files."""
     from modules.backend.agents.mission_control.roster import (
         Roster,
         RosterAgentEntry,
@@ -97,7 +90,7 @@ def build_roster_from_catalog(agent_names: list[str] | None = None):
     from modules.backend.core.agent_registry import AgentRegistry
 
     registry = AgentRegistry()
-    catalog = registry.list_all()  # list[dict] with agent_name, description, etc.
+    catalog = registry.list_all()
 
     entries = []
     for item in catalog:
@@ -150,16 +143,19 @@ async def run_planning_test(
     custom_brief: str | None,
     mission_id: str,
     show_prompt: bool,
-    show_raw: bool,
     dry_run: bool,
     agent_names: list[str] | None,
 ) -> dict:
     """Run the planning agent and return the full result with diagnostics."""
+    from pydantic_ai import UsageLimits
+
     from modules.backend.agents.deps.base import FileScope
     from modules.backend.agents.mission.planning.agent import (
         PlanningAgentDeps,
         create_agent,
-        extract_task_plan_json,
+    )
+    from modules.backend.agents.mission.planning.build_session import (
+        PlanBuildingSession,
     )
     from modules.backend.agents.mission_control.helpers.model_builder import (
         _build_model,
@@ -170,12 +166,11 @@ async def run_planning_test(
         _build_planning_prompt,
         _build_roster_prompt,
     )
-    from modules.backend.agents.mission_control.plan_validator import validate_plan
     from modules.backend.agents.mission_control.registry import get_registry
     from modules.backend.core.config import find_project_root, get_default_budget_usd
 
     click.echo(click.style("=" * 70, fg="cyan"))
-    click.echo(click.style("  PLANNING AGENT TEST HARNESS", fg="cyan", bold=True))
+    click.echo(click.style("  PLANNING AGENT TEST HARNESS (tool-based)", fg="cyan", bold=True))
     click.echo(click.style("=" * 70, fg="cyan"))
 
     # ── Resolve model ────────────────────────────────────────────
@@ -225,107 +220,81 @@ async def run_planning_test(
         click.echo(click.style("\n  [DRY RUN] Skipping LLM call.\n", fg="yellow"))
         return {"dry_run": True, "prompt_chars": len(planning_prompt)}
 
-    # ── Call the planning agent ──────────────────────────────────
+    # ── Build session + agent ────────────────────────────────────
+    build_session = PlanBuildingSession(
+        mission_id=mission_id,
+        version=1,
+        roster=roster,
+        budget_usd=get_default_budget_usd(),
+    )
+
     agent = create_agent(model)
     deps = PlanningAgentDeps(
         project_root=find_project_root(),
         scope=FileScope(read_paths=[], write_paths=[]),
         mission_brief=brief,
         roster_description=roster_desc,
+        build_session=build_session,
     )
 
-    click.echo(click.style("\n  Calling planning agent...", fg="cyan"))
+    click.echo(click.style("\n  Calling planning agent (tool-based)...", fg="cyan"))
     start = time.monotonic()
-    full_content = ""
 
     try:
-        async with agent.run_stream(
+        result = await agent.run(
             planning_prompt, deps=deps, model_settings=model_settings,
-        ) as stream:
-            async for text in stream.stream_text(delta=True):
-                full_content += text
-
-            usage = stream.usage()
-
+            usage_limits=UsageLimits(request_limit=50),
+        )
+        usage = result.usage()
         duration = time.monotonic() - start
 
         # Extract thinking trace
         thinking_trace = None
-        if hasattr(stream, "all_messages"):
-            for msg in stream.all_messages():
-                for part in getattr(msg, "parts", []):
-                    if hasattr(part, "content") and hasattr(part, "part_kind"):
-                        if "thinking" in str(getattr(part, "part_kind", "")):
-                            thinking_trace = part.content
+        for msg in result.all_messages():
+            for part in getattr(msg, "parts", []):
+                if hasattr(part, "content") and hasattr(part, "part_kind"):
+                    if "thinking" in str(getattr(part, "part_kind", "")):
+                        thinking_trace = part.content
 
     except Exception as e:
         duration = time.monotonic() - start
         click.echo(click.style(f"\n  LLM call failed ({duration:.1f}s): {e}", fg="red", bold=True))
-        return {"error": str(e), "duration": duration}
+        # Show partial session state
+        if build_session.tasks:
+            click.echo(f"  Tasks added before failure: {len(build_session.tasks)}")
+            click.echo(f"  {build_session.render_plan_summary()}")
+        return {"error": str(e), "duration": duration, "tasks_added": len(build_session.tasks)}
 
-    # ── Display raw output ───────────────────────────────────────
+    # ── Display results ──────────────────────────────────────────
     input_tokens = getattr(usage, "input_tokens", 0) or 0
     output_tokens = getattr(usage, "output_tokens", 0) or 0
 
     click.echo(f"  Duration:   {duration:.1f}s")
     click.echo(f"  Tokens:     {input_tokens} in / {output_tokens} out")
-    click.echo(f"  Output:     {len(full_content)} chars")
+    click.echo(f"  Tool calls: {len(build_session.tasks)} add_task + finalise")
 
     if thinking_trace:
         click.echo(f"  Thinking:   {len(thinking_trace)} chars")
 
-    if show_raw:
-        click.echo(click.style("\n── RAW OUTPUT ──", fg="yellow"))
-        click.echo(full_content)
-        click.echo(click.style("── END RAW OUTPUT ──\n", fg="yellow"))
-
-    # ── Extract JSON ─────────────────────────────────────────────
-    click.echo(click.style("\n  Extracting TaskPlan JSON...", fg="cyan"))
-
-    try:
-        plan_dict = extract_task_plan_json(full_content, mission_id=mission_id)
-        click.echo(click.style("  Schema + semantic validation: PASSED", fg="green", bold=True))
-    except ValueError as e:
-        click.echo(click.style(f"  Extraction/validation FAILED:", fg="red", bold=True))
-        click.echo(f"  {e}")
-        # Try to show what was parsed
-        try:
-            import re
-            raw_json = None
-            stripped = full_content.strip()
-            if stripped.startswith("{"):
-                raw_json = json.loads(stripped)
-            else:
-                m = re.search(r"```(?:json)?\s*\n(.*?)\n```", stripped, re.DOTALL)
-                if m:
-                    raw_json = json.loads(m.group(1))
-            if raw_json:
-                click.echo(click.style("\n  Parsed JSON (pre-validation):", fg="yellow"))
-                click.echo(json.dumps(raw_json, indent=2)[:2000])
-        except Exception:
-            pass
+    # ── Check finalisation ───────────────────────────────────────
+    if build_session.finalised_plan is None:
+        click.echo(click.style(
+            f"\n  FAILED: Agent did not call finalise_plan. "
+            f"{len(build_session.tasks)} tasks added but not finalised.",
+            fg="red", bold=True,
+        ))
+        click.echo(f"\n  {build_session.render_plan_summary()}")
         return {
-            "error": str(e),
-            "raw_output": full_content[:1000],
+            "success": False,
+            "error": "finalise_plan not called",
+            "tasks_added": len(build_session.tasks),
             "duration": duration,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
 
-    # ── Plan validator (requires roster) ─────────────────────────
-    click.echo(click.style("  Running plan_validator (11 rules)...", fg="cyan"))
-
-    from modules.backend.schemas.task_plan import TaskPlan
-    plan = TaskPlan.model_validate(plan_dict)
-    budget = get_default_budget_usd()
-    validation = validate_plan(plan, roster, budget)
-
-    if validation.is_valid:
-        click.echo(click.style("  Plan validator: PASSED", fg="green", bold=True))
-    else:
-        click.echo(click.style("  Plan validator: FAILED", fg="red", bold=True))
-        for err in validation.errors:
-            click.echo(click.style(f"    - {err}", fg="red"))
+    plan_dict = build_session.finalised_plan
+    click.echo(click.style("  Validation: PASSED (finalise_plan succeeded)", fg="green", bold=True))
 
     # ── Display plan ─────────────────────────────────────────────
     tasks = plan_dict.get("tasks", [])
@@ -339,9 +308,9 @@ async def run_planning_test(
     click.echo(f"  {'─' * 20} {'─' * 40} {'─' * 20}")
     for task in tasks:
         tid = task.get("task_id", "?")
-        agent = task.get("agent", "?")
+        agent_name = task.get("agent", "?")
         deps = ", ".join(task.get("dependencies", [])) or "—"
-        click.echo(f"  {tid:<20s} {agent:<40s} {deps}")
+        click.echo(f"  {tid:<20s} {agent_name:<40s} {deps}")
 
     for task in tasks:
         click.echo(f"\n  {click.style(task.get('task_id', '?'), bold=True)}")
@@ -354,10 +323,6 @@ async def run_planning_test(
             click.echo(f"    Static inputs: {json.dumps(static, default=str)[:150]}")
         if upstream:
             click.echo(f"    Upstream refs: {json.dumps(upstream, default=str)[:150]}")
-        verification = task.get("verification", {})
-        t3 = verification.get("tier_3", {})
-        if t3.get("requires_ai_evaluation"):
-            click.echo(f"    Tier 3 eval:  {t3.get('evaluator_agent', '?')}")
 
     # ── Full JSON dump ───────────────────────────────────────────
     click.echo(click.style("\n── FULL PLAN JSON ──", fg="yellow"))
@@ -370,14 +335,13 @@ async def run_planning_test(
     click.echo(click.style("\n" + "=" * 70, fg="cyan"))
 
     return {
-        "success": validation.is_valid,
+        "success": True,
         "task_count": len(tasks),
         "model": model_name,
         "duration": duration,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "plan": plan_dict,
-        "validation_errors": validation.errors if not validation.is_valid else [],
         "has_thinking": thinking_trace is not None,
     }
 
@@ -397,7 +361,6 @@ async def run_planning_test(
 @click.option("--custom", "custom_brief", default=None, help="Custom brief text (use with --brief custom).")
 @click.option("--mission-id", default="test-planning-001", help="Mission ID for the plan.")
 @click.option("--show-prompt", is_flag=True, help="Print the full prompt sent to the model.")
-@click.option("--show-raw", is_flag=True, help="Print raw model output before parsing.")
 @click.option("--dry-run", is_flag=True, help="Build prompt and roster only, skip LLM call.")
 @click.option("--agents", default=None, help="Comma-separated agent names to include in roster.")
 @click.option("-v", "--verbose", is_flag=True, help="INFO logging.")
@@ -408,7 +371,6 @@ def main(
     custom_brief: str | None,
     mission_id: str,
     show_prompt: bool,
-    show_raw: bool,
     dry_run: bool,
     agents: str | None,
     verbose: bool,
@@ -432,7 +394,6 @@ def main(
         custom_brief=custom_brief,
         mission_id=mission_id,
         show_prompt=show_prompt,
-        show_raw=show_raw,
         dry_run=dry_run,
         agent_names=agent_names,
     ))

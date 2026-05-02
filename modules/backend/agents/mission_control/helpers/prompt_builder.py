@@ -179,13 +179,6 @@ def _build_planning_prompt(
             f"{json.dumps(upstream_context, indent=2)}\n```\n"
         )
 
-    parts.append(
-        "<output_contract>\n"
-        "Output a TaskPlan as raw JSON. No XML tags, no markdown fences.\n"
-        "The schema is enforced by constrained decoding — focus on semantic correctness.\n"
-        "</output_contract>\n"
-    )
-
     return "\n".join(parts)
 
 
