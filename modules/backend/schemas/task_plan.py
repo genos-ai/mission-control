@@ -198,6 +198,14 @@ class Tier3Verification(BaseModel):
     evaluator_agent: str | None = None
     min_evaluation_score: float | None = None
 
+    @field_validator("evaluation_criteria", mode="before")
+    @classmethod
+    def coerce_criteria_to_list(cls, v):
+        """LLMs produce a single string instead of list[str] — wrap it."""
+        if isinstance(v, str):
+            return [v]
+        return v
+
 
 class TaskVerification(BaseModel):
     """Per-task verification specification across all three tiers."""
