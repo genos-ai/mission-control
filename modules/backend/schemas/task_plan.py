@@ -428,6 +428,7 @@ class TaskPlan(BaseModel):
             "total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd",
             "plan_id",  # LLMs sometimes echo the plan_id from context
             "scope",    # LLMs add scope metadata (phase, exclusions, etc.)
+            "target", "target_path", "evidence_dir", "evidence_path",  # context echoed back
         }
         for alias in _plan_aliases:
             data.pop(alias, None)
