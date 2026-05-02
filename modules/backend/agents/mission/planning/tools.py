@@ -12,12 +12,6 @@ from typing import Any
 
 from pydantic_ai import Agent, RunContext
 
-from modules.backend.core.logging import get_logger
-
-logger = get_logger(__name__)
-
-# TYPE_CHECKING would hide PlanBuildingDeps from PydanticAI's
-# RunContext type resolution, so we import it directly.
 from modules.backend.agents.mission.planning.build_session import PlanBuildingSession
 
 

@@ -454,23 +454,23 @@ class MissionPlanService(BaseService):
         """
         plan = await self._repo.get_by_id(mission_plan_id)
 
-        # Look up agent version from registry so the plan validator
-        # doesn't reject "latest" as not matching the roster entry.
-        registry = get_registry()
-        agent_version = "1.0.0"
-        if registry.has(agent):
-            agent_version = registry.get(agent).version or "1.0.0"
+        from modules.backend.agents.mission.planning.build_session import (
+            extract_task_sequence,
+            generate_task_id,
+            resolve_agent_version,
+        )
+
+        agent_version = resolve_agent_version(agent)
 
         # Versioned task ID: v{version}-task-{NNN}
         existing: dict = plan.task_plan_json or {}
         version = plan.version
-        version_prefix = f"v{version}-task-"
         existing_tasks = existing.get("tasks", [])
-        existing_count = sum(
-            1 for t in existing_tasks
-            if t.get("task_id", "").startswith(version_prefix)
+        max_seq = max(
+            (extract_task_sequence(t.get("task_id", "")) for t in existing_tasks),
+            default=0,
         )
-        task_id = f"v{version}-task-{existing_count + 1:03d}"
+        task_id = generate_task_id(version, max_seq + 1)
         task_body: dict = {
             "task_id": task_id,
             "agent": agent,

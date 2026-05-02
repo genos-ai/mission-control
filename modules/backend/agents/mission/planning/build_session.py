@@ -27,6 +27,32 @@ logger = get_logger(__name__)
 _TASK_ID_PATTERN = re.compile(r"^v\d+-task-\d{3,}$")
 
 
+def generate_task_id(version: int, sequence: int) -> str:
+    """Generate a task_id: v{version}-task-{NNN}.
+
+    Shared by PlanBuildingSession and MissionPlanService.add_task().
+    """
+    return f"v{version}-task-{sequence:03d}"
+
+
+def extract_task_sequence(task_id: str) -> int:
+    """Extract the sequence number from a task_id. Returns 0 if unparseable."""
+    match = re.search(r"task-(\d+)$", task_id)
+    return int(match.group(1)) if match else 0
+
+
+def resolve_agent_version(agent_name: str) -> str:
+    """Look up agent version from the registry. Returns '1.0.0' if not found.
+
+    Shared by PlanBuildingSession and MissionPlanService.add_task().
+    """
+    from modules.backend.core.agent_registry import AgentRegistry
+    registry = AgentRegistry()
+    if registry.has(agent_name):
+        return registry.get(agent_name).version or "1.0.0"
+    return "1.0.0"
+
+
 def semantic_check(plan: TaskPlan) -> list[str]:
     """Run semantic validation rules that Pydantic schema cannot enforce.
 
@@ -141,33 +167,19 @@ class PlanBuildingSession:
                 self.tasks[tid] = dict(task)
                 self._task_counter = max(
                     self._task_counter,
-                    self._extract_seq(tid),
+                    extract_task_sequence(tid),
                 )
 
     def _next_task_id(self) -> str:
-        """Generate the next task_id: v{version}-task-{NNN}."""
+        """Generate the next task_id using the shared utility."""
         self._task_counter += 1
-        return f"v{self.version}-task-{self._task_counter:03d}"
-
-    @staticmethod
-    def _extract_seq(task_id: str) -> int:
-        """Extract the sequence number from a task_id."""
-        match = re.search(r"task-(\d+)$", task_id)
-        return int(match.group(1)) if match else 0
+        return generate_task_id(self.version, self._task_counter)
 
     def _get_task(self, task_id: str) -> dict:
         """Get a task by ID. Raises KeyError if not found."""
         if task_id not in self.tasks:
             raise KeyError(f"Task '{task_id}' not found in plan")
         return self.tasks[task_id]
-
-    def _resolve_agent_version(self, agent_name: str) -> str:
-        """Look up agent version from registry. Returns '1.0.0' if not found."""
-        from modules.backend.core.agent_registry import AgentRegistry
-        registry = AgentRegistry()
-        if registry.has(agent_name):
-            return registry.get(agent_name).version or "1.0.0"
-        return "1.0.0"
 
     # ── Mutation methods ─────────────────────────────────────────
 
@@ -193,7 +205,7 @@ class PlanBuildingSession:
                 return {"error": f"Dependency '{dep}' not found in plan. Add it first."}
 
         task_id = self._next_task_id()
-        agent_version = self._resolve_agent_version(agent)
+        agent_version = resolve_agent_version(agent)
 
         self.tasks[task_id] = {
             "task_id": task_id,
@@ -239,7 +251,7 @@ class PlanBuildingSession:
             if entry is None:
                 return {"error": f"Agent '{agent}' not found in roster"}
             task["agent"] = agent
-            task["agent_version"] = self._resolve_agent_version(agent)
+            task["agent_version"] = resolve_agent_version(agent)
             updated.append("agent")
         if instructions is not None:
             task["instructions"] = instructions
