@@ -109,6 +109,13 @@ def extract_task_plan_json(text: str, *, mission_id: str | None = None) -> dict:
         if xml_match:
             plan_dict = _try_parse_json(xml_match.group(1).strip())
 
+    # Try 4: JSON object embedded in prose (first { to last })
+    if plan_dict is None:
+        first_brace = stripped.find("{")
+        last_brace = stripped.rfind("}")
+        if first_brace != -1 and last_brace > first_brace:
+            plan_dict = _try_parse_json(stripped[first_brace:last_brace + 1])
+
     if plan_dict is None:
         raise ValueError(
             f"Could not extract valid TaskPlan JSON from planning agent output "
