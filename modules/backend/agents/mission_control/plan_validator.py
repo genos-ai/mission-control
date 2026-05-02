@@ -286,7 +286,13 @@ def _rule_10_tier3_completeness(
                 "tier3_completeness",
                 f"Task '{task.task_id}': Tier 3 enabled but min_evaluation_score is missing",
             )
-        if t3.evaluator_agent and not roster.get_agent_by_name(t3.evaluator_agent):
+        # System-tier agents (system.*) are always available — don't require
+        # them in the mission roster.
+        if (
+            t3.evaluator_agent
+            and not t3.evaluator_agent.startswith("system.")
+            and not roster.get_agent_by_name(t3.evaluator_agent)
+        ):
             result.add_error(
                 "tier3_completeness",
                 f"Task '{task.task_id}': evaluator_agent "

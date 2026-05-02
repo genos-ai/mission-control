@@ -206,6 +206,13 @@ class Tier3Verification(BaseModel):
             return [v]
         return v
 
+    @model_validator(mode="after")
+    def default_score_when_evaluation_enabled(self):
+        """Default min_evaluation_score to 0.7 when AI evaluation is requested."""
+        if self.requires_ai_evaluation and self.min_evaluation_score is None:
+            self.min_evaluation_score = 0.7
+        return self
+
 
 class TaskVerification(BaseModel):
     """Per-task verification specification across all three tiers."""
@@ -257,6 +264,20 @@ class TaskConstraints(BaseModel):
 
     timeout_override_seconds: int | None = None
     priority: Literal["normal", "high", "critical"] = "normal"
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_constraint_fields(cls, data: dict) -> dict:
+        """Normalise LLM constraint field variations."""
+        if not isinstance(data, dict):
+            return data
+        # timeout_seconds → timeout_override_seconds
+        if "timeout_override_seconds" not in data and "timeout_seconds" in data:
+            data["timeout_override_seconds"] = data.pop("timeout_seconds")
+        # Strip roster-level fields LLMs copy from the agent config
+        for key in ("cost_ceiling_usd", "retry_budget", "parallelism"):
+            data.pop(key, None)
+        return data
 
 
 class TaskDefinition(BaseModel):
@@ -315,10 +336,16 @@ class TaskDefinition(BaseModel):
                 if fm is not None:
                     data["inputs"]["file_manifest"] = fm
 
-        # Only strip aliases that were consumed by normalisation above.
-        # Genuinely unknown fields pass through to extra="forbid" so
-        # Pydantic produces clear error messages.
-        _task_aliases = {"id", "task_name", "agent_name", "title", "name"}
+        # depends_on → dependencies
+        if "dependencies" not in data and "depends_on" in data:
+            data["dependencies"] = data.pop("depends_on")
+
+        # Strip fields not in the schema that LLMs commonly invent
+        _task_aliases = {
+            "id", "task_name", "agent_name", "title", "name",
+            "depends_on",  # consumed above
+            "outputs",     # not in schema — outputs are implicit
+        }
         for alias in _task_aliases:
             data.pop(alias, None)
 
@@ -374,11 +401,12 @@ class TaskPlan(BaseModel):
         if "version" not in data and "plan_version" in data:
             data["version"] = data.pop("plan_version")
 
-        # summary: objective or approach → summary
+        # summary: objective, approach, or description → summary
         if not data.get("summary"):
             data["summary"] = (
                 data.pop("objective", None)
                 or data.pop("approach", None)
+                or data.pop("description", None)
                 or ""
             )
 
@@ -393,7 +421,7 @@ class TaskPlan(BaseModel):
         # Genuinely unknown fields pass through to extra="forbid" so
         # Pydantic produces clear error messages.
         _plan_aliases = {
-            "plan_version", "objective", "approach",
+            "plan_version", "objective", "approach", "description",
             "total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd",
             "plan_id",  # LLMs sometimes echo the plan_id from context
         }
