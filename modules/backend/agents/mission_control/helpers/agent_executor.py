@@ -352,22 +352,28 @@ async def _call_planning_agent(
     project_context: dict | None = None,
     recent_failures: list | None = None,
 ) -> dict:
-    """Call the Planning Agent and return the raw result.
+    """Call the Planning Agent using incremental tool calls (Plan 69).
 
-    When `current_plan` and `refinement_instructions` are both provided,
-    the Planning Agent operates in refinement mode: it's given the
-    existing TaskPlan JSON + the user's change instructions and asked
-    to produce a new plan that preserves task_ids where possible.
-    Plan 42 §10.4 — this is the single refinement entry point.
+    The agent builds the plan by calling tools (add_task, set_upstream_input,
+    finalise_plan, etc.) instead of producing a monolithic JSON blob.
+    Each tool has a trivially small schema — no grammar compiler limits.
+
+    When `current_plan` is provided, the PlanBuildingSession is seeded
+    with existing tasks (refinement mode).
     """
     import uuid as _uuid
+
+    from pydantic_ai import UsageLimits
 
     from modules.backend.agents.deps.base import FileScope
     from modules.backend.agents.mission.planning.agent import (
         PlanningAgentDeps,
         create_agent,
-        extract_task_plan_json,
     )
+    from modules.backend.agents.mission.planning.build_session import (
+        PlanBuildingSession,
+    )
+    from modules.backend.core.config import get_default_budget_usd
 
     project_root = find_project_root()
 
@@ -390,12 +396,22 @@ async def _call_planning_agent(
         plan_version=plan_version,
     )
 
+    # Build the incremental session
+    build_session = PlanBuildingSession(
+        mission_id=mission_id or "pending",
+        version=plan_version,
+        roster=roster,
+        budget_usd=get_default_budget_usd(),
+        current_plan=current_plan,
+    )
+
     deps = PlanningAgentDeps(
         project_root=project_root,
         scope=FileScope(read_paths=[], write_paths=[]),
         mission_brief=prompt,
         roster_description=roster_desc,
         upstream_context=upstream_context,
+        build_session=build_session,
     )
 
     planning_agent_id = "mission.planning.agent"
@@ -407,24 +423,39 @@ async def _call_planning_agent(
             agent_id=planning_agent_id,
         )
 
-    full_content = ""
-
-    async with agent.run_stream(
+    # Tool-based flow: agent.run() — the plan builds via tool calls,
+    # not via text output.
+    result = await agent.run(
         planning_prompt, deps=deps, model_settings=planning_model_settings,
-    ) as stream:
-        async for text in stream.stream_text(delta=True):
-            full_content += text
-            if event_bus:
-                await event_bus.publish(AgentResponseChunkEvent(
-                    session_id=sid,
-                    source="mission_control",
-                    agent_id=planning_agent_id,
-                    content=text,
-                ))
+        usage_limits=UsageLimits(request_limit=50),
+    )
+    usage = result.usage()
 
-        usage = stream.usage()
+    # Extract thinking trace
+    thinking_trace = None
+    for msg in result.all_messages():
+        for part in getattr(msg, "parts", []):
+            if hasattr(part, "content") and hasattr(part, "part_kind"):
+                if "thinking" in str(getattr(part, "part_kind", "")):
+                    thinking_trace = part.content
 
-    plan_dict = extract_task_plan_json(full_content, mission_id=mission_id)
+    # Check the session produced a finalised plan
+    if build_session.finalised_plan is None:
+        task_count = len(build_session.tasks)
+        logger.warning(
+            "Planning Agent did not call finalise_plan",
+            extra={
+                "mission_id": mission_id,
+                "tasks_added": task_count,
+                "task_ids": list(build_session.tasks.keys()),
+            },
+        )
+        raise ValueError(
+            f"Planning Agent did not call finalise_plan. "
+            f"{task_count} tasks added but plan was not finalised."
+        )
+
+    plan_dict = build_session.finalised_plan
 
     logger.info(
         "Planning agent produced TaskPlan",
@@ -435,23 +466,13 @@ async def _call_planning_agent(
         },
     )
 
-    thinking_trace = None
-    if hasattr(stream, "all_messages"):
-        for msg in stream.all_messages():
-            for part in getattr(msg, "parts", []):
-                if hasattr(part, "content") and hasattr(part, "part_kind"):
-                    if "thinking" in str(getattr(part, "part_kind", "")):
-                        thinking_trace = part.content
-
     if event_bus:
-        # Emit completion event
         await _emit(event_bus, AgentResponseCompleteEvent,
             session_id=str(sid), source="mission_control",
             agent_id=planning_agent_id,
             full_content=f"Plan generated ({len(plan_dict.get('tasks', []))} tasks)",
         )
 
-        # Surface plan summary in chat sidebar
         if plan_dict.get("tasks"):
             from modules.backend.events.types import PlanCreatedEvent
             await event_bus.publish(PlanCreatedEvent(
@@ -466,8 +487,7 @@ async def _call_planning_agent(
                 },
             ))
 
-    # Record planning agent cost to llm_calls table (was missing — only
-    # dispatch agents and Director were recording, not the planner).
+    # Record planning agent cost
     try:
         fields = extract_usage(usage)
         model_name = _get_model_name(planning_cfg.model)
@@ -483,7 +503,7 @@ async def _call_planning_agent(
             agent_name=planning_agent_id,
             agent_role=planning_cfg.agent_type,
             model=model_name, usage=usage, cost_usd=planning_cost,
-            latency_ms=0, tool_count=0,
+            latency_ms=0, tool_count=len(build_session.tasks),
         )
     except Exception:
         logger.warning("Failed to record planning agent LLM call", exc_info=True)
