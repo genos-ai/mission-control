@@ -13,8 +13,9 @@ automatically via ``TaskInputs.model_validator(mode="before")``.
 """
 
 import re
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class FromUpstreamRef(BaseModel):
@@ -197,6 +198,21 @@ class Tier3Verification(BaseModel):
     evaluator_agent: str | None = None
     min_evaluation_score: float | None = None
 
+    @field_validator("evaluation_criteria", mode="before")
+    @classmethod
+    def coerce_criteria_to_list(cls, v):
+        """LLMs produce a single string instead of list[str] — wrap it."""
+        if isinstance(v, str):
+            return [v]
+        return v
+
+    @model_validator(mode="after")
+    def default_score_when_evaluation_enabled(self):
+        """Default min_evaluation_score to 0.7 when AI evaluation is requested."""
+        if self.requires_ai_evaluation and self.min_evaluation_score is None:
+            self.min_evaluation_score = 0.7
+        return self
+
 
 class TaskVerification(BaseModel):
     """Per-task verification specification across all three tiers."""
@@ -207,6 +223,39 @@ class TaskVerification(BaseModel):
     tier_2: Tier2Verification = Field(default_factory=Tier2Verification)
     tier_3: Tier3Verification = Field(default_factory=Tier3Verification)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_tier_keys(cls, data: dict) -> dict:
+        """Normalise LLM tier key variations: tier1 → tier_1, etc."""
+        if not isinstance(data, dict):
+            return data
+        aliases = {"tier1": "tier_1", "tier2": "tier_2", "tier3": "tier_3"}
+        for alias, canonical in aliases.items():
+            if alias in data and canonical not in data:
+                data[canonical] = data.pop(alias)
+            elif alias in data:
+                data.pop(alias)
+        # LLMs flatten tier sub-fields to the top level of verification.
+        # Route each misplaced field into the correct tier.
+        _tier1_fields = {"schema_validation", "required_output_fields"}
+        _tier2_fields = {"deterministic_checks"}
+        _tier3_fields = {"requires_ai_evaluation", "evaluation_criteria",
+                         "evaluator_agent", "min_evaluation_score"}
+
+        for fields, tier_key in [
+            (_tier1_fields, "tier_1"),
+            (_tier2_fields, "tier_2"),
+            (_tier3_fields, "tier_3"),
+        ]:
+            misplaced = {f for f in fields if f in data}
+            if misplaced:
+                tier = data.get(tier_key, {}) if isinstance(data.get(tier_key), dict) else {}
+                for f in misplaced:
+                    tier[f] = data.pop(f)
+                data[tier_key] = tier
+
+        return data
+
 
 class TaskConstraints(BaseModel):
     """Per-task execution constraints."""
@@ -214,7 +263,24 @@ class TaskConstraints(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timeout_override_seconds: int | None = None
-    priority: str = "normal"
+    priority: Literal["normal", "high", "critical"] = "normal"
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_constraint_fields(cls, data: dict) -> dict:
+        """Normalise LLM constraint field variations."""
+        if not isinstance(data, dict):
+            return data
+        # timeout_seconds / timeout → timeout_override_seconds
+        if "timeout_override_seconds" not in data:
+            for alt in ("timeout_seconds", "timeout"):
+                if alt in data:
+                    data["timeout_override_seconds"] = data.pop(alt)
+                    break
+        # Strip roster-level fields LLMs copy from the agent config
+        for key in ("cost_ceiling_usd", "cost_ceiling", "retry_budget", "parallelism"):
+            data.pop(key, None)
+        return data
 
 
 class TaskDefinition(BaseModel):
@@ -224,9 +290,9 @@ class TaskDefinition(BaseModel):
 
     task_id: str
     agent: str
-    agent_version: str
+    agent_version: str = "1.0.0"
     description: str
-    instructions: str
+    instructions: str = ""
     inputs: TaskInputs = Field(default_factory=TaskInputs)
     dependencies: list[str] = Field(default_factory=list)
     verification: TaskVerification = Field(default_factory=TaskVerification)
@@ -236,6 +302,58 @@ class TaskDefinition(BaseModel):
         description="Domain tags for structured history queries (e.g. ['auth', 'api'])",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_task_fields(cls, data: dict) -> dict:
+        """Normalise common LLM field-name variations at the task level."""
+        if not isinstance(data, dict):
+            return data
+
+        # task_id: id, task_name → task_id
+        if "task_id" not in data:
+            for alt in ("id", "task_name"):
+                if alt in data:
+                    data["task_id"] = data.pop(alt)
+                    break
+
+        # agent: agent_name → agent
+        if "agent" not in data and "agent_name" in data:
+            data["agent"] = data.pop("agent_name")
+
+        # description: title, name → description
+        if "description" not in data:
+            for alt in ("title", "name"):
+                if alt in data:
+                    data["description"] = data.pop(alt)
+                    break
+
+        # inputs: flatten target_path etc. into inputs.static
+        if "inputs" in data and isinstance(data["inputs"], dict):
+            inputs = data["inputs"]
+            # If inputs has non-schema keys directly (not under static),
+            # wrap them in static — but preserve file_manifest at the
+            # correct level (it's a peer of static, not inside it)
+            if "static" not in inputs and "from_upstream" not in inputs:
+                fm = inputs.pop("file_manifest", None)
+                data["inputs"] = {"static": inputs, "from_upstream": {}}
+                if fm is not None:
+                    data["inputs"]["file_manifest"] = fm
+
+        # depends_on → dependencies
+        if "dependencies" not in data and "depends_on" in data:
+            data["dependencies"] = data.pop("depends_on")
+
+        # Strip fields not in the schema that LLMs commonly invent
+        _task_aliases = {
+            "id", "task_name", "agent_name", "title", "name",
+            "depends_on",  # consumed above
+            "outputs",     # not in schema — outputs are implicit
+        }
+        for alias in _task_aliases:
+            data.pop(alias, None)
+
+        return data
+
 
 class ExecutionHints(BaseModel):
     """Plan-level execution hints for partial failure handling."""
@@ -244,10 +362,8 @@ class ExecutionHints(BaseModel):
 
     min_success_threshold: float = Field(
         default=1.0,
-        ge=0.0,
-        le=1.0,
-        description="Fraction of tasks that must succeed for partial success",
-    )
+        description="Fraction of tasks that must succeed for partial success (0.0–1.0)",
+    )  # ge/le constraints omitted — grammar compiler strips them; validated at dispatch
     critical_path: list[str] = Field(
         default_factory=list,
         description="Task IDs that must succeed regardless of threshold",
@@ -260,17 +376,74 @@ class TaskPlan(BaseModel):
     This is a directed acyclic graph (DAG) expressed as JSON.
     Each task is a node. Each dependency is a directed edge.
     Mission Control validates and executes this deterministically.
+
+    Postel's Law: the model_validator normalises common LLM output
+    variations before strict validation. LLMs produce structurally
+    varied but semantically equivalent output — we normalise rather
+    than fight with prompt engineering.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     version: str = "1.0.0"
     mission_id: str
-    summary: str
-    estimated_cost_usd: float = Field(ge=0.0)
-    estimated_duration_seconds: int = Field(ge=0)
+    summary: str = ""
+    estimated_cost_usd: float = 0.0  # ge=0.0 enforced in output_validator (grammar strips Field constraints)
+    estimated_duration_seconds: int = 0  # ge=0 enforced in output_validator
     tasks: list[TaskDefinition]
     execution_hints: ExecutionHints = Field(default_factory=ExecutionHints)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalise_plan_fields(cls, data: dict) -> dict:
+        """Normalise common LLM field-name variations at the plan level."""
+        if not isinstance(data, dict):
+            return data
+
+        # version: plan_version (int) → version (str)
+        if "version" not in data and "plan_version" in data:
+            data["version"] = data.pop("plan_version")
+
+        # summary: objective, approach, or description → summary
+        if not data.get("summary"):
+            data["summary"] = (
+                data.pop("objective", None)
+                or data.pop("approach", None)
+                or data.pop("description", None)
+                or ""
+            )
+
+        # estimated_cost_usd: total_cost_estimate_usd, cost_estimate
+        if "estimated_cost_usd" not in data:
+            for alt in ("total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd"):
+                if alt in data:
+                    data["estimated_cost_usd"] = data.pop(alt)
+                    break
+
+        # Only strip aliases that were consumed by normalisation above.
+        # Genuinely unknown fields pass through to extra="forbid" so
+        # Pydantic produces clear error messages.
+        _plan_aliases = {
+            "plan_version", "objective", "approach", "description",
+            "total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd",
+            "plan_id",  # LLMs sometimes echo the plan_id from context
+            "scope",    # LLMs add scope metadata (phase, exclusions, etc.)
+            "target", "target_path", "evidence_dir", "evidence_path",  # context echoed back
+        }
+        for alias in _plan_aliases:
+            data.pop(alias, None)
+
+        return data
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def coerce_version(cls, v: object) -> str:
+        """Accept int/float versions from LLM (e.g. 1 → '1.0.0')."""
+        if isinstance(v, (int, float)):
+            return f"{int(v)}.0.0"
+        if isinstance(v, str) and re.match(r"^v?\d+$", v):
+            return f"{v.lstrip('v')}.0.0"
+        return str(v)
 
     @property
     def task_ids(self) -> list[str]:

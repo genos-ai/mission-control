@@ -26,6 +26,7 @@ async def run(
     dry_run: bool,
     quiet: bool,
     verbose: bool,
+    context_overrides: dict | None = None,
 ) -> None:
     """Run a workflow (if name matches) or an ad-hoc objective."""
     # Check if it's a workflow name
@@ -45,6 +46,7 @@ async def run(
             gate_override=gate_override,
             dry_run=dry_run,
             verbose=verbose,
+            context_overrides=context_overrides,
         )
     else:
         await _run_adhoc(
@@ -151,6 +153,7 @@ async def _run_workflow(
     gate_override: str | None,
     dry_run: bool,
     verbose: bool,
+    context_overrides: dict | None = None,
 ) -> None:
     """Execute a named workflow via API."""
     wf_name = workflow.get("name") or workflow.get("workflow_name", "")
@@ -163,6 +166,8 @@ async def _run_workflow(
         for step in steps:
             deps = f" (after: {', '.join(step.get('depends_on', []))})" if step.get("depends_on") else ""
             console.print(f"  {step.get('id', '')}: {step.get('capability', '')}{deps}")
+        if context_overrides:
+            console.print(f"\n  Context: {context_overrides}")
         console.print(f"\n[dim]Run without --dry-run to execute.[/dim]")
         return
 
@@ -173,6 +178,8 @@ async def _run_workflow(
         body["gate_mode"] = gate_override
     if budget is not None:
         body["budget_ceiling_usd"] = budget
+    if context_overrides:
+        body["context_overrides"] = context_overrides
 
     result = await api.post(
         f"/missions/{mission_id}/workflows/{wf_name}/run",

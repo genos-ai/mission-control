@@ -11,8 +11,8 @@ logger = get_logger(__name__)
 
 
 def assemble_instructions(
-    category: str,
-    name: str,
+    category_or_agent_name: str,
+    name: str | None = None,
     *,
     variant: str | None = None,
     mission_brief: str | None = None,
@@ -23,9 +23,14 @@ def assemble_instructions(
     Layer order:
         1. Organization prompts  (config/prompts/organization/*.md)
         2. Category prompt        (config/prompts/categories/{category}.md)
-        3. Agent system prompt    (config/prompts/agents/{category}/{name}/{variant or "system"}.md)
+        3. Agent system prompt    (config/prompts/agents/{path}/{variant or "system"}.md)
         4. Mission brief          (from missions.brief — shared across all agents)
         5. User prompt            (from mission_team_members.user_prompt — per-agent)
+
+    Accepts either:
+        assemble_instructions("software", "quality")       — 2-arg (legacy)
+        assemble_instructions("security.webapp.scanner")   — dotted agent path
+        assemble_instructions("security.webapp.scanner.agent") — full agent name
 
     Layers 1-3 come from files on disk. Layers 4-5 are passed in when
     available (populated from DB at dispatch time). Missing layers are
@@ -34,10 +39,22 @@ def assemble_instructions(
     Args:
         variant: Optional prompt file variant. When provided, loads
             ``{variant}.md`` instead of ``system.md`` from the agent's
-            prompt directory. Added by Plan 51 Phase D so the supervisor
-            can have separate system.md (event-mode) and chat.md
-            (chat-mode) prompts without breaking existing callers.
+            prompt directory.
     """
+    # Parse arguments: support both 2-arg (category, name) and single
+    # dotted-path forms for any depth.
+    if name is not None:
+        # Legacy 2-arg call: assemble_instructions("software", "quality")
+        parts = [category_or_agent_name, name]
+    else:
+        # Dotted path: strip .agent suffix, split on dots
+        cleaned = category_or_agent_name
+        if cleaned.endswith(".agent"):
+            cleaned = cleaned[: -len(".agent")]
+        parts = cleaned.split(".")
+
+    category = parts[0]
+
     project_root = find_project_root()
     prompts_dir = project_root / "config" / "prompts"
     layers: list[str] = []
@@ -52,7 +69,7 @@ def assemble_instructions(
         layers.append(cat_file.read_text(encoding="utf-8").strip())
 
     prompt_filename = f"{variant}.md" if variant else "system.md"
-    agent_file = prompts_dir / "agents" / category / name / prompt_filename
+    agent_file = prompts_dir / "agents" / "/".join(parts) / prompt_filename
     if agent_file.exists():
         layers.append(agent_file.read_text(encoding="utf-8").strip())
 
@@ -163,9 +180,10 @@ def _build_planning_prompt(
         )
 
     parts.append(
-        "## Output Format\n\n"
-        "Return your task plan as JSON within <task_plan> tags.\n"
-        "Follow the TaskPlan schema exactly. See system prompt for rules.\n"
+        "<output_contract>\n"
+        "Output a TaskPlan as raw JSON. No XML tags, no markdown fences.\n"
+        "The schema is enforced by constrained decoding — focus on semantic correctness.\n"
+        "</output_contract>\n"
     )
 
     return "\n".join(parts)

@@ -64,12 +64,19 @@ def build_model_settings(
                 max_tokens = budget + 8192
             thinking_config = {"type": "enabled", "budget_tokens": budget}
 
+    # ── Beta feature flags ───────────────────────────────────
+    betas: list[str] = []
+    if isinstance(agent_config.model, AgentModelSchema):
+        betas = agent_config.model.betas or []
+
     settings_kwargs = {
         **cache_kwargs,
         "max_tokens": max_tokens,
     }
     if thinking_config:
         settings_kwargs["anthropic_thinking"] = thinking_config
+    if betas:
+        settings_kwargs["anthropic_betas"] = betas
 
     return AnthropicModelSettings(**settings_kwargs)
 

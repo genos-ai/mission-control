@@ -1,69 +1,37 @@
-"""Tests for the Planning Agent — JSON extraction and agent creation."""
+"""Tests for the Planning Agent — agent factory and mode selection."""
 
 import pytest
+from pydantic_ai import Agent
+from pydantic_ai.models.test import TestModel
 
-from modules.backend.agents.system.planning.agent import (
-    extract_task_plan_json,
-)
+from modules.backend.agents.mission.planning.agent import create_agent
 
 
-class TestExtractTaskPlanJson:
-    def test_valid_json_in_tags(self):
-        text = 'Some thinking...\n<task_plan>\n{"version": "1.0.0"}\n</task_plan>'
-        result = extract_task_plan_json(text)
-        assert result == {"version": "1.0.0"}
+class TestCreateAgent:
+    def test_dispatch_mode_returns_agent(self):
+        agent = create_agent(TestModel())
+        assert isinstance(agent, Agent)
 
-    def test_json_with_whitespace(self):
-        text = '<task_plan>\n  {\n    "version": "1.0.0"\n  }\n</task_plan>'
-        result = extract_task_plan_json(text)
-        assert result["version"] == "1.0.0"
+    def test_dispatch_mode_has_no_function_tools(self):
+        agent = create_agent(TestModel())
+        tool_names = {t.name for t in agent._function_toolset.tools.values()}
+        assert len(tool_names) == 0, f"Dispatch mode should have no tools, got: {tool_names}"
 
-    def test_missing_tags_raises(self):
-        text = '{"version": "1.0.0"}'
-        with pytest.raises(ValueError, match="does not contain <task_plan> tags"):
-            extract_task_plan_json(text)
+    def test_chat_mode_returns_agent(self):
+        agent = create_agent(TestModel(), chat_mode=True)
+        assert isinstance(agent, Agent)
 
-    def test_invalid_json_raises(self):
-        text = "<task_plan>not json</task_plan>"
-        with pytest.raises(ValueError, match="invalid JSON"):
-            extract_task_plan_json(text)
+    def test_chat_mode_registers_all_tools(self):
+        agent = create_agent(TestModel(), chat_mode=True)
+        tool_names = {t.name for t in agent._function_toolset.tools.values()}
+        expected = {"get_current_plan", "get_roster", "get_mission_info", "save_plan"}
+        assert expected == tool_names, f"Missing tools: {expected - tool_names}"
 
-    def test_empty_tags_raises(self):
-        text = "<task_plan></task_plan>"
-        with pytest.raises(ValueError):
-            extract_task_plan_json(text)
-
-    def test_complex_plan_json(self):
-        plan_json = '''
-        <task_plan>
-        {
-            "version": "1.0.0",
-            "mission_id": "test-001",
-            "summary": "Test mission",
-            "estimated_cost_usd": 2.50,
-            "estimated_duration_seconds": 120,
-            "tasks": [
-                {
-                    "task_id": "t1",
-                    "agent": "agent_a",
-                    "agent_version": "1.0.0",
-                    "description": "First task",
-                    "instructions": "Do it"
-                }
-            ]
-        }
-        </task_plan>
-        '''
-        result = extract_task_plan_json(plan_json)
-        assert result["mission_id"] == "test-001"
-        assert len(result["tasks"]) == 1
-
-    def test_text_around_tags(self):
-        text = (
-            "Let me think about this...\n\n"
-            "Here is my plan:\n"
-            '<task_plan>{"version": "1.0.0"}</task_plan>\n\n'
-            "Done!"
-        )
-        result = extract_task_plan_json(text)
-        assert result["version"] == "1.0.0"
+    def test_dispatch_and_chat_are_independent(self):
+        """Creating agents in both modes must not share state."""
+        dispatch = create_agent(TestModel())
+        chat = create_agent(TestModel(), chat_mode=True)
+        dispatch_tools = {t.name for t in dispatch._function_toolset.tools.values()}
+        chat_tools = {t.name for t in chat._function_toolset.tools.values()}
+        assert len(dispatch_tools) == 0
+        assert len(chat_tools) == 4

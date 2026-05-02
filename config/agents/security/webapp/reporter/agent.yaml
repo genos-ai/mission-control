@@ -1,0 +1,46 @@
+# WASA Reporter Agent — assessment report synthesis
+#
+# Synthesises findings from all phases into a structured
+# SecurityAssessmentReport with attack paths, OWASP mapping,
+# and remediation roadmap. Spec Section 4.2, 5.7.
+
+agent_name: security.webapp.reporter.agent
+agent_type: vertical
+description: >-
+  Security assessment report writer. Synthesises triaged findings into
+  a structured SecurityAssessmentReport with composite risk scores,
+  attack paths, OWASP Top 10 mapping, and prioritised remediation.
+enabled: true
+chat_enabled: false
+version: "1.0.0"
+
+model:
+  name: "copilot:claude-sonnet-4.6"
+  temperature: 0.0
+  max_tokens: 32768
+
+keywords:
+  - security
+  - report
+  - assessment
+
+tools: []
+
+max_input_length: 128000
+max_budget_usd: 5.00
+
+execution:
+  mode: container
+  template: "security-assessment-worker:latest"
+
+invocation:
+  tier: user
+
+scope:
+  read:
+    - "@workspace/evidence/"
+  write:
+    - "@workspace/evidence/reports/"
+
+produces_artifact: true
+artifact_type: security_report

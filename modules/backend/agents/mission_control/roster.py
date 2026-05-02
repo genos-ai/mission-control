@@ -86,7 +86,7 @@ class Roster(BaseModel):
         return [a.agent_name for a in self.agents]
 
 
-PLANNING_AGENT_NAME = "system.planning.agent"
+PLANNING_AGENT_NAME = "mission.planning.agent"
 VERIFICATION_AGENT_NAME = "system.verification.agent"
 
 

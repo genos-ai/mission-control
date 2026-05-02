@@ -61,17 +61,31 @@ class TestTaskPlan:
         assert plan.execution_hints.min_success_threshold == 1.0
         assert plan.execution_hints.critical_path == []
 
-    def test_negative_cost_rejected(self):
+    def test_negative_cost_accepted_by_schema(self):
+        """Negative cost passes schema (ge= stripped by grammar compiler).
+
+        Enforcement moved to the Planning Agent output_validator which
+        raises ModelRetry — see test_planning_agent.py.
+        """
         data = _make_plan()
         data["estimated_cost_usd"] = -1.0
-        with pytest.raises(Exception):
-            TaskPlan.model_validate(data)
+        plan = TaskPlan.model_validate(data)
+        assert plan.estimated_cost_usd == -1.0
 
     def test_extra_fields_rejected(self):
+        """Genuinely unknown fields are rejected by extra='forbid'."""
         data = _make_plan()
         data["unknown_field"] = "bad"
         with pytest.raises(Exception):
             TaskPlan.model_validate(data)
+
+    def test_objective_normalised_to_summary(self):
+        """LLM alias 'objective' is normalised into 'summary'."""
+        data = _make_plan()
+        data.pop("summary")
+        data["objective"] = "test objective"
+        plan = TaskPlan.model_validate(data)
+        assert plan.summary == "test objective"
 
     def test_full_plan_from_research_doc(self):
         """Validate the full example from the research doc parses."""

@@ -315,6 +315,29 @@ def _make_agent_executor(
     return execute_agent
 
 
+def _format_plan_summary(plan_json: dict) -> str:
+    """Format a TaskPlan dict as a markdown summary for the chat sidebar."""
+    tasks = plan_json.get("tasks", [])
+    version = plan_json.get("version", "?")
+    summary = plan_json.get("summary", "")
+    cost = plan_json.get("estimated_cost_usd", 0)
+    duration = plan_json.get("estimated_duration_seconds", 0)
+
+    lines = [f"## Task Plan v{version} — {summary}", ""]
+    lines.append("| # | Task ID | Description | Agent | Dependencies |")
+    lines.append("|---|---------|-------------|-------|-------------|")
+    for i, task in enumerate(tasks, 1):
+        tid = task.get("task_id", "?")
+        desc = task.get("description", "")[:50]
+        agent = task.get("agent", "?")
+        deps = ", ".join(task.get("dependencies", [])) or "—"
+        lines.append(f"| {i} | {tid} | {desc} | {agent} | {deps} |")
+    lines.append("")
+    duration_min = duration / 60 if duration else 0
+    lines.append(f"**Estimated cost:** ${cost:.2f} | **Duration:** ~{duration_min:.0f} min")
+    return "\n".join(lines)
+
+
 async def _call_planning_agent(
     prompt: str,
     roster: "Roster",
@@ -326,6 +349,8 @@ async def _call_planning_agent(
     refinement_instructions: str | None = None,
     mission_id: str | None = None,
     plan_version: int = 1,
+    project_context: dict | None = None,
+    recent_failures: list | None = None,
 ) -> dict:
     """Call the Planning Agent and return the raw result.
 
@@ -338,17 +363,16 @@ async def _call_planning_agent(
     import uuid as _uuid
 
     from modules.backend.agents.deps.base import FileScope
-    from modules.backend.agents.system.planning.agent import (
+    from modules.backend.agents.mission.planning.agent import (
         PlanningAgentDeps,
         create_agent,
         extract_task_plan_json,
     )
-    from modules.backend.events.types import AgentResponseChunkEvent
 
     project_root = find_project_root()
 
     registry = get_registry()
-    planning_cfg = registry.get("system.planning.agent")
+    planning_cfg = registry.get("mission.planning.agent")
     model = _build_model(planning_cfg.model)
     planning_model_settings = build_model_settings(planning_cfg)
     agent = create_agent(model)
@@ -359,6 +383,8 @@ async def _call_planning_agent(
         mission_id=mission_id or "pending",
         roster_description=roster_desc,
         upstream_context=upstream_context,
+        project_context=project_context,
+        recent_failures=recent_failures,
         current_plan=current_plan,
         refinement_instructions=refinement_instructions,
         plan_version=plan_version,
@@ -372,15 +398,16 @@ async def _call_planning_agent(
         upstream_context=upstream_context,
     )
 
-    planning_agent_id = "system.planning.agent"
+    planning_agent_id = "mission.planning.agent"
     sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
-    full_content = ""
 
     if event_bus:
         await _emit(event_bus, AgentThinkingEvent,
             session_id=str(sid), source="mission_control",
             agent_id=planning_agent_id,
         )
+
+    full_content = ""
 
     async with agent.run_stream(
         planning_prompt, deps=deps, model_settings=planning_model_settings,
@@ -397,7 +424,16 @@ async def _call_planning_agent(
 
         usage = stream.usage()
 
-    plan_json = extract_task_plan_json(full_content)
+    plan_dict = extract_task_plan_json(full_content, mission_id=mission_id)
+
+    logger.info(
+        "Planning agent produced TaskPlan",
+        extra={
+            "mission_id": mission_id,
+            "task_count": len(plan_dict.get("tasks", [])),
+            "task_plan": plan_dict,
+        },
+    )
 
     thinking_trace = None
     if hasattr(stream, "all_messages"):
@@ -408,11 +444,27 @@ async def _call_planning_agent(
                         thinking_trace = part.content
 
     if event_bus:
+        # Emit completion event
         await _emit(event_bus, AgentResponseCompleteEvent,
             session_id=str(sid), source="mission_control",
             agent_id=planning_agent_id,
-            content=f"Plan generated ({len(plan_json.get('tasks', []))} tasks)" if isinstance(plan_json, dict) else "Plan generated",
+            full_content=f"Plan generated ({len(plan_dict.get('tasks', []))} tasks)",
         )
+
+        # Surface plan summary in chat sidebar
+        if plan_dict.get("tasks"):
+            from modules.backend.events.types import PlanCreatedEvent
+            await event_bus.publish(PlanCreatedEvent(
+                session_id=sid,
+                source="mission_control",
+                plan_id=mission_id or "pending",
+                goal=plan_dict.get("summary", ""),
+                step_count=len(plan_dict["tasks"]),
+                metadata={
+                    "plan_markdown": _format_plan_summary(plan_dict),
+                    "task_plan": plan_dict,
+                },
+            ))
 
     # Record planning agent cost to llm_calls table (was missing — only
     # dispatch agents and Director were recording, not the planner).
@@ -428,8 +480,8 @@ async def _call_planning_agent(
         await record_llm_call(
             session_id=session_id,
             mission_id=mission_id,
-            agent_name="system.planning.agent",
-            agent_role="system",
+            agent_name=planning_agent_id,
+            agent_role=planning_cfg.agent_type,
             model=model_name, usage=usage, cost_usd=planning_cost,
             latency_ms=0, tool_count=0,
         )
@@ -437,7 +489,7 @@ async def _call_planning_agent(
         logger.warning("Failed to record planning agent LLM call", exc_info=True)
 
     return {
-        "task_plan": plan_json,
+        "task_plan": plan_dict,
         "thinking_trace": thinking_trace,
         "usage": usage,
     }

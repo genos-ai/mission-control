@@ -58,6 +58,7 @@ def _build_agent_deps(
     session_id: str | None = None,
     mission_id: str | None = None,
     db_session: Any | None = None,
+    event_bus: Any | None = None,
 ) -> BaseAgentDeps:
     """Build the appropriate deps dataclass for a given agent."""
     common = build_deps_from_config(agent_config)
@@ -80,6 +81,37 @@ def _build_agent_deps(
     if "mission.supervisor" in agent_name:
         from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
         return MissionSupervisorDeps(**common, mission_id=mission_id, db_session=db_session)
+    if "mission.planning" in agent_name:
+        from modules.backend.agents.mission.planning.agent import PlanningAgentDeps
+        return PlanningAgentDeps(
+            **common, mission_id=mission_id, db_session=db_session,
+            event_bus=event_bus,
+        )
+    if "security.webapp.scanner" in agent_name:
+        from modules.backend.agents.security.deps import ScanDeps
+        from modules.backend.agents.security.tool_registry import SecurityToolRegistry
+        from modules.backend.agents.security.config import get_security_assessment_config
+
+        try:
+            sec_config = get_security_assessment_config()
+            tool_registry = SecurityToolRegistry(
+                config_path=find_project_root() / sec_config.tool_registry_path
+            )
+        except Exception:
+            logger.warning(
+                "Failed to load security tool registry — scanner tools will be unavailable",
+                extra={"agent_name": agent_name},
+                exc_info=True,
+            )
+            tool_registry = None
+            sec_config = None
+
+        return ScanDeps(
+            **common,
+            tool_registry=tool_registry,
+            security_config=sec_config,
+            evidence_path="@workspace/evidence",
+        )
     if category == "research":
         from modules.backend.agents.research.deps import ResearchAgentDeps
         return ResearchAgentDeps(**common, http_client=_get_research_http_client())

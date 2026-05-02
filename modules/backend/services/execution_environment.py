@@ -533,7 +533,7 @@ class ExecutionEnvironmentService:
             working_dir=str(handle.working_dir),
             image=handle.metadata.get("image"),
             execution_count=1,
-            last_execution_at=utc_now().isoformat(),
+            last_execution_at=utc_now(),
             config=persisted_config,
         )
         self._db.add(env)
@@ -553,7 +553,7 @@ class ExecutionEnvironmentService:
                 "SET last_execution_at = :ts, execution_count = execution_count + 1 "
                 "WHERE container_name = :eid AND LOWER(status) = 'running'"
             ),
-            {"ts": utc_now().isoformat(), "eid": environment_id},
+            {"ts": utc_now(), "eid": environment_id},
         )
         await self._db.flush()
 

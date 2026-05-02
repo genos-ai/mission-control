@@ -69,7 +69,7 @@ BENCH_GATE_MODE = "autonomous"
 #   Task executors: planning, summarization, synthesis, verification
 #   Loop infra:     supervisor (post-run gate), director (followup consumer)
 REQUIRED_AGENTS = [
-    "system.planning.agent",
+    "mission.planning.agent",
     "system.summarization.agent",
     "system.synthesis.agent",
     "system.verification.agent",

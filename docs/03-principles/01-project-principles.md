@@ -167,6 +167,25 @@ This means:
 
 ---
 
+### P17: Tools Over Structured Output for Complex Schemas
+
+**When an LLM must produce a complex data structure, have it build incrementally via tool calls — never ask for a monolithic blob.**
+
+LLMs are good at making sequential tool calls with simple schemas. They are bad at producing perfectly-structured multi-KB JSON blobs in one shot. When the output schema exceeds ~5 `$defs` or ~2 KB, grammar compilers reject it, prompted output is unreliable, and the system ends up with extraction heuristics, normaliser layers, and retry loops to compensate.
+
+The fix is architectural: decompose the output into small tool calls that each have a trivially simple schema, and let the system accumulate the result server-side. The LLM calls `add_task(description, agent)` five times instead of producing a 7.8 KB TaskPlan JSON blob once.
+
+This means:
+- Any agent that must produce a complex structured output (plans, security reports, assessments) uses tools to build it incrementally, not `output_type=ComplexModel`.
+- Each tool schema is small enough for native constrained decoding (NativeOutput) — no prompted fallbacks.
+- Validation errors are returned inline via tool responses. The LLM self-corrects with another tool call instead of a full retry.
+- A dynamic system prompt injects the current state of the accumulated structure before each model call, so the LLM always knows what it has built so far.
+- The accumulated structure uses the same Pydantic model as the final output — tools build it, they don't replace it.
+
+**Test:** If the agent's output schema has more than 5 `$defs`, is the agent using tools to build it? If it's producing raw JSON, refactor to tools.
+
+---
+
 ### P8: Plan Revision Over Replanning
 
 **When a task fails, modify the remaining plan. Don't throw away completed work.**

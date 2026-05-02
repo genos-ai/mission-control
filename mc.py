@@ -317,11 +317,21 @@ def mission_unarchive(name_or_id):
               default=None, help="Gate mode override.")
 @click.option("--step", is_flag=True, help="Alias for --gate interactive.")
 @click.option("--dry-run", is_flag=True, help="Show plan + estimated cost, don't execute.")
+@click.option("--context", "-c", multiple=True, help="Context overrides as key=value (repeatable).")
 @click.pass_obj
-def run(ctx, objective, budget, gate_override, step, dry_run):
+def run(ctx, objective, budget, gate_override, step, dry_run, context):
     """Run a task or workflow against the current mission."""
     if step:
         gate_override = "interactive"
+
+    # Parse --context key=value pairs
+    context_overrides = {}
+    for item in context:
+        if "=" not in item:
+            click.echo(click.style(f"Invalid --context: '{item}' (expected key=value)", fg="red"), err=True)
+            raise SystemExit(1)
+        key, value = item.split("=", 1)
+        context_overrides[key] = value
 
     from modules.clients.cli.mc_run import run as mc_run
 
@@ -334,6 +344,7 @@ def run(ctx, objective, budget, gate_override, step, dry_run):
                 gate_override=gate_override,
                 dry_run=dry_run,
                 quiet=ctx.quiet, verbose=ctx.verbose,
+                context_overrides=context_overrides or None,
             )
 
     asyncio.run(_run())

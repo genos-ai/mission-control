@@ -10,79 +10,13 @@ You receive:
 
 ## Your Output
 
-You MUST return a TaskPlan as JSON within <task_plan> XML tags. No other format is accepted. The JSON must conform EXACTLY to the schema below — no extra fields, no missing required fields.
+<output_contract>
+Output a TaskPlan as raw JSON. Do not wrap in XML tags or markdown code blocks.
+The output schema is enforced by constrained decoding — focus on semantic correctness:
+correct task IDs, valid agent names from the roster, accurate dependencies, and meaningful verification specs.
+</output_contract>
 
-## TaskPlan Schema (EXACT field names required)
-
-```json
-{
-  "version": "1.0.0",
-  "mission_id": "<from the mission brief>",
-  "summary": "<one sentence describing the plan>",
-  "estimated_cost_usd": 0.50,
-  "estimated_duration_seconds": 120,
-  "tasks": [
-    {
-      "task_id": "v1-task-001",
-      "agent": "code.qa.agent",
-      "agent_version": "1.0.0",
-      "description": "Short description of what this task does",
-      "instructions": "Detailed instructions for the agent. Be specific and actionable.",
-      "inputs": {
-        "static": {
-          "key": "value"
-        },
-        "from_upstream": {
-          "field_name": {
-            "source_task": "v1-task-001",
-            "source_field": "output_field_name"
-          },
-          "merged_results": [
-            {"source_task": "v1-task-001", "source_field": "findings"},
-            {"source_task": "v1-task-002", "source_field": "findings"}
-          ]
-        },
-        "file_manifest": {
-          "read_for_pattern": [
-            {"path": "modules/backend/services/note.py", "reason": "Exemplar for service layer pattern"}
-          ],
-          "read_first": [
-            {"path": "modules/backend/services/base.py", "reason": "Base class the new service must extend"}
-          ],
-          "modify": [
-            {"path": "modules/backend/services/session.py", "reason": "Add new query method"}
-          ]
-        }
-      },
-      "dependencies": [],
-      "domain_tags": ["code", "implementation"],
-      "verification": {
-        "tier_1": {
-          "schema_validation": true,
-          "required_output_fields": ["summary", "findings"]
-        },
-        "tier_2": {
-          "deterministic_checks": []
-        },
-        "tier_3": {
-          "requires_ai_evaluation": false,
-          "evaluation_criteria": [],
-          "evaluator_agent": null,
-          "min_evaluation_score": null
-        }
-      },
-      "constraints": {
-        "timeout_override_seconds": null,
-        "priority": "normal"
-      }
-    }
-  ],
-  "execution_hints": {
-    "min_success_threshold": 1.0,
-    "critical_path": ["v1-task-001"]
-  }
-}
-```
+## TaskPlan Field Reference
 
 ### CRITICAL: Task ID Format
 
@@ -139,7 +73,15 @@ When generating tasks for coding agents (agents that create or modify files), in
 
 ## Single-task steps
 
-Some workflow steps are self-managing loops (research, convergence) that handle their own internal decomposition. When a step has `type: "research_loop"` or `type: "convergence_loop"` in its `inputs.static`, create ONE task for it — do not decompose it into sub-tasks. The executor handles internal parallelism and iteration.
+Some workflow steps are self-managing and handle their own internal execution. When a step has one of these types in its `inputs.static`, create ONE task for it — do not decompose it into sub-tasks:
+
+- `type: "research_loop"` — iterative multi-agent research with search, synthesis, and verification
+- `type: "convergence_loop"` — iterative refinement until convergence criteria are met
+- `type: "security_scan"` — deterministic security scanner orchestration (runs multiple SAST/SCA tools internally)
+- `type: "security_triage"` — LLM false-positive triage of scanner findings with code context
+- `type: "security_report"` — security assessment report synthesis from triaged findings
+
+For these steps, pass ALL `inputs.static` fields through to the task's `inputs.static` unchanged. The agent handles internal tool orchestration — your job is to create the single task with the right agent assignment and dependency chain.
 
 ## Constraints
 

@@ -1,0 +1,126 @@
+# =============================================================================
+# WASA Security Tool Registry — Phase 1 (SAST only)
+# =============================================================================
+#
+# Tools are resolved by capability, not by name. Agents call capabilities
+# (security.code.scan); the registry resolves which binary runs.
+# Swap a tool = change this file. No code changes.
+#
+# Per-tool options:
+#   name                Human-readable tool name
+#   capability          security.{domain}.{verb} — matches ToolCapability enum
+#   mode                fallback (try in order) | ensemble (run all, merge)
+#   binary              Executable name on PATH
+#   version_cmd         Command to probe version
+#   output_format       sarif | json | jsonl | sqlite
+#   sarif_native        true if tool produces SARIF natively
+#   success_exit_codes  Exit codes that mean "success" (not failure)
+#   run_template        Command template with {placeholders}
+#   default_args        Default values for template placeholders
+#   redact_output       true = strip secret values from output (encryption Phase 2)
+#   timeout_seconds     Max execution time
+#   applies_when        Surface conditions from detect_surface (empty = always)
+#
+# Phase 2/3 tools (nmap, ffuf, nuclei, sqlmap, testssl, arjun, kiterunner,
+# mitmproxy, jwt-cli, rustscan) will be added when those phases ship.
+
+tools:
+  # ── Code Analysis ──
+  - name: opengrep
+    capability: security.code.scan
+    binary: opengrep
+    version_cmd: "opengrep --version"
+    output_format: sarif
+    sarif_native: true
+    success_exit_codes: [0, 1]
+    run_template: >
+      {binary} --config {ruleset} --sarif --output {output_path} {target_path}
+    default_args:
+      ruleset: "p/owasp-top-ten,p/python,p/secrets"
+    timeout_seconds: 300
+    applies_when:
+      - has_python
+      - has_javascript
+
+  - name: ruff
+    capability: security.code.lint
+    binary: ruff
+    version_cmd: "ruff --version"
+    output_format: json
+    sarif_native: false
+    success_exit_codes: [0, 1]
+    run_template: >
+      {binary} check --select S --output-format json --output-file {output_path} {target_path}
+    timeout_seconds: 60
+    applies_when:
+      - has_python
+
+  # ── Dependency Analysis ──
+  - name: pip-audit
+    capability: security.deps.scan
+    binary: pip-audit
+    version_cmd: "pip-audit --version"
+    output_format: json
+    sarif_native: false
+    success_exit_codes: [0, 1]
+    run_template: >
+      {binary} -r {target_path}/requirements.txt --format json --output {output_path}
+    timeout_seconds: 120
+    applies_when:
+      - has_python
+
+  # ── Secret Detection ──
+  - name: betterleaks
+    capability: security.secrets.detect
+    binary: betterleaks
+    version_cmd: "betterleaks version"
+    output_format: sarif
+    sarif_native: true
+    success_exit_codes: [0, 1]
+    run_template: >
+      {binary} detect --source {target_path} --report-format sarif --report-path {output_path}
+    redact_output: true
+    timeout_seconds: 120
+    applies_when: []
+
+  # ── Container / Infrastructure ──
+  - name: trivy
+    capability: security.container.scan
+    binary: trivy
+    version_cmd: "trivy --version"
+    output_format: sarif
+    sarif_native: true
+    success_exit_codes: [0]
+    run_template: >
+      {binary} fs --format sarif --severity {severity} --output {output_path} {target_path}
+    default_args:
+      severity: "MEDIUM,HIGH,CRITICAL"
+    timeout_seconds: 300
+    applies_when: []
+
+  - name: hadolint
+    capability: security.dockerfile.lint
+    binary: hadolint
+    version_cmd: "hadolint --version"
+    output_format: json
+    sarif_native: false
+    success_exit_codes: [0, 1]
+    run_template: >
+      {binary} --format json {target_path}/Dockerfile
+    timeout_seconds: 60
+    applies_when:
+      - has_dockerfile
+
+  - name: checkov
+    capability: security.infra.scan
+    binary: checkov
+    version_cmd: "checkov --version"
+    output_format: sarif
+    sarif_native: true
+    success_exit_codes: [0, 1]
+    run_template: >
+      {binary} -d {target_path} --output sarif --output-file-path {output_path}
+    timeout_seconds: 300
+    applies_when:
+      - has_docker_compose
+      - has_terraform

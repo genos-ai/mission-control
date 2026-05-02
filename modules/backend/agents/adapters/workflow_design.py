@@ -272,7 +272,7 @@ async def update_workflow(
 
     # Bump version and re-lock
     payload["version"] = workflow.version + 1
-    payload["locked_at"] = utc_now().isoformat()
+    payload["locked_at"] = utc_now()
 
     updated = await svc.update_workflow(workflow.id, **payload)
 

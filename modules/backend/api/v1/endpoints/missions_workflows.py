@@ -243,11 +243,17 @@ async def run_mission_workflow(
     workflow_name: str,
     db: DbSession,
     request_id: RequestId,
+    body: dict | None = None,
 ) -> ApiResponse:
     """Run a workflow by name against a mission.
 
     Resolves the workflow from mission-scoped definitions first,
     then falls back to system templates.
+
+    Optional body fields:
+        triggered_by: str — trigger origin (default: "user:api")
+        gate_mode: str — gate override (off, interactive, etc.)
+        context_overrides: dict — merge into workflow context before execution
     """
     from modules.backend.core.config import get_redis_url
     from modules.backend.events.bus import SessionEventBus
@@ -256,14 +262,19 @@ async def run_mission_workflow(
 
     from fastapi import HTTPException
 
+    body = body or {}
+    triggered_by = body.get("triggered_by", "user:api")
+    context_overrides = body.get("context_overrides")
+
     redis = AsyncRedis.from_url(get_redis_url())
     event_bus = SessionEventBus(redis, mission_id=mission_id)
     try:
         async with WorkflowRunService.factory(event_bus=event_bus) as svc:
             run = await svc.run_workflow(
                 workflow_name=workflow_name,
-                triggered_by="user:api",
+                triggered_by=triggered_by,
                 mission_id=mission_id,
+                context_overrides=context_overrides,
             )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

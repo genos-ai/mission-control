@@ -264,7 +264,8 @@ class TestRule10Tier3Completeness:
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert not result.is_valid
 
-    def test_missing_score_fails(self):
+    def test_missing_score_gets_default(self):
+        """min_evaluation_score defaults to 0.7 when requires_ai_evaluation=true."""
         roster = Roster(agents=[
             _entry("agent_a"),
             _entry("system.verification.agent"),
@@ -279,8 +280,10 @@ class TestRule10Tier3Completeness:
                 "min_evaluation_score": None,
             },
         })])
+        # Schema defaults None → 0.7, so validator passes
         result = validate_plan(plan, roster, 10.0)
-        assert not result.is_valid
+        assert result.is_valid
+        assert plan.tasks[0].verification.tier_3.min_evaluation_score == 0.7
 
 
 class TestRule11SelfEvaluationPrevention:

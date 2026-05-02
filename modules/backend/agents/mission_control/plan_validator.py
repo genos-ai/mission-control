@@ -86,7 +86,11 @@ def _rule_2_agent_validation(plan: TaskPlan, roster: Roster, result: ValidationR
         # Plan 53: workflow tasks resolve at dispatch time, not via roster
         if task.agent.startswith("workflow:"):
             continue
-        entry = roster.get_agent(task.agent, task.agent_version)
+        # Normalize version: strip leading 'v' (LLMs produce "v1.0.0", roster has "1.0.0")
+        version = task.agent_version.lstrip("v") if task.agent_version else task.agent_version
+        entry = roster.get_agent(task.agent, version)
+        if entry is None and version != task.agent_version:
+            entry = roster.get_agent(task.agent, task.agent_version)
         if entry is None and task.agent_version == "latest":
             entry = roster.get_agent_by_name(task.agent)
         if entry is None:
@@ -282,7 +286,13 @@ def _rule_10_tier3_completeness(
                 "tier3_completeness",
                 f"Task '{task.task_id}': Tier 3 enabled but min_evaluation_score is missing",
             )
-        if t3.evaluator_agent and not roster.get_agent_by_name(t3.evaluator_agent):
+        # System-tier agents (system.*) are always available — don't require
+        # them in the mission roster.
+        if (
+            t3.evaluator_agent
+            and not t3.evaluator_agent.startswith("system.")
+            and not roster.get_agent_by_name(t3.evaluator_agent)
+        ):
             result.add_error(
                 "tier3_completeness",
                 f"Task '{task.task_id}': evaluator_agent "

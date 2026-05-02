@@ -350,7 +350,7 @@ class WorkshopService(BaseService):
     def _parse_agent_path(agent_name: str) -> tuple[str, str]:
         """Parse 'category.subcategory.agent' into (category, name).
 
-        Example: 'system.planning.agent' -> ('system', 'planning')
+        Example: 'mission.planning.agent' -> ('mission', 'planning')
         """
         parts = agent_name.split(".")
         if len(parts) >= 2:

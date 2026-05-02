@@ -920,6 +920,41 @@ def admin_seed_catalog(ctx, force):
     run_admin(ctx.logger, "seed-catalog", force=force, output_format=ctx.output_format)
 
 
+@admin.command("migrate-planning-agent")
+@click.pass_obj
+def admin_migrate_planning_agent(ctx):
+    """Add mission.planning.agent to all existing mission teams.
+
+    Run once after renaming system.planning.agent → mission.planning.agent.
+    Safe to re-run — missions that already have the agent are skipped.
+    """
+    import asyncio
+
+    async def _run():
+        from modules.backend.core.exceptions import ConflictError
+        from modules.backend.repositories.mission import MissionRepository
+        from modules.backend.services.mission_team import MissionTeamService
+        from modules.backend.core.database import get_async_session
+
+        added = skipped = errors = 0
+        async with get_async_session() as db:
+            missions = await MissionRepository(db).list_all()
+            async with MissionTeamService.factory() as svc:
+                for mission in missions:
+                    try:
+                        await svc.add_agent_by_name(str(mission.id), "mission.planning.agent")
+                        added += 1
+                    except ConflictError:
+                        skipped += 1
+                    except Exception as e:
+                        ctx.logger.warning(f"Failed for mission {mission.id}: {e}")
+                        errors += 1
+
+        click.echo(f"Added: {added}, Already present (skipped): {skipped}, Errors: {errors}")
+
+    asyncio.run(_run())
+
+
 @admin.command("seed-workflows")
 @click.option("--force", is_flag=True, help="Delete and re-seed system workflow templates.")
 @click.pass_obj
