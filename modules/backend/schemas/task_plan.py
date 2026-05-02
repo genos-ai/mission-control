@@ -271,11 +271,14 @@ class TaskConstraints(BaseModel):
         """Normalise LLM constraint field variations."""
         if not isinstance(data, dict):
             return data
-        # timeout_seconds → timeout_override_seconds
-        if "timeout_override_seconds" not in data and "timeout_seconds" in data:
-            data["timeout_override_seconds"] = data.pop("timeout_seconds")
+        # timeout_seconds / timeout → timeout_override_seconds
+        if "timeout_override_seconds" not in data:
+            for alt in ("timeout_seconds", "timeout"):
+                if alt in data:
+                    data["timeout_override_seconds"] = data.pop(alt)
+                    break
         # Strip roster-level fields LLMs copy from the agent config
-        for key in ("cost_ceiling_usd", "retry_budget", "parallelism"):
+        for key in ("cost_ceiling_usd", "cost_ceiling", "retry_budget", "parallelism"):
             data.pop(key, None)
         return data
 
