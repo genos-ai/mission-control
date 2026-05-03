@@ -27,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { API_BASE } from '@/lib/constants'
 import type { SessionMessage } from '@/types'
+import { eventLabel } from '@/lib/event-utils'
 import { CHAT_HIDDEN_EVENT_TYPES, type TimelineEntry } from './chat-constants'
 
 export function Conversation({ sessionId, missionId }: { sessionId: string; missionId: string }) {
@@ -505,8 +506,38 @@ export function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
 
   // ── Generic fallback for unhandled event types ───────────────────────
 
-  const label = event.event_type.replace(/\./g, ' ')
+  const level = String(d.level ?? (d.step === 'error' ? 'error' : ''))
+  const isError = level === 'error' || d.status === 'failed' || event.event_type.includes('error') || event.event_type.includes('failed')
+  const isWarning = level === 'warning'
   const message = String(d.message ?? d.content ?? d.summary ?? '')
+
+  if (isError) {
+    return (
+      <div className="mx-8 flex items-start gap-2 rounded border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-xs">
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-red-400" />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-red-400">{eventLabel(event.event_type, d as Record<string, unknown>)}</span>
+          {message && <p className="mt-0.5 text-red-300/80">{message}</p>}
+        </div>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  if (isWarning) {
+    return (
+      <div className="mx-8 flex items-start gap-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-xs">
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-amber-400">{eventLabel(event.event_type, d as Record<string, unknown>)}</span>
+          {message && <p className="mt-0.5 text-amber-300/80">{message}</p>}
+        </div>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+      </div>
+    )
+  }
+
+  const label = event.event_type.replace(/\./g, ' ')
   return (
     <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/50">
       <Info className="h-3 w-3 shrink-0" />
