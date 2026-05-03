@@ -295,7 +295,7 @@ class MissionPlanOrchestrator(BaseService):
                     reset_count += 1
                 continue
             # Task disappeared from the new plan
-            status_enum = PlanTaskStatus[state.status]
+            status_enum = state.status if isinstance(state.status, PlanTaskStatus) else PlanTaskStatus(state.status)
             if status_enum in TERMINAL_PLAN_TASK_STATUSES:
                 continue  # already terminal, leave as-is
             if status_enum == PlanTaskStatus.FAILED:
