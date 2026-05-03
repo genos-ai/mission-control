@@ -295,7 +295,7 @@ class MissionPlanOrchestrator(BaseService):
                     reset_count += 1
                 continue
             # Task disappeared from the new plan
-            status_enum = PlanTaskStatus[state.status]
+            status_enum = state.status if isinstance(state.status, PlanTaskStatus) else PlanTaskStatus(state.status)
             if status_enum in TERMINAL_PLAN_TASK_STATUSES:
                 continue  # already terminal, leave as-is
             if status_enum == PlanTaskStatus.FAILED:
@@ -586,6 +586,14 @@ class MissionPlanOrchestrator(BaseService):
         mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
         brief = mission.brief or mission.description or mission.name
         remaining_budget = (plan.budget_usd_ceiling or get_default_budget_usd()) - plan.total_spent_usd
+
+        # Reset the DB supervisor counter at the start of each new
+        # Temporal workflow — the workflow tracks its own iteration via
+        # self._iteration and the DB counter is for observability only.
+        # Without this reset, the counter grows across workflows and
+        # misleadingly exceeds max_supervisor_iterations.
+        plan.supervisor_iteration_count = 0
+        await self._session.flush()
 
         workflow_input = MissionWorkflowInput(
             mission_run_id=plan.id,
@@ -1205,9 +1213,10 @@ class MissionPlanOrchestrator(BaseService):
             updated_ids.append(task_id)
 
         # Tasks dispatched but never reported: mark failed
+        _dispatchable = (PlanTaskStatus.APPROVED, PlanTaskStatus.QUEUED, PlanTaskStatus.RUNNING)
         for task_id in dispatched_task_ids - seen_task_ids:
             state = await self._repo.get_task_state(plan.id, task_id)
-            if state is None or state.status not in (PlanTaskStatus.QUEUED, PlanTaskStatus.RUNNING):
+            if state is None or state.status not in _dispatchable:
                 continue
             state.status = PlanTaskStatus.FAILED
             state.failure_reason = (
@@ -1295,12 +1304,21 @@ class MissionPlanOrchestrator(BaseService):
                 ],
             })
 
+        # Scale cost and duration proportionally to the subset size.
+        # A single-task subset should not inherit the full plan's $18
+        # estimate — it should get 1/N of the total (or a minimum of $2).
+        total_tasks = len(full_plan.tasks) or 1
+        subset_tasks = len(filtered_tasks) or 1
+        ratio = subset_tasks / total_tasks
+        subset_cost = max(full_plan.estimated_cost_usd * ratio, 2.0)
+        subset_duration = max(full_plan.estimated_duration_seconds * ratio, 60)
+
         return TaskPlan(
             version=full_plan.version,
             mission_id=full_plan.mission_id,
             summary=full_plan.summary,
-            estimated_cost_usd=full_plan.estimated_cost_usd,
-            estimated_duration_seconds=full_plan.estimated_duration_seconds,
+            estimated_cost_usd=round(subset_cost, 2),
+            estimated_duration_seconds=round(subset_duration),
             tasks=filtered_tasks,
             execution_hints=hints,
         )

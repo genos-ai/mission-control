@@ -380,13 +380,24 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
         return extracted
 
     # ---- Status and queries ----
+    # DEPRECATED: These methods query the `executions` table, which is an
+    # ephemeral state cache for in-flight workflow steps. For unified run
+    # history, use ExecutionPersistenceService.list_all_runs() which reads
+    # from `execution_records` — the single source of truth for all runs.
 
     async def get_execution(self, execution_id: str) -> Execution:
-        """Get an execution by ID."""
+        """Get an execution by ID.
+
+        DEPRECATED: Reads from the executions table only. For unified
+        run lookup, use ExecutionPersistenceService.get_execution().
+        """
         return await self._get_execution(execution_id)
 
     async def get_execution_or_none(self, execution_id: str) -> Execution | None:
-        """Get an execution by ID, returning None if not found."""
+        """Get an execution by ID, returning None if not found.
+
+        DEPRECATED: Reads from the executions table only.
+        """
         return await self._execution_repo.get_by_id_or_none(execution_id)
 
     async def list_live_executions(
@@ -394,7 +405,10 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
         mission_id: str | None = None,
         limit: int = 50,
     ) -> list[Execution]:
-        """List live/in-flight executions, optionally filtered by mission."""
+        """List live/in-flight executions, optionally filtered by mission.
+
+        DEPRECATED: Use ExecutionPersistenceService.list_all_runs() instead.
+        """
         if not mission_id:
             return []
         executions, _ = await self._execution_repo.list_executions(
@@ -410,7 +424,11 @@ class ExecutionService(ExecutionDispatchMixin, BaseService):
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Execution], int]:
-        """List executions with optional filters."""
+        """List executions with optional filters.
+
+        DEPRECATED: Reads from the executions table only. For unified
+        run history, use ExecutionPersistenceService.list_all_runs().
+        """
         execution_status = ExecutionState(status) if status else None
         return await self._execution_repo.list_executions(
             status=execution_status,

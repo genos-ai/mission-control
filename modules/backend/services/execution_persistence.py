@@ -506,3 +506,46 @@ class ExecutionPersistenceService(BaseService):
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def list_all_runs(
+        self,
+        mission_id: str | None = None,
+        *,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Unified run history from execution_records.
+
+        execution_records is the single source of truth for all runs —
+        plan dispatches, research, workflow steps, and background tasks.
+        Every execution path creates an early ExecutionRecord so both
+        in-flight and completed runs are visible.
+
+        Returns (runs, total_count) where each run is a normalized dict.
+        """
+        records, total = await self.list_executions(
+            mission_id=mission_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+
+        runs: list[dict] = []
+        for r in records:
+            r_status = r.status.value if hasattr(r.status, "value") else str(r.status)
+            runs.append({
+                "id": str(r.id),
+                "objective": r.objective_statement,
+                "status": r_status,
+                "roster_name": r.roster_name,
+                "total_cost_usd": float(r.total_cost_usd or 0),
+                "started_at": str(r.started_at) if r.started_at else None,
+                "completed_at": str(r.completed_at) if r.completed_at else None,
+                "created_at": str(r.created_at) if r.created_at else None,
+                "task_type": r.task_type,
+                "task_count": len(r.task_executions or []),
+                "execution_record_id": str(r.id),
+            })
+
+        return runs, total

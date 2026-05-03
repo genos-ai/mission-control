@@ -451,26 +451,47 @@ class MissionPlanService(BaseService):
         Initialises task_plan_json if the plan has none yet. The new task
         is appended at the end with status=proposed and a fresh task_id.
         A PlanTaskState row is created so approve/reject/dispatch all work.
+
+        If the plan is COMPLETED, it is reactivated to ACTIVE before
+        adding the task. ARCHIVED plans reject — they are terminal and
+        read-only. PAUSED plans accept new tasks without status change
+        (they'll dispatch when unpaused).
         """
         plan = await self._repo.get_by_id(mission_plan_id)
 
-        # Look up agent version from registry so the plan validator
-        # doesn't reject "latest" as not matching the roster entry.
-        registry = get_registry()
-        agent_version = "1.0.0"
-        if registry.has(agent):
-            agent_version = registry.get(agent).version or "1.0.0"
+        if plan.status == MissionPlanStatus.ARCHIVED:
+            raise ValidationError(
+                f"Cannot add tasks to archived plan {mission_plan_id}. "
+                f"Create a new plan or un-archive first."
+            )
+
+        # Reactivate completed plans so new tasks can be dispatched.
+        if plan.status == MissionPlanStatus.COMPLETED:
+            self._log_operation(
+                "Reactivating plan for new task",
+                plan_id=mission_plan_id,
+                previous_status=plan.status,
+            )
+            plan.status = MissionPlanStatus.ACTIVE
+            await self._session.flush()
+
+        from modules.backend.agents.mission.planning.build_session import (
+            extract_task_sequence,
+            generate_task_id,
+            resolve_agent_version,
+        )
+
+        agent_version = resolve_agent_version(agent)
 
         # Versioned task ID: v{version}-task-{NNN}
         existing: dict = plan.task_plan_json or {}
         version = plan.version
-        version_prefix = f"v{version}-task-"
         existing_tasks = existing.get("tasks", [])
-        existing_count = sum(
-            1 for t in existing_tasks
-            if t.get("task_id", "").startswith(version_prefix)
+        max_seq = max(
+            (extract_task_sequence(t.get("task_id", "")) for t in existing_tasks),
+            default=0,
         )
-        task_id = f"v{version}-task-{existing_count + 1:03d}"
+        task_id = generate_task_id(version, max_seq + 1)
         task_body: dict = {
             "task_id": task_id,
             "agent": agent,

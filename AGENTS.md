@@ -134,6 +134,27 @@ python scripts/score_quality.py --scope modules/ tests/ --use-bandit --use-radon
 
 Use these as quick-reference tools when assessing code quality, planning refactors, or understanding module structure. The code map shows symbol importance (PageRank), cross-references, and import graphs. PQI breaks down into: Maintainability, Security, Modularity, Testability, Robustness, Elegance, Reusability.
 
+### Execution Trace — Troubleshooting "why did this fail"
+
+```bash
+# Trace the most recent run for a mission
+python scripts/trace_execution.py --mission ai-research --last
+
+# Trace a specific execution record (prefix match)
+python scripts/trace_execution.py --execution 019dec4d
+
+# Trace a specific Temporal workflow
+python scripts/trace_execution.py --workflow mission-run-019dcac7-30e
+
+# Show only errors and state transitions
+python scripts/trace_execution.py --mission ai-research --last --filter errors,transitions
+
+# JSON output for piping
+python scripts/trace_execution.py --mission ai-research --last --json
+```
+
+Produces a single chronological timeline correlating Director tool calls, plan task states, Temporal workflow activities, SSE events, DB writes, LLM calls, and structured logs — with an automated diagnosis section that identifies common failure patterns (budget validation failures, stale task states, Director not detecting failures). Use this first when investigating execution failures.
+
 ## What NOT to Do
 
 - Do not put business logic in client code (CLI handlers, Telegram handlers, frontend components)

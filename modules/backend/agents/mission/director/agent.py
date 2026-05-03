@@ -376,6 +376,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     ) -> str:
         """Get recent execution history: status, cost, objective, timestamps.
 
+        Queries both execution_records (plan dispatches, research, workflows)
+        and live in-flight executions for a unified view of all runs.
+
         Args:
             limit: Maximum number of executions to return (default 10).
         """
@@ -383,29 +386,16 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.services.execution import ExecutionService
+            from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-            svc = ExecutionService(ctx.deps.db_session)
-            executions, total = await svc.list_executions(
+            svc = ExecutionPersistenceService(ctx.deps.db_session)
+            runs, total = await svc.list_all_runs(
                 mission_id=ctx.deps.mission_id,
                 limit=limit,
             )
 
-            results = []
-            for ex in executions:
-                results.append({
-                    "id": str(ex.id),
-                    "objective": ex.objective,
-                    "status": ex.status if isinstance(ex.status, str) else ex.status.value,
-                    "trigger_type": ex.trigger_type,
-                    "total_cost_usd": ex.total_cost_usd,
-                    "started_at": str(ex.started_at) if ex.started_at else None,
-                    "completed_at": str(ex.completed_at) if ex.completed_at else None,
-                    "result_summary": ex.result_summary,
-                })
-
             return json.dumps({
-                "executions": results,
+                "executions": runs,
                 "total": total,
             }, indent=2, default=str)
         except Exception as e:
@@ -429,24 +419,46 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             from modules.backend.services.execution import ExecutionService
 
             svc = ExecutionService(ctx.deps.db_session)
-            ex = await svc.get_execution(execution_id)
 
-            return json.dumps({
-                "id": str(ex.id),
-                "objective": ex.objective,
-                "status": ex.status if isinstance(ex.status, str) else ex.status.value,
-                "trigger_type": ex.trigger_type,
-                "triggered_by": ex.triggered_by,
-                "roster_ref": ex.roster_ref,
-                "complexity_tier": ex.complexity_tier,
-                "total_cost_usd": ex.total_cost_usd,
-                "cost_ceiling_usd": ex.cost_ceiling_usd,
-                "started_at": str(ex.started_at) if ex.started_at else None,
-                "completed_at": str(ex.completed_at) if ex.completed_at else None,
-                "result_summary": ex.result_summary,
-                "execution_outcome": ex.execution_outcome,
-                "error_data": ex.error_data,
-            }, indent=2, default=str)
+            # Try executions table first, then execution_records (workflow
+            # runs return execution_record_id, not execution_id).
+            try:
+                ex = await svc.get_execution(execution_id)
+                return json.dumps({
+                    "id": str(ex.id),
+                    "objective": ex.objective,
+                    "status": ex.status if isinstance(ex.status, str) else ex.status.value,
+                    "trigger_type": ex.trigger_type,
+                    "triggered_by": ex.triggered_by,
+                    "roster_ref": ex.roster_ref,
+                    "complexity_tier": ex.complexity_tier,
+                    "total_cost_usd": ex.total_cost_usd,
+                    "cost_ceiling_usd": ex.cost_ceiling_usd,
+                    "started_at": str(ex.started_at) if ex.started_at else None,
+                    "completed_at": str(ex.completed_at) if ex.completed_at else None,
+                    "result_summary": ex.result_summary,
+                    "execution_outcome": ex.execution_outcome,
+                    "error_data": ex.error_data,
+                }, indent=2, default=str)
+            except Exception:
+                pass
+
+            # Fallback: execution_records table
+            from modules.backend.services.execution_persistence import ExecutionPersistenceService
+            record_svc = ExecutionPersistenceService(ctx.deps.db_session)
+            record = await record_svc.get_execution(execution_id)
+            if record:
+                return json.dumps({
+                    "id": str(record.id),
+                    "objective": record.objective_statement,
+                    "status": record.status,
+                    "total_cost_usd": record.total_cost_usd,
+                    "started_at": str(record.started_at) if record.started_at else None,
+                    "completed_at": str(record.completed_at) if record.completed_at else None,
+                    "execution_outcome": record.execution_outcome_json,
+                }, indent=2, default=str)
+
+            return json.dumps({"error": f"Execution '{execution_id}' not found in either table"})
         except Exception as e:
             logger.error("get_execution_detail failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
@@ -642,6 +654,33 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             plan_svc = MissionPlanService(ctx.deps.db_session)
             plan = await plan_svc.get_or_create_plan(mission_id)
 
+            # Guard: warn if the same query recently failed, so the Director
+            # can decide whether to retry or report to the user. This does NOT
+            # block — the Director (or user) can still proceed. The followup
+            # prompt already tells the Director not to auto-retry on failure.
+            from modules.backend.models.mission_plan import PlanTaskStatus as _PTS
+            recent_states = await plan_svc.get_task_states(plan.id, status=_PTS.FAILED)
+            existing_tasks = plan.task_plan_json.get("tasks", []) if plan.task_plan_json else []
+            task_by_id = {t.get("task_id"): t for t in existing_tasks}
+            for state in recent_states:
+                task_body = task_by_id.get(state.task_id, {})
+                task_query = (task_body.get("inputs", {}).get("static", {}).get("query") or "")
+                if task_query == query and state.last_attempt_at:
+                    from modules.backend.core.utils import utc_now as _utc_now
+                    from datetime import timedelta
+                    age = _utc_now() - state.last_attempt_at
+                    if age < timedelta(minutes=10):
+                        logger.warning(
+                            "Research query recently failed — proceeding anyway",
+                            extra={
+                                "query": query[:80],
+                                "failed_task_id": state.task_id,
+                                "failure_reason": state.failure_reason,
+                                "minutes_ago": round(age.total_seconds() / 60, 1),
+                            },
+                        )
+                        break  # warn once, don't block
+
             await plan_svc.add_task(
                 plan.id,
                 description=f"Deep research: {query}",
@@ -674,8 +713,14 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 mission_id=mission_id,
                 trigger_event_types=["mission_plan.supervisor_decision"],
                 prompt_template=(
-                    "The research just completed. Check the results and "
-                    "report back to the user with key findings."
+                    "The research run just finished. "
+                    "Supervisor action: {action}. Reason: {reason}. "
+                    "Failure details: {failure_reason}. "
+                    "IMPORTANT: If the action is 'escalate' or if it failed, "
+                    "do NOT call start_research again — report the failure "
+                    "to the user and suggest they adjust the budget or scope. "
+                    "If the action is 'propose_complete', check the results "
+                    "via get_artifacts and report back with key findings."
                 ),
             )
 

@@ -278,6 +278,7 @@ async def fire_supervisor_followups(
     run_status: str,
     run_cost_usd: float,
     total_spent_usd: float,
+    failure_reason: str = "",
 ) -> int:
     """Fire session followups after a supervisor decision.
 
@@ -312,6 +313,7 @@ async def fire_supervisor_followups(
             execution_record_id=execution_record_id,
             run_status=run_status, run_cost_usd=run_cost_usd,
             total_spent_usd=total_spent_usd,
+            failure_reason=failure_reason,
         )
         await event_bus.publish_to_mission(mission_id, run_event)
 

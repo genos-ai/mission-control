@@ -186,6 +186,7 @@ async def handle_mission(
         validation = validate_plan(plan, roster, mission_budget_usd)
         if not validation.is_valid:
             last_error = "; ".join(validation.errors)
+            await _phase("error", f"Plan validation failed: {last_error}")
             logger.warning(
                 "Precomputed plan failed validation: %s",
                 last_error,
@@ -193,6 +194,14 @@ async def handle_mission(
                     "mission_id": mission_id or mission_run_id,
                     "errors": validation.errors,
                 },
+            )
+            await _emit(
+                event_bus, SystemEvent,
+                session_id=session_id or mission_run_id,
+                source="mission_dispatch",
+                level="error",
+                message=f"Plan validation failed: {last_error}",
+                mission_id=mission_id,
             )
             plan = None
     else:
@@ -282,8 +291,38 @@ async def handle_mission(
         return ExecutionOutcome(
             mission_id=mission_run_id,
             status=ExecutionStatus.FAILED,
+            summary=last_error or "Planning failed",
+            abort_reason=last_error or "Planning failed after retries",
             planning_trace_reference=thinking_trace,
         )
+
+    # Persist plan to mission_plans for Kanban board visibility
+    if db_session is not None and mission_id:
+        try:
+            from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+
+            plan_svc = MissionPlanService(db_session, event_bus=event_bus)
+            mission_plan = await plan_svc.get_or_create_plan(mission_id)
+
+            # Reactivate if previously completed
+            if mission_plan.status != "ACTIVE":
+                mission_plan.status = "ACTIVE"
+
+            orchestrator = MissionPlanOrchestrator(db_session, event_bus=event_bus)
+            await orchestrator._persist_plan(mission_plan, plan, source="handle_mission")
+            await db_session.flush()
+
+            logger.info(
+                "Plan persisted to mission_plans",
+                extra={"mission_id": mission_id, "task_count": len(plan.tasks)},
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist plan to mission_plans (non-fatal)",
+                extra={"mission_id": mission_id},
+                exc_info=True,
+            )
 
     # Provision execution environment if non-local
     env_handle = None

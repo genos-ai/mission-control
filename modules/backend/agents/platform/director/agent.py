@@ -47,17 +47,17 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             return {"error": "No database session available"}
 
         from modules.backend.repositories.mission import MissionRepository
-        from modules.backend.repositories.execution import ExecutionRepository
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
         mission_repo = MissionRepository(db)
-        exec_repo = ExecutionRepository(db)
+        exec_svc = ExecutionPersistenceService(db)
 
         missions = await mission_repo.list_all()
-        active_execs, _ = await exec_repo.list_executions(limit=10)
+        recent_runs, total = await exec_svc.list_executions(limit=10)
 
         return {
             "active_missions": len(missions),
-            "recent_executions": len(active_execs),
+            "recent_executions": total,
             "missions": [
                 {"name": m.name, "status": m.status, "tier": m.tier}
                 for m in missions[:10]
@@ -100,14 +100,14 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             return {"error": "No database session available"}
 
         from sqlalchemy import func, select
-        from modules.backend.models.execution import Execution
+        from modules.backend.models.execution_record import ExecutionRecord
 
         result = await db.execute(
             select(
-                Execution.mission_id,
-                func.sum(Execution.total_cost_usd).label("total_cost"),
-                func.count(Execution.id).label("execution_count"),
-            ).group_by(Execution.mission_id)
+                ExecutionRecord.mission_id,
+                func.sum(ExecutionRecord.total_cost_usd).label("total_cost"),
+                func.count(ExecutionRecord.id).label("execution_count"),
+            ).group_by(ExecutionRecord.mission_id)
         )
         rows = result.all()
 

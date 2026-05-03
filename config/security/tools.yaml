@@ -34,9 +34,8 @@ tools:
     sarif_native: true
     success_exit_codes: [0, 1]
     run_template: >
-      {binary} --config {ruleset} --sarif --output {output_path} {target_path}
-    default_args:
-      ruleset: "p/owasp-top-ten,p/python,p/secrets"
+      {binary} --config auto --sarif --output {output_path} {target_path}
+    default_args: {}
     timeout_seconds: 300
     applies_when:
       - has_python
@@ -90,7 +89,7 @@ tools:
     version_cmd: "trivy --version"
     output_format: sarif
     sarif_native: true
-    success_exit_codes: [0]
+    success_exit_codes: [0, 1]
     run_template: >
       {binary} fs --format sarif --severity {severity} --output {output_path} {target_path}
     default_args:

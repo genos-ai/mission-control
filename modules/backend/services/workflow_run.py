@@ -229,6 +229,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         # session row exists only in this transaction's uncommitted state.
         await self._session.commit()
 
+        # Persist workflow steps as a TaskPlan for Kanban board visibility
+        await self._persist_workflow_as_plan(mission_id, workflow)
+
         logger.info(
             "DB workflow run started",
             extra={
@@ -313,6 +316,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 except Exception:
                     pass  # best-effort
 
+            # Mark remaining plan tasks as FAILED for Kanban board
+            await self._fail_remaining_plan_tasks(mission_id, session.id, str(e))
+
         # Sync the parent ExecutionRecord with workflow outcome
         exec_record.total_cost_usd = run.total_cost_usd
         exec_record.completed_at = utc_now()
@@ -368,6 +374,135 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             context=defn.context or {},
             steps=[WorkflowStepSchema(**s) for s in defn.steps],
         )
+
+    async def _persist_workflow_as_plan(
+        self,
+        mission_id: str,
+        workflow: WorkflowSchema,
+    ) -> None:
+        """Convert workflow steps to a TaskPlan and persist for Kanban visibility.
+
+        Creates PlanTaskState rows and auto-approves all tasks since
+        workflow dispatch is pre-approved. Best-effort — failure logs
+        a warning but does not block workflow execution.
+        """
+        try:
+            from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
+            from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+
+            tasks = []
+            for step in workflow.steps:
+                task_id = f"wf-{step.id}"
+                agent = step.capability or f"workflow:{step.node_type}"
+                tasks.append(TaskDefinition(
+                    task_id=task_id,
+                    agent=agent,
+                    description=step.description or step.label or step.id,
+                    instructions=step.description or f"Workflow step: {step.id}",
+                    dependencies=[f"wf-{d}" for d in step.depends_on],
+                    inputs=TaskInputs(static=step.input or {}),
+                ))
+
+            task_plan = TaskPlan(
+                version="1.0.0",
+                mission_id=mission_id,
+                summary=workflow.description,
+                estimated_cost_usd=workflow.budget.max_cost_usd,
+                estimated_duration_seconds=0,
+                tasks=tasks,
+            )
+
+            plan_svc = MissionPlanService(self._session, event_bus=self._event_bus)
+            plan = await plan_svc.get_or_create_plan(mission_id)
+
+            orchestrator = MissionPlanOrchestrator(self._session, event_bus=self._event_bus)
+            await orchestrator._persist_plan(plan, task_plan, source="workflow_run_service")
+
+            # Mark as workflow-managed so the Temporal autonomous scheduler
+            # (find_ready_plans) skips these — the workflow engine owns dispatch.
+            plan.gate_mode = "workflow_managed"
+
+            # Auto-approve all tasks — workflow dispatch is pre-approved.
+            # Can't use approve_all_proposed() because it requires a user_id FK.
+            # Update status directly on the PlanTaskState rows.
+            from modules.backend.models.mission_plan import PlanTaskStatus
+            from modules.backend.core.utils import utc_now
+            states = await plan_svc._repo.get_task_states(
+                plan.id, status=PlanTaskStatus.PROPOSED,
+            )
+            now = utc_now()
+            for state in states:
+                state.status = PlanTaskStatus.APPROVED
+                state.approved_at = now
+            await self._session.commit()
+
+            logger.info(
+                "Workflow plan persisted for Kanban",
+                extra={
+                    "mission_id": mission_id,
+                    "plan_id": plan.id,
+                    "task_count": len(tasks),
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist workflow plan for Kanban (non-fatal)",
+                extra={"mission_id": mission_id},
+                exc_info=True,
+            )
+            try:
+                await self._session.rollback()
+            except Exception:
+                pass
+
+    async def _fail_remaining_plan_tasks(
+        self,
+        mission_id: str,
+        session_id: str,
+        error: str,
+    ) -> None:
+        """Mark any RUNNING/APPROVED plan tasks as FAILED after workflow failure."""
+        try:
+            from modules.backend.core.database import get_async_session
+            from modules.backend.events.types import MissionPlanTaskStatusChangedEvent
+            from modules.backend.models.mission_plan import PlanTaskStatus
+            from modules.backend.repositories.mission_plan import MissionPlanRepository
+
+            async with get_async_session() as db:
+                repo = MissionPlanRepository(db)
+                plan = await repo.get_by_mission_id(mission_id)
+                if not plan:
+                    return
+
+                import uuid as _uuid
+                for state in await repo.get_task_states(plan.id):
+                    if state.status in (PlanTaskStatus.RUNNING, PlanTaskStatus.APPROVED):
+                        from_status = state.status
+                        state.status = PlanTaskStatus.FAILED
+                        state.failure_reason = error[:500]
+
+                        if self._event_bus:
+                            try:
+                                await self._event_bus.publish_to_mission(
+                                    mission_id,
+                                    MissionPlanTaskStatusChangedEvent(
+                                        session_id=_uuid.UUID(session_id),
+                                        source="workflow_run_service",
+                                        mission_id=mission_id,
+                                        plan_id=plan.id,
+                                        task_id=state.task_id,
+                                        from_status=from_status,
+                                        to_status=PlanTaskStatus.FAILED,
+                                        actor="workflow_run_service",
+                                    ),
+                                )
+                            except Exception:
+                                pass
+
+                await db.commit()
+        except Exception:
+            logger.debug("Failed to mark plan tasks as failed (non-fatal)", exc_info=True)
 
     async def list_runs(
         self,

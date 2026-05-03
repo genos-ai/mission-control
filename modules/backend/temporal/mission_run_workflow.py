@@ -137,6 +137,15 @@ class MissionRunWorkflow:
 
             # ── Step 3b: Fire followups so Director can report ────────
             _mission = input.mission_id or input.mission_run_id
+            # Extract failure reason from outcome for Director visibility
+            _failure_reason = ""
+            if result.status == "failed" and isinstance(result.outcome_json, dict):
+                _failure_reason = (
+                    result.outcome_json.get("abort_reason")
+                    or result.outcome_json.get("summary")
+                    or result.outcome_json.get("error", "")
+                )
+
             await workflow.execute_activity(
                 sup.fire_supervisor_followups,
                 args=[
@@ -146,6 +155,7 @@ class MissionRunWorkflow:
                     eval_result.reviewer,
                     result.status or "unknown",
                     result.total_cost_usd, self._total_cost,
+                    str(_failure_reason)[:500],
                 ],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=RetryPolicy(maximum_attempts=1),
