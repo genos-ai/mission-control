@@ -419,6 +419,10 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             orchestrator = MissionPlanOrchestrator(self._session, event_bus=self._event_bus)
             await orchestrator._persist_plan(plan, task_plan, source="workflow_run_service")
 
+            # Mark as workflow-managed so the Temporal autonomous scheduler
+            # (find_ready_plans) skips these — the workflow engine owns dispatch.
+            plan.gate_mode = "workflow_managed"
+
             # Auto-approve all tasks — workflow dispatch is pre-approved.
             # Can't use approve_all_proposed() because it requires a user_id FK.
             # Update status directly on the PlanTaskState rows.

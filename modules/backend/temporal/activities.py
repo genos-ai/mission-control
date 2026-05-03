@@ -182,6 +182,15 @@ async def persist_mission_outcome(
     from modules.backend.core.database import get_async_session
 
     try:
+        # If outcome_json is an error stub (e.g. from a failed execute_mission),
+        # skip persistence — there's nothing meaningful to persist.
+        if isinstance(outcome_json, dict) and "error" in outcome_json and "mission_id" not in outcome_json:
+            activity.logger.info(
+                "Skipping persist — outcome is an error stub",
+                extra={"mission_id": mission_id, "error": str(outcome_json.get("error"))[:200]},
+            )
+            return False
+
         outcome = ExecutionOutcome.model_validate(outcome_json)
 
         # If execution_record_id is set, handle_mission already persisted
