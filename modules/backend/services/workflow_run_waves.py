@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
+from modules.backend.models.mission_plan import PlanTaskStatus
 from modules.backend.events.types import (
     WorkflowBranchPassedEvent,
     WorkflowConditionEvaluatedEvent,
@@ -72,6 +73,80 @@ class WorkflowRunWavesMixin:
         except Exception:
             logger.debug("Workflow event publish failed", exc_info=True)
 
+    async def _resolve_workflow_plan_id(self, mission_id: str | None) -> str | None:
+        """Look up the MissionPlan ID for Kanban state transitions. Best-effort."""
+        if not mission_id:
+            return None
+        try:
+            from modules.backend.core.database import get_async_session
+            from modules.backend.repositories.mission_plan import MissionPlanRepository
+
+            async with get_async_session() as db:
+                repo = MissionPlanRepository(db)
+                plan = await repo.get_by_mission_id(mission_id)
+                return plan.id if plan else None
+        except Exception:
+            return None
+
+    async def _sync_plan_task_states(
+        self,
+        plan_id: str | None,
+        mission_id: str | None,
+        step_updates: list[tuple[str, PlanTaskStatus]],
+        session_id: str,
+        *,
+        failure_reason: str | None = None,
+        cost_map: dict[str, float] | None = None,
+    ) -> None:
+        """Batch update PlanTaskStates for Kanban board visibility.
+
+        Uses a separate DB session to avoid interfering with the main
+        workflow session. Best-effort — failures are logged, not raised.
+        """
+        if not plan_id or not mission_id or not step_updates:
+            return
+        try:
+            from modules.backend.core.database import get_async_session
+            from modules.backend.core.utils import utc_now
+            from modules.backend.events.types import MissionPlanTaskStatusChangedEvent
+            from modules.backend.repositories.mission_plan import MissionPlanRepository
+
+            async with get_async_session() as db:
+                repo = MissionPlanRepository(db)
+                for step_id, to_status in step_updates:
+                    task_id = f"wf-{step_id}"
+                    state = await repo.get_task_state(plan_id, task_id)
+                    if not state:
+                        continue
+
+                    from_status = state.status
+                    state.status = to_status
+
+                    if to_status == PlanTaskStatus.RUNNING:
+                        state.last_attempt_at = utc_now()
+                    if failure_reason and to_status == PlanTaskStatus.FAILED:
+                        state.failure_reason = failure_reason[:500]
+                    if cost_map and step_id in cost_map:
+                        state.cost_usd = cost_map[step_id]
+
+                    await self._publish_workflow_event(
+                        mission_id,
+                        MissionPlanTaskStatusChangedEvent(
+                            session_id=_uuid.UUID(session_id),
+                            source="workflow_run_service",
+                            mission_id=mission_id,
+                            plan_id=plan_id,
+                            task_id=task_id,
+                            from_status=from_status,
+                            to_status=to_status,
+                            actor="workflow_run_service",
+                        ),
+                    )
+
+                await db.commit()
+        except Exception:
+            logger.debug("Plan task state sync failed (non-fatal)", exc_info=True)
+
     async def _execute_steps(
         self,
         run: WorkflowRun,
@@ -92,6 +167,9 @@ class WorkflowRunWavesMixin:
         completed_outcomes: dict[str, dict] = {}
         step_map = {step.id: step for step in workflow.steps}
         total_steps = len(workflow.steps)
+
+        # Resolve plan_id for Kanban task state updates (best-effort)
+        _plan_id = await self._resolve_workflow_plan_id(run.mission_id)
 
         # Build edge map: (source, target) → label (for condition routing)
         edges_map: dict[tuple[str, str], str | None] = {}
@@ -167,6 +245,18 @@ class WorkflowRunWavesMixin:
                     complexity_tier=step.complexity_tier or "standard",
                 ))
 
+            # Kanban: mark skipped steps as SKIPPED, executable as RUNNING
+            if _plan_id:
+                _wave_skipped = [sid for sid in wave_step_ids if sid not in set(executable_ids)]
+                _state_updates: list[tuple[str, PlanTaskStatus]] = (
+                    [(sid, PlanTaskStatus.SKIPPED) for sid in _wave_skipped]
+                    + [(sid, PlanTaskStatus.RUNNING) for sid in executable_ids]
+                )
+                if _state_updates:
+                    await self._sync_plan_task_states(
+                        _plan_id, run.mission_id, _state_updates, session_id,
+                    )
+
             # Execute all steps in this wave concurrently
             wave_steps = [step_map[sid] for sid in executable_ids]
             if not wave_steps:
@@ -194,6 +284,21 @@ class WorkflowRunWavesMixin:
                     step_id=step.id, success=(status_str != "FAILED"),
                     cost_usd=execution.total_cost_usd,
                 ))
+
+            # Kanban: mark wave steps as completed
+            if _plan_id and wave_steps:
+                _cost_map = {
+                    s.id: getattr(ex, 'total_cost_usd', 0.0)
+                    for s, (ex, _) in zip(wave_steps, results)
+                }
+                _completions: list[tuple[str, PlanTaskStatus]] = [
+                    (step.id, PlanTaskStatus.COMPLETED)
+                    for step in wave_steps
+                ]
+                await self._sync_plan_task_states(
+                    _plan_id, run.mission_id, _completions, session_id,
+                    cost_map=_cost_map,
+                )
 
     async def _execute_wave(
         self,
