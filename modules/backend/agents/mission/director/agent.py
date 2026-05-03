@@ -429,24 +429,46 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             from modules.backend.services.execution import ExecutionService
 
             svc = ExecutionService(ctx.deps.db_session)
-            ex = await svc.get_execution(execution_id)
 
-            return json.dumps({
-                "id": str(ex.id),
-                "objective": ex.objective,
-                "status": ex.status if isinstance(ex.status, str) else ex.status.value,
-                "trigger_type": ex.trigger_type,
-                "triggered_by": ex.triggered_by,
-                "roster_ref": ex.roster_ref,
-                "complexity_tier": ex.complexity_tier,
-                "total_cost_usd": ex.total_cost_usd,
-                "cost_ceiling_usd": ex.cost_ceiling_usd,
-                "started_at": str(ex.started_at) if ex.started_at else None,
-                "completed_at": str(ex.completed_at) if ex.completed_at else None,
-                "result_summary": ex.result_summary,
-                "execution_outcome": ex.execution_outcome,
-                "error_data": ex.error_data,
-            }, indent=2, default=str)
+            # Try executions table first, then execution_records (workflow
+            # runs return execution_record_id, not execution_id).
+            try:
+                ex = await svc.get_execution(execution_id)
+                return json.dumps({
+                    "id": str(ex.id),
+                    "objective": ex.objective,
+                    "status": ex.status if isinstance(ex.status, str) else ex.status.value,
+                    "trigger_type": ex.trigger_type,
+                    "triggered_by": ex.triggered_by,
+                    "roster_ref": ex.roster_ref,
+                    "complexity_tier": ex.complexity_tier,
+                    "total_cost_usd": ex.total_cost_usd,
+                    "cost_ceiling_usd": ex.cost_ceiling_usd,
+                    "started_at": str(ex.started_at) if ex.started_at else None,
+                    "completed_at": str(ex.completed_at) if ex.completed_at else None,
+                    "result_summary": ex.result_summary,
+                    "execution_outcome": ex.execution_outcome,
+                    "error_data": ex.error_data,
+                }, indent=2, default=str)
+            except Exception:
+                pass
+
+            # Fallback: execution_records table
+            from modules.backend.services.execution_persistence import ExecutionPersistenceService
+            record_svc = ExecutionPersistenceService(ctx.deps.db_session)
+            record = await record_svc.get_execution(execution_id)
+            if record:
+                return json.dumps({
+                    "id": str(record.id),
+                    "objective": record.objective_statement,
+                    "status": record.status,
+                    "total_cost_usd": record.total_cost_usd,
+                    "started_at": str(record.started_at) if record.started_at else None,
+                    "completed_at": str(record.completed_at) if record.completed_at else None,
+                    "execution_outcome": record.execution_outcome_json,
+                }, indent=2, default=str)
+
+            return json.dumps({"error": f"Execution '{execution_id}' not found in either table"})
         except Exception as e:
             logger.error("get_execution_detail failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})
