@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { useLiveRunStore } from '@/stores/live-run'
-import { EVENT_ICONS, eventLabel, eventDetail } from '@/lib/event-utils'
+import { getEventIcon, eventLabel, eventDetail } from '@/lib/event-utils'
 
 const STEP_ICONS: Record<string, React.ReactNode> = {
   roster: <Users className="h-3 w-3 text-blue-400" />,
@@ -137,13 +137,11 @@ export function LiveActivityPanel({ onCollapse }: { onCollapse?: () => void }) {
               className="flex items-start gap-2 text-xs text-muted-foreground"
             >
               <span className="mt-0.5 flex-shrink-0">
-                {EVENT_ICONS[ev.event_type] ?? (
-                  <Zap className="h-3 w-3 text-gray-400" />
-                )}
+                {getEventIcon(ev.event_type, ev.data as Record<string, unknown> ?? ev)}
               </span>
               <div className="min-w-0">
                 <span className="font-medium text-foreground">
-                  {eventLabel(ev.event_type)}
+                  {eventLabel(ev.event_type, ev.data as Record<string, unknown>)}
                 </span>
                 {eventDetail(ev.event_type, ev.data ?? ev) && (
                   <span className="ml-1.5 text-muted-foreground truncate">

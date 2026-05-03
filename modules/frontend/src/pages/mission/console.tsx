@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  Zap,
   Pause,
   Play,
   Trash2,
@@ -26,7 +25,7 @@ import {
   selectFilteredEvents,
   type ConsoleEvent,
 } from '@/stores/console'
-import { EVENT_ICONS, eventLabel, eventDetail } from '@/lib/event-utils'
+import { getEventIcon, eventLabel, eventDetail } from '@/lib/event-utils'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
 type CategoryTab = 'all' | 'execution' | 'chat' | 'system'
@@ -365,7 +364,7 @@ function ExecutionRecordRow({ event }: { event: ConsoleEvent }) {
       isFailed ? 'bg-destructive/10' : 'hover:bg-muted/20'
     }`}>
       <span className="mt-0.5 shrink-0">
-        {EVENT_ICONS[event.event_type] ?? <Zap className="h-3 w-3 text-gray-400" />}
+        {getEventIcon(event.event_type, event.data as Record<string, unknown>)}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -413,7 +412,7 @@ function TaskResultRow({ event, isError }: { event: ConsoleEvent; isError: boole
     }`}>
       <div className="flex items-center gap-2">
         <span className="shrink-0">
-          {EVENT_ICONS[event.event_type] ?? <Zap className="h-3 w-3 text-gray-400" />}
+          {getEventIcon(event.event_type, event.data as Record<string, unknown>)}
         </span>
         <span className="text-xs font-medium text-foreground">{agent}</span>
         <Badge variant="outline" className="text-[9px] h-4">{taskId}</Badge>
@@ -561,12 +560,10 @@ function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
         {ts}
       </span>
       <span className="mt-0.5 shrink-0">
-        {EVENT_ICONS[event.event_type] ?? (
-          <Zap className="h-3 w-3 text-gray-400" />
-        )}
+        {getEventIcon(event.event_type, d)}
       </span>
       <span className={`shrink-0 font-medium ${isError ? 'text-red-400' : categoryColor}`}>
-        {eventLabel(event.event_type)}
+        {eventLabel(event.event_type, d)}
       </span>
       {event.source && (
         <span className={`shrink-0 ${isError ? 'text-red-400/70' : 'text-foreground/60'}`}>{event.source}</span>

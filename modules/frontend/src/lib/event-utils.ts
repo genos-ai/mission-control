@@ -6,6 +6,7 @@ import {
   Wrench,
   FileText,
   AlertTriangle,
+  AlertCircle,
   RotateCcw,
   Scale,
   Play,
@@ -18,7 +19,11 @@ import {
 } from 'lucide-react'
 import { createElement } from 'react'
 
-export const EVENT_ICONS: Record<string, React.ReactNode> = {
+// ---------------------------------------------------------------------------
+// Static icon map — used for event types that don't need level-awareness
+// ---------------------------------------------------------------------------
+
+const EVENT_ICONS: Record<string, React.ReactNode> = {
   'mission.narrative': createElement(Radio, { className: 'h-3 w-3 text-sky-400' }),
   'mission.artifact.found': createElement(Package, { className: 'h-3 w-3 text-violet-400' }),
   'plan.created': createElement(FileText, { className: 'h-3 w-3 text-blue-400' }),
@@ -40,15 +45,52 @@ export const EVENT_ICONS: Record<string, React.ReactNode> = {
   'decision.pass': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
   'decision.escalate': createElement(Scale, { className: 'h-3 w-3 text-amber-400' }),
   // System events
-  'system.info': createElement(Info, { className: 'h-3 w-3 text-blue-400' }),
   'system.execution.created': createElement(Activity, { className: 'h-3 w-3 text-blue-400' }),
   'system.execution.completed': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
   'system.budget.warning': createElement(DollarSign, { className: 'h-3 w-3 text-amber-400' }),
   'system.session.created': createElement(UserPlus, { className: 'h-3 w-3 text-blue-400' }),
 }
 
-export function eventLabel(etype: string): string {
-  const last = etype.split('.').slice(-2).join(' ')
+/**
+ * Get the appropriate icon for an event, taking into account its data.level field.
+ * Events like system.info can be info/warning/error — the icon reflects the actual severity.
+ */
+export function getEventIcon(eventType: string, data?: Record<string, unknown>): React.ReactNode {
+  const level = String(data?.level ?? '')
+
+  if (eventType === 'system.info') {
+    if (level === 'error') return createElement(AlertCircle, { className: 'h-3 w-3 text-red-400' })
+    if (level === 'warning') return createElement(AlertTriangle, { className: 'h-3 w-3 text-amber-400' })
+    return createElement(Info, { className: 'h-3 w-3 text-blue-400' })
+  }
+
+  if (eventType === 'plan.phase') {
+    const step = String(data?.step ?? '')
+    if (step === 'error') return createElement(AlertCircle, { className: 'h-3 w-3 text-red-400' })
+    return createElement(Activity, { className: 'h-3 w-3 text-blue-400' })
+  }
+
+  return EVENT_ICONS[eventType] ?? createElement(Zap, { className: 'h-3 w-3 text-gray-400' })
+}
+
+/**
+ * Human-readable label for an event. Level-aware for system.info events.
+ */
+export function eventLabel(eventType: string, data?: Record<string, unknown>): string {
+  if (eventType === 'system.info' && data) {
+    const level = String(data.level ?? 'info')
+    if (level === 'error') return 'System error'
+    if (level === 'warning') return 'System warning'
+    return 'System info'
+  }
+
+  if (eventType === 'plan.phase' && data) {
+    const step = String(data.step ?? '')
+    if (step === 'error') return 'Plan error'
+    return 'Plan phase'
+  }
+
+  const last = eventType.split('.').slice(-2).join(' ')
   return last.charAt(0).toUpperCase() + last.slice(1)
 }
 
@@ -112,6 +154,9 @@ export function eventDetail(etype: string, data: Record<string, unknown>): strin
     return agent ? `${agent} — ${goal}` : goal
   }
   if (etype === 'system.info') {
+    return String(data.message ?? '')
+  }
+  if (etype === 'plan.phase') {
     return String(data.message ?? '')
   }
   if (data.agent_id) return String(data.agent_id)
