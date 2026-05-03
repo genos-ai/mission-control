@@ -419,7 +419,18 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             orchestrator = MissionPlanOrchestrator(self._session, event_bus=self._event_bus)
             await orchestrator._persist_plan(plan, task_plan, source="workflow_run_service")
 
-            await plan_svc.approve_all_proposed(plan.id, "workflow_run_service")
+            # Auto-approve all tasks — workflow dispatch is pre-approved.
+            # Can't use approve_all_proposed() because it requires a user_id FK.
+            # Update status directly on the PlanTaskState rows.
+            from modules.backend.models.mission_plan import PlanTaskStatus
+            from modules.backend.core.utils import utc_now
+            states = await plan_svc._repo.get_task_states(
+                plan.id, status=PlanTaskStatus.PROPOSED,
+            )
+            now = utc_now()
+            for state in states:
+                state.status = PlanTaskStatus.APPROVED
+                state.approved_at = now
             await self._session.commit()
 
             logger.info(
