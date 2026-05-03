@@ -68,6 +68,35 @@ class ExecutionDispatchMixin:
             )
             return execution
 
+        # Create an early ExecutionRecord so execution_records is the
+        # single source of truth for ALL runs — both in-flight and
+        # completed. persist_mission_results() will UPDATE this record
+        # on completion instead of inserting a new one.
+        early_record_id = None
+        try:
+            from modules.backend.models.execution_record import (
+                ExecutionRecord,
+                ExecutionRecordStatus,
+            )
+            early_record = ExecutionRecord(
+                session_id=execution.session_id,
+                status=ExecutionRecordStatus.RUNNING,
+                mission_id=execution.mission_id,
+                roster_name=execution.roster_ref,
+                objective_statement=execution.objective,
+                task_type="workflow_step",
+                started_at=execution.started_at,
+            )
+            self._session.add(early_record)
+            await self._session.flush()
+            early_record_id = early_record.id
+        except Exception:
+            logger.warning(
+                "Failed to create early execution record (non-fatal)",
+                extra={"execution_id": execution_id},
+                exc_info=True,
+            )
+
         try:
             # Extract container config from execution.context (set by
             # create_execution_from_step when a workflow step declares
@@ -85,6 +114,7 @@ class ExecutionDispatchMixin:
                 execution_mode=execution.execution_environment,
                 container_image=exec_ctx.get("container_image"),
                 extra_volumes=exec_ctx.get("extra_volumes"),
+                execution_record_id=early_record_id,
             )
 
             execution.execution_outcome = (

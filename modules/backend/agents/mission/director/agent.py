@@ -376,6 +376,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     ) -> str:
         """Get recent execution history: status, cost, objective, timestamps.
 
+        Queries both execution_records (plan dispatches, research, workflows)
+        and live in-flight executions for a unified view of all runs.
+
         Args:
             limit: Maximum number of executions to return (default 10).
         """
@@ -383,29 +386,16 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.services.execution import ExecutionService
+            from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-            svc = ExecutionService(ctx.deps.db_session)
-            executions, total = await svc.list_executions(
+            svc = ExecutionPersistenceService(ctx.deps.db_session)
+            runs, total = await svc.list_all_runs(
                 mission_id=ctx.deps.mission_id,
                 limit=limit,
             )
 
-            results = []
-            for ex in executions:
-                results.append({
-                    "id": str(ex.id),
-                    "objective": ex.objective,
-                    "status": ex.status if isinstance(ex.status, str) else ex.status.value,
-                    "trigger_type": ex.trigger_type,
-                    "total_cost_usd": ex.total_cost_usd,
-                    "started_at": str(ex.started_at) if ex.started_at else None,
-                    "completed_at": str(ex.completed_at) if ex.completed_at else None,
-                    "result_summary": ex.result_summary,
-                })
-
             return json.dumps({
-                "executions": results,
+                "executions": runs,
                 "total": total,
             }, indent=2, default=str)
         except Exception as e:
