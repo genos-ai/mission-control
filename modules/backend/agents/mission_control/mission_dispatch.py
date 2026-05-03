@@ -186,6 +186,7 @@ async def handle_mission(
         validation = validate_plan(plan, roster, mission_budget_usd)
         if not validation.is_valid:
             last_error = "; ".join(validation.errors)
+            await _phase("error", f"Plan validation failed: {last_error}")
             logger.warning(
                 "Precomputed plan failed validation: %s",
                 last_error,
@@ -193,6 +194,14 @@ async def handle_mission(
                     "mission_id": mission_id or mission_run_id,
                     "errors": validation.errors,
                 },
+            )
+            await _emit(
+                event_bus, SystemEvent,
+                session_id=session_id or mission_run_id,
+                source="mission_dispatch",
+                level="error",
+                message=f"Plan validation failed: {last_error}",
+                mission_id=mission_id,
             )
             plan = None
     else:
