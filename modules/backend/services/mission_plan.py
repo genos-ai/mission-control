@@ -451,8 +451,29 @@ class MissionPlanService(BaseService):
         Initialises task_plan_json if the plan has none yet. The new task
         is appended at the end with status=proposed and a fresh task_id.
         A PlanTaskState row is created so approve/reject/dispatch all work.
+
+        If the plan is COMPLETED, it is reactivated to ACTIVE before
+        adding the task. ARCHIVED plans reject — they are terminal and
+        read-only. PAUSED plans accept new tasks without status change
+        (they'll dispatch when unpaused).
         """
         plan = await self._repo.get_by_id(mission_plan_id)
+
+        if plan.status == MissionPlanStatus.ARCHIVED:
+            raise ValidationError(
+                f"Cannot add tasks to archived plan {mission_plan_id}. "
+                f"Create a new plan or un-archive first."
+            )
+
+        # Reactivate completed plans so new tasks can be dispatched.
+        if plan.status == MissionPlanStatus.COMPLETED:
+            self._log_operation(
+                "Reactivating plan for new task",
+                plan_id=mission_plan_id,
+                previous_status=plan.status,
+            )
+            plan.status = MissionPlanStatus.ACTIVE
+            await self._session.flush()
 
         from modules.backend.agents.mission.planning.build_session import (
             extract_task_sequence,

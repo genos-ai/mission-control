@@ -587,6 +587,14 @@ class MissionPlanOrchestrator(BaseService):
         brief = mission.brief or mission.description or mission.name
         remaining_budget = (plan.budget_usd_ceiling or get_default_budget_usd()) - plan.total_spent_usd
 
+        # Reset the DB supervisor counter at the start of each new
+        # Temporal workflow — the workflow tracks its own iteration via
+        # self._iteration and the DB counter is for observability only.
+        # Without this reset, the counter grows across workflows and
+        # misleadingly exceeds max_supervisor_iterations.
+        plan.supervisor_iteration_count = 0
+        await self._session.flush()
+
         workflow_input = MissionWorkflowInput(
             mission_run_id=plan.id,
             session_id=session_id or str(uuid.uuid4()),
@@ -1296,12 +1304,21 @@ class MissionPlanOrchestrator(BaseService):
                 ],
             })
 
+        # Scale cost and duration proportionally to the subset size.
+        # A single-task subset should not inherit the full plan's $18
+        # estimate — it should get 1/N of the total (or a minimum of $2).
+        total_tasks = len(full_plan.tasks) or 1
+        subset_tasks = len(filtered_tasks) or 1
+        ratio = subset_tasks / total_tasks
+        subset_cost = max(full_plan.estimated_cost_usd * ratio, 2.0)
+        subset_duration = max(full_plan.estimated_duration_seconds * ratio, 60)
+
         return TaskPlan(
             version=full_plan.version,
             mission_id=full_plan.mission_id,
             summary=full_plan.summary,
-            estimated_cost_usd=full_plan.estimated_cost_usd,
-            estimated_duration_seconds=full_plan.estimated_duration_seconds,
+            estimated_cost_usd=round(subset_cost, 2),
+            estimated_duration_seconds=round(subset_duration),
             tasks=filtered_tasks,
             execution_hints=hints,
         )
