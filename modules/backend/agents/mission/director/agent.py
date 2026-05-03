@@ -696,8 +696,11 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 mission_id=mission_id,
                 trigger_event_types=["mission_plan.supervisor_decision"],
                 prompt_template=(
-                    "The research just completed. Check the results and "
-                    "report back to the user with key findings."
+                    "The research run just finished. "
+                    "Supervisor action: {action}. Reason: {reason}. "
+                    "If the action is not 'propose_complete', the run FAILED — "
+                    "tell the user what went wrong. Otherwise check the results "
+                    "and report back with key findings."
                 ),
             )
 
