@@ -664,35 +664,32 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             plan_svc = MissionPlanService(ctx.deps.db_session)
             plan = await plan_svc.get_or_create_plan(mission_id)
 
-            # Deduplication guard: refuse if a research task for the same
-            # query failed within the last 10 minutes. Prevents infinite
-            # retry loops when the Director blindly retries on followup.
-            from datetime import timedelta
-            from modules.backend.core.utils import utc_now as _utc_now
+            # Guard: warn if the same query recently failed, so the Director
+            # can decide whether to retry or report to the user. This does NOT
+            # block — the Director (or user) can still proceed. The followup
+            # prompt already tells the Director not to auto-retry on failure.
             from modules.backend.models.mission_plan import PlanTaskStatus as _PTS
-
             recent_states = await plan_svc.get_task_states(plan.id, status=_PTS.FAILED)
             existing_tasks = plan.task_plan_json.get("tasks", []) if plan.task_plan_json else []
             task_by_id = {t.get("task_id"): t for t in existing_tasks}
-            now = _utc_now()
             for state in recent_states:
                 task_body = task_by_id.get(state.task_id, {})
                 task_query = (task_body.get("inputs", {}).get("static", {}).get("query") or "")
                 if task_query == query and state.last_attempt_at:
-                    age = now - state.last_attempt_at
+                    from modules.backend.core.utils import utc_now as _utc_now
+                    from datetime import timedelta
+                    age = _utc_now() - state.last_attempt_at
                     if age < timedelta(minutes=10):
-                        return json.dumps({
-                            "error": "research_recently_failed",
-                            "failed_task_id": state.task_id,
-                            "failure_reason": state.failure_reason or "unknown",
-                            "minutes_ago": round(age.total_seconds() / 60, 1),
-                            "message": (
-                                f"A research task for this exact query failed "
-                                f"{round(age.total_seconds() / 60, 1)} minutes ago: "
-                                f"{state.failure_reason or 'unknown'}. "
-                                f"Do NOT retry — report the failure to the user."
-                            ),
-                        }, indent=2)
+                        logger.warning(
+                            "Research query recently failed — proceeding anyway",
+                            extra={
+                                "query": query[:80],
+                                "failed_task_id": state.task_id,
+                                "failure_reason": state.failure_reason,
+                                "minutes_ago": round(age.total_seconds() / 60, 1),
+                            },
+                        )
+                        break  # warn once, don't block
 
             await plan_svc.add_task(
                 plan.id,
