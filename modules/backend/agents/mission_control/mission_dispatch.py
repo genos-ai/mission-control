@@ -291,6 +291,8 @@ async def handle_mission(
         return ExecutionOutcome(
             mission_id=mission_run_id,
             status=ExecutionStatus.FAILED,
+            summary=last_error or "Planning failed",
+            abort_reason=last_error or "Planning failed after retries",
             planning_trace_reference=thinking_trace,
         )
 
