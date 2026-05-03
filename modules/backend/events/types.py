@@ -595,6 +595,7 @@ class MissionPlanRunCompletedEvent(SessionEvent):
     run_status: str = ""
     run_cost_usd: float = 0.0
     completed_task_count: int = 0
+    failure_reason: str = ""
     failed_task_count: int = 0
     total_spent_usd: float = 0.0
 
