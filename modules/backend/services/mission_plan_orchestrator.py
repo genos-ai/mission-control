@@ -1205,9 +1205,10 @@ class MissionPlanOrchestrator(BaseService):
             updated_ids.append(task_id)
 
         # Tasks dispatched but never reported: mark failed
+        _dispatchable = (PlanTaskStatus.APPROVED, PlanTaskStatus.QUEUED, PlanTaskStatus.RUNNING)
         for task_id in dispatched_task_ids - seen_task_ids:
             state = await self._repo.get_task_state(plan.id, task_id)
-            if state is None or state.status not in (PlanTaskStatus.QUEUED, PlanTaskStatus.RUNNING):
+            if state is None or state.status not in _dispatchable:
                 continue
             state.status = PlanTaskStatus.FAILED
             state.failure_reason = (
