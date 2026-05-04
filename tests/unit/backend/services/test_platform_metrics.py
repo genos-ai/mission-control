@@ -4,7 +4,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.agent_catalog import AgentCatalog
-from modules.backend.models.execution import Execution, WorkflowRun
+from modules.backend.models.execution import Execution
+from modules.backend.models.workflow_run import WorkflowRun
 from modules.backend.models.execution_record import ExecutionRecord, TaskExecution
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
 from modules.backend.models.session import Session

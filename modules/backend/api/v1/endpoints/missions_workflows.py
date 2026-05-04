@@ -79,7 +79,7 @@ async def list_workflow_runs(
     offset: int = Query(0, ge=0),
 ) -> ApiResponse:
     """List past and in-flight workflow runs for a mission."""
-    from modules.backend.models.execution import WorkflowRunState
+    from modules.backend.models.workflow_run import WorkflowRunState
     from modules.backend.repositories.workflow_run import WorkflowRunRepository
 
     repo = WorkflowRunRepository(db)

@@ -184,7 +184,6 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
 
     from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.clients.cli.report import get_console, render_workflow_completion
-    from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
 
     console = get_console()
@@ -217,12 +216,19 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
                 gate=gate,
             )
 
-    async with ExecutionService.factory() as execution_service:
-        executions, _ = await execution_service.list_executions(
-            workflow_run_id=run.id,
-        )
+    from modules.backend.core.database import get_async_session
+    from modules.backend.models.execution_record import ExecutionRecord
+    from sqlalchemy import select
 
-    await render_workflow_completion(console, run, executions)
+    async with get_async_session() as db:
+        result = await db.execute(
+            select(ExecutionRecord)
+            .where(ExecutionRecord.workflow_run_id == run.id)
+            .order_by(ExecutionRecord.created_at)
+        )
+        step_records = list(result.scalars().all())
+
+    await render_workflow_completion(console, run, step_records)
 
 
 async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
@@ -325,8 +331,8 @@ async def _preflight_gate(workflow_name: str) -> None:
 
 
 async def _load_run_with_executions(run_id: str):
-    """Load a workflow run and its executions from the database."""
-    from modules.backend.services.execution import ExecutionService
+    """Load a workflow run and its step execution records from the database."""
+    from modules.backend.core.database import get_async_session
     from modules.backend.services.workflow_run import WorkflowRunService
 
     async with WorkflowRunService.factory() as run_service:
@@ -335,9 +341,15 @@ async def _load_run_with_executions(run_id: str):
             click.echo(click.style(f"Workflow run '{run_id}' not found.", fg="red"), err=True)
             sys.exit(1)
 
-    async with ExecutionService.factory() as execution_service:
-        executions, _ = await execution_service.list_executions(
-            workflow_run_id=run.id,
-        )
+    from modules.backend.models.execution_record import ExecutionRecord
+    from sqlalchemy import select
 
-    return run, executions
+    async with get_async_session() as db:
+        result = await db.execute(
+            select(ExecutionRecord)
+            .where(ExecutionRecord.workflow_run_id == run.id)
+            .order_by(ExecutionRecord.created_at)
+        )
+        step_records = list(result.scalars().all())
+
+    return run, step_records

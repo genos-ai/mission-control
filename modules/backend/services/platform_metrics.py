@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.agent_catalog import AgentCatalog
-from modules.backend.models.execution import Execution, WorkflowRun
+from modules.backend.models.workflow_run import WorkflowRun
 from modules.backend.models.execution_record import (
     ExecutionRecord,
     TaskExecution,

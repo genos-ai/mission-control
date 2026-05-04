@@ -42,8 +42,8 @@ async def list_executions(
 ) -> ApiResponse:
     """List execution records with optional filters.
 
-    Merges persisted records (execution_records) with live/in-flight
-    runs (executions table) so newly started runs appear immediately.
+    Reads from execution_records only — the single source of truth
+    for all runs (Plan 71).
     """
     service = ExecutionPersistenceService(db)
     executions, total = await service.list_executions(
@@ -55,68 +55,18 @@ async def list_executions(
         offset=offset,
     )
 
-    # Plan 46 Phase 2 #3: task_count is populated from the eager-loaded
-    # task_executions relationship (see repositories/execution_record.py::
-    # list_executions). Model validation pulls in the rest verbatim.
-    persisted = [
+    items = [
         ExecutionRecordResponse.model_validate(e).model_copy(
             update={"task_count": len(e.task_executions or [])}
         )
         for e in executions
     ]
 
-    # Merge live executions not yet persisted
-    from modules.backend.services.execution import ExecutionService
-
-    execution_svc = ExecutionService(db)
-    live_runs = await execution_svc.list_live_executions(
-        mission_id=mission_id, limit=50,
-    )
-
-    persisted_ids = {str(e.id) for e in executions}
-    for live in live_runs:
-        if str(live.id) in persisted_ids:
-            continue
-        # Apply status filter if given
-        live_status = live.status.value if hasattr(live.status, "value") else str(live.status)
-        if status and live_status.lower() != status.lower():
-            continue
-        from datetime import datetime as _dt
-
-        def _parse_ts(val: object) -> _dt | None:
-            if val is None:
-                return None
-            if isinstance(val, _dt):
-                return val
-            try:
-                return _dt.fromisoformat(str(val).replace(" ", "T"))
-            except (ValueError, TypeError):
-                return None
-
-        from modules.backend.core.utils import utc_now
-        now = utc_now()
-        persisted.append(ExecutionRecordResponse.model_validate({
-            "id": str(live.id),
-            "session_id": str(live.session_id),
-            "roster_name": live.roster_ref,
-            "status": live_status,
-            "total_cost_usd": float(live.total_cost_usd or 0),
-            "started_at": _parse_ts(live.started_at),
-            "completed_at": _parse_ts(live.completed_at),
-            "parent_execution_record_id": None,
-            "objective_statement": getattr(live, "objective", None),
-            "created_at": _parse_ts(live.created_at) or now,
-            "updated_at": _parse_ts(live.updated_at) or _parse_ts(live.created_at) or now,
-        }))
-
-    # Sort by created_at descending
-    persisted.sort(key=lambda e: e.created_at or "", reverse=True)
-
     return ApiResponse(
         success=True,
         data=ExecutionListResponse(
-            executions=persisted[:limit],
-            total=total + len(persisted) - len(executions),
+            executions=items,
+            total=total,
             page_size=limit,
             offset=offset,
         ).model_dump(),
@@ -136,52 +86,18 @@ async def get_execution(
 ) -> ApiResponse:
     """Get an execution record with full details.
 
-    Checks both execution_records (post-run persistence) and
-    executions (live/in-flight runs) so the frontend can display
-    runs that are still in progress.
+    Reads from execution_records only (Plan 71).
     """
     service = ExecutionPersistenceService(db)
     execution = await service.get_execution(execution_id)
 
-    if execution:
-        response = ExecutionRecordDetailResponse.model_validate(execution)
-        return ApiResponse(
-            success=True,
-            data=response.model_dump(),
-            metadata={"request_id": request_id},
-        )
-
-    # Fallback: check the live executions table
-    from modules.backend.services.execution import ExecutionService
-
-    execution_svc = ExecutionService(db)
-    live = await execution_svc.get_execution_or_none(execution_id)
-
-    if not live:
+    if not execution:
         raise NotFoundError(f"Execution '{execution_id}' not found")
 
-    # Map live execution to the detail response shape
+    response = ExecutionRecordDetailResponse.model_validate(execution)
     return ApiResponse(
         success=True,
-        data={
-            "id": str(live.id),
-            "session_id": str(live.session_id),
-            "roster_name": live.roster_ref,
-            "status": live.status.value if hasattr(live.status, "value") else str(live.status),
-            "total_cost_usd": float(live.total_cost_usd or 0),
-            "started_at": str(live.started_at) if live.started_at else None,
-            "completed_at": str(live.completed_at) if live.completed_at else None,
-            "created_at": str(live.created_at) if live.created_at else None,
-            "updated_at": str(live.updated_at) if live.updated_at else None,
-            "parent_execution_record_id": None,
-            "objective_statement": live.objective,
-            "objective_category": None,
-            "task_plan_json": None,
-            "execution_outcome_json": None,
-            "planning_thinking_trace": None,
-            "task_executions": [],
-            "decisions": [],
-        },
+        data=response.model_dump(),
         metadata={"request_id": request_id},
     )
 
@@ -267,15 +183,50 @@ async def execute_execution(
             return ApiResponse(**cached)
 
     import asyncio
+
     from modules.backend.core.config import get_app_config
-    from modules.backend.services.execution import ExecutionService
 
     config = get_app_config()
+    service = ExecutionPersistenceService(db)
 
-    service = ExecutionService(session=db)
+    record = await service.get_execution(execution_id)
+    if not record:
+        raise NotFoundError(f"Execution '{execution_id}' not found")
 
     if config.temporal.enabled:
-        result = await service.start_temporal_execution(execution_id)
+        from modules.backend.core.exceptions import ApplicationError
+        from modules.backend.core.config import get_default_budget_usd
+        from modules.backend.temporal.client import get_temporal_client
+        from modules.backend.temporal.models import MissionWorkflowInput
+        from modules.backend.temporal.workflow import AgentMissionWorkflow
+
+        if not record.mission_id:
+            raise ApplicationError(f"Execution record '{execution_id}' has no mission_id")
+        if not record.session_id:
+            raise ApplicationError(f"Execution record '{execution_id}' has no session_id")
+
+        client = await get_temporal_client()
+        handle = await client.start_workflow(
+            AgentMissionWorkflow.run,
+            MissionWorkflowInput(
+                mission_run_id=execution_id,
+                session_id=record.session_id,
+                mission_brief=record.objective_statement or "",
+                roster_name=record.roster_name or "default",
+                mission_budget_usd=get_default_budget_usd(),
+                mission_id=record.mission_id,
+                approval_timeout_seconds=config.temporal.approval_timeout_seconds,
+                escalation_timeout_seconds=config.temporal.escalation_timeout_seconds,
+                notification_timeout_seconds=config.temporal.notification_timeout_seconds,
+            ),
+            id=f"execution-{execution_id}",
+            task_queue=config.temporal.task_queue,
+        )
+        result = {
+            "workflow_id": handle.id,
+            "execution_id": execution_id,
+            "status": "started",
+        }
         response = ApiResponse(
             success=True,
             data=result,
@@ -285,33 +236,55 @@ async def execute_execution(
             await idempotency.cache_response(response.model_dump())
         return response
 
-    # Load execution to return data immediately
-    execution = await service.get_execution(execution_id)
+    # Non-Temporal: fire-and-forget via handle_mission (Plan 71)
 
-    # Fire-and-forget: run dispatch in background task
-    _bg_mission_id = getattr(execution, "mission_id", None)
+    _bg_mission_id = record.mission_id
 
     async def _run_in_background(exec_id: str) -> None:
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.core.config import get_redis_url
+        from modules.backend.agents.mission_control.mission_dispatch import handle_mission
+        from modules.backend.agents.mission_control.models import NoOpEventBus
+        from modules.backend.core.config import get_default_budget_usd, get_redis_url
+        from modules.backend.core.database import get_async_session
+        from modules.backend.services.session import SessionService
         from redis.asyncio import Redis as AsyncRedis
 
         try:
             redis = AsyncRedis.from_url(get_redis_url())
+            from modules.backend.events.bus import SessionEventBus
             event_bus = SessionEventBus(redis, mission_id=_bg_mission_id)
 
-            async with ExecutionService.factory(event_bus=event_bus) as svc:
-                await svc.run_execution(exec_id)
+            async with get_async_session() as bg_db:
+                svc = ExecutionPersistenceService(bg_db)
+                rec = await svc.get_execution(exec_id)
+                if not rec:
+                    return
+
+                session_svc = SessionService(bg_db)
+                await handle_mission(
+                    mission_run_id=f"mission-{rec.session_id}",
+                    mission_brief=rec.objective_statement or "",
+                    session_service=session_svc,
+                    event_bus=event_bus,
+                    roster_name=rec.roster_name or "default",
+                    mission_budget_usd=get_default_budget_usd(),
+                    session_id=rec.session_id,
+                    mission_id=rec.mission_id,
+                    db_session=bg_db,
+                    execution_record_id=exec_id,
+                )
+                await bg_db.commit()
         except Exception:
             logger.exception("Background execution failed", extra={"execution_id": exec_id})
 
     asyncio.create_task(_run_in_background(execution_id))
 
-    from modules.backend.schemas.execution import ExecutionResponse
-    response_data = ExecutionResponse.model_validate(execution)
     response = ApiResponse(
         success=True,
-        data=response_data.model_dump(),
+        data={
+            "id": str(record.id),
+            "status": "running",
+            "objective": record.objective_statement,
+        },
         metadata={"request_id": request_id},
     )
     if idempotency:
@@ -330,57 +303,30 @@ async def cancel_execution(
     request_id: RequestId,
     reason: str = "Cancelled by user",
 ) -> ApiResponse:
-    """Cancel a pending or running execution.
+    """Cancel a pending or running execution via execution_records (Plan 71)."""
+    service = ExecutionPersistenceService(db)
+    record = await service.get_execution(execution_id)
+    if not record:
+        raise NotFoundError(f"Execution '{execution_id}' not found")
 
-    Accepts either an executions ID or an execution_records ID (the
-    frontend's run-live page uses execution_record IDs from the URL).
-    """
-    from modules.backend.services.execution import ExecutionService
-
-    service = ExecutionService(db)
-
-    # Try the executions table first (legacy/direct dispatch path)
-    execution = await service.get_execution_or_none(execution_id)
-    if execution:
-        status = execution.status.value if hasattr(execution.status, "value") else str(execution.status)
-        if status in ("completed", "failed", "cancelled"):
-            return ApiResponse(
-                success=True,
-                data={"id": str(execution.id), "status": status, "message": "Already terminal"},
-                metadata={"request_id": request_id},
-            )
-        execution = await service.cancel_execution(execution_id, reason)
+    status = record.status.value if hasattr(record.status, "value") else str(record.status)
+    if status.lower() in ("completed", "failed", "cancelled", "timed_out"):
         return ApiResponse(
             success=True,
-            data={"id": str(execution.id), "status": "cancelled"},
+            data={"id": str(record.id), "status": status, "message": "Already terminal"},
             metadata={"request_id": request_id},
         )
 
-    # Try execution_records (Temporal/plan-dispatch path — what the frontend uses)
-    from modules.backend.repositories.execution_record import ExecutionRecordRepository
-    record_repo = ExecutionRecordRepository(db)
-    record = await record_repo.get_by_id_or_none(execution_id)
-    if record:
-        status = record.status.value if hasattr(record.status, "value") else str(record.status)
-        if status in ("completed", "failed", "cancelled", "COMPLETED", "FAILED", "CANCELLED"):
-            return ApiResponse(
-                success=True,
-                data={"id": str(record.id), "status": status, "message": "Already terminal"},
-                metadata={"request_id": request_id},
-            )
-        # Cancel by updating status — the Temporal workflow will detect this
-        await persistence.complete_execution(
-            execution_record_id=str(record.id),
-            status="cancelled",
-        )
-        await db.commit()
-        return ApiResponse(
-            success=True,
-            data={"id": str(record.id), "status": "cancelled"},
-            metadata={"request_id": request_id},
-        )
-
-    raise NotFoundError(f"Execution '{execution_id}' not found")
+    await service.complete_execution(
+        execution_record_id=str(record.id),
+        status="cancelled",
+    )
+    await db.commit()
+    return ApiResponse(
+        success=True,
+        data={"id": str(record.id), "status": "cancelled"},
+        metadata={"request_id": request_id},
+    )
 
 
 @router.post(

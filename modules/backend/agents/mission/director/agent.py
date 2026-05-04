@@ -416,49 +416,27 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.services.execution import ExecutionService
-
-            svc = ExecutionService(ctx.deps.db_session)
-
-            # Try executions table first, then execution_records (workflow
-            # runs return execution_record_id, not execution_id).
-            try:
-                ex = await svc.get_execution(execution_id)
-                return json.dumps({
-                    "id": str(ex.id),
-                    "objective": ex.objective,
-                    "status": ex.status if isinstance(ex.status, str) else ex.status.value,
-                    "trigger_type": ex.trigger_type,
-                    "triggered_by": ex.triggered_by,
-                    "roster_ref": ex.roster_ref,
-                    "complexity_tier": ex.complexity_tier,
-                    "total_cost_usd": ex.total_cost_usd,
-                    "cost_ceiling_usd": ex.cost_ceiling_usd,
-                    "started_at": str(ex.started_at) if ex.started_at else None,
-                    "completed_at": str(ex.completed_at) if ex.completed_at else None,
-                    "result_summary": ex.result_summary,
-                    "execution_outcome": ex.execution_outcome,
-                    "error_data": ex.error_data,
-                }, indent=2, default=str)
-            except Exception:
-                pass
-
-            # Fallback: execution_records table
             from modules.backend.services.execution_persistence import ExecutionPersistenceService
-            record_svc = ExecutionPersistenceService(ctx.deps.db_session)
-            record = await record_svc.get_execution(execution_id)
+
+            svc = ExecutionPersistenceService(ctx.deps.db_session)
+            record = await svc.get_execution(execution_id)
             if record:
+                status = record.status.value if hasattr(record.status, "value") else str(record.status)
                 return json.dumps({
                     "id": str(record.id),
                     "objective": record.objective_statement,
-                    "status": record.status,
+                    "status": status,
+                    "roster_name": record.roster_name,
                     "total_cost_usd": record.total_cost_usd,
+                    "cost_ceiling_usd": record.cost_ceiling_usd,
                     "started_at": str(record.started_at) if record.started_at else None,
                     "completed_at": str(record.completed_at) if record.completed_at else None,
                     "execution_outcome": record.execution_outcome_json,
+                    "workflow_run_id": record.workflow_run_id,
+                    "workflow_step_id": record.workflow_step_id,
                 }, indent=2, default=str)
 
-            return json.dumps({"error": f"Execution '{execution_id}' not found in either table"})
+            return json.dumps({"error": f"Execution '{execution_id}' not found"})
         except Exception as e:
             logger.error("get_execution_detail failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
             return json.dumps({"error": str(e)})

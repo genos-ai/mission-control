@@ -10,13 +10,7 @@ from fastapi import APIRouter
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.execution import (
-    ExecutionCreate,
-    ExecutionDetailResponse,
-    ExecutionResponse,
-)
 
-from modules.backend.services.execution import ExecutionService
 from modules.backend.services.workflow import WorkflowService
 
 router = APIRouter()
@@ -24,10 +18,6 @@ router = APIRouter()
 
 def _get_workflow_service() -> WorkflowService:
     return WorkflowService()
-
-
-def _get_execution_service(db: DbSession) -> ExecutionService:
-    return ExecutionService(session=db)
 
 
 # ---- Workflow endpoints ----
@@ -76,36 +66,27 @@ async def get_workflow(
     )
 
 
-# ---- Mission endpoints ----
+# ---- Mission endpoints (reads from execution_records — Plan 71) ----
 
 
 @router.post(
     "/missions",
     response_model=ApiResponse,
-    summary="Create ad-hoc mission",
+    summary="Create ad-hoc mission (DEPRECATED)",
 )
 async def create_execution(
-    data: ExecutionCreate,
-    db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Create and start an ad-hoc execution."""
-    service = _get_execution_service(db)
-
-    execution = await service.create_adhoc_execution(
-        objective=data.objective,
-        triggered_by=data.triggered_by,
-        roster_ref=data.roster_ref,
-        complexity_tier=data.complexity_tier,
-        cost_ceiling_usd=data.cost_ceiling_usd,
-        upstream_context=data.upstream_context,
-        mission_id=data.mission_id,
-    )
-
-    response = ExecutionResponse.model_validate(execution)
+    """DEPRECATED (Plan 62): Use MissionPlanService.run_objective() instead."""
     return ApiResponse(
-        success=True,
-        data=response.model_dump(),
+        success=False,
+        data={
+            "error": "deprecated",
+            "message": (
+                "Ad-hoc execution creation is deprecated (Plan 62). "
+                "Use the plan dispatch path instead."
+            ),
+        },
         metadata={"request_id": request_id},
     )
 
@@ -119,23 +100,23 @@ async def list_missions(
     db: DbSession,
     request_id: RequestId,
     status: str | None = None,
-    workflow_run_id: str | None = None,
+    mission_id: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> ApiResponse:
-    """List missions with optional filters."""
-    service = _get_execution_service(db)
-    executions, total = await service.list_executions(
+    """List missions from execution_records."""
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+    service = ExecutionPersistenceService(db)
+    runs, total = await service.list_all_runs(
+        mission_id=mission_id,
         status=status,
-        workflow_run_id=workflow_run_id,
         limit=limit,
         offset=offset,
     )
-
-    items = [ExecutionResponse.model_validate(m).model_dump() for m in executions]
     return ApiResponse(
         success=True,
-        data={"executions": items, "total": total},
+        data={"executions": runs, "total": total},
         metadata={"request_id": request_id},
     )
 
@@ -150,14 +131,32 @@ async def get_mission(
     db: DbSession,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get detailed mission info including context and results."""
-    service = _get_execution_service(db)
-    execution = await service.get_execution(mission_id)
+    """Get detailed mission info from execution_records."""
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    response = ExecutionDetailResponse.model_validate(execution)
+    service = ExecutionPersistenceService(db)
+    record = await service.get_execution(mission_id)
+
+    if not record:
+        raise NotFoundError(
+            message=f"Execution '{mission_id}' not found",
+        )
+
+    status = record.status.value if hasattr(record.status, "value") else str(record.status)
     return ApiResponse(
         success=True,
-        data=response.model_dump(),
+        data={
+            "id": str(record.id),
+            "session_id": str(record.session_id) if record.session_id else None,
+            "roster_name": record.roster_name,
+            "status": status,
+            "total_cost_usd": float(record.total_cost_usd or 0),
+            "objective_statement": record.objective_statement,
+            "task_plan_json": record.task_plan_json,
+            "execution_outcome_json": record.execution_outcome_json,
+            "started_at": str(record.started_at) if record.started_at else None,
+            "completed_at": str(record.completed_at) if record.completed_at else None,
+        },
         metadata={"request_id": request_id},
     )
 
@@ -173,13 +172,33 @@ async def cancel_mission(
     request_id: RequestId,
     reason: str = "User cancelled",
 ) -> ApiResponse:
-    """Cancel a running or pending mission."""
-    service = _get_execution_service(db)
-    execution = await service.cancel_execution(mission_id, reason=reason)
+    """Cancel a running or pending mission via execution_records."""
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    response = ExecutionResponse.model_validate(execution)
+    service = ExecutionPersistenceService(db)
+    record = await service.get_execution(mission_id)
+
+    if not record:
+        raise NotFoundError(
+            message=f"Execution '{mission_id}' not found",
+        )
+
+    status = record.status.value if hasattr(record.status, "value") else str(record.status)
+    if status.lower() in ("completed", "failed", "cancelled", "timed_out"):
+        return ApiResponse(
+            success=True,
+            data={"id": str(record.id), "status": status, "message": "Already terminal"},
+            metadata={"request_id": request_id},
+        )
+
+    await service.complete_execution(
+        execution_record_id=str(record.id),
+        status="cancelled",
+    )
+    await db.commit()
+
     return ApiResponse(
         success=True,
-        data=response.model_dump(),
+        data={"id": str(record.id), "status": "cancelled"},
         metadata={"request_id": request_id},
     )

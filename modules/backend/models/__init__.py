@@ -1,7 +1,7 @@
 # Database models package
 from modules.backend.models.base import Base
 from modules.backend.models.agent_catalog import AgentCatalog
-from modules.backend.models.execution import Execution, WorkflowRun
+from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.models.execution_record import (
     ExecutionDecision,
     ExecutionRecord,
@@ -49,7 +49,6 @@ __all__ = [
     "ContextChange",
     "ContextMilestone",
     "Embedding",
-    "Execution",
     "ExecutionDecision",
     "ExecutionRecord",
     "IntentSource",
@@ -86,5 +85,6 @@ __all__ = [
     "HumanInputRequest",
     "HumanInputRequestStatus",
     "WorkflowRun",
+    "WorkflowRunState",
     "WorkflowSchedule",
 ]
