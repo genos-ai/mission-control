@@ -7,8 +7,6 @@ EventBusProtocol / NoOpEventBus: event emission interface used by
     services, agents, and temporal activities.
 SessionServiceProtocol: agents layer depends on this instead of
     the concrete SessionService.
-ExecutionDispatchProtocol: services layer depends on this instead of
-    the concrete MissionControlDispatchAdapter.
 """
 
 from __future__ import annotations
@@ -108,22 +106,3 @@ class SessionServiceProtocol(Protocol):
     ) -> None: ...
 
 
-class ExecutionDispatchProtocol(Protocol):
-    """Interface for execution dispatch used by ExecutionService.
-
-    The services layer codes against this protocol. The concrete
-    MissionControlDispatchAdapter in the agents layer satisfies it
-    structurally.
-    """
-
-    async def execute(
-        self,
-        mission_brief: str,
-        roster_ref: str = ...,
-        complexity_tier: str = ...,
-        upstream_context: dict | None = ...,
-        cost_ceiling_usd: float | None = ...,
-        session_id: str | None = ...,
-        mission_id: str | None = ...,
-        gate: object | None = ...,
-    ) -> dict: ...

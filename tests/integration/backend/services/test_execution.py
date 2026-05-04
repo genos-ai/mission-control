@@ -10,7 +10,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import NotFoundError, ValidationError
-from modules.backend.models.execution import Execution, ExecutionState, WorkflowRun
+from modules.backend.models.execution import Execution, ExecutionState
+from modules.backend.models.workflow_run import WorkflowRun
 from modules.backend.models.mission import Mission
 from modules.backend.models.session import Session
 from modules.backend.models.user import User

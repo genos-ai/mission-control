@@ -18,7 +18,6 @@ from pydantic_ai import UsageLimits
 from modules.backend.core.logging import get_logger
 from modules.backend.core.protocols import (
     EventBusProtocol,
-    ExecutionDispatchProtocol,
     NoOpEventBus,
     SessionServiceProtocol,
 )
@@ -34,7 +33,6 @@ __all__ = [
     "ExecuteAgentFn",
     "NoOpEventBus",
     "SessionServiceProtocol",
-    "ExecutionDispatchProtocol",
     "ContextCuratorProtocol",
     "ContextAssemblerProtocol",
     "CollectResult",

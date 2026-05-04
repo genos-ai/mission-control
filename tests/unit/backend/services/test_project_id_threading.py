@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.base import SYSTEM_WORKFLOW_ID
 from modules.backend.core.config_schema import WorkflowsSchema
-from modules.backend.models.execution import ExecutionState, WorkflowRun, WorkflowRunState
+from modules.backend.models.execution import ExecutionState
+from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.models.mission import Mission
 from modules.backend.models.session import Session
 from modules.backend.services.execution import ExecutionService

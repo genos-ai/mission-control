@@ -9,7 +9,7 @@ Steps within the same wave (no mutual dependencies) execute in parallel,
 each with its own DB session to avoid SQLAlchemy async flush conflicts.
 
 This is the bridge between the stateless WorkflowService (YAML loading)
-and the stateful ExecutionService (execution lifecycle).
+and the stateful ExecutionPersistenceService (execution lifecycle).
 
 Wave-execution methods (_execute_steps, _execute_wave, _execute_step,
 _build_step_objective, _compute_waves) live in workflow_run_waves.py
@@ -24,18 +24,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-from modules.backend.models.execution import WorkflowRun, WorkflowRunState
+from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
 from modules.backend.schemas.workflow import WorkflowSchema
 from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.backend.services.base import BaseService
-from modules.backend.services.execution import ExecutionService
 from modules.backend.services.workflow import WorkflowService
-from modules.backend.services.workflow_run_waves import WorkflowRunWavesMixin
+from modules.backend.services.workflow_run_waves import StepContext, WorkflowRunWavesMixin
 
-# Factory that returns an async context manager yielding an ExecutionService.
-# Default implementation: ExecutionService.factory
-ExecutionServiceFactory = Callable[[], AbstractAsyncContextManager[ExecutionService]]
+# Factory that returns an async context manager yielding a StepContext.
+StepContextFactory = Callable[[], AbstractAsyncContextManager[StepContext]]
 
 logger = get_logger(__name__)
 
@@ -46,13 +44,13 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
     def __init__(
         self,
         session: AsyncSession,
-        execution_service_factory: ExecutionServiceFactory | None = None,
+        step_context_factory: StepContextFactory | None = None,
         workflow_service: WorkflowService | None = None,
         event_bus: Any | None = None,
     ) -> None:
         super().__init__(session)
         self._run_repo = WorkflowRunRepository(session)
-        self._execution_service_factory = execution_service_factory
+        self._step_context_factory = step_context_factory
         self._workflow_service = workflow_service or WorkflowService()
         self._event_bus = event_bus
 
@@ -65,17 +63,13 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
 
         Args:
             event_bus: Optional EventBusProtocol for real-time progress events.
-                       Passed through to each ExecutionService instance.
         """
         from modules.backend.core.database import get_async_session
-
-        def _execution_factory():
-            return ExecutionService.factory(event_bus=event_bus)
 
         async with get_async_session() as db:
             yield WorkflowRunService(
                 session=db,
-                execution_service_factory=_execution_factory,
+                step_context_factory=StepContext.factory,
                 event_bus=event_bus,
             )
             await db.commit()

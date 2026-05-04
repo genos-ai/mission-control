@@ -31,7 +31,6 @@ async def evaluate_workflow_schedules() -> dict[str, Any]:
     processing of remaining schedules.
     """
     from modules.backend.core.database import get_async_session
-    from modules.backend.services.execution import ExecutionService
     from modules.backend.services.workflow_run import WorkflowRunService
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
@@ -73,9 +72,11 @@ async def evaluate_workflow_schedules() -> dict[str, Any]:
 
         try:
             async with get_async_session() as db:
+                from modules.backend.services.workflow_run_waves import StepContext
+
                 run_service = WorkflowRunService(
                     db,
-                    execution_service_factory=ExecutionService.factory,
+                    step_context_factory=StepContext.factory,
                 )
                 run = await run_service.run_workflow_from_definition(
                     workflow_definition_id,

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import uuid as _uuid
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -38,9 +39,11 @@ from modules.backend.events.types import (
 )
 
 if TYPE_CHECKING:
-    from modules.backend.models.execution import WorkflowRun
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from modules.backend.models.workflow_run import WorkflowRun
     from modules.backend.schemas.workflow import WorkflowSchema, WorkflowStepSchema
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
 logger = get_logger(__name__)
 
@@ -55,11 +58,33 @@ class VirtualExecution:
     error_data: dict = field(default_factory=dict)
 
 
+@dataclass
+class StepContext:
+    """Per-step execution context with its own DB session (Plan 71)."""
+
+    db: AsyncSession
+    persistence: ExecutionPersistenceService
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory():
+        """Create a StepContext with its own DB session."""
+        from modules.backend.core.database import get_async_session
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+        async with get_async_session() as step_db:
+            yield StepContext(
+                db=step_db,
+                persistence=ExecutionPersistenceService(step_db),
+            )
+            await step_db.commit()
+
+
 class WorkflowRunWavesMixin:
     """Wave-execution methods for WorkflowRunService.
 
     Mixed into WorkflowRunService — do not instantiate directly.
-    All methods reference self._execution_service_factory and
+    All methods reference self._step_context_factory and
     self._workflow_service which are set by
     WorkflowRunService.__init__().
     """
@@ -160,7 +185,7 @@ class WorkflowRunWavesMixin:
 
         Steps within a wave have no mutual dependencies and run in
         parallel via asyncio.gather. Each step gets its own DB session
-        (via execution_service_factory) to avoid SQLAlchemy flush conflicts.
+        (via step_context_factory) to avoid SQLAlchemy flush conflicts.
         Falls back to sequential execution when no factory is provided.
         """
         waves = self._compute_waves(workflow.steps)
@@ -313,16 +338,16 @@ class WorkflowRunWavesMixin:
         Each step gets its own DB session via the factory to avoid
         SQLAlchemy async flush conflicts.
         """
-        if self._execution_service_factory is None:
+        if self._step_context_factory is None:
             raise RuntimeError(
-                "execution_service_factory is required to execute workflows"
+                "step_context_factory is required to execute workflows"
             )
 
         async def _run_step(step: WorkflowStepSchema) -> tuple[Any, dict]:
-            async with self._execution_service_factory() as execution_service:
+            async with self._step_context_factory() as ctx:
                 return await self._execute_step(
                     run, step, session_id, completed_outcomes,
-                    execution_service, gate=gate,
+                    ctx, gate=gate,
                 )
 
         results = await asyncio.gather(
@@ -336,7 +361,7 @@ class WorkflowRunWavesMixin:
         step: WorkflowStepSchema,
         session_id: str,
         completed_outcomes: dict[str, dict],
-        execution_service: ExecutionService,
+        ctx: StepContext,
         gate: object | None = None,
     ) -> tuple[Any, dict]:
         """Execute a single workflow step, dispatching by node_type."""
@@ -357,9 +382,9 @@ class WorkflowRunWavesMixin:
         if node_type == "merge":
             return await self._execute_merge_step(run, step, completed_outcomes)
         if node_type == "sub_workflow":
-            return await self._execute_sub_workflow_step(run, step, session_id, completed_outcomes, execution_service)
+            return await self._execute_sub_workflow_step(run, step, session_id, completed_outcomes, ctx)
 
-        # Default: agent_step — existing logic
+        # Default: agent_step — dispatch via handle_mission (Plan 71)
         # Resolve upstream context from dependencies
         upstream = self._workflow_service.resolve_upstream_context(
             step, completed_outcomes, run.context,
@@ -375,61 +400,122 @@ class WorkflowRunWavesMixin:
             or app_config.workflows.default_budget_usd
         )
 
-        execution = await execution_service.create_execution_from_step(
-            workflow_run_id=run.id,
-            step_id=step.id,
-            objective=objective,
-            roster_ref=step.roster,
-            complexity_tier=step.complexity_tier,
-            cost_ceiling_usd=cost_ceiling,
-            upstream_context=upstream,
+        # Concurrency check
+        active_count = await ctx.persistence.count_active()
+        if active_count >= app_config.workflows.max_concurrent_missions:
+            from modules.backend.core.exceptions import ValidationError
+            raise ValidationError(
+                message=(
+                    f"Maximum concurrent executions "
+                    f"({app_config.workflows.max_concurrent_missions}) "
+                    f"reached. {active_count} currently active."
+                ),
+            )
+
+        # 1. Create early ExecutionRecord (RUNNING)
+        record = await ctx.persistence.save_execution(
             session_id=session_id,
+            status="running",
+            roster_name=step.roster,
+            objective_statement=objective,
             mission_id=run.mission_id,
-            environment=step.environment,
-            container_image=step.container_image,
-            extra_volumes=step.extra_volumes,
+            started_at=None,
+            completed_at=None,
+            workflow_run_id=run.id,
+            workflow_step_id=step.id,
+            execution_environment=step.environment,
+            cost_ceiling_usd=cost_ceiling,
         )
 
         logger.info(
-            "Step execution created",
+            "Step execution record created",
             extra={
                 "run_id": run.id,
                 "step_id": step.id,
-                "execution_id": execution.id,
+                "execution_record_id": record.id,
                 "agent": f"{step.capability}.agent",
             },
         )
 
-        execution = await execution_service.run_execution(execution.id, gate=gate)
+        # 2. Dispatch via handle_mission directly (no dispatch adapter)
+        from modules.backend.agents.mission_control.models import NoOpEventBus
+        from modules.backend.core.config import get_default_budget_usd
+        from modules.backend.services.session import SessionService
 
+        resolved_mode, roster_name = await self._resolve_dispatch_params(
+            ctx.db, run.mission_id, step,
+        )
+
+        session_svc = SessionService(ctx.db)
+        event_bus = self._event_bus or NoOpEventBus()
+        budget = cost_ceiling or get_default_budget_usd()
+
+        try:
+            from modules.backend.agents.mission_control.mission_dispatch import handle_mission
+
+            outcome = await handle_mission(
+                mission_run_id=f"mission-{session_id}",
+                mission_brief=objective,
+                session_service=session_svc,
+                event_bus=event_bus,
+                roster_name=roster_name,
+                mission_budget_usd=budget,
+                upstream_context=upstream,
+                session_id=session_id,
+                mission_id=run.mission_id,
+                db_session=ctx.db,
+                gate=gate,
+                execution_mode=resolved_mode,
+                container_image=step.container_image,
+                extra_volumes=step.extra_volumes,
+                execution_record_id=record.id,
+            )
+
+            outcome_dict = outcome.model_dump()
+            success = outcome.status in ("success", "partial")
+            status_str = "completed" if success else "failed"
+            total_cost = outcome.total_cost_usd
+        except Exception as e:
+            logger.error(
+                "Step execution failed",
+                extra={"run_id": run.id, "step_id": step.id, "error": str(e)},
+            )
+            raise RuntimeError(
+                f"Step '{step.id}' execution failed: {e}"
+            ) from e
+
+        # 3. Extract outputs from the outcome
         output_mapping = (
             step.output_mapping.model_dump()
             if step.output_mapping
             else None
         )
-        extracted = execution_service.extract_outputs(
-            execution, output_mapping,
+        extracted = ctx.persistence.extract_outputs(
+            outcome_dict, output_mapping,
         )
 
-        status_str = execution.status if isinstance(execution.status, str) else execution.status.value
         logger.info(
             "Step completed",
             extra={
                 "run_id": run.id,
                 "step_id": step.id,
-                "execution_id": execution.id,
+                "execution_record_id": record.id,
                 "status": status_str,
-                "cost": execution.total_cost_usd,
+                "cost": total_cost,
             },
         )
 
-        if status_str == "failed":
+        if not success:
             raise RuntimeError(
-                f"Step '{step.id}' execution failed: "
-                f"{execution.error_data}"
+                f"Step '{step.id}' execution failed"
             )
 
-        return execution, extracted
+        result = VirtualExecution(
+            id=record.id,
+            status=status_str,
+            total_cost_usd=total_cost,
+        )
+        return result, extracted
 
     async def _execute_condition_step(
         self,
@@ -660,7 +746,7 @@ class WorkflowRunWavesMixin:
         step: WorkflowStepSchema,
         session_id: str,
         completed_outcomes: dict[str, dict],
-        execution_service: ExecutionService,
+        ctx: StepContext,
     ) -> tuple[VirtualExecution, dict]:
         """Invoke another saved workflow as a child and await its completion."""
         config = step.sub_workflow_config
@@ -829,6 +915,54 @@ class WorkflowRunWavesMixin:
             "responder_id": result.responder_id,
         }
         return VirtualExecution(id=step.id), outputs
+
+    @staticmethod
+    async def _resolve_dispatch_params(
+        db_session: AsyncSession,
+        mission_id: str | None,
+        step: WorkflowStepSchema,
+    ) -> tuple[str, str]:
+        """Resolve execution mode and roster name for a workflow step.
+
+        Returns (execution_mode, roster_name).
+        """
+        import os
+
+        from modules.backend.agents.mission_control.dispatch.environment import (
+            resolve_execution_mode,
+        )
+        from modules.backend.core.config import find_project_root
+
+        mission_environment = None
+        mission_repo_root = None
+        if mission_id:
+            try:
+                from modules.backend.repositories.mission import MissionRepository
+
+                repo = MissionRepository(db_session)
+                mission_obj = await repo.get_by_id_or_none(mission_id)
+                if mission_obj:
+                    mission_environment = mission_obj.execution_environment
+                    mission_repo_root = mission_obj.repo_root
+            except Exception:
+                logger.debug("Could not load mission for env resolution", exc_info=True)
+
+        resolved_mode = step.environment or resolve_execution_mode(
+            mission_environment=mission_environment,
+            mission_repo_root=mission_repo_root,
+        )
+
+        roster_name = step.roster
+        if step.complexity_tier and step.complexity_tier != "simple":
+            tier_roster = (
+                find_project_root()
+                / "config" / "mission_control" / "rosters"
+                / f"{step.roster}-{step.complexity_tier}.yaml"
+            )
+            if os.path.exists(tier_roster):
+                roster_name = f"{step.roster}-{step.complexity_tier}"
+
+        return resolved_mode, roster_name
 
     @staticmethod
     def _should_skip(

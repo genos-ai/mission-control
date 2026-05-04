@@ -87,6 +87,11 @@ class ExecutionPersistenceService(BaseService):
         objective_statement: str | None = None,
         objective_category: str | None = None,
         mission_id: str | None = None,
+        # Plan 71: workflow step tracking columns
+        workflow_run_id: str | None = None,
+        workflow_step_id: str | None = None,
+        execution_environment: str | None = None,
+        cost_ceiling_usd: float | None = None,
     ) -> ExecutionRecord:
         """Persist a complete execution record.
 
@@ -103,6 +108,15 @@ class ExecutionPersistenceService(BaseService):
         elif not config.persist_thinking_trace:
             planning_thinking_trace = None
 
+        # Infer sensible defaults for timestamps based on status:
+        # - PENDING: neither started nor completed
+        # - RUNNING: started but not completed
+        # - Terminal: both started and completed
+        is_terminal = status in ("completed", "failed", "cancelled", "timed_out")
+        has_started = status != "pending"
+        resolved_started = _to_datetime(started_at) or (utc_now() if has_started else None)
+        resolved_completed = _to_datetime(completed_at) or (utc_now() if is_terminal else None)
+
         record = ExecutionRecord(
             session_id=session_id,
             roster_name=roster_name,
@@ -111,12 +125,16 @@ class ExecutionPersistenceService(BaseService):
             execution_outcome_json=execution_outcome_json,
             planning_thinking_trace=planning_thinking_trace,
             total_cost_usd=total_cost_usd,
-            started_at=_to_datetime(started_at) or utc_now(),
-            completed_at=_to_datetime(completed_at) or utc_now(),
+            started_at=resolved_started,
+            completed_at=resolved_completed,
             parent_execution_record_id=parent_execution_record_id,
             objective_statement=objective_statement,
             objective_category=objective_category,
             mission_id=mission_id,
+            workflow_run_id=workflow_run_id,
+            workflow_step_id=workflow_step_id,
+            execution_environment=execution_environment,
+            cost_ceiling_usd=cost_ceiling_usd,
         )
 
         self._session.add(record)
@@ -145,13 +163,15 @@ class ExecutionPersistenceService(BaseService):
         task_plan_json: dict | None = None,
         execution_outcome_json: dict | None = None,
         planning_thinking_trace: str | None = None,
-        total_cost_usd: float = 0.0,
+        total_cost_usd: float | None = None,
     ) -> ExecutionRecord:
         """Update an existing execution record with final results.
 
         Called by persist_mission_results when an early record was
         created at dispatch start. Transitions the record from
         'running' to the final status and fills in outcome data.
+
+        Fields that are None are preserved (not overwritten).
         """
         config = get_app_config().executions
 
@@ -167,7 +187,8 @@ class ExecutionPersistenceService(BaseService):
         record = await self._repo.get_by_id(execution_record_id)
         record.status = ExecutionRecordStatus(status)
         record.completed_at = utc_now()
-        record.total_cost_usd = total_cost_usd
+        if total_cost_usd is not None:
+            record.total_cost_usd = total_cost_usd
         record.execution_outcome_json = execution_outcome_json
         record.planning_thinking_trace = planning_thinking_trace
         if roster_name:
@@ -549,3 +570,109 @@ class ExecutionPersistenceService(BaseService):
             })
 
         return runs, total
+
+    # ---- Concurrency limiter (Plan 71) ----
+
+    async def count_active(self) -> int:
+        """Count in-flight execution records (PENDING or RUNNING).
+
+        Counts ALL run types (plan dispatches, workflow steps, research,
+        background tasks) — not just workflow steps. This is intentionally
+        broader than the old ExecutionRepository.count_active() which only
+        counted workflow step executions.
+        """
+        from sqlalchemy import func, select
+
+        stmt = (
+            select(func.count())
+            .select_from(ExecutionRecord)
+            .where(
+                ExecutionRecord.status.in_([
+                    ExecutionRecordStatus.PENDING,
+                    ExecutionRecordStatus.RUNNING,
+                ])
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
+    # ---- Output extraction (Plan 71 — moved from ExecutionService) ----
+
+    @staticmethod
+    def extract_outputs(
+        outcome_dict: dict | None,
+        output_mapping: dict | None,
+    ) -> dict[str, Any]:
+        """Extract outputs from an ExecutionOutcome dict according to
+        a workflow step's output_mapping.
+
+        Works on the outcome dict directly (no model dependency).
+        """
+        if not output_mapping or not outcome_dict:
+            return {}
+
+        extracted: dict[str, Any] = {}
+
+        summary_key = output_mapping.get("summary_key")
+        if summary_key:
+            extracted[summary_key] = outcome_dict.get("summary")
+
+        field_mappings = output_mapping.get("field_mappings", [])
+        raw_results = outcome_dict.get("task_results", [])
+
+        by_task_id: dict[str, dict] = {}
+        by_agent: dict[str, list[dict]] = {}
+        if isinstance(raw_results, list):
+            for tr in raw_results:
+                if isinstance(tr, dict):
+                    by_task_id[tr.get("task_id", "")] = tr.get(
+                        "output_reference", {},
+                    )
+                    agent = tr.get("agent_name", "")
+                    by_agent.setdefault(agent, []).append(
+                        tr.get("output_reference", {}),
+                    )
+        elif isinstance(raw_results, dict):
+            by_task_id = raw_results
+
+        for mapping in field_mappings:
+            source_task = mapping["source_task"]
+            source_field = mapping["source_field"]
+            target_key = mapping["target_key"]
+
+            task_output = by_task_id.get(source_task)
+            if task_output is None:
+                agent_outputs = by_agent.get(source_task, [])
+                for candidate in agent_outputs:
+                    if isinstance(candidate, dict) and source_field in candidate:
+                        task_output = candidate
+                        break
+                else:
+                    task_output = agent_outputs[0] if agent_outputs else None
+
+            if task_output is not None:
+                if isinstance(task_output, dict) and source_field in task_output:
+                    extracted[target_key] = task_output[source_field]
+                else:
+                    logger.warning(
+                        "Output mapping source field not found",
+                        extra={
+                            "source_task": source_task,
+                            "source_field": source_field,
+                            "available_fields": (
+                                list(task_output.keys())
+                                if isinstance(task_output, dict) else None
+                            ),
+                        },
+                    )
+            else:
+                logger.warning(
+                    "Output mapping source task not found",
+                    extra={
+                        "source_task": source_task,
+                        "available_task_ids": list(by_task_id.keys()),
+                        "available_agents": list(by_agent.keys()),
+                    },
+                )
+
+        return extracted

@@ -205,6 +205,30 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         comment="Temporal workflow ID for tracking durable background work",
     )
 
+    # Plan 71: workflow step tracking columns (converge execution tables)
+    workflow_run_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Parent workflow run (null for non-workflow executions)",
+    )
+    workflow_step_id: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Step ID within the workflow definition",
+    )
+    execution_environment: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Execution environment: local, worktree, container",
+    )
+    cost_ceiling_usd: Mapped[float | None] = mapped_column(
+        Numeric(12, 6, asdecimal=False),
+        nullable=True,
+        comment="Per-step budget cap",
+    )
+
     task_executions: Mapped[list["TaskExecution"]] = relationship(
         "TaskExecution",
         back_populates="execution_record",

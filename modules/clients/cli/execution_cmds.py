@@ -2,7 +2,7 @@
 CLI handler for execution commands.
 
 Full execution lifecycle: create, execute, list, detail, cost.
-All operations go through proper service layers with real DB persistence.
+All operations go through ExecutionPersistenceService (Plan 71).
 """
 
 import asyncio
@@ -79,60 +79,86 @@ def run_execution(
 
 
 async def _action_create(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
-    """Create an execution (PENDING state)."""
+    """Create an execution record (PENDING state)."""
     if not objective:
         click.echo(click.style("Error: --objective is required for create.", fg="red"), err=True)
         raise _AbortExecution("objective required")
 
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
     from modules.clients.cli.mission_context import _async_resolve_current_mission_id
 
     if not mission_id:
         mission_id = await _async_resolve_current_mission_id()
 
-    async with ExecutionService.factory() as service:
-        execution = await service.create_adhoc_execution(
-            objective=objective,
-            triggered_by=triggered_by,
+    async with get_async_session() as db:
+        service = ExecutionPersistenceService(db)
+        record = await service.save_execution(
             session_id=_generate_session_id(),
-            roster_ref=roster,
-            cost_ceiling_usd=budget,
+            status="pending",
+            roster_name=roster,
+            objective_statement=objective,
             mission_id=mission_id,
+            cost_ceiling_usd=budget,
+            started_at=None,
+            completed_at=None,
         )
+        await db.commit()
 
-    click.echo(click.style("Execution created", fg="green", bold=True))
-    click.echo(f"  ID:        {execution.id}")
-    click.echo(f"  Status:    {execution.status.value}")
-    click.echo(f"  Roster:    {execution.roster_ref}")
-    click.echo(f"  Budget:    ${execution.cost_ceiling_usd:.2f}" if execution.cost_ceiling_usd else "  Budget:    default")
-    click.echo(f"  Objective: {execution.objective[:100]}")
+    click.echo(click.style("Execution record created", fg="green", bold=True))
+    click.echo(f"  ID:        {record.id}")
+    click.echo(f"  Status:    pending")
+    click.echo(f"  Roster:    {roster}")
+    click.echo(f"  Budget:    ${budget:.2f}" if budget else "  Budget:    default")
+    click.echo(f"  Objective: {objective[:100]}")
     click.echo()
-    click.echo(f"Execute with: python admin.py execution execute {execution.id}")
+    click.echo(f"Execute with: python admin.py execution execute {record.id}")
 
 
 async def _action_execute(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
-    """Execute an existing execution (PENDING -> RUNNING -> COMPLETED)."""
+    """Execute an existing execution record via handle_mission."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for execute.", fg="red"), err=True)
         raise _AbortExecution("execution-id required")
 
     await _preflight_gate(roster)
 
-    from modules.clients.cli.live_display import LiveExecutionDisplay
-    from modules.clients.cli.report import render_execution
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.agents.mission_control.mission_dispatch import handle_mission
+    from modules.backend.agents.mission_control.models import NoOpEventBus
+    from modules.backend.core.config import get_default_budget_usd
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
+    from modules.backend.services.session import SessionService
 
     click.echo(f"Executing {execution_id}...")
     click.echo()
 
-    display = LiveExecutionDisplay()
-    event_bus = display.create_event_bus()
+    async with get_async_session() as db:
+        service = ExecutionPersistenceService(db)
+        record = await service.get_execution(execution_id)
+        if not record:
+            click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
+            raise _AbortExecution("execution not found")
 
-    async with ExecutionService.factory(event_bus=event_bus) as service:
-        with display.start():
-            execution = await service.run_execution(execution_id)
+        session_svc = SessionService(db)
+        outcome = await handle_mission(
+            mission_run_id=f"mission-{record.session_id}",
+            mission_brief=record.objective_statement or "",
+            session_service=session_svc,
+            event_bus=NoOpEventBus(),
+            roster_name=record.roster_name or "default",
+            mission_budget_usd=record.cost_ceiling_usd or get_default_budget_usd(),
+            session_id=record.session_id,
+            mission_id=record.mission_id,
+            db_session=db,
+            execution_record_id=execution_id,
+        )
+        await db.commit()
 
-    await render_execution(execution, output_format)
+    status = outcome.status
+    click.echo(click.style(f"Execution {status}", fg="green" if status == "success" else "red", bold=True))
+    click.echo(f"  Cost: ${outcome.total_cost_usd:.4f}")
+    click.echo(f"  Tasks: {len(outcome.task_results)}")
 
 
 async def _action_run(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
@@ -143,9 +169,12 @@ async def _action_run(cli_logger, *, objective, execution_id, roster, budget, tr
 
     await _preflight_gate(roster)
 
-    from modules.clients.cli.live_display import LiveExecutionDisplay
-    from modules.clients.cli.report import render_execution
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.agents.mission_control.mission_dispatch import handle_mission
+    from modules.backend.agents.mission_control.models import NoOpEventBus
+    from modules.backend.core.config import get_default_budget_usd
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
+    from modules.backend.services.session import SessionService
     from modules.clients.cli.mission_context import _async_resolve_current_mission_id
 
     if not mission_id:
@@ -154,35 +183,54 @@ async def _action_run(cli_logger, *, objective, execution_id, roster, budget, tr
     click.echo("Creating and executing...")
     click.echo()
 
-    display = LiveExecutionDisplay()
-    event_bus = display.create_event_bus()
+    session_id = _generate_session_id()
 
-    async with ExecutionService.factory(event_bus=event_bus) as service:
-        execution = await service.create_adhoc_execution(
-            objective=objective,
-            triggered_by=triggered_by,
-            session_id=_generate_session_id(),
-            roster_ref=roster,
-            cost_ceiling_usd=budget,
+    async with get_async_session() as db:
+        service = ExecutionPersistenceService(db)
+        record = await service.save_execution(
+            session_id=session_id,
+            status="running",
+            roster_name=roster,
+            objective_statement=objective,
             mission_id=mission_id,
+            cost_ceiling_usd=budget,
+            started_at=None,
+            completed_at=None,
         )
-        click.echo(f"  Execution ID: {execution.id}")
+        click.echo(f"  Execution ID: {record.id}")
 
-        with display.start():
-            execution = await service.run_execution(execution.id)
+        session_svc = SessionService(db)
+        outcome = await handle_mission(
+            mission_run_id=f"mission-{session_id}",
+            mission_brief=objective,
+            session_service=session_svc,
+            event_bus=NoOpEventBus(),
+            roster_name=roster,
+            mission_budget_usd=budget or get_default_budget_usd(),
+            session_id=session_id,
+            mission_id=mission_id,
+            db_session=db,
+            execution_record_id=record.id,
+        )
+        await db.commit()
 
-    await render_execution(execution, output_format)
+    status = outcome.status
+    click.echo(click.style(f"Execution {status}", fg="green" if status == "success" else "red", bold=True))
+    click.echo(f"  Cost: ${outcome.total_cost_usd:.4f}")
+    click.echo(f"  Tasks: {len(outcome.task_results)}")
 
 
 async def _action_list(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
-    """List executions."""
+    """List execution records."""
     from modules.clients.cli.report import get_console, build_table, styled_status
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    async with ExecutionService.factory() as service:
-        executions, total = await service.list_executions(limit=20)
+    async with get_async_session() as db:
+        service = ExecutionPersistenceService(db)
+        records, total = await service.list_executions(limit=20)
 
-    if not executions:
+    if not records:
         click.echo("No executions found.")
         return
 
@@ -192,23 +240,24 @@ async def _action_list(cli_logger, *, objective, execution_id, roster, budget, t
         ("ID",         {"style": "cyan", "width": 36}),
         ("Status",     {"width": 10}),
         ("Cost",       {"justify": "right", "width": 8}),
-        ("Trigger",    {"style": "dim", "width": 12}),
+        ("Roster",     {"style": "dim", "width": 12}),
         ("Objective",  {"ratio": 1}),
     ])
 
-    for e in executions:
-        obj_preview = e.objective[:60] + "..." if len(e.objective) > 60 else e.objective
+    for e in records:
+        obj = e.objective_statement or "—"
+        obj_preview = obj[:60] + "..." if len(obj) > 60 else obj
         dt_str = e.created_at.strftime("%Y-%m-%d %H:%M") if e.created_at else "—"
         table.add_row(
             dt_str, str(e.id), styled_status(e.status),
-            f"${e.total_cost_usd:.4f}", e.triggered_by, obj_preview,
+            f"${e.total_cost_usd:.4f}", e.roster_name or "—", obj_preview,
         )
 
     console.print(table)
 
 
 async def _action_detail(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
-    """Show execution detail."""
+    """Show execution record detail."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for detail.", fg="red"), err=True)
         raise _AbortExecution("execution-id required")
@@ -218,48 +267,47 @@ async def _action_detail(cli_logger, *, objective, execution_id, roster, budget,
         primary_panel, info_panel, status_panel,
         render_task_outputs,
     )
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    async with ExecutionService.factory() as service:
-        try:
-            execution = await service.get_execution(execution_id)
-        except Exception as e:
-            logger.warning("Execution lookup failed", extra={"execution_id": execution_id, "error": str(e)})
-            click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
-            raise _AbortExecution("execution not found")
+    async with get_async_session() as db:
+        service = ExecutionPersistenceService(db)
+        record = await service.get_execution(execution_id)
+
+    if not record:
+        click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
+        raise _AbortExecution("execution not found")
 
     console = get_console()
+    status = record.status.value if hasattr(record.status, "value") else str(record.status)
 
     info_lines = [
-        f"[bold]ID:[/bold]        {execution.id}",
-        f"[bold]Status:[/bold]    {styled_status(execution.status)}",
-        f"[bold]Created:[/bold]   {execution.created_at.strftime('%Y-%m-%d %H:%M:%S') if execution.created_at else '—'}",
-        f"[bold]Started:[/bold]   {execution.started_at or '—'}",
-        f"[bold]Finished:[/bold]  {execution.completed_at or '—'}",
-        f"[bold]Roster:[/bold]    {execution.roster_ref}",
-        f"[bold]Cost:[/bold]      ${execution.total_cost_usd:.4f}" + (f"  (ceiling: ${execution.cost_ceiling_usd:.2f})" if execution.cost_ceiling_usd else ""),
-        f"[bold]Trigger:[/bold]   {execution.triggered_by}",
-        f"[bold]Session:[/bold]   {execution.session_id}",
+        f"[bold]ID:[/bold]        {record.id}",
+        f"[bold]Status:[/bold]    {styled_status(status)}",
+        f"[bold]Created:[/bold]   {record.created_at.strftime('%Y-%m-%d %H:%M:%S') if record.created_at else '—'}",
+        f"[bold]Started:[/bold]   {record.started_at or '—'}",
+        f"[bold]Finished:[/bold]  {record.completed_at or '—'}",
+        f"[bold]Roster:[/bold]    {record.roster_name or '—'}",
+        f"[bold]Cost:[/bold]      ${record.total_cost_usd:.4f}" + (f"  (ceiling: ${record.cost_ceiling_usd:.2f})" if record.cost_ceiling_usd else ""),
+        f"[bold]Session:[/bold]   {record.session_id}",
     ]
     console.print(primary_panel(content="\n".join(info_lines), title="Execution Detail"))
 
-    console.print(info_panel(content=execution.objective, title="Objective"))
+    console.print(info_panel(content=record.objective_statement or "—", title="Objective"))
 
-    if execution.result_summary:
-        console.print(status_panel(content=execution.result_summary, status="completed", title="Result Summary"))
-
-    outcome = execution.execution_outcome
+    outcome = record.execution_outcome_json
     if outcome and isinstance(outcome, dict):
+        summary = outcome.get("summary")
+        if summary:
+            console.print(status_panel(content=summary, status="completed", title="Result Summary"))
+
         tasks = outcome.get("task_results") or outcome.get("task_outcomes") or []
         if tasks:
             render_task_outputs(console, tasks)
 
-    if execution.error_data:
-        console.print(status_panel(content=str(execution.error_data), status="failed", title="Error"))
-
 
 async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
-    """Show the TaskPlan DAG for an execution."""
+    """Show the TaskPlan DAG for an execution record."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for plan.", fg="red"), err=True)
         raise _AbortExecution("execution-id required")
@@ -269,22 +317,23 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
     from modules.clients.cli.report import (
         get_console, build_table, primary_panel, info_panel, styled_status,
     )
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    async with ExecutionService.factory() as service:
-        try:
-            execution = await service.get_execution(execution_id)
-        except Exception as e:
-            logger.warning("Execution lookup failed", extra={"execution_id": execution_id, "error": str(e)})
-            click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
-            raise _AbortExecution("execution not found")
+    async with get_async_session() as db:
+        service = ExecutionPersistenceService(db)
+        record = await service.get_execution(execution_id)
 
-    outcome = execution.execution_outcome
+    if not record:
+        click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
+        raise _AbortExecution("execution not found")
+
+    outcome = record.execution_outcome_json
     if not outcome or not isinstance(outcome, dict):
         click.echo(click.style("No plan data — execution may not have been run.", fg="yellow"))
         return
 
-    plan_ref = outcome.get("task_plan_reference")
+    plan_ref = outcome.get("task_plan_reference") or record.task_plan_json
     if not plan_ref:
         click.echo(click.style("No task plan stored for this execution.", fg="yellow"))
         return
@@ -408,18 +457,18 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
         click.echo(click.style("Error: --execution-id is required for cost.", fg="red"), err=True)
         raise _AbortExecution("execution-id required")
 
-    # Same data source as list/detail/plan — no bridge to execution_records.
-    from modules.backend.services.execution import ExecutionService
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-    async with ExecutionService.factory() as service:
-        try:
-            execution = await service.get_execution(execution_id)
-        except Exception as e:
-            logger.warning("Execution lookup failed", extra={"execution_id": execution_id, "error": str(e)})
-            click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
-            raise _AbortExecution("execution not found")
+    async with get_async_session() as db:
+        service = ExecutionPersistenceService(db)
+        record = await service.get_execution(execution_id)
 
-    outcome = execution.execution_outcome
+    if not record:
+        click.echo(click.style(f"Execution '{execution_id}' not found.", fg="red"), err=True)
+        raise _AbortExecution("execution not found")
+
+    outcome = record.execution_outcome_json
     if not outcome or not isinstance(outcome, dict):
         click.echo(click.style("No cost data — execution may not have been run.", fg="yellow"))
         return
@@ -438,7 +487,7 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
 
     info_lines = [
         f"[bold]Execution:[/bold]     {execution_id}",
-        f"[bold]Total Cost:[/bold]    ${execution.total_cost_usd:.4f}",
+        f"[bold]Total Cost:[/bold]    ${record.total_cost_usd:.4f}",
         f"[bold]Input Tokens:[/bold]  {total_input:,}",
         f"[bold]Output Tokens:[/bold] {total_output:,}",
     ]

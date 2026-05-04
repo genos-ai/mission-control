@@ -23,7 +23,7 @@ async def notify_human_input_needed(input: HumanInputWorkflowInput) -> None:
     from modules.backend.core.utils import utc_now
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.events.types import WorkflowHumanInputRequestedEvent
-    from modules.backend.models.execution import WorkflowRunState
+    from modules.backend.models.workflow_run import WorkflowRunState
     from modules.backend.models.human_input_request import (
         HumanInputRequest,
         HumanInputRequestStatus,
@@ -58,7 +58,7 @@ async def notify_human_input_needed(input: HumanInputWorkflowInput) -> None:
 
         # Update workflow run status to AWAITING_INPUT
         from sqlalchemy import update
-        from modules.backend.models.execution import WorkflowRun
+        from modules.backend.models.workflow_run import WorkflowRun
 
         await db.execute(
             update(WorkflowRun)
@@ -120,7 +120,7 @@ async def mark_human_input_resolved(
     from modules.backend.core.utils import utc_now
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.events.types import WorkflowHumanInputRespondedEvent
-    from modules.backend.models.execution import WorkflowRun, WorkflowRunState
+    from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
     from modules.backend.models.human_input_request import (
         HumanInputRequest,
         HumanInputRequestStatus,

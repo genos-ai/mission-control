@@ -19,7 +19,7 @@ from modules.backend.models.base import Base
 
 # Import all models here so Alembic can detect them
 # Add new model imports as you create them
-from modules.backend.models.execution import Execution, WorkflowRun  # noqa: F401
+from modules.backend.models.workflow_run import WorkflowRun  # noqa: F401
 from modules.backend.models.execution_record import (  # noqa: F401
     ExecutionDecision,
     ExecutionRecord,

@@ -42,7 +42,6 @@ from redis.asyncio import Redis as AsyncRedis
 from modules.backend.models.base import Base
 import modules.backend.models.agent_catalog  # noqa: F401 — register tables
 import modules.backend.models.api_key  # noqa: F401 — register tables
-import modules.backend.models.execution  # noqa: F401 — register tables
 import modules.backend.models.execution_environment  # noqa: F401 — register tables
 import modules.backend.models.execution_record  # noqa: F401 — register tables
 import modules.backend.models.mission  # noqa: F401 — register tables
