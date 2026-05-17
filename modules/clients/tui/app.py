@@ -46,7 +46,6 @@ from modules.clients.tui.screens.mission_history import MissionHistoryScreen
 from modules.clients.tui.services.event_listener import TuiEventBus
 from modules.clients.tui.services.service_bridge import ServiceBridge
 from modules.clients.tui.services.state import TuiState
-from modules.backend.agents.mission_control.dispatch import topological_sort
 from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus
 from modules.backend.schemas.task_plan import TaskPlan
 from modules.clients.tui.widgets.agent_detail import AgentDetailWidget
@@ -660,22 +659,18 @@ class MissionControlApp(App):
     # ── Plan handling ──────────────────────────────────────────────────
 
     def _handle_plan_created(self, event: object) -> None:
-        """Parse TaskPlan from PlanCreatedEvent metadata and show DAG."""
+        """Handle PlanCreatedEvent — plan metadata available, tasks in DB.
+
+        Plan 72: task_plan_json no longer in metadata. The full plan with
+        tasks is fetched via the API on the next plan tab refresh.
+        """
         metadata = getattr(event, "metadata", {}) or {}
-        plan_json = metadata.get("task_plan_json")
-        if not plan_json:
-            return
-        try:
-            plan = TaskPlan.model_validate_json(plan_json)
-            layers = topological_sort(plan)
-            self.state.task_plan = plan
-            self.state.task_layers = layers
-            self._show_mission_panel(plan, layers)
-        except Exception:
-            logger.warning(
-                "Failed to parse TaskPlan from event metadata",
-                exc_info=True,
-            )
+        task_count = metadata.get("task_count", 0)
+        summary = metadata.get("summary", "")
+        logger.info(
+            "Plan created event received",
+            extra={"task_count": task_count, "summary": summary[:80]},
+        )
 
     def _show_mission_panel(
         self, plan: TaskPlan, layers: list[list[str]],

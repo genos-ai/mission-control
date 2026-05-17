@@ -9,7 +9,7 @@ Business logic (dependency closure on approval, state machine enforcement)
 lives in the service layer — this is raw data access.
 """
 
-from uuid import UUID, uuid7
+from uuid import uuid7
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload

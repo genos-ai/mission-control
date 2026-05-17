@@ -333,7 +333,7 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
         click.echo(click.style("No plan data — execution may not have been run.", fg="yellow"))
         return
 
-    plan_ref = outcome.get("task_plan_reference") or record.task_plan_json
+    plan_ref = outcome.get("task_plan_reference")
     if not plan_ref:
         click.echo(click.style("No task plan stored for this execution.", fg="yellow"))
         return

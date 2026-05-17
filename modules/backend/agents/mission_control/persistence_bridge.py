@@ -32,7 +32,6 @@ async def persist_mission_results(
     mission_id: str | None = None,
     db_session: AsyncSession,
     execution_record_id: str | None = None,
-    task_plan_json: dict | None = None,  # Plan 72: ignored, domain_tags read from Task rows
 ) -> str | None:
     """Persist execution results. Best-effort — does not raise.
 

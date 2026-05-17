@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
-from modules.backend.models.task import TaskStatus as PlanTaskStatus  # Plan 72: alias for compat
+from modules.backend.models.task import TaskStatus
 from modules.backend.events.types import (
     WorkflowBranchPassedEvent,
     WorkflowConditionEvaluatedEvent,
@@ -117,13 +117,13 @@ class WorkflowRunWavesMixin:
         self,
         plan_id: str | None,
         mission_id: str | None,
-        step_updates: list[tuple[str, PlanTaskStatus]],
+        step_updates: list[tuple[str, TaskStatus]],
         session_id: str,
         *,
         failure_reason: str | None = None,
         cost_map: dict[str, float] | None = None,
     ) -> None:
-        """Batch update PlanTaskStates for Kanban board visibility.
+        """Batch update Task statuses for Kanban board visibility.
 
         Uses a separate DB session to avoid interfering with the main
         workflow session. Best-effort — failures are logged, not raised.
@@ -134,25 +134,25 @@ class WorkflowRunWavesMixin:
             from modules.backend.core.database import get_async_session
             from modules.backend.core.utils import utc_now
             from modules.backend.events.types import MissionPlanTaskStatusChangedEvent
-            from modules.backend.repositories.mission_plan import MissionPlanRepository
+            from modules.backend.repositories.task import TaskRepository
 
             async with get_async_session() as db:
-                repo = MissionPlanRepository(db)
+                task_repo = TaskRepository(db)
                 for step_id, to_status in step_updates:
-                    task_id = f"wf-{step_id}"
-                    state = await repo.get_task_state(plan_id, task_id)
-                    if not state:
+                    # Workflow tasks use their step_id as the task UUID
+                    task = await task_repo.get_by_id_or_none(step_id)
+                    if not task:
                         continue
 
-                    from_status = state.status
-                    state.status = to_status
+                    from_status = task.status
+                    task.status = to_status
 
-                    if to_status == PlanTaskStatus.RUNNING:
-                        state.last_attempt_at = utc_now()
-                    if failure_reason and to_status == PlanTaskStatus.FAILED:
-                        state.failure_reason = failure_reason[:500]
+                    if to_status == TaskStatus.RUNNING:
+                        task.last_attempt_at = utc_now()
+                    if failure_reason and to_status == TaskStatus.FAILED:
+                        task.failure_reason = failure_reason[:500]
                     if cost_map and step_id in cost_map:
-                        state.cost_usd = cost_map[step_id]
+                        task.cost_usd = cost_map[step_id]
 
                     await self._publish_workflow_event(
                         mission_id,
@@ -161,7 +161,7 @@ class WorkflowRunWavesMixin:
                             source="workflow_run_service",
                             mission_id=mission_id,
                             plan_id=plan_id,
-                            task_id=task_id,
+                            task_id=task.id,
                             from_status=from_status,
                             to_status=to_status,
                             actor="workflow_run_service",
@@ -273,9 +273,9 @@ class WorkflowRunWavesMixin:
             # Kanban: mark skipped steps as SKIPPED, executable as RUNNING
             if _plan_id:
                 _wave_skipped = [sid for sid in wave_step_ids if sid not in set(executable_ids)]
-                _state_updates: list[tuple[str, PlanTaskStatus]] = (
-                    [(sid, PlanTaskStatus.SKIPPED) for sid in _wave_skipped]
-                    + [(sid, PlanTaskStatus.RUNNING) for sid in executable_ids]
+                _state_updates: list[tuple[str, TaskStatus]] = (
+                    [(sid, TaskStatus.SKIPPED) for sid in _wave_skipped]
+                    + [(sid, TaskStatus.RUNNING) for sid in executable_ids]
                 )
                 if _state_updates:
                     await self._sync_plan_task_states(
@@ -316,8 +316,8 @@ class WorkflowRunWavesMixin:
                     s.id: getattr(ex, 'total_cost_usd', 0.0)
                     for s, (ex, _) in zip(wave_steps, results)
                 }
-                _completions: list[tuple[str, PlanTaskStatus]] = [
-                    (step.id, PlanTaskStatus.COMPLETED)
+                _completions: list[tuple[str, TaskStatus]] = [
+                    (step.id, TaskStatus.COMPLETED)
                     for step in wave_steps
                 ]
                 await self._sync_plan_task_states(

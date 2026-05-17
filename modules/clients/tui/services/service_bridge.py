@@ -259,7 +259,6 @@ class ServiceBridge:
                 "total_cost_usd": getattr(record, "total_cost_usd", 0.0) or 0.0,
                 "roster_name": getattr(record, "roster_name", ""),
                 "created_at": str(getattr(record, "created_at", "")),
-                "task_plan_json": getattr(record, "task_plan_json", None),
                 "execution_outcome_json": getattr(record, "execution_outcome_json", None),
                 "task_executions": [
                     {

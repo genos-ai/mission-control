@@ -116,18 +116,16 @@ class TaskResponse(BaseModel):
     @classmethod
     def flatten_dependencies(cls, data):
         """Convert TaskDependency ORM objects to flat UUID list."""
-        if hasattr(data, "__dict__"):
+        if hasattr(data, "__table__"):
             # ORM model — extract deps from relationship
             deps = getattr(data, "dependencies", [])
-            if deps and hasattr(deps[0], "depends_on_id"):
-                # Store flattened list so Pydantic picks it up
-                # We need to convert ORM to dict first
-                obj = {
-                    c.key: getattr(data, c.key)
-                    for c in data.__table__.columns
-                }
-                obj["dependencies"] = [d.depends_on_id for d in deps]
-                return obj
+            dep_ids = [d.depends_on_id for d in deps] if deps else []
+            obj = {
+                c.key: getattr(data, c.key)
+                for c in data.__table__.columns
+            }
+            obj["dependencies"] = dep_ids
+            return obj
         return data
 
 

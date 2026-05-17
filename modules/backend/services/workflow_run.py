@@ -376,7 +376,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
     ) -> None:
         """Convert workflow steps to a TaskPlan and persist for Kanban visibility.
 
-        Creates PlanTaskState rows and auto-approves all tasks since
+        Creates Task rows and auto-approves all tasks since
         workflow dispatch is pre-approved. Best-effort — failure logs
         a warning but does not block workflow execution.
         """

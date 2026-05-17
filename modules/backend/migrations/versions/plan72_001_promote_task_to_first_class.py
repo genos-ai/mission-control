@@ -275,10 +275,15 @@ def upgrade() -> None:
             ), {"new_id": new_uuid, "old_id": old_key})
 
     # ── 5. Alter FK columns to UUID type ───────────────────────────────────
-    # task_executions.task_id: was String(200), now UUID FK
-    # We already backfilled the values above. Now alter the column type.
-    # Note: values that couldn't be resolved remain as their old string —
-    # the FK constraint will be added only after cleanup.
+    # NULL out any task_id values that weren't backfilled to UUIDs.
+    # Without this, the ::uuid cast below will crash on old-format
+    # strings like "v1-task-001" from orphaned/deleted plans.
+    _uuid_pattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    for table in ("task_executions", "execution_decisions", "context_changes"):
+        conn.execute(sa.text(
+            f"UPDATE {table} SET task_id = NULL "
+            f"WHERE task_id IS NOT NULL AND task_id !~ :pattern"
+        ), {"pattern": _uuid_pattern})
 
     # For task_executions: alter column type
     op.alter_column("task_executions", "task_id",

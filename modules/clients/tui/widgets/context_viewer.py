@@ -57,7 +57,9 @@ class ContextViewer(Widget):
     def load_execution_detail(self, detail: dict) -> None:
         """Load an execution detail dict into the viewer."""
         self._load_overview_tab(detail)
-        self._load_json_tab(detail.get("task_plan_json"))
+        # Plan 72: task_plan_json removed; show outcome's plan reference if available
+        outcome = detail.get("execution_outcome_json") or {}
+        self._load_json_tab(outcome.get("task_plan_reference") if isinstance(outcome, dict) else None)
         self._load_tasks_tab(detail.get("task_executions", []))
 
     def _load_overview_tab(self, detail: dict) -> None:

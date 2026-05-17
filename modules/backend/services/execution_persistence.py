@@ -91,8 +91,6 @@ class ExecutionPersistenceService(BaseService):
         workflow_step_id: str | None = None,
         execution_environment: str | None = None,
         cost_ceiling_usd: float | None = None,
-        # Plan 72: task_plan_json removed — tasks are in DB
-        task_plan_json: dict | None = None,  # ignored, kept for call-site compat during migration
     ) -> ExecutionRecord:
         """Persist a complete execution record.
 
@@ -163,7 +161,6 @@ class ExecutionPersistenceService(BaseService):
         execution_outcome_json: dict | None = None,
         planning_thinking_trace: str | None = None,
         total_cost_usd: float | None = None,
-        task_plan_json: dict | None = None,  # Plan 72: ignored, kept for compat
     ) -> ExecutionRecord:
         """Update an existing execution record with final results.
 
