@@ -207,7 +207,7 @@ def _make_copilot_tools(
             # Wait for PydanticAI to execute the tool and provide the result
             try:
                 from modules.backend.core.config import get_app_config
-                tool_timeout = get_app_config().timeouts.tool_bridge
+                tool_timeout = get_app_config().application.timeouts.tool_bridge
                 result_text = await asyncio.wait_for(future, timeout=tool_timeout)
             except asyncio.TimeoutError:
                 logger.error(
@@ -314,13 +314,15 @@ class CopilotModel(Model):
     ) -> None:
         from pydantic_ai.profiles import ModelProfile
 
-        # Copilot doesn't support native JSON schema or tool-based output for
-        # structured responses. Fall back to 'prompted' mode — PydanticAI
-        # injects the schema into the system prompt and the LLM responds with
-        # JSON. This makes Agent(output_type=SomeModel) work correctly.
+        # Copilot SDK doesn't support native JSON schema output (response_format),
+        # but DOES validate tool-call argument schemas end-to-end (P17). Using
+        # 'tool' mode makes PydanticAI create a hidden `final_result` tool whose
+        # parameters ARE the output schema — validated by Pydantic on each call.
+        # This only affects CopilotModel; Anthropic/OpenAI models have
+        # supports_json_schema_output=True so this fallback is never consulted.
         self._profile = profile or ModelProfile(
             supports_json_schema_output=False,
-            default_structured_output_mode='prompted',
+            default_structured_output_mode='tool',
         )
         self._model_id = model_id
         self._reasoning_effort = reasoning_effort
