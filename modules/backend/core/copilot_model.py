@@ -206,7 +206,9 @@ def _make_copilot_tools(
 
             # Wait for PydanticAI to execute the tool and provide the result
             try:
-                result_text = await asyncio.wait_for(future, timeout=120.0)
+                from modules.backend.core.config import get_app_config
+                tool_timeout = get_app_config().timeouts.tool_bridge
+                result_text = await asyncio.wait_for(future, timeout=tool_timeout)
             except asyncio.TimeoutError:
                 logger.error(
                     "Tool bridge timeout",
