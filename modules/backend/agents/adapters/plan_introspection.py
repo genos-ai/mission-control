@@ -7,6 +7,8 @@ their get_plan @agent.tool wrappers here.
 
 Same convention as tools/workflow_design.py: accepts a db session
 + structured args, returns a dict, no PydanticAI dependency.
+
+Plan 72: reads tasks from the tasks table instead of task_plan_json.
 """
 
 from __future__ import annotations
@@ -26,15 +28,15 @@ async def get_plan_state(
     *,
     mission_id: str,
 ) -> dict[str, Any]:
-    """Read the current mission plan with all task states.
+    """Read the current mission plan with all tasks.
 
-    Returns plan body, per-task status, gate_mode, budget, veto
+    Returns plan metadata, per-task status, gate_mode, budget, veto
     window, and supervisor counters. Used by both Director and
     Supervisor agents.
     """
     svc = MissionPlanService(session)
     plan = await svc.get_or_create_plan(mission_id)
-    task_states = await svc.get_task_states(plan.id)
+    tasks = await svc.get_tasks(plan.id)
 
     return {
         "plan_id": plan.id,
@@ -46,16 +48,21 @@ async def get_plan_state(
         "veto_window_sec": plan.veto_window_sec,
         "supervisor_iteration_count": plan.supervisor_iteration_count,
         "max_supervisor_iterations": plan.max_supervisor_iterations,
-        "task_plan_json": plan.task_plan_json,
-        "task_states": [
+        "summary": plan.summary,
+        "estimated_cost_usd": plan.estimated_cost_usd,
+        "estimated_duration": plan.estimated_duration,
+        "tasks": [
             {
-                "task_id": s.task_id,
-                "status": s.status,
-                "retry_count": s.retry_count,
-                "result_summary": s.result_summary,
-                "failure_reason": s.failure_reason,
-                "approved_at": str(s.approved_at) if s.approved_at else None,
+                "task_id": t.id,
+                "agent": t.agent,
+                "description": t.description,
+                "status": t.status,
+                "retry_count": t.retry_count,
+                "result_summary": t.result_summary,
+                "failure_reason": t.failure_reason,
+                "approved_at": str(t.approved_at) if t.approved_at else None,
+                "dependencies": [d.depends_on_id for d in t.dependencies],
             }
-            for s in task_states
+            for t in tasks
         ],
     }

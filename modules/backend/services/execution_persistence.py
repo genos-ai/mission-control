@@ -77,7 +77,6 @@ class ExecutionPersistenceService(BaseService):
         status: str,
         *,
         roster_name: str | None = None,
-        task_plan_json: dict | None = None,
         execution_outcome_json: dict | None = None,
         planning_thinking_trace: str | None = None,
         total_cost_usd: float = 0.0,
@@ -92,6 +91,8 @@ class ExecutionPersistenceService(BaseService):
         workflow_step_id: str | None = None,
         execution_environment: str | None = None,
         cost_ceiling_usd: float | None = None,
+        # Plan 72: task_plan_json removed — tasks are in DB
+        task_plan_json: dict | None = None,  # ignored, kept for call-site compat during migration
     ) -> ExecutionRecord:
         """Persist a complete execution record.
 
@@ -121,7 +122,6 @@ class ExecutionPersistenceService(BaseService):
             session_id=session_id,
             roster_name=roster_name,
             status=ExecutionRecordStatus(status),
-            task_plan_json=task_plan_json,
             execution_outcome_json=execution_outcome_json,
             planning_thinking_trace=planning_thinking_trace,
             total_cost_usd=total_cost_usd,
@@ -160,10 +160,10 @@ class ExecutionPersistenceService(BaseService):
         status: str,
         *,
         roster_name: str | None = None,
-        task_plan_json: dict | None = None,
         execution_outcome_json: dict | None = None,
         planning_thinking_trace: str | None = None,
         total_cost_usd: float | None = None,
+        task_plan_json: dict | None = None,  # Plan 72: ignored, kept for compat
     ) -> ExecutionRecord:
         """Update an existing execution record with final results.
 
@@ -193,8 +193,7 @@ class ExecutionPersistenceService(BaseService):
         record.planning_thinking_trace = planning_thinking_trace
         if roster_name:
             record.roster_name = roster_name
-        if task_plan_json:
-            record.task_plan_json = task_plan_json
+        # Plan 72: task_plan_json no longer stored on execution_records
 
         await self._session.flush()
 

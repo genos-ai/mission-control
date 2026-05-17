@@ -411,7 +411,6 @@ async def handle_mission(
             outcome,
             session_id=session_id or mission_run_id,
             roster_name=roster_name,
-            task_plan_json=plan.model_dump(),
             thinking_trace=thinking_trace,
             mission_id=mission_id,
             db_session=db_session,

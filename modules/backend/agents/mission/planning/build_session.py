@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from uuid import uuid7
 
 from pydantic import ValidationError
 
@@ -23,22 +24,21 @@ from modules.backend.schemas.task_plan import TaskPlan
 
 logger = get_logger(__name__)
 
-# task_id format: v{version}-task-{NNN}
-_TASK_ID_PATTERN = re.compile(r"^v\d+-task-\d{3,}$")
+# Plan 72: task_id is now a UUID string
+_UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
-def generate_task_id(version: int, sequence: int) -> str:
-    """Generate a task_id: v{version}-task-{NNN}.
+def generate_task_id() -> str:
+    """Generate a UUID task_id (Plan 72).
 
-    Shared by PlanBuildingSession and MissionPlanService.add_task().
+    Replaces the old v{version}-task-{NNN} format. UUIDs are stable
+    across refinements — the planning agent receives existing UUIDs
+    during refinement and can reference them in update_task/remove_task.
     """
-    return f"v{version}-task-{sequence:03d}"
-
-
-def extract_task_sequence(task_id: str) -> int:
-    """Extract the sequence number from a task_id. Returns 0 if unparseable."""
-    match = re.search(r"task-(\d+)$", task_id)
-    return int(match.group(1)) if match else 0
+    return str(uuid7())
 
 
 def resolve_agent_version(agent_name: str) -> str:
@@ -74,9 +74,9 @@ def semantic_check(plan: TaskPlan) -> list[str]:
         )
 
     for task in plan.tasks:
-        if not _TASK_ID_PATTERN.match(task.task_id):
+        if not _UUID_PATTERN.match(task.task_id):
             errors.append(
-                f"tasks[{task.task_id}].task_id: must match v{{N}}-task-{{NNN}}, "
+                f"tasks[{task.task_id}].task_id: must be a valid UUID, "
                 f"got '{task.task_id}'"
             )
 
@@ -156,24 +156,19 @@ class PlanBuildingSession:
         self.version = version
         self.roster = roster
         self.budget_usd = budget_usd
-        self._task_counter = 0
-        self.tasks: dict[str, dict] = {}  # task_id -> task body
+        self.tasks: dict[str, dict] = {}  # task_id (UUID) -> task body
         self.finalised_plan: dict | None = None
 
-        # Seed from existing plan (refinement mode)
+        # Seed from existing plan (refinement mode — Plan 72)
+        # task_ids are now UUIDs, not v{N}-task-{NNN}
         if current_plan and "tasks" in current_plan:
             for task in current_plan["tasks"]:
                 tid = task.get("task_id", "")
                 self.tasks[tid] = dict(task)
-                self._task_counter = max(
-                    self._task_counter,
-                    extract_task_sequence(tid),
-                )
 
     def _next_task_id(self) -> str:
-        """Generate the next task_id using the shared utility."""
-        self._task_counter += 1
-        return generate_task_id(self.version, self._task_counter)
+        """Generate a UUID task_id (Plan 72)."""
+        return generate_task_id()
 
     def _get_task(self, task_id: str) -> dict:
         """Get a task by ID. Raises KeyError if not found."""

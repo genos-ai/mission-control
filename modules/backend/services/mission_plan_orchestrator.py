@@ -32,11 +32,16 @@ from modules.backend.events.types import (
 from modules.backend.models.mission_plan import (
     VALID_GATE_MODES,
     MissionPlanStatus,
-    PlanTaskStatus,
+)
+from modules.backend.models.task import (
+    Task,
+    TaskStatus,
+    TERMINAL_TASK_STATUSES,
 )
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
-from modules.backend.schemas.execution_outcome import TaskStatus
+from modules.backend.repositories.task import TaskRepository
+from modules.backend.schemas.execution_outcome import TaskStatus as OutcomeStatus
 from modules.backend.schemas.gate import GateAction, GateContext
 from modules.backend.schemas.task_plan import TaskPlan
 from modules.backend.services.base import BaseService
@@ -62,6 +67,7 @@ class MissionPlanOrchestrator(BaseService):
         self._event_bus: EventBusProtocol = event_bus or NoOpEventBus()
         self._repo = MissionPlanRepository(session)
         self._mission_repo = MissionRepository(session)
+        self._task_repo = TaskRepository(session)
         # Lazy import to avoid circular dependency within services
         from modules.backend.services.mission_plan import MissionPlanService
         self._plan_svc = MissionPlanService(session, event_bus=event_bus)
@@ -126,9 +132,8 @@ class MissionPlanOrchestrator(BaseService):
                 explicitly.
 
         Returns:
-            The refreshed MissionPlan with the new task_plan_json and
-            bumped version. Task states are updated in-place in the same
-            transaction.
+            The refreshed MissionPlan with updated tasks and bumped
+            version. Task rows are reconciled in the same transaction.
 
         Raises:
             NotFoundError: If the plan does not exist.
@@ -160,7 +165,7 @@ class MissionPlanOrchestrator(BaseService):
             plan_id=mission_plan_id,
             user_id=user_id,
             instructions_preview=instructions[:200],
-            has_current_plan=plan.task_plan_json is not None,
+            has_current_plan=len(plan.tasks) > 0,
         )
 
         # The new plan version is current + 1 (version gets bumped after
@@ -187,7 +192,7 @@ class MissionPlanOrchestrator(BaseService):
                 upstream_context=None,
                 event_bus=self._event_bus,
                 mission_id=plan.mission_id,
-                current_plan=plan.task_plan_json,
+                current_plan=self._materialize_plan_dict(plan),
                 refinement_instructions=refinement_prompt,
                 plan_version=next_version,
             )
@@ -250,77 +255,95 @@ class MissionPlanOrchestrator(BaseService):
 
         await self._persist_plan(plan, new_plan, source="mission_plan_orchestrator")
 
-        # Refetch with task_states relationship loaded
+        # Refetch with tasks relationship loaded
         return await self._repo.get_by_mission_id_required(plan.mission_id)
 
-    async def _reconcile_task_states(
+    # ── Plan materialization helpers (Plan 72) ────────────────────────────
+
+    def _materialize_plan_dict(self, plan: MissionPlan) -> dict | None:
+        """Build a TaskPlan-shaped dict from the plan's Task rows.
+
+        Used to feed the planning agent's current_plan parameter during
+        refinement. Returns None if the plan has no tasks.
+        """
+        if not plan.tasks:
+            return None
+        tasks = []
+        for t in plan.tasks:
+            dep_ids = [d.depends_on_id for d in t.dependencies]
+            tasks.append({
+                "task_id": t.id,
+                "agent": t.agent,
+                "description": t.description,
+                "instructions": t.instructions,
+                "inputs": t.inputs_json or {},
+                "dependencies": dep_ids,
+                "verification": t.verification_json or {},
+                "constraints": t.constraints_json or {},
+                "domain_tags": t.domain_tags or [],
+            })
+        return {
+            "version": f"{plan.version}.0.0",
+            "mission_id": plan.mission_id,
+            "summary": plan.summary or "",
+            "estimated_cost_usd": float(plan.estimated_cost_usd or 0),
+            "estimated_duration_seconds": int(plan.estimated_duration or 0),
+            "execution_hints": plan.execution_hints_json or {},
+            "tasks": tasks,
+        }
+
+    def _materialize_task_plan(self, plan: MissionPlan) -> TaskPlan:
+        """Materialize Task rows into a validated TaskPlan model.
+
+        Raises ValidationError if the plan has no tasks.
+        """
+        plan_dict = self._materialize_plan_dict(plan)
+        if plan_dict is None:
+            raise ValidationError(
+                f"MissionPlan {plan.id} has no tasks yet. "
+                f"Refine the plan before dispatching."
+            )
+        return TaskPlan.model_validate(plan_dict)
+
+    async def _reconcile_tasks(
         self,
         plan: MissionPlan,
         new_plan: TaskPlan,
     ) -> dict[str, int]:
-        """Reconcile plan_task_states rows against a new TaskPlan body.
+        """Reconcile Task rows against a new TaskPlan (Plan 72).
 
-        Returns a stats dict: {"cancelled": N, "new": M}. The caller uses
-        these to populate MissionPlanRefinedEvent so subscribers know
-        how many rows actually changed during reconciliation.
-
-        Behaviour:
-          - Existing task_ids that survived: state row left as-is.
-          - Existing task_ids that disappeared:
-              * Non-terminal rows -> status = CANCELLED (soft delete)
-              * Terminal rows (completed / skipped / cancelled) -> unchanged
-                so the audit trail survives. Failed rows are also left as-is
-                so the user can still see what went wrong in a prior run.
-          - New task_ids: fresh PROPOSED state row.
+        Delegates to TaskRepository.reconcile_tasks for the core logic.
+        Also rebuilds task_dependencies from the new plan's dependency edges.
         """
-        from modules.backend.models.mission_plan import TERMINAL_PLAN_TASK_STATUSES
+        # Convert TaskDefinition schemas to task dicts for the repository
+        new_task_defs: list[dict] = []
+        for task_def in new_plan.tasks:
+            new_task_defs.append({
+                "id": task_def.task_id,
+                "agent": task_def.agent,
+                "description": task_def.description,
+                "instructions": task_def.instructions,
+                "inputs_json": task_def.inputs.model_dump() if task_def.inputs else {},
+                "verification_json": task_def.verification.model_dump() if task_def.verification else {},
+                "constraints_json": task_def.constraints.model_dump() if task_def.constraints else {},
+                "domain_tags": task_def.domain_tags or [],
+            })
 
-        new_task_ids: set[str] = {t.task_id for t in new_plan.tasks}
-        existing_states = await self._repo.get_task_states(plan.id)
-        existing_by_id = {s.task_id: s for s in existing_states}
-
-        cancelled_count = 0
-        new_count = 0
-
-        reset_count = 0
-
-        # Handle existing states
-        for state in existing_states:
-            if state.task_id in new_task_ids:
-                # Task survived refinement. If its state is cancelled
-                # (from a prior refinement that removed it), reset to
-                # proposed so it's actionable again.
-                if state.status == PlanTaskStatus.CANCELLED:
-                    state.status = PlanTaskStatus.PROPOSED
-                    reset_count += 1
-                continue
-            # Task disappeared from the new plan
-            status_enum = state.status if isinstance(state.status, PlanTaskStatus) else PlanTaskStatus(state.status)
-            if status_enum in TERMINAL_PLAN_TASK_STATUSES:
-                continue  # already terminal, leave as-is
-            if status_enum == PlanTaskStatus.FAILED:
-                continue  # preserve failed rows for audit
-            state.status = PlanTaskStatus.CANCELLED
-            cancelled_count += 1
-
-        # Create fresh PROPOSED rows for new task_ids
-        for new_task in new_plan.tasks:
-            if new_task.task_id in existing_by_id:
-                continue
-            await self._repo.create_task_state(plan.id, new_task.task_id)
-            new_count += 1
-
-        await self._session.flush()
-
-        self._log_debug(
-            "Task states reconciled",
-            plan_id=plan.id,
-            cancelled_count=cancelled_count,
-            new_count=new_count,
-            reset_count=reset_count,
-            total_after=len(new_task_ids),
+        stats = await self._task_repo.reconcile_tasks(
+            plan.id, plan.mission_id, new_task_defs,
         )
-        return {"cancelled": cancelled_count, "new": new_count, "reset": reset_count}
+
+        # Rebuild dependency graph using task IDs we already know
+        # (avoids a redundant query — reconcile_tasks already fetched them)
+        all_task_ids = {d["id"] for d in new_task_defs}
+        dep_map: dict[str, list[str]] = {}
+        for task_def in new_plan.tasks:
+            dep_map[task_def.task_id] = task_def.dependencies or []
+        await self._task_repo.rebuild_dependencies_for_task_ids(
+            all_task_ids, dep_map,
+        )
+
+        return stats
 
     # ── Shared persist helper ────────────────────────────────────────────
 
@@ -331,12 +354,16 @@ class MissionPlanOrchestrator(BaseService):
         *,
         source: str = "mission_plan_orchestrator",
     ) -> dict[str, int]:
-        """Reconcile task states, persist plan body, bump version, emit event.
+        """Reconcile tasks, persist plan metadata, bump version, emit event.
 
         Shared by refine() and apply_plan(). Returns reconciliation stats.
         """
-        reconcile_stats = await self._reconcile_task_states(plan, candidate)
-        plan.task_plan_json = candidate.model_dump()
+        reconcile_stats = await self._reconcile_tasks(plan, candidate)
+        # Update plan-level metadata (Plan 72 — no more task_plan_json)
+        plan.summary = candidate.summary or ""
+        plan.estimated_cost_usd = candidate.estimated_cost_usd or 0.0
+        plan.estimated_duration = candidate.estimated_duration_seconds or 0
+        plan.execution_hints_json = candidate.execution_hints.model_dump() if candidate.execution_hints else {}
         plan.version += 1
         await self._session.flush()
 
@@ -555,12 +582,12 @@ class MissionPlanOrchestrator(BaseService):
             plan, session_id,
         )
 
-        approved_states = await self._repo.get_task_states(
-            mission_plan_id, status=PlanTaskStatus.APPROVED,
+        approved_states = await self._task_repo.get_by_plan_id(
+            mission_plan_id, status=TaskStatus.APPROVED,
         )
         return {
             "outcome_status": "dispatching",
-            "dispatched_task_ids": [s.task_id for s in approved_states],
+            "dispatched_task_ids": [t.id for t in approved_states],
             "total_cost_usd": 0.0,
             "new_total_spent_usd": plan.total_spent_usd,
             "workflow_id": workflow_id,
@@ -626,8 +653,8 @@ class MissionPlanOrchestrator(BaseService):
     ) -> dict:
         """Dispatch all currently-approved tasks as a single run.
 
-        Plan 42 §10.1 + §10.5: filters the plan's task_plan_json to the
-        approved subset, validates that the subset is a closed DAG
+        Plan 42 §10.1 + §10.5: filters approved tasks into a TaskPlan,
+        validates that the subset is a closed DAG
         (should always be true because approve_task transitively
         approves dependencies), and hands the derived TaskPlan to the
         existing dispatch pipeline via handle_mission(precomputed_plan=).
@@ -658,7 +685,7 @@ class MissionPlanOrchestrator(BaseService):
         )
 
         plan = await self._repo.get_by_id(mission_plan_id)
-        task_plan = self._plan_svc._get_task_plan_or_raise(plan)
+        task_plan = self._materialize_task_plan(plan)
 
         # Budget check (Plan 42 §10.7)
         if plan.budget_usd_ceiling is not None:
@@ -672,15 +699,15 @@ class MissionPlanOrchestrator(BaseService):
                 )
 
         # Collect approved task ids
-        approved_states = await self._repo.get_task_states(
-            mission_plan_id, status=PlanTaskStatus.APPROVED,
+        approved_states = await self._task_repo.get_by_plan_id(
+            mission_plan_id, status=TaskStatus.APPROVED,
         )
         if not approved_states:
             raise ValidationError(
                 "No tasks are approved for dispatch. Approve tasks via "
                 "the Plan tab before running."
             )
-        approved_task_ids = {s.task_id for s in approved_states}
+        approved_task_ids = {t.id for t in approved_states}
 
         # Derive the filtered TaskPlan. Approval is transitive (§10.2) so
         # the closure guarantee should hold — but verify and raise if not.
@@ -695,7 +722,7 @@ class MissionPlanOrchestrator(BaseService):
         # there's no queue delay in the synchronous dispatch path.
         now = utc_now()
         for state in approved_states:
-            state.status = PlanTaskStatus.RUNNING
+            state.status = TaskStatus.RUNNING
             state.last_attempt_at = now
         await self._session.commit()
 
@@ -844,8 +871,8 @@ class MissionPlanOrchestrator(BaseService):
         fires any matching session followups in-process.
         """
         _task_results = getattr(outcome, "task_results", []) or []
-        _completed = sum(1 for r in _task_results if r.status == TaskStatus.SUCCESS)
-        _failed = sum(1 for r in _task_results if r.status == TaskStatus.FAILED)
+        _completed = sum(1 for r in _task_results if r.status == OutcomeStatus.SUCCESS)
+        _failed = sum(1 for r in _task_results if r.status == OutcomeStatus.FAILED)
 
         # Persist denormalised counts on the execution_records row.
         if outcome.execution_record_id:
@@ -894,13 +921,13 @@ class MissionPlanOrchestrator(BaseService):
             from modules.backend.agents.adapters.supervisor_introspection import get_recent_run_outcomes
 
             recent = await get_recent_run_outcomes(self._session, mission_id=plan.mission_id, limit=5)
-            task_states_now = await self._plan_svc.get_task_states(plan.id)
+            task_states_now = await self._task_repo.get_by_plan_id(plan.id)
             summary = {
-                "approved": sum(1 for s in task_states_now if s.status == PlanTaskStatus.APPROVED),
-                "proposed": sum(1 for s in task_states_now if s.status == PlanTaskStatus.PROPOSED),
-                "running": sum(1 for s in task_states_now if s.status == PlanTaskStatus.RUNNING),
-                "completed": sum(1 for s in task_states_now if s.status in (PlanTaskStatus.COMPLETED,)),
-                "failed": sum(1 for s in task_states_now if s.status == PlanTaskStatus.FAILED),
+                "approved": sum(1 for s in task_states_now if s.status == TaskStatus.APPROVED),
+                "proposed": sum(1 for s in task_states_now if s.status == TaskStatus.PROPOSED),
+                "running": sum(1 for s in task_states_now if s.status == TaskStatus.RUNNING),
+                "completed": sum(1 for s in task_states_now if s.status in (TaskStatus.COMPLETED,)),
+                "failed": sum(1 for s in task_states_now if s.status == TaskStatus.FAILED),
                 "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
                 "execution_record_id": outcome.execution_record_id,
                 "max_supervisor_iterations": plan.max_supervisor_iterations,
@@ -1012,10 +1039,6 @@ class MissionPlanOrchestrator(BaseService):
         routing. ADVANCE_APPROVED and ADVANCE_REFINE prepare state for
         the next dispatch cycle without looping.
         """
-        from modules.backend.models.mission_plan import (
-            PlanTaskStatus as _PTS,
-        )
-
         action = decision.action
 
         # Safety: re-read plan status before mutating. If the plan was
@@ -1042,9 +1065,9 @@ class MissionPlanOrchestrator(BaseService):
 
         elif action == GateAction.ADVANCE_APPROVED:
             # Flip all proposed → approved for the next dispatch cycle.
-            for ts in await self._plan_svc.get_task_states(plan.id, status=_PTS.PROPOSED):
+            for ts in await self._task_repo.get_by_plan_id(plan.id, status=TaskStatus.PROPOSED):
                 await self._plan_svc.approve_task(
-                    plan.id, ts.task_id, "mission.supervisor.agent",
+                    plan.id, ts.id, "mission.supervisor.agent",
                 )
             self._log_operation(
                 "Supervisor: ADVANCE_APPROVED", plan_id=plan.id,
@@ -1073,9 +1096,9 @@ class MissionPlanOrchestrator(BaseService):
                     ),
                 )
                 # Auto-approve newly proposed tasks so daemon dispatches them.
-                for ts in await self._plan_svc.get_task_states(plan.id, status=_PTS.PROPOSED):
+                for ts in await self._task_repo.get_by_plan_id(plan.id, status=TaskStatus.PROPOSED):
                     await self._plan_svc.approve_task(
-                        plan.id, ts.task_id, "mission.supervisor.agent",
+                        plan.id, ts.id, "mission.supervisor.agent",
                     )
             except Exception:
                 self._logger.warning(
@@ -1129,18 +1152,17 @@ class MissionPlanOrchestrator(BaseService):
         Returns a {task_id: output_dict} mapping that seeds the dispatch
         loop's completed_outputs so from_upstream references resolve.
         """
-        completed_states = await self._repo.get_task_states(
-            mission_plan_id, status=PlanTaskStatus.COMPLETED,
+        completed_states = await self._task_repo.get_by_plan_id(
+            mission_plan_id, status=TaskStatus.COMPLETED,
         )
         prior: dict[str, dict] = {}
-        for state in completed_states:
-            if not state.result_summary:
+        for task in completed_states:
+            if not task.result_summary:
                 continue
             try:
-                prior[state.task_id] = json.loads(state.result_summary)
+                prior[task.id] = json.loads(task.result_summary)
             except (TypeError, ValueError, json.JSONDecodeError):
-                # result_summary might be plain text from older runs
-                prior[state.task_id] = {"result": state.result_summary}
+                prior[task.id] = {"result": task.result_summary}
         return prior
 
     async def _write_back_task_results(
@@ -1150,7 +1172,7 @@ class MissionPlanOrchestrator(BaseService):
         *,
         dispatched_task_ids: set[str],
     ) -> list[str]:
-        """Persist per-task outcomes back to plan_task_states.
+        """Persist per-task outcomes back to Task rows.
 
         For each task_result in the outcome, update the matching
         plan_task_state row with status, execution linkage, result
@@ -1161,11 +1183,12 @@ class MissionPlanOrchestrator(BaseService):
         Plan 42 §10.5 batch write-back — no modification to the
         dispatch loop or persistence_bridge.
         """
-        status_map = {
-            TaskStatus.SUCCESS: PlanTaskStatus.COMPLETED,
-            TaskStatus.FAILED: PlanTaskStatus.FAILED,
-            TaskStatus.TIMEOUT: PlanTaskStatus.FAILED,
-            TaskStatus.SKIPPED: PlanTaskStatus.SKIPPED,
+        # Map outcome status -> task lifecycle status
+        outcome_to_task: dict[OutcomeStatus, TaskStatus] = {
+            OutcomeStatus.SUCCESS: TaskStatus.COMPLETED,
+            OutcomeStatus.FAILED: TaskStatus.FAILED,
+            OutcomeStatus.TIMEOUT: TaskStatus.FAILED,
+            OutcomeStatus.SKIPPED: TaskStatus.SKIPPED,
         }
 
         seen_task_ids: set[str] = set()
@@ -1175,55 +1198,48 @@ class MissionPlanOrchestrator(BaseService):
             task_id = task_result.task_id
             seen_task_ids.add(task_id)
 
-            state = await self._repo.get_task_state(plan.id, task_id)
-            if state is None:
-                continue  # task not in plan state (shouldn't happen)
+            task = await self._task_repo.get_by_id_or_none(task_id)
+            if task is None:
+                continue  # task not in DB (shouldn't happen)
 
-            new_status = status_map.get(
-                task_result.status, PlanTaskStatus.FAILED,
+            new_status = outcome_to_task.get(
+                task_result.status, TaskStatus.FAILED,
             )
-            state.status = new_status
-            state.execution_record_id = outcome.execution_record_id
-            # Look up the actual task_executions.id PK
-            state.task_execution_id = await self._resolve_task_execution_id(
-                outcome.execution_record_id, task_id,
-            )
-            state.last_attempt_at = utc_now()
+            task.status = new_status
+            task.last_attempt_at = utc_now()
 
-            # Denormalized metrics (Plan 46 Phase 2 #2)
-            state.cost_usd = float(task_result.cost_usd or 0.0)
-            state.duration_seconds = float(task_result.duration_seconds or 0.0)
+            # Denormalized metrics
+            task.cost_usd = float(task_result.cost_usd or 0.0)
+            task.duration_seconds = float(task_result.duration_seconds or 0.0)
 
-            if new_status == PlanTaskStatus.FAILED:
-                state.failure_reason = getattr(
+            if new_status == TaskStatus.FAILED:
+                task.failure_reason = getattr(
                     task_result, "failure_reason", None,
                 ) or "Task failed during dispatch"
-                state.retry_count += 1
+                task.retry_count += 1
             else:
-                # Persist the agent's output so downstream tasks in
-                # later waves can access it via from_upstream inputs.
                 output = task_result.output_reference
                 if output:
                     try:
-                        state.result_summary = json.dumps(output, default=str)
+                        task.result_summary = json.dumps(output, default=str)
                     except (TypeError, ValueError):
-                        state.result_summary = str(output)
-                state.failure_reason = None
+                        task.result_summary = str(output)
+                task.failure_reason = None
 
             updated_ids.append(task_id)
 
         # Tasks dispatched but never reported: mark failed
-        _dispatchable = (PlanTaskStatus.APPROVED, PlanTaskStatus.QUEUED, PlanTaskStatus.RUNNING)
+        _dispatchable = (TaskStatus.APPROVED, TaskStatus.QUEUED, TaskStatus.RUNNING)
         for task_id in dispatched_task_ids - seen_task_ids:
-            state = await self._repo.get_task_state(plan.id, task_id)
-            if state is None or state.status not in _dispatchable:
+            task = await self._task_repo.get_by_id_or_none(task_id)
+            if task is None or task.status not in _dispatchable:
                 continue
-            state.status = PlanTaskStatus.FAILED
-            state.failure_reason = (
+            task.status = TaskStatus.FAILED
+            task.failure_reason = (
                 "Task was dispatched but did not report a result. "
                 "This usually indicates a mid-run abort or dispatcher bug."
             )
-            state.retry_count += 1
+            task.retry_count += 1
             updated_ids.append(task_id)
 
         await self._session.flush()
@@ -1274,10 +1290,10 @@ class MissionPlanOrchestrator(BaseService):
 
         # Build the set of task_ids whose dependencies are already
         # satisfied (completed, skipped — they ran in a prior wave).
-        all_states = await self._repo.get_task_states(mission_plan_id)
+        all_states = await self._task_repo.get_by_plan_id(mission_plan_id)
         satisfied_ids = {
-            s.task_id for s in all_states
-            if s.status in (PlanTaskStatus.COMPLETED, PlanTaskStatus.SKIPPED)
+            t.id for t in all_states
+            if t.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
         }
 
         # The "safe" set is: tasks being dispatched now + already done.

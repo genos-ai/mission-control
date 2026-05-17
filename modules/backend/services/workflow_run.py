@@ -418,17 +418,17 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             plan.gate_mode = "workflow_managed"
 
             # Auto-approve all tasks — workflow dispatch is pre-approved.
-            # Can't use approve_all_proposed() because it requires a user_id FK.
-            # Update status directly on the PlanTaskState rows.
-            from modules.backend.models.mission_plan import PlanTaskStatus
+            from modules.backend.models.task import TaskStatus
             from modules.backend.core.utils import utc_now
-            states = await plan_svc._repo.get_task_states(
-                plan.id, status=PlanTaskStatus.PROPOSED,
+            from modules.backend.repositories.task import TaskRepository
+            task_repo = TaskRepository(self._session)
+            tasks = await task_repo.get_by_plan_id(
+                plan.id, status=TaskStatus.PROPOSED,
             )
             now = utc_now()
-            for state in states:
-                state.status = PlanTaskStatus.APPROVED
-                state.approved_at = now
+            for task in tasks:
+                task.status = TaskStatus.APPROVED
+                task.approved_at = now
             await self._session.commit()
 
             logger.info(
@@ -460,8 +460,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         try:
             from modules.backend.core.database import get_async_session
             from modules.backend.events.types import MissionPlanTaskStatusChangedEvent
-            from modules.backend.models.mission_plan import PlanTaskStatus
+            from modules.backend.models.task import TaskStatus
             from modules.backend.repositories.mission_plan import MissionPlanRepository
+            from modules.backend.repositories.task import TaskRepository
 
             async with get_async_session() as db:
                 repo = MissionPlanRepository(db)
@@ -469,12 +470,13 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 if not plan:
                     return
 
+                task_repo = TaskRepository(db)
                 import uuid as _uuid
-                for state in await repo.get_task_states(plan.id):
-                    if state.status in (PlanTaskStatus.RUNNING, PlanTaskStatus.APPROVED):
-                        from_status = state.status
-                        state.status = PlanTaskStatus.FAILED
-                        state.failure_reason = error[:500]
+                for task in await task_repo.get_by_plan_id(plan.id):
+                    if task.status in (TaskStatus.RUNNING, TaskStatus.APPROVED):
+                        from_status = task.status
+                        task.status = TaskStatus.FAILED
+                        task.failure_reason = error[:500]
 
                         if self._event_bus:
                             try:
@@ -485,9 +487,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                                         source="workflow_run_service",
                                         mission_id=mission_id,
                                         plan_id=plan.id,
-                                        task_id=state.task_id,
+                                        task_id=task.id,
                                         from_status=from_status,
-                                        to_status=PlanTaskStatus.FAILED,
+                                        to_status=TaskStatus.FAILED,
                                         actor="workflow_run_service",
                                     ),
                                 )

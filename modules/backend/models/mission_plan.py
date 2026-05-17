@@ -1,33 +1,31 @@
 """
-Mission Plan Models (Plan 42).
+Mission Plan Model (Plan 42, updated by Plan 72).
 
-Persistent, long-lived plans per mission. A MissionPlan holds a living
-`TaskPlan` (the existing schemas/task_plan.py::TaskPlan shape) as its body
-and tracks per-task cross-run status via PlanTaskState.
+Persistent, long-lived plan per mission. A MissionPlan is a metadata
+container — tasks live in the `tasks` table as first-class entities.
 
 Plans survive runs — a single MissionPlan can be dispatched multiple times
 with different subsets of approved tasks, and task state persists across
-those runs. This is the backend for the Plan tab's long-lived backlog view
-introduced by Plan 41 and specified by Plan 42.
+those runs.
 
-Schema reference: Plan 42 §2.1 (tables), §2.3 (task state machine),
-§10.1 (handle_mission contract), §10.4 (refinement agent: Planning Agent).
+Plan 72 changes:
+  - Removed task_plan_json (tasks are in DB)
+  - Removed PlanTaskState (merged into Task)
+  - Removed PlanTaskStatus (moved to models/task.py as TaskStatus)
+  - Added plan-level metadata: summary, estimated_cost_usd,
+    estimated_duration, execution_hints_json
 """
 
 import enum
-from datetime import datetime
 
 from sqlalchemy import (
-    DateTime,
     Enum,
-    Float,
     ForeignKey,
     Integer,
     JSON,
     Numeric,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -52,35 +50,6 @@ class MissionPlanStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
-class PlanTaskStatus(str, enum.Enum):
-    """Per-task cross-run state (Plan 42 §2.3).
-
-    Transitions:
-        proposed  → approved | cancelled
-        approved  → queued | cancelled
-        queued    → running
-        running   → completed | failed | skipped
-        failed    → approved        (via retry)
-    """
-
-    PROPOSED = "proposed"
-    APPROVED = "approved"
-    QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-    CANCELLED = "cancelled"
-
-
-# Terminal states — not reachable by further transitions except retry (failed)
-TERMINAL_PLAN_TASK_STATUSES: frozenset[PlanTaskStatus] = frozenset({
-    PlanTaskStatus.COMPLETED,
-    PlanTaskStatus.SKIPPED,
-    PlanTaskStatus.CANCELLED,
-})
-
-
 # Gate modes — mirrors config/settings/gate.yaml values verbatim so
 # MissionPlanService can pass this string straight to create_gate(mode_override=...).
 # Plan 42 §10.4: autonomy is gate mode lifted to plan level.
@@ -95,12 +64,9 @@ VALID_GATE_MODES: frozenset[str] = frozenset({
 class MissionPlan(UUIDMixin, TimestampMixin, Base):
     """A persistent, long-lived plan for a single mission.
 
-    One row per mission (enforced by unique constraint). Holds a live
-    `TaskPlan` JSON body that gets refined over time by the Director via
-    the Planning Agent. Tasks inside the body are tracked as PlanTaskState
-    rows keyed by their string `task_id`.
-
-    See Plan 42 §2.1 for schema and §2.3 for state machine rationale.
+    One row per mission (enforced by unique constraint). Tasks live in the
+    `tasks` table as first-class entities (Plan 72). This model holds
+    plan-level metadata, gate configuration, and budget tracking.
     """
 
     __tablename__ = "mission_plans"
@@ -113,14 +79,41 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
 
-    task_plan_json: Mapped[dict | None] = mapped_column(
-        JSON,
-        nullable=True,
-        comment=(
-            "Live TaskPlan serialized as JSON. NULL until the first "
-            "refinement. Same shape as execution_records.task_plan_json."
-        ),
+    # ── Plan-level metadata (Plan 72) ──────────────────────────────────────
+
+    summary: Mapped[str] = mapped_column(
+        Text,
+        default="",
+        server_default="",
+        nullable=False,
+        comment="Plan summary from TaskPlan.summary",
     )
+
+    estimated_cost_usd: Mapped[float] = mapped_column(
+        Numeric(12, 6, asdecimal=False),
+        default=0.0,
+        server_default="0.0",
+        nullable=False,
+        comment="Estimated total cost from planning agent",
+    )
+
+    estimated_duration: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        comment="Estimated duration in seconds from planning agent",
+    )
+
+    execution_hints_json: Mapped[dict] = mapped_column(
+        JSON,
+        default=dict,
+        server_default="{}",
+        nullable=False,
+        comment='{"min_success_threshold": 1.0, "critical_path": []}',
+    )
+
+    # ── Gate configuration ─────────────────────────────────────────────────
 
     gate_mode: Mapped[str | None] = mapped_column(
         String(20),
@@ -143,8 +136,10 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         default=1,
         server_default="1",
         nullable=False,
-        comment="Bumped on each refinement. Plan 42 §2.5.",
+        comment="Bumped on each refinement.",
     )
+
+    # ── Budget tracking ────────────────────────────────────────────────────
 
     budget_usd_ceiling: Mapped[float | None] = mapped_column(
         Numeric(12, 6, asdecimal=False),
@@ -169,7 +164,8 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         ),
     )
 
-    # Supervisor autonomy loop counters (Plan 51 Phase C).
+    # ── Supervisor autonomy loop (Plan 51 Phase C) ─────────────────────────
+
     supervisor_iteration_count: Mapped[int] = mapped_column(
         Integer,
         default=0,
@@ -180,6 +176,7 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
             "Resets on user-initiated refine_plan or new plan creation."
         ),
     )
+
     max_supervisor_iterations: Mapped[int] = mapped_column(
         Integer,
         default=20,
@@ -192,120 +189,18 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         ),
     )
 
-    # Relationships
-    task_states: Mapped[list["PlanTaskState"]] = relationship(
-        "PlanTaskState",
+    # ── Relationships ──────────────────────────────────────────────────────
+
+    tasks: Mapped[list["Task"]] = relationship(  # noqa: F821
+        "Task",
         back_populates="plan",
         cascade="all, delete-orphan",
         lazy="selectin",
+        order_by="Task.created_at",
     )
 
     def __repr__(self) -> str:
         return (
             f"<MissionPlan(id={self.id}, mission_id={self.mission_id}, "
             f"version={self.version}, status={self.status})>"
-        )
-
-
-class PlanTaskState(UUIDMixin, TimestampMixin, Base):
-    """Per-task state tracking for tasks inside a MissionPlan's TaskPlan body.
-
-    The `task_id` is a *string* key into the TaskPlan JSON — not a database
-    foreign key. Tasks live inside `task_plan_json`, not in their own table
-    (Plan 42 §2.1 — avoids duplicating the rich TaskDefinition schema).
-
-    A row exists for every task present in the plan's current `task_plan_json`.
-    On refinement, surviving task_ids keep their existing state rows; removed
-    task_ids get cancelled (Plan 42 §10.3 clean-slate fallback); new task_ids
-    get fresh `proposed` rows.
-    """
-
-    __tablename__ = "plan_task_states"
-    __table_args__ = (
-        UniqueConstraint(
-            "mission_plan_id", "task_id",
-            name="uq_plan_task_states_plan_task",
-        ),
-    )
-
-    mission_plan_id: Mapped[str] = mapped_column(
-        PgUUID(as_uuid=False),
-        ForeignKey("mission_plans.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    task_id: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-        comment="String task_id inside task_plan_json — not a DB FK",
-    )
-
-    status: Mapped[str] = mapped_column(
-        Enum(PlanTaskStatus, native_enum=False),
-        default=PlanTaskStatus.PROPOSED,
-        server_default=PlanTaskStatus.PROPOSED.name,
-        nullable=False,
-    )
-
-    # Approval metadata
-    approved_by_user_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False),
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=True,
-    )
-    approved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
-    )
-
-    # Execution linkage (set when the task actually runs)
-    execution_record_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False),
-        ForeignKey("execution_records.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    task_execution_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False),
-        ForeignKey("task_executions.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    # Run lifecycle
-    last_attempt_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
-    )
-    retry_count: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False,
-    )
-
-    # Veto window (ai_assisted mode)
-    veto_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
-    )
-
-    # Denormalized run result (for quick Plan tab rendering without joins)
-    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    # Denormalized metrics from task_executions for Done-card rendering
-    # (Plan 46 Phase 2 work unit #2). Written at run completion by
-    # MissionPlanService._write_back_task_results. Defaults to 0.0 —
-    # pre-run statuses legitimately show "no cost incurred yet".
-    cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6, asdecimal=False), default=0.0, server_default="0.0", nullable=False,
-    )
-    duration_seconds: Mapped[float] = mapped_column(
-        Numeric(12, 6, asdecimal=False), default=0.0, server_default="0.0", nullable=False,
-    )
-
-    # Relationships
-    plan: Mapped["MissionPlan"] = relationship(
-        "MissionPlan", back_populates="task_states",
-    )
-
-    def __repr__(self) -> str:
-        return (
-            f"<PlanTaskState(plan={self.mission_plan_id}, "
-            f"task_id={self.task_id!r}, status={self.status})>"
         )

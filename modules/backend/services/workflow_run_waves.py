@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
-from modules.backend.models.mission_plan import PlanTaskStatus
+from modules.backend.models.task import TaskStatus as PlanTaskStatus  # Plan 72: alias for compat
 from modules.backend.events.types import (
     WorkflowBranchPassedEvent,
     WorkflowConditionEvaluatedEvent,

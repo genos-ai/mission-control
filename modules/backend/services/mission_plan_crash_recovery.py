@@ -1,61 +1,16 @@
 """
-Mission Plan Crash Recovery (Plan 46 Phase 1 work unit #2).
+Mission Plan Crash Recovery (Plan 46, updated by Plan 72).
 
-Reconciles orphaned ``plan_task_states`` rows after a backend restart.
+Reconciles orphaned Task rows after a backend restart.
 
-When the backend crashes (OOM, deploy, kernel panic, whatever), any plan
-task that was mid-run is left in ``running`` or ``queued`` status in the
-DB with no process that knows about it. On the next startup, if nothing
-reconciles those rows, they sit there forever — the UI shows tasks
-"running" that are not, budget accounting never closes out, and the
-daemon refuses to touch them because they're not in ``approved``.
+When the backend crashes, any task that was mid-run is left in ``running``
+or ``queued`` status with no process that knows about it. This module
+transitions them to safe states at startup:
 
-This module provides ``reconcile_orphaned_task_states()`` which runs at
-FastAPI startup (before the mission plan daemon starts polling) and
-transitions in-flight rows to safe states:
+    running  -> failed    (failure_reason = "backend restart - run orphaned")
+    queued   -> approved  (never attempted, safe to re-dispatch)
 
-    running  → failed    (failure_reason = "backend restart — run orphaned")
-    queued   → approved  (never attempted, safe to re-dispatch)
-
-Design choices:
-
-  - Split out of ``MissionPlanService`` (services/mission_plan.py is
-    already at 933 lines and carries a code-review P9 item flagging it
-    for a four-way split). This module is a thin startup helper, not a
-    long-lived service class.
-
-  - Called at FastAPI startup *unconditionally* — not gated on the
-    ``experimental_mission_plan_daemon_enabled`` feature flag — because
-    orphans can exist regardless of whether the daemon is on. If a user
-    dispatched a plan manually and the backend crashed mid-run, the
-    orphan still needs clearing on next boot.
-
-  - Idempotent: running it a second time finds no in-flight rows (the
-    first pass cleared them) and is a no-op. Safe to call from multiple
-    startup hooks if needed.
-
-  - Emits ``MissionPlanTaskStatusChangedEvent`` per transition with
-    ``actor="system:crash-recovery"`` so connected SSE clients see the
-    kanban update live and so the audit trail is clean.
-
-  - Swallows Redis failures (via the service's existing ``_emit()``
-    helper) — event emission is best-effort; the DB transition is the
-    source of truth.
-
-Known limitation — single-process assumption:
-
-  In a multi-process backend deployment (e.g. multiple uvicorn workers),
-  process A might be actively running tasks while process B restarts.
-  This reconciler, running in process B's startup, would spuriously mark
-  process A's healthy running tasks as orphaned. The correct fix is a
-  per-task heartbeat mechanism that this reconciler consults — tasks
-  whose heartbeat is fresher than ``orphan_ttl_seconds`` are left alone,
-  only stale-heartbeat tasks are transitioned. That's a future
-  enhancement tracked separately; for the current single-process dev
-  deployment this limitation is documented and accepted.
-
-  The Plan 46 Phase 1 work unit #3 (daemon liveness heartbeat) is the
-  primitive that makes per-task heartbeats easy to build later.
+Plan 72: queries the `tasks` table directly instead of `plan_task_states`.
 """
 
 from __future__ import annotations
@@ -68,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import MissionPlanTaskStatusChangedEvent, SystemEvent
-from modules.backend.models.mission_plan import PlanTaskStatus
-from modules.backend.repositories.mission_plan import MissionPlanRepository
+from modules.backend.models.task import TaskStatus
+from modules.backend.repositories.task import TaskRepository
 
 logger = get_logger(__name__)
 
@@ -85,69 +40,48 @@ async def reconcile_orphaned_task_states(
     session: AsyncSession,
     event_bus: Any | None = None,
 ) -> dict[str, int]:
-    """Transition every orphaned in-flight task state to a safe status.
+    """Transition every orphaned in-flight task to a safe status.
 
     Call at backend startup BEFORE the mission plan daemon begins
-    polling. Returns a stats dict so the caller can log the
-    reconciliation result.
-
-    Args:
-        session: Open async SQLAlchemy session for DB writes.
-        event_bus: Optional event bus for emitting
-            ``MissionPlanTaskStatusChangedEvent``.  When None, events
-            are skipped (DB state still transitions — events are
-            best-effort signalling on top).
-
-    Returns:
-        Dict with counts:
-            - ``running_to_failed``: tasks transitioned running → failed
-            - ``queued_to_approved``: tasks transitioned queued → approved
+    polling. Returns a stats dict for logging.
     """
-    repo = MissionPlanRepository(session)
-    in_flight = await repo.list_in_flight_task_states()
+    task_repo = TaskRepository(session)
+    in_flight = await task_repo.list_in_flight()
 
     if not in_flight:
-        logger.info(
-            "Crash recovery: no orphaned task states to reconcile",
-        )
+        logger.info("Crash recovery: no orphaned tasks to reconcile")
         return {"running_to_failed": 0, "queued_to_approved": 0}
 
     running_to_failed = 0
     queued_to_approved = 0
-    # Buffer transitions so we can emit events AFTER the DB flush
-    # (avoids emitting for a transition that failed to persist).
+    # Buffer transitions for event emission after flush
     emit_buffer: list[tuple[str, str, str, str, str]] = []
     # tuple = (mission_id, plan_id, task_id, from_status, to_status)
 
-    for state in in_flight:
-        from_status = state.status
-        mission_id = state.plan.mission_id  # eager-loaded
-        plan_id = state.mission_plan_id
+    for task in in_flight:
+        from_status = task.status
+        mission_id = task.mission_id
+        plan_id = task.plan_id
 
-        if state.status == PlanTaskStatus.RUNNING:
-            state.status = PlanTaskStatus.FAILED
-            state.failure_reason = ORPHAN_FAILURE_REASON
-            state.task_execution_id = None
-            state.last_attempt_at = utc_now()
+        if task.status == TaskStatus.RUNNING:
+            task.status = TaskStatus.FAILED
+            task.failure_reason = ORPHAN_FAILURE_REASON
+            task.last_attempt_at = utc_now()
             running_to_failed += 1
             emit_buffer.append(
-                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.FAILED)
+                (mission_id, plan_id, task.id, from_status, TaskStatus.FAILED)
             )
-        elif state.status == PlanTaskStatus.QUEUED:
-            # Queued means dispatched by plan-level gating but the
-            # agent never picked it up. No partial work to worry about;
-            # restore to approved so the daemon (or user) can re-queue.
-            state.status = PlanTaskStatus.APPROVED
-            state.task_execution_id = None
+        elif task.status == TaskStatus.QUEUED:
+            task.status = TaskStatus.APPROVED
             queued_to_approved += 1
             emit_buffer.append(
-                (mission_id, plan_id, state.task_id, from_status, PlanTaskStatus.APPROVED)
+                (mission_id, plan_id, task.id, from_status, TaskStatus.APPROVED)
             )
 
     await session.flush()
 
     logger.info(
-        "Crash recovery: reconciled orphaned task states",
+        "Crash recovery: reconciled orphaned tasks",
         extra={
             "running_to_failed": running_to_failed,
             "queued_to_approved": queued_to_approved,
@@ -155,7 +89,7 @@ async def reconcile_orphaned_task_states(
         },
     )
 
-    # Emit events best-effort. A Redis blip must not block startup.
+    # Emit events best-effort
     if event_bus is not None:
         for mission_id, plan_id, task_id, from_status, to_status in emit_buffer:
             try:
@@ -183,8 +117,6 @@ async def reconcile_orphaned_task_states(
                     },
                 )
 
-        # Emit a summary SystemEvent per affected mission so the console shows
-        # what crash recovery did — even if individual task events failed above.
         affected_missions = {mid for mid, *_ in emit_buffer}
         for mid in affected_missions:
             try:
@@ -217,55 +149,31 @@ async def reconcile_orphaned_execution_records(
 
     Tool-fork workflows (RunWorkflowWorkflow, DesignWorkflowWorkflow) set
     execution_record status to RUNNING at start. If the Temporal worker
-    crashes mid-execution, the record stays in RUNNING forever. This
-    function transitions orphaned records to FAILED on startup.
-
-    Also fixes any lowercase status values that slipped in — SQLAlchemy's
-    Enum(native_enum=False) stores by enum name (uppercase).
-
-    Call at backend startup alongside reconcile_orphaned_task_states.
+    crashes, the record stays RUNNING forever. This reconciler transitions
+    them to FAILED so they don't block future dispatches.
     """
-    from sqlalchemy import or_, select, text
+    from sqlalchemy import update
 
-    from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
-
-    # Fix any lowercase values — SQLAlchemy Enum stores by name (uppercase).
-    # Use raw SQL because the ORM Enum column rejects lowercase in comparisons.
-    for wrong, right in [("completed", "COMPLETED"), ("failed", "FAILED"),
-                         ("running", "RUNNING"), ("pending", "PENDING")]:
-        fix_result = await session.execute(
-            text("UPDATE execution_records SET status = :right WHERE status = :wrong"),
-            {"wrong": wrong, "right": right},
-        )
-        if fix_result.rowcount:
-            logger.info(
-                "Crash recovery: fixed execution record status case",
-                extra={"from": wrong, "to": right, "count": fix_result.rowcount},
-            )
-
-    # Transition orphaned RUNNING/PENDING → FAILED
-    stmt = (
-        select(ExecutionRecord)
-        .where(
-            or_(
-                ExecutionRecord.status == ExecutionRecordStatus.RUNNING,
-                ExecutionRecord.status == ExecutionRecordStatus.PENDING,
-            )
-        )
+    from modules.backend.models.execution_record import (
+        ExecutionRecord,
+        ExecutionRecordStatus,
     )
-    result = await session.execute(stmt)
-    orphans = list(result.scalars().all())
 
-    for record in orphans:
-        record.status = ExecutionRecordStatus.FAILED
-        record.completed_at = utc_now()
-
-    await session.flush()
-
-    if orphans:
+    result = await session.execute(
+        update(ExecutionRecord)
+        .where(
+            ExecutionRecord.status.in_([
+                ExecutionRecordStatus.RUNNING,
+                ExecutionRecordStatus.PENDING,
+            ])
+        )
+        .values(status=ExecutionRecordStatus.FAILED)
+    )
+    count = result.rowcount
+    if count > 0:
+        await session.flush()
         logger.info(
             "Crash recovery: reconciled orphaned execution records",
-            extra={"count": len(orphans)},
+            extra={"count": count},
         )
-
-    return len(orphans)
+    return count

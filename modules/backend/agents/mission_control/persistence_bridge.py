@@ -28,11 +28,11 @@ async def persist_mission_results(
     *,
     session_id: str,
     roster_name: str | None = None,
-    task_plan_json: dict | None = None,
     thinking_trace: str | None = None,
     mission_id: str | None = None,
     db_session: AsyncSession,
     execution_record_id: str | None = None,
+    task_plan_json: dict | None = None,  # Plan 72: ignored, domain_tags read from Task rows
 ) -> str | None:
     """Persist execution results. Best-effort — does not raise.
 
@@ -67,7 +67,6 @@ async def persist_mission_results(
                 execution_record_id=execution_record_id,
                 status=record_status,
                 roster_name=roster_name,
-                task_plan_json=task_plan_json,
                 execution_outcome_json=outcome.model_dump(),
                 planning_thinking_trace=thinking_trace,
                 total_cost_usd=outcome.total_cost_usd,
@@ -77,12 +76,31 @@ async def persist_mission_results(
                 session_id=session_id,
                 status=record_status,
                 roster_name=roster_name,
-                task_plan_json=task_plan_json,
                 execution_outcome_json=outcome.model_dump(),
                 planning_thinking_trace=thinking_trace,
                 total_cost_usd=outcome.total_cost_usd,
                 mission_id=mission_id,
             )
+
+        # Batch-fetch domain_tags for all tasks in one query (Plan 72)
+        from sqlalchemy import select
+        from modules.backend.models.task import Task as TaskModel
+        task_ids = [tr.task_id for tr in outcome.task_results if tr.task_id]
+        domain_tags_map: dict[str, list | None] = {}
+        if task_ids:
+            rows = await db_session.execute(
+                select(TaskModel.id, TaskModel.domain_tags)
+                .where(TaskModel.id.in_(task_ids))
+            )
+            for tid, tags in rows:
+                domain_tags_map[tid] = tags or None
+
+        task_status_map = {
+            TaskStatus.SUCCESS: "completed",
+            TaskStatus.FAILED: "failed",
+            TaskStatus.TIMEOUT: "failed",
+            TaskStatus.SKIPPED: "skipped",
+        }
 
         for task_result in outcome.task_results:
             verification_dict = None
@@ -96,21 +114,8 @@ async def persist_mission_results(
                     "output_tokens": task_result.token_usage.output,
                 }
 
-            task_status_map = {
-                TaskStatus.SUCCESS: "completed",
-                TaskStatus.FAILED: "failed",
-                TaskStatus.TIMEOUT: "failed",
-                TaskStatus.SKIPPED: "skipped",
-            }
             exec_status = task_status_map.get(task_result.status, "failed")
-
-            # Look up domain_tags from the original TaskPlan
-            domain_tags = None
-            if task_plan_json and "tasks" in task_plan_json:
-                for task_def in task_plan_json["tasks"]:
-                    if task_def.get("task_id") == task_result.task_id:
-                        domain_tags = task_def.get("domain_tags") or None
-                        break
+            domain_tags = domain_tags_map.get(task_result.task_id)
 
             execution = await service.save_task_execution(
                 execution_record_id=record.id,

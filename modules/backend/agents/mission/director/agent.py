@@ -636,24 +636,21 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             # can decide whether to retry or report to the user. This does NOT
             # block — the Director (or user) can still proceed. The followup
             # prompt already tells the Director not to auto-retry on failure.
-            from modules.backend.models.mission_plan import PlanTaskStatus as _PTS
-            recent_states = await plan_svc.get_task_states(plan.id, status=_PTS.FAILED)
-            existing_tasks = plan.task_plan_json.get("tasks", []) if plan.task_plan_json else []
-            task_by_id = {t.get("task_id"): t for t in existing_tasks}
-            for state in recent_states:
-                task_body = task_by_id.get(state.task_id, {})
-                task_query = (task_body.get("inputs", {}).get("static", {}).get("query") or "")
-                if task_query == query and state.last_attempt_at:
+            from modules.backend.models.task import TaskStatus as _TS
+            recent_tasks = await plan_svc.get_tasks(plan.id, status=_TS.FAILED)
+            for task in recent_tasks:
+                task_query = (task.inputs_json or {}).get("static", {}).get("query", "")
+                if task_query == query and task.last_attempt_at:
                     from modules.backend.core.utils import utc_now as _utc_now
                     from datetime import timedelta
-                    age = _utc_now() - state.last_attempt_at
+                    age = _utc_now() - task.last_attempt_at
                     if age < timedelta(minutes=10):
                         logger.warning(
                             "Research query recently failed — proceeding anyway",
                             extra={
                                 "query": query[:80],
-                                "failed_task_id": state.task_id,
-                                "failure_reason": state.failure_reason,
+                                "failed_task_id": task.id,
+                                "failure_reason": task.failure_reason,
                                 "minutes_ago": round(age.total_seconds() / 60, 1),
                             },
                         )
@@ -873,7 +870,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         are approved?"
 
         The plan is created lazily — if no refinement has happened yet,
-        task_plan_json will be null and task_states will be empty.
+        the tasks relationship will be empty.
         """
         try:
             if ctx.deps.db_session is None:
@@ -939,11 +936,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             )
             await ctx.deps.db_session.commit()
 
-            task_count = (
-                len(refined.task_plan_json.get("tasks", []))
-                if refined.task_plan_json
-                else 0
-            )
+            task_count = len(refined.tasks)
 
             return json.dumps({
                 "plan_id": refined.id,
@@ -952,12 +945,12 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 "gate_mode": refined.gate_mode,
                 "tasks": [
                     {
-                        "task_id": t.get("task_id"),
-                        "agent": t.get("agent"),
-                        "description": t.get("description"),
-                        "dependencies": t.get("dependencies", []),
+                        "task_id": t.id,
+                        "agent": t.agent,
+                        "description": t.description,
+                        "dependencies": [d.depends_on_id for d in t.dependencies],
                     }
-                    for t in (refined.task_plan_json.get("tasks", []) if refined.task_plan_json else [])
+                    for t in refined.tasks
                 ],
                 "message": (
                     f"Plan refined to v{refined.version} with {task_count} tasks. "
@@ -1105,7 +1098,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 })
 
             # The Director acts on behalf of the mission owner — use the
-            # owner's user id so the plan_task_states.approved_by_user_id
+            # owner's user id so the tasks.approved_by_user_id
             # FK is satisfied and the audit trail correctly attributes
             # the approval to a real user (not to an agent name).
             acting_user_id = mission.owner_id

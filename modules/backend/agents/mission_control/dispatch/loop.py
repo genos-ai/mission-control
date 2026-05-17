@@ -146,7 +146,7 @@ async def dispatch(
         plan_id=plan.mission_id,
         goal=plan.summary,
         step_count=len(plan.tasks),
-        metadata={"task_plan_json": plan.model_dump_json()},
+        metadata={"task_count": len(plan.tasks), "summary": plan.summary},
     )
 
     project_context = await _load_project_context(mission_id, context_curator)
