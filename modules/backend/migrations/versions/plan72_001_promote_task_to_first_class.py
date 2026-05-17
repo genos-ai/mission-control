@@ -275,6 +275,10 @@ def upgrade() -> None:
             ), {"new_id": new_uuid, "old_id": old_key})
 
     # ── 5. Alter FK columns to UUID type ───────────────────────────────────
+    # First make task_id nullable on all tables (some have NOT NULL constraint)
+    for table in ("task_executions", "execution_decisions", "context_changes"):
+        op.alter_column(table, "task_id", nullable=True)
+
     # NULL out any task_id values that weren't backfilled to UUIDs.
     # Without this, the ::uuid cast below will crash on old-format
     # strings like "v1-task-001" from orphaned/deleted plans.

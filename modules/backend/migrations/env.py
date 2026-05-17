@@ -49,7 +49,8 @@ from modules.backend.models.llm_call import LlmCall  # noqa: F401
 from modules.backend.models.mission_artifact import MissionArtifact  # noqa: F401
 from modules.backend.models.mission_intent import MissionIntent  # noqa: F401
 from modules.backend.models.mission_learning import MissionLearning  # noqa: F401
-from modules.backend.models.mission_plan import MissionPlan, PlanTaskState  # noqa: F401
+from modules.backend.models.mission_plan import MissionPlan  # noqa: F401
+from modules.backend.models.task import Task, TaskDependency  # noqa: F401
 from modules.backend.models.model_pricing import ModelPricing  # noqa: F401
 from modules.backend.models.session_followup import SessionFollowup  # noqa: F401
 

@@ -58,7 +58,8 @@ async def _validate_async(verbose: bool, debug: bool) -> None:
     from sqlalchemy import text
     from modules.backend.core.database import get_async_session
 
-    setup_logging(verbose=verbose, debug=debug)
+    level = "DEBUG" if debug else ("INFO" if verbose else "WARNING")
+    setup_logging(level=level)
 
     issues: list[str] = []
     stats = {
