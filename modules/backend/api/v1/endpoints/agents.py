@@ -166,9 +166,17 @@ async def agent_chat_stream(
         await idempotency.cache_response({"success": True, "data": {"session_id": session_id}})
 
     async def generate():
+        from modules.backend.core.config import get_app_config
+        keepalive_sec = get_app_config().timeouts.sse_keepalive
         try:
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=keepalive_sec)
+                except asyncio.TimeoutError:
+                    # SSE comment line — keeps the connection alive during
+                    # long tool executions (e.g. Planning Agent building a DAG)
+                    yield ": keepalive\n\n"
+                    continue
                 if event is None:
                     break
                 yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"

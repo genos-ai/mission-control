@@ -56,15 +56,17 @@ pagination:
   max_limit: 100
 
 # timeouts (seconds):
-#   database     - DB query timeout
-#   external_api - external HTTP calls
-#   background   - background tasks
-#   tool_bridge  - copilot tool execution (planning needs multiple LLM round-trips)
+#   database      - DB query timeout
+#   external_api  - external HTTP calls
+#   background    - background tasks
+#   tool_bridge   - copilot tool execution (planning needs multiple LLM round-trips)
+#   sse_keepalive - SSE comment interval to prevent idle connection drops
 timeouts:
   database: 10
   external_api: 30
   background: 120
   tool_bridge: 300
+  sse_keepalive: 15
 
 telegram:
   webhook_path: "/webhook/telegram"

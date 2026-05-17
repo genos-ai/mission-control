@@ -49,6 +49,7 @@ class TimeoutsSchema(_StrictBase):
     external_api: int
     background: int
     tool_bridge: int = 300
+    sse_keepalive: int = 15
 
 
 class TelegramAppSchema(_StrictBase):

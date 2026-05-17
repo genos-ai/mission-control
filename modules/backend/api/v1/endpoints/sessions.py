@@ -341,9 +341,15 @@ async def send_message(
     #    If client disconnects, this generator is cancelled but
     #    the background task continues independently.
     async def generate():
+        from modules.backend.core.config import get_app_config
+        keepalive_sec = get_app_config().timeouts.sse_keepalive
         try:
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=keepalive_sec)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
                 if event is None:
                     break
                 yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
