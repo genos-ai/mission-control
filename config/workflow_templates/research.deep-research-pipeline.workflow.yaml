@@ -1,0 +1,443 @@
+# =============================================================================
+# Workflow: Deep Research Pipeline (Exploded)
+# =============================================================================
+# Translates the research_loop.py executor into a visible, editable multi-step
+# workflow. Each phase of the research loop is a separate node in the graph,
+# making the pipeline observable and tuneable from the frontend workflow editor.
+#
+# Architecture notes:
+# - Conditions use @node.{step_id}.{field} syntax (condition evaluator).
+# - Input dict @context.X references resolve against the merged upstream context
+#   (workflow context + flat-merged output-mapping keys from depends_on steps).
+# - Data flows via depends_on + output_mapping: a step receives all output-mapped
+#   keys from its direct dependencies flat-merged into upstream_context.
+# - The merge node depends on analyze-r1, analyze-r2, and analyze-r3. The wave
+#   engine exempts merge nodes from skip propagation, so even when R2/R3 are
+#   skipped the merge still runs and collects whatever is available.
+# - compress depends on merge-findings AND all three search steps to ensure it
+#   receives findings_r1/r2/r3 via flat-merge.
+# =============================================================================
+
+workflow_name: research.deep-research-pipeline.workflow
+description: "Deep research pipeline: multi-step, observable version of the research loop with iterative search, coverage analysis, synthesis, and citation verification"
+objective:
+  statement: "Produce a comprehensive, cited research report through iterative multi-agent search with full pipeline visibility"
+  category: research
+  owner: user
+  priority: high
+version: 1
+enabled: true
+
+trigger:
+  type: on_demand
+  match_patterns:
+    - "deep research pipeline"
+    - "research pipeline"
+    - "detailed research"
+
+budget:
+  max_cost_usd: 30.00
+  max_tokens: 5000000
+
+parameters:
+  - key: query
+    label: "Research Query"
+    type: text
+    required: true
+    description: "The question or topic to research in depth"
+    placeholder: "e.g. What are the security implications of WebAssembly in production?"
+
+  - key: research_depth
+    label: "Depth"
+    type: enum
+    options: ["quick", "moderate", "comprehensive"]
+    default: "comprehensive"
+    description: "Controls iterations, budget, and coverage threshold"
+
+  - key: min_coverage_ratio
+    label: "Coverage Threshold"
+    type: number
+    min: 0.1
+    max: 1.0
+    default: 0.8
+    description: "Stop iterating when this fraction of sub-questions are well-covered"
+
+  - key: verification_enabled
+    label: "Verify Citations"
+    type: boolean
+    default: true
+    description: "Run NLI verification on the final report's citations"
+
+  - key: include_domains
+    label: "Restrict to Domains"
+    type: string
+    required: false
+    default: ""
+    placeholder: "e.g. arxiv.org, github.com (comma-separated, leave empty for all)"
+    description: "Only search these domains (comma-separated). Empty = no restriction."
+
+context:
+  query: ""
+  research_depth: "comprehensive"
+  max_sources_per_question: 10
+  min_coverage_ratio: 0.8
+  source_types: ["web"]
+  include_domains: []
+  exclude_domains: []
+  verification_enabled: true
+  max_findings_for_synthesis: 50
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Phase 1: Decompose
+  # ---------------------------------------------------------------------------
+  - id: decompose
+    label: "Decompose Query"
+    description: "Strategist breaks the research query into prioritised sub-questions with search strategies"
+    node_type: agent_step
+    capability: research.strategist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 1.50
+    environment: local
+    input:
+      type: "research_decompose"
+      query: "@context.query"
+      mode: "decompose"
+      depth: "@context.research_depth"
+    output_mapping:
+      summary_key: decomposition_summary
+      field_mappings:
+        - source_task: research.strategist.agent
+          source_field: sub_questions
+          target_key: sub_questions
+        - source_task: research.strategist.agent
+          source_field: search_strategies
+          target_key: search_strategies
+    timeout_seconds: 120
+    depends_on: []
+
+  # ---------------------------------------------------------------------------
+  # Phase 2: Search Round 1 (always runs)
+  # ---------------------------------------------------------------------------
+  - id: search-r1
+    label: "Search Round 1"
+    description: "Fan-out parallel searches across all sub-questions (first pass)"
+    node_type: agent_step
+    capability: research.searcher
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 8.00
+    environment: local
+    input:
+      type: "research_search_batch"
+      round_number: 1
+    output_mapping:
+      field_mappings:
+        - source_task: research.searcher.agent
+          source_field: findings
+          target_key: findings_r1
+        - source_task: research.searcher.agent
+          source_field: sources_found
+          target_key: sources_found_r1
+    timeout_seconds: 600
+    depends_on:
+      - decompose
+
+  # ---------------------------------------------------------------------------
+  # Phase 3: Coverage Analysis Round 1 (always runs)
+  # ---------------------------------------------------------------------------
+  - id: analyze-r1
+    label: "Coverage Analysis R1"
+    description: "Evaluate which sub-questions are well-covered (>= 2 independent sources) after round 1"
+    node_type: agent_step
+    capability: research.analyst
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 1.00
+    environment: local
+    input:
+      type: "research_coverage_analysis"
+    output_mapping:
+      field_mappings:
+        - source_task: research.analyst.agent
+          source_field: coverage_ratio
+          target_key: coverage_ratio_r1
+        - source_task: research.analyst.agent
+          source_field: uncovered_question_ids
+          target_key: gap_ids_r1
+        - source_task: research.analyst.agent
+          source_field: covered_questions
+          target_key: covered_questions_r1
+    timeout_seconds: 120
+    depends_on:
+      - search-r1
+
+  # ---------------------------------------------------------------------------
+  # Phase 4: Refine Queries for Gaps (conditional)
+  # ---------------------------------------------------------------------------
+  - id: refine
+    label: "Refine Gap Queries"
+    description: "Strategist refines search queries for uncovered sub-questions. Skipped if coverage is sufficient."
+    node_type: agent_step
+    capability: research.strategist
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 1.00
+    environment: local
+    condition: "@node.analyze-r1.coverage_ratio_r1 < @context.min_coverage_ratio"
+    input:
+      type: "research_refine"
+      query: "@context.query"
+      mode: "refine"
+    output_mapping:
+      field_mappings:
+        - source_task: research.strategist.agent
+          source_field: refined_sub_questions
+          target_key: refined_questions
+    timeout_seconds: 120
+    depends_on:
+      - analyze-r1
+
+  # ---------------------------------------------------------------------------
+  # Phase 5: Search Round 2 (conditional on gaps)
+  # ---------------------------------------------------------------------------
+  - id: search-r2
+    label: "Search Round 2"
+    description: "Targeted search on refined gap sub-questions. Skipped if R1 coverage was sufficient."
+    node_type: agent_step
+    capability: research.searcher
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 6.00
+    environment: local
+    condition: "@node.analyze-r1.coverage_ratio_r1 < @context.min_coverage_ratio"
+    input:
+      type: "research_search_batch"
+      round_number: 2
+    output_mapping:
+      field_mappings:
+        - source_task: research.searcher.agent
+          source_field: findings
+          target_key: findings_r2
+        - source_task: research.searcher.agent
+          source_field: sources_found
+          target_key: sources_found_r2
+    timeout_seconds: 600
+    depends_on:
+      - refine
+
+  # ---------------------------------------------------------------------------
+  # Phase 6: Coverage Analysis Round 2 (conditional)
+  # ---------------------------------------------------------------------------
+  - id: analyze-r2
+    label: "Coverage Analysis R2"
+    description: "Re-evaluate coverage after round 2. Determines if a third pass is needed."
+    node_type: agent_step
+    capability: research.analyst
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 1.00
+    environment: local
+    condition: "@node.analyze-r1.coverage_ratio_r1 < @context.min_coverage_ratio"
+    input:
+      type: "research_coverage_analysis"
+    output_mapping:
+      field_mappings:
+        - source_task: research.analyst.agent
+          source_field: coverage_ratio
+          target_key: coverage_ratio_r2
+        - source_task: research.analyst.agent
+          source_field: uncovered_question_ids
+          target_key: gap_ids_r2
+        - source_task: research.analyst.agent
+          source_field: covered_questions
+          target_key: covered_questions_r2
+    timeout_seconds: 120
+    depends_on:
+      - search-r2
+
+  # ---------------------------------------------------------------------------
+  # Phase 7: Search Round 3 (final attempt, conditional)
+  # ---------------------------------------------------------------------------
+  - id: search-r3
+    label: "Search Round 3"
+    description: "Final search pass for remaining gaps. Only runs if R2 coverage still below threshold."
+    node_type: agent_step
+    capability: research.searcher
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 5.00
+    environment: local
+    condition: "@node.analyze-r2.coverage_ratio_r2 < @context.min_coverage_ratio"
+    input:
+      type: "research_search_batch"
+      round_number: 3
+    output_mapping:
+      field_mappings:
+        - source_task: research.searcher.agent
+          source_field: findings
+          target_key: findings_r3
+    timeout_seconds: 600
+    depends_on:
+      - analyze-r2
+
+  # ---------------------------------------------------------------------------
+  # Phase 8: Final Analysis Round 3 (conditional)
+  # ---------------------------------------------------------------------------
+  - id: analyze-r3
+    label: "Coverage Analysis R3"
+    description: "Final coverage check after round 3."
+    node_type: agent_step
+    capability: research.analyst
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 1.00
+    environment: local
+    condition: "@node.analyze-r2.coverage_ratio_r2 < @context.min_coverage_ratio"
+    input:
+      type: "research_coverage_analysis"
+    output_mapping:
+      field_mappings:
+        - source_task: research.analyst.agent
+          source_field: coverage_ratio
+          target_key: coverage_ratio_r3
+        - source_task: research.analyst.agent
+          source_field: covered_questions
+          target_key: covered_questions_r3
+    timeout_seconds: 120
+    depends_on:
+      - search-r3
+
+  # ---------------------------------------------------------------------------
+  # Phase 9: Merge Findings (join point)
+  # ---------------------------------------------------------------------------
+  # Merge nodes are exempt from skip propagation in the wave engine. This node
+  # depends on all search and analysis steps. When R2/R3 are skipped, the merge
+  # still runs and flat-merges output-mapped keys from whichever deps completed.
+  # This gives downstream steps (compress) access to findings_r1, findings_r2,
+  # findings_r3, coverage ratios, etc. — all in one flat namespace.
+  - id: merge-findings
+    label: "Merge Findings"
+    description: "Join point: collects findings and coverage data from whichever search rounds ran"
+    node_type: merge
+    merge_config:
+      strategy: wait_all
+    depends_on:
+      - search-r1
+      - analyze-r1
+      - search-r2
+      - analyze-r2
+      - search-r3
+      - analyze-r3
+
+  # ---------------------------------------------------------------------------
+  # Phase 10: Compress & Rank Findings
+  # ---------------------------------------------------------------------------
+  # The analyst agent receives all available findings (findings_r1, findings_r2,
+  # findings_r3) via the merge node's flat-merge. It deduplicates by source URL,
+  # ranks by relevance, and returns the top-K for synthesis.
+  - id: compress
+    label: "Compress & Rank"
+    description: "Deduplicate findings by source URL, rank by relevance score, take top-K for synthesis"
+    node_type: agent_step
+    capability: research.analyst
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 1.50
+    environment: local
+    input:
+      type: "research_compress"
+      max_findings: "@context.max_findings_for_synthesis"
+    output_mapping:
+      field_mappings:
+        - source_task: research.analyst.agent
+          source_field: compressed_findings
+          target_key: compressed_findings
+        - source_task: research.analyst.agent
+          source_field: total_before
+          target_key: total_findings_before
+        - source_task: research.analyst.agent
+          source_field: total_after
+          target_key: total_findings_after
+    timeout_seconds: 120
+    depends_on:
+      - merge-findings
+
+  # ---------------------------------------------------------------------------
+  # Phase 11: Synthesize Report
+  # ---------------------------------------------------------------------------
+  - id: synthesize
+    label: "Synthesize Report"
+    description: "Produce a comprehensive research report with [N] inline citations, executive summary, key findings, and source bibliography"
+    node_type: agent_step
+    capability: research.synthesizer
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 5.00
+    environment: local
+    input:
+      type: "research_synthesize"
+      query: "@context.query"
+    output_mapping:
+      summary_key: research_report_summary
+      field_mappings:
+        - source_task: research.synthesizer.agent
+          source_field: report
+          target_key: research_report
+        - source_task: research.synthesizer.agent
+          source_field: title
+          target_key: report_title
+        - source_task: research.synthesizer.agent
+          source_field: sources
+          target_key: report_sources
+    timeout_seconds: 600
+    depends_on:
+      - compress
+
+  # ---------------------------------------------------------------------------
+  # Phase 12: Verify Citations (conditional on context flag)
+  # ---------------------------------------------------------------------------
+  - id: verify
+    label: "Verify Citations"
+    description: "NLI-based verification: checks whether cited sources actually support the claims made in the report"
+    node_type: agent_step
+    capability: research.verifier
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 2.00
+    environment: local
+    condition: "@context.verification_enabled == true"
+    input:
+      type: "research_verify"
+    output_mapping:
+      field_mappings:
+        - source_task: research.verifier.agent
+          source_field: verification_score
+          target_key: verification_score
+        - source_task: research.verifier.agent
+          source_field: supported_count
+          target_key: verified_citations_supported
+        - source_task: research.verifier.agent
+          source_field: total_citations
+          target_key: verified_citations_total
+        - source_task: research.verifier.agent
+          source_field: flagged_claims
+          target_key: flagged_claims
+    timeout_seconds: 300
+    depends_on:
+      - synthesize
+
+  # ---------------------------------------------------------------------------
+  # Phase 13: Completion Notification
+  # ---------------------------------------------------------------------------
+  # Depends on synthesize (always runs), not verify (conditional).
+  - id: notify-complete
+    label: "Notify Complete"
+    description: "Send research completion notification with report title"
+    node_type: notification
+    notification_config:
+      channel: sse
+      message_template: "Research complete: {{@node.synthesize.report_title}} -- {{@node.compress.total_findings_after}} sources synthesized"
+    depends_on:
+      - synthesize

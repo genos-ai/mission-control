@@ -22,6 +22,19 @@ export interface CanvasState {
   node_positions?: Record<string, { x: number; y: number }>
 }
 
+export interface WorkflowParameter {
+  key: string
+  label: string
+  type: 'string' | 'text' | 'number' | 'boolean' | 'enum'
+  required: boolean
+  default?: unknown
+  description?: string | null
+  placeholder?: string | null
+  options?: string[] | null
+  min?: number | null
+  max?: number | null
+}
+
 export interface WorkflowDetailFull {
   id: string
   name: string
@@ -38,6 +51,7 @@ export interface WorkflowDetailFull {
   objective: Record<string, unknown>
   budget_config: Record<string, unknown>
   trigger_config: Record<string, unknown>
+  parameters: WorkflowParameter[]
   context: Record<string, unknown>
 }
 

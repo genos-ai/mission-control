@@ -419,28 +419,7 @@ function BranchNodeRaw({ data, selected }: NodeProps) {
       <Split className="h-4 w-4 text-zinc-400" />
       <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.label || step.id}</span>
 
-      {/* Multiple source handles for parallel outputs */}
-      <Handle
-        type="source"
-        id="fork-1"
-        position={Position.Right}
-        style={{ top: '30%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
-      />
-      <Handle
-        type="source"
-        id="fork-2"
-        position={Position.Right}
-        style={{ top: '50%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
-      />
-      <Handle
-        type="source"
-        id="fork-3"
-        position={Position.Right}
-        style={{ top: '70%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
-      />
+      <SourceHandle />
     </div>
   )
 }
@@ -463,28 +442,7 @@ function MergeNodeRaw({ data, selected }: NodeProps) {
       ].join(' ')}
       style={{ width: BRANCH_WIDTH }}
     >
-      {/* Multiple target handles for parallel inputs */}
-      <Handle
-        type="target"
-        id="join-1"
-        position={Position.Left}
-        style={{ top: '30%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
-      />
-      <Handle
-        type="target"
-        id="join-2"
-        position={Position.Left}
-        style={{ top: '50%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
-      />
-      <Handle
-        type="target"
-        id="join-3"
-        position={Position.Left}
-        style={{ top: '70%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-zinc-400"
-      />
+      <TargetHandle />
 
       {status !== 'idle' && (
         <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">

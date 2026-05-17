@@ -155,13 +155,15 @@ export function useWorkflowRuns(missionId: string | undefined, workflowName?: st
 export function useRunWorkflow(missionId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (workflowName: string) =>
+    mutationFn: ({ workflowName, contextOverrides }: { workflowName: string; contextOverrides?: Record<string, unknown> }) =>
       api.post<{
         run_id: string
         workflow_name: string
         status: string
         total_cost_usd: number
-      }>(`/missions/${missionId}/workflows/${encodeURIComponent(workflowName)}/run`),
+      }>(`/missions/${missionId}/workflows/${encodeURIComponent(workflowName)}/run`, {
+        context_overrides: contextOverrides,
+      }),
     onSuccess: () => {
       // Invalidate executions so the Runs tab picks up the new run
       qc.invalidateQueries({ queryKey: ['executions'] })

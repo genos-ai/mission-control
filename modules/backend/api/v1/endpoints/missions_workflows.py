@@ -227,6 +227,7 @@ async def get_mission_workflow(
             "objective": w.objective,
             "budget_config": w.budget_config,
             "trigger_config": w.trigger_config,
+            "parameters": w.parameters,
             "context": w.context,
         },
         metadata={"request_id": request_id},

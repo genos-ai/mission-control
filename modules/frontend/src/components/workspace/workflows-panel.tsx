@@ -179,7 +179,7 @@ function MissionWorkflowRow({
 
   async function handleRun() {
     try {
-      const result = await runMutation.mutateAsync(workflow.name)
+      const result = await runMutation.mutateAsync({ workflowName: workflow.name })
       toast.success(
         `Workflow started — ${result.workflow_name} (${result.status})`,
       )

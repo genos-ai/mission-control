@@ -26,7 +26,7 @@ from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
-from modules.backend.schemas.workflow import WorkflowSchema
+from modules.backend.schemas.workflow import WorkflowParameterSchema, WorkflowSchema
 from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.backend.services.base import BaseService
 from modules.backend.services.workflow import WorkflowService
@@ -34,6 +34,51 @@ from modules.backend.services.workflow_run_waves import StepContext, WorkflowRun
 
 # Factory that returns an async context manager yielding a StepContext.
 StepContextFactory = Callable[[], AbstractAsyncContextManager[StepContext]]
+
+
+def validate_workflow_parameters(
+    parameters: list[WorkflowParameterSchema],
+    overrides: dict[str, Any],
+) -> list[str]:
+    """Validate context_overrides against workflow parameter definitions.
+
+    Returns a list of error messages. Empty list = valid.
+    """
+    errors: list[str] = []
+    for param in parameters:
+        value = overrides.get(param.key)
+
+        # Required check
+        if param.required and value is None and param.default is None:
+            errors.append(
+                f"'{param.label}' ({param.key}) is required"
+            )
+            continue
+
+        # Skip further validation if no value provided (will use default)
+        if value is None:
+            continue
+
+        # Type checks
+        if param.type == "number" and not isinstance(value, (int, float)):
+            errors.append(f"'{param.label}' must be a number")
+        elif param.type == "boolean" and not isinstance(value, bool):
+            errors.append(f"'{param.label}' must be a boolean")
+        elif param.type == "enum" and param.options and value not in param.options:
+            errors.append(
+                f"'{param.label}' must be one of: {', '.join(param.options)}"
+            )
+        elif param.type in ("string", "text") and not isinstance(value, str):
+            errors.append(f"'{param.label}' must be a string")
+
+        # Range checks for numbers
+        if param.type == "number" and isinstance(value, (int, float)):
+            if param.min is not None and value < param.min:
+                errors.append(f"'{param.label}' must be >= {param.min}")
+            if param.max is not None and value > param.max:
+                errors.append(f"'{param.label}' must be <= {param.max}")
+
+    return errors
 
 logger = get_logger(__name__)
 
@@ -161,6 +206,14 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         if errors:
             msg = f"Workflow capability errors: {'; '.join(errors)}"
             logger.warning(msg, mission_id=mission_id)
+            raise ValueError(msg)
+
+        # Validate required parameters are provided
+        param_errors = validate_workflow_parameters(
+            workflow.parameters, context_overrides or {},
+        )
+        if param_errors:
+            msg = f"Missing required parameters: {'; '.join(param_errors)}"
             raise ValueError(msg)
 
         from modules.backend.services.session import SessionService
@@ -357,6 +410,8 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         if not name.endswith(".workflow"):
             name = f"db.{name.replace(' ', '_').replace('-', '_').lower()}.workflow"
 
+        from modules.backend.schemas.workflow import WorkflowParameterSchema
+
         return WorkflowSchema(
             workflow_name=name,
             description=defn.description or name,
@@ -365,6 +420,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             enabled=defn.enabled,
             trigger=WorkflowTriggerSchema(**defn.trigger_config),
             budget=WorkflowBudgetSchema(**defn.budget_config),
+            parameters=[WorkflowParameterSchema(**p) for p in (defn.parameters or [])],
             context=defn.context or {},
             steps=[WorkflowStepSchema(**s) for s in defn.steps],
         )

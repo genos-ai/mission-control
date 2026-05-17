@@ -718,12 +718,23 @@ class WorkflowRunWavesMixin:
         step: WorkflowStepSchema,
         completed_outcomes: dict[str, dict],
     ) -> tuple[VirtualExecution, dict]:
-        """Sync barrier — collects outputs from all incoming paths into a combined object."""
-        merged: dict[str, Any] = {}
+        """Sync barrier — collects outputs from all incoming paths.
+
+        Flat-merges all output-mapped keys from non-skipped dependencies into
+        a single dict. This allows downstream steps to receive all upstream
+        data naturally via resolve_upstream_context, regardless of which
+        branches actually ran.
+        """
+        flat: dict[str, Any] = {}
+        merged_by_dep: dict[str, dict] = {}
         for dep_id in step.depends_on:
             dep_out = completed_outcomes.get(dep_id, {})
             if not dep_out.get("_skipped"):
-                merged[dep_id] = dep_out
+                merged_by_dep[dep_id] = dep_out
+                # Flat-merge: output-mapped keys from each dep become top-level
+                for k, v in dep_out.items():
+                    if not k.startswith("_"):
+                        flat[k] = v
 
         strategy = "wait_all"
         if step.merge_config:
@@ -731,13 +742,13 @@ class WorkflowRunWavesMixin:
 
         logger.info(
             "Merge completed",
-            extra={"step_id": step.id, "run_id": run.id, "strategy": strategy, "inputs": len(merged)},
+            extra={"step_id": step.id, "run_id": run.id, "strategy": strategy, "inputs": len(merged_by_dep)},
         )
         await self._publish_workflow_event(run.mission_id, WorkflowMergeCompletedEvent(
             session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, strategy=strategy, inputs_merged=len(merged),
+            workflow_run_id=run.id, step_id=step.id, strategy=strategy, inputs_merged=len(merged_by_dep),
         ))
-        outputs = {"merged": merged, "input_count": len(merged)}
+        outputs = {**flat, "_merged_deps": list(merged_by_dep.keys()), "_input_count": len(merged_by_dep)}
         return VirtualExecution(id=step.id), outputs
 
     async def _execute_sub_workflow_step(
@@ -980,6 +991,10 @@ class WorkflowRunWavesMixin:
            does not match the edge label connecting them, OR
         3. ANY of its dependencies was itself skipped (propagation).
 
+        Exception: merge nodes never propagate skips from dependencies.
+        A merge is a join point that collects whatever completed; its
+        _execute_merge_step already filters out skipped deps at runtime.
+
         If no edge label exists on a condition-node edge the step always runs
         (backward-compatible).
         """
@@ -1010,6 +1025,10 @@ class WorkflowRunWavesMixin:
                 )
                 return True
 
+        # Merge nodes are join points — they never skip due to dep propagation.
+        # Their execution logic already handles skipped deps gracefully.
+        is_merge = getattr(step, "node_type", "agent_step") == "merge"
+
         # ── Graph-based condition-node routing ──
         for dep_id in step.depends_on:
             dep = step_map.get(dep_id)
@@ -1017,15 +1036,16 @@ class WorkflowRunWavesMixin:
                 continue
             dep_type = getattr(dep, "node_type", "agent_step")
             if dep_type != "condition":
-                # Also propagate skips: if a dependency was skipped, skip this step too
-                dep_outcome = completed_outcomes.get(dep_id, {})
-                if dep_outcome.get("_skipped"):
-                    return True
+                # Propagate skips — unless this step is a merge node
+                if not is_merge:
+                    dep_outcome = completed_outcomes.get(dep_id, {})
+                    if dep_outcome.get("_skipped"):
+                        return True
                 continue
 
             # Dependency is a condition node — check the branch
             dep_outcome = completed_outcomes.get(dep_id, {})
-            if dep_outcome.get("_skipped"):
+            if dep_outcome.get("_skipped") and not is_merge:
                 return True
             branch_taken = dep_outcome.get("_branch")
             if branch_taken is None:

@@ -148,7 +148,7 @@ const nodeTypes = {
 interface WorkflowEditorProps {
   workflow: WorkflowDetailFull
   onSaveGraph: (canvas: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]) => Promise<string[]>
-  onRun: () => Promise<void>
+  onRun: () => void
 }
 
 interface HistoryEntry {

@@ -308,6 +308,50 @@ class WorkflowTriggerSchema(BaseModel):
     match_patterns: list[str] = Field(default_factory=list)
 
 
+class WorkflowParameterSchema(BaseModel):
+    """A typed input parameter for a workflow.
+
+    Parameters are user-facing fields shown in a form before run.
+    Their values merge into the workflow context at execution time.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="Context key this parameter maps to",
+    )
+    label: str = Field(..., min_length=1, max_length=200)
+    type: str = Field(
+        ...,
+        pattern=r"^(string|number|boolean|enum|text)$",
+        description="Input type: string (single line), text (multi-line), number, boolean, enum",
+    )
+    required: bool = Field(default=False)
+    default: Any = Field(None, description="Default value (must match type)")
+    description: str | None = Field(None, max_length=500)
+    placeholder: str | None = Field(None, max_length=200)
+    options: list[str] | None = Field(
+        None,
+        description="Allowed values for enum type",
+    )
+    min: float | None = Field(None, description="Minimum for number type")
+    max: float | None = Field(None, description="Maximum for number type")
+
+    @model_validator(mode="after")
+    def _validate_type_constraints(self) -> "WorkflowParameterSchema":
+        if self.type == "enum" and not self.options:
+            raise ValueError(f"Parameter '{self.key}': enum type requires options")
+        if self.options and self.type != "enum":
+            raise ValueError(f"Parameter '{self.key}': options only valid for enum type")
+        if (self.min is not None or self.max is not None) and self.type != "number":
+            raise ValueError(f"Parameter '{self.key}': min/max only valid for number type")
+        return self
+
+
 class WorkflowBudgetSchema(BaseModel):
     """Cost constraints for workflow execution."""
 
@@ -354,6 +398,10 @@ class WorkflowSchema(BaseModel):
     )
     trigger: WorkflowTriggerSchema = Field(default_factory=WorkflowTriggerSchema)
     budget: WorkflowBudgetSchema = Field(default_factory=WorkflowBudgetSchema)
+    parameters: list[WorkflowParameterSchema] = Field(
+        default_factory=list,
+        description="User-facing input parameters shown before run. Values merge into context.",
+    )
     context: dict[str, Any] = Field(default_factory=dict)
     steps: list[WorkflowStepSchema] = Field(..., min_length=1)
 

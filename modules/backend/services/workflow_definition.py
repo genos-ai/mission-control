@@ -70,6 +70,7 @@ class WorkflowDefinitionService(BaseService):
         *,
         trigger_config: dict[str, Any] | None = None,
         budget_config: dict[str, Any] | None = None,
+        parameters: list[dict[str, Any]] | None = None,
         context: dict[str, Any] | None = None,
         designed_by: str | None = None,
         edges_json: list[dict[str, Any]] | None = None,
@@ -95,6 +96,7 @@ class WorkflowDefinitionService(BaseService):
             edges_json=edges_json if edges_json is not None else self._derive_edges(steps),
             trigger_config=trigger_config or {"type": "on_demand"},
             budget_config=budget_config or {"max_cost_usd": get_default_budget_usd()},
+            parameters=parameters or [],
             context=context or {},
             designed_by=designed_by,
         )
@@ -215,6 +217,7 @@ class WorkflowDefinitionService(BaseService):
             steps=[s.model_dump() for s in template.steps],
             trigger_config=template.trigger.model_dump(),
             budget_config=template.budget.model_dump(),
+            parameters=[p.model_dump() for p in template.parameters],
             context=template.context,
             designed_by="import:yaml_template",
         )

@@ -71,6 +71,10 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
         JSON, default=dict, nullable=False,
         comment='WorkflowBudgetSchema: {max_cost_usd, max_tokens}',
     )
+    parameters: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False,
+        comment="WorkflowParameterSchema[]: typed user-facing inputs shown before run",
+    )
     context: Mapped[dict] = mapped_column(
         JSON, default=dict, nullable=False,
         comment="Static context data passed to all steps",

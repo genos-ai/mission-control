@@ -2,12 +2,12 @@
  * Workflow editor page — loads workflow by ID and renders the visual editor.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { WorkflowEditor } from '@/components/workflow/workflow-editor'
+import { RunWorkflowDialog } from '@/components/workflow/run-workflow-dialog'
 import { useMissionWorkflowById, useSaveWorkflowGraph } from '@/hooks/use-workflows'
-import { useRunWorkflow } from '@/hooks/use-workflows'
 import type { WorkflowStep } from '@/types'
 import type { CanvasState, WorkflowEdge } from '@/components/workflow/workflow-editor-types'
 
@@ -15,7 +15,7 @@ export default function WorkflowEditPage() {
   const { id: missionId, workflowId } = useParams<{ id: string; workflowId: string }>()
   const { data: workflow, isLoading } = useMissionWorkflowById(missionId, workflowId)
   const saveGraph = useSaveWorkflowGraph(missionId!, workflowId!)
-  const runWorkflow = useRunWorkflow(missionId!)
+  const [showRunDialog, setShowRunDialog] = useState(false)
 
   const handleSaveGraph = useCallback(
     async (canvasState: CanvasState, steps?: WorkflowStep[], edges?: WorkflowEdge[]): Promise<string[]> => {
@@ -29,10 +29,9 @@ export default function WorkflowEditPage() {
     [saveGraph],
   )
 
-  const handleRun = useCallback(async () => {
-    if (!workflow) return
-    await runWorkflow.mutateAsync(workflow.name)
-  }, [workflow, runWorkflow])
+  const handleRun = useCallback(() => {
+    setShowRunDialog(true)
+  }, [])
 
   if (isLoading) {
     return (
@@ -51,10 +50,20 @@ export default function WorkflowEditPage() {
   }
 
   return (
-    <WorkflowEditor
-      workflow={workflow}
-      onSaveGraph={handleSaveGraph}
-      onRun={handleRun}
-    />
+    <>
+      <WorkflowEditor
+        workflow={workflow}
+        onSaveGraph={handleSaveGraph}
+        onRun={handleRun}
+      />
+      {showRunDialog && (
+        <RunWorkflowDialog
+          missionId={missionId!}
+          workflowName={workflow.name}
+          parameters={workflow.parameters ?? []}
+          onClose={() => setShowRunDialog(false)}
+        />
+      )}
+    </>
   )
 }
