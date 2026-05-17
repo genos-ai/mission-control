@@ -122,28 +122,6 @@ export class ApiClient {
   del(path: string) {
     return this.request<void>('DELETE', path)
   }
-
-  /**
-   * Create an SSE EventSource connection.
-   *
-   * Exchanges the JWT for a short-lived, single-use SSE token via
-   * POST /auth/sse-token, then passes that token as `?token=...`.
-   * Falls back to the raw JWT if the exchange fails (graceful degradation).
-   */
-  async sse(path: string): Promise<EventSource> {
-    let sseToken: string | null = null
-    try {
-      const response = await this.post<{ token: string }>('/auth/sse-token')
-      sseToken = response.token
-    } catch {
-      // Exchange failed — fall back to raw JWT
-    }
-
-    const token = sseToken ?? useAuthStore.getState().accessToken
-    const separator = path.includes('?') ? '&' : '?'
-    const url = `${API_BASE}${path}${token ? `${separator}token=${token}` : ''}`
-    return new EventSource(url)
-  }
 }
 
 export const api = new ApiClient()

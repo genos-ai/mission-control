@@ -218,11 +218,15 @@ function RosterRow({
         </span>
         {trailingIcon}
       </div>
-      {live?.currentTool && (
+      {live?.currentTool ? (
         <p className="ml-4 mt-0.5 truncate text-[11px] text-amber-400/80">
           ↳ {live.currentTool}
         </p>
-      )}
+      ) : live?.status === 'thinking' ? (
+        <p className="ml-4 mt-0.5 truncate text-[11px] text-muted-foreground/50 animate-pulse">
+          ↳ thinking…
+        </p>
+      ) : null}
     </button>
   )
 }

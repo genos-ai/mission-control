@@ -142,10 +142,12 @@ export function TaskCard({
   row,
   missionId,
   cardRef,
+  onSelect,
 }: {
   row: AnnotatedTask
   missionId: string
   cardRef: RefCallback<HTMLDivElement>
+  onSelect?: (taskId: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -225,14 +227,18 @@ export function TaskCard({
     blocked ||
     effectiveStatus === 'cancelled' ||
     effectiveStatus === 'skipped'
+  const clickable =
+    onSelect && (effectiveStatus === 'failed' || effectiveStatus === 'completed')
 
   return (
     <div
       ref={cardRef}
+      onClick={clickable ? () => onSelect(task.id) : undefined}
       className={cn(
         'relative rounded-md border bg-card shadow-sm p-2.5 text-xs transition-colors animate-card-enter',
         borderClass,
         dimmed && 'opacity-60',
+        clickable && 'cursor-pointer hover:ring-1 hover:ring-inset hover:ring-primary/30',
       )}
     >
 

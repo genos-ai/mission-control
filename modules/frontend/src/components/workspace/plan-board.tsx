@@ -46,6 +46,7 @@ import {
   computeEdges,
 } from './plan-board-types'
 import { TaskCard, AddTaskForm, ShimmerCard } from './plan-board-task-card'
+import { TaskDetailPanel } from './plan-board-detail-panel'
 import { PlanTopBar, RefinePanel } from './plan-board-top-bar'
 
 // ── Board root ───────────────────────────────────────────────────────────
@@ -104,7 +105,12 @@ function PlanBoardInner({
   joined: JoinedTask[]
 }) {
   const [refineOpen, setRefineOpen] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const refine = useRefinePlan(missionId)
+
+  const selectedTask = selectedTaskId
+    ? joined.find((j) => j.task.id === selectedTaskId)?.task ?? null
+    : null
 
   const annotated = useMemo(() => computeAnnotated(joined), [joined])
   const edges = useMemo(() => computeEdges(joined), [joined])
@@ -138,12 +144,21 @@ function PlanBoardInner({
       {refineOpen && (
         <RefinePanel refine={refine} onDone={() => setRefineOpen(false)} />
       )}
-      <BoardArea
-        byColumn={byColumn}
-        edges={edges}
-        missionId={missionId}
-        isRefining={refine.isPending}
-      />
+      <div className="flex min-h-0 flex-1">
+        <BoardArea
+          byColumn={byColumn}
+          edges={edges}
+          missionId={missionId}
+          isRefining={refine.isPending}
+          onSelectTask={setSelectedTaskId}
+        />
+        {selectedTask && (
+          <TaskDetailPanel
+            task={selectedTask}
+            onClose={() => setSelectedTaskId(null)}
+          />
+        )}
+      </div>
     </div>
   )
 }
@@ -155,11 +170,13 @@ function BoardArea({
   edges,
   missionId,
   isRefining,
+  onSelectTask,
 }: {
   byColumn: Record<ColumnId, AnnotatedTask[]>
   edges: Edge[]
   missionId: string
   isRefining: boolean
+  onSelectTask: (taskId: string) => void
 }) {
   const innerRef = useRef<HTMLDivElement | null>(null)
   const cardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map())
@@ -245,6 +262,7 @@ function BoardArea({
               missionId={missionId}
               registerRef={register}
               showShimmer={def.id === 'proposed' && isRefining}
+              onSelectTask={onSelectTask}
             />
           ))}
         </div>
@@ -261,12 +279,14 @@ function Column({
   missionId,
   registerRef,
   showShimmer,
+  onSelectTask,
 }: {
   def: import('./plan-board-types').ColumnDef
   rows: AnnotatedTask[]
   missionId: string
   registerRef: (taskId: string) => RefCallback<HTMLDivElement>
   showShimmer: boolean
+  onSelectTask: (taskId: string) => void
 }) {
   const parallelism = def.id === 'running' && rows.length > 1
   const isProposed = def.id === 'proposed'
@@ -278,6 +298,7 @@ function Column({
       row={row}
       missionId={missionId}
       cardRef={registerRef(row.task.id)}
+      onSelect={onSelectTask}
     />
   ))
 

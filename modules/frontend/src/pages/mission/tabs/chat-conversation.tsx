@@ -48,14 +48,14 @@ export function Conversation({ sessionId, missionId }: { sessionId: string; miss
     if (!missionId) return
     api.get<{ events: ConsoleEvent[]; count: number }>(`/missions/${missionId}/narrative`)
       .then((data) => {
-        setHistoricalEvents(data.events.filter((e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type)))
+        setHistoricalEvents(data.events.filter((e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type) && e.data.session_id === sessionId))
       })
       .catch(() => {})
-  }, [missionId])
+  }, [missionId, sessionId])
 
   // Live narrative events from SSE
   const liveEvents = useConsoleStore((s) =>
-    s.events.filter((e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type)),
+    s.events.filter((e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type) && e.data.session_id === sessionId),
   )
 
   useEffect(() => {
