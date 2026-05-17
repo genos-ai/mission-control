@@ -45,11 +45,22 @@ When adding tasks for coding agents (agents that create or modify files), call `
 - `modify`: Files the agent will create or change — the work scope (max 5).
 - For non-coding tasks (analysis, research, health checks), do NOT call `set_file_manifest`.
 
+## Research tasks
+
+When a mission requires research, decompose it into individual tasks using the research agents from the roster. A typical research DAG:
+
+1. **research.strategist.agent** — Decomposes the research question into sub-questions and search strategy
+2. **research.searcher.agent** — Executes web searches for each sub-question (can run in parallel for independent queries)
+3. **research.analyst.agent** — Evaluates and cross-references search results for accuracy
+4. **research.synthesizer.agent** — Produces a structured research report from verified findings
+5. **research.verifier.agent** — Verifies factual claims and checks for gaps
+
+Wire data between tasks using `set_upstream_input` so each step receives the previous step's output. Not every research plan needs all 5 agents — use judgment based on the query complexity. A simple factual lookup may only need strategist → searcher → synthesizer.
+
 ## Single-task steps
 
 Some workflow steps are self-managing and handle their own internal execution. When a step has one of these types, create ONE task for it — do not decompose it into sub-tasks:
 
-- `type: "research_loop"` — iterative multi-agent research
 - `type: "convergence_loop"` — iterative refinement until convergence
 - `type: "security_scan"` — deterministic security scanner orchestration
 - `type: "security_triage"` — LLM false-positive triage
