@@ -59,8 +59,7 @@ def semantic_check(plan: TaskPlan) -> list[str]:
     Checks: non-negative cost/duration, task_id format, dependency refs,
     from_upstream consistency, DAG cycles, tier_3 completeness.
 
-    Shared by PlanBuildingSession.finalise() and the legacy
-    extract_task_plan_json() path.
+    Called by PlanBuildingSession.finalise().
     """
     errors: list[str] = []
 

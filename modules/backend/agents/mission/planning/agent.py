@@ -12,11 +12,9 @@ Two modes:
 """
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import ValidationError
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 
@@ -26,7 +24,6 @@ from modules.backend.agents.mission_control.helpers import (
     assemble_instructions,
 )
 from modules.backend.core.logging import get_logger
-from modules.backend.schemas.task_plan import TaskPlan
 
 logger = get_logger(__name__)
 
@@ -142,71 +139,3 @@ def _register_read_tools(agent: Agent) -> None:
             "default_roster": mission.default_roster,
             "execution_environment": mission.execution_environment,
         }, indent=2, default=str)
-
-
-# ---------------------------------------------------------------------------
-# Legacy: blob-based extraction (kept for backward compat — Plan 69 §Phase 3)
-# ---------------------------------------------------------------------------
-
-def extract_task_plan_json(text: str, *, mission_id: str | None = None) -> dict:
-    """Extract, enrich, and validate a TaskPlan dict from planning agent output.
-
-    LEGACY: This function is no longer called by the primary dispatch path
-    (which uses tool-based plan building). Retained for backward
-    compatibility with existing code paths and tests. Will be removed
-    after Plan 69 Phase 3 cleanup.
-    """
-    from modules.backend.agents.mission.planning.build_session import semantic_check
-
-    stripped = text.strip()
-    plan_dict = _try_parse_json(stripped)
-
-    if plan_dict is None:
-        fence_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", stripped, re.DOTALL)
-        if fence_match:
-            plan_dict = _try_parse_json(fence_match.group(1).strip())
-
-    if plan_dict is None:
-        xml_match = re.search(r"<task_plan>\s*(.*?)\s*</task_plan>", stripped, re.DOTALL)
-        if xml_match:
-            plan_dict = _try_parse_json(xml_match.group(1).strip())
-
-    if plan_dict is None:
-        first_brace = stripped.find("{")
-        last_brace = stripped.rfind("}")
-        if first_brace != -1 and last_brace > first_brace:
-            plan_dict = _try_parse_json(stripped[first_brace:last_brace + 1])
-
-    if plan_dict is None:
-        raise ValueError(
-            f"Could not extract valid TaskPlan JSON from planning agent output "
-            f"({len(text)} chars). First 500 chars: {text[:500]}"
-        )
-
-    if mission_id and not plan_dict.get("mission_id"):
-        plan_dict["mission_id"] = mission_id
-
-    try:
-        plan = TaskPlan.model_validate(plan_dict)
-    except ValidationError as e:
-        raise ValueError(f"TaskPlan schema validation failed: {e}") from e
-
-    errors = semantic_check(plan)
-    if errors:
-        raise ValueError(
-            f"TaskPlan semantic validation failed:\n"
-            + "\n".join(f"- {e}" for e in errors)
-        )
-
-    return plan.model_dump()
-
-
-def _try_parse_json(text: str) -> dict | None:
-    """Attempt to parse text as JSON dict. Returns None on failure."""
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict):
-            return data
-    except (json.JSONDecodeError, ValueError):
-        pass
-    return None
