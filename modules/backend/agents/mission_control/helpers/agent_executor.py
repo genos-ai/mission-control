@@ -390,6 +390,14 @@ async def _call_planning_agent(
     model = _build_model(planning_cfg.model)
     planning_model_settings = build_model_settings(planning_cfg)
     agent = create_agent(model)
+    logger.info(
+        "Planning agent instance created for dispatch",
+        extra={
+            "agent_id": id(agent),
+            "tools": list(agent._function_toolset.tools.keys()),
+            "mission_id": mission_id,
+        },
+    )
 
     roster_desc = _build_roster_prompt(roster)
     planning_prompt = _build_planning_prompt(
@@ -427,6 +435,12 @@ async def _call_planning_agent(
         session_id=str(sid),
         mission_id=mission_id,
     )
+
+    if deps.build_session is None:
+        raise ValueError(
+            "_call_planning_agent: build_session is None before agent.run(). "
+            "This should never happen — check PlanBuildingSession creation above."
+        )
 
     if event_bus:
         await _emit(event_bus, AgentThinkingEvent,

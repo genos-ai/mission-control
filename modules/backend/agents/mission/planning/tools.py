@@ -14,12 +14,36 @@ import json
 import uuid as _uuid
 from typing import Any
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 
 from modules.backend.agents.mission.planning.build_session import PlanBuildingSession
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _require_build_session(ctx: RunContext) -> PlanBuildingSession:
+    """Get build_session from deps or raise ModelRetry with clear error.
+
+    Fails fast when the planning agent is invoked in chat mode without
+    a PlanBuildingSession (e.g. via handle() route instead of
+    _call_planning_agent dispatch).
+    """
+    session = ctx.deps.build_session
+    if session is None:
+        logger.error(
+            "build_session is None — planning tool called without PlanBuildingSession",
+            extra={
+                "mission_id": getattr(ctx.deps, "mission_id", None),
+                "session_id": getattr(ctx.deps, "session_id", None),
+            },
+        )
+        raise ModelRetry(
+            "Plan modification tools require a PlanBuildingSession. "
+            "This context does not have one — use get_current_plan to "
+            "inspect the plan, or ask the user to refine via the Director."
+        )
+    return session
 
 
 async def _emit_tool_event(
@@ -69,7 +93,7 @@ def register_planning_tools(agent: Agent) -> None:
             dependencies: task_ids this task depends on (must be added first).
             domain_tags: Tags for categorisation (e.g. ["security", "scan"]).
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         result = session.add_task(
             description=description,
             agent=agent,
@@ -106,7 +130,7 @@ def register_planning_tools(agent: Agent) -> None:
             dependencies: New dependency list (optional, replaces existing).
             domain_tags: New tags (optional, replaces existing).
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         result = session.update_task(
             task_id=task_id,
             description=description,
@@ -124,7 +148,7 @@ def register_planning_tools(agent: Agent) -> None:
         Args:
             task_id: The task to remove.
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         result = session.remove_task(task_id=task_id)
         return json.dumps(result)
 
@@ -146,7 +170,7 @@ def register_planning_tools(agent: Agent) -> None:
             source_task: task_id of the upstream provider.
             source_field: Field name in the upstream task's output.
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         result = session.set_upstream_input(
             task_id=task_id,
             input_name=input_name,
@@ -177,7 +201,7 @@ def register_planning_tools(agent: Agent) -> None:
             key: Input key name.
             value: Input value (string, or JSON string for complex values).
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         # Try to parse JSON values (lists, dicts, numbers)
         parsed_value: Any = value
         try:
@@ -208,7 +232,7 @@ def register_planning_tools(agent: Agent) -> None:
             read_first: Files to read for context (max 5).
             modify: Files to create or change (max 5).
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         result = session.set_file_manifest(
             task_id=task_id,
             read_for_pattern=read_for_pattern or None,
@@ -236,7 +260,7 @@ def register_planning_tools(agent: Agent) -> None:
             tier: 1, 2, or 3.
             config: Tier-specific configuration dict.
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         result = session.set_verification(
             task_id=task_id, tier=tier, config=config,
         )
@@ -259,7 +283,7 @@ def register_planning_tools(agent: Agent) -> None:
             estimated_cost_usd: Total estimated LLM cost for the plan.
             estimated_duration_seconds: Estimated wall-clock time (accounting for parallelism).
         """
-        session: PlanBuildingSession = ctx.deps.build_session
+        session = _require_build_session(ctx)
         result = session.finalise(
             summary=summary,
             estimated_cost_usd=estimated_cost_usd,
@@ -275,7 +299,7 @@ def register_planning_tools(agent: Agent) -> None:
                 "validation_errors": result["errors"],
                 "hint": "Fix the errors above with update_task/remove_task, then call finalise_plan again.",
             })
-        task_count = len(ctx.deps.build_session.tasks)
+        task_count = len(session.tasks)
         await _emit_tool_event(ctx, "finalise_plan", {
             "status": "finalised",
             "task_count": task_count,
