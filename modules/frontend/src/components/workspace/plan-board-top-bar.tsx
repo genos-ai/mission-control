@@ -278,11 +278,11 @@ function PreRunGateModal({
         <div className="mb-4 max-h-48 space-y-1 overflow-y-auto">
           {approvedTasks.map((t) => (
             <div
-              key={t.body.task_id}
+              key={t.task.id}
               className="rounded border px-2.5 py-1.5 text-xs"
             >
-              <span className="font-medium">{t.body.description || t.body.task_id}</span>
-              <span className="ml-2 text-muted-foreground">{t.body.agent}</span>
+              <span className="font-medium">{t.task.description || t.task.id}</span>
+              <span className="ml-2 text-muted-foreground">{t.task.agent}</span>
             </div>
           ))}
         </div>

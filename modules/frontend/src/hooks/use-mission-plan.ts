@@ -1,11 +1,12 @@
 /**
- * useMissionPlan and related hooks (Plan 42).
+ * useMissionPlan and related hooks (Plan 42 → Plan 72).
  *
  * Read + mutate the long-lived mission backlog via the REST endpoints
- * in modules/backend/api/v1/endpoints/missions_plan.py. The plan body
- * is a TaskPlan JSON (see task_plan.py on the backend) — this file only
- * defines wrapper types; callers parse task_plan_json themselves to
- * read task bodies.
+ * in modules/backend/api/v1/endpoints/missions_plan.py.
+ *
+ * Plan 72 promoted Task to a first-class DB entity — tasks are now
+ * unified objects (definition + state merged) returned as a flat array
+ * on the plan response.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,63 +28,47 @@ export type MissionPlanStatus = 'active' | 'paused' | 'completed' | 'archived'
 
 export type GateMode = 'off' | 'interactive' | 'ai_assisted' | 'autonomous'
 
-export interface PlanTaskState {
+/** Unified task: definition fields + state fields merged (Plan 72). */
+export interface PlanTask {
   id: string
-  task_id: string
+  plan_id: string
+  mission_id: string
+  agent: string
+  description: string
+  instructions: string
+  inputs_json: Record<string, unknown>
+  verification_json: Record<string, unknown>
+  constraints_json: Record<string, unknown>
+  domain_tags: string[]
+  dependencies: string[]
   status: PlanTaskStatus
   approved_by_user_id: string | null
   approved_at: string | null
-  execution_record_id: string | null
-  task_execution_id: string | null
-  last_attempt_at: string | null
-  retry_count: number
   veto_expires_at: string | null
+  retry_count: number
+  last_attempt_at: string | null
   result_summary: string | null
   failure_reason: string | null
-  // Plan 46 Phase 2 #2: per-task metrics denormalised from
-  // task_executions at run completion. Default 0.0 for pre-run
-  // states (proposed/approved/queued).
   cost_usd: number
   duration_seconds: number
   created_at: string
   updated_at: string
 }
 
-/** A single task body from the TaskPlan JSON. */
-export interface PlanTaskBody {
-  task_id: string
-  agent: string
-  agent_version: string
-  description: string
-  instructions: string
-  dependencies: string[]
-  domain_tags?: string[]
-  inputs?: Record<string, unknown>
-  verification?: Record<string, unknown>
-  constraints?: Record<string, unknown>
-}
-
-/** Top-level shape of task_plan_json. Only the fields the UI needs. */
-export interface PlanTaskPlanJson {
-  version?: string
-  mission_id?: string
-  summary?: string
-  estimated_cost_usd?: number
-  estimated_duration_seconds?: number
-  tasks: PlanTaskBody[]
-}
-
 export interface MissionPlan {
   id: string
   mission_id: string
-  task_plan_json: PlanTaskPlanJson | null
+  summary: string | null
+  estimated_cost_usd: number | null
+  estimated_duration: number | null
+  execution_hints_json: Record<string, unknown> | null
   gate_mode: GateMode | null
   status: MissionPlanStatus
   version: number
   budget_usd_ceiling: number | null
   total_spent_usd: number
   veto_window_sec: number | null
-  task_states: PlanTaskState[]
+  tasks: PlanTask[]
   created_at: string
   updated_at: string
 }
@@ -111,11 +96,11 @@ export const planKeys = {
 // ── Queries ──────────────────────────────────────────────────────────────
 
 /**
- * Fetch the mission's plan + all task states.
+ * Fetch the mission's plan + all tasks.
  *
  * The plan is created lazily on the backend, so every valid mission has a
- * plan — if no refinement has happened yet, `task_plan_json` is null and
- * `task_states` is empty. Use that as the "empty state" signal.
+ * plan — if no refinement has happened yet, `tasks` is empty. Use that
+ * as the "empty state" signal.
  */
 export function useMissionPlan(missionId: string | undefined) {
   return useQuery({
@@ -143,13 +128,12 @@ export function useRefinePlan(missionId: string) {
   })
 }
 
-/** Update plan-level settings (gate_mode / status / budget / veto / task_order). */
+/** Update plan-level settings (gate_mode / status / budget / veto). */
 export interface PlanUpdatePayload {
   gate_mode?: GateMode
   status?: MissionPlanStatus
   budget_usd_ceiling?: number
   veto_window_sec?: number
-  task_order?: string[]
 }
 
 export function useUpdatePlan(missionId: string) {
@@ -169,18 +153,6 @@ export function useAddPlanTask(missionId: string) {
   return useMutation({
     mutationFn: (payload: { description: string; agent: string; instructions?: string; dependencies?: string[] }) =>
       api.post<MissionPlan>(`/missions/${missionId}/plan/tasks`, payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: planKeys.plan(missionId) })
-    },
-  })
-}
-
-/** Reorder proposed tasks in the plan (drag-to-reorder, Phase 4). */
-export function useReorderTasks(missionId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (taskOrder: string[]) =>
-      api.patch<MissionPlan>(`/missions/${missionId}/plan`, { task_order: taskOrder }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: planKeys.plan(missionId) })
     },
@@ -220,7 +192,7 @@ export function useRetryTask(missionId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (taskId: string) =>
-      api.post<PlanTaskState>(
+      api.post<TaskTransitionResult>(
         `/missions/${missionId}/plan/tasks/${encodeURIComponent(taskId)}/retry`,
       ),
     onSuccess: () => {

@@ -17,7 +17,6 @@ import {
   Wrench,
   ChevronDown,
   ChevronRight,
-  GripVertical,
   MoreVertical,
   GitBranch,
   Copy,
@@ -143,18 +142,10 @@ export function TaskCard({
   row,
   missionId,
   cardRef,
-  dragInnerRef,
-  draggableProps,
-  dragHandleProps,
-  isDragging,
 }: {
   row: AnnotatedTask
   missionId: string
   cardRef: RefCallback<HTMLDivElement>
-  dragInnerRef?: (el: HTMLDivElement | null) => void
-  draggableProps?: React.HTMLAttributes<HTMLDivElement>
-  dragHandleProps?: React.HTMLAttributes<HTMLSpanElement> | null
-  isDragging?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -172,32 +163,32 @@ export function TaskCard({
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpen])
 
-  const { body, state, effectiveStatus, blocked, blockingDeps } = row
-  const isWorkflow = body.agent.startsWith('workflow:')
-  const workflowName = isWorkflow ? body.agent.slice(9) : null
+  const { task, effectiveStatus, blocked, blockingDeps } = row
+  const isWorkflow = task.agent.startsWith('workflow:')
+  const workflowName = isWorkflow ? task.agent.slice(9) : null
   const agentShort = isWorkflow
     ? workflowName!
-    : body.agent.endsWith('.agent')
-      ? body.agent.slice(0, -6)
-      : body.agent
+    : task.agent.endsWith('.agent')
+      ? task.agent.slice(0, -6)
+      : task.agent
 
   // Live tool call for this task's agent, only when running. Zustand
   // selector returns a single string so re-renders stay scoped to the
   // card whose agent's tool actually changed.
   const currentTool = useWorkspaceStore((s) =>
-    effectiveStatus === 'running' ? s.agentStatuses[body.agent]?.currentTool ?? null : null,
+    effectiveStatus === 'running' ? s.agentStatuses[task.agent]?.currentTool ?? null : null,
   )
 
   // Plan 42 §4.4: live countdown for the ai_assisted auto-approval veto
   // window. Only meaningful when the task is currently approved AND was
   // auto-approved by the Director (has a veto_expires_at timestamp).
-  const veto = useVetoCountdown(state?.veto_expires_at)
+  const veto = useVetoCountdown(task.veto_expires_at)
   const inVetoWindow =
     effectiveStatus === 'approved' && veto !== null && !veto.expired
 
   async function handleApprove() {
     try {
-      const result = await approve.mutateAsync(body.task_id)
+      const result = await approve.mutateAsync(task.id)
       if (result.transitioned_task_ids.length > 1) {
         toast.success(
           `Approved ${result.transitioned_task_ids.length} tasks (dependencies included)`,
@@ -210,7 +201,7 @@ export function TaskCard({
 
   async function handleReject() {
     try {
-      const result = await reject.mutateAsync(body.task_id)
+      const result = await reject.mutateAsync(task.id)
       if (result.transitioned_task_ids.length > 1) {
         toast.success(
           `Cancelled ${result.transitioned_task_ids.length} tasks (dependents included)`,
@@ -223,7 +214,7 @@ export function TaskCard({
 
   async function handleRetry() {
     try {
-      await retry.mutateAsync(body.task_id)
+      await retry.mutateAsync(task.id)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Retry failed')
     }
@@ -237,28 +228,13 @@ export function TaskCard({
 
   return (
     <div
-      ref={(el) => { cardRef(el); dragInnerRef?.(el) }}
-      {...draggableProps}
-      {...(dragHandleProps ?? {})}
+      ref={cardRef}
       className={cn(
-        'relative rounded-md border bg-card shadow-sm p-2.5 text-xs transition-colors',
-        !isDragging && 'animate-card-enter',
+        'relative rounded-md border bg-card shadow-sm p-2.5 text-xs transition-colors animate-card-enter',
         borderClass,
         dimmed && 'opacity-60',
-        isDragging && 'shadow-xl ring-1 ring-primary/30 rotate-[0.5deg] opacity-95',
-        dragHandleProps && !isDragging && 'cursor-grab active:cursor-grabbing',
-        dragHandleProps && 'pl-5',
       )}
     >
-      {/* Visual drag grip hint — pointer-events-none so it doesn't intercept clicks */}
-      {dragHandleProps && (
-        <span
-          className="absolute left-0 top-0 flex h-full w-4 items-center justify-center text-muted-foreground/30 pointer-events-none"
-          aria-hidden
-        >
-          <GripVertical className="h-3 w-3" />
-        </span>
-      )}
 
       {/* Header: domain-colored agent badge + blocked pill + veto + status + menu */}
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -267,9 +243,9 @@ export function TaskCard({
             'inline-flex max-w-[120px] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
             isWorkflow
               ? 'bg-violet-500/10 text-violet-400 ring-1 ring-inset ring-violet-500/30'
-              : getAgentBadgeClass(effectiveStatus, body.agent),
+              : getAgentBadgeClass(effectiveStatus, task.agent),
           )}
-          title={body.agent}
+          title={task.agent}
         >
           {isWorkflow && <GitBranch className="h-2.5 w-2.5 shrink-0" />}
           {agentShort}
@@ -328,8 +304,8 @@ export function TaskCard({
                 <div className="mx-2 my-0.5 border-t border-border/50" />
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(body.task_id)
-                    toast.success(`Copied ${body.task_id}`)
+                    navigator.clipboard.writeText(task.id)
+                    toast.success(`Copied ${task.id}`)
                     setMenuOpen(false)
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-muted-foreground hover:bg-accent"
@@ -347,16 +323,16 @@ export function TaskCard({
       <button
         onClick={(e) => {
           e.stopPropagation()
-          navigator.clipboard.writeText(body.task_id)
-          toast.success(`Copied ${body.task_id}`)
+          navigator.clipboard.writeText(task.id)
+          toast.success(`Copied ${task.id}`)
         }}
         className="mb-0.5 font-mono text-[9px] text-muted-foreground/40 hover:text-muted-foreground/70 cursor-copy"
         title="Click to copy task ID"
       >
-        {body.task_id}
+        {task.id.slice(0, 8)}…
       </button>
       <p className="text-[12px] leading-snug">
-        {body.description || body.task_id}
+        {task.description || task.id}
       </p>
 
       {/* Live tool indicator on running cards */}
@@ -367,40 +343,34 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Meta line: cost/duration (terminal only) + retries + dep count.
-          Cost/duration are Plan 46 Phase 2 #2: denormalised from
-          task_executions at run completion. Hidden for pre-run and
-          running states — a proposed/queued/running task legitimately
-          shows "no cost yet" which we render as no pill rather than
-          "$0.0000 · 0.0s". */}
+      {/* Meta line: cost/duration (terminal only) + retries + dep count. */}
       {(() => {
         const terminal =
           effectiveStatus === 'completed' || effectiveStatus === 'failed'
         const showMetrics =
-          !!state &&
           terminal &&
-          (state.cost_usd > 0 || state.duration_seconds > 0)
+          (task.cost_usd > 0 || task.duration_seconds > 0)
         const hasMeta =
           showMetrics ||
-          !!state?.retry_count ||
-          body.dependencies.length > 0
+          task.retry_count > 0 ||
+          task.dependencies.length > 0
         if (!hasMeta) return null
         return (
           <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground/60">
-            {showMetrics && state && (
+            {showMetrics && (
               <span className="tabular-nums" title="Cost · duration">
-                ${state.cost_usd.toFixed(4)} · {state.duration_seconds.toFixed(1)}s
+                ${task.cost_usd.toFixed(4)} · {task.duration_seconds.toFixed(1)}s
               </span>
             )}
-            {state && state.retry_count > 0 && (
+            {task.retry_count > 0 && (
               <span className="text-amber-400/70">
-                {state.retry_count} {state.retry_count === 1 ? 'retry' : 'retries'}
+                {task.retry_count} {task.retry_count === 1 ? 'retry' : 'retries'}
               </span>
             )}
-            {body.dependencies.length > 0 && (
-              <span title={`Depends on: ${body.dependencies.join(', ')}`}>
-                {body.dependencies.length} dep
-                {body.dependencies.length > 1 ? 's' : ''}
+            {task.dependencies.length > 0 && (
+              <span title={`Depends on: ${task.dependencies.join(', ')}`}>
+                {task.dependencies.length} dep
+                {task.dependencies.length > 1 ? 's' : ''}
               </span>
             )}
           </div>
@@ -408,7 +378,7 @@ export function TaskCard({
       })()}
 
       {/* Result / failure preview */}
-      {state?.result_summary && effectiveStatus === 'completed' && (
+      {task.result_summary && effectiveStatus === 'completed' && (
         <>
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -424,7 +394,7 @@ export function TaskCard({
           {expanded && (
             <div className="mt-1.5 border-t border-border/50 pt-1.5">
               <MarkdownRenderer
-                content={state.result_summary}
+                content={task.result_summary}
                 className="text-[11px]"
               />
             </div>
@@ -432,9 +402,9 @@ export function TaskCard({
         </>
       )}
 
-      {state?.failure_reason && effectiveStatus === 'failed' && (
+      {task.failure_reason && effectiveStatus === 'failed' && (
         <p className="mt-1.5 line-clamp-2 text-[10px] text-destructive/70">
-          {state.failure_reason}
+          {task.failure_reason}
         </p>
       )}
 

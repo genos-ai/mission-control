@@ -2,7 +2,7 @@
  * PlanBoard — shared types, constants, and pure utility functions.
  */
 
-import type { PlanTaskStatus } from '@/hooks/use-mission-plan'
+import type { PlanTaskStatus, PlanTask } from '@/hooks/use-mission-plan'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -14,11 +14,10 @@ export interface ColumnDef {
   statuses: PlanTaskStatus[]
 }
 
-/** One task body + its persistent state, with live-overlay applied. */
+/** A unified task with live-overlay status applied. */
 export interface JoinedTask {
-  body: import('@/hooks/use-mission-plan').PlanTaskBody
-  state: import('@/hooks/use-mission-plan').PlanTaskState | null
-  /** Overlay status wins over durable state when present. */
+  task: PlanTask
+  /** Overlay status wins over durable status when present. */
   effectiveStatus: PlanTaskStatus
 }
 
@@ -151,10 +150,10 @@ export function bezierPath(from: Rect, to: Rect): string {
 }
 
 export function computeEdges(joined: JoinedTask[]): Edge[] {
-  const byId = new Map(joined.map((j) => [j.body.task_id, j]))
+  const byId = new Map(joined.map((j) => [j.task.id, j]))
   const edges: Edge[] = []
   for (const j of joined) {
-    for (const depId of j.body.dependencies) {
+    for (const depId of j.task.dependencies) {
       const blocker = byId.get(depId)
       if (!blocker) continue
       const bs = blocker.effectiveStatus
@@ -162,7 +161,7 @@ export function computeEdges(joined: JoinedTask[]): Edge[] {
       if (bs === 'running') state = 'amber'
       else if (bs === 'completed' || bs === 'skipped') state = 'green'
       else if (bs === 'failed' || bs === 'cancelled') state = 'failed'
-      edges.push({ from: depId, to: j.body.task_id, state })
+      edges.push({ from: depId, to: j.task.id, state })
     }
   }
   return edges

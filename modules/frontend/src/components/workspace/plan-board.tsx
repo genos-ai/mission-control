@@ -16,26 +16,17 @@ import {
 } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  type DropResult,
-} from '@hello-pangea/dnd'
-import {
   AlertTriangle,
   Brain,
   FileText,
   Zap,
 } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { cn } from '@/lib/cn'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import {
   useMissionPlan,
   useRefinePlan,
-  useReorderTasks,
   type MissionPlan,
   type PlanTaskStatus,
 } from '@/hooks/use-mission-plan'
@@ -85,23 +76,17 @@ export function PlanBoard({ missionId }: { missionId: string }) {
 
   if (!plan) return null
 
-  const tasks = plan.task_plan_json?.tasks ?? []
+  const tasks = plan.tasks ?? []
   if (tasks.length === 0) {
     return <EmptyState onChat={() => navigate(`/missions/${id ?? missionId}/chat`)} plan={plan} />
   }
 
-  // Join bodies ⋈ states ⋈ liveOverlay by task_id.
-  const statesById: Record<string, import('@/hooks/use-mission-plan').PlanTaskState> = {}
-  for (const s of plan.task_states) statesById[s.task_id] = s
-
-  const joined: JoinedTask[] = tasks.map((body) => {
-    const state = statesById[body.task_id] ?? null
-    const overlay = liveOverlay[body.task_id]
+  // Apply live overlay to each task's status.
+  const joined: JoinedTask[] = tasks.map((task) => {
+    const overlay = liveOverlay[task.id]
     const effective: PlanTaskStatus =
-      (overlay?.status as PlanTaskStatus) ??
-      (state?.status as PlanTaskStatus) ??
-      'proposed'
-    return { body, state, effectiveStatus: effective }
+      (overlay?.status as PlanTaskStatus) ?? task.status
+    return { task, effectiveStatus: effective }
   })
 
   return <PlanBoardInner plan={plan} missionId={missionId} joined={joined} />
@@ -119,9 +104,7 @@ function PlanBoardInner({
   joined: JoinedTask[]
 }) {
   const [refineOpen, setRefineOpen] = useState(false)
-  const [proposedOrder, setProposedOrder] = useState<string[] | null>(null)
   const refine = useRefinePlan(missionId)
-  const reorderTasks = useReorderTasks(missionId)
 
   const annotated = useMemo(() => computeAnnotated(joined), [joined])
   const edges = useMemo(() => computeEdges(joined), [joined])
@@ -136,65 +119,32 @@ function PlanBoardInner({
     for (const a of annotated) {
       out[columnFor(a.effectiveStatus)].push(a)
     }
-    // Apply optimistic drag order for proposed column.
-    if (proposedOrder) {
-      const byId = new Map(out.proposed.map((t) => [t.body.task_id, t]))
-      const ordered = proposedOrder
-        .map((id) => byId.get(id))
-        .filter((t): t is AnnotatedTask => t !== undefined)
-      const orderedSet = new Set(proposedOrder)
-      for (const t of out.proposed) {
-        if (!orderedSet.has(t.body.task_id)) ordered.push(t)
-      }
-      out.proposed = ordered
-    }
     // Sort Done with most recent first (newest runs at the top).
     out.done.sort((a, b) =>
-      (b.state?.last_attempt_at ?? '').localeCompare(a.state?.last_attempt_at ?? ''),
+      (b.task.last_attempt_at ?? '').localeCompare(a.task.last_attempt_at ?? ''),
     )
     return out
-  }, [annotated, proposedOrder])
-
-  function handleDragEnd(result: DropResult) {
-    if (!result.destination) return
-    if (result.source.droppableId !== 'proposed' || result.destination.droppableId !== 'proposed') return
-    if (result.source.index === result.destination.index) return
-
-    const ids = byColumn.proposed.map((t) => t.body.task_id)
-    const [removed] = ids.splice(result.source.index, 1)
-    ids.splice(result.destination.index, 0, removed)
-
-    setProposedOrder(ids)
-    reorderTasks.mutate(ids, {
-      onSuccess: () => setProposedOrder(null),
-      onError: () => {
-        setProposedOrder(null)
-        toast.error('Failed to reorder tasks')
-      },
-    })
-  }
+  }, [annotated])
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="flex h-full min-h-0 flex-col">
-        <PlanTopBar
-          plan={plan}
-          missionId={missionId}
-          joined={joined}
-          onToggleRefine={() => setRefineOpen((v) => !v)}
-          refineOpen={refineOpen}
-        />
-        {refineOpen && (
-          <RefinePanel refine={refine} onDone={() => setRefineOpen(false)} />
-        )}
-        <BoardArea
-          byColumn={byColumn}
-          edges={edges}
-          missionId={missionId}
-          isRefining={refine.isPending}
-        />
-      </div>
-    </DragDropContext>
+    <div className="flex h-full min-h-0 flex-col">
+      <PlanTopBar
+        plan={plan}
+        missionId={missionId}
+        joined={joined}
+        onToggleRefine={() => setRefineOpen((v) => !v)}
+        refineOpen={refineOpen}
+      />
+      {refineOpen && (
+        <RefinePanel refine={refine} onDone={() => setRefineOpen(false)} />
+      )}
+      <BoardArea
+        byColumn={byColumn}
+        edges={edges}
+        missionId={missionId}
+        isRefining={refine.isPending}
+      />
+    </div>
   )
 }
 
@@ -322,30 +272,14 @@ function Column({
   const isProposed = def.id === 'proposed'
   const [addingTask, setAddingTask] = useState(false)
 
-  const cards = rows.map((row, index) =>
-    isProposed ? (
-      <Draggable key={row.body.task_id} draggableId={row.body.task_id} index={index}>
-        {(provided, snapshot) => (
-          <TaskCard
-            row={row}
-            missionId={missionId}
-            cardRef={registerRef(row.body.task_id)}
-            dragInnerRef={provided.innerRef}
-            draggableProps={provided.draggableProps}
-            dragHandleProps={provided.dragHandleProps}
-            isDragging={snapshot.isDragging}
-          />
-        )}
-      </Draggable>
-    ) : (
-      <TaskCard
-        key={row.body.task_id}
-        row={row}
-        missionId={missionId}
-        cardRef={registerRef(row.body.task_id)}
-      />
-    ),
-  )
+  const cards = rows.map((row) => (
+    <TaskCard
+      key={row.task.id}
+      row={row}
+      missionId={missionId}
+      cardRef={registerRef(row.task.id)}
+    />
+  ))
 
   return (
     <div className="flex min-w-[260px] max-w-[320px] flex-1 flex-col">
@@ -366,29 +300,17 @@ function Column({
           </span>
         )}
       </div>
-      {isProposed ? (
+      <div className="space-y-2 rounded-lg bg-muted/30 p-2 min-h-[60px]">
+        {showShimmer && <ShimmerCard />}
+        {cards}
+        {rows.length === 0 && !showShimmer && !addingTask && (
+          <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
+            empty
+          </div>
+        )}
+      </div>
+      {isProposed && (
         <>
-          <Droppable droppableId="proposed">
-            {(provided, snapshot) => (
-              <div
-                ref={provided.innerRef}
-                {...provided.droppableProps}
-                className={cn(
-                  'space-y-2 rounded-lg p-2 min-h-[60px] transition-colors',
-                  snapshot.isDraggingOver ? 'bg-primary/5 ring-1 ring-inset ring-primary/20' : 'bg-muted/30',
-                )}
-              >
-                {showShimmer && <ShimmerCard />}
-                {cards}
-                {provided.placeholder}
-                {rows.length === 0 && !showShimmer && !addingTask && (
-                  <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
-                    empty
-                  </div>
-                )}
-              </div>
-            )}
-          </Droppable>
           {addingTask ? (
             <AddTaskForm
               missionId={missionId}
@@ -404,16 +326,6 @@ function Column({
             </button>
           )}
         </>
-      ) : (
-        <div className="space-y-2 rounded-lg bg-muted/30 p-2 min-h-[60px]">
-          {showShimmer && <ShimmerCard />}
-          {cards}
-          {rows.length === 0 && !showShimmer && (
-            <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
-              empty
-            </div>
-          )}
-        </div>
       )}
     </div>
   )
@@ -453,12 +365,10 @@ function EmptyState({
   )
 }
 
-// ── StatusIcon (re-exported from task-card for use in Column if needed) ──
-
 // ── Graph helpers ────────────────────────────────────────────────────────
 
 function computeAnnotated(joined: JoinedTask[]): AnnotatedTask[] {
-  const byId = new Map(joined.map((j) => [j.body.task_id, j]))
+  const byId = new Map(joined.map((j) => [j.task.id, j]))
   return joined.map((j) => {
     // Cards already running or past are never rendered as "blocked".
     const preRun =
@@ -470,7 +380,7 @@ function computeAnnotated(joined: JoinedTask[]): AnnotatedTask[] {
     }
     // Dep is "met" if it's completed or skipped; anything else (pending,
     // running, failed, cancelled) means the dependent can't run yet.
-    const blockingDeps = j.body.dependencies.filter((depId) => {
+    const blockingDeps = j.task.dependencies.filter((depId) => {
       const dep = byId.get(depId)
       if (!dep) return false // unknown dep → don't mark blocked
       return (

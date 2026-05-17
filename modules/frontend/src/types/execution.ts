@@ -50,7 +50,6 @@ export interface ExecutionDecision {
 export interface ExecutionRecordDetail extends ExecutionRecord {
   objective_statement: string | null
   objective_category: string | null
-  task_plan_json: Record<string, unknown> | null
   execution_outcome_json: Record<string, unknown> | null
   planning_thinking_trace: string | null
   task_executions: TaskExecution[]
