@@ -13,6 +13,8 @@ Usage:
     python scripts/trace_execution.py --workflow mission-run-019dcac7-30e
     python scripts/trace_execution.py --mission ai-research --last --filter errors,transitions
     python scripts/trace_execution.py --mission ai-research --last --json
+    python scripts/trace_execution.py --mission ai-research --session
+    python scripts/trace_execution.py --mission ai-research --session --since 1
 """
 
 import asyncio
@@ -30,7 +32,6 @@ from sqlalchemy import cast, select, and_, String as SAString
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from modules.backend.core.config import get_app_config
 from modules.backend.core.database import get_async_session
 from modules.backend.core.logging import get_logger, setup_logging
 from modules.backend.models.execution_record import (
@@ -42,7 +43,8 @@ from modules.backend.models.execution_record import (
 from modules.backend.models.llm_call import LlmCall
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_event import MissionEvent
-from modules.backend.models.mission_plan import MissionPlan, PlanTaskState
+from modules.backend.models.mission_plan import MissionPlan
+from modules.backend.models.task import Task
 from modules.backend.models.session import Session, SessionMessage
 from modules.backend.models.session_followup import SessionFollowup
 
@@ -63,6 +65,7 @@ COLORS = {
     "FOLLOWUP": "bright_cyan",
     "LLM": "bright_magenta",
     "LOG": "white",
+    "PLANNING": "bright_green",
 }
 
 ERROR_KEYWORDS = {"failed", "error", "abort", "timeout", "exceeded", "exception"}
@@ -154,18 +157,6 @@ async def collect_execution_details(
     decisions = list(result.scalars().all())
 
     return {"task_executions": task_execs, "decisions": decisions}
-
-
-async def collect_plan_states(
-    db: AsyncSession, mission_plan_id: str
-) -> list[PlanTaskState]:
-    stmt = (
-        select(PlanTaskState)
-        .where(PlanTaskState.mission_plan_id == mission_plan_id)
-        .order_by(PlanTaskState.updated_at.asc())
-    )
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
 
 
 async def collect_mission_events(
@@ -306,18 +297,11 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
     ))
 
     if record.started_at:
-        # Show the dispatched task plan snapshot
-        dispatched_plan = record.task_plan_json or {}
-        dispatched_tasks = dispatched_plan.get("tasks", [])
-        task_summary = ", ".join(
-            t.get("task_id", t.get("id", "?")) for t in dispatched_tasks[:10]
-        ) if isinstance(dispatched_tasks, list) else "(no tasks)"
         events.append(TraceEvent(
             record.started_at, "DISPATCH",
-            f"Execution started  id={_short_id(record.id)}  tasks_dispatched={len(dispatched_tasks) if isinstance(dispatched_tasks, list) else 0}",
+            f"Execution started  id={_short_id(record.id)}",
             [
                 f"objective={record.objective_statement or '(none)'}",
-                f"dispatched_tasks=[{task_summary}]",
             ],
         ))
 
@@ -389,9 +373,8 @@ def build_plan_metadata_events(plan: MissionPlan) -> list[TraceEvent]:
     plan_status = plan.status.name if hasattr(plan.status, "name") else plan.status
 
     # Plan creation / current state
-    task_plan = plan.task_plan_json or {}
-    tasks = task_plan.get("tasks", [])
-    task_ids = [t.get("task_id", t.get("id", "?")) for t in tasks] if isinstance(tasks, list) else []
+    tasks = plan.tasks or []
+    task_ids = [_short_id(t.id) for t in tasks]
 
     events.append(TraceEvent(
         plan.created_at, "PLAN",
@@ -403,17 +386,14 @@ def build_plan_metadata_events(plan: MissionPlan) -> list[TraceEvent]:
         ],
     ))
 
-    # Emit per-task definitions from the plan body
-    for t in tasks if isinstance(tasks, list) else []:
-        tid = t.get("task_id", t.get("id", "?"))
-        agent = t.get("agent", t.get("agent_name", "?"))
-        objective = t.get("objective", t.get("description", ""))[:150]
-        deps = t.get("depends_on", t.get("upstream_task_ids", []))
+    # Emit per-task definitions from the plan's tasks relationship
+    for t in tasks:
+        deps = [_short_id(d.depends_on_id) for d in (t.dependencies or [])]
         events.append(TraceEvent(
             plan.created_at, "PLAN",
-            f"Task definition: {tid}  agent={agent}",
+            f"Task definition: {_short_id(t.id)}  agent={t.agent}",
             [
-                f"objective={objective}" if objective else None,
+                f"description={t.description[:150]}" if t.description else None,
                 f"depends_on={deps}" if deps else None,
             ],
         ))
@@ -421,23 +401,21 @@ def build_plan_metadata_events(plan: MissionPlan) -> list[TraceEvent]:
     return events
 
 
-def build_plan_state_events(states: list[PlanTaskState]) -> list[TraceEvent]:
+def build_task_events(tasks: list[Task]) -> list[TraceEvent]:
     events: list[TraceEvent] = []
-    for s in states:
-        status = s.status.name if hasattr(s.status, "name") else s.status
+    for t in tasks:
+        status = t.status.name if hasattr(t.status, "name") else t.status
         detail_lines = []
-        if s.failure_reason:
-            detail_lines.append(f"failure_reason={s.failure_reason}")
-        if s.result_summary:
-            detail_lines.append(f"result_summary={s.result_summary[:120]}")
-        if s.execution_record_id:
-            detail_lines.append(f"execution_record_id={_short_id(s.execution_record_id)}")
-        if s.cost_usd:
-            detail_lines.append(f"cost=${s.cost_usd:.4f}  duration={s.duration_seconds or 0:.1f}s")
+        if t.failure_reason:
+            detail_lines.append(f"failure_reason={t.failure_reason}")
+        if t.result_summary:
+            detail_lines.append(f"result_summary={t.result_summary[:120]}")
+        if t.cost_usd:
+            detail_lines.append(f"cost=${t.cost_usd:.4f}  duration={t.duration_seconds or 0:.1f}s")
 
         events.append(TraceEvent(
-            s.updated_at, "PLAN",
-            f"Task {s.task_id} → {status}",
+            t.updated_at, "PLAN",
+            f"Task {_short_id(t.id)} → {status}",
             detail_lines,
             is_error=str(status).upper() == "FAILED",
         ))
@@ -466,20 +444,28 @@ def build_sse_events(mission_events: list[MissionEvent]) -> list[TraceEvent]:
     return events
 
 
+PLANNING_TOOLS = frozenset({
+    "refine_plan", "add_task", "set_upstream_input", "finalise_plan",
+    "get_plan", "get_roster", "get_current_plan",
+})
+
+
 def build_message_events(messages: list[SessionMessage]) -> list[TraceEvent]:
     events: list[TraceEvent] = []
     for msg in messages:
         role = msg.role
         if role == "tool_call":
+            source = "PLANNING" if msg.tool_name in PLANNING_TOOLS else "DIRECTOR"
             events.append(TraceEvent(
-                msg.created_at, "DIRECTOR",
+                msg.created_at, source,
                 f"Tool call: {msg.tool_name or '?'}",
                 [f"content={msg.content[:200]}"] if msg.content else [],
             ))
         elif role == "tool_result":
+            source = "PLANNING" if msg.tool_name in PLANNING_TOOLS else "DIRECTOR"
             snippet = (msg.content or "")[:200]
             events.append(TraceEvent(
-                msg.created_at, "DIRECTOR",
+                msg.created_at, source,
                 f"Tool result: {msg.tool_name or '?'}",
                 [f"→ {snippet}"] if snippet else [],
             ))
@@ -648,7 +634,7 @@ async def collect_temporal_events(workflow_id: str) -> list[TraceEvent]:
 def diagnose(
     timeline: list[TraceEvent],
     record: ExecutionRecord,
-    plan_states: list[PlanTaskState],
+    tasks: list[Task],
 ) -> list[str]:
     """Identify common failure patterns from the timeline."""
     findings: list[str] = []
@@ -669,11 +655,11 @@ def diagnose(
         )
 
     # 3. Tasks stuck in APPROVED/RUNNING
-    for s in plan_states:
-        ps = s.status.name if hasattr(s.status, "name") else str(s.status)
-        if ps.upper() in ("APPROVED", "RUNNING") and status.upper() in ("FAILED", "COMPLETED"):
+    for t in tasks:
+        ts = t.status.name if hasattr(t.status, "name") else str(t.status)
+        if ts.upper() in ("APPROVED", "RUNNING") and status.upper() in ("FAILED", "COMPLETED"):
             findings.append(
-                f"Task {s.task_id} still in {ps} after execution finished — "
+                f"Task {_short_id(t.id)} still in {ts} after execution finished — "
                 f"possible stale state (dispatch failed before marking task)."
             )
 
@@ -683,7 +669,7 @@ def diagnose(
     for ev in timeline:
         if ev.source == "FOLLOWUP" and "consumed" in ev.summary.lower():
             followup_fired = True
-        if followup_fired and ev.source == "DIRECTOR" and "get_plan" in ev.summary.lower():
+        if followup_fired and ev.source in ("DIRECTOR", "PLANNING") and "get_plan" in ev.summary.lower():
             director_checked = True
 
     if followup_fired and not director_checked and status.upper() == "FAILED":
@@ -691,6 +677,57 @@ def diagnose(
             "Director followup fired but Director did not call get_plan to check task states — "
             "may not have detected the failure."
         )
+
+    # 5. General error count
+    error_count = sum(1 for ev in timeline if ev.is_error)
+    if error_count > 0:
+        findings.append(f"Total error events in trace: {error_count}")
+
+    return findings
+
+
+def diagnose_session(
+    timeline: list[TraceEvent],
+    tasks: list[Task],
+) -> list[str]:
+    """Identify failure patterns in a pre-run session (no ExecutionRecord)."""
+    findings: list[str] = []
+
+    # 1. Tool call errors
+    for ev in timeline:
+        if ev.source in ("DIRECTOR", "PLANNING") and "Tool result" in ev.summary:
+            for detail in ev.details:
+                if detail and "error" in detail.lower():
+                    findings.append(f"Tool error: {ev.summary} — {detail[:200]}")
+
+    # 2. Planning agent failures (tool called with no matching result)
+    from collections import Counter
+    call_counts: Counter[str] = Counter()
+    for ev in timeline:
+        if ev.source == "PLANNING" and "Tool call" in ev.summary:
+            call_counts[ev.summary] += 1
+        elif ev.source == "PLANNING" and "Tool result" in ev.summary:
+            call_key = ev.summary.replace("Tool result", "Tool call")
+            if call_counts[call_key] > 0:
+                call_counts[call_key] -= 1
+    for key, count in call_counts.items():
+        if count > 0:
+            findings.append(f"Planning tool call with no result ({count}x): {key}")
+
+    # 3. Tasks stuck in unexpected states
+    for t in tasks:
+        ts = t.status.name if hasattr(t.status, "name") else str(t.status)
+        if ts.upper() == "RUNNING":
+            findings.append(
+                f"Task {_short_id(t.id)} stuck in RUNNING during planning session."
+            )
+
+    # 4. refine_plan timeout patterns
+    for ev in timeline:
+        if "refine_plan" in ev.summary.lower() and any(
+            kw in detail.lower() for detail in ev.details if detail for kw in ("timeout", "timed out")
+        ):
+            findings.append(f"refine_plan timeout detected at {_ts(ev.timestamp)}")
 
     # 5. General error count
     error_count = sum(1 for ev in timeline if ev.is_error)
@@ -739,6 +776,9 @@ def apply_filters(timeline: list[TraceEvent], filters: set[str]) -> list[TraceEv
         if "log" in filters and ev.source == "LOG":
             filtered.append(ev)
             continue
+        if "planning" in filters and ev.source == "PLANNING":
+            filtered.append(ev)
+            continue
     return filtered
 
 
@@ -749,13 +789,17 @@ def apply_filters(timeline: list[TraceEvent], filters: set[str]) -> list[TraceEv
 
 def render_text(
     timeline: list[TraceEvent],
-    record: ExecutionRecord,
+    record: ExecutionRecord | None,
     mission_name: str,
     diagnosis: list[str],
 ):
     """Render the trace to stdout with color coding."""
-    status = record.status.name if hasattr(record.status, "name") else str(record.status)
-    header = f"EXECUTION TRACE: {mission_name} / {_short_id(record.id)}"
+    if record:
+        status = record.status.name if hasattr(record.status, "name") else str(record.status)
+        header = f"EXECUTION TRACE: {mission_name} / {_short_id(record.id)}"
+    else:
+        status = "SESSION"
+        header = f"SESSION TRACE: {mission_name}"
     click.echo()
     click.secho(header, bold=True)
     click.secho("=" * max(60, len(header)), bold=True)
@@ -793,25 +837,35 @@ def render_text(
 
 def render_json(
     timeline: list[TraceEvent],
-    record: ExecutionRecord,
+    record: ExecutionRecord | None,
     mission_name: str,
     diagnosis: list[str],
 ):
     """Render the trace as JSON to stdout."""
-    status = record.status.name if hasattr(record.status, "name") else str(record.status)
-    output = {
-        "mission": mission_name,
-        "execution_id": str(record.id),
-        "status": status,
-        "total_cost_usd": float(record.total_cost_usd or 0),
-        "started_at": record.started_at.isoformat() if record.started_at else None,
-        "completed_at": record.completed_at.isoformat() if record.completed_at else None,
-        "temporal_workflow_id": record.temporal_workflow_id,
-        "event_count": len(timeline),
-        "error_count": sum(1 for e in timeline if e.is_error),
-        "timeline": [ev.to_dict() for ev in timeline],
-        "diagnosis": diagnosis,
-    }
+    if record:
+        status = record.status.name if hasattr(record.status, "name") else str(record.status)
+        output = {
+            "mission": mission_name,
+            "execution_id": str(record.id),
+            "status": status,
+            "total_cost_usd": float(record.total_cost_usd or 0),
+            "started_at": record.started_at.isoformat() if record.started_at else None,
+            "completed_at": record.completed_at.isoformat() if record.completed_at else None,
+            "temporal_workflow_id": record.temporal_workflow_id,
+            "event_count": len(timeline),
+            "error_count": sum(1 for e in timeline if e.is_error),
+            "timeline": [ev.to_dict() for ev in timeline],
+            "diagnosis": diagnosis,
+        }
+    else:
+        output = {
+            "mission": mission_name,
+            "mode": "session",
+            "event_count": len(timeline),
+            "error_count": sum(1 for e in timeline if e.is_error),
+            "timeline": [ev.to_dict() for ev in timeline],
+            "diagnosis": diagnosis,
+        }
     click.echo(json.dumps(output, indent=2, default=str))
 
 
@@ -826,6 +880,7 @@ async def run_trace(
     execution_id: str | None,
     workflow_id: str | None,
     last: bool,
+    session_mode: bool,
     filters: set[str],
     output_json: bool,
     since_hours: float | None,
@@ -840,7 +895,58 @@ async def run_trace(
                 click.secho(f"Mission '{mission_name}' not found.", fg="red")
                 sys.exit(1)
 
-        # Resolve execution
+        since = None
+        if since_hours:
+            from datetime import timedelta
+            since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+
+        # --session mode: trace a chat session without requiring an execution record
+        if session_mode:
+            timeline: list[TraceEvent] = []
+            tasks: list[Task] = []
+
+            # Session messages (Director + Planning)
+            session = await collect_session_for_mission(db, mission_id)
+            if session:
+                messages = await collect_session_messages(db, session.id, since=since)
+                timeline.extend(build_message_events(messages))
+                followups = await collect_followups(db, session.id)
+                timeline.extend(build_followup_events(followups))
+            else:
+                click.secho("No session found for this mission.", fg="yellow")
+
+            # Mission plan + tasks (tasks are selectin-loaded via plan.tasks)
+            plan = await collect_mission_plan(db, mission_id)
+            if plan:
+                timeline.extend(build_plan_metadata_events(plan))
+                tasks = list(plan.tasks or [])
+                timeline.extend(build_task_events(tasks))
+
+            # Mission events (SSE)
+            mission_events = await collect_mission_events(db, mission_id, since=since)
+            timeline.extend(build_sse_events(mission_events))
+
+            # LLM calls
+            llm_calls = await collect_llm_calls(db, mission_id=mission_id, since=since)
+            timeline.extend(build_llm_events(llm_calls))
+
+            # Structured logs
+            log_path = PROJECT_ROOT / "var" / "logs" / "system.jsonl"
+            timeline.extend(build_log_events(log_path, str(mission_id), since=since))
+
+            # Sort, filter, diagnose, render
+            timeline.sort(key=lambda e: e.timestamp)
+            if filters:
+                timeline = apply_filters(timeline, filters)
+            findings = diagnose_session(timeline, tasks)
+            if output_json:
+                render_json(timeline, None, resolved_name, findings)
+            else:
+                render_text(timeline, None, resolved_name, findings)
+            return
+
+        # --- Execution mode (existing behaviour) ---
+
         record = await resolve_execution(
             db,
             execution_id=execution_id,
@@ -859,25 +965,17 @@ async def run_trace(
             result = await db.execute(stmt)
             resolved_name = result.scalar_one_or_none() or "(unknown)"
 
-        since = None
-        if since_hours:
-            since = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            from datetime import timedelta
-            since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-
         # Collect from all sources
         exec_details = await collect_execution_details(db, record)
         timeline: list[TraceEvent] = build_execution_events(record, exec_details)
 
-        # Mission plan states
+        # Mission plan + tasks (tasks are selectin-loaded via plan.tasks)
         plan = await collect_mission_plan(db, mission_id) if mission_id else None
-        plan_states: list[PlanTaskState] = []
+        tasks: list[Task] = []
         if plan:
             timeline.extend(build_plan_metadata_events(plan))
-            plan_states = await collect_plan_states(db, plan.id)
-            timeline.extend(build_plan_state_events(plan_states))
+            tasks = list(plan.tasks or [])
+            timeline.extend(build_task_events(tasks))
 
         # Mission events (SSE)
         if mission_id:
@@ -917,7 +1015,7 @@ async def run_trace(
             timeline = apply_filters(timeline, filters)
 
         # Diagnose
-        findings = diagnose(timeline, record, plan_states)
+        findings = diagnose(timeline, record, tasks)
 
         # Render
         if output_json:
@@ -931,7 +1029,8 @@ async def run_trace(
 @click.option("--execution", "-e", "execution_id", help="Execution record ID (prefix match)")
 @click.option("--workflow", "-w", "workflow_id", help="Temporal workflow ID")
 @click.option("--last", is_flag=True, help="Use the most recent execution for the mission")
-@click.option("--filter", "-f", "filter_str", help="Comma-separated filters: errors,transitions,director,temporal,llm,sse,followup,dispatch,log")
+@click.option("--session", "-s", "session_mode", is_flag=True, help="Trace a chat session (no execution record required)")
+@click.option("--filter", "-f", "filter_str", help="Comma-separated filters: errors,transitions,director,temporal,llm,sse,followup,dispatch,log,planning")
 @click.option("--json", "output_json", is_flag=True, help="JSON output for piping")
 @click.option("--since", "since_hours", type=float, help="Only include events from the last N hours")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose logging")
@@ -940,20 +1039,25 @@ def main(
     execution_id: str | None,
     workflow_id: str | None,
     last: bool,
+    session_mode: bool,
     filter_str: str | None,
     output_json: bool,
     since_hours: float | None,
     verbose: bool,
 ):
-    """Reconstruct the full execution timeline for a mission run."""
+    """Reconstruct the full execution timeline for a mission run or session."""
     setup_logging(level="DEBUG" if verbose else "WARNING", format_type="console")
 
     if not any([mission_name, execution_id, workflow_id]):
         click.secho("Provide at least one of: --mission, --execution, --workflow", fg="red")
         sys.exit(1)
 
-    if mission_name and not (last or execution_id):
-        click.secho("When using --mission, also pass --last or --execution", fg="red")
+    if session_mode and not mission_name:
+        click.secho("--session requires --mission", fg="red")
+        sys.exit(1)
+
+    if not session_mode and mission_name and not (last or execution_id):
+        click.secho("When using --mission, also pass --last, --execution, or --session", fg="red")
         sys.exit(1)
 
     filters = set()
@@ -965,6 +1069,7 @@ def main(
         execution_id=execution_id,
         workflow_id=workflow_id,
         last=last,
+        session_mode=session_mode,
         filters=filters,
         output_json=output_json,
         since_hours=since_hours,
