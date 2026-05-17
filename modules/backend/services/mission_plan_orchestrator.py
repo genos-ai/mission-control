@@ -510,8 +510,7 @@ class MissionPlanOrchestrator(BaseService):
             mission_budget_usd=budget,
         )
 
-        task_plan = self._plan_svc._get_task_plan_or_raise(plan)
-        task_count = len(task_plan.tasks)
+        task_count = len(plan.tasks)
 
         # 5. Auto-approve (gate mode permitting)
         effective_gate = plan.gate_mode or "off"
