@@ -3,16 +3,49 @@
 8 mutation tools + register function. Each tool delegates to
 PlanBuildingSession methods. Schemas are trivially small — no
 grammar compiler limits, no normaliser layers. Plan 69.
+
+Plan 72: tools emit AgentToolCallEvent so the console/UI shows
+planning progress in real-time.
 """
 
 from __future__ import annotations
 
 import json
+import uuid as _uuid
 from typing import Any
 
 from pydantic_ai import Agent, RunContext
 
 from modules.backend.agents.mission.planning.build_session import PlanBuildingSession
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+async def _emit_tool_event(
+    ctx: RunContext,
+    tool_name: str,
+    tool_args: dict | None = None,
+) -> None:
+    """Emit an AgentToolCallEvent if event_bus is available on deps.
+
+    Best-effort — a failed emit never blocks plan building.
+    """
+    event_bus = getattr(ctx.deps, "event_bus", None)
+    if not event_bus:
+        return
+    session_id = getattr(ctx.deps, "session_id", None)
+    try:
+        from modules.backend.events.types import AgentToolCallEvent
+        await event_bus.publish(AgentToolCallEvent(
+            session_id=_uuid.UUID(session_id) if session_id else _uuid.uuid4(),
+            source="mission.planning.agent",
+            agent_id="mission.planning.agent",
+            tool_name=tool_name,
+            tool_args=tool_args or {},
+        ))
+    except Exception:
+        logger.debug("Failed to emit planning tool event", exc_info=True)
 
 
 def register_planning_tools(agent: Agent) -> None:
@@ -44,6 +77,11 @@ def register_planning_tools(agent: Agent) -> None:
             dependencies=dependencies,
             domain_tags=domain_tags,
         )
+        await _emit_tool_event(ctx, "add_task", {
+            "agent": agent,
+            "description": description[:100],
+            "task_id": result.get("task_id", ""),
+        })
         return json.dumps(result)
 
     @agent.tool
@@ -115,6 +153,11 @@ def register_planning_tools(agent: Agent) -> None:
             source_task=source_task,
             source_field=source_field,
         )
+        await _emit_tool_event(ctx, "set_upstream_input", {
+            "task_id": task_id[:12],
+            "source_task": source_task[:12],
+            "input_name": input_name,
+        })
         return json.dumps(result)
 
     @agent.tool
@@ -223,12 +266,22 @@ def register_planning_tools(agent: Agent) -> None:
             estimated_duration_seconds=estimated_duration_seconds,
         )
         if not result["valid"]:
+            await _emit_tool_event(ctx, "finalise_plan", {
+                "status": "invalid",
+                "error_count": len(result["errors"]),
+            })
             return json.dumps({
                 "status": "invalid",
                 "validation_errors": result["errors"],
                 "hint": "Fix the errors above with update_task/remove_task, then call finalise_plan again.",
             })
+        task_count = len(ctx.deps.build_session.tasks)
+        await _emit_tool_event(ctx, "finalise_plan", {
+            "status": "finalised",
+            "task_count": task_count,
+            "summary": summary[:100],
+        })
         return json.dumps({
             "status": "finalised",
-            "task_count": len(ctx.deps.build_session.tasks),
+            "task_count": task_count,
         })

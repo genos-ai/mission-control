@@ -35,8 +35,10 @@ class PlanningAgentDeps(BaseAgentDeps):
     mission_brief: str = ""
     roster_description: str = ""
     upstream_context: dict[str, Any] | None = None
-    event_bus: Any = None  # EventBusProtocol — for chat-mode plan events
+    event_bus: Any = None  # EventBusProtocol — for plan events
     build_session: Any = None  # PlanBuildingSession — set in dispatch/chat mode
+    session_id: str | None = None  # For event emission
+    mission_id: str | None = None  # For event emission
 
 
 def create_agent(

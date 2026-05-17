@@ -413,6 +413,9 @@ async def _call_planning_agent(
         current_plan=current_plan,
     )
 
+    planning_agent_id = "mission.planning.agent"
+    sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
+
     deps = PlanningAgentDeps(
         project_root=project_root,
         scope=FileScope(read_paths=[], write_paths=[]),
@@ -420,10 +423,10 @@ async def _call_planning_agent(
         roster_description=roster_desc,
         upstream_context=upstream_context,
         build_session=build_session,
+        event_bus=event_bus,
+        session_id=str(sid),
+        mission_id=mission_id,
     )
-
-    planning_agent_id = "mission.planning.agent"
-    sid = _uuid.UUID(session_id) if session_id else _uuid.uuid4()
 
     if event_bus:
         await _emit(event_bus, AgentThinkingEvent,
