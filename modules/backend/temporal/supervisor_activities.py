@@ -198,16 +198,16 @@ async def approve_proposed_tasks(mission_id: str) -> int:
         approved_count = 0
         for ts in task_states:
             try:
-                await svc.approve_task(plan.id, ts.task_id, "mission.supervisor.agent")
+                await svc.approve_task(plan.id, ts.id, "mission.supervisor.agent")
                 approved_count += 1
             except Exception as exc:
                 activity.logger.warning(
                     "Failed to approve task: %s",
                     exc,
-                    extra={"task_id": ts.task_id, "mission_id": mission_id},
+                    extra={"task_id": ts.id, "mission_id": mission_id},
                 )
                 await _emit_supervisor_error(
-                    mission_id, f"Failed to approve task '{ts.task_id}': {exc}",
+                    mission_id, f"Failed to approve task '{ts.id}': {exc}",
                 )
 
         await db.commit()
