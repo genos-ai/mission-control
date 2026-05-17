@@ -1,21 +1,19 @@
 """
-Mission Plan API schemas (Plan 42).
+Mission Plan API schemas (Plan 42, updated by Plan 72).
 
-Pydantic models for the long-lived mission backlog endpoints. The plan
-body itself is a `TaskPlan` (schemas/task_plan.py) carried verbatim in
-the response — this file only defines the wrapper metadata and the
-per-task state shape.
+Pydantic models for the long-lived mission backlog endpoints. Plan 72
+replaced PlanTaskState + task_plan_json with first-class Task rows.
 """
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from modules.backend.models.mission_plan import (
     VALID_GATE_MODES,
     MissionPlanStatus,
-    PlanTaskStatus,
 )
+from modules.backend.models.task import TaskStatus
 
 
 # ── Plan-level ───────────────────────────────────────────────────────────
@@ -33,11 +31,7 @@ class AddPlanTaskRequest(BaseModel):
 
 
 class MissionPlanRefineRequest(BaseModel):
-    """POST /missions/:id/plan/refine body.
-
-    The Director (or user) provides natural-language instructions that the
-    Planning Agent uses to revise the current TaskPlan. Plan 42 §10.4.
-    """
+    """POST /missions/:id/plan/refine body."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -46,10 +40,7 @@ class MissionPlanRefineRequest(BaseModel):
         min_length=1,
         max_length=4000,
         description=(
-            "Natural-language refinement instructions. The Planning Agent "
-            "receives these alongside the current TaskPlan and the mission "
-            "brief, and produces a new TaskPlan that incorporates the "
-            "requested changes while preserving task_ids where possible."
+            "Natural-language refinement instructions for the Planning Agent."
         ),
     )
 
@@ -65,8 +56,7 @@ class MissionPlanUpdate(BaseModel):
     gate_mode: str | None = Field(
         None,
         description=(
-            f"Autonomy mode. One of: {sorted(VALID_GATE_MODES)}. Mirrors "
-            f"config/settings/gate.yaml values. Plan 42 section 10.4."
+            f"Autonomy mode. One of: {sorted(VALID_GATE_MODES)}."
         ),
     )
     status: str | None = Field(
@@ -79,77 +69,91 @@ class MissionPlanUpdate(BaseModel):
     )
     veto_window_sec: int | None = Field(
         None, ge=1, le=3600,
-        description=(
-            "For ai_assisted mode: seconds a user has to veto an auto-"
-            "approved task before it queues. NULL = no veto window."
-        ),
-    )
-    task_order: list[str] | None = Field(
-        None,
-        description=(
-            "Desired display order for proposed tasks — list of task_ids. "
-            "Tasks in this list are sorted to match; tasks not in the list "
-            "keep their current relative position after. Used by the kanban "
-            "drag-to-reorder UI (Phase 4)."
-        ),
+        description="Seconds a user has to veto an auto-approved task.",
     )
 
 
-class PlanTaskStateResponse(BaseModel):
-    """Per-task state row as seen by the Plan tab."""
+class TaskResponse(BaseModel):
+    """Per-task row as seen by the Plan tab (Plan 72).
+
+    Replaces PlanTaskStateResponse. Each task is a first-class DB row
+    with definition + state + result in one object.
+
+    The `dependencies` field is auto-flattened from TaskDependency ORM
+    objects to a plain list of UUID strings via the model_validator.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    task_id: str
+    plan_id: str
+    mission_id: str
+    agent: str
+    description: str
+    instructions: str = ""
+    inputs_json: dict = Field(default_factory=dict)
+    verification_json: dict = Field(default_factory=dict)
+    constraints_json: dict = Field(default_factory=dict)
+    domain_tags: list = Field(default_factory=list)
     status: str
-    approved_by_user_id: str | None
-    approved_at: datetime | None
-    execution_record_id: str | None
-    task_execution_id: str | None
-    last_attempt_at: datetime | None
-    retry_count: int
-    veto_expires_at: datetime | None
-    result_summary: str | None
-    failure_reason: str | None
-    # Plan 46 Phase 2 #2: per-task cost + duration denormalised from
-    # task_executions at run completion so the Plan tab's Done cards
-    # render "$X.XX · Ns" without a separate join.
+    approved_by_user_id: str | None = None
+    approved_at: datetime | None = None
+    veto_expires_at: datetime | None = None
+    retry_count: int = 0
+    last_attempt_at: datetime | None = None
+    result_summary: str | None = None
+    failure_reason: str | None = None
     cost_usd: float = 0.0
     duration_seconds: float = 0.0
+    dependencies: list[str] = Field(
+        default_factory=list,
+        description="IDs of tasks this task depends on",
+    )
     created_at: datetime
     updated_at: datetime
 
+    @model_validator(mode="before")
+    @classmethod
+    def flatten_dependencies(cls, data):
+        """Convert TaskDependency ORM objects to flat UUID list."""
+        if hasattr(data, "__dict__"):
+            # ORM model — extract deps from relationship
+            deps = getattr(data, "dependencies", [])
+            if deps and hasattr(deps[0], "depends_on_id"):
+                # Store flattened list so Pydantic picks it up
+                # We need to convert ORM to dict first
+                obj = {
+                    c.key: getattr(data, c.key)
+                    for c in data.__table__.columns
+                }
+                obj["dependencies"] = [d.depends_on_id for d in deps]
+                return obj
+        return data
+
 
 class MissionPlanResponse(BaseModel):
-    """Full plan with all task states.
+    """Full plan with all tasks (Plan 72).
 
-    The `task_plan_json` field carries the TaskPlan verbatim — the
-    frontend parses it to get task bodies (title, agent, description,
-    dependencies, instructions, etc.) and joins with `task_states` by
-    the string `task_id` to get per-task status.
+    Tasks are first-class rows — no more task_plan_json or task_states.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     mission_id: str
-    task_plan_json: dict | None = Field(
-        None,
-        description=(
-            "Live TaskPlan as stored in the DB. NULL until the first "
-            "refinement. Shape: schemas/task_plan.py::TaskPlan."
-        ),
-    )
-    gate_mode: str | None
+    summary: str = ""
+    estimated_cost_usd: float = 0.0
+    estimated_duration: int = 0
+    execution_hints_json: dict = Field(default_factory=dict)
+    gate_mode: str | None = None
     status: str
     version: int
-    budget_usd_ceiling: float | None
-    total_spent_usd: float
-    veto_window_sec: int | None
+    budget_usd_ceiling: float | None = None
+    total_spent_usd: float = 0.0
+    veto_window_sec: int | None = None
     supervisor_iteration_count: int = 0
     max_supervisor_iterations: int = 20
-    task_states: list[PlanTaskStateResponse] = Field(default_factory=list)
+    tasks: list[TaskResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -167,90 +171,40 @@ class RunObjectiveRequest(BaseModel):
         min_length=5,
         description="Natural-language objective for the Planning Agent",
     )
-    gate_mode: str | None = Field(
-        None,
-        description="Override gate mode: off, interactive, ai_assisted, autonomous",
-    )
-    budget_ceiling_usd: float | None = Field(
-        None,
-        ge=0.01,
-        description="Override budget ceiling for this plan",
-    )
+    gate_mode: str | None = Field(None)
+    budget_ceiling_usd: float | None = Field(None, ge=0.01)
 
 
 class RunObjectiveResponse(BaseModel):
-    """Result of POST /missions/:id/plan/run-objective (Plan 62).
-
-    Always returns immediately — the RunObjectiveWorkflow runs in Temporal.
-    """
+    """Result of POST /missions/:id/plan/run-objective."""
 
     model_config = ConfigDict(extra="forbid")
 
     plan_id: str
-    outcome_status: str = Field(
-        ...,
-        description="dispatching — the RunObjectiveWorkflow is running in Temporal",
-    )
-    workflow_id: str | None = Field(
-        None,
-        description="Temporal workflow ID for the RunObjectiveWorkflow",
-    )
+    outcome_status: str
+    workflow_id: str | None = None
 
 
 class DispatchApprovedResponse(BaseModel):
-    """Result of POST /missions/:id/plan/dispatch (Plan 42 §10.1).
-
-    Dispatch always starts a Temporal MissionRunWorkflow and returns
-    immediately. The workflow_id can be used for status queries.
-    """
+    """Result of POST /missions/:id/plan/dispatch."""
 
     model_config = ConfigDict(extra="forbid")
 
-    outcome_status: str = Field(
-        ...,
-        description="Always 'dispatching' — the workflow runs in Temporal",
-    )
-    dispatched_task_ids: list[str] = Field(
-        default_factory=list,
-        description="task_ids included in the derived subset TaskPlan",
-    )
-    total_cost_usd: float = Field(
-        0.0,
-        description="Cost so far (0 at dispatch time, updated via SSE)",
-    )
-    new_total_spent_usd: float = Field(
-        0.0,
-        description="Cumulative spend across all runs from this plan",
-    )
-    workflow_id: str | None = Field(
-        None,
-        description="Temporal workflow ID for status queries",
-    )
+    outcome_status: str
+    dispatched_task_ids: list[str] = Field(default_factory=list)
+    total_cost_usd: float = 0.0
+    new_total_spent_usd: float = 0.0
+    workflow_id: str | None = None
 
 
 class TaskTransitionResponse(BaseModel):
-    """Result of an approve / reject / retry call.
-
-    Returns the IDs of all tasks that were actually transitioned so the
-    frontend can highlight the dep-closure effect (e.g. "approving this
-    task also approved 2 dependencies").
-    """
+    """Result of an approve / reject / retry call."""
 
     model_config = ConfigDict(extra="forbid")
 
-    target_task_id: str = Field(
-        ...,
-        description="The task_id the user explicitly acted on",
-    )
-    transitioned_task_ids: list[str] = Field(
-        default_factory=list,
-        description=(
-            "All task_ids whose state actually changed as a result of this "
-            "call. Includes transitive dependencies on approve, transitive "
-            "dependents on reject. The target is always first."
-        ),
-    )
+    target_task_id: str
+    transitioned_task_ids: list[str] = Field(default_factory=list)
     new_status: str = Field(
         ...,
-        description=f"Target status after the transition: {[s.value for s in PlanTaskStatus]}",
+        description=f"Target status: {[s.value for s in TaskStatus]}",
     )

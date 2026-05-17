@@ -221,7 +221,6 @@ async def persist_mission_outcome(
                 outcome,
                 session_id=session_id,
                 roster_name=roster_name,
-                task_plan_json=task_plan_ref,
                 thinking_trace=outcome_json.get("planning_trace_reference"),
                 mission_id=mission_id,
                 db_session=db,

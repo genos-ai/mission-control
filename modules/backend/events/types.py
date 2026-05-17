@@ -460,8 +460,8 @@ class MissionArtifactFoundEvent(SessionEvent):
 class MissionPlanRefinedEvent(SessionEvent):
     """The mission plan was refined via the Planning Agent.
 
-    Emitted after `MissionPlanService.refine` successfully replaces
-    `task_plan_json` and bumps `version`. Frontend subscribes and
+    Emitted after `MissionPlanOrchestrator.refine` reconciles tasks
+    and bumps `version`. Frontend subscribes and
     invalidates its cached plan so the Plan tab reflects the change
     immediately.
     """

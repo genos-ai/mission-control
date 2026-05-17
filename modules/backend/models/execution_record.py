@@ -118,11 +118,8 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
 
-    task_plan_json: Mapped[dict | None] = mapped_column(
-        JSON,
-        nullable=True,
-        comment="TaskPlan dataclass serialized to JSON. Immutable after creation.",
-    )
+    # Plan 72: task_plan_json removed — tasks live in the tasks table.
+    # Column dropped by migration plan72_001.
 
     execution_outcome_json: Mapped[dict | None] = mapped_column(
         JSON,

@@ -34,9 +34,8 @@ async def find_ready_plans() -> list[dict]:
     from modules.backend.models.mission_plan import (
         MissionPlan,
         MissionPlanStatus,
-        PlanTaskState,
-        PlanTaskStatus,
     )
+    from modules.backend.models.task import Task, TaskStatus
 
     async with get_async_session() as db:
         # Find plans that have at least one approved task and are in
@@ -44,8 +43,8 @@ async def find_ready_plans() -> list[dict]:
         approved_count = (
             select(func.count())
             .where(
-                PlanTaskState.mission_plan_id == MissionPlan.id,
-                PlanTaskState.status == PlanTaskStatus.APPROVED,
+                Task.plan_id == MissionPlan.id,
+                Task.status == TaskStatus.APPROVED,
             )
             .correlate(MissionPlan)
             .scalar_subquery()

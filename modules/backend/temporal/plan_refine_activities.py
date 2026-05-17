@@ -50,13 +50,10 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
             )
             await db.commit()
 
-            task_plan = refined.task_plan_json or {}
-            tasks = task_plan.get("tasks", [])
-
             return PlanRefineResult(
                 plan_id=input.plan_id,
                 version=refined.version,
-                task_count=len(tasks),
+                task_count=len(refined.tasks),
             )
     except Exception as exc:
         activity.logger.error(

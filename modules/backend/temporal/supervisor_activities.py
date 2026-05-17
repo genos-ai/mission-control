@@ -117,7 +117,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
         get_recent_run_outcomes,
     )
     from modules.backend.core.database import get_async_session
-    from modules.backend.models.mission_plan import PlanTaskStatus
+    from modules.backend.models.task import TaskStatus
 
     async with get_async_session() as db:
         recent = await get_recent_run_outcomes(
@@ -128,14 +128,14 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
         from modules.backend.services.mission_plan import MissionPlanService
         svc = MissionPlanService(db)
         plan = await svc.get_or_create_plan(input.mission_id)
-        task_states = await svc.get_task_states(plan.id)
+        task_states = await svc.get_tasks(plan.id)
 
         summary = {
-            "approved": sum(1 for s in task_states if s.status == PlanTaskStatus.APPROVED),
-            "proposed": sum(1 for s in task_states if s.status == PlanTaskStatus.PROPOSED),
-            "running": sum(1 for s in task_states if s.status == PlanTaskStatus.RUNNING),
-            "completed": sum(1 for s in task_states if s.status in (PlanTaskStatus.COMPLETED,)),
-            "failed": sum(1 for s in task_states if s.status == PlanTaskStatus.FAILED),
+            "approved": sum(1 for s in task_states if s.status == TaskStatus.APPROVED),
+            "proposed": sum(1 for s in task_states if s.status == TaskStatus.PROPOSED),
+            "running": sum(1 for s in task_states if s.status == TaskStatus.RUNNING),
+            "completed": sum(1 for s in task_states if s.status in (TaskStatus.COMPLETED,)),
+            "failed": sum(1 for s in task_states if s.status == TaskStatus.FAILED),
             "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
             "execution_record_id": input.execution_record_id,
             "max_supervisor_iterations": input.max_supervisor_iterations,
@@ -186,14 +186,14 @@ async def approve_proposed_tasks(mission_id: str) -> int:
     """
     from modules.backend.core.database import get_async_session
     from modules.backend.services.mission_plan import MissionPlanService
-    from modules.backend.models.mission_plan import PlanTaskStatus
+    from modules.backend.models.task import TaskStatus
 
     activity.logger.info("Approving proposed tasks", extra={"mission_id": mission_id})
 
     async with get_async_session() as db:
         svc = MissionPlanService(db)
         plan = await svc.get_or_create_plan(mission_id)
-        task_states = await svc.get_task_states(plan.id, status=PlanTaskStatus.PROPOSED)
+        task_states = await svc.get_tasks(plan.id, status=TaskStatus.PROPOSED)
 
         approved_count = 0
         for ts in task_states:
@@ -228,23 +228,23 @@ async def fetch_plan_task_counts(mission_id: str) -> PlanTaskCounts:
     async with get_async_session() as db:
         svc = MissionPlanService(db)
         plan = await svc.get_or_create_plan(mission_id)
-        task_states = await svc.get_task_states(plan.id)
+        task_states = await svc.get_tasks(plan.id)
 
-    from modules.backend.models.mission_plan import PlanTaskStatus
+    from modules.backend.models.task import TaskStatus
 
     counts = PlanTaskCounts()
     for s in task_states:
-        if s.status == PlanTaskStatus.APPROVED:
+        if s.status == TaskStatus.APPROVED:
             counts.approved += 1
-        elif s.status == PlanTaskStatus.PROPOSED:
+        elif s.status == TaskStatus.PROPOSED:
             counts.proposed += 1
-        elif s.status == PlanTaskStatus.RUNNING:
+        elif s.status == TaskStatus.RUNNING:
             counts.running += 1
-        elif s.status == PlanTaskStatus.COMPLETED:
+        elif s.status == TaskStatus.COMPLETED:
             counts.completed += 1
-        elif s.status == PlanTaskStatus.FAILED:
+        elif s.status == TaskStatus.FAILED:
             counts.failed += 1
-        elif s.status == PlanTaskStatus.QUEUED:
+        elif s.status == TaskStatus.QUEUED:
             counts.queued += 1
 
     return counts

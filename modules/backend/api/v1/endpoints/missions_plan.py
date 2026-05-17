@@ -38,13 +38,11 @@ from modules.backend.schemas.mission_plan import (
     DispatchApprovedResponse,
     MissionPlanRefineRequest,
     MissionPlanResponse,
-    MissionPlanStatus,
     MissionPlanUpdate,
-    PlanTaskStateResponse,
-    PlanTaskStatus,
     RunObjectiveRequest,
     TaskTransitionResponse,
 )
+from modules.backend.models.task import TaskStatus
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
 
@@ -144,18 +142,9 @@ async def update_plan(
     if data.veto_window_sec is not None:
         plan.veto_window_sec = data.veto_window_sec
         await db.flush()
-    if data.task_order is not None and plan.task_plan_json:
-        tasks: list[dict] = list(plan.task_plan_json.get("tasks", []))
-        order_map = {tid: i for i, tid in enumerate(data.task_order)}
-        in_order = sorted(
-            [t for t in tasks if t.get("task_id") in order_map],
-            key=lambda t: order_map[t.get("task_id", "")],
-        )
-        not_in_order = [t for t in tasks if t.get("task_id") not in order_map]
-        plan.task_plan_json = {**plan.task_plan_json, "tasks": in_order + not_in_order}
-        await db.flush()
+    # Plan 72: task ordering is by created_at — no manual reorder needed.
 
-    # Refetch to include updated task_states relationship
+    # Refetch to include updated tasks relationship
     plan = await service.get_or_create_plan(mission_id)
     response = MissionPlanResponse.model_validate(plan)
     return ApiResponse(
@@ -353,9 +342,9 @@ async def add_plan_task(
     current_user: CurrentUser,
     event_bus: EventBus,
 ) -> ApiResponse:
-    """Append a manually-created proposed task to the plan's task_plan_json.
+    """Add a manually-created proposed task to the plan.
 
-    Initialises task_plan_json if the plan has none yet. The task starts
+    Creates a Task row directly (Plan 72). The task starts
     in proposed state and follows the same approve → dispatch flow as
     Planning-Agent-generated tasks.
     """
@@ -407,8 +396,8 @@ async def approve_task(
 
     response = TaskTransitionResponse(
         target_task_id=task_id,
-        transitioned_task_ids=[s.task_id for s in transitioned],
-        new_status=PlanTaskStatus.APPROVED,
+        transitioned_task_ids=[t.id for t in transitioned],
+        new_status=TaskStatus.APPROVED,
     )
     return ApiResponse(
         success=True,
@@ -443,8 +432,8 @@ async def reject_task(
 
     response = TaskTransitionResponse(
         target_task_id=task_id,
-        transitioned_task_ids=[s.task_id for s in transitioned],
-        new_status=PlanTaskStatus.CANCELLED,
+        transitioned_task_ids=[t.id for t in transitioned],
+        new_status=TaskStatus.CANCELLED,
     )
     return ApiResponse(
         success=True,
@@ -476,9 +465,13 @@ async def retry_task(
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
-    state = await service.retry_task(plan.id, task_id, current_user.id)
+    task = await service.retry_task(plan.id, task_id, current_user.id)
 
-    response = PlanTaskStateResponse.model_validate(state)
+    response = TaskTransitionResponse(
+        target_task_id=task_id,
+        transitioned_task_ids=[task.id],
+        new_status=TaskStatus.APPROVED,
+    )
     return ApiResponse(
         success=True,
         data=response.model_dump(),

@@ -152,7 +152,6 @@ async def get_mission(
             "status": status,
             "total_cost_usd": float(record.total_cost_usd or 0),
             "objective_statement": record.objective_statement,
-            "task_plan_json": record.task_plan_json,
             "execution_outcome_json": record.execution_outcome_json,
             "started_at": str(record.started_at) if record.started_at else None,
             "completed_at": str(record.completed_at) if record.completed_at else None,
