@@ -28,27 +28,35 @@ PROJECT_TABLES = [
     "workflow_schedules",
 ]
 
-# Run data tables — cleared by db clear
+# Run data tables — cleared by db clear (dependency order: children first)
 RUN_TABLES = [
+    "task_dependencies",
     "execution_decisions",
     "task_attempts",
     "task_executions",
     "execution_records",
+    "tasks",
     "session_messages",
     "session_channels",
-    "executions",
     "workflow_runs",
     "sessions",
 ]
 
 # Execution-only tables
 EXECUTION_TABLES = [
+    "task_dependencies",
     "execution_decisions",
     "task_attempts",
     "task_executions",
     "execution_records",
-    "executions",
+    "tasks",
     "workflow_runs",
+]
+
+# Task-only tables (Plan 72)
+TASK_TABLES = [
+    "task_dependencies",
+    "tasks",
 ]
 
 # Session-only tables

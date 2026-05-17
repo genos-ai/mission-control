@@ -807,6 +807,15 @@ def db_clear_sessions(ctx, yes):
     run_db(ctx.logger, action="clear-sessions", table=None, limit=10, confirm=yes)
 
 
+@db.command("clear-tasks")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
+@click.pass_obj
+def db_clear_tasks(ctx, yes):
+    """Clear all tasks and task dependencies (Plan 72)."""
+    from modules.clients.cli.db import run_db
+    run_db(ctx.logger, action="clear-tasks", table=None, limit=10, confirm=yes)
+
+
 # =============================================================================
 # Tree — show full command hierarchy
 # =============================================================================

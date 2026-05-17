@@ -31,6 +31,7 @@ def run_db(
         "clear": _action_clear,
         "clear-executions": _action_clear_executions,
         "clear-sessions": _action_clear_sessions,
+        "clear-tasks": _action_clear_tasks,
     }
 
     handler = actions.get(action)
@@ -218,6 +219,24 @@ async def _action_clear_sessions(cli_logger, *, table, limit, confirm, **_):
         await svc.truncate_tables(SESSION_TABLES)
 
     click.echo(click.style("Session data cleared.", fg="green"))
+
+
+async def _action_clear_tasks(cli_logger, *, table, limit, confirm, **_):
+    """Clear all tasks and task dependencies (Plan 72)."""
+    from modules.backend.services.database_admin import TASK_TABLES, DatabaseAdminService
+
+    if not confirm:
+        click.echo(click.style("This will DELETE all tasks and dependencies.", fg="red", bold=True))
+        click.echo(f"Tables: {', '.join(TASK_TABLES)}")
+        click.echo()
+        if not click.confirm("Are you sure?"):
+            click.echo("Aborted.")
+            return
+
+    async with DatabaseAdminService.factory() as svc:
+        await svc.truncate_tables(TASK_TABLES)
+
+    click.echo(click.style("Tasks cleared.", fg="green"))
 
 
 # =============================================================================
