@@ -26,7 +26,7 @@ export interface UserResponse {
   id: string
   email: string
   display_name: string
-  system_role: 'viewer' | 'user' | 'admin'
+  system_role: 'viewer' | 'user' | 'admin' | 'sysadmin'
   is_active: boolean
   is_service_account: boolean
   last_login_at: string | null

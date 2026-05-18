@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCatalog, useCatalogAgent } from '@/hooks/use-catalog'
 import { useAddToTeam } from '@/hooks/use-team'
+import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -102,6 +103,8 @@ function AgentDetail({
         </div>
       )}
 
+      {agent.system_prompt && <SystemPromptSection prompt={agent.system_prompt} />}
+
       {missionId && (
         <div className="border-t pt-4">
           <h4 className="mb-2 text-sm font-medium">
@@ -161,6 +164,34 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
             }
           />
         ))}
+    </div>
+  )
+}
+
+function SystemPromptSection({ prompt }: { prompt: string }) {
+  const { user } = useAuthStore()
+  const [open, setOpen] = useState(false)
+
+  // Only visible to sysadmin
+  if (user?.system_role !== 'sysadmin') return null
+
+  return (
+    <div className="border-t pt-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1.5 text-left"
+      >
+        {open
+          ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        }
+        <h4 className="text-xs font-semibold uppercase text-muted-foreground">System Prompt</h4>
+      </button>
+      {open && (
+        <pre className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded border bg-muted/30 p-3 font-mono text-[11px] text-muted-foreground">
+          {prompt}
+        </pre>
+      )}
     </div>
   )
 }
