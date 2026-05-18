@@ -2,8 +2,8 @@
  * ContextPanel — Mission Context & Memory, rendered as a full feed mode
  * inside the workspace center panel.
  *
- * Shows the Mission Context Document (MCD): identity, architecture,
- * decisions, current state, guardrails, and recent agent changes.
+ * Shows the Mission Context Document (MCD): all sections are rendered
+ * dynamically based on the data shape — no hardcoded section list.
  * The MCD is built automatically as agents run tasks — it represents
  * the mission's accumulated memory and learnings.
  */
@@ -13,19 +13,18 @@ import {
   FileText,
   ChevronDown,
   ChevronRight,
-  Shield,
   Clock,
   Bot,
-  Layers,
-  AlertCircle,
-  Target,
-  GitBranch,
+  Database,
 } from 'lucide-react'
 import { formatUtc } from '@/lib/format-date'
 import { useMCD, useContextHistory } from '@/hooks/use-context'
 import type { ContextChange } from '@/hooks/use-context'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
+
+// Keys that are metadata, not content sections
+const META_KEYS = new Set(['version', 'last_updated', 'last_updated_by'])
 
 // ---------------------------------------------------------------------------
 
@@ -38,9 +37,14 @@ export function ContextPanel({ missionId }: { missionId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Status bar — version + fill level (only when populated) */}
+      {/* Status bar */}
       {mcd && !isEmpty && (
         <div className="flex h-7 shrink-0 items-center justify-end gap-2 border-b px-4">
+          {typeof mcd.context_data.last_updated_by === 'string' && (
+            <span className="text-[10px] text-muted-foreground/60">
+              updated by <span className="font-medium">{String(mcd.context_data.last_updated_by)}</span>
+            </span>
+          )}
           <Badge variant="secondary" className="text-[9px]">v{mcd.version}</Badge>
           <span className="text-[10px] text-muted-foreground">
             {(mcd.size_characters / 1024).toFixed(1)}KB / {(mcd.max_characters / 1024).toFixed(0)}KB
@@ -95,124 +99,26 @@ function McdContent({
   history: ContextChange[]
 }) {
   const ctx = mcd.context_data as Record<string, unknown>
-  const identity = (ctx.identity ?? {}) as Record<string, unknown>
-  const architecture = (ctx.architecture ?? {}) as Record<string, unknown>
-  const decisions = (ctx.decisions ?? []) as Record<string, unknown>[]
-  const currentState = (ctx.current_state ?? {}) as Record<string, unknown>
-  const guardrails = (ctx.guardrails ?? []) as unknown[]
 
-  const hasArchitecture =
-    (typeof architecture.data_flow === 'string' && architecture.data_flow !== '') ||
-    (architecture.components != null &&
-      typeof architecture.components === 'object' &&
-      Object.keys(architecture.components as object).length > 0)
-
-  const hasCurrentState = Object.values(currentState).some(
-    (v) =>
-      (Array.isArray(v) && v.length > 0) ||
-      (typeof v === 'object' && v != null && !Array.isArray(v) &&
-        Object.keys(v as object).length > 0),
+  // Render every non-meta key dynamically
+  const sections = Object.entries(ctx).filter(
+    ([key, val]) => !META_KEYS.has(key) && val != null && !isEmptyValue(val),
   )
 
   return (
     <>
-      {/* Identity */}
-      <Section title="Identity" icon={<Target className="h-3.5 w-3.5" />} defaultOpen>
-        <KV label="Name" value={identity.name} />
-        <KV label="Purpose" value={identity.purpose} />
-        {Array.isArray(identity.tech_stack) && identity.tech_stack.length > 0 && (
-          <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Tech Stack</p>
-            <div className="flex flex-wrap gap-1">
-              {(identity.tech_stack as string[]).map((t, i) => (
-                <Badge key={i} variant="outline" className="text-[9px] h-4 px-1">{t}</Badge>
-              ))}
-            </div>
-          </div>
-        )}
-        {typeof ctx.last_updated_by === 'string' && (
-          <p className="text-[10px] text-muted-foreground/60">
-            Last updated by <span className="font-medium">{String(ctx.last_updated_by)}</span>
-          </p>
-        )}
-      </Section>
-
-      {/* Current State */}
-      {hasCurrentState && (
-        <Section title="Current State" icon={<AlertCircle className="h-3.5 w-3.5" />} defaultOpen>
-          {currentState.pqi_score != null && typeof currentState.pqi_score === 'object' && (
-            <PQIScore data={currentState.pqi_score as Record<string, unknown>} />
-          )}
-          <StateList label="Active Workstreams" items={currentState.active_workstreams} />
-          <StateList label="Next Priorities" items={currentState.next_priorities} />
-          <StateList label="Known Issues" items={currentState.known_issues} variant="destructive" />
-          <StateList label="Recent Milestones" items={currentState.recent_milestones} variant="success" />
-          <DynamicFields
-            data={currentState}
-            exclude={['active_workstreams', 'known_issues', 'next_priorities', 'recent_milestones', 'pqi_score']}
-          />
+      {sections.map(([key], i) => (
+        <Section
+          key={key}
+          title={formatLabel(key)}
+          icon={<Database className="h-3.5 w-3.5" />}
+          defaultOpen={i < 3}
+        >
+          <DynamicValue value={ctx[key]} />
         </Section>
-      )}
+      ))}
 
-      {/* Decisions */}
-      {decisions.length > 0 && (
-        <Section title={`Decisions (${decisions.length})`} icon={<GitBranch className="h-3.5 w-3.5" />}>
-          <div className="space-y-1.5">
-            {decisions.map((d, i) => (
-              <div key={i} className="rounded border px-2.5 py-2 text-xs">
-                <p className="font-medium">{String(d.title ?? d.decision ?? `Decision ${i + 1}`)}</p>
-                {typeof d.rationale === 'string' && (
-                  <p className="mt-0.5 text-muted-foreground">{String(d.rationale)}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Architecture */}
-      {hasArchitecture && (
-        <Section title="Architecture" icon={<Layers className="h-3.5 w-3.5" />}>
-          {typeof architecture.data_flow === 'string' && (
-            <KV label="Data Flow" value={architecture.data_flow} />
-          )}
-          {architecture.components != null &&
-            typeof architecture.components === 'object' &&
-            Object.keys(architecture.components as object).length > 0 && (
-              <div>
-                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Components</p>
-                <div className="space-y-1">
-                  {Object.entries(architecture.components as Record<string, unknown>).map(([key, val]) => (
-                    <div key={key} className="flex items-start gap-1.5 rounded border px-2.5 py-1.5 text-xs">
-                      <span className="font-medium">{key}</span>
-                      {val != null && (
-                        <span className="text-muted-foreground">
-                          {typeof val === 'string' ? val : JSON.stringify(val)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-        </Section>
-      )}
-
-      {/* Guardrails */}
-      {guardrails.length > 0 && (
-        <Section title={`Guardrails (${guardrails.length})`} icon={<Shield className="h-3.5 w-3.5" />}>
-          <div className="space-y-1">
-            {guardrails.map((g, i) => (
-              <div key={i} className="flex items-center gap-2 rounded border border-amber-500/20 bg-amber-500/5 px-2.5 py-2 text-xs">
-                <Shield className="h-3 w-3 text-amber-500 shrink-0" />
-                <span>{typeof g === 'string' ? g : JSON.stringify(g as object)}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Recent Changes */}
+      {/* Recent Changes — always last */}
       <Section title="Recent Changes" icon={<Clock className="h-3.5 w-3.5" />}>
         {history.length === 0 ? (
           <p className="text-xs text-muted-foreground/60">No changes recorded yet.</p>
@@ -225,6 +131,123 @@ function McdContent({
         )}
       </Section>
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic value renderer — recursively renders any shape
+// ---------------------------------------------------------------------------
+
+function DynamicValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+  if (value == null) return null
+
+  // String
+  if (typeof value === 'string') {
+    return value ? <p className="text-xs whitespace-pre-wrap">{value}</p> : null
+  }
+
+  // Number / boolean
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return <p className="text-xs font-mono">{String(value)}</p>
+  }
+
+  // Array of strings — render as tag badges
+  if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === 'string')) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        {(value as string[]).map((item, i) => (
+          <Badge key={i} variant="outline" className="text-[10px] h-5 px-1.5 font-normal">
+            {item}
+          </Badge>
+        ))}
+      </div>
+    )
+  }
+
+  // Array of objects — render as cards
+  if (Array.isArray(value) && value.length > 0) {
+    return (
+      <div className="space-y-1.5">
+        {value.map((item, i) => (
+          <div key={i} className="rounded border px-2.5 py-2">
+            {typeof item === 'object' && item != null ? (
+              <DynamicObject data={item as Record<string, unknown>} depth={depth + 1} />
+            ) : (
+              <p className="text-xs">{String(item)}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // Empty array
+  if (Array.isArray(value) && value.length === 0) return null
+
+  // Object
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const entries = Object.entries(obj).filter(([, v]) => !isEmptyValue(v))
+    if (entries.length === 0) return null
+    return <DynamicObject data={obj} depth={depth} />
+  }
+
+  return null
+}
+
+function DynamicObject({ data, depth = 0 }: { data: Record<string, unknown>; depth?: number }) {
+  const entries = Object.entries(data).filter(([, v]) => !isEmptyValue(v))
+  if (entries.length === 0) return null
+
+  // Shallow object with only string/number values — render as key-value pairs
+  const allScalar = entries.every(([, v]) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+  if (allScalar) {
+    return (
+      <div className="space-y-1.5">
+        {entries.map(([key, val]) => (
+          <div key={key}>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{formatLabel(key)}</p>
+            <p className="mt-0.5 text-xs">{String(val)}</p>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // Nested objects — render each as a sub-card (up to 3 levels deep, then JSON)
+  if (depth >= 3) {
+    return (
+      <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap rounded bg-muted/30 p-2">
+        {JSON.stringify(data, null, 2)}
+      </pre>
+    )
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {entries.map(([key, val]) => {
+        // Nested object with its own children — render as a labeled sub-section
+        if (typeof val === 'object' && val != null && !Array.isArray(val) && Object.keys(val as object).length > 0) {
+          return (
+            <div key={key}>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{formatLabel(key)}</p>
+              <div className="rounded border px-2.5 py-2">
+                <DynamicValue value={val} depth={depth + 1} />
+              </div>
+            </div>
+          )
+        }
+        // Everything else
+        return (
+          <div key={key}>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{formatLabel(key)}</p>
+            <div className="mt-0.5">
+              <DynamicValue value={val} depth={depth + 1} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -267,123 +290,15 @@ function Section({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function KV({ label, value }: { label: string; value: unknown }) {
-  if (!value) return null
-  return (
-    <div>
-      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-xs">{String(value)}</p>
-    </div>
-  )
+function formatLabel(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-function StateList({
-  label,
-  items,
-  variant,
-}: {
-  label: string
-  items: unknown
-  variant?: 'destructive' | 'success'
-}) {
-  if (!Array.isArray(items) || items.length === 0) return null
-  return (
-    <div>
-      <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <div className="space-y-0.5">
-        {items.map((item, i) => (
-          <div
-            key={i}
-            className={`rounded px-2.5 py-1.5 text-xs ${
-              variant === 'destructive'
-                ? 'bg-destructive/5 text-destructive'
-                : variant === 'success'
-                  ? 'bg-emerald-500/5 text-emerald-400'
-                  : 'bg-muted/50'
-            }`}
-          >
-            {typeof item === 'string' ? item : JSON.stringify(item as object)}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function PQIScore({ data }: { data: Record<string, unknown> }) {
-  const composite = Number(data.composite ?? 0)
-  const band = String(data.quality_band ?? '')
-  const dims = (data.dimensions ?? {}) as Record<string, number>
-
-  const bandColor =
-    composite >= 80 ? 'text-emerald-400' :
-    composite >= 60 ? 'text-amber-400' :
-    'text-destructive'
-
-  return (
-    <div className="rounded border p-3">
-      <div className="mb-2 flex items-baseline gap-2">
-        <span className={`text-2xl font-bold ${bandColor}`}>{composite.toFixed(1)}</span>
-        <span className="text-xs text-muted-foreground">/ 100</span>
-        {band && <Badge variant="secondary" className="text-[9px]">{band}</Badge>}
-      </div>
-      <div className="space-y-1">
-        {Object.entries(dims).sort(([, a], [, b]) => b - a).map(([dim, score]) => (
-          <div key={dim} className="flex items-center gap-2">
-            <span className="w-24 truncate text-[10px] text-muted-foreground capitalize">
-              {dim.replace(/_/g, ' ')}
-            </span>
-            <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-              <div
-                className={`h-full rounded-full ${
-                  score >= 80 ? 'bg-emerald-500' : score >= 60 ? 'bg-amber-500' : 'bg-destructive'
-                }`}
-                style={{ width: `${score}%` }}
-              />
-            </div>
-            <span className="w-7 text-right text-[10px] font-mono text-muted-foreground">
-              {score.toFixed(0)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function DynamicFields({
-  data,
-  exclude,
-}: {
-  data: Record<string, unknown>
-  exclude: string[]
-}) {
-  const entries = Object.entries(data).filter(
-    ([key, val]) =>
-      !exclude.includes(key) &&
-      val != null && val !== '' &&
-      !(Array.isArray(val) && val.length === 0) &&
-      !(typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0),
-  )
-  if (entries.length === 0) return null
-  return (
-    <>
-      {entries.map(([key, val]) => (
-        <div key={key}>
-          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground capitalize">
-            {key.replace(/_/g, ' ')}
-          </p>
-          <div className="rounded border px-2.5 py-2 text-xs">
-            {typeof val === 'string' ? val : (
-              <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap">
-                {JSON.stringify(val, null, 2)}
-              </pre>
-            )}
-          </div>
-        </div>
-      ))}
-    </>
-  )
+function isEmptyValue(val: unknown): boolean {
+  if (val == null || val === '') return true
+  if (Array.isArray(val) && val.length === 0) return true
+  if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) return true
+  return false
 }
 
 function ChangeEntry({ change }: { change: ContextChange }) {
