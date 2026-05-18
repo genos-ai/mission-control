@@ -430,11 +430,17 @@ class CopilotModel(Model):
         self._response_text = ""
         self._response_ready = asyncio.Event()
         self._usage_data = {}
-        has_tools = bool(params.function_tools)
+        # Merge function tools + output tools (e.g. final_result for
+        # structured output in 'tool' mode). Without output_tools, the
+        # model never sees final_result and falls back to prompted text.
+        all_tools = list(params.function_tools or [])
+        if params.output_tools:
+            all_tools.extend(params.output_tools)
+        has_tools = bool(all_tools)
 
         if has_tools:
             self._tool_bridge = _ToolBridge()
-            copilot_tools = _make_copilot_tools(params.function_tools, self._tool_bridge)
+            copilot_tools = _make_copilot_tools(all_tools, self._tool_bridge)
         else:
             self._tool_bridge = None
             copilot_tools = None
