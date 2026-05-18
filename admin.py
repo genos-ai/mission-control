@@ -966,12 +966,19 @@ def admin(ctx):
 
 
 @admin.command("seed-catalog")
-@click.option("--force", is_flag=True, help="Clear and re-seed the catalog.")
+@click.option("--force", is_flag=True, help="Update all agents from YAML (preserves DB prompts).")
+@click.option("--reset-prompts", is_flag=True, help="Also overwrite system prompts from disk (use with --force).")
 @click.pass_obj
-def admin_seed_catalog(ctx, force):
-    """Seed the agent catalog from config/agents/ YAML files."""
+def admin_seed_catalog(ctx, force, reset_prompts):
+    """Seed the agent catalog from config/agents/ YAML files.
+
+    --force updates config fields (model, tools, scope) but preserves
+    system prompts edited via the admin API.
+
+    --force --reset-prompts also overwrites prompts from disk layers.
+    """
     from modules.clients.cli.catalog_cmds import run_admin
-    run_admin(ctx.logger, "seed-catalog", force=force, output_format=ctx.output_format)
+    run_admin(ctx.logger, "seed-catalog", force=force, reset_prompts=reset_prompts, output_format=ctx.output_format)
 
 
 @admin.command("migrate-planning-agent")

@@ -24,7 +24,7 @@ def run_catalog(cli_logger, action: str, *, agent_name: str | None = None, outpu
     asyncio.run(fn(cli_logger, agent_name=agent_name, output_format=output_format))
 
 
-def run_admin(cli_logger, action: str, *, force: bool = False, output_format: str = "human") -> None:
+def run_admin(cli_logger, action: str, *, force: bool = False, reset_prompts: bool = False, output_format: str = "human") -> None:
     """Dispatch admin CLI actions."""
     actions = {
         "seed-catalog": _action_seed_catalog,
@@ -34,7 +34,7 @@ def run_admin(cli_logger, action: str, *, force: bool = False, output_format: st
         get_console().print(f"[red]Unknown action: {action}[/red]")
         sys.exit(1)
 
-    asyncio.run(fn(cli_logger, force=force, output_format=output_format))
+    asyncio.run(fn(cli_logger, force=force, reset_prompts=reset_prompts, output_format=output_format))
 
 
 async def _action_list(cli_logger, *, output_format, **_):
@@ -99,14 +99,14 @@ async def _action_detail(cli_logger, *, agent_name, **_):
         console.print(f"    {prompt_preview}")
 
 
-async def _action_seed_catalog(cli_logger, *, force, **_):
+async def _action_seed_catalog(cli_logger, *, force, reset_prompts=False, **_):
     """Seed the agent catalog from YAML config files."""
     from modules.backend.services.agent_catalog import AgentCatalogService
     from modules.backend.services.catalog_seeder import seed_catalog
 
     console = get_console()
     async with AgentCatalogService.factory() as svc:
-        counts = await seed_catalog(svc, force=force)
+        counts = await seed_catalog(svc, force=force, reset_prompts=reset_prompts)
 
     console.print("[bold]Catalog seeding complete[/bold]")
     console.print(f"  Seeded:  {counts['seeded']}")

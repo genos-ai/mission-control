@@ -89,12 +89,17 @@ async def seed_catalog(
     service: AgentCatalogService,
     *,
     force: bool = False,
+    reset_prompts: bool = False,
 ) -> dict[str, int]:
     """Seed the agent catalog from YAML files on disk.
 
     Args:
         service: An AgentCatalogService with an active DB session.
-        force: If True, delete all existing rows before seeding.
+        force: If True, update all agents from YAML (config fields).
+            Preserves DB system_prompt unless reset_prompts is also set.
+        reset_prompts: If True (requires force), also overwrite
+            system_prompt from disk-assembled layers. Without this,
+            prompts edited via the admin API are preserved.
 
     Returns:
         Dict with counts: {"seeded": N, "skipped": M, "errors": E}
@@ -190,6 +195,11 @@ async def seed_catalog(
             # Never delete — that would cascade to mission team members.
             existing = await service.get_by_name_or_none(config.agent_name)
             if existing:
+                # Preserve the DB system_prompt unless reset_prompts
+                # is explicitly set. This protects admin API edits
+                # from being overwritten by a routine seed-catalog.
+                if not reset_prompts and existing.system_prompt:
+                    fields.pop("system_prompt", None)
                 await service.update_entry(config.agent_name, **fields)
                 logger.debug("Agent updated", extra={"agent_name": config.agent_name})
             else:

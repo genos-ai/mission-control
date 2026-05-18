@@ -282,13 +282,14 @@ async def admin_seed_catalog(
     request_id: RequestId,
     _role: AdminRole,
     force: bool = False,
+    reset_prompts: bool = False,
 ) -> ApiResponse:
     """Seed the agent catalog from config/agents/ YAML files."""
     from modules.backend.services.agent_catalog import AgentCatalogService
     from modules.backend.services.catalog_seeder import seed_catalog
 
     service = AgentCatalogService(db)
-    result = await seed_catalog(service, force=force)
+    result = await seed_catalog(service, force=force, reset_prompts=reset_prompts)
 
     return ApiResponse(
         success=True,
