@@ -1,7 +1,7 @@
 # Architecture: Provider Capability Layer
 
-**Version:** 1.0.0
-**Date:** 2026-04-18
+**Version:** 1.1.0
+**Date:** 2026-05-18
 **Author:** Herman + Architecture Review
 **Status:** Design — ready for review
 **Depends on:** Plan 55 (CLI engines), Plan 58 (provider factory), Plan 59 (Copilot adapter)
@@ -94,9 +94,11 @@ Five dimensions define what a model+provider combination can provide and what an
 
 | Value | Provider | Mechanism |
 |-------|----------|-----------|
-| `native` | Anthropic API, OpenAI API (via PydanticAI) | PydanticAI `output_type=Schema`, `output_retries`, `output_validator` |
-| `text_parse` | Copilot SDK | Model returns text; caller must parse JSON (fragile for complex schemas) |
+| `native` | Anthropic API, OpenAI API (via PydanticAI) | PydanticAI `output_type=Schema` with grammar-constrained decoding (`NativeOutput` mode) |
+| `tool_output` | Copilot SDK | PydanticAI creates a hidden `final_result` tool whose parameters ARE the output schema. The model calls it with validated arguments. CopilotModel bridges `output_tools` alongside `function_tools` to the Copilot SDK. See §7.3. |
 | `none` | CLI engines | Unstructured text only |
+
+> **History:** Prior to May 2026, Copilot used `text_parse` (model returns text, PydanticAI parses as JSON). This was fragile for complex schemas — the model would drop required fields or produce malformed JSON. Switched to `tool_output` via `ModelProfile(default_structured_output_mode='tool')`. See `docs/98-research/031-How the GitHub Copilot SDK Handles Structured JSON Responses.md` for the full analysis.
 
 **Streaming** — real-time token delivery to event bus.
 
@@ -129,9 +131,9 @@ class ToolCallingCapability(str, Enum):
     NONE = "none"
 
 class StructuredOutputCapability(str, Enum):
-    NATIVE = "native"
-    TEXT_PARSE = "text_parse"
-    NONE = "none"
+    NATIVE = "native"           # Grammar-constrained decoding (Anthropic, OpenAI)
+    TOOL_OUTPUT = "tool_output" # PydanticAI hidden final_result tool (Copilot SDK)
+    NONE = "none"               # Unstructured text only (CLI engines)
 
 class StreamingCapability(str, Enum):
     NATIVE = "native"
@@ -308,7 +310,7 @@ models:
     display_name: Claude Opus 4.6 (Copilot)
     model_family: claude-opus-4
     tool_calling: native_copilot
-    structured_output: text_parse
+    structured_output: tool_output
     streaming: buffered
     reasoning: reasoning_effort
     context_window: 200000
@@ -320,7 +322,7 @@ models:
     display_name: Claude Sonnet 4.6 (Copilot)
     model_family: claude-sonnet-4
     tool_calling: native_copilot
-    structured_output: text_parse
+    structured_output: tool_output
     streaming: buffered
     reasoning: reasoning_effort
     context_window: 200000
@@ -332,7 +334,7 @@ models:
     display_name: GPT-5.4 (Copilot)
     model_family: gpt-5
     tool_calling: native_copilot
-    structured_output: text_parse
+    structured_output: tool_output
     streaming: buffered
     reasoning: reasoning_effort
     context_window: 400000
@@ -344,7 +346,7 @@ models:
     display_name: GPT-4.1 (Copilot)
     model_family: gpt-4.1
     tool_calling: native_copilot
-    structured_output: text_parse
+    structured_output: tool_output
     streaming: buffered
     reasoning: none
     context_window: 128000
@@ -371,7 +373,7 @@ provider_defaults:
 
   copilot:
     tool_calling: native_copilot
-    structured_output: text_parse
+    structured_output: tool_output
     streaming: buffered
     reasoning: none
     context_window: 200000
@@ -656,8 +658,8 @@ none              any                     ✅ compatible (ignored)
 
 | Agent Requires | Model Provides | Verdict | Reason |
 |----------------|---------------|---------|--------|
-| required | `native` | ✅ | PydanticAI handles schema enforcement + retries |
-| required | `text_parse` | ⚠️ WARNING | May work for simple schemas; complex nested schemas will likely fail |
+| required | `native` | ✅ | PydanticAI NativeOutput — grammar-constrained decoding |
+| required | `tool_output` | ✅ | PydanticAI ToolOutput — final_result tool with schema-validated arguments |
 | required | `none` | ❌ ERROR | No structured output possible |
 
 **Streaming:**
@@ -690,7 +692,7 @@ Beyond individual dimension checks, some combinations create compound issues:
 
 1. **Engine mismatch** — If `engine != pydantic_ai` and agent requires `structured_output=required`, emit ERROR. CLI engines cannot enforce Pydantic schemas. (Already validated in `config_schema.py` line 249.)
 
-2. **Copilot + structured output** — If provider is `copilot` and agent requires `structured_output=required`, emit WARNING with message: *"Copilot returns text; structured output relies on the model producing valid JSON in its response. Consider using `text_parse` extraction with retry logic, or switch to Anthropic API for this agent."*
+2. **Copilot + structured output** — If provider is `copilot` and agent requires `structured_output=required`, emit INFO with message: *"Copilot uses tool-based structured output (final_result tool). This adds an extra tool-call round trip vs native grammar-constrained decoding. Reliable for all schema complexities."*
 
 3. **CLI engine + custom tools** — If engine is `claude_code`/`codex`/`copilot` and agent declares `tools:` in config, emit ERROR. Custom tools won't execute in CLI subprocess.
 
@@ -892,17 +894,17 @@ The capability layer's value for streaming is **validation**: ensuring that an a
 
 ### 7.3 Why NOT a Structured Output Adapter
 
-PydanticAI already owns structured output parsing via `output_type`, `output_retries`, and `output_validator`. When `CopilotModel.request()` returns a `TextPart` and the agent has `output_type=QaAuditResult`, PydanticAI attempts to parse the text as JSON and retries on failure — that's the framework's job.
+PydanticAI already owns structured output via `output_type` and the model profile's `default_structured_output_mode`. No adapter is needed because PydanticAI handles mode resolution per-provider automatically:
 
-**Verified:** PydanticAI's `AutoOutputSchema` sets a `text_processor` on all non-text output types. When a `TextPart` is received, `ObjectOutputProcessor.process()` strips markdown fences, calls `validate_json()` against the schema, and raises `ToolRetryError` on validation failure — triggering automatic retries with the validation error as feedback to the model. This works identically for Anthropic (native) and Copilot (text) responses. Source: `pydantic_ai/_output.py:620-632`, `pydantic_ai/_agent_graph.py:1051-1109`.
-
-Adding a post-hoc `StructuredOutputAdapter` that also extracts JSON would create a "who parses?" conflict. Instead:
-
-- **`native`** (Anthropic/OpenAI): PydanticAI handles it end-to-end.
-- **`text_parse`** (Copilot): PydanticAI's `output_retries` handles it — the model returns text, PydanticAI tries to parse, retries if needed.
+- **`native`** (Anthropic/OpenAI): `supports_json_schema_output=True` → PydanticAI uses `NativeOutput` mode (grammar-constrained decoding). The model produces schema-valid JSON natively.
+- **`tool_output`** (Copilot): `supports_json_schema_output=False, default_structured_output_mode='tool'` → PydanticAI creates a hidden `final_result` tool whose parameters ARE the output schema. The model calls this tool with schema-validated arguments. CopilotModel bridges `output_tools` alongside `function_tools` to the Copilot SDK via `_make_copilot_tools()`.
 - **`none`** (CLI): Already blocked by `_validate_cli_engine_interface` in config_schema.py.
 
-The capability layer's value for structured output is **validation**: warning that `text_parse` is fragile for complex schemas, and blocking `none` when the agent requires it.
+**Critical implementation detail:** CopilotModel must merge `params.output_tools` into the tool list passed to the Copilot SDK. Without this, the `final_result` tool is invisible to the model and it falls back to unstructured text. This was the root cause of structured output failures until May 2026 — see `pattern_copilot_output_tools.md`.
+
+The `default_structured_output_mode` is a **fallback** — it only applies when the model does NOT support native JSON schema output. Changing it to `'tool'` only affects CopilotModel. Anthropic/OpenAI models are unaffected because they have `supports_json_schema_output=True`.
+
+The capability layer's value for structured output is **validation**: blocking `none` when the agent requires it, and flagging providers that rely on tool-based output as potentially slower (extra tool-call round trip).
 
 ### 7.4 Tool Calling — Validation Only
 
@@ -1234,14 +1236,12 @@ Admin: PATCH /api/agents/system.verification.agent/model {"model": "copilot:clau
 
 Validator:
   Agent requires: structured_output=required (has interface.output)
-  Copilot Sonnet provides: structured_output=text_parse
+  Copilot Sonnet provides: structured_output=tool_output
 
-  → ⚠️ WARNING: "system.verification.agent requires structured output, but
-     copilot:claude-sonnet-4.6 only supports text_parse. The model must produce
-     valid JSON in its response for the output schema to be extracted. This may
-     fail for complex schemas."
+  → ✅ compatible: "Copilot uses tool-based structured output (final_result tool).
+     Reliable for all schema complexities."
 
-  Assignment allowed with warning.
+  Assignment allowed.
 ```
 
 ### Scenario 3: Admin assigns Copilot Sonnet to Summarization Agent
@@ -1251,12 +1251,11 @@ Admin: PATCH /api/agents/system.summarization.agent/model {"model": "copilot:cla
 
 Validator:
   Agent requires: tools=none, structured_output=required, streaming=none, reasoning=none
-  Copilot Sonnet provides: tools=native_copilot, structured_output=text_parse, streaming=buffered, reasoning=reasoning_effort
+  Copilot Sonnet provides: tools=native_copilot, structured_output=tool_output, streaming=buffered, reasoning=reasoning_effort
 
-  → ⚠️ WARNING: structured_output text_parse (same as above)
-  → All other dimensions: ✅ compatible
+  → All dimensions: ✅ compatible
 
-  Assignment allowed with warning.
+  Assignment allowed.
 ```
 
 ### Scenario 4: New model release (Claude Sonnet 4.7)
@@ -1301,7 +1300,7 @@ Validator:
 | Warnings at boot, errors at assignment | Don't break startup for existing configs; block new mistakes |
 | Separate config from code for model definitions | Adding a model is a YAML change, not a code change |
 | Phase adapters last (Phase 4) | Safety (validation) ships before refactoring (adapters) |
-| Only ThinkingAdapter — no StreamingAdapter or StructuredOutputAdapter | Streaming already works cleanly via PydanticAI's model interface + engine branch. Structured output is PydanticAI's responsibility via `output_type`/`output_retries` (verified in source: `AutoOutputSchema` parses TextPart as JSON and retries on failure). Adding adapters would wrap code that's already clean. |
+| Only ThinkingAdapter — no StreamingAdapter or StructuredOutputAdapter | Streaming already works cleanly via PydanticAI's model interface + engine branch. Structured output is PydanticAI's responsibility via `output_type` and `default_structured_output_mode`. For CopilotModel, PydanticAI uses `tool` mode (hidden `final_result` tool) which is schema-validated by the Copilot SDK's tool-calling path. For Anthropic/OpenAI, PydanticAI uses `NativeOutput` (grammar-constrained). No adapter needed — PydanticAI handles mode resolution per-provider. |
 | All CLI engines share one `cli` provider default | Capability constraints come from the subprocess boundary, not the underlying CLI binary. claude_code, codex, and copilot CLIs all have the same capability profile: cli_only tools, no streaming, no structured output. |
 | Extract `parse_model_ref()` in Phase 1 | Quick win — replaces 4+ duplicated `model_name.split(":", 1)` patterns across the codebase. `parse_model_ref()` is a pure string parser; CLI engine remapping lives in `get_for_agent_config()` which has the engine context. |
 | Temperature validation stays in config_schema.py | Config-time check (catches bad YAML early). ThinkingAdapter is runtime translation (takes validated config, produces provider params). Complementary, not overlapping. |
