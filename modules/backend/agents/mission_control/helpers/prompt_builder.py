@@ -111,19 +111,24 @@ def _assemble_from_disk(
     prompts_dir = project_root / "config" / "prompts"
     layers: list[str] = []
 
-    org_dir = prompts_dir / "organization"
-    if org_dir.exists():
-        for org_file in sorted(org_dir.glob("*.md")):
-            layers.append(org_file.read_text(encoding="utf-8").strip())
-
-    cat_file = prompts_dir / "categories" / f"{category}.md"
-    if cat_file.exists():
-        layers.append(cat_file.read_text(encoding="utf-8").strip())
-
+    # Agent identity FIRST — defines who the agent is before
+    # any generic org/category guidelines. This matches LLM best
+    # practice: identity → context → constraints.
     prompt_filename = f"{variant}.md" if variant else "system.md"
     agent_file = prompts_dir / "agents" / "/".join(parts) / prompt_filename
     if agent_file.exists():
         layers.append(agent_file.read_text(encoding="utf-8").strip())
+
+    # Category prompt (e.g. "research", "software")
+    cat_file = prompts_dir / "categories" / f"{category}.md"
+    if cat_file.exists():
+        layers.append(cat_file.read_text(encoding="utf-8").strip())
+
+    # Organization-level guidelines (coding standards, security, etc.)
+    org_dir = prompts_dir / "organization"
+    if org_dir.exists():
+        for org_file in sorted(org_dir.glob("*.md")):
+            layers.append(org_file.read_text(encoding="utf-8").strip())
 
     return "\n\n".join(layers)
 
