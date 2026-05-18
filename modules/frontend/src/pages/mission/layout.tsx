@@ -214,7 +214,7 @@ export default function MissionLayout() {
       // its agent.response.complete event arrives via the mission SSE stream.
       // Invalidate session messages so the chat tab picks it up without refresh.
       // Delay to avoid DOM reconciliation error (same pattern as send_message).
-      if (newEvents.some((ev) => ev.event_type === 'agent.response.complete')) {
+      if (newEvents.some((ev) => ev.event_type === 'agent.response.complete' || ev.event_type === 'user.message.sent')) {
         setTimeout(() => {
           queryClient.invalidateQueries({ queryKey: ['sessions'] })
         }, 500)

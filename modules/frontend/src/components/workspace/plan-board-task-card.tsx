@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   XCircle,
   RotateCcw,
+  StopCircle,
   Check,
   X,
   Sparkles,
@@ -445,6 +446,15 @@ export function TaskCard({
             onClick={handleReject}
             disabled={reject.isPending}
             tone={inVetoWindow ? 'amber' : 'muted'}
+          />
+        )}
+        {effectiveStatus === 'running' && (
+          <IconButton
+            icon={<StopCircle className="h-3 w-3" />}
+            title="Stop this task"
+            onClick={handleReject}
+            disabled={reject.isPending}
+            tone="destructive"
           />
         )}
         {effectiveStatus === 'failed' && (

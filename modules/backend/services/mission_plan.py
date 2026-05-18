@@ -43,6 +43,8 @@ _APPROVABLE_FROM = frozenset({TaskStatus.PROPOSED})
 _REJECTABLE_FROM = frozenset({
     TaskStatus.PROPOSED,
     TaskStatus.APPROVED,
+    TaskStatus.QUEUED,
+    TaskStatus.RUNNING,
 })
 
 
