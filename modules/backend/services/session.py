@@ -103,6 +103,18 @@ class SessionService(BaseService):
         )
         return session.id
 
+    async def find_active_for_mission(
+        self, mission_id: str, user_id: str | None = None,
+    ) -> Session | None:
+        """Find the most recently active session for a mission."""
+        return await self.repo.find_active_for_mission(mission_id, user_id=user_id)
+
+    async def delete_by_mission(self, mission_id: str) -> int:
+        """Delete all sessions and their messages/channels for a mission."""
+        count = await self.repo.delete_by_mission(mission_id)
+        self._log_operation("Sessions cleared for mission", mission_id=mission_id, count=count)
+        return count
+
     async def get_session(self, session_id: str) -> Session:
         """Get a session by ID. Raises NotFoundError if not found."""
         return await self.repo.get_by_id(session_id)
@@ -417,10 +429,13 @@ class SessionService(BaseService):
         session_id: str,
         limit: int = 100,
         offset: int = 0,
+        sender_ids: list[str] | None = None,
     ) -> tuple[list, int]:
-        """Get messages for a session with pagination."""
+        """Get messages for a session with pagination and optional sender filtering."""
         await self.repo.get_by_id(session_id)  # Verify session exists
-        messages = await self.repo.get_messages(session_id, limit=limit, offset=offset)
+        messages = await self.repo.get_messages(
+            session_id, limit=limit, offset=offset, sender_ids=sender_ids,
+        )
         total = await self.repo.count_messages(session_id)
         return messages, total
 

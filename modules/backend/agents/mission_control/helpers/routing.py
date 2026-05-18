@@ -17,12 +17,22 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _resolve_agent(session: "SessionResponse", message: str) -> str:
+def _resolve_agent(
+    session: "SessionResponse",
+    message: str,
+    target_agent: str | None = None,
+) -> str:
     """Determine which agent handles this message.
 
-    Priority: session.agent_id > keyword routing > fallback.
+    Priority: explicit target_agent > session.agent_id > keyword routing > fallback.
     """
     registry = get_registry()
+
+    if target_agent:
+        if not registry.has(target_agent):
+            available = ", ".join(c["agent_name"] for c in registry.list_all()) or "none"
+            raise ValidationError(f"Unknown target agent: {target_agent}. Available: {available}.")
+        return target_agent
 
     if session.agent_id and registry.has(session.agent_id):
         return session.agent_id

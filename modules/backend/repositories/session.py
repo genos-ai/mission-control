@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import select, update, func
+from sqlalchemy import delete, select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.utils import utc_now
@@ -44,6 +44,55 @@ class SessionRepository(BaseRepository[Session]):
             .offset(offset)
         )
         return list(result.scalars().all())
+
+    async def find_active_for_mission(
+        self,
+        mission_id: str,
+        user_id: str | None = None,
+    ) -> Session | None:
+        """Find the most recently active session for a mission.
+
+        Returns the single most recent ACTIVE or SUSPENDED session
+        scoped to this mission, ordered by last_activity_at DESC.
+        When user_id is provided, filters to that user's sessions only.
+        """
+        conditions = [
+            Session.mission_id == mission_id,
+            Session.status.in_([
+                SessionStatus.ACTIVE,
+                SessionStatus.SUSPENDED,
+            ]),
+        ]
+        if user_id:
+            conditions.append(Session.user_id == user_id)
+
+        result = await self.session.execute(
+            select(Session)
+            .where(*conditions)
+            .order_by(Session.last_activity_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def delete_by_mission(self, mission_id: str) -> int:
+        """Delete all sessions (and their messages/channels) for a mission.
+
+        Deletes children first (messages, channels) then sessions.
+        Returns the number of sessions deleted.
+        """
+        session_ids_q = select(Session.id).where(Session.mission_id == mission_id)
+
+        await self.session.execute(
+            delete(SessionMessage).where(SessionMessage.session_id.in_(session_ids_q))
+        )
+        await self.session.execute(
+            delete(SessionChannel).where(SessionChannel.session_id.in_(session_ids_q))
+        )
+        result = await self.session.execute(
+            delete(Session).where(Session.mission_id == mission_id)
+        )
+        await self.session.flush()
+        return result.rowcount
 
     async def get_by_user(
         self,
@@ -224,15 +273,36 @@ class SessionRepository(BaseRepository[Session]):
         session_id: str,
         limit: int = 100,
         offset: int = 0,
+        sender_ids: list[str] | None = None,
     ) -> list[SessionMessage]:
-        """Get messages for a session, ordered by creation time."""
-        result = await self.session.execute(
+        """Get messages for a session, ordered by creation time.
+
+        Args:
+            sender_ids: If provided, return only messages where:
+                - role is 'user', 'system', 'tool_call', or 'tool_result' (always included), OR
+                - sender_id is in the provided list (matches assistant messages)
+              This enables agent-aware history loading for shared sessions.
+              tool_call and tool_result messages may have sender_id=NULL (legacy data
+              or history.py conventions) and must always be included to keep
+              PydanticAI's ToolCallPart/ToolReturnPart pairs intact.
+        """
+        from sqlalchemy import or_
+
+        stmt = (
             select(SessionMessage)
             .where(SessionMessage.session_id == session_id)
             .order_by(SessionMessage.created_at.asc())
             .limit(limit)
             .offset(offset)
         )
+        if sender_ids is not None:
+            stmt = stmt.where(
+                or_(
+                    SessionMessage.role.in_(["user", "system", "tool_call", "tool_result"]),
+                    SessionMessage.sender_id.in_(sender_ids),
+                )
+            )
+        result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
     async def create_streaming_message(

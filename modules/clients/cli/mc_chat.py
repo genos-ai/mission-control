@@ -32,21 +32,20 @@ async def chat_repl(
     if not agent_name:
         agent_name = "mission.director.agent"
 
-    # Resolve or create session
+    # Resolve or create session (shared across all agents in the mission)
     session_id = None
 
     if not new_thread:
-        params: dict = {"mission_id": mission_id, "limit": 1, "agent_id": agent_name}
+        params: dict = {"mission_id": mission_id, "status": "ACTIVE", "limit": 1}
         sessions = await api.get("/sessions", params=params)
         session_list = sessions if isinstance(sessions, list) else sessions.get("items", [])
         if session_list:
             session_id = session_list[0].get("id")
 
     if not session_id:
-        goal = f"{agent_name.split('.')[-2]} Chat" if "." in agent_name else f"{agent_name} Chat"
         session = await api.post("/sessions", body={
-            "goal": goal,
-            "agent_id": agent_name,
+            "goal": "Mission Chat",
+            "agent_id": "mission.director.agent",
             "mission_id": mission_id,
         })
         session_id = session.get("id")

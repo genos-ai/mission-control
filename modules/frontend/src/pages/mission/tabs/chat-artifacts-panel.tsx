@@ -48,6 +48,7 @@ export function ArtifactsPanel({ missionId, onClose }: { missionId: string; onCl
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
+      <div className="h-9 shrink-0 border-b" />
 
       <div className="flex-1 overflow-y-auto">
         {isLoading && !streaming ? (

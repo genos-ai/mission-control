@@ -88,9 +88,10 @@ class SessionMemoryService(BaseService):
         if not messages:
             return False
 
-        # Convert to dicts for the summarizer
+        # Convert to dicts for the summarizer (include sender_id for multi-agent sessions)
         message_dicts = [
-            {"role": m.role, "content": m.content[:1000]}
+            {"role": m.role, "content": m.content[:1000],
+             **({"sender_id": m.sender_id} if m.sender_id else {})}
             for m in messages
         ]
 

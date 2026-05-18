@@ -70,6 +70,7 @@ class SessionServiceProtocol(Protocol):
 
     async def get_messages(
         self, session_id: str, limit: int = ..., offset: int = ...,
+        sender_ids: list[str] | None = ...,
     ) -> tuple[list, int]: ...
 
     async def update_cost(

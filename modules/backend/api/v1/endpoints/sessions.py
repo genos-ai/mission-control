@@ -1,6 +1,6 @@
 """Session management REST endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
 from modules.backend.core.pagination import (
@@ -270,8 +270,12 @@ async def send_message(
     mission_id: str,
     data: SessionMessageCreate,
     db: DbSession,
+    target_agent: str | None = Query(default=None, description="Route to a specific agent"),
 ):
     """Send a message and stream agent events.
+
+    target_agent routes the message to a specific agent within the shared
+    session. If omitted, routing falls back to session.agent_id or keyword matching.
 
     The agent runs in a background task that survives browser
     disconnect. Events flow through an asyncio.Queue to the SSE
@@ -280,6 +284,11 @@ async def send_message(
     handle() completes, persists the response, and publishes
     to Redis. When the user comes back, the response is in the DB.
     """
+    if target_agent:
+        from modules.backend.agents.mission_control.registry import get_registry
+        if not get_registry().has(target_agent):
+            raise HTTPException(status_code=422, detail=f"Unknown agent: {target_agent}")
+
     import asyncio
 
     from fastapi.responses import StreamingResponse
@@ -318,6 +327,7 @@ async def send_message(
                     session_id,
                     data.content,
                     mission_id=mission_id,
+                    target_agent=target_agent,
                     session_service=bg_service,
                     event_bus=event_bus,
                     sender_id=data.sender_id,

@@ -1,5 +1,7 @@
 # Plan 74: Shared Session Model — One Session Per Mission Working Context
 
+**Status:** Implemented
+
 ## Problem Statement
 
 Sessions are currently scoped per-agent: chatting with the Director creates one session, switching to the research agent creates another, and so on. This was an accidental artifact of routing being tied to `session.agent_id`. The result:

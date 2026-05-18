@@ -30,7 +30,7 @@ import type { SessionMessage } from '@/types'
 import { eventLabel } from '@/lib/event-utils'
 import { CHAT_HIDDEN_EVENT_TYPES, type TimelineEntry } from './chat-constants'
 
-export function Conversation({ sessionId, missionId }: { sessionId: string; missionId: string }) {
+export function Conversation({ sessionId, missionId, targetAgent }: { sessionId: string; missionId: string; targetAgent?: string }) {
   const { data: history, isLoading } = useMessages(sessionId)
   const { user } = useAuthStore()
   const { activeCount: bgTaskCount, activeTasks: bgTasks } = useBackgroundTasks(missionId)
@@ -99,7 +99,7 @@ export function Conversation({ sessionId, missionId }: { sessionId: string; miss
     try {
       const token = useAuthStore.getState().accessToken
       const response = await fetch(
-        `${API_BASE}/sessions/${sessionId}/messages?mission_id=${missionId}`,
+        `${API_BASE}/sessions/${sessionId}/messages?mission_id=${missionId}${targetAgent ? `&target_agent=${encodeURIComponent(targetAgent)}` : ''}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -591,6 +591,11 @@ export function MessageBubble({ message }: { message: SessionMessage }) {
           isUser ? 'text-primary-foreground/60' : 'text-muted-foreground',
         )}>
           <span>{formatUtc(message.created_at)}</span>
+          {!isUser && message.sender_id && (
+            <Badge variant="outline" className="text-[9px]">
+              {message.sender_id.replace('.agent', '').split('.').pop()}
+            </Badge>
+          )}
           {message.cost_usd != null && (
             <Badge variant="secondary" className="text-[9px]">${message.cost_usd.toFixed(4)}</Badge>
           )}

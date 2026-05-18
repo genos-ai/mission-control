@@ -22,8 +22,8 @@ class SessionCreate(BaseModel):
     agent_id: str | None = Field(
         default=None,
         max_length=100,
-        description="Primary agent to assign to this session",
-        examples=["code.quality"],
+        description="Default/primary agent for this session (fallback routing). Not a routing lock.",
+        examples=["mission.director.agent"],
     )
     cost_budget_usd: float | None = Field(
         default=None,

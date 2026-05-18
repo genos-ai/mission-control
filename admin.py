@@ -649,6 +649,51 @@ def mission_summarize(ctx, mission_id):
                 output_format=ctx.output_format)
 
 
+@mission.command("clear-sessions")
+@click.argument("mission_id", required=False)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
+@click.pass_obj
+def mission_clear_sessions(ctx, mission_id, yes):
+    """Delete all sessions (chat threads) for a mission.
+
+    Removes sessions, messages, and channel bindings.
+    Uses current mission if MISSION_ID is omitted.
+    """
+    import asyncio
+
+    async def _run():
+        from modules.backend.services.mission import MissionService
+
+        # Resolve by name or UUID; fall back to current mission
+        if mission_id:
+            async with MissionService.factory() as msvc:
+                m = await msvc.resolve_mission(mission_id)
+                mid = str(m.id)
+                mname = m.name
+        else:
+            from modules.clients.cli.mission_context import async_require_mission_id
+            mid = await async_require_mission_id(None)
+            mname = mid[:12]
+
+        if not yes:
+            click.echo(click.style(
+                f"This will DELETE all sessions and messages for mission '{mname}' ({mid}).",
+                fg="red", bold=True,
+            ))
+            if not click.confirm("Are you sure?"):
+                click.echo("Aborted.")
+                return
+
+        from modules.backend.services.session import SessionService
+
+        async with SessionService.factory() as svc:
+            count = await svc.delete_by_mission(mid)
+
+        click.echo(click.style(f"Cleared {count} session(s) for '{mname}'.", fg="green"))
+
+    asyncio.run(_run())
+
+
 # =============================================================================
 # Context group — inspect what agents see
 # =============================================================================

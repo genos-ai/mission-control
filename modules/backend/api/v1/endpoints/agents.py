@@ -58,6 +58,32 @@ class AgentInfo(BaseModel):
     tools: list[str]
 
 
+async def _resolve_shared_session(
+    service, session_id: str | None, mission_id: str, user_id: str | None = None,
+) -> str:
+    """Resolve or create a shared mission session.
+
+    Reuses the mission's most recent active session for this user, or creates
+    one with mission.director.agent as the default fallback.
+    """
+    if session_id:
+        return session_id
+    from modules.backend.schemas.session import SessionCreate
+
+    existing = await service.find_active_for_mission(mission_id, user_id=user_id)
+    if existing:
+        return str(existing.id)
+    session = await service.create_session(
+        SessionCreate(
+            agent_id="mission.director.agent",
+            mission_id=mission_id,
+            goal="Mission Chat",
+        ),
+        user_id=user_id,
+    )
+    return str(session.id)
+
+
 @router.post(
     "/chat",
     response_model=ApiResponse[ChatResponse],
@@ -74,14 +100,13 @@ async def agent_chat(
     from modules.backend.services.session import SessionService
 
     service = SessionService(db)
-    session_id = await service.ensure_session(
-        data.session_id, agent_id=data.agent, goal=data.message,
-    )
+    session_id = await _resolve_shared_session(service, data.session_id, data.mission_id)
 
     result = await collect(
         session_id,
         data.message,
         mission_id=data.mission_id,
+        target_agent=data.agent,
         session_service=service,
         db_session=db,
     )
@@ -125,9 +150,7 @@ async def agent_chat_stream(
             return ApiResponse(**cached)
 
     service = SessionService(db)
-    session_id = await service.ensure_session(
-        data.session_id, agent_id=data.agent, goal=data.message,
-    )
+    session_id = await _resolve_shared_session(service, data.session_id, data.mission_id)
 
     user_msg = SessionMessageCreate(role="user", content=data.message)
     await service.add_message(session_id, user_msg)
@@ -144,6 +167,7 @@ async def agent_chat_stream(
                 async for event in handle(
                     session_id, data.message,
                     mission_id=data.mission_id,
+                    target_agent=data.agent,
                     session_service=bg_service,
                     event_bus=event_bus,
                     db_session=bg_db,
