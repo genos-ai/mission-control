@@ -71,14 +71,20 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def list_in_flight(self) -> list[Task]:
-        """Return all tasks in RUNNING or QUEUED status (globally).
+    async def list_in_flight(
+        self, plan_id: str | None = None,
+    ) -> list[Task]:
+        """Return all tasks in RUNNING or QUEUED status.
 
-        Used by crash recovery to find orphaned tasks at startup.
+        Used by crash recovery at startup (plan_id=None → global)
+        or before dispatch (plan_id set → scoped to one plan).
         """
+        conditions = [Task.status.in_([TaskStatus.RUNNING, TaskStatus.QUEUED])]
+        if plan_id is not None:
+            conditions.append(Task.plan_id == plan_id)
         query = (
             select(Task)
-            .where(Task.status.in_([TaskStatus.RUNNING, TaskStatus.QUEUED]))
+            .where(*conditions)
             .order_by(Task.created_at)
         )
         result = await self.session.execute(query)

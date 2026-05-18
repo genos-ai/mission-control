@@ -342,7 +342,7 @@ async def send_message(
     #    the background task continues independently.
     async def generate():
         from modules.backend.core.config import get_app_config
-        keepalive_sec = get_app_config().timeouts.sse_keepalive
+        keepalive_sec = get_app_config().application.timeouts.sse_keepalive
         try:
             while True:
                 try:

@@ -67,7 +67,7 @@ def _build_agent_deps(
 
     if "mission.director" in agent_name:
         from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-        return MissionDirectorDeps(**common, mission_id=mission_id, db_session=db_session)
+        return MissionDirectorDeps(**common, mission_id=mission_id, db_session=db_session, event_bus=event_bus)
     if "platform.director" in agent_name:
         from modules.backend.agents.platform.director.deps import PlatformDirectorDeps
         return PlatformDirectorDeps(**common, db_session=db_session)

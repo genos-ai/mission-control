@@ -193,22 +193,15 @@ async def approve_proposed_tasks(mission_id: str) -> int:
     async with get_async_session() as db:
         svc = MissionPlanService(db)
         plan = await svc.get_or_create_plan(mission_id)
-        task_states = await svc.get_tasks(plan.id, status=TaskStatus.PROPOSED)
 
-        approved_count = 0
-        for ts in task_states:
-            try:
-                await svc.approve_task(plan.id, ts.id, "mission.supervisor.agent")
-                approved_count += 1
-            except Exception as exc:
-                activity.logger.warning(
-                    "Failed to approve task: %s",
-                    exc,
-                    extra={"task_id": ts.id, "mission_id": mission_id},
-                )
-                await _emit_supervisor_error(
-                    mission_id, f"Failed to approve task '{ts.id}': {exc}",
-                )
+        # Use mission owner as the approving user — approved_by_user_id
+        # is a UUID FK to users.id, not a free-form string.
+        from modules.backend.services.mission import MissionService
+        mission = await MissionService(db).get_mission(mission_id)
+        acting_user_id = mission.owner_id
+
+        approved_ids = await svc.approve_all_proposed(plan.id, acting_user_id)
+        approved_count = len(approved_ids)
 
         await db.commit()
 

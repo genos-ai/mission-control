@@ -86,6 +86,25 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             # Look up mission owner for audit trail
             mission = await MissionService(db).get_mission(input.mission_id)
 
+            # Every execution needs a real session (P15). When the daemon
+            # path starts a workflow, session_id is empty — create one here
+            # inside the activity (idempotent on Temporal retry).
+            session_id = input.session_id
+            if not session_id:
+                from modules.backend.schemas.session import SessionCreate
+                from modules.backend.services.session import SessionService
+                session_svc = SessionService(db)
+                session = await session_svc.create_session(
+                    SessionCreate(
+                        mission_id=input.mission_id,
+                        agent_id="mission.supervisor.agent",
+                        goal=f"Autonomous dispatch: plan {input.mission_run_id[:12]}",
+                    ),
+                    user_id=mission.owner_id,
+                )
+                session_id = session.id
+                await db.flush()
+
             svc = MissionPlanOrchestrator(db, event_bus=event_bus)
             activity.logger.info(
                 "execute_mission dispatching",
@@ -94,7 +113,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             result = await svc.dispatch_approved(
                 input.mission_run_id,
                 user_id=mission.owner_id,
-                session_id=input.session_id,
+                session_id=session_id,
                 skip_post_run_supervisor=True,
             )
             await db.commit()

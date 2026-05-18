@@ -26,4 +26,5 @@ class PlanRefineResult:
     plan_id: str
     version: int = 0
     task_count: int = 0
+    approved_count: int = 0
     error: str | None = None

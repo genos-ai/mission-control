@@ -561,6 +561,13 @@ class MissionPlanOrchestrator(BaseService):
             "dispatched_task_ids": approved_ids,
             "total_cost_usd": 0.0,
             "workflow_id": workflow_id,
+            "message": (
+                f"Dispatched {len(approved_ids)} tasks via Temporal workflow "
+                f"{workflow_id}. The agents are working now — you will be "
+                f"notified when execution completes. Tell the user their "
+                f"request is being executed and they can watch progress in "
+                f"the Plan tab."
+            ),
         }
 
     async def dispatch_autonomous(
@@ -613,6 +620,13 @@ class MissionPlanOrchestrator(BaseService):
         brief = mission.brief or mission.description or mission.name
         remaining_budget = (plan.budget_usd_ceiling or get_default_budget_usd()) - plan.total_spent_usd
 
+        # Every execution must have a real session (P15).
+        if not session_id:
+            raise ValidationError(
+                "session_id is required for dispatch. "
+                "Callers must create a session before starting a workflow."
+            )
+
         # Reset the DB supervisor counter at the start of each new
         # Temporal workflow — the workflow tracks its own iteration via
         # self._iteration and the DB counter is for observability only.
@@ -623,7 +637,7 @@ class MissionPlanOrchestrator(BaseService):
 
         workflow_input = MissionWorkflowInput(
             mission_run_id=plan.id,
-            session_id=session_id or str(uuid.uuid4()),
+            session_id=session_id,
             mission_brief=brief,
             roster_name=mission.default_roster or "default",
             mission_budget_usd=max(remaining_budget, 0.01),
@@ -684,6 +698,18 @@ class MissionPlanOrchestrator(BaseService):
         )
 
         plan = await self._repo.get_by_id(mission_plan_id)
+
+        # Reconcile orphaned tasks before dispatch — if a prior dispatch
+        # crashed after marking tasks RUNNING, those orphans would block
+        # dependency validation. Move orphaned RUNNING → FAILED so the
+        # user can retry them explicitly.
+        from modules.backend.services.mission_plan_crash_recovery import (
+            reconcile_orphaned_task_states,
+        )
+        await reconcile_orphaned_task_states(
+            self._session, self._event_bus, plan_id=mission_plan_id,
+        )
+
         task_plan = self._materialize_task_plan(plan)
 
         # Budget check (Plan 42 §10.7)
@@ -715,6 +741,12 @@ class MissionPlanOrchestrator(BaseService):
             task_plan, approved_task_ids, mission_plan_id,
         )
 
+        # Save plan attributes before commit — commit() expires all ORM
+        # attributes and any subsequent access triggers MissingGreenlet
+        # in async mode. We need these values between two commits
+        # (here and inside _create_early_execution_record).
+        _plan_mission_id = plan.mission_id
+
         # Mark approved → running and commit immediately so the kanban
         # board shows the task in the "Running" column during execution.
         # We skip "queued" because handle_mission starts immediately —
@@ -726,7 +758,7 @@ class MissionPlanOrchestrator(BaseService):
         await self._session.commit()
 
         # Fetch mission for brief + session service
-        mission = await MissionRepository(self._session).get_by_id(plan.mission_id)
+        mission = await MissionRepository(self._session).get_by_id(_plan_mission_id)
         brief = mission.brief or mission.description or mission.name
 
         # Create an early execution record so the run is visible in the
@@ -734,13 +766,22 @@ class MissionPlanOrchestrator(BaseService):
         # persist_mission_results will UPDATE this record on completion.
         task_type = self._infer_task_type(derived_plan)
         early_record = await self._create_early_execution_record(
-            plan=plan,
+            mission_id=_plan_mission_id,
+            plan_id=mission_plan_id,
             mission=mission,
             session_id=session_id,
             task_type=task_type,
             approved_task_ids=approved_task_ids,
         )
         early_record_id = early_record.id if early_record else None
+
+        # Refresh plan and mission after all commits —
+        # _create_early_execution_record also commits, so all ORM
+        # attributes are expired. Without refresh, any access to
+        # plan.gate_mode, mission.execution_environment, etc.
+        # triggers MissingGreenlet in async mode.
+        await self._session.refresh(plan)
+        await self._session.refresh(mission)
 
         self._log_operation(
             "MissionPlan dispatching",
@@ -1064,10 +1105,10 @@ class MissionPlanOrchestrator(BaseService):
 
         elif action == GateAction.ADVANCE_APPROVED:
             # Flip all proposed → approved for the next dispatch cycle.
-            for ts in await self._task_repo.get_by_plan_id(plan.id, status=TaskStatus.PROPOSED):
-                await self._plan_svc.approve_task(
-                    plan.id, ts.id, "mission.supervisor.agent",
-                )
+            mission_obj = await self._mission_repo.get_by_id(plan.mission_id)
+            await self._plan_svc.approve_all_proposed(
+                plan.id, mission_obj.owner_id,
+            )
             self._log_operation(
                 "Supervisor: ADVANCE_APPROVED", plan_id=plan.id,
             )
@@ -1095,10 +1136,10 @@ class MissionPlanOrchestrator(BaseService):
                     ),
                 )
                 # Auto-approve newly proposed tasks so daemon dispatches them.
-                for ts in await self._task_repo.get_by_plan_id(plan.id, status=TaskStatus.PROPOSED):
-                    await self._plan_svc.approve_task(
-                        plan.id, ts.id, "mission.supervisor.agent",
-                    )
+                _mission_obj = await self._mission_repo.get_by_id(plan.mission_id)
+                await self._plan_svc.approve_all_proposed(
+                    plan.id, _mission_obj.owner_id,
+                )
             except Exception:
                 self._logger.warning(
                     "Supervisor ADVANCE_REFINE: refinement failed, "
@@ -1289,6 +1330,9 @@ class MissionPlanOrchestrator(BaseService):
 
         # Build the set of task_ids whose dependencies are already
         # satisfied (completed, skipped — they ran in a prior wave).
+        # RUNNING tasks are NOT included — if a dependency is stuck in
+        # RUNNING (orphaned by a crash), the dispatch should fail so the
+        # user or crash recovery fixes it first.
         all_states = await self._task_repo.get_by_plan_id(mission_plan_id)
         satisfied_ids = {
             t.id for t in all_states
@@ -1357,7 +1401,8 @@ class MissionPlanOrchestrator(BaseService):
 
     async def _create_early_execution_record(
         self,
-        plan,
+        mission_id: str,
+        plan_id: str,
         mission,
         *,
         session_id: str | None,
@@ -1369,6 +1414,10 @@ class MissionPlanOrchestrator(BaseService):
         Makes the run visible in the Runs tab and background-task badge
         while execution is in progress.  persist_mission_results will
         UPDATE this record with final results on completion.
+
+        Accepts mission_id and plan_id as explicit strings (not from the
+        plan ORM object) because the plan's attributes may be expired
+        after a prior commit.
         """
         from modules.backend.models.execution_record import (
             ExecutionRecord,
@@ -1379,14 +1428,14 @@ class MissionPlanOrchestrator(BaseService):
             record = ExecutionRecord(
                 session_id=session_id,
                 status=ExecutionRecordStatus.RUNNING,
-                mission_id=plan.mission_id,
+                mission_id=mission_id,
                 roster_name=mission.default_roster,
                 objective_statement=(
                     mission.brief or mission.description or mission.name
                 ),
                 task_type=task_type,
                 task_params={
-                    "plan_id": plan.id,
+                    "plan_id": plan_id,
                     "task_ids": sorted(approved_task_ids),
                 },
                 started_at=utc_now(),

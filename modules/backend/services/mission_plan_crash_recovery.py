@@ -39,14 +39,21 @@ CRASH_RECOVERY_ACTOR = "system:crash-recovery"
 async def reconcile_orphaned_task_states(
     session: AsyncSession,
     event_bus: Any | None = None,
+    plan_id: str | None = None,
 ) -> dict[str, int]:
     """Transition every orphaned in-flight task to a safe status.
 
     Call at backend startup BEFORE the mission plan daemon begins
-    polling. Returns a stats dict for logging.
+    polling, or before dispatch_approved to clean up orphans from
+    a prior failed dispatch.
+
+    When plan_id is provided, only reconciles tasks for that plan.
+    When None, reconciles all in-flight tasks (startup mode).
+
+    Returns a stats dict for logging.
     """
     task_repo = TaskRepository(session)
-    in_flight = await task_repo.list_in_flight()
+    in_flight = await task_repo.list_in_flight(plan_id=plan_id)
 
     if not in_flight:
         logger.info("Crash recovery: no orphaned tasks to reconcile")

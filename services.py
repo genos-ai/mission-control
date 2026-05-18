@@ -908,6 +908,11 @@ Examples:
   python services.py restart                Restart everything
   python services.py status                 Show what's running
   python services.py check                  Run preflight checks
+
+Logging:
+  python services.py restart --log-level WARNING                  Errors/warnings only (no INFO)
+  python services.py restart --log-level WARNING --log-format console  Colored + quiet
+  python services.py restart --log-level DEBUG --log-format console   Full debug, colored
         """,
     )
 

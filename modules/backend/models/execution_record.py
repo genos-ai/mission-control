@@ -261,9 +261,9 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
     )
 
     task_id: Mapped[str] = mapped_column(
-        String(200),
+        PgUUID(as_uuid=False),
         nullable=False,
-        comment="Task ID from the TaskPlan JSON",
+        comment="Task UUID (Plan 72 — first-class entity)",
     )
     agent_name: Mapped[str] = mapped_column(
         String(200),
@@ -444,9 +444,9 @@ class ExecutionDecision(UUIDMixin, TimestampMixin, Base):
     )
 
     task_id: Mapped[str | None] = mapped_column(
-        String(200),
+        PgUUID(as_uuid=False),
         nullable=True,
-        comment="Task ID from TaskPlan, if decision is task-specific",
+        comment="Task UUID, if decision is task-specific (Plan 72)",
     )
 
     reasoning: Mapped[str] = mapped_column(

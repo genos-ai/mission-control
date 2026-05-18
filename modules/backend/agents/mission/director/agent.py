@@ -566,10 +566,19 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         ctx: RunContext[MissionDirectorDeps],
         objective: str,
     ) -> str:
-        """Run an objective via the plan path (Plan 62). Async dispatch.
+        """Execute an objective end-to-end: plan tasks, approve, and dispatch.
+
+        Use this when the user wants something DONE — research, scans,
+        code tasks, analysis. The Planning Agent decomposes the objective
+        into a task DAG based on the team's capabilities, auto-approves
+        (if gate mode permits), and dispatches via Temporal. Returns
+        immediately — you are notified when execution completes.
+
+        Do NOT use this for planning-only requests (use refine_plan instead).
 
         Args:
-            objective: What to accomplish (natural language).
+            objective: What to accomplish (natural language). Be specific —
+                include scope, constraints, and any user-specified details.
         """
         try:
             if ctx.deps.db_session is None:
@@ -580,7 +589,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
             acting_user_id = (await MissionService(ctx.deps.db_session).get_mission(mission_id)).owner_id
-            svc = MissionPlanOrchestrator(ctx.deps.db_session)
+            svc = MissionPlanOrchestrator(ctx.deps.db_session, event_bus=ctx.deps.event_bus)
             result = await svc.run_objective(
                 mission_id=mission_id,
                 objective=objective,
@@ -698,10 +707,11 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         the user's instructions in their own words — the Planning Agent
         works best with concrete, specific language.
 
-        After refinement completes, tell the user which tasks were
-        added or changed, and prompt them to review in the Plan tab.
-        The user approves tasks before they run — you do NOT dispatch
-        tasks from here. Dispatch is the user's explicit action.
+        This starts a PlanRefineWorkflow via Temporal and returns
+        immediately. The workflow emits mission_plan.refined via SSE
+        on completion — the frontend and console pick it up
+        automatically. Tell the user their plan is being generated
+        and they can watch progress in the Plan tab.
 
         Args:
             instructions: Natural-language refinement request from the
@@ -713,52 +723,62 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
+            import uuid as _uuid
+            from modules.backend.core.config import get_app_config, get_default_budget_usd
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
-            from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+            from modules.backend.temporal.client import get_temporal_client
+            from modules.backend.temporal.plan_refine_models import PlanRefineInput
+            from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
 
-            mission_svc = MissionService(ctx.deps.db_session)
-            mission = await mission_svc.get_mission(ctx.deps.mission_id)
-
+            mission_id = ctx.deps.mission_id
+            mission = await MissionService(ctx.deps.db_session).get_mission(mission_id)
             plan_svc = MissionPlanService(ctx.deps.db_session)
-            plan = await plan_svc.get_or_create_plan(ctx.deps.mission_id)
-            orchestrator = MissionPlanOrchestrator(ctx.deps.db_session)
-            refined = await orchestrator.refine(
-                plan.id,
-                instructions,
-                user_id=mission.owner_id,
-            )
+            plan = await plan_svc.get_or_create_plan(mission_id)
             await ctx.deps.db_session.commit()
 
-            task_count = len(refined.tasks)
+            # Start PlanRefineWorkflow — the Temporal activity handles
+            # its own DB session, event bus, commit, and error reporting.
+            # No ORM objects accessed after this point.
+            client = await get_temporal_client()
+            config = get_app_config().temporal
+            workflow_id = f"plan-refine-{plan.id[:12]}-{_uuid.uuid4().hex[:8]}"
+
+            await client.start_workflow(
+                PlanRefineWorkflow.run,
+                PlanRefineInput(
+                    mission_id=mission_id,
+                    plan_id=plan.id,
+                    instructions=instructions,
+                    user_id=mission.owner_id,
+                    mission_budget_usd=plan.budget_usd_ceiling or get_default_budget_usd(),
+                ),
+                id=workflow_id,
+                task_queue=config.task_queue,
+            )
+
+            logger.info(
+                "Director started PlanRefineWorkflow",
+                extra={
+                    "mission_id": mission_id,
+                    "plan_id": plan.id,
+                    "workflow_id": workflow_id,
+                },
+            )
 
             return json.dumps({
-                "plan_id": refined.id,
-                "version": refined.version,
-                "task_count": task_count,
-                "gate_mode": refined.gate_mode,
-                "tasks": [
-                    {
-                        "task_id": t.id,
-                        "agent": t.agent,
-                        "description": t.description,
-                        "dependencies": [d.depends_on_id for d in t.dependencies],
-                    }
-                    for t in refined.tasks
-                ],
+                "status": "refining",
+                "plan_id": plan.id,
+                "workflow_id": workflow_id,
                 "message": (
-                    f"Plan refined to v{refined.version} with {task_count} tasks. "
-                    "Ask the user to review and approve in the Plan tab."
+                    "Plan refinement started. The Planning Agent is building "
+                    "tasks now — progress is visible in the Console and Plan "
+                    "tab. Tell the user to watch the Plan tab for new tasks."
                 ),
             }, indent=2, default=str)
+
         except Exception as e:
             logger.error("refine_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
-            # Roll back the (failed) refinement transaction so the
-            # session is in a clean state for the next tool call.
-            try:
-                await ctx.deps.db_session.rollback()
-            except Exception:  # noqa: BLE001
-                pass
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -903,12 +923,17 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                     transitioned = await svc.approve_task(
                         plan.id, task_id, user_id=acting_user_id,
                     )
-                    all_transitioned.extend(s.task_id for s in transitioned)
+                    all_transitioned.extend(s.id for s in transitioned)
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
                         "approve_plan_tasks: skipping task",
                         extra={"task_id": task_id, "error": str(e), "mission_id": ctx.deps.mission_id},
                     )
+
+            # Save plan attributes before commit — commit() expires all
+            # ORM attributes and any access triggers MissingGreenlet.
+            _plan_id = plan.id
+            _gate_mode = plan.gate_mode
             await ctx.deps.db_session.commit()
 
             # Deduplicate while preserving order
@@ -921,10 +946,10 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.info(
                 "Director auto-approved plan tasks",
                 extra={
-                    "plan_id": plan.id,
+                    "plan_id": _plan_id,
                     "requested_task_ids": task_ids,
                     "transitioned_task_ids": unique_transitioned,
-                    "gate_mode": plan.gate_mode,
+                    "gate_mode": _gate_mode,
                     "reason": reason,
                 },
             )
@@ -946,8 +971,8 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 )
 
             return json.dumps({
-                "plan_id": plan.id,
-                "gate_mode": plan.gate_mode,
+                "plan_id": _plan_id,
+                "gate_mode": _gate_mode,
                 "requested_task_ids": task_ids,
                 "transitioned_task_ids": unique_transitioned,
                 "reason": reason,
@@ -1064,6 +1089,136 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         except Exception:
             pass
         return ""
+
+    @agent.instructions
+    async def inject_capabilities(
+        ctx: RunContext[MissionDirectorDeps],
+    ) -> str:
+        """Inject team capabilities so the Director knows what it can delegate.
+
+        Groups agents by domain and summarises what the team can do.
+        The Director sees this before thinking, so it knows:
+        - "I have research agents → I can delegate research via run_objective"
+        - "I have no security agents → I cannot run scans"
+        - "I do NOT have web access, code tools, or search — I delegate ALL work"
+        """
+        if not ctx.deps.db_session or not ctx.deps.mission_id:
+            return ""
+
+        try:
+            from modules.backend.services.mission_team import MissionTeamService
+
+            svc = MissionTeamService(ctx.deps.db_session)
+            details = await svc.list_team_with_details(ctx.deps.mission_id)
+            if not details:
+                return ""
+
+            # Group by domain, skip self (director) and infrastructure agents
+            skip = {"mission.director.agent", "mission.supervisor.agent"}
+            domains: dict[str, list[str]] = {}
+            for d in details:
+                name = d["agent_name"]
+                if name in skip:
+                    continue
+                domain = name.split(".")[0]
+                desc = (d["description"] or "")[:80]
+                domains.setdefault(domain, []).append(f"{name}: {desc}")
+
+            if not domains:
+                return ""
+
+            parts = ["[Team Capabilities]"]
+            parts.append(
+                "You are a COORDINATOR. You do NOT research, code, scan, or fetch URLs. "
+                "You delegate ALL work to these agents via run_objective or refine_plan:"
+            )
+            for domain, agents in sorted(domains.items()):
+                parts.append(f"  {domain}:")
+                for a in agents:
+                    parts.append(f"    - {a}")
+
+            # Summarise what domains are available
+            can_do = sorted(domains.keys())
+            parts.append(f"You CAN delegate: {', '.join(can_do)}")
+            parts.append("[End Team Capabilities]")
+            return "\n".join(parts)
+
+        except Exception:
+            return ""
+
+    @agent.instructions
+    async def inject_orientation(
+        ctx: RunContext[MissionDirectorDeps],
+    ) -> str:
+        """Inject plan state, active runs, and recent artifacts every turn.
+
+        Gives the Director situational awareness without tool calls.
+        The model sees this in the system prompt before it starts thinking,
+        so it knows whether to plan, dispatch, show artifacts, or wait.
+        """
+        if not ctx.deps.db_session or not ctx.deps.mission_id:
+            return ""
+
+        parts: list[str] = []
+        mission_id = ctx.deps.mission_id
+
+        try:
+            from modules.backend.models.task import TaskStatus
+            from modules.backend.services.mission_plan import MissionPlanService
+
+            plan_svc = MissionPlanService(ctx.deps.db_session)
+            plan = await plan_svc.get_or_create_plan(mission_id)
+
+            # Plan summary
+            tasks = await plan_svc.get_tasks(plan.id)
+            counts: dict[str, int] = {}
+            for t in tasks:
+                s = t.status.value if hasattr(t.status, "value") else str(t.status)
+                counts[s] = counts.get(s, 0) + 1
+
+            gate = plan.gate_mode or "off"
+            parts.append(f"[Plan State]")
+            parts.append(f"Version: {plan.version} | Gate: {gate} | Tasks: {len(tasks)}")
+            if counts:
+                parts.append("Status: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
+            if plan.budget_usd_ceiling:
+                parts.append(f"Budget: ${plan.total_spent_usd:.2f} / ${plan.budget_usd_ceiling:.2f}")
+
+            # Active runs
+            from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
+            from sqlalchemy import select, func
+
+            stmt = (
+                select(func.count())
+                .select_from(ExecutionRecord)
+                .where(
+                    ExecutionRecord.mission_id == mission_id,
+                    ExecutionRecord.status == ExecutionRecordStatus.RUNNING,
+                )
+            )
+            active_count = (await ctx.deps.db_session.execute(stmt)).scalar() or 0
+            if active_count:
+                parts.append(f"Active runs: {active_count} (agents are executing — do NOT start new work)")
+
+            # Recent artifacts
+            from modules.backend.models.mission_artifact import MissionArtifact
+            stmt = (
+                select(MissionArtifact.title, MissionArtifact.artifact_type)
+                .where(MissionArtifact.mission_id == mission_id)
+                .order_by(MissionArtifact.created_at.desc())
+                .limit(3)
+            )
+            artifacts = (await ctx.deps.db_session.execute(stmt)).all()
+            if artifacts:
+                parts.append("Recent artifacts:")
+                for title, atype in artifacts:
+                    parts.append(f"  - [{atype}] {title}")
+
+            parts.append("[End Plan State]")
+        except Exception:
+            pass
+
+        return "\n".join(parts) if parts else ""
 
     # Populate list_tools with the registered tool names + descriptions
     # so the Director can introspect its own capabilities at runtime.

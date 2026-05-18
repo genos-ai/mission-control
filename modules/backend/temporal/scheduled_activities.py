@@ -86,7 +86,7 @@ async def find_ready_plans() -> list[dict]:
             "budget": plan.budget_usd_ceiling or get_default_budget_usd(),
             "gate_mode": plan.gate_mode or "autonomous",
             "roster": mission.default_roster or "default",
-            "session_id": plan.id,  # Use plan ID as session reference
+            "owner_id": mission.owner_id,
         })
 
     if plans:
