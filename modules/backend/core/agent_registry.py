@@ -89,6 +89,7 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
         effort=getattr(row, "effort", None),
         produces_artifact=getattr(row, "produces_artifact", False),
         artifact_type=getattr(row, "artifact_type", None),
+        system_prompt=row.system_prompt or None,
     )
 
 

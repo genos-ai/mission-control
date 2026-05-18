@@ -18,36 +18,88 @@ def assemble_instructions(
     mission_brief: str | None = None,
     user_prompt: str | None = None,
 ) -> str:
-    """Compose layered prompt per Plan 28 section 7.
+    """Load the system prompt for an agent.
 
-    Layer order:
-        1. Organization prompts  (config/prompts/organization/*.md)
-        2. Category prompt        (config/prompts/categories/{category}.md)
-        3. Agent system prompt    (config/prompts/agents/{path}/{variant or "system"}.md)
-        4. Mission brief          (from missions.brief — shared across all agents)
-        5. User prompt            (from mission_team_members.user_prompt — per-agent)
+    Primary source: DB (agent_catalog.system_prompt via the registry).
+    The DB stores the fully assembled prompt (organization + category +
+    agent layers) written by seed-catalog. Edits via the admin API go
+    straight to DB with version tracking.
+
+    Fallback: disk files (for seed-catalog itself, which needs to
+    assemble layers before the DB has them, and for when the DB is
+    unavailable).
+
+    Runtime-only layers (mission_brief, user_prompt) are always
+    appended on top of the base prompt regardless of source.
 
     Accepts either:
         assemble_instructions("software", "quality")       — 2-arg (legacy)
         assemble_instructions("security.webapp.scanner")   — dotted agent path
         assemble_instructions("security.webapp.scanner.agent") — full agent name
 
-    Layers 1-3 come from files on disk. Layers 4-5 are passed in when
-    available (populated from DB at dispatch time). Missing layers are
-    silently skipped.
-
     Args:
-        variant: Optional prompt file variant. When provided, loads
-            ``{variant}.md`` instead of ``system.md`` from the agent's
-            prompt directory.
+        variant: Optional prompt file variant. When set, always reads
+            from disk (variants are not stored in the DB catalog).
     """
-    # Parse arguments: support both 2-arg (category, name) and single
-    # dotted-path forms for any depth.
+    # Resolve agent_name for DB lookup
     if name is not None:
-        # Legacy 2-arg call: assemble_instructions("software", "quality")
+        agent_name = f"{category_or_agent_name}.{name}.agent"
+    else:
+        cleaned = category_or_agent_name
+        if not cleaned.endswith(".agent"):
+            cleaned = cleaned + ".agent"
+        agent_name = cleaned
+
+    # Try DB first (unless variant is requested — variants are disk-only)
+    base_prompt = ""
+    if not variant:
+        base_prompt = _load_prompt_from_registry(agent_name)
+
+    # Fallback to disk assembly
+    if not base_prompt:
+        base_prompt = _assemble_from_disk(category_or_agent_name, name, variant=variant)
+
+    # Append runtime-only layers
+    layers = [base_prompt] if base_prompt else []
+    if mission_brief:
+        layers.append(f"## Mission Brief\n\n{mission_brief}")
+    if user_prompt:
+        layers.append(f"## Mission-Specific Instructions\n\n{user_prompt}")
+
+    return "\n\n".join(layers)
+
+
+def _load_prompt_from_registry(agent_name: str) -> str:
+    """Load the system prompt from the agent registry (DB-backed).
+
+    Returns empty string if the registry is unavailable or the agent
+    has no stored prompt. Callers fall back to disk assembly.
+    """
+    try:
+        from modules.backend.agents.mission_control.registry import get_registry
+        registry = get_registry()
+        config = registry.get(agent_name)
+        if config and config.system_prompt:
+            return config.system_prompt
+    except Exception:
+        pass
+    return ""
+
+
+def _assemble_from_disk(
+    category_or_agent_name: str,
+    name: str | None = None,
+    *,
+    variant: str | None = None,
+) -> str:
+    """Assemble prompt from disk files (organization + category + agent).
+
+    Used by seed-catalog to build the full prompt before writing to DB,
+    and as fallback when the DB is unavailable.
+    """
+    if name is not None:
         parts = [category_or_agent_name, name]
     else:
-        # Dotted path: strip .agent suffix, split on dots
         cleaned = category_or_agent_name
         if cleaned.endswith(".agent"):
             cleaned = cleaned[: -len(".agent")]
@@ -72,12 +124,6 @@ def assemble_instructions(
     agent_file = prompts_dir / "agents" / "/".join(parts) / prompt_filename
     if agent_file.exists():
         layers.append(agent_file.read_text(encoding="utf-8").strip())
-
-    if mission_brief:
-        layers.append(f"## Mission Brief\n\n{mission_brief}")
-
-    if user_prompt:
-        layers.append(f"## Mission-Specific Instructions\n\n{user_prompt}")
 
     return "\n\n".join(layers)
 
@@ -194,11 +240,18 @@ def _append_validation_feedback(prompt: str, errors: list[str]) -> str:
 
 
 def load_agent_system_prompt(agent_name: str) -> str:
-    """Load the system prompt markdown for a CLI agent.
+    """Load the system prompt for a CLI agent.
 
-    Reads config/prompts/agents/{domain}/{name}/system.md.
-    Returns the raw markdown content (no template substitution).
+    DB first (via registry), disk fallback. Same source as
+    assemble_instructions but without the runtime layers
+    (mission_brief, user_prompt).
     """
+    # Try DB
+    prompt = _load_prompt_from_registry(agent_name)
+    if prompt:
+        return prompt
+
+    # Fallback to disk
     from modules.backend.core.config import find_project_root
 
     parts = agent_name.rsplit(".", 1)[0].split(".")

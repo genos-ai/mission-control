@@ -24,11 +24,29 @@ logger = get_logger(__name__)
 
 
 def _resolve_system_prompt(agent_name: str, project_root: Path) -> str:
-    """Load the system prompt markdown for an agent.
+    """Assemble the full layered system prompt from disk files.
 
-    Looks in config/prompts/agents/{category}/{name}/system.md.
-    Returns empty string if the file is not found.
+    Always reads from disk (never DB) because the seeder is the process
+    that WRITES to the DB. Uses _assemble_from_disk() which layers:
+      1. Organization prompts (config/prompts/organization/*.md)
+      2. Category prompt (config/prompts/categories/{category}.md)
+      3. Agent system prompt (config/prompts/agents/{path}/system.md)
+
+    The resulting assembled prompt is stored in agent_catalog.system_prompt
+    so agents read from DB at runtime.
     """
+    from modules.backend.agents.mission_control.helpers.prompt_builder import (
+        _assemble_from_disk,
+    )
+
+    try:
+        prompt = _assemble_from_disk(agent_name)
+        if prompt:
+            return prompt
+    except Exception:
+        pass
+
+    # Fallback: read just the agent's system.md (no layers)
     parts = agent_name.replace(".agent", "").split(".")
     if len(parts) < 2:
         return ""

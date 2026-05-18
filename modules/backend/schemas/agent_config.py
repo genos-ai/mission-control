@@ -176,6 +176,10 @@ class AgentConfigSchema(_StrictBase):
     produces_artifact: bool = False
     artifact_type: str | None = None  # research_report, vulnerability_report, etc.
 
+    # System prompt — fully assembled (org + category + agent layers).
+    # Loaded from DB at runtime. None when loaded from YAML (disk-only).
+    system_prompt: str | None = None
+
     @field_validator("model", mode="before")
     @classmethod
     def _normalize_model(cls, v: str | dict) -> str | dict:
