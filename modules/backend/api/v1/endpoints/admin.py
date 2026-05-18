@@ -218,6 +218,11 @@ async def admin_catalog_update_prompt(
         change_reason=body.change_reason,
     )
 
+    # Invalidate the registry cache so the next agent.run() picks up
+    # the new prompt without a server restart.
+    from modules.backend.agents.mission_control.registry import get_registry
+    get_registry().reload()
+
     return ApiResponse(
         success=True,
         data={
