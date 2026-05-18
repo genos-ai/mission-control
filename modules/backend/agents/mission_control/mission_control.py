@@ -133,6 +133,7 @@ async def handle(
     event_bus: EventBusProtocol = NoOpEventBus(),
     channel: str = "api",
     sender_id: str | None = None,
+    target_agent: str | None = None,
     mission_brief: str | None = None,
     db_session: Any | None = None,
     skip_persistence: bool = False,
@@ -192,7 +193,7 @@ async def handle(
         # 2. Enforce budget
         model_str = ""
         try:
-            agent_name = _resolve_agent(session, message)
+            agent_name = _resolve_agent(session, message, target_agent=target_agent)
             agent_config = get_registry().get(agent_name)
             model_str = _get_model_name(agent_config.model)
             estimated = estimate_cost(len(message) * 4, model_str)
@@ -265,8 +266,10 @@ async def handle(
         # Build model settings (enables thinking when agent config supports it)
         model_settings = build_model_settings(agent_config)
 
-        # Load conversation history
-        history_messages, _ = await session_service.get_messages(session_id, limit=100)
+        # Load conversation history (agent-filtered for shared sessions)
+        history_messages, _ = await session_service.get_messages(
+            session_id, limit=100, sender_ids=[agent_name],
+        )
         model_history = session_messages_to_model_history(history_messages)
 
         # Inject mission context on first turn so the agent knows
@@ -412,6 +415,15 @@ async def handle(
 
         # Await agent result for usage stats
         result = await agent_task
+
+        # Trace — log full message history at DEBUG level
+        from modules.backend.core.agent_trace import trace_and_emit
+        await trace_and_emit(
+            agent_name, result,
+            mission_id=mission_id, session_id=str(sid),
+            model=model_str, event_bus=event_bus,
+        )
+
         usage = result.usage()
         from modules.backend.agents.mission_control.helpers.cost_recorder import extract_usage, record_llm_call
         fields = extract_usage(usage)

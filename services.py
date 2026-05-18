@@ -562,6 +562,11 @@ def _prepare_services_environment(args) -> None:
         os.environ["MC_LOG_LEVEL"] = args.log_level
     if getattr(args, "log_format", None):
         os.environ["MC_LOG_FORMAT"] = args.log_format
+    if getattr(args, "trace", False):
+        os.environ["MC_AGENT_TRACE"] = "1"
+        # Trace requires DEBUG level to capture log entries
+        if not os.environ.get("MC_LOG_LEVEL"):
+            os.environ["MC_LOG_LEVEL"] = "DEBUG"
 
     if not preflight(args.port, check_frontend=not args.backend_only):
         sys.exit(1)
@@ -913,6 +918,7 @@ Logging:
   python services.py restart --log-level WARNING                  Errors/warnings only (no INFO)
   python services.py restart --log-level WARNING --log-format console  Colored + quiet
   python services.py restart --log-level DEBUG --log-format console   Full debug, colored
+  python services.py restart --trace                              Trace agent prompts + responses (DEBUG + event bus)
         """,
     )
 
@@ -948,6 +954,11 @@ Logging:
             choices=["json", "console"],
             default=None,
             help="Console log format: 'console' for colored human-readable output",
+        )
+        p.add_argument(
+            "--trace",
+            action="store_true",
+            help="Enable agent tracing — logs full prompts/responses at DEBUG + emits to console",
         )
 
     # -- start --

@@ -458,9 +458,15 @@ class CopilotModel(Model):
         if self._working_dir:
             session_kwargs["working_directory"] = self._working_dir
         if system_prompt:
+            # Use the sections API (public preview, April 2026) to fully
+            # replace the Copilot CLI's default identity. The old top-level
+            # "type": "replace" format is ignored by newer SDK versions,
+            # leaving the default "I'm GitHub Copilot CLI" identity.
             session_kwargs["system_message"] = {
-                "type": "replace",
-                "content": system_prompt,
+                "mode": "customize",
+                "sections": {
+                    "identity": {"action": "replace", "content": system_prompt},
+                },
             }
 
         self._active_session = await CopilotModel._client.create_session(

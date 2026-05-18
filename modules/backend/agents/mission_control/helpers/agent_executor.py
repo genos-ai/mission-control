@@ -218,6 +218,16 @@ def _make_agent_executor(
             )
             usage = stream.usage()
 
+        # Trace — log full message history at DEBUG level and optionally
+        # emit to the mission event bus for frontend console visibility.
+        from modules.backend.core.agent_trace import trace_and_emit
+        await trace_and_emit(
+            agent_name, stream,
+            mission_id=mission_id, session_id=session_id,
+            model=_get_model_name(agent_config.model),
+            event_bus=event_bus,
+        )
+
         if hook_data is not None and hasattr(module, "post_execute"):
             try:
                 module.post_execute(output, hook_data)
@@ -455,6 +465,15 @@ async def _call_planning_agent(
         usage_limits=UsageLimits(request_limit=50),
     )
     usage = result.usage()
+
+    # Trace — log full message history at DEBUG level
+    from modules.backend.core.agent_trace import trace_and_emit
+    await trace_and_emit(
+        planning_agent_id, result,
+        mission_id=mission_id, session_id=session_id,
+        model=_get_model_name(planning_cfg.model),
+        event_bus=event_bus,
+    )
 
     # Extract thinking trace
     thinking_trace = None
