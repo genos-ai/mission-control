@@ -68,7 +68,7 @@ def create_agent(
 
     agent: Agent = Agent(
         model,
-        system_prompt=system_prompt,
+        instructions=system_prompt,
         deps_type=PlanningAgentDeps,
     )
 

@@ -124,7 +124,7 @@ def create_event_agent(
 
     agent: Agent[MissionSupervisorDeps, SupervisorDecision] = Agent(
         model,
-        system_prompt=system_prompt,
+        instructions=system_prompt,
         output_type=SupervisorDecision,
         deps_type=MissionSupervisorDeps,
     )
@@ -150,7 +150,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
     agent: Agent[MissionSupervisorDeps, str] = Agent(
         model,
-        system_prompt=system_prompt,
+        instructions=system_prompt,
         deps_type=MissionSupervisorDeps,
     )
     _register_tools(agent)

@@ -61,7 +61,7 @@ def _get_agent() -> Agent[None, SummarizationOutput]:
 
     return Agent(
         model,
-        system_prompt=instructions,
+        instructions=instructions,
         output_type=SummarizationOutput,
     )
 
@@ -76,7 +76,7 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
         instructions = assemble_instructions("system", "summarization")
         return Agent(
             model,
-            system_prompt=instructions,
+            instructions=instructions,
             output_type=SummarizationOutput,
         )
     return _get_agent()
@@ -154,7 +154,7 @@ async def summarize_session_span(
     m = model or _build_model(agent_config.model)
     session_agent: Agent[None, SessionSpanSummary] = Agent(
         m,
-        system_prompt=(
+        instructions=(
             "You compress conversation spans into structured summaries. "
             "Preserve factual detail. Never fabricate information."
         ),

@@ -51,7 +51,7 @@ def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
 
     agent: Agent[None, KnowledgeOfficerReport] = Agent(
         model,
-        system_prompt=instructions,
+        instructions=instructions,
         output_type=KnowledgeOfficerReport,
     )
 
@@ -130,7 +130,7 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
         instructions = assemble_instructions("system", "knowledge_officer")
         agent: Agent[None, KnowledgeOfficerReport] = Agent(
             model,
-            system_prompt=instructions,
+            instructions=instructions,
             output_type=KnowledgeOfficerReport,
         )
         return agent

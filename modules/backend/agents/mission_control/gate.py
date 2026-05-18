@@ -87,7 +87,7 @@ class LlmGateReviewer:
 
         self._agent = Agent(
             model,
-            system_prompt=_GATE_SYSTEM_PROMPT,
+            instructions=_GATE_SYSTEM_PROMPT,
             output_type=GateReviewOutput,
         )
         return self._agent

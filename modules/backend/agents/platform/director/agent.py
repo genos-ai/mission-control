@@ -33,7 +33,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
     agent: Agent[PlatformDirectorDeps, str] = Agent(
         model,
-        system_prompt=system_prompt,
+        instructions=system_prompt,
         deps_type=PlatformDirectorDeps,
     )
 
