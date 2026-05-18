@@ -98,12 +98,16 @@ class MissionRunWorkflow:
 
             self._total_cost += result.total_cost_usd
 
+            # Resolve session_id — execute_mission creates one when the
+            # daemon path starts with an empty session_id.
+            _session_id = result.session_id or input.session_id
+
             # ── Step 2: Persist results ──────────────────────────────
             await workflow.execute_activity(
                 activities.persist_mission_outcome,
                 args=[
                     input.mission_run_id,
-                    input.session_id,
+                    _session_id,
                     input.roster_name,
                     result.outcome_json,
                     input.mission_id,
@@ -209,7 +213,7 @@ class MissionRunWorkflow:
                     sup.start_director_turn,
                     args=[
                         input.mission_id or input.mission_run_id,
-                        input.session_id,
+                        _session_id,
                         prompt,
                         workflow.info().workflow_id,
                     ],
@@ -267,7 +271,7 @@ class MissionRunWorkflow:
                     sup.start_director_turn,
                     args=[
                         input.mission_id or input.mission_run_id,
-                        input.session_id,
+                        _session_id,
                         prompt,
                     ],
                     start_to_close_timeout=activity_timeout,
@@ -286,7 +290,7 @@ class MissionRunWorkflow:
                     sup.start_director_turn,
                     args=[
                         input.mission_id or input.mission_run_id,
-                        input.session_id,
+                        _session_id,
                         prompt,
                     ],
                     start_to_close_timeout=activity_timeout,
@@ -325,7 +329,7 @@ class MissionRunWorkflow:
                 sup.start_director_turn,
                 args=[
                     _mission,
-                    input.session_id,
+                    _session_id,
                     f"The autonomy loop hit its iteration cap "
                     f"({max_loop_iterations} waves). {reason} "
                     f"Please inform the user and ask whether to continue "

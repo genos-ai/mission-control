@@ -41,6 +41,7 @@ class MissionExecutionResult:
     success_count: int = 0
     failed_count: int = 0
     execution_record_id: str | None = None
+    session_id: str = ""  # Resolved session (may differ from input when daemon creates one)
     outcome_json: dict = field(default_factory=dict)
 
 
