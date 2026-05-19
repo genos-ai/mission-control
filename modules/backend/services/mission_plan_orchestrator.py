@@ -1352,6 +1352,18 @@ class MissionPlanOrchestrator(BaseService):
                         f"Approve the dependency first."
                     )
 
+        # Strip satisfied upstream dependencies from each task's dependency
+        # list. They completed in a prior run and are NOT in the subset plan —
+        # the DAG validator rejects references to task IDs not in the plan.
+        # Only keep cross-task dependencies within the current dispatch batch.
+        in_batch_ids = {t.task_id for t in filtered_tasks}
+        filtered_tasks = [
+            task.model_copy(update={
+                "dependencies": [d for d in task.dependencies if d in in_batch_ids],
+            })
+            for task in filtered_tasks
+        ]
+
         # Filter execution_hints.critical_path to only tasks in this subset —
         # the plan validator rejects references to tasks not in the plan.
         hints = full_plan.execution_hints

@@ -25,6 +25,7 @@ from modules.backend.events.types import (
     AgentToolResultEvent,
     CostUpdateEvent,
     MissionArtifactFoundEvent,
+    SystemEvent,
 )
 
 from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps, _import_agent_module
@@ -194,29 +195,39 @@ def _make_agent_executor(
 
         source = f"dispatch:{mission_id}"
 
-        async with agent.run_stream(
-            user_message, deps=deps, usage_limits=usage_limits,
-            model_settings=model_settings,
-        ) as stream:
-            try:
-                async for text in stream.stream_text(delta=True):
-                    await _emit(event_bus, AgentResponseChunkEvent,
-                        session_id=session_id,
-                        source=source,
-                        agent_id=agent_name,
-                        content=text,
-                    )
-            except UserError:
-                pass  # Structured output agent — no text stream
+        try:
+            async with agent.run_stream(
+                user_message, deps=deps, usage_limits=usage_limits,
+                model_settings=model_settings,
+            ) as stream:
+                try:
+                    async for text in stream.stream_text(delta=True):
+                        await _emit(event_bus, AgentResponseChunkEvent,
+                            session_id=session_id,
+                            source=source,
+                            agent_id=agent_name,
+                            content=text,
+                        )
+                except UserError:
+                    pass  # Structured output agent — no text stream
 
-            output = await stream.get_output()
-            await _emit_tool_events(
-                event_bus, stream,
+                output = await stream.get_output()
+                await _emit_tool_events(
+                    event_bus, stream,
+                    session_id=session_id,
+                    source=source,
+                    agent_id=agent_name,
+                )
+                usage = stream.usage()
+        except Exception as exc:
+            await _emit(event_bus, SystemEvent,
                 session_id=session_id,
                 source=source,
-                agent_id=agent_name,
+                level="error",
+                message=f"{agent_name} failed: {exc}",
+                mission_id=mission_id,
             )
-            usage = stream.usage()
+            raise
 
         # Trace — log full message history at DEBUG level and optionally
         # emit to the mission event bus for frontend console visibility.
