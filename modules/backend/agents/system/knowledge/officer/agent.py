@@ -63,14 +63,56 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
     # ── Tools (thin wrappers over MissionLearningService — P7) ──
 
     @agent.tool_plain
+    async def create_learning(
+        mission_id: str,
+        title: str,
+        body: str,
+        recommendation: str,
+        kind: str = "finding",
+        domain_tags: list[str] | None = None,
+        confidence: float = 0.8,
+    ) -> str:
+        """Record a new learning or finding into the knowledge platform.
+
+        Use this to add findings extracted from research reports or other
+        mission outputs. Returns the new learning's UUID, which can then
+        be passed to promote_to_platform if it meets the threshold.
+
+        Args:
+            mission_id: The mission this learning belongs to.
+            title: Short descriptive title (max 120 chars).
+            body: Full detail of the finding.
+            recommendation: Actionable recommendation derived from the finding.
+            kind: Learning type — "finding", "insight", "decision", or "risk".
+            domain_tags: Domain labels e.g. ["ai", "security", "research"].
+            confidence: Confidence score 0.0–1.0 (default 0.8 for curated findings).
+        """
+        import json as _json
+        from modules.backend.services.mission_learning import MissionLearningService
+
+        async with MissionLearningService.factory() as svc:
+            learning = await svc.create_learning(
+                mission_id=mission_id,
+                kind=kind,
+                title=title,
+                body=body,
+                recommendation=recommendation,
+                domain_tags=domain_tags or [],
+                agent_names=[_AGENT_NAME],
+                confidence=confidence,
+                occurrence_count=1,
+            )
+        logger.info("Learning created", extra={"learning_id": learning.id, "title": title})
+        return _json.dumps({"learning_id": learning.id, "title": title})
+
+    @agent.tool_plain
     async def flag_contradictions() -> str:
-        """Find and flag contradictory learning pairs.
+        """Find and flag contradictory learning pairs in the platform.
 
         Phase 1: deterministic candidate detection.
         Phase 2: LLM confirmation (only if candidates found).
         """
-        import json
-
+        import json as _json
         from modules.backend.services.mission_learning import MissionLearningService
 
         async with MissionLearningService.factory() as svc:
@@ -79,50 +121,54 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
         if not candidates:
             return "No contradictions found."
 
-        flagged = []
-        for a, b in candidates:
-            flagged.append({
+        flagged = [
+            {
                 "learning_a": {"id": a.id, "title": a.title, "recommendation": a.recommendation[:200]},
                 "learning_b": {"id": b.id, "title": b.title, "recommendation": b.recommendation[:200]},
                 "shared_tags": list(set(a.domain_tags or []) & set(b.domain_tags or [])),
-            })
-
-        return json.dumps({
-            "contradictions_found": len(flagged),
-            "pairs": flagged,
-        }, indent=2)
+            }
+            for a, b in candidates
+        ]
+        return _json.dumps({"contradictions_found": len(flagged), "pairs": flagged}, indent=2)
 
     @agent.tool_plain
     async def promote_to_platform(learning_id: str) -> str:
-        """Promote a high-confidence learning to platform scope.
+        """Promote an existing learning to platform scope for cross-mission discovery.
 
-        Enforces: confidence >= 0.7, occurrence_count >= 3.
+        Requires: confidence >= 0.7 AND occurrence_count >= 3.
         Idempotent — re-promotion is a no-op.
+
+        Args:
+            learning_id: UUID returned by create_learning.
         """
         from modules.backend.services.mission_learning import MissionLearningService
 
         async with MissionLearningService.factory() as svc:
             learning = await svc._learning_repo.get_by_id(learning_id)
 
-            config_threshold = 0.7
-            if learning.confidence < config_threshold:
-                return f"Confidence {learning.confidence:.2f} below threshold {config_threshold}. Not promoted."
+            if learning.confidence < 0.7:
+                return f"Confidence {learning.confidence:.2f} below 0.7 threshold. Not promoted."
             if learning.occurrence_count < 3:
                 return f"Occurrence count {learning.occurrence_count} < 3. Not promoted."
             if learning.platform_promoted:
                 return "Already promoted. No-op."
 
-            await svc.promote(learning_id, "system.knowledge.officer.agent")
+            await svc.promote(learning_id, _AGENT_NAME)
         return f"Promoted learning {learning_id} to platform scope."
 
     @agent.tool_plain
     async def retract_learning(learning_id: str, reason: str) -> str:
-        """Retract a learning entry. Idempotent."""
+        """Retract a stale or superseded learning entry. Idempotent.
+
+        Args:
+            learning_id: UUID of the learning to retract.
+            reason: Human-readable reason for retraction.
+        """
         from modules.backend.services.mission_learning import MissionLearningService
 
         async with MissionLearningService.factory() as svc:
             await svc.retract(learning_id)
-        logger.info("Learning retracted by officer", extra={"learning_id": learning_id, "reason": reason})
+        logger.info("Learning retracted", extra={"learning_id": learning_id, "reason": reason})
         return f"Retracted learning {learning_id}. Reason: {reason}"
 
     return agent
