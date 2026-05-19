@@ -349,8 +349,15 @@ class SessionService(BaseService):
         self,
         session_id: str,
         data: SessionMessageCreate,
+        *,
+        target_agent: str | None = None,
     ) -> None:
-        """Add a message to a session's conversation history."""
+        """Add a message to a session's conversation history.
+
+        Args:
+            target_agent: For user messages in shared sessions, the agent
+                this message is directed at. Enables per-agent filtering.
+        """
         await self.repo.get_by_id(session_id)  # Verify session exists
         await self._execute_db_operation(
             "add_message",
@@ -366,6 +373,7 @@ class SessionService(BaseService):
                 tool_name=data.tool_name,
                 tool_call_id=data.tool_call_id,
                 thinking=data.thinking,
+                target_agent=target_agent,
             ),
         )
 

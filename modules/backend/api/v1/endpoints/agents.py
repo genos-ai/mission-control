@@ -153,7 +153,7 @@ async def agent_chat_stream(
     session_id = await _resolve_shared_session(service, data.session_id, data.mission_id)
 
     user_msg = SessionMessageCreate(role="user", content=data.message)
-    await service.add_message(session_id, user_msg)
+    await service.add_message(session_id, user_msg, target_agent=data.agent)
     await db.commit()
 
     queue: asyncio.Queue = asyncio.Queue()

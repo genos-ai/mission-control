@@ -180,11 +180,8 @@ async def handle_cli_chat(
 
     # 9. Persist messages
     if not skip_persistence:
-        from modules.backend.agents.mission_control.helpers import _persist_messages
-        await _persist_messages(
-            session_service, session_id,
-            [SessionMessageCreate(role="user", content=message, sender_id=sender_id)],
-        )
+        user_create = SessionMessageCreate(role="user", content=message, sender_id=sender_id)
+        await session_service.add_message(session_id, user_create, target_agent=agent_name)
     # Persist assistant response
     from modules.backend.agents.mission_control.helpers import _persist_messages
     await _persist_messages(

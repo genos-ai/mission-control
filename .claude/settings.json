@@ -92,14 +92,36 @@
       "Bash(grep -n \"DateTime\\(timezone=True\\)\" /Users/herman.young/development/mission-control/modules/backend/models/*.py)",
       "Read(//Users/backend.young/development/mission-control/modules/backend/core/**)",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py admin seed-catalog --force)",
-      "Bash(node -e \"const l = require\\(''''lucide-react''''\\); console.log\\(''''Layers:'''', !!l.Layers, ''''Workflow:'''', !!l.Workflow, ''''Network:'''', !!l.Network\\)\")"
+      "Bash(node -e \"const l = require\\(''''lucide-react''''\\); console.log\\(''''Layers:'''', !!l.Layers, ''''Workflow:'''', !!l.Workflow, ''''Network:'''', !!l.Network\\)\")",
+      "Skill(tavily-research)",
+      "Skill(tavily-research:*)",
+      "Bash(MC_API_URL=http://localhost:8100 python mc.py mission list)",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py team list)",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py tree)",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py run --help)",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py run -o \"security.webapp-assessment\" --gate off -c target_path=/Users/herman.young/development/mission-control)",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py chat --agent mission.director.agent \"Run the security.webapp-assessment workflow against target_path=/Users/herman.young/development/mission-control\")",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py chat --help)",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py chat --agent mission.director.agent --new -m \"Run the security.webapp-assessment workflow with target_path=/Users/herman.young/development/mission-control\")",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py mission info)",
+      "Bash(MC_API_URL=http://localhost:8100/api/v1 python mc.py chat --agent mission.director.agent -m \"Switch the mission execution environment to local mode for testing\")",
+      "Read(//Users/herman.young/.claude/**)",
+      "Bash(tvly research:*)",
+      "Bash(PlanTaskState)",
+      "Bash(v[0-9]-task-\":*)",
+      "Bash(kill %1)",
+      "Bash(python3 -c \":*)",
+      "Bash(redis-cli PUBSUB CHANNELS \"*\")",
+      "Bash(MC_AGENT_TRACE=1 MC_LOG_LEVEL=DEBUG python -c \":*)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
       "/Users/herman.young/development/mission-control/docs/97-plans",
       "/tmp",
       "/Users/herman.young/development/mission-control/.claude",
-      "/Users/herman.young/development/mission-control"
+      "/Users/herman.young/development/mission-control",
+      "/Users/herman.young/.claude",
+      "/Users/herman.young/.claude/prompts"
     ]
   }
 }

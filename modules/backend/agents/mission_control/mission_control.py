@@ -515,10 +515,8 @@ async def handle(
         # was already persisted by persist_user_message activity — only
         # persist the assistant response here.
         if not skip_persistence:
-            await _persist_messages(
-                session_service, session_id,
-                [SessionMessageCreate(role="user", content=message, sender_id=sender_id)],
-            )
+            user_create = SessionMessageCreate(role="user", content=message, sender_id=sender_id)
+            await session_service.add_message(session_id, user_create, target_agent=target_agent)
 
         # Finalize the streaming message with final content and LLM metadata,
         # or fall back to creating a new message if streaming wasn't set up.

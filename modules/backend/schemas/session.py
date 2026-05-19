@@ -137,6 +137,7 @@ class SessionMessageResponse(BaseModel):
     tool_name: str | None
     tool_call_id: str | None
     thinking: str | None = None
+    target_agent: str | None = None
     status: str = "complete"
     created_at: datetime
     updated_at: datetime | None = None

@@ -46,7 +46,7 @@ export default function ChatTab() {
   const { user } = useAuthStore()
 
   // Shared session for the mission (one session, all agents)
-  const { data: sessions, isLoading: loadingSessions } = useSessions({ mission_id: missionId, status: 'ACTIVE' })
+  const { data: sessions, isLoading: loadingSessions } = useSessions({ mission_id: missionId, status: 'active' })
   const createSession = useCreateSession()
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
 

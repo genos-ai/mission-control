@@ -1,4 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useCatalogAgent } from '@/hooks/use-catalog'
+import { SlashCommandPopover } from '@/components/chat/slash-command-popover'
 import {
   Bot,
   Brain,
@@ -18,9 +21,10 @@ import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { useMessages, sessionKeys } from '@/hooks/use-sessions'
+import { parseSseStream } from '@/hooks/use-sse'
 import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
-import { queryClient } from '@/main'
+import { queryClient } from '@/lib/query-client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -31,7 +35,7 @@ import { eventLabel } from '@/lib/event-utils'
 import { CHAT_HIDDEN_EVENT_TYPES, type TimelineEntry } from './chat-constants'
 
 export function Conversation({ sessionId, missionId, targetAgent }: { sessionId: string; missionId: string; targetAgent?: string }) {
-  const { data: history, isLoading } = useMessages(sessionId)
+  const { data: history, isLoading } = useMessages(sessionId, targetAgent)
   const { user } = useAuthStore()
   const { activeCount: bgTaskCount, activeTasks: bgTasks } = useBackgroundTasks(missionId)
   const [messages, setMessages] = useState<SessionMessage[]>([])
@@ -41,17 +45,38 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Historical narrative events from DB
-  const [historicalEvents, setHistoricalEvents] = useState<ConsoleEvent[]>([])
-  useEffect(() => {
-    if (!missionId) return
-    api.get<{ events: ConsoleEvent[]; count: number }>(`/missions/${missionId}/narrative`)
-      .then((data) => {
-        setHistoricalEvents(data.events.filter((e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type) && e.data.session_id === sessionId))
-      })
-      .catch(() => {})
-  }, [missionId, sessionId])
+  // Slash-command autocomplete
+  // slashFilter === null  → popover closed
+  // slashFilter === ''    → popover open, show all tools
+  // slashFilter === 'run' → popover open, filtered
+  const [slashFilter, setSlashFilter] = useState<string | null>(null)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const { data: agentDetail } = useCatalogAgent(targetAgent)
+  const agentTools: string[] = agentDetail?.tools ?? []
+  // Pre-filtered tool list — single computation point used by both the
+  // popover and the keyboard handler so they always agree on what's visible.
+  const filteredTools = useMemo(() => {
+    if (slashFilter === null) return []
+    if (!slashFilter) return agentTools
+    const q = slashFilter.toLowerCase()
+    return agentTools.filter((t) => t.toLowerCase().includes(q))
+  }, [slashFilter, agentTools])
+
+  // Historical narrative events from DB — cached per mission, filtered client-side by sessionId
+  const { data: narrativeData } = useQuery({
+    queryKey: ['narrative', missionId],
+    queryFn: () => api.get<{ events: ConsoleEvent[]; count: number }>(`/missions/${missionId}/narrative`),
+    enabled: !!missionId,
+    staleTime: 30_000,
+  })
+  const historicalEvents = useMemo(() => {
+    if (!narrativeData) return []
+    return narrativeData.events.filter(
+      (e) => !CHAT_HIDDEN_EVENT_TYPES.has(e.event_type) && e.data.session_id === sessionId,
+    )
+  }, [narrativeData, sessionId])
 
   // Live narrative events from SSE
   const liveEvents = useConsoleStore((s) =>
@@ -63,6 +88,8 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
     setStreamingContent('')
     setStreamingThinking('')
     setSending(false)
+    setSlashFilter(null)
+    setSlashIndex(0)
     abortRef.current?.abort()
     abortRef.current = null
   }, [sessionId])
@@ -88,7 +115,8 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
         id: `temp-${Date.now()}`, session_id: sessionId, role: 'user', content,
         sender_id: user?.id ?? null, model: null, input_tokens: null,
         output_tokens: null, cost_usd: null, tool_name: null, tool_call_id: null,
-        thinking: null, status: 'complete' as const, created_at: new Date().toISOString(),
+        thinking: null, target_agent: targetAgent ?? null,
+        status: 'complete' as const, created_at: new Date().toISOString(),
         updated_at: null,
       },
     ])
@@ -109,49 +137,35 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
       )
       if (!response.ok) throw new Error('Failed to send message')
 
-      // Inline SSE — read events directly from the response body
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No response body')
-      const decoder = new TextDecoder()
-      let buffer = ''
       let accumulated = ''
 
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6)
-          if (raw === '{}') continue
-          try {
-            const ev = JSON.parse(raw)
-            if (ev.event_type === 'agent.response.chunk') {
-              if (ev.metadata?.thinking) setStreamingThinking((p) => p + (ev.content ?? ''))
-              else { accumulated += ev.content ?? ''; setStreamingContent(accumulated) }
-            } else if (ev.event_type === 'agent.response.complete') {
-              setMessages((p) => [
-                ...p,
-                {
-                  id: `resp-${Date.now()}`, session_id: sessionId,
-                  role: ev.metadata?.error ? 'error' : 'assistant',
-                  content: ev.full_content ?? accumulated,
-                  sender_id: ev.agent_id ?? null, model: ev.model ?? null,
-                  input_tokens: ev.input_tokens ?? null, output_tokens: ev.output_tokens ?? null,
-                  cost_usd: ev.cost_usd ?? null, tool_name: null, tool_call_id: null,
-                  thinking: ev.metadata?.thinking ?? null, status: 'complete' as const,
-                  created_at: new Date().toISOString(), updated_at: null,
-                },
-              ])
-              accumulated = ''
-              setStreamingContent('')
-              setStreamingThinking('')
-            }
-          } catch { /* skip malformed SSE line */ }
-        }
+      for await (const frame of parseSseStream(response, controller.signal)) {
+        if (!frame.data || frame.data === '{}') continue
+        try {
+          const ev = JSON.parse(frame.data)
+          if (ev.event_type === 'agent.response.chunk') {
+            if (ev.metadata?.thinking) setStreamingThinking((p) => p + (ev.content ?? ''))
+            else { accumulated += ev.content ?? ''; setStreamingContent(accumulated) }
+          } else if (ev.event_type === 'agent.response.complete') {
+            setMessages((p) => [
+              ...p,
+              {
+                id: `resp-${Date.now()}`, session_id: sessionId,
+                role: 'assistant' as const,
+                content: ev.full_content ?? accumulated,
+                sender_id: ev.agent_id ?? null, model: ev.model ?? null,
+                input_tokens: ev.input_tokens ?? null, output_tokens: ev.output_tokens ?? null,
+                cost_usd: ev.cost_usd ?? null, tool_name: null, tool_call_id: null,
+                thinking: ev.metadata?.thinking ?? null, target_agent: targetAgent ?? null,
+                status: (ev.metadata?.error ? 'failed' : 'complete') as 'failed' | 'complete',
+                created_at: new Date().toISOString(), updated_at: null,
+              },
+            ])
+            accumulated = ''
+            setStreamingContent('')
+            setStreamingThinking('')
+          }
+        } catch { /* skip malformed SSE frame */ }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
@@ -159,18 +173,57 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
     } finally {
       abortRef.current = null
       setSending(false)
-      // Delay refetch to let React finish rendering the locally-added
-      // message. Immediate invalidation causes a DOM reconciliation
-      // error when the array is replaced mid-render.
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId) })
-      }, 500)
+      queryClient.invalidateQueries({ queryKey: sessionKeys.messages(sessionId, targetAgent) })
     }
-  }, [input, sending, sessionId, missionId, user?.id])
+  }, [input, sending, sessionId, missionId, targetAgent, user?.id])
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setInput(val)
+    // Open slash-command popover when text starts with / and has no space yet
+    // (once the user types a space they are typing arguments, not a command name)
+    if (val.startsWith('/') && !val.includes(' ') && agentTools.length > 0) {
+      setSlashFilter(val.slice(1))
+      setSlashIndex(0)
+    } else {
+      setSlashFilter(null)
+    }
+  }, [agentTools])
+
+  const handleSlashSelect = useCallback((tool: string) => {
+    setInput(`/${tool} `)
+    setSlashFilter(null)
+    setSlashIndex(0)
+    textareaRef.current?.focus()
+  }, [])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Slash-command popover navigation takes priority when open.
+    // filteredTools is the single source of truth — same list the popover renders.
+    if (slashFilter !== null) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashIndex((i) => Math.min(i + 1, filteredTools.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashIndex((i) => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault()
+        if (filteredTools[slashIndex]) handleSlashSelect(filteredTools[slashIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlashFilter(null)
+        return
+      }
+    }
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendMessage() }
-  }
+  }, [slashFilter, filteredTools, slashIndex, handleSlashSelect, sendMessage])
 
   // Build unified timeline: messages + narrative events, sorted by timestamp
   // Must be above the isLoading return — hooks can't be after early returns.
@@ -257,11 +310,19 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
       </div>
 
       <div className="shrink-0 border-t p-3">
-        <div className="flex gap-2">
+        <div className="relative flex gap-2">
+          {filteredTools.length > 0 && (
+            <SlashCommandPopover
+              tools={filteredTools}
+              activeIndex={slashIndex}
+              onSelect={handleSlashSelect}
+            />
+          )}
           <Textarea
-            value={input} onChange={(e) => setInput(e.target.value)}
+            ref={textareaRef}
+            value={input} onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Send a message… (Cmd+Enter)"
+            placeholder="Send a message… (Cmd+Enter or type / for commands)"
             rows={2} className="resize-none text-sm" disabled={sending}
           />
           <Button size="icon" onClick={sendMessage}
@@ -269,7 +330,7 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
-        <p className="mt-1 text-[10px] text-muted-foreground">Cmd+Enter to send</p>
+        <p className="mt-1 text-[10px] text-muted-foreground">Cmd+Enter to send · / for commands</p>
       </div>
     </>
   )

@@ -1,9 +1,5 @@
 import { createContext, useContext } from 'react'
-
-export interface SseEvent {
-  event_type: string
-  data: Record<string, unknown>
-}
+import type { SseEvent } from '@/types'
 
 export interface MissionStreamValue {
   events: SseEvent[]

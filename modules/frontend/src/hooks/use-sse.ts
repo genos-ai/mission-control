@@ -1,11 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import { API_BASE } from '@/lib/constants'
-
-interface SseEvent {
-  event_type: string
-  data: Record<string, unknown>
-}
+import type { SseEvent } from '@/types'
 
 /**
  * Parse an SSE text stream from a fetch Response.
@@ -13,7 +9,7 @@ interface SseEvent {
  * Yields parsed events as they arrive. Handles the `event:` and `data:`
  * fields per the SSE spec. Reconnection is handled by the caller.
  */
-async function* parseSseStream(
+export async function* parseSseStream(
   response: Response,
   signal: AbortSignal,
 ): AsyncGenerator<{ event: string | null; data: string }> {
@@ -60,6 +56,10 @@ function useFetchSse(
 ) {
   const [events, setEvents] = useState<SseEvent[]>([])
   const [connected, setConnected] = useState(false)
+  // totalAdded counts every event ever received, uncapped by maxEvents.
+  // Callers use this to detect new events even when the ring buffer is full
+  // and sseEvents.length stops changing.
+  const [totalAdded, setTotalAdded] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -113,6 +113,7 @@ function useFetchSse(
             try {
               const parsed = JSON.parse(frame.data) as SseEvent
               setEvents((prev) => [...prev, parsed].slice(-maxEvents))
+              setTotalAdded((n) => n + 1)
             } catch {
               // skip malformed
             }
@@ -145,7 +146,7 @@ function useFetchSse(
 
   const clear = useCallback(() => setEvents([]), [])
 
-  return { events, connected, clear }
+  return { events, connected, clear, totalAdded }
 }
 
 /**
@@ -161,7 +162,8 @@ export function useRunStream(sessionId: string | null) {
 
 /**
  * Subscribe to a mission's SSE event stream.
- * Returns latest events and a connected flag.
+ * Returns latest events, a connected flag, and totalAdded (uncapped event count
+ * for detecting new events when the ring buffer is full).
  */
 export function useMissionStream(missionId: string | null) {
   return useFetchSse(
@@ -173,6 +175,8 @@ export function useMissionStream(missionId: string | null) {
 /**
  * Subscribe to user notification SSE stream.
  * Calls onNotification for each incoming event.
+ *
+ * Reuses useFetchSse for connection management — no separate backoff/abort loop.
  */
 export function useNotificationStream(
   userId: string | null,
@@ -180,71 +184,17 @@ export function useNotificationStream(
 ) {
   const callbackRef = useRef(onNotification)
   callbackRef.current = onNotification
-  const abortRef = useRef<AbortController | null>(null)
 
+  const { events, totalAdded } = useFetchSse(
+    userId ? `/streams/notifications?user_id=${userId}` : null,
+    200,
+  )
+
+  const processedRef = useRef(0)
   useEffect(() => {
-    if (!userId) return
-
-    let cancelled = false
-    let backoff = 1000
-
-    async function connect() {
-      while (!cancelled) {
-        const controller = new AbortController()
-        abortRef.current = controller
-
-        try {
-          const token = useAuthStore.getState().accessToken
-          const headers: Record<string, string> = {
-            Accept: 'text/event-stream',
-          }
-          if (token) {
-            headers['Authorization'] = `Bearer ${token}`
-          }
-
-          const response = await fetch(
-            `${API_BASE}/streams/notifications?user_id=${userId}`,
-            { headers, signal: controller.signal },
-          )
-
-          if (!response.ok) {
-            if (response.status === 401) {
-              const { ApiClient } = await import('@/lib/api')
-              const refreshed = await ApiClient.refreshTokens()
-              if (!refreshed) return
-            }
-            throw new Error(`SSE ${response.status}`)
-          }
-
-          backoff = 1000
-
-          for await (const frame of parseSseStream(response, controller.signal)) {
-            if (cancelled) break
-            try {
-              const data = JSON.parse(frame.data)
-              callbackRef.current(data)
-            } catch {
-              // skip
-            }
-          }
-        } catch (err) {
-          if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) {
-            return
-          }
-        }
-
-        if (cancelled) return
-        await new Promise((r) => setTimeout(r, backoff))
-        backoff = Math.min(backoff * 2, 30_000)
-      }
-    }
-
-    connect()
-
-    return () => {
-      cancelled = true
-      abortRef.current?.abort()
-      abortRef.current = null
-    }
-  }, [userId])
+    if (totalAdded <= processedRef.current) return
+    const delta = totalAdded - processedRef.current
+    processedRef.current = totalAdded
+    events.slice(-delta).forEach((ev) => callbackRef.current(ev.data))
+  }, [totalAdded, events])
 }

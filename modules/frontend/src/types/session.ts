@@ -47,6 +47,7 @@ export interface SessionMessage {
   tool_name: string | null
   tool_call_id: string | null
   thinking: string | null
+  target_agent: string | null
   status: 'streaming' | 'complete' | 'failed'
   created_at: string
   updated_at: string | null

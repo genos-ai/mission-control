@@ -180,6 +180,11 @@ class SessionMessage(UUIDMixin, Base):
     # Agent thinking (populated for assistant messages when thinking is enabled)
     thinking: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Agent routing (populated for user messages in shared sessions)
+    target_agent: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )  # Which agent this user message was directed at
+
     # Tool correlation (populated for tool_call / tool_result messages)
     tool_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(100), nullable=True)

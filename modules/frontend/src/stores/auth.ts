@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { UserResponse } from '@/types'
-import { queryClient } from '@/main'
+import { queryClient } from '@/lib/query-client'
 
 const REFRESH_TOKEN_KEY = 'mc_refresh_token'
 

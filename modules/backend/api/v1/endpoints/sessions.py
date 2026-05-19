@@ -232,17 +232,19 @@ async def get_session_by_channel(
 @router.get(
     "/{session_id}/messages",
     summary="Get session messages",
-    description="Get conversation history for a session.",
+    description="Get conversation history for a session, optionally filtered by sender.",
 )
 async def get_messages(
     session_id: str,
     db: DbSession,
     request_id: RequestId,
     pagination: PaginationParams = Depends(get_pagination_params),
+    sender_id: str | None = Query(default=None, description="Filter to messages from this sender (plus user/system messages). Used for agent-scoped views in shared sessions."),
 ) -> dict:
     service = SessionService(db)
     messages, total = await service.get_messages(
-        session_id, limit=pagination.limit, offset=pagination.offset
+        session_id, limit=pagination.limit, offset=pagination.offset,
+        sender_ids=[sender_id] if sender_id else None,
     )
     return create_paginated_response(
         items=messages,
@@ -309,7 +311,7 @@ async def send_message(
         content=data.content,
         sender_id=data.sender_id,
     )
-    await service.add_message(session_id, user_msg)
+    await service.add_message(session_id, user_msg, target_agent=target_agent)
     await db.commit()
 
     # 2. Shared queue bridges background task → SSE response

@@ -1,6 +1,12 @@
 /**
- * API envelope types — ApiResponse, ApiError, pagination, etc.
+ * API envelope types — ApiResponse, ApiError, pagination, SSE events, etc.
  */
+
+// SSE event — raw frame from the mission/run event streams
+export interface SseEvent {
+  event_type: string
+  data: Record<string, unknown>
+}
 
 // API Response types
 export interface ApiResponse<T> {

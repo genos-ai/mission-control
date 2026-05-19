@@ -45,7 +45,7 @@ import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { planKeys, useMissionPlan, useUpdatePlan } from '@/hooks/use-mission-plan'
 import { artifactKeys } from '@/hooks/use-mission-artifacts'
-import { queryClient } from '@/main'
+import { queryClient } from '@/lib/query-client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -147,7 +147,7 @@ export default function MissionLayout() {
   }, [location.pathname, id])
 
   // ── Single SSE connection, shared via MissionStreamContext ────────────────
-  const { events: sseEvents, connected } = useMissionStream(id ?? null)
+  const { events: sseEvents, connected, totalAdded } = useMissionStream(id ?? null)
 
   const addEvent = useConsoleStore((s) => s.addEvent)
   const setConnected = useConsoleStore((s) => s.setConnected)
@@ -155,11 +155,16 @@ export default function MissionLayout() {
   const resetWorkspace = useWorkspaceStore((s) => s.reset)
   const resetConsole = useConsoleStore((s) => s.reset)
 
+  // Tracks how many SSE events have been fanned into stores.
+  // Declared here so the mission-change reset below can access it.
+  const processedTotal = useRef(0)
+
   // Reset stores on mission change
   const prevMissionId = useRef<string | null>(null)
   useEffect(() => {
     if (id && id !== prevMissionId.current) {
       prevMissionId.current = id
+      processedTotal.current = 0
       resetWorkspace()
       resetConsole()
     }
@@ -167,60 +172,60 @@ export default function MissionLayout() {
 
   useEffect(() => { setConnected(connected) }, [connected, setConnected])
 
-  // Forward SSE events into workspace + console stores
-  const processedCount = useRef(0)
+  // Forward SSE events into workspace + console stores.
+  // Uses totalAdded (not sseEvents.length) as the effect trigger so new events
+  // are never missed when the ring buffer is full and length stays at 1000.
   useEffect(() => {
-    if (sseEvents.length > processedCount.current) {
-      const newEvents = sseEvents.slice(processedCount.current)
-      processedCount.current = sseEvents.length
-      let planInvalidated = false
-      let artifactsInvalidated = false
-      newEvents.forEach((ev) => {
-        const top = ev.data as Record<string, unknown>
-        const d = (top.data ?? top) as Record<string, unknown>
-        onSseEvent(ev.event_type, d)
-        addEvent({
-          event_id: String(top.event_id ?? d.event_id ?? crypto.randomUUID()),
-          event_type: ev.event_type,
-          category: categorize(ev.event_type),
-          timestamp: String(top.timestamp ?? d.timestamp ?? new Date().toISOString()),
-          source: String(d.agent_id ?? top.source ?? d.source ?? ''),
-          data: d,
-        })
-        if (ev.event_type.startsWith('mission_plan.') && id) {
-          planInvalidated = true
-        }
-        // Plan 43: mission.artifact.found means a new artifact has
-        // (or will shortly) land in mission_artifacts. Coalesce to a
-        // single invalidation per batch to avoid storms.
-        if (ev.event_type === 'mission.artifact.found' && id) {
-          artifactsInvalidated = true
-        }
+    if (totalAdded <= processedTotal.current) return
+    const delta = totalAdded - processedTotal.current
+    // Take the last `delta` events from the ring buffer — they are always
+    // the newest since useFetchSse only appends (then slices the tail).
+    const newEvents = sseEvents.slice(-delta)
+    processedTotal.current = totalAdded
+    let planInvalidated = false
+    let artifactsInvalidated = false
+    newEvents.forEach((ev) => {
+      const top = ev.data as Record<string, unknown>
+      const d = (top.data ?? top) as Record<string, unknown>
+      onSseEvent(ev.event_type, d)
+      addEvent({
+        event_id: String(top.event_id ?? d.event_id ?? crypto.randomUUID()),
+        event_type: ev.event_type,
+        category: categorize(ev.event_type),
+        timestamp: String(top.timestamp ?? d.timestamp ?? new Date().toISOString()),
+        source: String(d.agent_id ?? top.source ?? d.source ?? ''),
+        data: d,
       })
-      if (planInvalidated && id) {
-        queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
+      if (ev.event_type.startsWith('mission_plan.') && id) {
+        planInvalidated = true
       }
-      if (artifactsInvalidated && id) {
-        queryClient.invalidateQueries({ queryKey: artifactKeys.list(id) })
+      // Plan 43: mission.artifact.found means a new artifact has
+      // (or will shortly) land in mission_artifacts. Coalesce to a
+      // single invalidation per batch to avoid storms.
+      if (ev.event_type === 'mission.artifact.found' && id) {
+        artifactsInvalidated = true
       }
-      // Plan 56 Phase D: invalidate execution queries when background
-      // tasks complete, so the header indicator updates immediately
-      if (newEvents.some((ev) =>
-        ev.event_type === 'system.info' || ev.event_type === 'execution.record'
-      ) && id) {
-        queryClient.invalidateQueries({ queryKey: ['executions'] })
-      }
-      // Plan 56: When a Director followup (ChatTurnWorkflow) completes,
-      // its agent.response.complete event arrives via the mission SSE stream.
-      // Invalidate session messages so the chat tab picks it up without refresh.
-      // Delay to avoid DOM reconciliation error (same pattern as send_message).
-      if (newEvents.some((ev) => ev.event_type === 'agent.response.complete' || ev.event_type === 'user.message.sent')) {
-        setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['sessions'] })
-        }, 500)
-      }
+    })
+    if (planInvalidated && id) {
+      queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
     }
-  }, [sseEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (artifactsInvalidated && id) {
+      queryClient.invalidateQueries({ queryKey: artifactKeys.list(id) })
+    }
+    // Plan 56 Phase D: invalidate execution queries when background
+    // tasks complete, so the header indicator updates immediately
+    if (newEvents.some((ev) =>
+      ev.event_type === 'system.info' || ev.event_type === 'execution.record'
+    ) && id) {
+      queryClient.invalidateQueries({ queryKey: ['executions'] })
+    }
+    // Plan 56: When a Director followup (ChatTurnWorkflow) completes,
+    // its agent.response.complete event arrives via the mission SSE stream.
+    // Invalidate session messages so the chat tab picks it up without refresh.
+    if (newEvents.some((ev) => ev.event_type === 'agent.response.complete' || ev.event_type === 'user.message.sent')) {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    }
+  }, [totalAdded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function setStatus(status: MissionStatus) {
     updateMission.mutate({ status })

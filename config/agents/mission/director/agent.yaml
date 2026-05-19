@@ -27,14 +27,31 @@ keywords:
   - delegate
 
 tools:
+  # Mission info & context
   - get_mission_info
+  - get_mission_context
+  - get_current_mission_intent
+  - capture_mission_intent
+  # Team & catalog
   - list_team
+  - browse_catalog
+  # Execution history
   - get_execution_history
   - get_execution_detail
-  - get_mission_context
+  - check_background_tasks
+  # Plan
+  - get_plan
+  - refine_plan
+  - approve_plan_tasks
+  # Workflows
   - list_workflows
-  - run_objective
   - run_workflow
+  - design_workflow
+  # Objective / direct run
+  - run_objective
+  # Artifacts & knowledge
+  - get_artifacts
+  - query_knowledge
 
 max_input_length: 64000
 max_budget_usd: 5.00

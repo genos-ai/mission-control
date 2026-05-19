@@ -248,6 +248,7 @@ class SessionRepository(BaseRepository[Session]):
         tool_name: str | None = None,
         tool_call_id: str | None = None,
         thinking: str | None = None,
+        target_agent: str | None = None,
     ) -> SessionMessage:
         """Add a message to a session."""
         msg = SessionMessage(
@@ -262,6 +263,7 @@ class SessionRepository(BaseRepository[Session]):
             tool_name=tool_name,
             tool_call_id=tool_call_id,
             thinking=thinking,
+            target_agent=target_agent,
         )
         self.session.add(msg)
         await self.session.flush()
@@ -278,15 +280,14 @@ class SessionRepository(BaseRepository[Session]):
         """Get messages for a session, ordered by creation time.
 
         Args:
-            sender_ids: If provided, return only messages where:
-                - role is 'user', 'system', 'tool_call', or 'tool_result' (always included), OR
-                - sender_id is in the provided list (matches assistant messages)
-              This enables agent-aware history loading for shared sessions.
-              tool_call and tool_result messages may have sender_id=NULL (legacy data
-              or history.py conventions) and must always be included to keep
-              PydanticAI's ToolCallPart/ToolReturnPart pairs intact.
+            sender_ids: If provided, filter to agent-relevant messages:
+                - system messages: always included
+                - assistant/tool_call messages: included if sender_id matches
+                - user messages: included if target_agent matches, OR if
+                  target_agent is NULL (legacy messages before Plan 74)
+              This enables per-agent views in shared sessions.
         """
-        from sqlalchemy import or_
+        from sqlalchemy import and_, or_
 
         stmt = (
             select(SessionMessage)
@@ -298,8 +299,18 @@ class SessionRepository(BaseRepository[Session]):
         if sender_ids is not None:
             stmt = stmt.where(
                 or_(
-                    SessionMessage.role.in_(["user", "system", "tool_call", "tool_result"]),
+                    # System messages: always included
+                    SessionMessage.role == "system",
+                    # Assistant + tool_call messages: filter by sender
                     SessionMessage.sender_id.in_(sender_ids),
+                    # User messages: filter by target_agent (NULL = legacy, show everywhere)
+                    and_(
+                        SessionMessage.role == "user",
+                        or_(
+                            SessionMessage.target_agent.in_(sender_ids),
+                            SessionMessage.target_agent.is_(None),
+                        ),
+                    ),
                 )
             )
         result = await self.session.execute(stmt)

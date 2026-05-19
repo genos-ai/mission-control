@@ -155,6 +155,27 @@ python scripts/trace_execution.py --mission ai-research --last --json
 
 Produces a single chronological timeline correlating Director tool calls, plan task states, Temporal workflow activities, SSE events, DB writes, LLM calls, and structured logs — with an automated diagnosis section that identifies common failure patterns (budget validation failures, stale task states, Director not detecting failures). Use this first when investigating execution failures.
 
+## Agent Catalog
+
+The `agent_catalog` table is the authoritative source for agent configuration at runtime. YAML files are seed-only.
+
+**Read path:** `GET /catalog/agents/{name}` → `AgentCatalogService` → DB. Never read from YAML at runtime.
+
+**Mutating catalog data on a running system:**
+```bash
+# Correct — updates DB directly
+PATCH /admin/catalog/{agent_name}
+Body: { "tools": ["tool_a", "tool_b"], "description": "..." }
+```
+
+Also update the corresponding `config/agents/**/agent.yaml` to keep version control in sync.
+
+**`seed-catalog --force` is a blunt reset** — it wipes the DB and repopulates from YAML, destroying any changes made via the admin API. Only use it for:
+- Initial bootstrap of a new environment
+- Deliberately reverting the catalog to YAML defaults
+
+The YAML `tools` list defines everything the agent exposes. For a developer-facing tool, no distinction between "user-facing" and "internal" tools is necessary — list everything the agent can call.
+
 ## What NOT to Do
 
 - Do not put business logic in client code (CLI handlers, Telegram handlers, frontend components)
@@ -168,6 +189,7 @@ Produces a single chronological timeline correlating Director tool calls, plan t
 - Do not use `datetime.now()` or `datetime.utcnow()`
 - Do not hardcode URLs, ports, timeouts, or any configurable value
 - Do not skip layers (API calling repository directly)
+- Do not run `seed-catalog --force` to update catalog fields on a running system — use `PATCH /admin/catalog/{agent_name}` instead
 
 ## Reference Architecture
 
