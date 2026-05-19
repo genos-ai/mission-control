@@ -6,7 +6,6 @@ fractal summarization pipeline. Uses Haiku for cost efficiency — input is
 structured data, output is compressed narrative.
 """
 
-from functools import lru_cache
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -52,34 +51,13 @@ class SessionSpanSummary(BaseModel):
     breadcrumbs: str = Field(..., description="IDs, URLs, keys needed for continuity")
 
 
-@lru_cache(maxsize=1)
-def _get_agent() -> Agent[None, SummarizationOutput]:
-    """Cached summarization agent instance. Model loaded from agent.yaml."""
-    agent_config = get_registry().get(_AGENT_NAME)
-    model = _build_model(agent_config.model)
+def create_agent(model: Model | None = None, _tool_names: list[str] | None = None) -> Agent[None, SummarizationOutput]:
+    """Create a summarization agent, resolving the model from the registry when not supplied."""
+    if model is None:
+        agent_config = get_registry().get(_AGENT_NAME)
+        model = _build_model(agent_config.model)
     instructions = assemble_instructions("system", "summarization")
-
-    return Agent(
-        model,
-        instructions=instructions,
-        output_type=SummarizationOutput,
-    )
-
-
-def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, SummarizationOutput]:
-    """Get or create the summarization agent.
-
-    Args:
-        model: Optional model override for testing or roster-driven execution.
-    """
-    if model is not None:
-        instructions = assemble_instructions("system", "summarization")
-        return Agent(
-            model,
-            instructions=instructions,
-            output_type=SummarizationOutput,
-        )
-    return _get_agent()
+    return Agent(model, instructions=instructions, output_type=SummarizationOutput)
 
 
 async def summarize_missions(

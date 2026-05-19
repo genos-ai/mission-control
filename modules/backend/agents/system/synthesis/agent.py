@@ -9,7 +9,6 @@ P13 compliant: reports facts, does not evaluate agent performance.
 """
 
 import json
-from functools import lru_cache
 from typing import Any
 
 from pydantic_ai import Agent
@@ -27,32 +26,15 @@ logger = get_logger(__name__)
 _AGENT_NAME = "system.synthesis.agent"
 
 
-@lru_cache(maxsize=1)
-def _get_agent() -> Agent[None, str]:
-    """Cached synthesis agent instance. Model loaded from agent.yaml."""
-    agent_config = get_registry().get(_AGENT_NAME)
-    model = _build_model(agent_config.model)
+def create_agent(model: str | Model | None = None, _tool_names: list[str] | None = None) -> Agent[None, str]:
+    """Create a synthesis agent, resolving the model from the registry when not supplied."""
+    if model is None:
+        agent_config = get_registry().get(_AGENT_NAME)
+        model = _build_model(agent_config.model)
+    elif isinstance(model, str):
+        model = _build_model(model)
     instructions = assemble_instructions("system", "synthesis")
-
-    return Agent(
-        model,
-        output_type=str,
-        instructions=instructions,
-    )
-
-
-def create_agent(model: str | Model | None = None, tool_names: list[str] | None = None) -> Agent[None, str]:
-    """Create a synthesis agent with the given model.
-
-    Args:
-        model: Model override for roster-driven execution. Falls back
-            to the registry-configured model when None.
-    """
-    if model is not None:
-        m = _build_model(model) if isinstance(model, str) else model
-        instructions = assemble_instructions("system", "synthesis")
-        return Agent(m, output_type=str, instructions=instructions)
-    return _get_agent()
+    return Agent(model, output_type=str, instructions=instructions)
 
 
 async def synthesize(outcome_data: dict[str, Any]) -> str:
