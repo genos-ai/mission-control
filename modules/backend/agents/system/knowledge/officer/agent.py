@@ -7,10 +7,8 @@ Tools are registered wrappers that delegate to the service layer.
 Runs daily via Temporal schedule. Budget: $0.10/run (Haiku).
 """
 
-from functools import lru_cache
-
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 from modules.backend.agents.mission_control.helpers import (
@@ -42,13 +40,20 @@ class KnowledgeOfficerReport(BaseModel):
     )
 
 
-@lru_cache(maxsize=1)
-def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
-    """Cached officer agent instance."""
-    agent_config = get_registry().get(_AGENT_NAME)
-    model = _build_model(agent_config.model)
-    instructions = assemble_instructions("system.knowledge.officer")
+def create_agent(model: Model | None = None, _tool_names: list[str] | None = None) -> Agent[None, KnowledgeOfficerReport]:
+    """Create a Knowledge Officer agent with all tools registered.
 
+    Always creates a fresh agent so tools are bound to the returned
+    instance regardless of whether a model override is supplied. This
+    matches the standard factory pattern used by other agents (research
+    searcher, etc.) so that agent_executor.py always gets a fully-
+    equipped agent.
+    """
+    if model is None:
+        agent_config = get_registry().get(_AGENT_NAME)
+        model = _build_model(agent_config.model)
+
+    instructions = assemble_instructions("system.knowledge.officer")
     agent: Agent[None, KnowledgeOfficerReport] = Agent(
         model,
         instructions=instructions,
@@ -74,7 +79,6 @@ def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
         if not candidates:
             return "No contradictions found."
 
-        # Flag each pair
         flagged = []
         for a, b in candidates:
             flagged.append({
@@ -122,19 +126,6 @@ def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
         return f"Retracted learning {learning_id}. Reason: {reason}"
 
     return agent
-
-
-def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, KnowledgeOfficerReport]:
-    """Get or create the Knowledge Officer agent."""
-    if model is not None:
-        instructions = assemble_instructions("system.knowledge.officer")
-        agent: Agent[None, KnowledgeOfficerReport] = Agent(
-            model,
-            instructions=instructions,
-            output_type=KnowledgeOfficerReport,
-        )
-        return agent
-    return _get_agent()
 
 
 async def run_officer(*, model: Model | None = None) -> dict:
