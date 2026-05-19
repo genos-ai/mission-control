@@ -47,7 +47,7 @@ def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
     """Cached officer agent instance."""
     agent_config = get_registry().get(_AGENT_NAME)
     model = _build_model(agent_config.model)
-    instructions = assemble_instructions("system", "knowledge_officer")
+    instructions = assemble_instructions("system.knowledge.officer")
 
     agent: Agent[None, KnowledgeOfficerReport] = Agent(
         model,
@@ -127,7 +127,7 @@ def _get_agent() -> Agent[None, KnowledgeOfficerReport]:
 def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, KnowledgeOfficerReport]:
     """Get or create the Knowledge Officer agent."""
     if model is not None:
-        instructions = assemble_instructions("system", "knowledge_officer")
+        instructions = assemble_instructions("system.knowledge.officer")
         agent: Agent[None, KnowledgeOfficerReport] = Agent(
             model,
             instructions=instructions,

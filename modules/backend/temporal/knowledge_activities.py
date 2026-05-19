@@ -193,6 +193,6 @@ async def run_knowledge_officer() -> dict:
 
     Called daily by KnowledgeOfficerWorkflow.
     """
-    from modules.backend.agents.system.knowledge_officer.agent import run_officer
+    from modules.backend.agents.system.knowledge.officer.agent import run_officer
 
     return await run_officer()
