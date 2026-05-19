@@ -63,6 +63,36 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
     # ── Tools (thin wrappers over MissionLearningService — P7) ──
 
     @agent.tool_plain
+    async def query_knowledge(
+        mission_id: str,
+        query: str,
+        domain_tags: list[str] | None = None,
+        kinds: list[str] | None = None,
+        platform_only: bool = False,
+    ) -> str:
+        """Search the knowledge platform for existing learnings, decisions, and milestones.
+
+        Call this BEFORE create_learning to check whether a finding already
+        exists. If it does, note its UUID and update occurrence_count via
+        the service instead of creating a duplicate.
+
+        Args:
+            mission_id: Scope the search to this mission (+ platform entries).
+            query: Free-text search query matching titles, body, or recommendations.
+            domain_tags: Narrow by domain labels e.g. ["ai", "security"].
+            kinds: Filter by entry kind — "finding", "insight", "decision", "risk".
+            platform_only: Only return platform-promoted cross-mission entries.
+        """
+        from modules.backend.tools.query_knowledge import query_knowledge as _query
+        return await _query(
+            mission_id,
+            query=query,
+            kinds=kinds,
+            domain_tags=domain_tags,
+            platform_only=platform_only,
+        )
+
+    @agent.tool_plain
     async def create_learning(
         mission_id: str,
         title: str,
