@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 _AGENT_NAME = "system.synthesis.agent"
 
 
-def create_agent(model: str | Model | None = None, _tool_names: list[str] | None = None) -> Agent[None, str]:
+def create_agent(model: str | Model | None = None, tool_names: list[str] | None = None) -> Agent[None, str]:
     """Create a synthesis agent, resolving the model from the registry when not supplied."""
     if model is None:
         agent_config = get_registry().get(_AGENT_NAME)

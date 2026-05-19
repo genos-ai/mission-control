@@ -643,7 +643,7 @@ def diagnose(
     # 1. Budget validation failure
     outcome = record.execution_outcome_json or {}
     abort = outcome.get("abort_reason", "")
-    if "budget" in abort.lower():
+    if abort and "budget" in abort.lower():
         findings.append("Budget validation failed — estimated cost exceeded mission budget.")
 
     # 2. Zero tasks executed despite having a plan

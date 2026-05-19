@@ -40,7 +40,7 @@ class KnowledgeOfficerReport(BaseModel):
     )
 
 
-def create_agent(model: Model | None = None, _tool_names: list[str] | None = None) -> Agent[None, KnowledgeOfficerReport]:
+def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, KnowledgeOfficerReport]:
     """Create a Knowledge Officer agent with all tools registered.
 
     Always creates a fresh agent so tools are bound to the returned

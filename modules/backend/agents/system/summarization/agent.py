@@ -51,7 +51,7 @@ class SessionSpanSummary(BaseModel):
     breadcrumbs: str = Field(..., description="IDs, URLs, keys needed for continuity")
 
 
-def create_agent(model: Model | None = None, _tool_names: list[str] | None = None) -> Agent[None, SummarizationOutput]:
+def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, SummarizationOutput]:
     """Create a summarization agent, resolving the model from the registry when not supplied."""
     if model is None:
         agent_config = get_registry().get(_AGENT_NAME)
