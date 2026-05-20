@@ -201,6 +201,8 @@ class DecisionConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_resolver_fields(self) -> "DecisionConfig":
+        if self.resolver == "agent" and not self.model:
+            raise ValueError("model is required for agent resolver (e.g. 'copilot:claude-haiku-4.5')")
         if self.resolver == "agent" and not self.prompt:
             raise ValueError("prompt is required for agent resolver")
         if self.resolver == "rule" and not self.expression:

@@ -709,7 +709,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         ...(nodeType === 'decision' ? {
           decision_config: {
             resolver: 'agent' as const,
-            model: null,
+            model: 'copilot:claude-haiku-4.5',
             prompt: 'Based on the upstream results, decide which path to take.',
             temperature: 0,
             prompt_message: null,

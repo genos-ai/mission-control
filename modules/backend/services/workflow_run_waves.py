@@ -667,7 +667,12 @@ class WorkflowRunWavesMixin:
         """LLM picks an option key."""
         config = step.decision_config
 
-        model_name = config.model or "anthropic:claude-haiku-4-5"
+        if not config.model:
+            raise RuntimeError(
+                f"Decision '{step.id}' agent resolver requires a model. "
+                f"Set decision_config.model in the workflow step definition."
+            )
+        model_name = config.model
 
         from modules.backend.services.condition_evaluator import resolve_template
 
