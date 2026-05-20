@@ -48,6 +48,23 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _extract_run_cost(result: Any, model_name: str | None = None) -> float:
+    """Extract cost from a PydanticAI run result using the project's cost calculator."""
+    try:
+        from modules.backend.agents.mission_control.cost import compute_cost_usd
+
+        usage = result.usage()
+        return compute_cost_usd(
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            model=model_name,
+            cache_read_tokens=getattr(usage, "cache_read_tokens", 0),
+            cache_write_5m_tokens=getattr(usage, "cache_write_tokens", 0),
+        )
+    except Exception:
+        return 0.0
+
+
 @dataclass
 class VirtualExecution:
     """Lightweight stand-in for condition/notification nodes that don't create DB Execution records."""
@@ -584,6 +601,7 @@ class WorkflowRunWavesMixin:
             raise RuntimeError(f"decision_config missing for step '{step.id}'")
 
         valid_keys = {o.key for o in config.options}
+        self._last_decision_cost = 0.0
 
         if config.resolver == "agent":
             chosen = await self._resolve_agent_decision(
@@ -630,7 +648,7 @@ class WorkflowRunWavesMixin:
         )
 
         outputs = {"chosen": chosen, "_branch": chosen}
-        return VirtualExecution(id=step.id), outputs
+        return VirtualExecution(id=step.id, total_cost_usd=self._last_decision_cost), outputs
 
     async def _resolve_agent_decision(
         self,
@@ -663,6 +681,9 @@ class WorkflowRunWavesMixin:
             instructions="You are a routing decision agent. Return only the option key.",
         )
         result = await agent.run(full_prompt)
+
+        # Track cost on the parent decision step's VirtualExecution
+        self._last_decision_cost = _extract_run_cost(result, model_name)
 
         import re
         chosen = re.sub(r"[^a-z0-9_]", "", result.output.strip().lower())
@@ -862,19 +883,21 @@ class WorkflowRunWavesMixin:
             agent = PydanticAgent(model, output_type=str, instructions=system or "")
             result = await agent.run(prompt)
             text = result.output
+            cost = _extract_run_cost(result, config.model)
             success = True
         except Exception as e:
             logger.warning("LLM call step failed", extra={"step_id": step.id, "model": config.model}, exc_info=True)
             text = f"Error: {e}"
+            cost = 0.0
             success = False
 
-        logger.info("LLM call completed", extra={"step_id": step.id, "model": config.model, "success": success})
+        logger.info("LLM call completed", extra={"step_id": step.id, "model": config.model, "success": success, "cost": cost})
         await self._publish_workflow_event(run.mission_id, WorkflowLlmCallCompletedEvent(
             session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
             workflow_run_id=run.id, step_id=step.id, model=config.model, success=success,
         ))
         outputs = {"output": text, "model": config.model}
-        return VirtualExecution(id=step.id), outputs
+        return VirtualExecution(id=step.id, total_cost_usd=cost), outputs
 
     async def _execute_branch_step(
         self,

@@ -172,31 +172,22 @@ STEPS = [
     },
     {
         "id": "summarize",
-        "label": "Write Summary",
-        "description": "Produce a short summary artifact from the chosen path",
-        "node_type": "llm_call",
-        "llm_call_config": {
-            "model": "anthropic:claude-haiku-4-5",
-            "system_prompt": None,
-            "prompt_template": (
-                "You are writing a brief summary report.\n\n"
-                "Topic: {{@context.topic}}\n"
-                "Classification: {{@node.classify.output}}\n"
-                "Analysis:\n{{@node.collect.output}}\n\n"
-                "Write a 2-3 paragraph summary of the findings. "
-                "Start with the topic and which path was chosen (technical or creative), "
-                "then summarize the key points."
-            ),
-            "temperature": 0.3,
-            "max_tokens": 800,
-            "structured_output": None,
-        },
-        "capability": None,
+        "label": "Write Report",
+        "description": (
+            "Synthesize a short report from the analysis. "
+            "Topic: {{@context.topic}}. "
+            "Analysis results: {{@node.collect.output}}"
+        ),
+        "node_type": "agent_step",
+        "capability": "research.synthesizer",
         "roster": "default",
         "complexity_tier": "simple",
-        "cost_ceiling_usd": None,
+        "cost_ceiling_usd": 1.0,
         "environment": "local",
-        "input": {},
+        "input": {
+            "topic": "{{@context.topic}}",
+            "analysis": "{{@node.collect.output}}",
+        },
         "output_mapping": None,
         "depends_on": ["collect"],
         "timeout_seconds": None,
