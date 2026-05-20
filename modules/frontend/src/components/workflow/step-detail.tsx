@@ -92,11 +92,14 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                 className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="">Select an agent…</option>
-                {agents.map((a) => (
-                  <option key={a.agent_name} value={a.agent_name}>
-                    {a.agent_name}
-                  </option>
-                ))}
+                {agents.map((a) => {
+                  const capability = a.agent_name.replace(/\.agent$/, '')
+                  return (
+                    <option key={a.agent_name} value={capability}>
+                      {capability}
+                    </option>
+                  )
+                })}
               </select>
             </Field>
             <Field label="Environment">
@@ -565,14 +568,27 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
             <Field label="Resolver">
               <select
                 value={draft.decision_config.resolver}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const newResolver = e.target.value as 'agent' | 'human' | 'rule'
+                  const cfg = draft.decision_config!
+                  // Each resolver has a required field. Pre-fill with a default so
+                  // the workflow saves immediately after switching without extra steps.
                   update({
                     decision_config: {
-                      ...draft.decision_config!,
-                      resolver: e.target.value as 'agent' | 'human' | 'rule',
+                      ...cfg,
+                      resolver: newResolver,
+                      ...(newResolver === 'agent' && !cfg.prompt
+                        ? { prompt: 'Based on the upstream results, decide which path to take.' }
+                        : {}),
+                      ...(newResolver === 'human' && !cfg.prompt_message
+                        ? { prompt_message: 'Please select an option to continue.' }
+                        : {}),
+                      ...(newResolver === 'rule' && !cfg.expression
+                        ? { expression: '' }
+                        : {}),
                     },
                   })
-                }
+                }}
                 className="w-full rounded border bg-background px-2 py-1.5 text-sm"
               >
                 <option value="agent">Agent (LLM)</option>

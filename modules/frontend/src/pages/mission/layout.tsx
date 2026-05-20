@@ -53,6 +53,7 @@ import { useBackgroundTasks } from '@/hooks/use-executions'
 import { RunModal } from '@/components/mission/run-modal'
 import { MissionSettingsDrawer } from '@/components/workspace/mission-settings-drawer'
 import { MissionStreamContext } from '@/context/mission-stream'
+import { useNotificationStore } from '@/stores/notifications'
 import { ROUTES } from '@/lib/constants'
 import type { MissionStatus } from '@/types'
 
@@ -154,6 +155,7 @@ export default function MissionLayout() {
   const onSseEvent = useWorkspaceStore((s) => s.onSseEvent)
   const resetWorkspace = useWorkspaceStore((s) => s.reset)
   const resetConsole = useConsoleStore((s) => s.reset)
+  const addNotification = useNotificationStore((s) => s.add)
 
   // Tracks how many SSE events have been fanned into stores.
   // Declared here so the mission-change reset below can access it.
@@ -204,6 +206,24 @@ export default function MissionLayout() {
       // single invalidation per batch to avoid storms.
       if (ev.event_type === 'mission.artifact.found' && id) {
         artifactsInvalidated = true
+      }
+      // Notify the user when a workflow step is waiting for their input.
+      // This surfaces even if they navigate away from the workflow editor.
+      if (ev.event_type === 'workflow.human_input.requested' && id) {
+        addNotification({
+          id: String(d.request_id ?? crypto.randomUUID()),
+          type: 'human_input_needed',
+          title: 'Workflow awaiting your input',
+          body: String(d.prompt_message ?? 'A workflow step requires your decision.'),
+          mission_id: id,
+          data: {
+            request_id: d.request_id,
+            step_id: d.step_id,
+            workflow_run_id: d.workflow_run_id,
+          },
+          read: false,
+          created_at: new Date().toISOString(),
+        })
       }
     })
     if (planInvalidated && id) {

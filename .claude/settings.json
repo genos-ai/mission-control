@@ -112,7 +112,8 @@
       "Bash(kill %1)",
       "Bash(python3 -c \":*)",
       "Bash(redis-cli PUBSUB CHANNELS \"*\")",
-      "Bash(MC_AGENT_TRACE=1 MC_LOG_LEVEL=DEBUG python -c \":*)"
+      "Bash(MC_AGENT_TRACE=1 MC_LOG_LEVEL=DEBUG python -c \":*)",
+      "Read(//Users/frontend/development/mission-control/modules/frontend/src/**)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

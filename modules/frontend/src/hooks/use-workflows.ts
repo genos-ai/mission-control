@@ -244,6 +244,18 @@ export function useDeleteSchedule(missionId: string) {
   })
 }
 
+// ---- Human input ----
+
+export function useRespondToHumanInput(missionId: string) {
+  return useMutation({
+    mutationFn: ({ requestId, response }: { requestId: string; response: string }) =>
+      api.post<void>(
+        `/missions/${missionId}/human-input/${requestId}/respond`,
+        { response, responder_id: '' },
+      ),
+  })
+}
+
 // ---- Architect chat ----
 
 export function useArchitectChat(missionId: string) {

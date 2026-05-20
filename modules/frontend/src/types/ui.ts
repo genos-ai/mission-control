@@ -16,7 +16,7 @@ export type DrawerContentType =
 // Notification types
 export interface Notification {
   id: string
-  type: 'gate_approval' | 'run_failed' | 'run_completed' | 'budget_warning'
+  type: 'gate_approval' | 'run_failed' | 'run_completed' | 'budget_warning' | 'human_input_needed'
   title: string
   body: string
   mission_id: string | null

@@ -19,11 +19,22 @@ export interface NodeMetrics {
   duration_seconds?: number
 }
 
+/** A pending human input request from a human_input or decision (human resolver) node. */
+export interface PendingHumanInput {
+  requestId: string
+  stepId: string
+  promptMessage: string
+  choices: string[]        // empty = free-text response
+  timeoutAt: string | null // ISO timestamp, or null if no timeout
+}
+
 export interface WorkflowRunOverlay {
   /** Per-node status keyed by step_id */
   nodeStatuses: Record<string, NodeStatus>
   /** Per-node cost/duration keyed by step_id */
   nodeMetrics: Record<string, NodeMetrics>
+  /** Pending human input requests keyed by step_id */
+  pendingHumanInputs: Record<string, PendingHumanInput>
   /** Is a workflow currently running? */
   isActive: boolean
   /** The active workflow_run_id (if any) */
@@ -57,6 +68,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
   const stream = useMissionStreamContext()
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
   const [nodeMetrics, setNodeMetrics] = useState<Record<string, NodeMetrics>>({})
+  const [pendingHumanInputs, setPendingHumanInputs] = useState<Record<string, PendingHumanInput>>({})
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [progress, setProgress] = useState<[number, number]>([0, 0])
   const processedRef = useRef(0)
@@ -90,6 +102,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
           setProgress([0, Number(d.step_count ?? 0)])
           setNodeStatuses({})
           setNodeMetrics({})
+          setPendingHumanInputs({})
           break
 
         case 'workflow.execution.started':
@@ -142,17 +155,33 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
           setProgress((prev) => [prev[0] + 1, prev[1]])
           break
 
-        case 'workflow.human_input.requested':
-          setNodeStatuses((prev) => ({
+        case 'workflow.human_input.requested': {
+          const stepId = String(d.step_id ?? '')
+          setNodeStatuses((prev) => ({ ...prev, [stepId]: 'awaiting_input' }))
+          setPendingHumanInputs((prev) => ({
             ...prev,
-            [String(d.step_id)]: 'awaiting_input',
+            [stepId]: {
+              requestId: String(d.request_id ?? ''),
+              stepId,
+              promptMessage: String(d.prompt_message ?? ''),
+              choices: Array.isArray(d.choices) ? (d.choices as unknown[]).map(String) : [],
+              timeoutAt: d.timeout_at ? String(d.timeout_at) : null,
+            },
           }))
           break
+        }
 
-        case 'workflow.human_input.responded':
-          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'completed' }))
+        case 'workflow.human_input.responded': {
+          const stepId = String(d.step_id ?? '')
+          setNodeStatuses((prev) => ({ ...prev, [stepId]: 'completed' }))
+          setPendingHumanInputs((prev) => {
+            const next = { ...prev }
+            delete next[stepId]
+            return next
+          })
           setProgress((prev) => [prev[0] + 1, prev[1]])
           break
+        }
 
         case 'workflow.run.completed':
         case 'workflow.run.failed':
@@ -165,6 +194,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
   const reset = useCallback(() => {
     setNodeStatuses({})
     setNodeMetrics({})
+    setPendingHumanInputs({})
     setActiveRunId(null)
     setProgress([0, 0])
     processedRef.current = stream?.events.length ?? 0
@@ -172,5 +202,5 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
 
   const isActive = activeRunId !== null
 
-  return { nodeStatuses, nodeMetrics, isActive, activeRunId, progress, reset }
+  return { nodeStatuses, nodeMetrics, pendingHumanInputs, isActive, activeRunId, progress, reset }
 }
