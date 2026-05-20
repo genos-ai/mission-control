@@ -506,12 +506,20 @@ class WorkflowRunWavesMixin:
             status_str = "completed" if success else "failed"
             total_cost = outcome.total_cost_usd
         except Exception as e:
+            import traceback
+            tb_str = traceback.format_exception(e)
             logger.error(
                 "Step execution failed",
-                extra={"run_id": run.id, "step_id": step.id, "error": str(e)},
+                extra={
+                    "run_id": run.id,
+                    "step_id": step.id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "traceback": "".join(tb_str)[-500:],
+                },
             )
             raise RuntimeError(
-                f"Step '{step.id}' execution failed: {e}"
+                f"Step '{step.id}' execution failed: {type(e).__name__}: {e}"
             ) from e
 
         # 3. Extract outputs from the outcome
