@@ -151,12 +151,68 @@ STEPS = [
         "termination": "completion",
         "max_iterations": None,
     },
+    {
+        "id": "collect",
+        "label": "Collect Results",
+        "description": "Merge parallel branches",
+        "node_type": "merge",
+        "merge_config": {"strategy": "wait_all"},
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["technical-path", "creative-path"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
+        "id": "summarize",
+        "label": "Write Summary",
+        "description": "Produce a short summary artifact from the chosen path",
+        "node_type": "llm_call",
+        "llm_call_config": {
+            "model": "anthropic:claude-haiku-4-5",
+            "system_prompt": None,
+            "prompt_template": (
+                "You are writing a brief summary report.\n\n"
+                "Topic: {{@context.topic}}\n"
+                "Classification: {{@node.classify.output}}\n"
+                "Analysis:\n{{@node.collect.output}}\n\n"
+                "Write a 2-3 paragraph summary of the findings. "
+                "Start with the topic and which path was chosen (technical or creative), "
+                "then summarize the key points."
+            ),
+            "temperature": 0.3,
+            "max_tokens": 800,
+            "structured_output": None,
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["collect"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
 ]
 
 EDGES = [
     {"id": "classify->route", "source": "classify", "target": "route"},
     {"id": "route->technical-path", "source": "route", "target": "technical-path", "label": "technical", "source_handle": "technical"},
     {"id": "route->creative-path", "source": "route", "target": "creative-path", "label": "creative", "source_handle": "creative"},
+    {"id": "technical-path->collect", "source": "technical-path", "target": "collect"},
+    {"id": "creative-path->collect", "source": "creative-path", "target": "collect"},
+    {"id": "collect->summarize", "source": "collect", "target": "summarize"},
 ]
 
 OBJECTIVE = {
@@ -175,10 +231,11 @@ async def main():
     parser.add_argument("--mission", required=True, help="Mission name or ID")
     parser.add_argument("--topic", default="quantum computing", help="Topic to classify and route")
     parser.add_argument("--create-only", action="store_true", help="Create workflow but don't run it")
-    parser.add_argument("--resolver", default="agent", choices=["agent", "rule"], help="Resolver type to test")
+    parser.add_argument("--resolver", default="agent", choices=["agent", "rule", "human"], help="Resolver type to test")
+    parser.add_argument("--timeout", type=float, default=0.01, help="Timeout in hours for human resolver (default: 0.01 = 36s)")
     args = parser.parse_args()
 
-    # If testing rule resolver, swap the decision config
+    # Swap the decision config based on resolver type
     steps = [dict(s) for s in STEPS]
     if args.resolver == "rule":
         for step in steps:
@@ -198,10 +255,34 @@ async def main():
                         {"key": "creative", "label": "Topic is creative"},
                     ],
                 }
-                print(f"Using RULE resolver (expression: @node.classify.output)")
+                print("Using RULE resolver (expression: @node.classify.output)")
+                break
+    elif args.resolver == "human":
+        for step in steps:
+            if step["id"] == "route":
+                step["decision_config"] = {
+                    "resolver": "human",
+                    "prompt_message": (
+                        "The topic '{{@context.topic}}' was classified as: {{@node.classify.output}}\n\n"
+                        "Which path should we take?"
+                    ),
+                    "channel": "chat",
+                    "timeout_hours": args.timeout,
+                    "default_option": "technical",
+                    "model": None,
+                    "prompt": None,
+                    "temperature": 0.0,
+                    "expression": None,
+                    "options": [
+                        {"key": "technical", "label": "Topic is technical — run structured analysis"},
+                        {"key": "creative", "label": "Topic is creative — run brainstorm session"},
+                    ],
+                }
+                print(f"Using HUMAN resolver (timeout: {args.timeout}h, default: technical)")
+                print("  Requires Temporal to be running (HumanInputWorkflow)")
                 break
     else:
-        print(f"Using AGENT resolver (LLM picks path)")
+        print("Using AGENT resolver (LLM picks path)")
 
     from modules.backend.core.database import get_async_session
     from modules.backend.repositories.mission import MissionRepository

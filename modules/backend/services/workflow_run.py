@@ -277,7 +277,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         await self._session.commit()
 
         # Persist workflow steps as a TaskPlan for Kanban board visibility
-        await self._persist_workflow_as_plan(mission_id, workflow)
+        step_task_map = await self._persist_workflow_as_plan(mission_id, workflow)
 
         logger.info(
             "DB workflow run started",
@@ -294,6 +294,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             await self._execute_steps(
                 run, workflow, session.id, on_progress, gate=gate,
                 edges=defn.edges_json if hasattr(defn, "edges_json") else None,
+                step_task_map=step_task_map,
             )
             run.status = WorkflowRunState.COMPLETED
             run.completed_at = utc_now()
@@ -429,12 +430,15 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         self,
         mission_id: str,
         workflow: WorkflowSchema,
-    ) -> None:
+    ) -> dict[str, str]:
         """Convert workflow steps to a TaskPlan and persist for Kanban visibility.
 
         Creates Task rows and auto-approves all tasks since
         workflow dispatch is pre-approved. Best-effort — failure logs
         a warning but does not block workflow execution.
+
+        Returns a step_id → task_uuid mapping for Kanban state sync.
+        Empty dict on failure.
         """
         try:
             from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
@@ -500,6 +504,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                     "task_count": len(tasks),
                 },
             )
+            return step_uuid_map
         except Exception:
             logger.warning(
                 "Failed to persist workflow plan for Kanban (non-fatal)",
@@ -510,6 +515,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 await self._session.rollback()
             except Exception:
                 pass
+            return {}
 
     async def _fail_remaining_plan_tasks(
         self,

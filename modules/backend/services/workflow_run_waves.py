@@ -122,11 +122,16 @@ class WorkflowRunWavesMixin:
         *,
         failure_reason: str | None = None,
         cost_map: dict[str, float] | None = None,
+        step_task_map: dict[str, str] | None = None,
     ) -> None:
         """Batch update Task statuses for Kanban board visibility.
 
         Uses a separate DB session to avoid interfering with the main
         workflow session. Best-effort — failures are logged, not raised.
+
+        Args:
+            step_task_map: Maps workflow step_id → Task UUID. Created by
+                _persist_workflow_as_plan when tasks get real UUIDs.
         """
         if not plan_id or not mission_id or not step_updates:
             return
@@ -136,11 +141,13 @@ class WorkflowRunWavesMixin:
             from modules.backend.events.types import MissionPlanTaskStatusChangedEvent
             from modules.backend.repositories.task import TaskRepository
 
+            _map = step_task_map or {}
+
             async with get_async_session() as db:
                 task_repo = TaskRepository(db)
                 for step_id, to_status in step_updates:
-                    # Workflow tasks use their step_id as the task UUID
-                    task = await task_repo.get_by_id_or_none(step_id)
+                    task_id = _map.get(step_id, step_id)
+                    task = await task_repo.get_by_id_or_none(task_id)
                     if not task:
                         continue
 
@@ -180,6 +187,7 @@ class WorkflowRunWavesMixin:
         on_progress: Any | None = None,
         gate: object | None = None,
         edges: list[dict] | None = None,
+        step_task_map: dict[str, str] | None = None,
     ) -> None:
         """Execute steps in topological wave order.
 
@@ -195,6 +203,7 @@ class WorkflowRunWavesMixin:
 
         # Resolve plan_id for Kanban task state updates (best-effort)
         _plan_id = await self._resolve_workflow_plan_id(run.mission_id)
+        _step_task_map = step_task_map or {}
 
         # Build edge map: (source, target) → label (for condition routing)
         edges_map: dict[tuple[str, str], str | None] = {}
@@ -280,6 +289,7 @@ class WorkflowRunWavesMixin:
                 if _state_updates:
                     await self._sync_plan_task_states(
                         _plan_id, run.mission_id, _state_updates, session_id,
+                        step_task_map=_step_task_map,
                     )
 
             # Execute all steps in this wave concurrently
@@ -323,6 +333,7 @@ class WorkflowRunWavesMixin:
                 await self._sync_plan_task_states(
                     _plan_id, run.mission_id, _completions, session_id,
                     cost_map=_cost_map,
+                    step_task_map=_step_task_map,
                 )
 
     async def _execute_wave(

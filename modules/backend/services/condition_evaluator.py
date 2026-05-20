@@ -288,9 +288,16 @@ def _resolve_ref(path: str, completed_outcomes: dict[str, dict], workflow_contex
         step_id = parts[1]
         field_path = parts[2:]
         data = completed_outcomes.get(step_id, {})
-        # Walk nested output — first check under "output" key (executor contract)
+        # Walk nested output — first check under "output" key (executor contract).
+        # If the data has an "output" key, auto-unwrap it. When the caller
+        # also asks for ".output" in field_path (e.g. @node.X.output), skip
+        # that segment since the auto-unwrap already consumed it.
+        auto_unwrapped = "output" in data
         output = data.get("output", data)
-        for key in field_path:
+        walk_path = field_path
+        if auto_unwrapped and walk_path and walk_path[0] == "output":
+            walk_path = walk_path[1:]
+        for key in walk_path:
             if isinstance(output, dict):
                 output = output.get(key)
             else:
