@@ -441,16 +441,21 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             from modules.backend.services.mission_plan import MissionPlanService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
+            import uuid as _uuid
+
+            # Map step IDs to UUIDs so Task rows get valid PKs
+            step_uuid_map = {step.id: str(_uuid.uuid4()) for step in workflow.steps}
+
             tasks = []
             for step in workflow.steps:
-                task_id = f"wf-{step.id}"
+                task_id = step_uuid_map[step.id]
                 agent = step.capability or f"workflow:{step.node_type}"
                 tasks.append(TaskDefinition(
                     task_id=task_id,
                     agent=agent,
                     description=step.description or step.label or step.id,
                     instructions=step.description or f"Workflow step: {step.id}",
-                    dependencies=[f"wf-{d}" for d in step.depends_on],
+                    dependencies=[step_uuid_map[d] for d in step.depends_on if d in step_uuid_map],
                     inputs=TaskInputs(static=step.input or {}),
                 ))
 
