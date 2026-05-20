@@ -1218,7 +1218,7 @@ class WorkflowRunWavesMixin:
                         return True
                 continue
 
-            # Dependency is a condition node — check the branch
+            # Dependency is a condition or decision node — check the branch
             dep_outcome = completed_outcomes.get(dep_id, {})
             if dep_outcome.get("_skipped") and not is_merge:
                 return True
