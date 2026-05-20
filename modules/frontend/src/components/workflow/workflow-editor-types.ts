@@ -151,6 +151,10 @@ export const NODE_TYPE_STYLES = {
     border: 'border-indigo-500/60',
     bg: 'bg-indigo-500/5',
   },
+  decision: {
+    border: 'border-purple-500/60',
+    bg: 'bg-purple-500/5',
+  },
 } as const
 
 // ── Layout ────────────────────────────────────────────────────────────────

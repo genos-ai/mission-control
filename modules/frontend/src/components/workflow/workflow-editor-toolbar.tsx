@@ -17,6 +17,7 @@ import {
   Loader2,
   Sparkles,
   UserRound,
+  Signpost,
   Wand2,
   Wrench,
 } from 'lucide-react'
@@ -128,6 +129,10 @@ export function WorkflowEditorToolbar({
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Add sub-workflow"
           onClick={() => onAddNode('sub_workflow')}>
           <Layers className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7" title="Decision"
+          onClick={() => onAddNode('decision')}>
+          <Signpost className="h-3.5 w-3.5" />
         </Button>
       </div>
 

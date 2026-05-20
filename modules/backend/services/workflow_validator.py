@@ -38,6 +38,7 @@ def validate_workflow_graph(
     errors += _check_cycles(step_ids, edges)
     errors += _check_orphan_nodes(step_ids, edges)
     errors += _check_condition_outputs(step_types, edges)
+    errors += _check_decision_edges(steps, edges)
     errors += _check_branch_outputs(step_types, edges)
     errors += _check_merge_inputs(step_types, edges)
     if current_workflow_id:
@@ -151,6 +152,44 @@ def _check_condition_outputs(
             errors.append(f"Condition '{sid}' has no outgoing edges (needs yes/no branches)")
         elif len(handles) == 1:
             errors.append(f"Condition '{sid}' has only 1 outgoing edge (needs both yes and no branches)")
+    return errors
+
+
+def _check_decision_edges(
+    steps: list[dict], edges: list[dict],
+) -> list[str]:
+    """Decision nodes: outgoing edges must have labels covering all options."""
+    errors = []
+    decision_ids = {
+        s["id"] for s in steps if s.get("node_type") == "decision"
+    }
+    if not decision_ids:
+        return []
+
+    # Every outgoing edge from a decision node must have a label
+    for e in edges:
+        if e.get("source") in decision_ids and not e.get("label"):
+            errors.append(
+                f"Edge from decision '{e['source']}' to '{e.get('target', '?')}' "
+                f"must have a label matching an option key"
+            )
+
+    # Every option key must appear as a label on at least one outgoing edge
+    for s in steps:
+        if s.get("node_type") != "decision":
+            continue
+        config = s.get("decision_config") or {}
+        option_keys = {o["key"] for o in config.get("options", [])}
+        outgoing_labels = {
+            e.get("label") for e in edges
+            if e.get("source") == s["id"] and e.get("label")
+        }
+        missing = option_keys - outgoing_labels
+        if missing:
+            errors.append(
+                f"Decision '{s['id']}': options {sorted(missing)} "
+                f"have no matching outgoing edge labels"
+            )
     return errors
 
 

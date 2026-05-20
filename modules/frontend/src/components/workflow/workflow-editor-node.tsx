@@ -6,7 +6,7 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
+import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Signpost, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
 import type { WorkflowStep } from '@/types'
 import type { NodeStatus, NodeMetrics } from '@/hooks/use-workflow-run-status'
 import { NODE_WIDTH, getDomainBorder, getDomainBg, NODE_TYPE_STYLES } from './workflow-editor-types'
@@ -519,3 +519,44 @@ export const LlmCallNode = memo(LlmCallNodeRaw)
 export const BranchNode = memo(BranchNodeRaw)
 export const MergeNode = memo(MergeNodeRaw)
 export const SubWorkflowNode = memo(SubWorkflowNodeRaw)
+
+// ── Decision Node ────────────────────────────────────────────────────────
+
+function DecisionNodeRaw({ data, selected }: NodeProps) {
+  const { step, status, metrics } = data as StepNodeData
+  const config = step.decision_config
+  const style = NODE_TYPE_STYLES.decision
+  const ring = selected ? selectedRing : STATUS_RING[status ?? 'idle']
+
+  return (
+    <div
+      className={`relative rounded-lg border-2 px-3 py-2 shadow-sm ${style.border} ${style.bg} ${ring}`}
+      style={{ width: NODE_WIDTH }}
+    >
+      <TargetHandle />
+      {config?.options?.map((opt: { key: string; label: string }, i: number) => (
+        <Handle
+          key={opt.key}
+          type="source"
+          id={opt.key}
+          position={Position.Right}
+          style={{ top: `${((i + 1) / ((config?.options?.length ?? 1) + 1)) * 100}%` }}
+          className="!h-3 !w-3 !rounded-full !border-2 !border-background !bg-purple-400"
+        />
+      ))}
+      <div className="flex items-center gap-1.5">
+        <Signpost className="h-4 w-4 text-purple-400" />
+        <span className="truncate text-xs font-medium">{step.label || step.id}</span>
+        {status && status !== 'idle' && <StatusIcon status={status} />}
+      </div>
+      {config && (
+        <div className="mt-1 text-[10px] text-muted-foreground">
+          {config.resolver} · {config.options?.length ?? 0} options
+        </div>
+      )}
+      <MetricsBadge metrics={metrics} />
+    </div>
+  )
+}
+
+export const DecisionNode = memo(DecisionNodeRaw)

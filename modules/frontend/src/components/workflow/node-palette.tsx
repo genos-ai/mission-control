@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers } from 'lucide-react'
+import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Signpost } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface NodePaletteEntry {
@@ -25,6 +25,7 @@ const ENTRIES: NodePaletteEntry[] = [
   { type: 'branch', label: 'Fork', description: 'Split into parallel paths', icon: Split, color: 'text-zinc-400' },
   { type: 'merge', label: 'Join', description: 'Sync barrier for parallel paths', icon: Merge, color: 'text-zinc-400' },
   { type: 'sub_workflow', label: 'Sub-Workflow', description: 'Invoke another saved workflow', icon: Layers, color: 'text-indigo-400' },
+  { type: 'decision', label: 'Decision', description: 'Route to different paths (agent, human, or rule)', icon: Signpost, color: 'text-purple-400' },
 ]
 
 interface NodePaletteProps {

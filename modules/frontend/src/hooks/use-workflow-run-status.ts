@@ -46,6 +46,7 @@ const WORKFLOW_EVENT_TYPES = new Set([
   'workflow.branch.passed',
   'workflow.merge.completed',
   'workflow.sub_workflow.completed',
+  'workflow.decision.resolved',
   'workflow.human_input.requested',
   'workflow.human_input.responded',
   'workflow.run.completed',
@@ -110,6 +111,7 @@ export function useWorkflowRunStatus(): WorkflowRunOverlay {
           break
 
         case 'workflow.condition.evaluated':
+        case 'workflow.decision.resolved':
           setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'completed' }))
           setProgress((prev) => [prev[0] + 1, prev[1]])
           break

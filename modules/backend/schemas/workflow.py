@@ -160,6 +160,58 @@ class BranchConfig(BaseModel):
     strategy: str = Field(default="all", pattern=r"^(all|conditional)$")
 
 
+class DecisionOption(BaseModel):
+    """A single option the resolver can choose."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="Unique option key used as edge label for routing",
+    )
+    label: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Human-readable description of when to pick this option",
+    )
+
+
+class DecisionConfig(BaseModel):
+    """Configuration for a decision node — N-way routing with resolver."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resolver: str = Field(
+        ...,
+        pattern=r"^(agent|human|rule)$",
+    )
+    model: str | None = Field(None, max_length=100)
+    prompt: str | None = Field(None, max_length=5000)
+    temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    prompt_message: str | None = Field(None, max_length=2000)
+    channel: str | None = Field(None, pattern=r"^(telegram|sse|chat)$")
+    timeout_hours: float | None = Field(None, ge=0.1, le=720)
+    default_option: str | None = Field(None, max_length=50)
+    expression: str | None = Field(None, max_length=500)
+    options: list[DecisionOption] = Field(..., min_length=2)
+
+    @model_validator(mode="after")
+    def _validate_resolver_fields(self) -> "DecisionConfig":
+        if self.resolver == "agent" and not self.prompt:
+            raise ValueError("prompt is required for agent resolver")
+        if self.resolver == "rule" and not self.expression:
+            raise ValueError("expression is required for rule resolver")
+        if self.resolver == "human" and not self.prompt_message:
+            raise ValueError("prompt_message is required for human resolver")
+        if self.default_option and self.default_option not in {o.key for o in self.options}:
+            raise ValueError(f"default_option '{self.default_option}' not in options")
+        return self
+
+
 class RetryPolicy(BaseModel):
     """Retry policy for a workflow step."""
 
@@ -202,7 +254,7 @@ class WorkflowStepSchema(BaseModel):
     description: str | None = Field(None, max_length=500)
     node_type: str = Field(
         default="agent_step",
-        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call|branch|merge|sub_workflow)$",
+        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call|branch|merge|sub_workflow|decision)$",
     )
     capability: str | None = Field(
         None,
@@ -217,6 +269,7 @@ class WorkflowStepSchema(BaseModel):
     sub_workflow_config: SubWorkflowConfig | None = None
     agent_step_config: AgentStepConfig | None = None
     branch_config: BranchConfig | None = None
+    decision_config: DecisionConfig | None = None
     retry_policy: RetryPolicy | None = None
     roster: str = Field(
         default="default",
@@ -291,6 +344,8 @@ class WorkflowStepSchema(BaseModel):
             raise ValueError("llm_call_config is required for llm_call nodes")
         if self.node_type == "sub_workflow" and self.sub_workflow_config is None:
             raise ValueError("sub_workflow_config is required for sub_workflow nodes")
+        if self.node_type == "decision" and self.decision_config is None:
+            raise ValueError("decision_config is required for decision nodes")
         return self
 
 

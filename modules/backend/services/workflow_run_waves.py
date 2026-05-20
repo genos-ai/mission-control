@@ -381,6 +381,8 @@ class WorkflowRunWavesMixin:
             return await self._execute_branch_step(run, step, completed_outcomes)
         if node_type == "merge":
             return await self._execute_merge_step(run, step, completed_outcomes)
+        if node_type == "decision":
+            return await self._execute_decision_step(run, step, completed_outcomes)
         if node_type == "sub_workflow":
             return await self._execute_sub_workflow_step(run, step, session_id, completed_outcomes, ctx)
 
@@ -552,6 +554,179 @@ class WorkflowRunWavesMixin:
             expression=expression, result=result, branch=branch,
         ))
         return VirtualExecution(id=step.id), outputs
+
+    async def _execute_decision_step(
+        self,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+    ) -> tuple[VirtualExecution, dict]:
+        """Resolve a decision and return the chosen option as _branch.
+
+        Follows the same signature pattern as _execute_condition_step
+        (lightweight routing — no session_id needed, extracted from run).
+        """
+        from modules.backend.events.types import WorkflowDecisionResolvedEvent
+
+        config = step.decision_config
+        if not config:
+            raise RuntimeError(f"decision_config missing for step '{step.id}'")
+
+        valid_keys = {o.key for o in config.options}
+
+        if config.resolver == "agent":
+            chosen = await self._resolve_agent_decision(
+                step, completed_outcomes, run.context or {},
+            )
+        elif config.resolver == "human":
+            chosen = await self._resolve_human_decision(
+                run, step, completed_outcomes,
+            )
+        elif config.resolver == "rule":
+            chosen = await self._resolve_rule_decision(
+                step, completed_outcomes, run.context or {},
+            )
+        else:
+            raise RuntimeError(f"Unknown resolver '{config.resolver}' in step '{step.id}'")
+
+        if chosen not in valid_keys:
+            raise RuntimeError(
+                f"Decision '{step.id}' resolver returned '{chosen}' "
+                f"which is not in options: {sorted(valid_keys)}"
+            )
+
+        logger.info(
+            "Decision resolved",
+            extra={
+                "step_id": step.id,
+                "run_id": run.id,
+                "resolver": config.resolver,
+                "chosen": chosen,
+            },
+        )
+
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowDecisionResolvedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                resolver=config.resolver,
+                chosen_option=chosen,
+                options=[o.key for o in config.options],
+            ),
+        )
+
+        outputs = {"chosen": chosen, "_branch": chosen}
+        return VirtualExecution(id=step.id), outputs
+
+    async def _resolve_agent_decision(
+        self,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+        workflow_context: dict,
+    ) -> str:
+        """LLM picks an option key."""
+        config = step.decision_config
+
+        model_name = config.model or "anthropic:claude-haiku-4-5"
+
+        from modules.backend.services.condition_evaluator import resolve_template
+
+        prompt = resolve_template(config.prompt, completed_outcomes, workflow_context)
+        options_desc = "\n".join(f"- {o.key}: {o.label}" for o in config.options)
+
+        full_prompt = (
+            f"{prompt}\n\n"
+            f"Available options:\n{options_desc}\n\n"
+            f"Respond with ONLY the option key. No explanation."
+        )
+
+        from modules.backend.core.model_builder import _build_model
+        from pydantic_ai import Agent as PydanticAgent
+
+        model = _build_model(model_name)
+        agent = PydanticAgent(
+            model, output_type=str,
+            instructions="You are a routing decision agent. Return only the option key.",
+        )
+        result = await agent.run(full_prompt)
+
+        import re
+        chosen = re.sub(r"[^a-z0-9_]", "", result.output.strip().lower())
+        return chosen
+
+    async def _resolve_human_decision(
+        self,
+        run: WorkflowRun,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+    ) -> str:
+        """Present options to human and wait for selection.
+
+        Reuses _execute_human_input_step by constructing a temporary
+        human_input-shaped step. Template resolution of prompt_message
+        happens inside _execute_human_input_step — do NOT resolve here
+        or the template gets resolved twice.
+        """
+        config = step.decision_config
+        choices = [o.key for o in config.options]
+
+        from modules.backend.schemas.workflow import HumanInputConfig, WorkflowStepSchema as StepSchema
+
+        hi_config = HumanInputConfig(
+            prompt_message=config.prompt_message,
+            channel=config.channel or "chat",
+            timeout_hours=config.timeout_hours,
+            default_response=config.default_option,
+            choices=choices,
+        )
+
+        temp_step = StepSchema(
+            id=step.id,
+            node_type="human_input",
+            human_input_config=hi_config,
+            depends_on=step.depends_on,
+        )
+
+        _, outputs = await self._execute_human_input_step(
+            run, temp_step, completed_outcomes,
+        )
+
+        response = outputs.get("response", "")
+        if response in {o.key for o in config.options}:
+            return response
+        if outputs.get("timed_out") and config.default_option:
+            return config.default_option
+
+        raise RuntimeError(
+            f"Decision '{step.id}' human response '{response}' "
+            f"does not match any option key"
+        )
+
+    async def _resolve_rule_decision(
+        self,
+        step: WorkflowStepSchema,
+        completed_outcomes: dict[str, dict],
+        workflow_context: dict,
+    ) -> str:
+        """Evaluate expression to get option key."""
+        config = step.decision_config
+
+        from modules.backend.services.condition_evaluator import (
+            ConditionEvaluationError,
+            evaluate_expression,
+        )
+
+        try:
+            return evaluate_expression(
+                config.expression, completed_outcomes, workflow_context,
+            )
+        except ConditionEvaluationError as e:
+            raise RuntimeError(
+                f"Decision '{step.id}' rule evaluation failed: {e}"
+            ) from e
 
     async def _execute_notification_step(
         self,
@@ -1035,7 +1210,7 @@ class WorkflowRunWavesMixin:
             if dep is None:
                 continue
             dep_type = getattr(dep, "node_type", "agent_step")
-            if dep_type != "condition":
+            if dep_type not in ("condition", "decision"):
                 # Propagate skips — unless this step is a merge node
                 if not is_merge:
                     dep_outcome = completed_outcomes.get(dep_id, {})

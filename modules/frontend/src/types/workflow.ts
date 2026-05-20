@@ -20,7 +20,7 @@ export interface WorkflowStep {
   id: string
   label?: string | null
   description: string | null
-  node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input' | 'tool_call' | 'llm_call' | 'branch' | 'merge' | 'sub_workflow'
+  node_type?: 'agent_step' | 'condition' | 'notification' | 'human_input' | 'tool_call' | 'llm_call' | 'branch' | 'merge' | 'sub_workflow' | 'decision'
   capability: string | null
   condition_config?: {
     expression: string
@@ -59,6 +59,18 @@ export interface WorkflowStep {
     workflow_name: string
     pass_context: boolean
     max_depth: number
+  } | null
+  decision_config?: {
+    resolver: 'agent' | 'human' | 'rule'
+    model: string | null
+    prompt: string | null
+    temperature: number
+    prompt_message: string | null
+    channel: string | null
+    timeout_hours: number | null
+    default_option: string | null
+    expression: string | null
+    options: { key: string; label: string }[]
   } | null
   roster: string
   complexity_tier: string

@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Trash2, ExternalLink } from 'lucide-react'
+import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Signpost, Trash2, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,6 +51,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
     : nodeType === 'branch' ? Split
     : nodeType === 'merge' ? Merge
     : nodeType === 'sub_workflow' ? Layers
+    : nodeType === 'decision' ? Signpost
     : Bot
 
   return (
@@ -556,6 +557,191 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                 }
               />
             </Field>
+          </>
+        )}
+        {/* ── Decision Config ── */}
+        {nodeType === 'decision' && draft.decision_config && (
+          <>
+            <Field label="Resolver">
+              <select
+                value={draft.decision_config.resolver}
+                onChange={(e) =>
+                  update({
+                    decision_config: {
+                      ...draft.decision_config!,
+                      resolver: e.target.value as 'agent' | 'human' | 'rule',
+                    },
+                  })
+                }
+                className="w-full rounded border bg-background px-2 py-1.5 text-sm"
+              >
+                <option value="agent">Agent (LLM)</option>
+                <option value="human">Human</option>
+                <option value="rule">Rule</option>
+              </select>
+            </Field>
+
+            <Field label="Options">
+              <div className="space-y-1.5">
+                {(draft.decision_config.options ?? []).map((opt, i) => (
+                  <div key={i} className="flex gap-1">
+                    <Input
+                      placeholder="key"
+                      value={opt.key}
+                      onChange={(e) => {
+                        const opts = [...(draft.decision_config?.options ?? [])]
+                        opts[i] = { ...opts[i], key: e.target.value }
+                        update({ decision_config: { ...draft.decision_config!, options: opts } })
+                      }}
+                      className="w-1/3 text-xs"
+                    />
+                    <Input
+                      placeholder="description"
+                      value={opt.label}
+                      onChange={(e) => {
+                        const opts = [...(draft.decision_config?.options ?? [])]
+                        opts[i] = { ...opts[i], label: e.target.value }
+                        update({ decision_config: { ...draft.decision_config!, options: opts } })
+                      }}
+                      className="text-xs"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => {
+                        const opts = (draft.decision_config?.options ?? []).filter((_, j) => j !== i)
+                        update({ decision_config: { ...draft.decision_config!, options: opts } })
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => {
+                    const opts = [...(draft.decision_config?.options ?? []), { key: '', label: '' }]
+                    update({ decision_config: { ...draft.decision_config!, options: opts } })
+                  }}
+                >
+                  + Add option
+                </Button>
+              </div>
+            </Field>
+
+            {draft.decision_config.resolver === 'agent' && (
+              <>
+                <Field label="Model">
+                  <Input
+                    value={draft.decision_config.model ?? 'anthropic:claude-haiku-4-5'}
+                    onChange={(e) =>
+                      update({
+                        decision_config: { ...draft.decision_config!, model: e.target.value },
+                      })
+                    }
+                    className="text-xs"
+                  />
+                </Field>
+                <Field label="Prompt">
+                  <VariableAutocomplete
+                    value={draft.decision_config.prompt ?? ''}
+                    onChange={(v) =>
+                      update({
+                        decision_config: { ...draft.decision_config!, prompt: v },
+                      })
+                    }
+                    upstreamNodeIds={upstreamNodeIds}
+                    templateMode
+                  />
+                </Field>
+              </>
+            )}
+
+            {draft.decision_config.resolver === 'human' && (
+              <>
+                <Field label="Prompt message">
+                  <VariableAutocomplete
+                    value={draft.decision_config.prompt_message ?? ''}
+                    onChange={(v) =>
+                      update({
+                        decision_config: { ...draft.decision_config!, prompt_message: v },
+                      })
+                    }
+                    upstreamNodeIds={upstreamNodeIds}
+                    templateMode
+                  />
+                </Field>
+                <Field label="Channel">
+                  <select
+                    value={draft.decision_config.channel ?? 'chat'}
+                    onChange={(e) =>
+                      update({
+                        decision_config: { ...draft.decision_config!, channel: e.target.value },
+                      })
+                    }
+                    className="w-full rounded border bg-background px-2 py-1.5 text-sm"
+                  >
+                    <option value="chat">Chat</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="sse">SSE</option>
+                  </select>
+                </Field>
+                <Field label="Timeout (hours)">
+                  <Input
+                    type="number"
+                    value={draft.decision_config.timeout_hours ?? ''}
+                    onChange={(e) =>
+                      update({
+                        decision_config: {
+                          ...draft.decision_config!,
+                          timeout_hours: parseFloat(e.target.value) || null,
+                        },
+                      })
+                    }
+                    className="text-xs"
+                  />
+                </Field>
+                <Field label="Default option (on timeout)">
+                  <select
+                    value={draft.decision_config.default_option ?? ''}
+                    onChange={(e) =>
+                      update({
+                        decision_config: {
+                          ...draft.decision_config!,
+                          default_option: e.target.value || null,
+                        },
+                      })
+                    }
+                    className="w-full rounded border bg-background px-2 py-1.5 text-sm"
+                  >
+                    <option value="">None</option>
+                    {(draft.decision_config.options ?? []).map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.key}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </>
+            )}
+
+            {draft.decision_config.resolver === 'rule' && (
+              <Field label="Expression">
+                <VariableAutocomplete
+                  value={draft.decision_config.expression ?? ''}
+                  onChange={(v) =>
+                    update({
+                      decision_config: { ...draft.decision_config!, expression: v },
+                    })
+                  }
+                  upstreamNodeIds={upstreamNodeIds}
+                  templateMode
+                />
+              </Field>
+            )}
           </>
         )}
       </div>

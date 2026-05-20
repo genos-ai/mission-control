@@ -330,6 +330,17 @@ class WorkflowSubWorkflowCompletedEvent(SessionEvent):
     child_cost_usd: float
 
 
+class WorkflowDecisionResolvedEvent(SessionEvent):
+    """Emitted when a decision node resolves its routing choice."""
+
+    event_type: str = "workflow.decision.resolved"
+    workflow_run_id: str
+    step_id: str
+    resolver: str
+    chosen_option: str
+    options: list[str]
+
+
 class WorkflowStepSkippedEvent(SessionEvent):
     event_type: str = "workflow.step.skipped"
     workflow_run_id: str
@@ -812,6 +823,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "workflow.branch.passed": WorkflowBranchPassedEvent,
     "workflow.merge.completed": WorkflowMergeCompletedEvent,
     "workflow.sub_workflow.completed": WorkflowSubWorkflowCompletedEvent,
+    "workflow.decision.resolved": WorkflowDecisionResolvedEvent,
     "workflow.step.skipped": WorkflowStepSkippedEvent,
     "workflow.human_input.requested": WorkflowHumanInputRequestedEvent,
     "workflow.human_input.responded": WorkflowHumanInputRespondedEvent,

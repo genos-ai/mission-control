@@ -391,6 +391,24 @@ def evaluate_condition(
     return bool(result)
 
 
+def evaluate_expression(
+    expression: str,
+    completed_outcomes: dict[str, dict],
+    workflow_context: dict | None = None,
+) -> str:
+    """Evaluate an expression and return its string result.
+
+    Unlike evaluate_condition() which coerces to bool, this returns the
+    raw expression result as a string. Used by decision node rule resolver.
+
+    Raises ConditionEvaluationError on failure.
+    """
+    tokens = tokenize(expression)
+    ast = _Parser(tokens).parse()
+    result = _eval(ast, completed_outcomes, workflow_context or {})
+    return str(result).strip()
+
+
 def resolve_template(
     template: str,
     completed_outcomes: dict[str, dict],

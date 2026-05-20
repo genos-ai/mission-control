@@ -26,7 +26,7 @@ import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { useWorkflowRuns } from '@/hooks/use-workflows'
 import { StepDetail } from './step-detail'
 import { WorkflowRunHistory } from './workflow-run-history'
-import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode, BranchNode, MergeNode, SubWorkflowNode } from './workflow-editor-node'
+import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode, BranchNode, MergeNode, SubWorkflowNode, DecisionNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import { NodePalette } from './node-palette'
 import {
@@ -49,6 +49,7 @@ const STEP_NODE_TYPE_MAP: Record<string, string> = {
   branch: 'branchStep',
   merge: 'mergeStep',
   sub_workflow: 'subWorkflowStep',
+  decision: 'decisionStep',
 }
 
 function stepsToNodes(
@@ -143,6 +144,7 @@ const nodeTypes = {
   branchStep: BranchNode,
   mergeStep: MergeNode,
   subWorkflowStep: SubWorkflowNode,
+  decisionStep: DecisionNode,
 }
 
 interface WorkflowEditorProps {
@@ -332,6 +334,11 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         const outgoing = edges.filter((e) => e.source === connection.source).length
         // Condition nodes: max 2 outgoing (Yes/No)
         if (sourceNode.type === 'conditionStep' && outgoing >= 2) return false
+        // Decision nodes: max N outgoing (one per option)
+        if (sourceNode.type === 'decisionStep') {
+          const optionCount = (sourceNode.data as { step: WorkflowStep }).step.decision_config?.options?.length ?? 0
+          if (outgoing >= optionCount) return false
+        }
       }
 
       return true
@@ -348,21 +355,34 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       )
       if (exists) return
 
-      // Auto-label edges from condition nodes
+      // Auto-label edges from condition and decision nodes
       const sourceNode = nodes.find((n) => n.id === connection.source)
       const isCondition = sourceNode?.type === 'conditionStep'
-      const label = isCondition
-        ? connection.sourceHandle === 'yes' ? 'Yes'
+      const isDecision = sourceNode?.type === 'decisionStep'
+
+      let label: string | undefined
+      if (isCondition) {
+        label = connection.sourceHandle === 'yes' ? 'Yes'
           : connection.sourceHandle === 'no' ? 'No'
           : undefined
-        : undefined
+      } else if (isDecision) {
+        // Auto-assign first unused option key
+        const config = (sourceNode?.data as { step: WorkflowStep })?.step?.decision_config
+        const usedLabels = new Set(edges.filter((e) => e.source === connection.source).map((e) => e.label))
+        const available = config?.options?.find((o) => !usedLabels.has(o.key))
+        label = available?.key ?? connection.sourceHandle ?? undefined
+      }
+
       const isYes = label === 'Yes'
       const isNo = label === 'No'
       const stroke = isYes
         ? 'hsl(142 71% 45% / 0.6)'
         : isNo
           ? 'hsl(0 84% 60% / 0.5)'
-          : 'hsl(var(--muted-foreground) / 0.4)'
+          : isDecision && label
+            ? 'hsl(270 60% 60% / 0.6)'
+            : 'hsl(var(--muted-foreground) / 0.4)'
+      const hasLabel = isYes || isNo || (isDecision && !!label)
 
       pushHistory()
       setEdges((eds) =>
@@ -371,8 +391,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
             ...connection,
             id: `${connection.source}->${connection.target}`,
             label,
-            labelStyle: (isYes || isNo) ? { fontSize: 10, fontWeight: 600, fill: stroke } : undefined,
-            style: { stroke, strokeWidth: isYes || isNo ? 2 : 1.5 },
+            labelStyle: hasLabel ? { fontSize: 10, fontWeight: 600, fill: stroke } : undefined,
+            style: { stroke, strokeWidth: hasLabel ? 2 : 1.5 },
           },
           eds,
         ),
@@ -559,6 +579,23 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         } : {}),
         ...(nodeType === 'sub_workflow' ? {
           sub_workflow_config: { workflow_id: '', workflow_name: '', pass_context: true, max_depth: 3 },
+        } : {}),
+        ...(nodeType === 'decision' ? {
+          decision_config: {
+            resolver: 'agent' as const,
+            model: null,
+            prompt: 'Based on the upstream results, decide which path to take.',
+            temperature: 0,
+            prompt_message: null,
+            channel: null,
+            timeout_hours: null,
+            default_option: null,
+            expression: null,
+            options: [
+              { key: 'option_a', label: 'Option A' },
+              { key: 'option_b', label: 'Option B' },
+            ],
+          },
         } : {}),
       }
 
