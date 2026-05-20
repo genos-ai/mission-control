@@ -939,6 +939,176 @@ def catalog_detail(ctx, agent_name):
     run_catalog(ctx.logger, "detail", agent_name=agent_name, output_format=ctx.output_format)
 
 
+@catalog.command("models")
+@click.pass_obj
+def catalog_models(ctx):
+    """List all agents with their current model provider and name.
+
+    \b
+    Examples:
+        python admin.py catalog models
+    """
+    import asyncio
+    from rich.console import Console
+    from rich.table import Table
+
+    async def _run():
+        from modules.backend.core.database import get_async_session
+        from sqlalchemy import text
+
+        async with get_async_session() as db:
+            result = await db.execute(text("""
+                SELECT agent_name, model_config_json->>'name' as model, enabled
+                FROM agent_catalog
+                ORDER BY agent_name
+            """))
+            rows = list(result)
+
+        console = Console()
+        table = Table(title="Agent Models")
+        table.add_column("Agent", style="cyan")
+        table.add_column("Model", style="green")
+        table.add_column("Provider", style="yellow")
+        table.add_column("Enabled", style="dim")
+
+        for row in rows:
+            model = row[1] or "N/A"
+            provider = model.split(":")[0] if ":" in model else "unknown"
+            enabled = "yes" if row[2] else "no"
+            style = None if row[2] else "dim"
+            table.add_row(row[0], model, provider, enabled, style=style)
+
+        console.print(table)
+
+    asyncio.run(_run())
+
+
+@catalog.command("set-model")
+@click.argument("agent_name")
+@click.argument("model")
+@click.pass_obj
+def catalog_set_model(ctx, agent_name, model):
+    """Change the model for a specific agent.
+
+    \b
+    Examples:
+        python admin.py catalog set-model mission.planning.agent copilot:claude-haiku-4.5
+        python admin.py catalog set-model research.strategist.agent copilot:claude-sonnet-4.6
+    """
+    import asyncio
+
+    async def _run():
+        from modules.backend.core.database import get_async_session
+        from modules.backend.services.agent_catalog import AgentCatalogService
+
+        async with get_async_session() as db:
+            svc = AgentCatalogService(db)
+            entry = await svc.get_by_name_or_none(agent_name)
+            if not entry:
+                click.echo(f"Agent '{agent_name}' not found in catalog", err=True)
+                raise SystemExit(1)
+
+            old_model = (entry.model_config_json or {}).get("name", "N/A")
+            new_config = dict(entry.model_config_json or {})
+            new_config["name"] = model
+            await svc.update_entry(agent_name, model_config_json=new_config)
+            await db.commit()
+
+            click.echo(f"{agent_name}: {old_model} -> {model}")
+
+    asyncio.run(_run())
+
+
+@catalog.command("set-provider")
+@click.argument("provider", type=click.Choice(["copilot", "anthropic"]))
+@click.option("--model-map", type=str, default=None,
+              help="Comma-separated old=new model mappings, e.g. 'haiku-4-5=claude-haiku-4.5,sonnet-4-6=claude-sonnet-4.6'")
+@click.option("--dry-run", is_flag=True, help="Show changes without applying them")
+@click.pass_obj
+def catalog_set_provider(ctx, provider, model_map, dry_run):
+    """Switch all agents to a provider (copilot or anthropic).
+
+    Rewrites the provider prefix on every agent's model name. Model names
+    are mapped between provider naming conventions automatically:
+
+    \b
+      anthropic:claude-haiku-4-5       <-> copilot:claude-haiku-4.5
+      anthropic:claude-sonnet-4-6      <-> copilot:claude-sonnet-4.6
+      anthropic:claude-opus-4-6        <-> copilot:claude-opus-4.6
+
+    \b
+    Examples:
+        python admin.py catalog set-provider copilot
+        python admin.py catalog set-provider anthropic
+        python admin.py catalog set-provider copilot --dry-run
+    """
+    import asyncio
+
+    # Default model name mappings between providers
+    TO_COPILOT = {
+        "claude-haiku-4-5": "claude-haiku-4.5",
+        "claude-haiku-4-5-20251001": "claude-haiku-4.5",
+        "claude-sonnet-4-6": "claude-sonnet-4.6",
+        "claude-sonnet-4-5-20241022": "claude-sonnet-4.6",
+        "claude-opus-4-6": "claude-opus-4.6",
+    }
+    TO_ANTHROPIC = {v: k for k, v in TO_COPILOT.items() if "20251001" not in k and "20241022" not in k}
+
+    mapping = TO_COPILOT if provider == "copilot" else TO_ANTHROPIC
+
+    # Parse user overrides
+    if model_map:
+        for pair in model_map.split(","):
+            old, new = pair.strip().split("=")
+            mapping[old.strip()] = new.strip()
+
+    async def _run():
+        from modules.backend.core.database import get_async_session
+        from modules.backend.services.agent_catalog import AgentCatalogService
+
+        async with get_async_session() as db:
+            svc = AgentCatalogService(db)
+            entries = await svc.list_catalog(enabled_only=False)
+
+            changed = 0
+            for entry in entries:
+                config = entry.model_config_json or {}
+                current = config.get("name", "")
+                if not current:
+                    continue
+
+                # Already on this provider
+                if current.startswith(f"{provider}:"):
+                    continue
+
+                # Extract model name from current provider
+                parts = current.split(":", 1)
+                old_provider = parts[0]
+                old_model = parts[1] if len(parts) > 1 else current
+
+                # Map model name
+                new_model = mapping.get(old_model, old_model)
+                new_full = f"{provider}:{new_model}"
+
+                if dry_run:
+                    click.echo(f"  {entry.agent_name}: {current} -> {new_full}")
+                else:
+                    new_config = dict(config)
+                    new_config["name"] = new_full
+                    await svc.update_entry(entry.agent_name, model_config_json=new_config)
+                    click.echo(f"  {entry.agent_name}: {current} -> {new_full}")
+
+                changed += 1
+
+            if not dry_run:
+                await db.commit()
+
+            label = "Would change" if dry_run else "Changed"
+            click.echo(f"\n{label} {changed} agent(s)")
+
+    asyncio.run(_run())
+
+
 # =============================================================================
 # Admin commands
 # =============================================================================
