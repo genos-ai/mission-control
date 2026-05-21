@@ -36,7 +36,7 @@ async def update_context(
     async with MissionContextManager.factory() as mgr:
         new_version, errors = await mgr.apply_updates(
             mission_id,
-            updates=[{"op": "set", "path": path, "value": value, "reason": reason or f"workflow update: {path}"}],
+            updates=[{"op": "add", "path": path, "value": value, "reason": reason or f"workflow update: {path}"}],
             agent_id="workflow",
         )
 

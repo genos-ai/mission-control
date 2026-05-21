@@ -5,16 +5,20 @@ Usage:
     python scripts/test_decision_workflow.py --mission <mission_name_or_id> [--topic "quantum computing"]
 
 Creates a workflow with:
-  1. read-context  (llm_call)   — reads and echoes the workflow run context
-  2. read-knowledge (tool_call) — queries the knowledge base for existing entries on the topic
-  3. classify      (llm_call)   — classifies the topic as technical or creative
-  4. route         (decision)   — picks the downstream path (agent/human/rule resolver)
-  5. technical-path (llm_call)  — technical analysis (if routed technical)
-  6. creative-path  (llm_call)  — creative brainstorm (if routed creative)
-  7. collect       (merge)      — waits for both branches (only one runs)
-  8. summarize        (agent_step) — synthesizes a final report artifact
-  9. update-knowledge (tool_call)  — explicitly stores a learning in the knowledge base
- 10. update-context   (tool_call)  — explicitly writes routing outcome to the MCD
+  1. check-mcd     (tool_call)  — checks whether the mission MCD exists
+  2. route-mcd     (decision)   — rule resolver: "exists" skips init, "missing" creates MCD
+  3. init-mcd      (tool_call)  — creates a seed MCD (only on "missing" path)
+  4. mcd-ok        (merge)      — gate: waits for route-mcd + init-mcd before proceeding
+  5. read-context  (llm_call)   — reads and echoes the workflow run context
+  6. read-knowledge (tool_call) — queries the knowledge base for existing entries on the topic
+  7. classify      (llm_call)   — classifies the topic as technical or creative
+  8. route         (decision)   — picks the downstream path (agent/human/rule resolver)
+  9. technical-path (llm_call)  — technical analysis (if routed technical)
+ 10. creative-path  (llm_call)  — creative brainstorm (if routed creative)
+ 11. collect       (merge)      — waits for both branches (only one runs)
+ 12. summarize        (agent_step) — synthesizes a final report artifact
+ 13. update-knowledge (tool_call)  — explicitly stores a learning in the knowledge base
+ 14. update-context   (tool_call)  — explicitly writes routing outcome to the MCD
 
 Only the chosen branch (technical or creative) runs; the other is skipped.
 """
@@ -33,6 +37,102 @@ WORKFLOW_NAME = "test.decision-routing"
 WORKFLOW_DESCRIPTION = "Test workflow: decision node routes between technical and creative paths"
 
 STEPS = [
+    {
+        "id": "check-mcd",
+        "label": "Check MCD",
+        "description": "Check whether a Mission Context Document exists for this mission",
+        "node_type": "tool_call",
+        "tool_call_config": {
+            "tool_name": "check_mcd",
+            "tool_args": {},
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": [],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
+        "id": "route-mcd",
+        "label": "MCD Gate",
+        "description": "Route to init-mcd if MCD is missing, or proceed directly if it exists",
+        "node_type": "decision",
+        "decision_config": {
+            "resolver": "rule",
+            "expression": "@node.check-mcd.output",
+            "model": None,
+            "prompt": None,
+            "temperature": 0.0,
+            "prompt_message": None,
+            "channel": None,
+            "timeout_hours": None,
+            "default_option": None,
+            "options": [
+                {"key": "exists", "label": "MCD already exists — skip initialisation"},
+                {"key": "missing", "label": "MCD not found — create a seed document"},
+            ],
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["check-mcd"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
+        "id": "init-mcd",
+        "label": "Initialise MCD",
+        "description": "Create a seed Mission Context Document for this mission",
+        "node_type": "tool_call",
+        "tool_call_config": {
+            "tool_name": "create_mcd",
+            "tool_args": {},
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["route-mcd"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
+        "id": "mcd-ok",
+        "label": "MCD Ready",
+        "description": "Gate: MCD is guaranteed to exist after this merge",
+        "node_type": "merge",
+        "merge_config": {"strategy": "wait_all"},
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["init-mcd"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
     {
         "id": "read-context",
         "label": "Read Context",
@@ -60,7 +160,7 @@ STEPS = [
         "environment": "local",
         "input": {},
         "output_mapping": None,
-        "depends_on": [],
+        "depends_on": ["mcd-ok"],
         "timeout_seconds": None,
         "max_refinement_rounds": 1,
         "termination": "completion",
@@ -86,7 +186,7 @@ STEPS = [
         "environment": "local",
         "input": {},
         "output_mapping": None,
-        "depends_on": [],
+        "depends_on": ["mcd-ok"],
         "timeout_seconds": None,
         "max_refinement_rounds": 1,
         "termination": "completion",
@@ -321,6 +421,12 @@ STEPS = [
 ]
 
 EDGES = [
+    {"id": "check-mcd->route-mcd", "source": "check-mcd", "target": "route-mcd"},
+    {"id": "route-mcd->init-mcd", "source": "route-mcd", "target": "init-mcd", "label": "missing", "source_handle": "missing"},
+    {"id": "route-mcd->mcd-ok", "source": "route-mcd", "target": "mcd-ok", "label": "exists", "source_handle": "exists"},
+    {"id": "init-mcd->mcd-ok", "source": "init-mcd", "target": "mcd-ok"},
+    {"id": "mcd-ok->read-context", "source": "mcd-ok", "target": "read-context"},
+    {"id": "mcd-ok->read-knowledge", "source": "mcd-ok", "target": "read-knowledge"},
     {"id": "read-context->classify", "source": "read-context", "target": "classify"},
     {"id": "read-knowledge->classify", "source": "read-knowledge", "target": "classify"},
     {"id": "classify->route", "source": "classify", "target": "route"},

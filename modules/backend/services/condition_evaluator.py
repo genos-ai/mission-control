@@ -65,7 +65,7 @@ _KEYWORDS = {
     "is_not_empty": TokenType.UNARY_OP,
 }
 
-_REF_RE = re.compile(r"@[a-zA-Z_][a-zA-Z0-9_.]*")
+_REF_RE = re.compile(r"@[a-zA-Z_][a-zA-Z0-9_.\-]*")
 _NUM_RE = re.compile(r"-?\d+(\.\d+)?")
 _STR_RE = re.compile(r'"([^"\\]*(?:\\.[^"\\]*)*)"')
 _OP_RE = re.compile(r"(==|!=|>=|<=|>|<)")
