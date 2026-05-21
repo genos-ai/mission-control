@@ -16,9 +16,10 @@ Creates a workflow with:
   9. technical-path (llm_call)  — technical analysis (if routed technical)
  10. creative-path  (llm_call)  — creative brainstorm (if routed creative)
  11. collect       (merge)      — waits for both branches (only one runs)
- 12. summarize        (agent_step) — synthesizes a final report artifact
- 13. update-knowledge (tool_call)  — explicitly stores a learning in the knowledge base
- 14. update-context   (tool_call)  — explicitly writes routing outcome to the MCD
+ 12. summarize        (llm_call)   — synthesizes a final report
+ 13. store-artifact   (tool_call)  — persists the report as a mission artifact
+ 14. update-knowledge (tool_call)  — stores a learning in the knowledge base
+ 15. update-context   (tool_call)  — writes routing outcome to the MCD
 
 Only the chosen branch (technical or creative) runs; the other is skipped.
 """
@@ -374,6 +375,33 @@ STEPS = [
         "max_iterations": None,
     },
     {
+        "id": "store-artifact",
+        "label": "Store Artifact",
+        "description": "Persist the synthesized report as a mission artifact",
+        "node_type": "tool_call",
+        "tool_call_config": {
+            "tool_name": "store_artifact",
+            "tool_args": {
+                "title": "Decision Routing Report: {{@context.topic}}",
+                "content": "{{@node.summarize.output}}",
+                "artifact_type": "report",
+                "content_type": "markdown",
+            },
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["summarize"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
         "id": "update-knowledge",
         "label": "Update Knowledge",
         "description": "Store a learning from this workflow run in the mission knowledge base",
@@ -445,6 +473,7 @@ EDGES = [
     {"id": "technical-path->collect", "source": "technical-path", "target": "collect"},
     {"id": "creative-path->collect", "source": "creative-path", "target": "collect"},
     {"id": "collect->summarize", "source": "collect", "target": "summarize"},
+    {"id": "summarize->store-artifact", "source": "summarize", "target": "store-artifact"},
     {"id": "summarize->update-knowledge", "source": "summarize", "target": "update-knowledge"},
     {"id": "summarize->update-context", "source": "summarize", "target": "update-context"},
 ]
