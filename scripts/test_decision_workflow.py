@@ -33,7 +33,7 @@ STEPS = [
         "description": "Classify the topic as technical or creative",
         "node_type": "llm_call",
         "llm_call_config": {
-            "model": "copilot:claude-haiku-4.5",
+            "model": "quick",
             "system_prompt": None,
             "prompt_template": (
                 "Classify the following topic into exactly one category.\n"
@@ -64,7 +64,7 @@ STEPS = [
         "node_type": "decision",
         "decision_config": {
             "resolver": "agent",
-            "model": "copilot:claude-haiku-4.5",
+            "model": "quick",
             "prompt": (
                 "The topic '{{@context.topic}}' was classified as: {{@node.classify.output}}\n\n"
                 "Based on this classification, choose the appropriate processing path."
@@ -99,7 +99,7 @@ STEPS = [
         "description": "Produce a structured technical analysis",
         "node_type": "llm_call",
         "llm_call_config": {
-            "model": "copilot:claude-haiku-4.5",
+            "model": "quick",
             "system_prompt": None,
             "prompt_template": (
                 "Provide a brief technical analysis (3-4 bullet points) of:\n"
@@ -128,7 +128,7 @@ STEPS = [
         "description": "Brainstorm creative ideas",
         "node_type": "llm_call",
         "llm_call_config": {
-            "model": "copilot:claude-haiku-4.5",
+            "model": "quick",
             "system_prompt": None,
             "prompt_template": (
                 "Brainstorm 3-4 creative and unconventional ideas about:\n"

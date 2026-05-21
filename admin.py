@@ -1109,6 +1109,78 @@ def catalog_set_provider(ctx, provider, model_map, dry_run):
     asyncio.run(_run())
 
 
+@catalog.group("aliases", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def catalog_aliases(ctx):
+    """Manage model aliases (quick / moderate / comprehensive).
+
+    \b
+    Examples:
+        python admin.py catalog aliases list
+        python admin.py catalog aliases set quick copilot:claude-haiku-4.5
+        python admin.py catalog aliases set moderate anthropic:claude-sonnet-4-6
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@catalog_aliases.command("list")
+@click.pass_obj
+def catalog_aliases_list(ctx):
+    """List all model aliases from models.yaml."""
+    from modules.backend.core.config import get_app_config
+    from rich.table import Table
+
+    aliases = get_app_config().models.aliases
+    table = Table(title="Model Aliases", show_header=True)
+    table.add_column("Alias", style="cyan")
+    table.add_column("Resolves To", style="green")
+    table.add_column("Provider", style="yellow")
+
+    for alias, full_name in sorted(aliases.items()):
+        provider = full_name.split(":")[0] if ":" in full_name else "unknown"
+        table.add_row(alias, full_name, provider)
+
+    from rich.console import Console
+    Console().print(table)
+
+
+@catalog_aliases.command("set")
+@click.argument("alias")
+@click.argument("model")
+@click.pass_obj
+def catalog_aliases_set(ctx, alias, model):
+    """Set a model alias in models.yaml.
+
+    \b
+    Examples:
+        python admin.py catalog aliases set quick copilot:claude-haiku-4.5
+        python admin.py catalog aliases set comprehensive anthropic:claude-opus-4-6
+    """
+    import yaml
+    from modules.backend.core.config import find_project_root
+
+    if ":" not in model:
+        click.echo(f"Error: model must be a fully-qualified 'provider:model' string, got '{model}'", err=True)
+        raise SystemExit(1)
+
+    models_path = find_project_root() / "config" / "settings" / "models.yaml"
+    with open(models_path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    old = (raw.get("aliases") or {}).get(alias, "(new)")
+    if "aliases" not in raw:
+        raw["aliases"] = {}
+    raw["aliases"][alias] = model
+
+    with open(models_path, "w") as f:
+        yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
+
+    click.echo(f"aliases.{alias}: {old} -> {model}")
+    click.echo(f"Written to {models_path}")
+    click.echo("Note: restart the backend service to pick up the change (config is cached at startup).")
+
+
 # =============================================================================
 # Admin commands
 # =============================================================================

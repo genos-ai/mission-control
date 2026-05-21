@@ -22,11 +22,12 @@ def build_model_settings(
     """
     from pydantic_ai.models.anthropic import AnthropicModelSettings
 
-    model_name = (
+    raw_name = (
         agent_config.model.name
         if isinstance(agent_config.model, AgentModelSchema)
         else agent_config.model
     )
+    model_name = _resolve_model_alias(raw_name)
     provider = model_name.split(":")[0] if ":" in model_name else ""
 
     if provider != "anthropic":
@@ -87,12 +88,36 @@ def _get_default_cache_ttl() -> str:
     return get_app_config().cost.default_cache_ttl
 
 
+def _resolve_model_alias(model_name: str) -> str:
+    """Resolve a model alias to a fully-qualified provider:model string.
+
+    If the name contains ':', treat it as a literal provider:model string.
+    If the name is a known alias (quick/moderate/comprehensive), resolve it.
+    Otherwise fail immediately — no fallbacks.
+    """
+    if ":" in model_name:
+        return model_name
+
+    from modules.backend.core.config import get_app_config
+    aliases = get_app_config().models.aliases
+    if model_name in aliases:
+        return aliases[model_name]
+
+    raise ValidationError(
+        f"Unknown model alias '{model_name}'. "
+        f"Known aliases: {sorted(aliases)}. "
+        f"Use a fully-qualified 'provider:model' string or add the alias to models.yaml."
+    )
+
+
 def _build_model(config_model: str | AgentModelSchema) -> Model:
-    """Construct a PydanticAI Model from config string or AgentModelSchema."""
+    """Construct a PydanticAI Model from config string, alias, or AgentModelSchema."""
     if isinstance(config_model, AgentModelSchema):
         model_name = config_model.name
     else:
         model_name = config_model
+
+    model_name = _resolve_model_alias(model_name)
 
     if model_name.startswith("anthropic:"):
         bare_name = model_name.split(":", 1)[1]
@@ -116,7 +141,9 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
 
 
 def _get_model_name(config_model: str | AgentModelSchema) -> str:
-    """Extract model name string from config model."""
+    """Extract resolved model name string from config model, expanding aliases."""
     if isinstance(config_model, AgentModelSchema):
-        return config_model.name
-    return config_model
+        name = config_model.name
+    else:
+        name = config_model
+    return _resolve_model_alias(name)

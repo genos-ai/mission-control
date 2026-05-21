@@ -34,6 +34,7 @@ from modules.backend.core.config_schema import (
     GatewaySchema,
     LoggingSchema,
     ExecutionsSchema,
+    ModelsSchema,
     NotificationsSchema,
     ProvidersSchema,
     WorkflowsSchema,
@@ -148,6 +149,7 @@ class AppConfig:
         self._gate = _load_validated_optional(GateSchema, "gate.yaml")
         self._notifications = _load_validated_optional(NotificationsSchema, "notifications.yaml")
         self._providers = _load_validated_optional(ProvidersSchema, "providers.yaml")
+        self._models = _load_validated_optional(ModelsSchema, "models.yaml")
         self._cost = _load_validated_optional(CostSchema, "cost.yaml")
         self._security_assessment = _load_validated_optional(
             SecurityAssessmentSchema, "security_assessment.yaml",
@@ -227,6 +229,11 @@ class AppConfig:
     def providers(self) -> ProvidersSchema:
         """Model provider auth settings."""
         return self._providers
+
+    @property
+    def models(self) -> ModelsSchema:
+        """Model alias configuration (quick/moderate/comprehensive)."""
+        return self._models
 
     @property
     def cost(self) -> CostSchema:

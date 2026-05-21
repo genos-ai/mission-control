@@ -1,0 +1,22 @@
+# =============================================================================
+# Model Alias Configuration
+# =============================================================================
+# Named aliases for model selection. Workflow steps reference aliases
+# (quick, moderate, comprehensive) instead of literal provider:model strings.
+# Changing provider here propagates to all workflows instantly.
+#
+# Naming mirrors the research depth presets (research.yaml):
+#   quick         — fast, low-cost model for classification and routing
+#   moderate      — balanced model for general tasks and summaries
+#   comprehensive — most capable model for complex analysis and synthesis
+#
+# To switch all workflows to a different provider:
+#   python admin.py catalog aliases set quick anthropic:claude-haiku-4-5
+#   python admin.py catalog aliases set moderate anthropic:claude-sonnet-4-6
+#   python admin.py catalog aliases set comprehensive anthropic:claude-opus-4-6
+# =============================================================================
+
+aliases:
+  quick: "copilot:claude-haiku-4.5"
+  moderate: "copilot:claude-sonnet-4.6"
+  comprehensive: "copilot:claude-opus-4.7"

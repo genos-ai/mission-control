@@ -542,6 +542,23 @@ class ProvidersSchema(_StrictBase):
     )
 
 
+class ModelsSchema(_StrictBase):
+    """Model alias configuration (models.yaml).
+
+    Aliases map short names (quick, moderate, comprehensive) to
+    fully-qualified provider:model strings. Workflow steps reference
+    aliases so changing provider in one place propagates everywhere.
+    """
+
+    aliases: dict[str, str] = Field(
+        default_factory=lambda: {
+            "quick": "copilot:claude-haiku-4.5",
+            "moderate": "copilot:claude-sonnet-4.6",
+            "comprehensive": "copilot:claude-opus-4.7",
+        },
+    )
+
+
 class GateSchema(_StrictBase):
     """Gate reviewer configuration (gate.yaml)."""
 
