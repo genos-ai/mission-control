@@ -124,6 +124,7 @@ class MissionLearningService(BaseService):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
         self._learning_repo = MissionLearningRepository(session)
+        self._embed_queue: list[str] = []
 
     @staticmethod
     @asynccontextmanager
@@ -131,8 +132,12 @@ class MissionLearningService(BaseService):
         from modules.backend.core.database import get_async_session
 
         async with get_async_session() as db:
-            yield MissionLearningService(db)
+            svc = MissionLearningService(db)
+            yield svc
             await db.commit()
+            # Fire embeds after commit so rows are visible to new sessions
+            for learning_id in svc._embed_queue:
+                _schedule_embed("mission_learnings", learning_id)
 
     async def create_learning(
         self,
@@ -164,8 +169,8 @@ class MissionLearningService(BaseService):
             occurrence_count=occurrence_count,
         )
 
-        # Fire embed-on-write (best-effort, non-blocking)
-        _schedule_embed("mission_learnings", learning.id)
+        # Queue embed ID — caller must fire _schedule_embed after committing
+        self._embed_queue.append(str(learning.id))
 
         return learning
 
