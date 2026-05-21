@@ -460,6 +460,13 @@ class WorkflowSchema(BaseModel):
         description="User-facing input parameters shown before run. Values merge into context.",
     )
     context: dict[str, Any] = Field(default_factory=dict)
+    edges: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Explicit edge definitions. When non-empty, used verbatim instead of deriving "
+            "from depends_on. Required for decision nodes whose branches need labeled routing."
+        ),
+    )
     steps: list[WorkflowStepSchema] = Field(..., min_length=1)
 
     @field_validator("steps")

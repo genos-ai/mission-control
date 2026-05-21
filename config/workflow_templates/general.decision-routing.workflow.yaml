@@ -1,0 +1,308 @@
+# =============================================================================
+# Workflow: Decision Routing
+# =============================================================================
+# Classifies a topic and routes it through the appropriate analysis path.
+# Demonstrates the full decision node pattern:
+#   - MCD guard (check → rule-route → init → merge)
+#   - Parallel knowledge + context read
+#   - Classification → agent-decision → branched LLM analysis
+#   - Merge → synthesize → persist (artifact + learning + context)
+# =============================================================================
+
+workflow_name: general.decision-routing.workflow
+description: "Classify a topic and route it through technical or creative analysis, then synthesize a report"
+objective:
+  statement: "Produce a short analysis report by routing the topic through the appropriate path"
+  category: research
+  owner: user
+  priority: normal
+version: 1
+enabled: true
+
+trigger:
+  type: on_demand
+  match_patterns:
+    - "decision routing"
+    - "classify and route"
+
+budget:
+  max_cost_usd: 2.00
+
+parameters:
+  - key: topic
+    label: "Topic"
+    type: text
+    required: true
+    description: "The topic to classify and analyse"
+    placeholder: "e.g. quantum computing"
+
+context:
+  topic: ""
+
+# ---------------------------------------------------------------------------
+# Edges — explicit because decision nodes require labeled routing.
+# Non-decision edges are listed too so the graph is complete and consistent.
+# ---------------------------------------------------------------------------
+edges:
+  - {source: check-mcd,       target: route-mcd}
+  - {source: route-mcd,       target: init-mcd,        label: missing, source_handle: missing}
+  - {source: route-mcd,       target: mcd-ok,           label: exists,  source_handle: exists}
+  - {source: init-mcd,        target: mcd-ok}
+  - {source: mcd-ok,          target: read-context}
+  - {source: mcd-ok,          target: read-knowledge}
+  - {source: read-context,    target: classify}
+  - {source: read-knowledge,  target: classify}
+  - {source: classify,        target: route}
+  - {source: route,           target: technical-path,   label: technical, source_handle: technical}
+  - {source: route,           target: creative-path,    label: creative,  source_handle: creative}
+  - {source: technical-path,  target: collect}
+  - {source: creative-path,   target: collect}
+  - {source: collect,         target: summarize}
+  - {source: summarize,       target: store-artifact}
+  - {source: summarize,       target: update-knowledge}
+  - {source: summarize,       target: update-context}
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Phase 0: MCD guard — ensure the Mission Context Document exists
+  # ---------------------------------------------------------------------------
+  - id: check-mcd
+    label: "Check MCD"
+    description: "Check whether a Mission Context Document exists for this mission"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: check_mcd
+      tool_args: {}
+    depends_on: []
+
+  - id: route-mcd
+    label: "MCD Gate"
+    description: "Route to init-mcd if MCD is missing, or proceed directly if it exists"
+    node_type: decision
+    decision_config:
+      resolver: rule
+      expression: "@node.check-mcd.output"
+      options:
+        - key: exists
+          label: "MCD already exists — skip initialisation"
+        - key: missing
+          label: "MCD not found — create a seed document"
+    depends_on:
+      - check-mcd
+
+  - id: init-mcd
+    label: "Initialise MCD"
+    description: "Create a seed Mission Context Document for this mission"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: create_mcd
+      tool_args: {}
+    depends_on:
+      - route-mcd
+
+  - id: mcd-ok
+    label: "MCD Ready"
+    description: "Gate: MCD is guaranteed to exist after this merge"
+    node_type: merge
+    merge_config:
+      strategy: wait_all
+    depends_on:
+      - init-mcd
+
+  # ---------------------------------------------------------------------------
+  # Phase 1: Read context and prior knowledge in parallel
+  # ---------------------------------------------------------------------------
+  - id: read-context
+    label: "Read Context"
+    description: "Summarise the workflow run context"
+    node_type: llm_call
+    llm_call_config:
+      model: quick
+      prompt_template: |
+        You are a workflow context inspector. Summarise the following
+        workflow context in one short paragraph, stating exactly what
+        the workflow is about to do.
+
+        - topic: {{@context.topic}}
+
+        Be concise — one sentence is enough.
+      temperature: 0.0
+      max_tokens: 100
+    depends_on:
+      - mcd-ok
+
+  - id: read-knowledge
+    label: "Read Knowledge"
+    description: "Query the mission knowledge base for existing entries on the topic"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: query_knowledge
+      tool_args:
+        query: "{{@context.topic}}"
+        limit: 5
+        mode: hybrid
+    depends_on:
+      - mcd-ok
+
+  # ---------------------------------------------------------------------------
+  # Phase 2: Classify the topic
+  # ---------------------------------------------------------------------------
+  - id: classify
+    label: "Classify Topic"
+    description: "Classify the topic as technical or creative"
+    node_type: llm_call
+    llm_call_config:
+      model: quick
+      prompt_template: |
+        Classify the following topic into exactly one category.
+        Return ONLY the word "technical" or "creative", nothing else.
+
+        Topic: {{@context.topic}}
+
+        Existing knowledge about this topic:
+        {{@node.read-knowledge.output}}
+      temperature: 0.0
+      max_tokens: 10
+    depends_on:
+      - read-context
+      - read-knowledge
+
+  # ---------------------------------------------------------------------------
+  # Phase 3: Route to the appropriate analysis path
+  # ---------------------------------------------------------------------------
+  - id: route
+    label: "Route Decision"
+    description: "Decide which analysis path to take based on the classification"
+    node_type: decision
+    decision_config:
+      resolver: agent
+      model: quick
+      prompt: |
+        The topic "{{@context.topic}}" was classified as: {{@node.classify.output}}
+
+        Based on this classification, choose the appropriate processing path.
+      temperature: 0.0
+      options:
+        - key: technical
+          label: "Topic is technical — run structured analysis"
+        - key: creative
+          label: "Topic is creative — run brainstorm session"
+    depends_on:
+      - classify
+
+  # ---------------------------------------------------------------------------
+  # Phase 4: Branched analysis (only one branch runs)
+  # ---------------------------------------------------------------------------
+  - id: technical-path
+    label: "Technical Analysis"
+    description: "Produce a structured technical analysis"
+    node_type: llm_call
+    llm_call_config:
+      model: quick
+      prompt_template: |
+        Provide a brief technical analysis (3-4 bullet points) of:
+        {{@context.topic}}
+      temperature: 0.0
+      max_tokens: 500
+    depends_on:
+      - route
+
+  - id: creative-path
+    label: "Creative Brainstorm"
+    description: "Brainstorm creative ideas"
+    node_type: llm_call
+    llm_call_config:
+      model: quick
+      prompt_template: |
+        Brainstorm 3-4 creative and unconventional ideas about:
+        {{@context.topic}}
+      temperature: 0.7
+      max_tokens: 500
+    depends_on:
+      - route
+
+  # ---------------------------------------------------------------------------
+  # Phase 5: Merge and synthesize
+  # ---------------------------------------------------------------------------
+  - id: collect
+    label: "Collect Results"
+    description: "Merge parallel branches — only one will have run"
+    node_type: merge
+    merge_config:
+      strategy: wait_all
+    depends_on:
+      - technical-path
+      - creative-path
+
+  - id: summarize
+    label: "Synthesize Report"
+    description: "Synthesize a short report from the analysis"
+    node_type: llm_call
+    llm_call_config:
+      model: moderate
+      system_prompt: "You are a concise technical writer. Produce clear, structured reports from analysis inputs. Be direct — no filler, no preamble."
+      prompt_template: |
+        Write a short report (3-5 paragraphs) on the following topic.
+
+        Topic: {{@context.topic}}
+
+        Prior knowledge:
+        {{@node.read-knowledge.output}}
+
+        Analysis:
+        {{@node.collect.output}}
+
+        Structure: one sentence summary, key findings as bullet points,
+        one sentence conclusion.
+      temperature: 0.2
+      max_tokens: 600
+    depends_on:
+      - collect
+
+  # ---------------------------------------------------------------------------
+  # Phase 6: Persist results (all three run in parallel)
+  # ---------------------------------------------------------------------------
+  - id: store-artifact
+    label: "Store Artifact"
+    description: "Persist the synthesized report as a mission artifact"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: store_artifact
+      tool_args:
+        title: "Decision Routing Report: {{@context.topic}}"
+        content: "{{@node.summarize.output}}"
+        artifact_type: report
+        content_type: markdown
+    depends_on:
+      - summarize
+
+  - id: update-knowledge
+    label: "Update Knowledge"
+    description: "Store a learning from this workflow run in the mission knowledge base"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: store_learning
+      tool_args:
+        title: "Decision routing result: {{@context.topic}}"
+        body: "{{@node.summarize.output}}"
+        recommendation: "Use the {{@node.route.chosen}} path for topics classified as {{@node.classify.output}}."
+        kind: learning
+        domain_tags:
+          - workflow
+          - decision-routing
+        confidence: 0.8
+    depends_on:
+      - summarize
+
+  - id: update-context
+    label: "Update Context"
+    description: "Write the workflow outcome back to the Mission Context Document"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: update_context
+      tool_args:
+        path: workflow.last_decision_routing
+        value: "topic={{@context.topic}} classification={{@node.classify.output}} path={{@node.route.chosen}}"
+        reason: "Decision workflow completed — recording routing outcome"
+    depends_on:
+      - summarize
