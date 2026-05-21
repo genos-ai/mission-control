@@ -52,12 +52,14 @@ def _extract_run_cost(result: Any, model_name: str | None = None) -> float:
     """Extract cost from a PydanticAI run result using the project's cost calculator."""
     try:
         from modules.backend.agents.mission_control.cost import compute_cost_usd
+        from modules.backend.core.model_builder import _resolve_model_alias
 
+        resolved = _resolve_model_alias(model_name) if model_name else None
         usage = result.usage()
         return compute_cost_usd(
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
-            model=model_name,
+            model=resolved,
             cache_read_tokens=getattr(usage, "cache_read_tokens", 0),
             cache_write_5m_tokens=getattr(usage, "cache_write_tokens", 0),
         )

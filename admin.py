@@ -1157,6 +1157,7 @@ def catalog_aliases_set(ctx, alias, model):
         python admin.py catalog aliases set quick copilot:claude-haiku-4.5
         python admin.py catalog aliases set comprehensive anthropic:claude-opus-4-6
     """
+    import re
     import yaml
     from modules.backend.core.config import find_project_root
 
@@ -1165,16 +1166,20 @@ def catalog_aliases_set(ctx, alias, model):
         raise SystemExit(1)
 
     models_path = find_project_root() / "config" / "settings" / "models.yaml"
-    with open(models_path) as f:
-        raw = yaml.safe_load(f) or {}
+    text = models_path.read_text()
+    raw = yaml.safe_load(text) or {}
 
     old = (raw.get("aliases") or {}).get(alias, "(new)")
-    if "aliases" not in raw:
-        raw["aliases"] = {}
-    raw["aliases"][alias] = model
 
-    with open(models_path, "w") as f:
-        yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
+    # Patch in-place to preserve comments. Replace existing alias line or append under aliases:.
+    line_pattern = re.compile(rf'^(\s+){re.escape(alias)}:.*$', re.MULTILINE)
+    new_line = f'  {alias}: "{model}"'
+    if line_pattern.search(text):
+        text = line_pattern.sub(new_line, text)
+    else:
+        text = text.rstrip('\n') + f'\n{new_line}\n'
+
+    models_path.write_text(text)
 
     click.echo(f"aliases.{alias}: {old} -> {model}")
     click.echo(f"Written to {models_path}")
