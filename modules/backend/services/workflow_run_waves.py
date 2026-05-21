@@ -64,6 +64,7 @@ def _extract_run_cost(result: Any, model_name: str | None = None) -> float:
             cache_write_5m_tokens=getattr(usage, "cache_write_tokens", 0),
         )
     except Exception:
+        logger.debug("Cost extraction failed", extra={"model": model_name}, exc_info=True)
         return 0.0
 
 

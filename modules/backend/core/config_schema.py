@@ -554,7 +554,7 @@ class ModelsSchema(_StrictBase):
         default_factory=lambda: {
             "quick": "copilot:claude-haiku-4.5",
             "moderate": "copilot:claude-sonnet-4.6",
-            "comprehensive": "copilot:claude-opus-4.7",
+            "comprehensive": "copilot:claude-opus-4.6",
         },
     )
 
