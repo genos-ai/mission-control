@@ -30,8 +30,10 @@ env/
 
 # Note: These should be COMMITTED for reproducibility:
 # - .python-version (Python version pin)
-# - requirements.lock (uv lock file)
 # - environment.yml (conda environment)
+
+# uv lock file — not committed (local dependency resolution)
+uv.lock
 
 # PyInstaller
 *.manifest
