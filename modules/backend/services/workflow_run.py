@@ -323,7 +323,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                         ),
                     )
                 except Exception:
-                    pass  # best-effort
+                    logger.debug("workflow run completed event publish failed (best-effort)", exc_info=True)
         except (RuntimeError, ValueError, OSError) as e:
             run.status = WorkflowRunState.FAILED
             run.completed_at = utc_now()
@@ -362,7 +362,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                         ),
                     )
                 except Exception:
-                    pass  # best-effort
+                    logger.debug("workflow run failed event publish failed (best-effort)", exc_info=True)
 
             # Mark remaining plan tasks as FAILED for Kanban board
             await self._fail_remaining_plan_tasks(mission_id, session.id, str(e))
@@ -514,7 +514,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             try:
                 await self._session.rollback()
             except Exception:
-                pass
+                logger.debug("db rollback failed after workflow plan persist error", exc_info=True)
             return {}
 
     async def _fail_remaining_plan_tasks(
@@ -561,7 +561,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                                     ),
                                 )
                             except Exception:
-                                pass
+                                logger.debug("task status update event publish failed (best-effort)", exc_info=True)
 
                 await db.commit()
         except Exception:

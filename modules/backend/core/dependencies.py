@@ -11,6 +11,9 @@ from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.database import get_db_session
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 
@@ -116,7 +119,7 @@ async def _resolve_sse_token(token: str) -> str | None:
         if user_id:
             return user_id.decode()
     except Exception:
-        pass
+        logger.debug("SSE token Redis lookup failed, falling back to auth header", exc_info=True)
     finally:
         await redis.aclose()
     return None

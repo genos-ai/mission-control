@@ -88,7 +88,7 @@ async def list_workflow_runs(
         try:
             status_filter = WorkflowRunState[status.upper()]
         except KeyError:
-            pass
+            logger.warning("Unknown workflow status filter %r, ignoring", status)
 
     runs, total = await repo.list_runs(
         mission_id=mission_id,

@@ -44,7 +44,7 @@ def _resolve_system_prompt(agent_name: str, project_root: Path) -> str:
         if prompt:
             return prompt
     except Exception:
-        pass
+        logger.debug("prompt assembly from disk failed for %s", agent_name, exc_info=True)
 
     # Fallback: read just the agent's system.md (no layers)
     parts = agent_name.replace(".agent", "").split(".")

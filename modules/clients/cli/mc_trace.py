@@ -10,6 +10,10 @@ from __future__ import annotations
 
 from google.protobuf.json_format import MessageToDict
 
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 async def trace_workflow(
     workflow_id: str, verbose: bool = False, detail: bool = False,
@@ -45,7 +49,7 @@ async def trace_workflow(
             f"last_action={loop_status.get('last_action', '')}"
         )
     except Exception:
-        pass
+        logger.debug("get_loop_status query not available for %s", workflow_id, exc_info=True)
 
     console.print()
     console.print("[bold underline]Activity Timeline[/bold underline]")

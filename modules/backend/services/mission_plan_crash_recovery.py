@@ -141,7 +141,7 @@ async def reconcile_orphaned_task_states(
                     ),
                 )
             except Exception:
-                pass  # best-effort
+                logger.debug("event publish failed after crash recovery (best-effort)", exc_info=True)
 
     return {
         "running_to_failed": running_to_failed,

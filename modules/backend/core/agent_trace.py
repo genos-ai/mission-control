@@ -158,7 +158,7 @@ async def emit_trace_events(
             )
             await event_bus.publish_to_mission(mission_id, event)
         except Exception:
-            pass  # best-effort — trace emission never blocks
+            logger.debug("trace event publish failed (best-effort)", exc_info=True)
 
 
 def _extract_trace(messages: list) -> list[dict]:

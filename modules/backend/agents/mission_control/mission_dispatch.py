@@ -255,7 +255,7 @@ async def handle_mission(
                 raw_plan = None
                 try:
                     raw_plan = planning_result.get("task_plan") if planning_result else None
-                except Exception:
+                except AttributeError:
                     pass
                 await _phase("error", f"Attempt {attempt + 1} failed: {last_error}")
                 logger.warning(

@@ -82,7 +82,7 @@ def _load_prompt_from_registry(agent_name: str) -> str:
         if config and config.system_prompt:
             return config.system_prompt
     except Exception:
-        pass
+        logger.debug("registry lookup failed for agent %s", agent_name, exc_info=True)
     return ""
 
 

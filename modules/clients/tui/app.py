@@ -624,7 +624,7 @@ class MissionControlApp(App):
         try:
             cost_bar = self.screen.query_one(CostBar)
             cost_bar.notification_count = count
-        except (NoMatches, Exception):
+        except NoMatches:
             pass
 
     def _update_workflow_panel(

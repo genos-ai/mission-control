@@ -177,7 +177,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                     ),
                 )
             except Exception:
-                pass  # best-effort
+                logger.debug("error event publish failed in Temporal activity (best-effort)", exc_info=True)
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
                 status="failed",
@@ -285,7 +285,7 @@ async def persist_mission_outcome(
                 finally:
                     await redis.aclose()
             except Exception:
-                pass  # best-effort
+                logger.debug("notification publish failed in Temporal activity (best-effort)", exc_info=True)
         return False
 
 

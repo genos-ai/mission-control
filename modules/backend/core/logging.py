@@ -200,7 +200,9 @@ async def _drain_mission_event_queue(queue: asyncio.Queue) -> None:
                 if redis is not None:
                     await redis.aclose()
             except Exception:
-                pass
+                logging.getLogger("mission_event_drain").debug(
+                    "Redis close failed during drain error recovery", exc_info=True,
+                )
             redis = None
         finally:
             queue.task_done()

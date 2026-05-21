@@ -52,7 +52,7 @@ def get_anthropic_provider():
             from modules.backend.core.config import get_settings
             credential = get_settings().anthropic_api_key
         except Exception:
-            pass
+            logger.debug("settings API key lookup failed, continuing without credential", exc_info=True)
 
     if not credential:
         raise ValueError(

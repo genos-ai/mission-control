@@ -84,8 +84,10 @@ class MissionPlanDaemon:
             self._task.cancel()
             try:
                 await self._task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            except asyncio.CancelledError:
                 pass
+            except Exception:
+                logger.debug("daemon task raised during cancellation", exc_info=True)
         finally:
             if self._redis is not None:
                 await self._redis.aclose()

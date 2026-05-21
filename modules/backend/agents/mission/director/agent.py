@@ -618,7 +618,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("db rollback failed after run_objective error", exc_info=True)
             return json.dumps({"error": str(e)})
 
     # ── Background Task Tracking (Plan 56 Phase B) ─────────────────────
@@ -987,7 +987,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("db rollback failed after approve_plan_tasks error", exc_info=True)
             return json.dumps({"error": str(e)})
 
     # NOTE: Gate tools (approve_gate, reject_gate, get_pending_gates) are
@@ -1087,7 +1087,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if intent_text and "No intent set" not in intent_text:
                 return f"\n[Mission Intent]\n{intent_text}\n"
         except Exception:
-            pass
+            logger.debug("intent restatement failed", exc_info=True)
         return ""
 
     @agent.instructions
@@ -1216,7 +1216,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             parts.append("[End Plan State]")
         except Exception:
-            pass
+            logger.debug("plan state injection failed", exc_info=True)
 
         return "\n".join(parts) if parts else ""
 

@@ -409,7 +409,7 @@ async def handle(
                         )
                         _last_flush_len = len(full_content)
                     except Exception:
-                        pass  # best-effort flush
+                        logger.debug("streaming flush failed (best-effort)", exc_info=True)
             yield event
             await _publish(event_bus, event)
 
@@ -631,7 +631,7 @@ async def handle(
                     status="failed",
                 )
             except Exception:
-                pass  # best-effort
+                logger.debug("finalize streaming message failed (best-effort)", exc_info=True)
         else:
             error_create = SessionMessageCreate(
                 role="assistant",
@@ -658,7 +658,7 @@ async def handle(
                     mission_id=mission_id,
                 ))
             except Exception:
-                pass  # best-effort
+                logger.debug("error event publish failed (best-effort)", exc_info=True)
 
 
 async def collect(session_id: str, message: str, **kwargs: Any) -> CollectResult:

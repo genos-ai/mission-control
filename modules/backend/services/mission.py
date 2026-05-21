@@ -196,7 +196,7 @@ class MissionService(BaseService):
                     handle = client.get_workflow_handle(workflow_id)
                     await handle.terminate(reason=f"Mission {mission_name} deleted")
                 except Exception:
-                    pass  # workflow not running or already completed
+                    logger.debug("Temporal workflow terminate failed (not running or already completed): %s", workflow_id, exc_info=True)
         except Exception:
             logger.debug("Temporal cleanup skipped (non-fatal)", exc_info=True)
 
@@ -334,7 +334,7 @@ class MissionService(BaseService):
         except ImportError:
             pass
         except Exception:
-            pass
+            logger.debug("Docker container cleanup failed for mission %s", mission_id, exc_info=True)
 
     async def is_member(self, mission_id: str, user_id: str) -> bool:
         """Check if a user is a member of a mission."""

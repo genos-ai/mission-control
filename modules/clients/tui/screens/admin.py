@@ -122,19 +122,19 @@ class _AdminMetricsTab(Static):
                 )
                 panel.update(f"[red]Error: {exc}[/red]")
             except Exception:
-                pass
+                logger.debug("metrics error panel update failed", exc_info=True)
 
         try:
             cost = await self.app.bridge.admin_get_cost_breakdown()
             self._render_cost(cost)
         except Exception:
-            pass
+            logger.debug("cost breakdown load failed", exc_info=True)
 
         try:
             activity = await self.app.bridge.admin_get_activity(limit=10)
             self._render_activity(activity)
         except Exception:
-            pass
+            logger.debug("activity load failed", exc_info=True)
 
     def _render_overview(self, data: dict[str, Any]) -> None:
         try:
@@ -152,7 +152,7 @@ class _AdminMetricsTab(Static):
                 f"Cost: [bold]${cost:.2f}[/bold]",
             )
         except Exception:
-            pass
+            logger.debug("metrics overview render failed", exc_info=True)
 
     def _render_cost(self, data: dict[str, Any]) -> None:
         try:
@@ -175,7 +175,7 @@ class _AdminMetricsTab(Static):
                 )
             panel.update("\n".join(lines))
         except Exception:
-            pass
+            logger.debug("cost breakdown render failed", exc_info=True)
 
     def _render_activity(self, data: dict[str, Any]) -> None:
         try:
@@ -195,7 +195,7 @@ class _AdminMetricsTab(Static):
                 )
             panel.update("\n".join(lines))
         except Exception:
-            pass
+            logger.debug("activity render failed", exc_info=True)
 
 
 # ── Admin Config Tab ─────────────────────────────────────────────────
@@ -234,7 +234,7 @@ class _AdminConfigTab(Static):
                 )
                 panel.update(f"[red]Error: {exc}[/red]")
             except Exception:
-                pass
+                logger.debug("config error panel update failed", exc_info=True)
 
     def _render_config(self, config: dict[str, Any]) -> None:
         try:
@@ -242,7 +242,7 @@ class _AdminConfigTab(Static):
             lines = self._format_dict(config, indent=0)
             panel.update("\n".join(lines))
         except Exception:
-            pass
+            logger.debug("config render failed", exc_info=True)
 
     def _format_dict(
         self, d: dict, indent: int = 0,
@@ -300,7 +300,7 @@ class _AdminHealthTab(Static):
                 )
                 panel.update(f"[red]Health check failed: {exc}[/red]")
             except Exception:
-                pass
+                logger.debug("health error panel update failed", exc_info=True)
 
     def _render_health(self, health: dict[str, Any]) -> None:
         try:
@@ -325,7 +325,7 @@ class _AdminHealthTab(Static):
 
             panel.update("\n".join(lines))
         except Exception:
-            pass
+            logger.debug("health render failed", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "admin-health-refresh":

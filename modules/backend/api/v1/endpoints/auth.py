@@ -100,7 +100,7 @@ async def create_sse_token(
     except Exception:
         # Redis unavailable — fall back to returning the token as-is.
         # The SSE dependency will resolve via JWT fallback.
-        pass
+        logger.warning("Redis unavailable for SSE token storage, JWT fallback active", exc_info=True)
 
     return ApiResponse(
         success=True,
