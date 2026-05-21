@@ -339,23 +339,33 @@ STEPS = [
     {
         "id": "summarize",
         "label": "Synthesize Report",
-        "description": (
-            "Synthesize a short report from the analysis. "
-            "Topic: {{@context.topic}}. "
-            "Prior knowledge: {{@node.read-knowledge.output}}. "
-            "Analysis: {{@node.collect.output}}"
-        ),
-        "node_type": "agent_step",
-        "capability": "research.synthesizer",
+        "description": "Synthesize a short report from the analysis",
+        "node_type": "llm_call",
+        "llm_call_config": {
+            "model": "moderate",
+            "system_prompt": (
+                "You are a concise technical writer. "
+                "Produce clear, structured reports from analysis inputs. "
+                "Be direct — no filler, no preamble."
+            ),
+            "prompt_template": (
+                "Write a short report (3-5 paragraphs) on the following topic.\n\n"
+                "Topic: {{@context.topic}}\n\n"
+                "Prior knowledge:\n{{@node.read-knowledge.output}}\n\n"
+                "Analysis:\n{{@node.collect.output}}\n\n"
+                "Structure: one sentence summary, key findings as bullet points, "
+                "one sentence conclusion."
+            ),
+            "temperature": 0.2,
+            "max_tokens": 600,
+            "structured_output": None,
+        },
+        "capability": None,
         "roster": "default",
         "complexity_tier": "simple",
-        "cost_ceiling_usd": 1.0,
+        "cost_ceiling_usd": None,
         "environment": "local",
-        "input": {
-            "topic": "{{@context.topic}}",
-            "prior_knowledge": "{{@node.read-knowledge.output}}",
-            "analysis": "{{@node.collect.output}}",
-        },
+        "input": {},
         "output_mapping": None,
         "depends_on": ["collect"],
         "timeout_seconds": None,
