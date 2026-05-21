@@ -843,8 +843,12 @@ class WorkflowRunWavesMixin:
             else:
                 resolved_args[k] = v
 
-        # Provision tool dependencies (V1: http_client only)
+        # Provision tool dependencies
         deps = tool_info.get("deps", [])
+        _HANDLED_DEPS = {"http_client", "mission_id"}
+        if "mission_id" in deps:
+            resolved_args["mission_id"] = str(run.mission_id)
+
         try:
             import httpx
             if "http_client" in deps:
@@ -852,7 +856,7 @@ class WorkflowRunWavesMixin:
                     resolved_args["http_client"] = client
                     result = await impl(**resolved_args)
             else:
-                unsupported = [d for d in deps if d != "http_client"]
+                unsupported = [d for d in deps if d not in _HANDLED_DEPS]
                 if unsupported:
                     raise RuntimeError(
                         f"Tool '{tool_name}' requires unsupported deps: {unsupported} (step '{step.id}')"

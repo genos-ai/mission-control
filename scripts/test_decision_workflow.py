@@ -5,12 +5,17 @@ Usage:
     python scripts/test_decision_workflow.py --mission <mission_name_or_id> [--topic "quantum computing"]
 
 Creates a workflow with:
-  1. classify (llm_call) — classifies the topic as technical or creative
-  2. route (decision, agent resolver) — picks the downstream path
-  3. technical-path (llm_call) — technical analysis
-  4. creative-path (llm_call) — creative brainstorm
+  1. read-context  (llm_call)   — reads and echoes the workflow run context
+  2. read-knowledge (tool_call) — queries the knowledge base for existing entries on the topic
+  3. classify      (llm_call)   — classifies the topic as technical or creative
+  4. route         (decision)   — picks the downstream path (agent/human/rule resolver)
+  5. technical-path (llm_call)  — technical analysis (if routed technical)
+  6. creative-path  (llm_call)  — creative brainstorm (if routed creative)
+  7. collect       (merge)      — waits for both branches (only one runs)
+  8. summarize     (agent_step) — synthesizes a report; produces artifact (knowledge write) +
+                                  emits context_updates (MCD write)
 
-Only the chosen path runs; the other is skipped.
+Only the chosen branch (technical or creative) runs; the other is skipped.
 """
 
 import argparse
@@ -28,6 +33,65 @@ WORKFLOW_DESCRIPTION = "Test workflow: decision node routes between technical an
 
 STEPS = [
     {
+        "id": "read-context",
+        "label": "Read Context",
+        "description": "Read and echo the current workflow run context",
+        "node_type": "llm_call",
+        "llm_call_config": {
+            "model": "quick",
+            "system_prompt": None,
+            "prompt_template": (
+                "You are a workflow context inspector.\n"
+                "Summarize the following workflow run context in one short paragraph.\n\n"
+                "Context variables:\n"
+                "- topic: {{@context.topic}}\n"
+                "- resolver: {{@context.resolver}}\n\n"
+                "State exactly what the workflow is about to do with these inputs."
+            ),
+            "temperature": 0.0,
+            "max_tokens": 150,
+            "structured_output": None,
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": [],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
+        "id": "read-knowledge",
+        "label": "Read Knowledge",
+        "description": "Query the mission knowledge base for existing entries on the topic",
+        "node_type": "tool_call",
+        "tool_call_config": {
+            "tool_name": "query_knowledge",
+            "tool_args": {
+                "query": "{{@context.topic}}",
+                "limit": 5,
+                "mode": "hybrid",
+            },
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": [],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
         "id": "classify",
         "label": "Classify Topic",
         "description": "Classify the topic as technical or creative",
@@ -38,7 +102,8 @@ STEPS = [
             "prompt_template": (
                 "Classify the following topic into exactly one category.\n"
                 "Return ONLY the word 'technical' or 'creative', nothing else.\n\n"
-                "Topic: {{@context.topic}}"
+                "Topic: {{@context.topic}}\n\n"
+                "Existing knowledge about this topic:\n{{@node.read-knowledge.output}}"
             ),
             "temperature": 0.0,
             "max_tokens": 10,
@@ -51,7 +116,7 @@ STEPS = [
         "environment": "local",
         "input": {},
         "output_mapping": None,
-        "depends_on": [],
+        "depends_on": ["read-context", "read-knowledge"],
         "timeout_seconds": None,
         "max_refinement_rounds": 1,
         "termination": "completion",
@@ -172,11 +237,13 @@ STEPS = [
     },
     {
         "id": "summarize",
-        "label": "Write Report",
+        "label": "Synthesize & Update",
         "description": (
-            "Synthesize a short report from the analysis. "
+            "Synthesize a report from the analysis — writes an artifact to knowledge "
+            "and emits context_updates to the MCD. "
             "Topic: {{@context.topic}}. "
-            "Analysis results: {{@node.collect.output}}"
+            "Prior knowledge: {{@node.read-knowledge.output}}. "
+            "Analysis: {{@node.collect.output}}"
         ),
         "node_type": "agent_step",
         "capability": "research.synthesizer",
@@ -186,6 +253,7 @@ STEPS = [
         "environment": "local",
         "input": {
             "topic": "{{@context.topic}}",
+            "prior_knowledge": "{{@node.read-knowledge.output}}",
             "analysis": "{{@node.collect.output}}",
         },
         "output_mapping": None,
@@ -198,6 +266,8 @@ STEPS = [
 ]
 
 EDGES = [
+    {"id": "read-context->classify", "source": "read-context", "target": "classify"},
+    {"id": "read-knowledge->classify", "source": "read-knowledge", "target": "classify"},
     {"id": "classify->route", "source": "classify", "target": "route"},
     {"id": "route->technical-path", "source": "route", "target": "technical-path", "label": "technical", "source_handle": "technical"},
     {"id": "route->creative-path", "source": "route", "target": "creative-path", "label": "creative", "source_handle": "creative"},
@@ -315,7 +385,7 @@ async def main():
                 steps=steps,
                 trigger_config=TRIGGER,
                 budget_config=BUDGET,
-                context={"topic": args.topic},
+                context={"topic": args.topic, "resolver": args.resolver},
                 designed_by="script:test_decision_workflow",
             )
             # Save edges separately (create_workflow doesn't take edges)
@@ -358,7 +428,7 @@ async def main():
             workflow_name=WORKFLOW_NAME,
             mission_id=mission_id,
             triggered_by="script:test_decision_workflow",
-            context_overrides={"topic": args.topic},
+            context_overrides={"topic": args.topic, "resolver": args.resolver},
             on_progress=on_progress,
         )
         await db.commit()
