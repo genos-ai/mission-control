@@ -70,7 +70,11 @@ export function getEventIcon(eventType: string, data?: Record<string, unknown>):
     return createElement(Activity, { className: 'h-3 w-3 text-blue-400' })
   }
 
-  return EVENT_ICONS[eventType] ?? createElement(Zap, { className: 'h-3 w-3 text-gray-400' })
+  if (EVENT_ICONS[eventType]) return EVENT_ICONS[eventType]
+  if (eventType.includes('failed') || eventType.includes('error')) {
+    return createElement(XCircle, { className: 'h-3 w-3 text-red-400' })
+  }
+  return createElement(Zap, { className: 'h-3 w-3 text-gray-400' })
 }
 
 /**

@@ -64,13 +64,11 @@ export function RunWorkflowDialog({
       }
     }
 
+    onClose()
     runMutation.mutate(
       { workflowName, contextOverrides },
       {
-        onSuccess: () => {
-          toast.success('Workflow started')
-          onClose()
-        },
+        onSuccess: () => toast.success('Workflow started'),
         onError: (err) => toast.error(err.message),
       },
     )

@@ -254,6 +254,7 @@ function EventRow({ event }: { event: ConsoleEvent }) {
     d.error === true ||
     d.level === 'error' ||
     d.phase === 'error' ||
+    d.step === 'error' ||
     d.status === 'failed' ||
     event.event_type.includes('failed') ||
     event.event_type.includes('error')
@@ -553,8 +554,10 @@ function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
       : 'text-muted-foreground'
 
   return (
-    <div className={`flex items-start gap-2 rounded px-2 py-0.5 font-mono text-xs ${
-      isError ? 'text-red-400' : 'text-muted-foreground hover:bg-muted/20'
+    <div className={`flex items-start gap-2 rounded px-2 font-mono text-xs ${
+      isError
+        ? 'py-0.5 text-red-400'
+        : 'py-0.5 text-muted-foreground hover:bg-muted/20'
     }`}>
       <span className="shrink-0 text-[10px] tabular-nums opacity-60 mt-0.5">
         {ts}
@@ -569,7 +572,7 @@ function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
         <span className={`shrink-0 ${isError ? 'text-red-400/70' : 'text-foreground/60'}`}>{event.source}</span>
       )}
       {isError && errorMessage && (
-        <span className="min-w-0 break-words text-red-400">{errorMessage}</span>
+        <span className="min-w-0 break-words text-red-300">{errorMessage}</span>
       )}
       {!isError && detail && (
         <span className="min-w-0 break-words opacity-70">{detail}</span>
