@@ -12,8 +12,9 @@ Creates a workflow with:
   5. technical-path (llm_call)  — technical analysis (if routed technical)
   6. creative-path  (llm_call)  — creative brainstorm (if routed creative)
   7. collect       (merge)      — waits for both branches (only one runs)
-  8. summarize     (agent_step) — synthesizes a report; produces artifact (knowledge write) +
-                                  emits context_updates (MCD write)
+  8. summarize        (agent_step) — synthesizes a final report artifact
+  9. update-knowledge (tool_call)  — explicitly stores a learning in the knowledge base
+ 10. update-context   (tool_call)  — explicitly writes routing outcome to the MCD
 
 Only the chosen branch (technical or creative) runs; the other is skipped.
 """
@@ -237,10 +238,9 @@ STEPS = [
     },
     {
         "id": "summarize",
-        "label": "Synthesize & Update",
+        "label": "Synthesize Report",
         "description": (
-            "Synthesize a report from the analysis — writes an artifact to knowledge "
-            "and emits context_updates to the MCD. "
+            "Synthesize a short report from the analysis. "
             "Topic: {{@context.topic}}. "
             "Prior knowledge: {{@node.read-knowledge.output}}. "
             "Analysis: {{@node.collect.output}}"
@@ -263,6 +263,61 @@ STEPS = [
         "termination": "completion",
         "max_iterations": None,
     },
+    {
+        "id": "update-knowledge",
+        "label": "Update Knowledge",
+        "description": "Store a learning from this workflow run in the mission knowledge base",
+        "node_type": "tool_call",
+        "tool_call_config": {
+            "tool_name": "store_learning",
+            "tool_args": {
+                "title": "Decision routing result: {{@context.topic}}",
+                "body": "{{@node.summarize.output}}",
+                "recommendation": "Use the {{@node.route.chosen}} path for topics classified as {{@node.classify.output}}.",
+                "kind": "learning",
+                "domain_tags": ["workflow", "decision-routing"],
+                "confidence": 0.8,
+            },
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["summarize"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
+    {
+        "id": "update-context",
+        "label": "Update Context",
+        "description": "Write the workflow outcome back to the Mission Context Document",
+        "node_type": "tool_call",
+        "tool_call_config": {
+            "tool_name": "update_context",
+            "tool_args": {
+                "path": "workflow.last_decision_routing",
+                "value": "topic={{@context.topic}} classification={{@node.classify.output}} path={{@node.route.chosen}}",
+                "reason": "Decision workflow completed — recording routing outcome",
+            },
+        },
+        "capability": None,
+        "roster": "default",
+        "complexity_tier": "simple",
+        "cost_ceiling_usd": None,
+        "environment": "local",
+        "input": {},
+        "output_mapping": None,
+        "depends_on": ["summarize"],
+        "timeout_seconds": None,
+        "max_refinement_rounds": 1,
+        "termination": "completion",
+        "max_iterations": None,
+    },
 ]
 
 EDGES = [
@@ -274,6 +329,8 @@ EDGES = [
     {"id": "technical-path->collect", "source": "technical-path", "target": "collect"},
     {"id": "creative-path->collect", "source": "creative-path", "target": "collect"},
     {"id": "collect->summarize", "source": "collect", "target": "summarize"},
+    {"id": "summarize->update-knowledge", "source": "summarize", "target": "update-knowledge"},
+    {"id": "summarize->update-context", "source": "summarize", "target": "update-context"},
 ]
 
 OBJECTIVE = {
