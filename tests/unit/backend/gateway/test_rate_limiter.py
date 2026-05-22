@@ -29,6 +29,13 @@ def mock_app_config():
         "messages_per_hour": 200,
     }
     config.security.rate_limiting.slack = slack_limits
+
+    api_limits = MagicMock()
+    api_limits.model_dump.return_value = {
+        "requests_per_minute": 3,
+        "requests_per_hour": 50,
+    }
+    config.security.rate_limiting.api = api_limits
     config.security.rate_limiting.unknown_channel = None
     return config
 
@@ -115,3 +122,16 @@ class TestGatewayRateLimiter:
             for _ in range(100):
                 result = limiter.check("unknown_channel", "user_1")
                 assert result.allowed is True
+
+    def test_api_channel_uses_requests_per_field_names(self, limiter, mock_app_config):
+        """`api` channel exposes `requests_per_*` (ApiRateLimitSchema) — these must apply."""
+        with patch(
+            "modules.backend.gateway.security.rate_limiter.get_app_config",
+            return_value=mock_app_config,
+        ):
+            for _ in range(3):
+                assert limiter.check("api", "user_1").allowed is True
+
+            result = limiter.check("api", "user_1")
+            assert result.allowed is False
+            assert result.retry_after_seconds > 0

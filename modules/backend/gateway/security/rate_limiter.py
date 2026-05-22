@@ -27,8 +27,10 @@ class GatewayRateLimiter:
     """
     Per-user, per-channel rate limiter.
 
-    Reads limits from security.yaml rate_limiting section.
-    Each channel has its own messages_per_minute and messages_per_hour.
+    Reads limits from security.yaml rate_limiting section. Per-channel
+    schemas use different field names: the `api` channel exposes
+    `requests_per_*`; `telegram`/`websocket` channels expose
+    `messages_per_*`. Both are accepted here.
 
     For distributed deployments, replace in-memory dicts with Redis
     INCR + EXPIRE for atomic rate counting.
@@ -43,7 +45,7 @@ class GatewayRateLimiter:
         Check if a request from this user on this channel is within limits.
 
         Args:
-            channel: Channel name (telegram, slack, etc.)
+            channel: Channel name (api, telegram, websocket, etc.)
             user_id: User identifier within the channel
 
         Returns:
@@ -53,8 +55,8 @@ class GatewayRateLimiter:
         if limits is None:
             return RateLimitResult(allowed=True)
 
-        per_minute = limits.get("messages_per_minute")
-        per_hour = limits.get("messages_per_hour")
+        per_minute = limits.get("requests_per_minute", limits.get("messages_per_minute"))
+        per_hour = limits.get("requests_per_hour", limits.get("messages_per_hour"))
         now = time.monotonic()
         key = f"{channel}:{user_id}"
 
