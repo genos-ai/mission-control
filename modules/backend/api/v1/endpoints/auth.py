@@ -87,20 +87,24 @@ async def create_sse_token(
     from redis.asyncio import Redis as AsyncRedis
 
     from modules.backend.core.config import get_redis_url
+    from modules.backend.core.exceptions import ExternalServiceError
 
     sse_token = str(uuid.uuid4())
     ttl = 30
 
+    # The opaque UUID is meaningless without the Redis side of the handshake
+    # — _resolve_sse_token() reads it back to authenticate the SSE stream.
+    # If we cannot store the binding, fail the request so the client retries
+    # rather than holding a token that will reject on connect.
     try:
         redis = AsyncRedis.from_url(get_redis_url())
         try:
             await redis.set(f"sse_token:{sse_token}", str(current_user.id), ex=ttl)
         finally:
             await redis.aclose()
-    except Exception:
-        # Redis unavailable — fall back to returning the token as-is.
-        # The SSE dependency will resolve via JWT fallback.
-        logger.warning("Redis unavailable for SSE token storage, JWT fallback active", exc_info=True)
+    except Exception as exc:
+        logger.warning("Redis unavailable for SSE token storage", exc_info=True)
+        raise ExternalServiceError("SSE token store unavailable, retry shortly") from exc
 
     return ApiResponse(
         success=True,
