@@ -68,6 +68,56 @@ def _extract_run_cost(result: Any, model_name: str | None = None) -> float:
         return 0.0
 
 
+def _extract_default_agent_output(
+    outcome_dict: dict | None,
+    *,
+    expected_agent: str | None = None,
+) -> dict[str, Any]:
+    """Default-populate completed_outcomes for an agent_step (Plan 79 §8.3).
+
+    Without this, agent_step nodes whose workflow YAML does not declare
+    output_mapping land in completed_outcomes as `{}` (because
+    ExecutionPersistence.extract_outputs short-circuits on no mapping).
+    Downstream @node.X.output.field refs then silently resolve to None.
+
+    Strategy:
+    1. If `expected_agent` is given, find the TaskResult whose agent_name
+       matches. This is the deterministic case for single-capability
+       agent_step dispatch (the Plan 79 deliberation workflow case).
+    2. Otherwise fall back to the last task_result (legacy multi-task
+       behaviour). Log a warning when the fallback fires.
+
+    The result is wrapped under "output" key so @node.X.output.field
+    references auto-unwrap (matching the convention used by tool_call
+    and llm_call dispatchers).
+    """
+    if not outcome_dict:
+        return {}
+    task_results = outcome_dict.get("task_results", []) or []
+    if not task_results:
+        return {}
+
+    if expected_agent:
+        for tr in task_results:
+            if isinstance(tr, dict) and tr.get("agent_name") == expected_agent:
+                return {"output": tr.get("output_reference", {})}
+        logger.warning(
+            "Agent name match failed for default-output extraction; "
+            "falling back to last task_result",
+            extra={
+                "expected_agent": expected_agent,
+                "available_agent_names": [
+                    tr.get("agent_name") for tr in task_results
+                    if isinstance(tr, dict)
+                ],
+            },
+        )
+
+    last = task_results[-1]
+    output_ref = last.get("output_reference", {}) if isinstance(last, dict) else {}
+    return {"output": output_ref}
+
+
 @dataclass
 class VirtualExecution:
     """Lightweight stand-in for condition/notification nodes that don't create DB Execution records."""
@@ -525,15 +575,24 @@ class WorkflowRunWavesMixin:
                 f"Step '{step.id}' execution failed: {type(e).__name__}: {e}"
             ) from e
 
-        # 3. Extract outputs from the outcome
+        # 3. Extract outputs from the outcome.
+        # Plan 79 §8.3 — default-populate completed_outcomes[step.id] with the
+        # agent's structured output (matched by agent_name) so downstream
+        # @node.X.output.field refs resolve. Explicit output_mapping continues
+        # to take precedence and merges on top.
+        expected_agent = f"{step.capability}.agent" if step.capability else None
+        extracted = _extract_default_agent_output(
+            outcome_dict, expected_agent=expected_agent,
+        )
         output_mapping = (
             step.output_mapping.model_dump()
             if step.output_mapping
             else None
         )
-        extracted = ctx.persistence.extract_outputs(
-            outcome_dict, output_mapping,
-        )
+        if output_mapping:
+            extracted.update(
+                ctx.persistence.extract_outputs(outcome_dict, output_mapping),
+            )
 
         logger.info(
             "Step completed",
@@ -818,7 +877,9 @@ class WorkflowRunWavesMixin:
         completed_outcomes: dict[str, dict],
     ) -> tuple[VirtualExecution, dict]:
         """Invoke a registered tool directly without an agent wrapper."""
-        from modules.backend.services.condition_evaluator import resolve_template
+        from modules.backend.services.condition_evaluator import (
+            resolve_template, walk_refs,
+        )
         from modules.backend.tools.registry import get_tool_registry
 
         config = step.tool_call_config
@@ -835,13 +896,16 @@ class WorkflowRunWavesMixin:
         if impl is None:
             raise RuntimeError(f"Tool '{tool_name}' has no _impl function (step '{step.id}')")
 
-        # Resolve @node/@context variable references in string arg values
-        resolved_args: dict[str, Any] = {}
-        for k, v in tool_args.items():
-            if isinstance(v, str):
-                resolved_args[k] = resolve_template(v, completed_outcomes, run.context)
-            else:
-                resolved_args[k] = v
+        # Plan 79 §8.4 — deep-resolve refs in tool_args. Walks nested dicts
+        # and lists so structured args (e.g. compute_stance_delta's
+        # previous_round: {systems: "{{@node.X.output}}", ...}) get their
+        # inner refs resolved. Standalone refs preserve Python type per §8.6.
+        resolved_args = walk_refs(
+            tool_args, completed_outcomes, run.context,
+            leaf_resolver=lambda s: resolve_template(
+                s, completed_outcomes, run.context,
+            ),
+        )
 
         # Provision tool dependencies
         deps = tool_info.get("deps", [])
@@ -1293,16 +1357,30 @@ class WorkflowRunWavesMixin:
         step: WorkflowStepSchema,
         step_input: dict[str, Any],
     ) -> str:
-        """Build an objective string from the step definition and resolved input."""
+        """Build an objective string from the step definition and resolved input.
+
+        Plan 79 §8.2 — dict/list values are JSON-encoded so structured
+        upstream context (e.g. a debater's prior turn, the research
+        packet) reaches the agent in machine-parseable form rather than
+        being dropped silently. None values are skipped. Scalar values
+        (str/int/float/bool) format as `key: value`.
+        """
+        import json
+
         parts = [step.description or f"Execute step: {step.id}"]
 
         if step_input:
             context_parts = []
             for key, value in step_input.items():
+                if value is None:
+                    continue
                 if isinstance(value, str):
                     context_parts.append(f"{key}: {value}")
-                elif isinstance(value, list):
-                    context_parts.append(f"{key}: {', '.join(str(v) for v in value)}")
+                elif isinstance(value, (dict, list)):
+                    context_parts.append(f"{key}: {json.dumps(value, default=str)}")
+                else:
+                    # int, float, bool, etc.
+                    context_parts.append(f"{key}: {value}")
             if context_parts:
                 parts.append("Context: " + "; ".join(context_parts))
 

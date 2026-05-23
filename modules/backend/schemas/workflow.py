@@ -9,9 +9,66 @@ Each step becomes an Execution at runtime. The output_mapping on each step
 defines the anti-corruption layer for inter-execution data flow.
 """
 
+import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+# Plan 79 §8.7 — used by WorkflowSchema.validate_steps to verify that every
+# @node.X reference in a step's inputs/config points to a declared step ID.
+# Matches the @node.<step_id> prefix; the trailing field path is ignored
+# (we validate step IDs only, not output schemas).
+_NODE_REF_RE = re.compile(r"@node\.([a-z][a-z0-9_-]*)")
+
+
+def _collect_node_refs(step: "WorkflowStepSchema") -> list[str]:
+    """Scan a step's ref-bearing fields and return all @node.<id> step IDs.
+
+    Walks step.input, step.condition, plus the embedded config blocks that
+    carry templates: tool_call_config.tool_args, llm_call_config.prompt_template
+    + system_prompt, decision_config.expression + prompt, condition_config,
+    notification_config.message_template, human_input_config.prompt_message.
+    Recurses into dict and list values so refs nested at any depth are found.
+
+    Used at workflow load time to fail loud on typos like
+    @node.opem-systems.output (missing 'n') before a multi-hour run.
+    """
+    refs: list[str] = []
+
+    def _scan(value: Any) -> None:
+        if isinstance(value, str):
+            refs.extend(_NODE_REF_RE.findall(value))
+        elif isinstance(value, dict):
+            for v in value.values():
+                _scan(v)
+        elif isinstance(value, list):
+            for v in value:
+                _scan(v)
+
+    _scan(step.input)
+    if step.condition:
+        _scan(step.condition)
+    if step.tool_call_config:
+        _scan(step.tool_call_config.tool_args)
+    if step.llm_call_config:
+        _scan(step.llm_call_config.prompt_template)
+        if step.llm_call_config.system_prompt:
+            _scan(step.llm_call_config.system_prompt)
+    if step.decision_config:
+        if step.decision_config.expression:
+            _scan(step.decision_config.expression)
+        if step.decision_config.prompt:
+            _scan(step.decision_config.prompt)
+        if step.decision_config.prompt_message:
+            _scan(step.decision_config.prompt_message)
+    if step.condition_config:
+        _scan(step.condition_config.expression)
+    if step.notification_config:
+        _scan(step.notification_config.message_template)
+    if step.human_input_config:
+        _scan(step.human_input_config.prompt_message)
+    return refs
 
 
 class WorkflowOutputFieldMapping(BaseModel):
@@ -521,6 +578,20 @@ class WorkflowSchema(BaseModel):
 
         if sorted_count != len(steps):
             raise ValueError("Workflow steps contain a dependency cycle")
+
+        # Plan 79 §8.7 — validate @node.X refs point to declared step IDs.
+        # Catches typos at YAML parse time instead of mid-run. Only validates
+        # the step ID portion of the ref (field-path typos like
+        # @node.research.outpu.x are runtime-checked since we don't know
+        # output schemas statically).
+        for step in steps:
+            refs = _collect_node_refs(step)
+            bad = sorted({r for r in refs if r not in step_ids})
+            if bad:
+                raise ValueError(
+                    f"Step '{step.id}' references unknown step IDs in its "
+                    f"inputs/config: {bad}. Available: {sorted(step_ids)}"
+                )
 
         # Output mapping target key uniqueness
         target_keys: list[str] = []

@@ -241,6 +241,117 @@ class TestUpstreamContextResolution:
             service.resolve_upstream_context(step, {}, {})
 
 
+class TestUpstreamContextDeepResolution:
+    """Plan 79 §8.1a — step.input deep-resolves @node.X.output.field refs
+    (bare, no braces) including refs nested inside dicts and lists."""
+
+    def _make_step_with_input(self, input_dict, extra_steps=None):
+        """Build a 2-step workflow where step-b carries the test input.
+
+        `extra_steps`: additional declared step IDs the input refs need
+        to exist (Plan 79 §8.7 load-time validation requires every
+        @node.X to point to a declared step).
+        """
+        steps = [{"id": "step-a", "capability": "test.agent"}]
+        for sid in (extra_steps or []):
+            steps.append({"id": sid, "capability": "test.agent"})
+        steps.append({
+            "id": "step-b", "capability": "test.agent",
+            "depends_on": ["step-a"],
+            "input": input_dict,
+        })
+        return WorkflowSchema(
+            workflow_name="test.deep.workflow",
+            description="Test",
+            objective={
+                "statement": "T", "category": "t",
+                "owner": "t", "priority": "low",
+            },
+            steps=steps,
+        ).steps[-1]
+
+    def test_resolves_node_ref_to_dict_value(self):
+        # Sparse-topology base case: a step input field references a prior
+        # step's structured output. Should resolve to the dict.
+        service = WorkflowService(agent_registry={})
+        step = self._make_step_with_input({
+            "research_packet": "@node.step-a.output",
+        })
+        completed_outcomes = {
+            "step-a": {"output": {"claims": ["c1", "c2"], "consensus": "x"}},
+        }
+        result = service.resolve_upstream_context(step, completed_outcomes, {})
+        assert result["_step_input"]["research_packet"] == {
+            "claims": ["c1", "c2"], "consensus": "x",
+        }
+
+    def test_resolves_nested_dict_refs(self):
+        # Deliberation pattern: opponents_previous is a nested dict of refs.
+        service = WorkflowService(agent_registry={})
+        step = self._make_step_with_input(
+            {
+                "opponents_previous": {
+                    "quant": "@node.open-quant.output",
+                    "empiricist": "@node.open-empiricist.output",
+                },
+                "critic_attack_on_self": "@node.critic-r0.output.attacks.systems",
+            },
+            extra_steps=["open-quant", "open-empiricist", "critic-r0"],
+        )
+        completed_outcomes = {
+            "open-quant": {"output": {"position": "Q1"}},
+            "open-empiricist": {"output": {"position": "E1"}},
+            "critic-r0": {"output": {
+                "attacks": {"systems": {"assumption": "x", "attack": "y"}},
+            }},
+        }
+        # depends_on doesn't matter for ref resolution — the refs lookup
+        # completed_outcomes directly. We use the test convenience of
+        # depending only on step-a, but the refs above can name any step.
+        step.depends_on = ["open-quant", "open-empiricist", "critic-r0"]
+
+        result = service.resolve_upstream_context(step, completed_outcomes, {})
+        assert result["_step_input"]["opponents_previous"]["quant"] == {"position": "Q1"}
+        assert result["_step_input"]["opponents_previous"]["empiricist"] == {"position": "E1"}
+        assert result["_step_input"]["critic_attack_on_self"] == {
+            "assumption": "x", "attack": "y",
+        }
+
+    def test_node_ref_to_skipped_step_returns_none(self):
+        # Skipped predecessor: @node.X.output → None (NOT ValueError).
+        service = WorkflowService(agent_registry={})
+        step = self._make_step_with_input(
+            {"maybe": "@node.skipped.output"},
+            extra_steps=["skipped"],
+        )
+        completed_outcomes = {"skipped": {"_skipped": True}}
+        step.depends_on = ["skipped"]
+        result = service.resolve_upstream_context(step, completed_outcomes, {})
+        assert result["_step_input"]["maybe"] is None
+
+    def test_typo_in_ref_root_raises(self):
+        # Plan 79 §8.5: structural error propagates as ValueError with step id.
+        service = WorkflowService(agent_registry={})
+        step = self._make_step_with_input({"bad": "@nodez.x.y"})
+        with pytest.raises(ValueError, match="unresolvable reference"):
+            service.resolve_upstream_context(step, {}, {})
+
+    def test_static_values_passthrough(self):
+        # Non-ref values pass through unchanged.
+        service = WorkflowService(agent_registry={})
+        step = self._make_step_with_input({
+            "round_index": 1,
+            "agreement_intensity": 0.2,
+            "tags": ["a", "b"],
+            "label": "Round 1",
+        })
+        result = service.resolve_upstream_context(step, {}, {})
+        assert result["_step_input"]["round_index"] == 1
+        assert result["_step_input"]["agreement_intensity"] == 0.2
+        assert result["_step_input"]["tags"] == ["a", "b"]
+        assert result["_step_input"]["label"] == "Round 1"
+
+
 class TestWorkflowLoading:
     def test_load_from_directory(self, tmp_path):
         """Load workflows from a tmp directory via config override."""

@@ -297,28 +297,50 @@ class WorkflowService:
         The Workflow is the anti-corruption layer: it extracts specific
         fields from prior MissionOutcomes via output_mapping and merges
         them with the workflow's initial context.
+
+        Plan 79 §8.1a: step.input is walked recursively, with bare-ref
+        strings (@context.x or @node.X.output.field) resolved via
+        condition_evaluator.resolve_ref. Refs inside nested dicts and
+        lists are resolved too. Unresolvable refs raise ValueError with
+        the step id for the call site.
         """
+        from modules.backend.services.condition_evaluator import (
+            ConditionEvaluationError,
+            resolve_ref,
+            walk_refs,
+        )
+
         upstream: dict[str, Any] = dict(workflow_context)
 
         for dep_id in step.depends_on:
             if dep_id in completed_outcomes:
                 upstream.update(completed_outcomes[dep_id])
 
-        # Resolve @context.* references in step input
-        resolved_input: dict[str, Any] = {}
-        for key, value in step.input.items():
-            if isinstance(value, str) and value.startswith("@context."):
-                context_key = value[len("@context."):]
-                if context_key in upstream:
-                    resolved_input[key] = upstream[context_key]
-                else:
-                    raise ValueError(
-                        f"Step '{step.id}' has unresolvable @context reference: "
-                        f"'{value}' (available: {list(upstream.keys())})"
-                    )
-            else:
-                resolved_input[key] = value
+        # @context.X refs look up `upstream` (workflow context + merged dep
+        # outcomes), preserving the pre-Plan-79 behaviour where a dep's
+        # output_mapping target_key becomes addressable via @context. The
+        # completed_outcomes dict is what @node.X refs walk.
+        def _leaf(value: str) -> Any:
+            if not value.startswith("@"):
+                return value
+            try:
+                resolved = resolve_ref(value, completed_outcomes, upstream)
+            except ConditionEvaluationError as e:
+                raise ValueError(
+                    f"Step '{step.id}' has unresolvable reference '{value}': {e}"
+                ) from e
+            # Fail loud on missing @context.X — a YAML typo, not the
+            # legitimate "skipped predecessor" case (which is @node-only).
+            if resolved is None and value.startswith("@context."):
+                raise ValueError(
+                    f"Step '{step.id}' has unresolvable @context reference: "
+                    f"'{value}' (available: {sorted(upstream.keys())})"
+                )
+            return resolved
 
+        resolved_input = walk_refs(
+            step.input, completed_outcomes, workflow_context, leaf_resolver=_leaf,
+        )
         upstream["_step_input"] = resolved_input
         return upstream
 

@@ -280,8 +280,16 @@ class _Parser:
 # Evaluator
 # ---------------------------------------------------------------------------
 
-def _resolve_ref(path: str, completed_outcomes: dict[str, dict], workflow_context: dict) -> Any:
-    """Resolve @node.step_id.field or @context.key against runtime data."""
+def resolve_ref(path: str, completed_outcomes: dict[str, dict], workflow_context: dict) -> Any:
+    """Resolve @node.step_id.field or @context.key against runtime data.
+
+    Public function. Used by workflow upstream-context resolution
+    (services/workflow.py) and tool_call/llm_call template substitution.
+
+    Raises ConditionEvaluationError on structural errors (unknown reference
+    root). Returns None when the data path is missing (e.g. a skipped
+    predecessor) — callers distinguish these by catching the exception.
+    """
     parts = path.lstrip("@").split(".")
 
     if parts[0] == "node" and len(parts) >= 3:
@@ -316,7 +324,7 @@ def _eval(node: Any, outcomes: dict[str, dict], ctx: dict) -> Any:
         return node.value
 
     if isinstance(node, RefExpr):
-        return _resolve_ref(node.path, outcomes, ctx)
+        return resolve_ref(node.path, outcomes, ctx)
 
     if isinstance(node, CompareExpr):
         left = _eval(node.left, outcomes, ctx)
@@ -416,20 +424,101 @@ def evaluate_expression(
     return str(result).strip()
 
 
+_STANDALONE_TEMPLATE_RE = re.compile(r"^\s*\{\{(@[^}]+)\}\}\s*$")
+_TEMPLATE_RE = re.compile(r"\{\{(@[^}]+)\}\}")
+
+
 def resolve_template(
-    template: str,
+    template: Any,
     completed_outcomes: dict[str, dict],
     workflow_context: dict | None = None,
-) -> str:
-    """Resolve {{@node.x.y}} and {{@context.k}} placeholders in a message template."""
+) -> Any:
+    """Resolve {{@node.x.y}} and {{@context.k}} placeholders in a template.
+
+    Plan 79 §8.5 — Fails loud on structural errors (typo in ref root, e.g.
+    `@nodez.X`). The previous swallow-and-leave-marker behaviour violated
+    the fail-fast project principle and masked YAML typos.
+
+    Plan 79 §8.6 — Preserves Python type when the entire input is a
+    single ref. `"{{@node.X.output}}"` resolving to a dict returns the
+    dict, not `str(dict)`. Mixed text continues to produce a string.
+
+    Args:
+        template: Template string. Non-strings are returned unchanged
+            (so this is safe to call inside a generic walker).
+        completed_outcomes: Wave engine's completed-step outcomes map.
+        workflow_context: Workflow context dict.
+
+    Returns:
+        The resolved value. Same Python type as the resolved ref when the
+        template is a standalone ref; otherwise a string with the
+        substitutions applied.
+
+    Raises:
+        ConditionEvaluationError: when a ref has a structural error
+            (unknown root). Missing-data paths (skipped predecessor)
+            continue to resolve to None / empty-string.
+    """
+    if not isinstance(template, str):
+        return template
     ctx = workflow_context or {}
 
-    def _replace(m: re.Match) -> str:
-        ref = m.group(1).strip()
-        try:
-            val = _resolve_ref(ref, completed_outcomes, ctx)
-            return str(val) if val is not None else ""
-        except ConditionEvaluationError:
-            return m.group(0)  # leave unresolved
+    # Standalone ref: preserve the resolved value's Python type.
+    m = _STANDALONE_TEMPLATE_RE.match(template)
+    if m:
+        return resolve_ref(m.group(1).strip(), completed_outcomes, ctx)
 
-    return re.sub(r"\{\{(@[^}]+)\}\}", _replace, template)
+    # Multi-ref or mixed-text: string substitution.
+    def _replace(match: re.Match) -> str:
+        # No try/except: structural errors propagate as ConditionEvaluationError
+        # so YAML typos fail at the call site instead of leaving literal markers.
+        val = resolve_ref(match.group(1).strip(), completed_outcomes, ctx)
+        return str(val) if val is not None else ""
+
+    return _TEMPLATE_RE.sub(_replace, template)
+
+
+# =============================================================================
+# walk_refs — generic recursive walker, parameterised by leaf resolver
+# =============================================================================
+
+def walk_refs(
+    value: Any,
+    completed_outcomes: dict[str, dict],
+    workflow_context: dict | None = None,
+    *,
+    leaf_resolver,
+) -> Any:
+    """Recursively walk str/dict/list values, applying leaf_resolver to strings.
+
+    Used by both agent_step input resolution (services/workflow.py) and
+    tool_call args resolution (services/workflow_run_waves.py). The two
+    call sites differ only in their leaf_resolver — agent_step uses
+    bare-ref resolution; tool_call uses template substitution.
+
+    Args:
+        value: A value of any type. dict/list are walked recursively; str
+            values are passed to leaf_resolver; other types pass through
+            unchanged.
+        completed_outcomes: Forwarded to leaf_resolver via closure (the
+            leaf_resolver typically captures these already).
+        workflow_context: Same.
+        leaf_resolver: Callable[[str], Any] applied to every string leaf.
+            Returns the resolved value (any type). May raise.
+
+    Returns:
+        A new structure with the same shape, leaves replaced.
+    """
+    if isinstance(value, str):
+        return leaf_resolver(value)
+    if isinstance(value, dict):
+        return {
+            k: walk_refs(v, completed_outcomes, workflow_context, leaf_resolver=leaf_resolver)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            walk_refs(v, completed_outcomes, workflow_context, leaf_resolver=leaf_resolver)
+            for v in value
+        ]
+    return value

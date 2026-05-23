@@ -346,3 +346,167 @@ class TestStepConditionField:
         ))
         assert workflow.steps[0].condition is None
         assert workflow.steps[1].condition is None
+
+
+# =============================================================================
+# §8.7 — load-time validation of @node.X refs
+# =============================================================================
+
+
+class TestNodeRefLoadTimeValidation:
+    """Plan 79 §8.7 — validate_steps scans step.input, tool_args, prompts,
+    decision configs, etc. for @node.<step_id> references and raises
+    ValueError at workflow parse time if any name a non-existent step.
+
+    Catches typos like @node.opem-systems.output (missing 'n') before the
+    workflow runs for hours and silently passes through the wrong values."""
+
+    def test_valid_node_ref_accepted(self):
+        WorkflowSchema(**_minimal_workflow(
+            steps=[
+                {"id": "step-a", "capability": "test.agent"},
+                {
+                    "id": "step-b", "capability": "test.agent",
+                    "depends_on": ["step-a"],
+                    "input": {"data": "@node.step-a.output"},
+                },
+            ],
+        ))
+
+    def test_typo_in_step_input_raises(self):
+        # Classic typo: opem-systems instead of open-systems.
+        with pytest.raises(ValueError, match="references unknown step IDs"):
+            WorkflowSchema(**_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {
+                        "id": "step-b", "capability": "test.agent",
+                        "depends_on": ["step-a"],
+                        "input": {"data": "@node.steo-a.output"},
+                    },
+                ],
+            ))
+
+    def test_typo_in_nested_dict_input_raises(self):
+        # Deliberation sparse-topology pattern: ref nested inside a dict.
+        with pytest.raises(ValueError, match="references unknown step IDs"):
+            WorkflowSchema(**_minimal_workflow(
+                steps=[
+                    {"id": "open-systems", "capability": "test.agent"},
+                    {"id": "open-quant", "capability": "test.agent"},
+                    {
+                        "id": "round1-systems", "capability": "test.agent",
+                        "depends_on": ["open-systems", "open-quant"],
+                        "input": {
+                            "opponents_previous": {
+                                "quant": "@node.open-qaunt.output",  # typo
+                            },
+                        },
+                    },
+                ],
+            ))
+
+    def test_typo_in_tool_args_raises(self):
+        with pytest.raises(ValueError, match="references unknown step IDs"):
+            WorkflowSchema(**_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {
+                        "id": "step-store", "node_type": "tool_call",
+                        "depends_on": ["step-a"],
+                        "tool_call_config": {
+                            "tool_name": "store_artifact",
+                            "tool_args": {
+                                "title": "X",
+                                "content": "{{@node.step-aa.output}}",
+                            },
+                        },
+                    },
+                ],
+            ))
+
+    def test_typo_in_llm_call_prompt_template_raises(self):
+        with pytest.raises(ValueError, match="references unknown step IDs"):
+            WorkflowSchema(**_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {
+                        "id": "step-render", "node_type": "llm_call",
+                        "depends_on": ["step-a"],
+                        "llm_call_config": {
+                            "model": "copilot:claude-haiku-4.5",
+                            "prompt_template": "Render {{@node.misspelt.output}}",
+                        },
+                    },
+                ],
+            ))
+
+    def test_typo_in_decision_expression_raises(self):
+        with pytest.raises(ValueError, match="references unknown step IDs"):
+            WorkflowSchema(**_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {
+                        "id": "step-decide", "node_type": "decision",
+                        "depends_on": ["step-a"],
+                        "decision_config": {
+                            "resolver": "rule",
+                            "expression": "@node.step-misspelt.output.passed == true",
+                            "options": [
+                                {"key": "yes", "label": "Yes"},
+                                {"key": "no", "label": "No"},
+                            ],
+                        },
+                    },
+                ],
+            ))
+
+    def test_typo_in_condition_field_raises(self):
+        with pytest.raises(ValueError, match="references unknown step IDs"):
+            WorkflowSchema(**_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {
+                        "id": "step-b", "capability": "test.agent",
+                        "depends_on": ["step-a"],
+                        "condition": "@node.step-aa.output is_not_empty",
+                    },
+                ],
+            ))
+
+    def test_context_refs_unaffected(self):
+        # @context.X refs are not validated by §8.7 (no schema for workflow
+        # parameters in WorkflowStepSchema). Only @node refs are checked.
+        WorkflowSchema(**_minimal_workflow(
+            steps=[
+                {
+                    "id": "step-a", "capability": "test.agent",
+                    "input": {"q": "@context.question"},  # unknown context key is fine here
+                },
+            ],
+        ))
+
+    def test_error_lists_available_step_ids(self):
+        with pytest.raises(ValueError, match="Available:"):
+            WorkflowSchema(**_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {"id": "step-b", "capability": "test.agent"},
+                    {
+                        "id": "step-c", "capability": "test.agent",
+                        "depends_on": ["step-a"],
+                        "input": {"data": "@node.step-z.output"},
+                    },
+                ],
+            ))
+
+    def test_existing_workflows_still_parse(self):
+        """Sanity: every existing workflow template still loads under §8.7."""
+        import glob
+
+        import yaml
+
+        for path in sorted(glob.glob("config/workflow_templates/*.yaml")):
+            with open(path) as f:
+                data = yaml.safe_load(f)
+            WorkflowSchema(**data)
