@@ -1,0 +1,828 @@
+# =============================================================================
+# Workflow: Think Tank (Multi-Agent Deliberation)
+# =============================================================================
+# Structured deliberation on contested, open questions (Plan 79).
+#
+# Four reasoning-diverse debaters (Systems Mapper, Reductionist Quant,
+# Adversarial Empiricist, Distributional Ethicist) plus a position-free
+# critic over up to three rounds. Anti-flattening via Pydantic schema:
+# cruxes min_length=2, required minority_position, merely_reproduces enum.
+#
+# Use when: the user wants a structured challenge to a contested view.
+# Do NOT use for: factual lookups, well-specified maths, code generation.
+#
+# 34 nodes total:
+#   23 agent_step  (research + verifier + 4 opens + 4×3 round debaters
+#                   + 4 critic rounds + synthesiser)
+#    7 tool_call   (halt-bad-research, delta-r1, delta-r2,
+#                   store-deliverable-markdown, store-deliverable-json,
+#                   store-transcript, store-learning)
+#    3 decision    (research-gate, stop-r1, stop-r2)
+#    1 merge       (final-merge)
+# =============================================================================
+
+workflow_name: deliberation.think-tank.workflow
+description: "Multi-agent deliberation for contested open questions"
+objective:
+  statement: "Produce a structured deliberation on a contested question, preserving live disagreement"
+  category: research
+  owner: user
+  priority: normal
+version: 1
+enabled: true
+
+trigger:
+  type: on_demand
+  match_patterns:
+    - "deliberate"
+    - "think tank"
+    - "contested question"
+
+budget:
+  # Sum of per-step ceilings at full 3-round run with Opus defaults:
+  #   researcher 5 + verifier 1
+  # + 4 blind opens × 3 = 12
+  # + 4 debaters × 3 rounds × 3 = 36
+  # + 4 critic rounds (r0/r1/r2/r3) × 3 = 12
+  # + synthesiser 8
+  # = $74 worst-case if every step hits its ceiling.
+  # $80 leaves $6 headroom for the storers and stance-delta tool.
+  max_cost_usd: 80.00
+
+parameters:
+  - key: question
+    label: "Question"
+    type: text
+    required: true
+    description: "The contested question to deliberate"
+    placeholder: "e.g. What will agentic AI do to UK knowledge-work employment by 2030?"
+  - key: rounds_max
+    label: "Maximum rounds"
+    type: number
+    required: false
+    default: 3
+  - key: agreement_intensity
+    label: "Agreement intensity (0.0-1.0)"
+    type: number
+    required: false
+    default: 0.2
+
+context:
+  question: ""
+  rounds_max: 3
+  agreement_intensity: 0.2
+  early_stop_threshold: 0.15
+
+# ---------------------------------------------------------------------------
+# Edges — explicit because decision nodes require labelled routing.
+# ---------------------------------------------------------------------------
+edges:
+  # Phase 0 → research gate
+  - {source: research,             target: verify-research}
+  - {source: verify-research,      target: research-gate}
+  - {source: research-gate,        target: halt-bad-research, label: failed,  source_handle: failed}
+  - {source: research-gate,        target: open-systems,      label: passed,  source_handle: passed}
+  - {source: research-gate,        target: open-quant,        label: passed,  source_handle: passed}
+  - {source: research-gate,        target: open-empiricist,   label: passed,  source_handle: passed}
+  - {source: research-gate,        target: open-ethicist,     label: passed,  source_handle: passed}
+
+  # Phase 2 — critic R0
+  - {source: open-systems,         target: critic-r0}
+  - {source: open-quant,           target: critic-r0}
+  - {source: open-empiricist,      target: critic-r0}
+  - {source: open-ethicist,        target: critic-r0}
+
+  # Phase 3 — round 1 (sparse topology — each debater sees own + opponents'
+  # R0 + critic's R0 attack on self)
+  - {source: critic-r0,            target: round1-systems}
+  - {source: critic-r0,            target: round1-quant}
+  - {source: critic-r0,            target: round1-empiricist}
+  - {source: critic-r0,            target: round1-ethicist}
+
+  # Phase 4 — critic R1 + early stop
+  - {source: round1-systems,       target: critic-r1}
+  - {source: round1-quant,         target: critic-r1}
+  - {source: round1-empiricist,    target: critic-r1}
+  - {source: round1-ethicist,      target: critic-r1}
+  - {source: critic-r1,            target: delta-r1}
+  - {source: delta-r1,             target: stop-r1}
+  - {source: stop-r1,              target: round2-systems,    label: continue, source_handle: continue}
+  - {source: stop-r1,              target: round2-quant,      label: continue, source_handle: continue}
+  - {source: stop-r1,              target: round2-empiricist, label: continue, source_handle: continue}
+  - {source: stop-r1,              target: round2-ethicist,   label: continue, source_handle: continue}
+  - {source: stop-r1,              target: final-merge,       label: halt,     source_handle: halt}
+
+  # Phase 5 — round 2 → critic R2 → early stop
+  - {source: round2-systems,       target: critic-r2}
+  - {source: round2-quant,         target: critic-r2}
+  - {source: round2-empiricist,    target: critic-r2}
+  - {source: round2-ethicist,      target: critic-r2}
+  - {source: critic-r2,            target: delta-r2}
+  - {source: delta-r2,             target: stop-r2}
+  - {source: stop-r2,              target: round3-systems,    label: continue, source_handle: continue}
+  - {source: stop-r2,              target: round3-quant,      label: continue, source_handle: continue}
+  - {source: stop-r2,              target: round3-empiricist, label: continue, source_handle: continue}
+  - {source: stop-r2,              target: round3-ethicist,   label: continue, source_handle: continue}
+  - {source: stop-r2,              target: final-merge,       label: halt,     source_handle: halt}
+
+  # Phase 6 — round 3 → critic R3 → final merge
+  - {source: round3-systems,       target: critic-r3}
+  - {source: round3-quant,         target: critic-r3}
+  - {source: round3-empiricist,    target: critic-r3}
+  - {source: round3-ethicist,      target: critic-r3}
+  - {source: critic-r3,            target: final-merge}
+
+  # Phase 7 — synthesis + persist
+  - {source: final-merge,          target: synthesise}
+  - {source: synthesise,           target: store-deliverable-markdown}
+  - {source: synthesise,           target: store-deliverable-json}
+  - {source: synthesise,           target: store-transcript}
+  - {source: synthesise,           target: store-learning}
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Phase 0: Research + verification
+  # ---------------------------------------------------------------------------
+  - id: research
+    label: "Assemble research packet"
+    description: "Produce a structured evidence packet for the deliberation"
+    capability: deliberation.researcher
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 5.00
+    input:
+      question: "@context.question"
+    timeout_seconds: 1800
+    depends_on: []
+
+  - id: verify-research
+    label: "Verify research packet"
+    description: "Audit the research packet for plausibility and source quality (P13 — researcher does not self-evaluate)"
+    capability: deliberation.research_verifier
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 1.00
+    input:
+      packet: "@node.research.output"
+    depends_on:
+      - research
+
+  - id: research-gate
+    label: "Research gate"
+    description: "Halt the workflow if the packet failed verification"
+    node_type: decision
+    decision_config:
+      resolver: rule
+      expression: "@node.verify-research.output.passed == true"
+      options:
+        - key: passed
+          label: "Packet passed verification — proceed to blind opening"
+        - key: failed
+          label: "Packet failed verification — halt and surface issues"
+    depends_on:
+      - verify-research
+
+  - id: halt-bad-research
+    label: "Halt: bad research"
+    description: "Halt the workflow loud (status=failed) because the research packet failed verification"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: halt_workflow
+      tool_args:
+        # issues_text is the joined human-readable form (Plan 79 S8) —
+        # using `issues` (the list) would str()-coerce to Python repr.
+        reason: "Research packet failed verification:\n{{@node.verify-research.output.issues_text}}"
+        channel: sse
+    depends_on:
+      - research-gate
+
+  # ---------------------------------------------------------------------------
+  # Phase 1: Blind opening (parallel; no debater sees another's opening)
+  # ---------------------------------------------------------------------------
+  - id: open-systems
+    label: "Open: Systems Mapper"
+    description: "Blind opening position — Systems Mapper"
+    capability: deliberation.debater_systems
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 0
+      agreement_intensity: "@context.agreement_intensity"
+    depends_on:
+      - research-gate
+
+  - id: open-quant
+    label: "Open: Reductionist Quant"
+    description: "Blind opening position — Reductionist Quant"
+    capability: deliberation.debater_quant
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 0
+      agreement_intensity: "@context.agreement_intensity"
+    depends_on:
+      - research-gate
+
+  - id: open-empiricist
+    label: "Open: Adversarial Empiricist"
+    description: "Blind opening position — Adversarial Empiricist (maverick seat)"
+    capability: deliberation.debater_empiricist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 0
+      agreement_intensity: "@context.agreement_intensity"
+    depends_on:
+      - research-gate
+
+  - id: open-ethicist
+    label: "Open: Distributional Ethicist"
+    description: "Blind opening position — Distributional Ethicist"
+    capability: deliberation.debater_ethicist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 0
+      agreement_intensity: "@context.agreement_intensity"
+    depends_on:
+      - research-gate
+
+  # ---------------------------------------------------------------------------
+  # Phase 2: Critic round 0 (attacks each debater's blind opening)
+  # ---------------------------------------------------------------------------
+  - id: critic-r0
+    label: "Critic — round 0"
+    description: "Attack the load-bearing assumption of every debater's opening"
+    capability: deliberation.critic
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 0
+      positions:
+        systems: "@node.open-systems.output"
+        quant: "@node.open-quant.output"
+        empiricist: "@node.open-empiricist.output"
+        ethicist: "@node.open-ethicist.output"
+    depends_on:
+      - open-systems
+      - open-quant
+      - open-empiricist
+      - open-ethicist
+
+  # ---------------------------------------------------------------------------
+  # Phase 3: Debate round 1 (sparse topology — each debater sees own R0,
+  # opponents' R0, and critic's R0 attack on self)
+  # ---------------------------------------------------------------------------
+  - id: round1-systems
+    label: "Round 1: Systems Mapper"
+    description: "Round 1 debate turn — Systems Mapper"
+    capability: deliberation.debater_systems
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 1
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.open-systems.output"
+      opponents_previous:
+        quant: "@node.open-quant.output"
+        empiricist: "@node.open-empiricist.output"
+        ethicist: "@node.open-ethicist.output"
+      critic_attack_on_self: "@node.critic-r0.output.attacks.systems"
+    depends_on:
+      - critic-r0
+
+  - id: round1-quant
+    label: "Round 1: Reductionist Quant"
+    description: "Round 1 debate turn — Reductionist Quant"
+    capability: deliberation.debater_quant
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 1
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.open-quant.output"
+      opponents_previous:
+        systems: "@node.open-systems.output"
+        empiricist: "@node.open-empiricist.output"
+        ethicist: "@node.open-ethicist.output"
+      critic_attack_on_self: "@node.critic-r0.output.attacks.quant"
+    depends_on:
+      - critic-r0
+
+  - id: round1-empiricist
+    label: "Round 1: Adversarial Empiricist"
+    description: "Round 1 debate turn — Adversarial Empiricist (maverick seat)"
+    capability: deliberation.debater_empiricist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 1
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.open-empiricist.output"
+      opponents_previous:
+        systems: "@node.open-systems.output"
+        quant: "@node.open-quant.output"
+        ethicist: "@node.open-ethicist.output"
+      critic_attack_on_self: "@node.critic-r0.output.attacks.empiricist"
+    depends_on:
+      - critic-r0
+
+  - id: round1-ethicist
+    label: "Round 1: Distributional Ethicist"
+    description: "Round 1 debate turn — Distributional Ethicist"
+    capability: deliberation.debater_ethicist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 1
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.open-ethicist.output"
+      opponents_previous:
+        systems: "@node.open-systems.output"
+        quant: "@node.open-quant.output"
+        empiricist: "@node.open-empiricist.output"
+      critic_attack_on_self: "@node.critic-r0.output.attacks.ethicist"
+    depends_on:
+      - critic-r0
+
+  # ---------------------------------------------------------------------------
+  # Phase 4: Critic round 1 + early-stop check
+  # ---------------------------------------------------------------------------
+  - id: critic-r1
+    label: "Critic — round 1"
+    description: "Attack the load-bearing assumption of every debater after round 1"
+    capability: deliberation.critic
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 1
+      positions:
+        systems: "@node.round1-systems.output"
+        quant: "@node.round1-quant.output"
+        empiricist: "@node.round1-empiricist.output"
+        ethicist: "@node.round1-ethicist.output"
+    depends_on:
+      - round1-systems
+      - round1-quant
+      - round1-empiricist
+      - round1-ethicist
+
+  - id: delta-r1
+    label: "Compute stance delta (round 1)"
+    description: "Deterministic stance-vector change between blind opening and round 1"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: compute_stance_delta
+      tool_args:
+        previous_round:
+          systems: "{{@node.open-systems.output}}"
+          quant: "{{@node.open-quant.output}}"
+          empiricist: "{{@node.open-empiricist.output}}"
+          ethicist: "{{@node.open-ethicist.output}}"
+        current_round:
+          systems: "{{@node.round1-systems.output}}"
+          quant: "{{@node.round1-quant.output}}"
+          empiricist: "{{@node.round1-empiricist.output}}"
+          ethicist: "{{@node.round1-ethicist.output}}"
+        threshold: "{{@context.early_stop_threshold}}"
+    depends_on:
+      - critic-r1
+
+  - id: stop-r1
+    label: "Early-stop check (round 1)"
+    description: "Halt if stance stable AND no debater is actively revising; otherwise continue to round 2"
+    node_type: decision
+    decision_config:
+      resolver: rule
+      expression: "@node.delta-r1.output.should_continue == true"
+      options:
+        - key: continue
+          label: "Stance still moving — continue to round 2"
+        - key: halt
+          label: "Stance stable — proceed to synthesis"
+    depends_on:
+      - delta-r1
+
+  # ---------------------------------------------------------------------------
+  # Phase 5: Round 2 (sparse topology, gated by stop-r1)
+  # ---------------------------------------------------------------------------
+  - id: round2-systems
+    label: "Round 2: Systems Mapper"
+    description: "Round 2 debate turn — Systems Mapper"
+    capability: deliberation.debater_systems
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 2
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round1-systems.output"
+      opponents_previous:
+        quant: "@node.round1-quant.output"
+        empiricist: "@node.round1-empiricist.output"
+        ethicist: "@node.round1-ethicist.output"
+      critic_attack_on_self: "@node.critic-r1.output.attacks.systems"
+    depends_on:
+      - stop-r1
+
+  - id: round2-quant
+    label: "Round 2: Reductionist Quant"
+    description: "Round 2 debate turn — Reductionist Quant"
+    capability: deliberation.debater_quant
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 2
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round1-quant.output"
+      opponents_previous:
+        systems: "@node.round1-systems.output"
+        empiricist: "@node.round1-empiricist.output"
+        ethicist: "@node.round1-ethicist.output"
+      critic_attack_on_self: "@node.critic-r1.output.attacks.quant"
+    depends_on:
+      - stop-r1
+
+  - id: round2-empiricist
+    label: "Round 2: Adversarial Empiricist"
+    description: "Round 2 debate turn — Adversarial Empiricist (maverick seat)"
+    capability: deliberation.debater_empiricist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 2
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round1-empiricist.output"
+      opponents_previous:
+        systems: "@node.round1-systems.output"
+        quant: "@node.round1-quant.output"
+        ethicist: "@node.round1-ethicist.output"
+      critic_attack_on_self: "@node.critic-r1.output.attacks.empiricist"
+    depends_on:
+      - stop-r1
+
+  - id: round2-ethicist
+    label: "Round 2: Distributional Ethicist"
+    description: "Round 2 debate turn — Distributional Ethicist"
+    capability: deliberation.debater_ethicist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 2
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round1-ethicist.output"
+      opponents_previous:
+        systems: "@node.round1-systems.output"
+        quant: "@node.round1-quant.output"
+        empiricist: "@node.round1-empiricist.output"
+      critic_attack_on_self: "@node.critic-r1.output.attacks.ethicist"
+    depends_on:
+      - stop-r1
+
+  - id: critic-r2
+    label: "Critic — round 2"
+    description: "Attack the load-bearing assumption of every debater after round 2"
+    capability: deliberation.critic
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 2
+      positions:
+        systems: "@node.round2-systems.output"
+        quant: "@node.round2-quant.output"
+        empiricist: "@node.round2-empiricist.output"
+        ethicist: "@node.round2-ethicist.output"
+    depends_on:
+      - round2-systems
+      - round2-quant
+      - round2-empiricist
+      - round2-ethicist
+
+  - id: delta-r2
+    label: "Compute stance delta (round 2)"
+    description: "Deterministic stance-vector change between round 1 and round 2"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: compute_stance_delta
+      tool_args:
+        previous_round:
+          systems: "{{@node.round1-systems.output}}"
+          quant: "{{@node.round1-quant.output}}"
+          empiricist: "{{@node.round1-empiricist.output}}"
+          ethicist: "{{@node.round1-ethicist.output}}"
+        current_round:
+          systems: "{{@node.round2-systems.output}}"
+          quant: "{{@node.round2-quant.output}}"
+          empiricist: "{{@node.round2-empiricist.output}}"
+          ethicist: "{{@node.round2-ethicist.output}}"
+        threshold: "{{@context.early_stop_threshold}}"
+    depends_on:
+      - critic-r2
+
+  - id: stop-r2
+    label: "Early-stop check (round 2)"
+    description: "Halt if stance stable AND no debater is actively revising; otherwise continue to round 3"
+    node_type: decision
+    decision_config:
+      resolver: rule
+      expression: "@node.delta-r2.output.should_continue == true"
+      options:
+        - key: continue
+          label: "Stance still moving — continue to round 3"
+        - key: halt
+          label: "Stance stable — proceed to synthesis"
+    depends_on:
+      - delta-r2
+
+  # ---------------------------------------------------------------------------
+  # Phase 6: Round 3 (final debate round; no early-stop check after)
+  # ---------------------------------------------------------------------------
+  - id: round3-systems
+    label: "Round 3: Systems Mapper"
+    description: "Round 3 debate turn — Systems Mapper"
+    capability: deliberation.debater_systems
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 3
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round2-systems.output"
+      opponents_previous:
+        quant: "@node.round2-quant.output"
+        empiricist: "@node.round2-empiricist.output"
+        ethicist: "@node.round2-ethicist.output"
+      critic_attack_on_self: "@node.critic-r2.output.attacks.systems"
+    depends_on:
+      - stop-r2
+
+  - id: round3-quant
+    label: "Round 3: Reductionist Quant"
+    description: "Round 3 debate turn — Reductionist Quant"
+    capability: deliberation.debater_quant
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 3
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round2-quant.output"
+      opponents_previous:
+        systems: "@node.round2-systems.output"
+        empiricist: "@node.round2-empiricist.output"
+        ethicist: "@node.round2-ethicist.output"
+      critic_attack_on_self: "@node.critic-r2.output.attacks.quant"
+    depends_on:
+      - stop-r2
+
+  - id: round3-empiricist
+    label: "Round 3: Adversarial Empiricist"
+    description: "Round 3 debate turn — Adversarial Empiricist (maverick seat)"
+    capability: deliberation.debater_empiricist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 3
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round2-empiricist.output"
+      opponents_previous:
+        systems: "@node.round2-systems.output"
+        quant: "@node.round2-quant.output"
+        ethicist: "@node.round2-ethicist.output"
+      critic_attack_on_self: "@node.critic-r2.output.attacks.empiricist"
+    depends_on:
+      - stop-r2
+
+  - id: round3-ethicist
+    label: "Round 3: Distributional Ethicist"
+    description: "Round 3 debate turn — Distributional Ethicist"
+    capability: deliberation.debater_ethicist
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      round_index: 3
+      agreement_intensity: "@context.agreement_intensity"
+      own_previous: "@node.round2-ethicist.output"
+      opponents_previous:
+        systems: "@node.round2-systems.output"
+        quant: "@node.round2-quant.output"
+        empiricist: "@node.round2-empiricist.output"
+      critic_attack_on_self: "@node.critic-r2.output.attacks.ethicist"
+    depends_on:
+      - stop-r2
+
+  - id: critic-r3
+    label: "Critic — round 3"
+    description: "Attack the load-bearing assumption of every debater after round 3 (final round)"
+    capability: deliberation.critic
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      round_index: 3
+      positions:
+        systems: "@node.round3-systems.output"
+        quant: "@node.round3-quant.output"
+        empiricist: "@node.round3-empiricist.output"
+        ethicist: "@node.round3-ethicist.output"
+    depends_on:
+      - round3-systems
+      - round3-quant
+      - round3-empiricist
+      - round3-ethicist
+
+  # ---------------------------------------------------------------------------
+  # Phase 7: Synthesis + persist
+  # ---------------------------------------------------------------------------
+  - id: final-merge
+    label: "Final merge"
+    description: "Converge round 1/2/3 termination paths before synthesis"
+    node_type: merge
+    merge_config:
+      strategy: wait_all
+    depends_on:
+      - stop-r1
+      - stop-r2
+      - critic-r3
+
+  - id: synthesise
+    label: "Synthesise"
+    description: "Map cruxes, preserve minority position, audit vs mainstream; emit both structured FinalDeliverable and Markdown rendering"
+    capability: deliberation.synthesiser
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 8.00
+    timeout_seconds: 3600
+    input:
+      question: "@context.question"
+      research_packet: "@node.research.output"
+      mainstream_consensus: "@node.research.output.mainstream_consensus"
+      all_rounds:
+        round_0:
+          systems: "@node.open-systems.output"
+          quant: "@node.open-quant.output"
+          empiricist: "@node.open-empiricist.output"
+          ethicist: "@node.open-ethicist.output"
+        round_1:
+          systems: "@node.round1-systems.output"
+          quant: "@node.round1-quant.output"
+          empiricist: "@node.round1-empiricist.output"
+          ethicist: "@node.round1-ethicist.output"
+        round_2:
+          systems: "@node.round2-systems.output"
+          quant: "@node.round2-quant.output"
+          empiricist: "@node.round2-empiricist.output"
+          ethicist: "@node.round2-ethicist.output"
+        round_3:
+          systems: "@node.round3-systems.output"
+          quant: "@node.round3-quant.output"
+          empiricist: "@node.round3-empiricist.output"
+          ethicist: "@node.round3-ethicist.output"
+      critic_reports:
+        round_0: "@node.critic-r0.output"
+        round_1: "@node.critic-r1.output"
+        round_2: "@node.critic-r2.output"
+        round_3: "@node.critic-r3.output"
+    depends_on:
+      - final-merge
+
+  - id: store-deliverable-markdown
+    label: "Store deliverable (Markdown)"
+    description: "Persist the synthesiser's human-readable Markdown rendering"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: store_artifact
+      tool_args:
+        title: "Think Tank Deliverable: {{@context.question}}"
+        content: "{{@node.synthesise.output.report_markdown}}"
+        artifact_type: deliberation_deliverable
+        content_type: markdown
+    depends_on:
+      - synthesise
+
+  - id: store-deliverable-json
+    label: "Store deliverable (structured JSON)"
+    description: "Persist the schema-validated FinalDeliverable as JSON so cruxes, minority_position, and merely_reproduces remain programmatically queryable"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: store_artifact
+      tool_args:
+        title: "Think Tank Deliverable (structured): {{@context.question}}"
+        # Standalone ref — Plan 79 §8.6 preserves the dict type; §9.1
+        # then JSON-encodes it for storage.
+        content: "{{@node.synthesise.output}}"
+        artifact_type: deliberation_deliverable
+        content_type: json
+    depends_on:
+      - synthesise
+
+  - id: store-transcript
+    label: "Store transcript (structured JSON)"
+    description: "Persist the full deliberation transcript for audit and future synthesis verification"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: store_artifact
+      tool_args:
+        title: "Think Tank Transcript: {{@context.question}}"
+        artifact_type: deliberation_transcript
+        content_type: json
+        # Nested-dict tool_args deep-resolve via Plan 79 §8.4. Skipped-round
+        # refs resolve to None and serialise as null in the JSON artifact.
+        content:
+          question: "{{@context.question}}"
+          research_packet: "{{@node.research.output}}"
+          rounds:
+            round_0:
+              systems: "{{@node.open-systems.output}}"
+              quant: "{{@node.open-quant.output}}"
+              empiricist: "{{@node.open-empiricist.output}}"
+              ethicist: "{{@node.open-ethicist.output}}"
+            round_1:
+              systems: "{{@node.round1-systems.output}}"
+              quant: "{{@node.round1-quant.output}}"
+              empiricist: "{{@node.round1-empiricist.output}}"
+              ethicist: "{{@node.round1-ethicist.output}}"
+            round_2:
+              systems: "{{@node.round2-systems.output}}"
+              quant: "{{@node.round2-quant.output}}"
+              empiricist: "{{@node.round2-empiricist.output}}"
+              ethicist: "{{@node.round2-ethicist.output}}"
+            round_3:
+              systems: "{{@node.round3-systems.output}}"
+              quant: "{{@node.round3-quant.output}}"
+              empiricist: "{{@node.round3-empiricist.output}}"
+              ethicist: "{{@node.round3-ethicist.output}}"
+          critic_reports:
+            round_0: "{{@node.critic-r0.output}}"
+            round_1: "{{@node.critic-r1.output}}"
+            round_2: "{{@node.critic-r2.output}}"
+            round_3: "{{@node.critic-r3.output}}"
+          stance_deltas:
+            after_round_1: "{{@node.delta-r1.output}}"
+            after_round_2: "{{@node.delta-r2.output}}"
+    depends_on:
+      - synthesise
+
+  - id: store-learning
+    label: "Store learning entry"
+    description: "Record the deliberation's cruxes and recommendation for cross-mission knowledge"
+    node_type: tool_call
+    tool_call_config:
+      tool_name: store_learning
+      tool_args:
+        title: "Deliberation cruxes: {{@context.question}}"
+        body: "{{@node.synthesise.output.report_markdown}}"
+        recommendation: "{{@node.synthesise.output.recommendation_markdown}}"
+        kind: deliberation
+        domain_tags:
+          - deliberation
+          - cruxes
+        # Standalone refs — Plan 79 §8.6 preserves float type so the tool
+        # receives confidence as a float, not str("0.85").
+        confidence: "{{@node.synthesise.output.confidence}}"
+    depends_on:
+      - synthesise
