@@ -15,7 +15,7 @@
 # =============================================================================
 
 workflows_dir: "config/workflow_templates"
-max_steps_per_workflow: 20
+max_steps_per_workflow: 50
 max_context_size_bytes: 1048576
 default_step_timeout_seconds: 600
 default_budget_usd: 10.00
