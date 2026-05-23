@@ -1,0 +1,34 @@
+agent_name: deliberation.research_verifier.agent
+agent_type: vertical
+description: "Audits the Think Tank research packet for plausibility, source quality, and absence of strawmen. Halts the workflow on failure."
+enabled: true
+chat_enabled: false
+model:
+  name: "copilot:claude-haiku-4.5"
+  temperature: 0.0
+  max_tokens: 2048
+max_budget_usd: 1.00
+max_input_length: 20000
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools: []
+
+interface:
+  input:
+    packet: object
+  output:
+    passed: boolean
+    issues: array
+    issues_text: string
+    mainstream_consensus_looks_plausible: boolean
+    under_discussed_angles_actually_under_discussed: boolean
+    notes: string
+
+scope:
+  read: []
+  write: []
