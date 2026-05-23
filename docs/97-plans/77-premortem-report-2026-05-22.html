@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Premortem — Plan 77 (UK Client Onboarding Demo)</title>
+<style>
+:root {
+  --bg: #0a0e1a;
+  --panel: #131826;
+  --panel-2: #1a2032;
+  --ink: #e6e9f0;
+  --ink-dim: #9aa3b8;
+  --rule: #232a3d;
+  --accent-1: #ef476f;
+  --accent-2: #ffd166;
+  --accent-3: #06d6a0;
+  --accent-4: #118ab2;
+  --accent-5: #c77dff;
+  --accent-6: #ff9f1c;
+  --accent-7: #80ed99;
+  --accent-8: #f72585;
+  --danger: #ff5e5b;
+  --warn: #ffb347;
+  --good: #4ade80;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", Segoe UI, sans-serif; line-height: 1.55; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 40px 28px 80px; }
+h1 { font-size: 32px; margin: 0 0 6px; letter-spacing: -0.02em; }
+h2 { font-size: 22px; margin: 32px 0 12px; letter-spacing: -0.01em; }
+h3 { font-size: 17px; margin: 0 0 8px; letter-spacing: -0.005em; }
+.subtitle { color: var(--ink-dim); margin: 0 0 28px; font-size: 14px; }
+.banner { background: linear-gradient(135deg, rgba(247,37,133,0.18), rgba(255,158,28,0.10)); border: 1px solid rgba(247,37,133,0.35); border-radius: 12px; padding: 18px 22px; margin: 0 0 28px; }
+.banner-label { font-size: 11px; letter-spacing: 0.12em; color: var(--accent-8); text-transform: uppercase; margin-bottom: 4px; }
+.banner p { margin: 0; font-size: 15px; color: var(--ink); }
+.synth { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 24px; margin-bottom: 36px; }
+.synth h2 { margin-top: 0; }
+.synth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 16px 0 20px; }
+@media (max-width: 760px) { .synth-grid { grid-template-columns: 1fr; } }
+.synth-cell { background: var(--panel-2); border-radius: 10px; padding: 16px; border-left: 4px solid var(--accent-4); }
+.synth-cell.most-likely { border-left-color: var(--warn); }
+.synth-cell.most-dangerous { border-left-color: var(--danger); }
+.synth-cell .lbl { font-size: 11px; letter-spacing: 0.12em; color: var(--ink-dim); text-transform: uppercase; }
+.synth-cell .ttl { font-size: 16px; font-weight: 600; margin: 6px 0 8px; color: var(--ink); }
+.synth-cell .body { font-size: 14px; color: var(--ink-dim); }
+.hidden-assumption { background: linear-gradient(135deg, rgba(199,125,255,0.10), rgba(17,138,178,0.08)); border: 1px solid rgba(199,125,255,0.35); border-radius: 10px; padding: 16px 18px; margin: 18px 0; }
+.hidden-assumption .lbl { font-size: 11px; letter-spacing: 0.12em; color: var(--accent-5); text-transform: uppercase; margin-bottom: 4px; }
+.hidden-assumption .text { font-size: 15px; color: var(--ink); }
+.checklist { background: var(--panel-2); border-radius: 10px; padding: 16px 22px; margin-top: 16px; }
+.checklist h3 { color: var(--good); margin-top: 8px; }
+.checklist ol { margin: 6px 0 4px 0; padding-left: 22px; }
+.checklist li { margin: 8px 0; font-size: 14px; }
+.revisions { margin-top: 16px; }
+.revisions h3 { color: var(--accent-3); margin-top: 8px; }
+.revisions ol { margin: 6px 0; padding-left: 22px; }
+.revisions li { margin: 10px 0; font-size: 14px; }
+.fail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 16px; }
+@media (max-width: 860px) { .fail-grid { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border-radius: 12px; padding: 18px 20px; border-top: 4px solid var(--accent-1); }
+.card.n1 { border-top-color: var(--accent-1); }
+.card.n2 { border-top-color: var(--accent-2); }
+.card.n3 { border-top-color: var(--accent-3); }
+.card.n4 { border-top-color: var(--accent-4); }
+.card.n5 { border-top-color: var(--accent-5); }
+.card.n6 { border-top-color: var(--accent-6); }
+.card.n7 { border-top-color: var(--accent-7); }
+.card.n8 { border-top-color: var(--accent-8); }
+.card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.card-num { font-size: 11px; color: var(--ink-dim); letter-spacing: 0.12em; text-transform: uppercase; }
+.card-sev { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-dim); }
+.card-sev.confirmed { color: var(--danger); border-color: rgba(255,94,91,0.5); background: rgba(255,94,91,0.08); }
+.card-sev.likely { color: var(--warn); border-color: rgba(255,179,71,0.5); background: rgba(255,179,71,0.08); }
+.card-sev.plausible { color: var(--ink-dim); }
+.card-title { font-size: 16px; font-weight: 600; margin: 0 0 10px; color: var(--ink); }
+.card-section { margin: 12px 0; }
+.card-section .lbl { font-size: 10px; letter-spacing: 0.14em; color: var(--ink-dim); text-transform: uppercase; }
+.card-section .text { font-size: 13.5px; color: var(--ink); margin-top: 4px; }
+.card-section.warning .text { color: var(--ink-dim); font-style: italic; }
+.assumption { background: rgba(199,125,255,0.06); border-left: 3px solid var(--accent-5); padding: 8px 12px; margin: 10px 0; border-radius: 0 6px 6px 0; }
+.assumption .text { font-size: 13.5px; color: var(--ink); }
+.signals { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; }
+.signal { background: rgba(6,214,160,0.05); border-left: 3px solid rgba(6,214,160,0.5); padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 13px; color: var(--ink-dim); }
+.meta { color: var(--ink-dim); font-size: 12px; text-align: center; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--rule); }
+code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+.runners { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 0; }
+.runner { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); color: var(--ink-dim); }
+.runner.confirmed { color: var(--danger); border: 1px solid rgba(255,94,91,0.5); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Premortem — Plan 77</h1>
+  <p class="subtitle">UK Client Onboarding Demo · 8 investigators ran in parallel · 2026-05-22</p>
+
+  <div class="banner">
+    <div class="banner-label">Frame</div>
+    <p>It is November 2026 — six months from now. The "UK Client Onboarding" demo is dead. Either it broke on stage, it never reached an audience, or it shipped but landed badly. We worked backward to find every reason why.</p>
+  </div>
+
+  <div class="runners">
+    <span class="runner confirmed">3 failures verified against actual code</span>
+    <span class="runner">5 failures plausible from plan structure</span>
+    <span class="runner">8 deep-dives total</span>
+  </div>
+
+  <section class="synth">
+    <h2>Synthesis</h2>
+
+    <div class="synth-grid">
+      <div class="synth-cell most-likely">
+        <div class="lbl">Most likely failure</div>
+        <div class="ttl">#1 · Plan 75 convergence won't run</div>
+        <div class="body">Verified against <code>workflow_run_waves.py:_should_skip</code>. Skip propagates through any non-merge dependency. The workflow as designed cannot run. Kills the plan at the first integration test unless caught and redesigned with explicit <code>merge</code> nodes — which themselves break the clean three-path visual that motivated choosing Plan 75 over a script.</div>
+      </div>
+      <div class="synth-cell most-dangerous">
+        <div class="lbl">Most dangerous failure</div>
+        <div class="ttl">#5 · Four-eyes credibility collapse</div>
+        <div class="body">Same person clicks twice. A compliance-aware audience member calls it out. The screen recording outlives the room — verbal disclaimer doesn't. Word spreads through the London fintech grapevine. The demo's signature feature becomes the reason the platform is filed under "not regulated-ready". Close second: GAPS.md becoming the vendor's kill-shot (#3).</div>
+      </div>
+    </div>
+
+    <div class="hidden-assumption">
+      <div class="lbl">The hidden assumption</div>
+      <div class="text"><strong>Reuse is free.</strong> Five of eight failures trace to "we looked at the function signature but not the behaviour around it." The supervisor (wrong output schema), <code>match_patterns</code> (wrong context-passing), <code>_should_skip</code> (wrong convergence), SSE reconnect (wrong replay), <code>GateApproval</code> (assumed to fit decision-node payload without verification). The audit's "REUSE-WITH-CONFIG" optimism is the structural fault line.</div>
+    </div>
+
+    <div class="revisions">
+      <h3>Revised plan — concrete amendments</h3>
+      <ol>
+        <li><strong>§10 workflow.</strong> Replace <code>assemble_case</code> + <code>record_rejection</code> predecessors with explicit <code>node_type: merge</code> join nodes, then chain the agent_step/tool_call after the merge. Accept the diagram complication.</li>
+        <li><strong>§10 trigger surface.</strong> Drop <code>match_patterns</code>. UI-only trigger. Chat-trigger promise was unworkable — <code>match_patterns</code> can't carry nested context.</li>
+        <li><strong>§17 / GAPS.md.</strong> Tone-shift. Strip "theatre", "roast", "illustrative only". Use "demo-scope", "stub", "representative". Add <code>**Distribution: Internal team only.**</code> header. Decide explicitly whether GAPS.md ships to the repo or stays private.</li>
+        <li><strong>§12.5 / SSE.</strong> Either extend JWT TTL to comfortably exceed longest demo run (30+ min), add an <code>?after_event_id=</code> cursor in the demo page only, or add a "Refresh / Resume" button so the presenter has graceful recovery. Choose one before commit 1.</li>
+        <li><strong>§3 / §10 four-eyes.</strong> Drop the four-eyes path entirely OR commit to real identity separation (two distinct test users with distinct sessions). Do not ship the one-person-clicks-twice version. <strong>Recommended: drop.</strong></li>
+        <li><strong>§6 / §11.3 seeder + §11.1 API.</strong> Make failures loud. Seeder WARNs if flag is on and zero demo agents in catalog. <code>POST /start</code> pre-flights catalog presence and returns <code>503 Demo Not Seeded</code> with a clear instruction string.</li>
+        <li><strong>§7.2 supervisor.</strong> Drop the REUSE-WITH-CONFIG claim. Build the demo supervisor fresh — own output schema, own deps, own tools. Treat as the sixth from-scratch agent.</li>
+        <li><strong>§18 status checklist.</strong> Add at top: named exec sponsor committed in writing + fixed walkthrough date on calendar, both before commit 1. If either is empty, the plan does not proceed.</li>
+      </ol>
+    </div>
+
+    <div class="checklist">
+      <h3>Pre-launch checklist</h3>
+      <ol>
+        <li><strong>Before commit 1.</strong> Get sponsor + date in writing. Read <code>_should_skip</code> and redesign convergence with <code>merge</code> nodes. Decide four-eyes outcome (drop vs real separation).</li>
+        <li><strong>Before commit 5 (workflow template).</strong> Build a one-off test workflow that exercises multi-decision-branch convergence in isolation. Confirm assumed behaviour. If assumption fails, redesign.</li>
+        <li><strong>Before commit 9 (frontend stream view).</strong> Run a 20-minute demo in a browser tab and confirm the SSE stream survives a JWT refresh without losing a gate event. If it doesn't, fix before commit 10.</li>
+        <li><strong>Before demo day, T-24h.</strong> Pre-flight script: all 6 demo agents present + enabled in <code>agent_catalog</code>, Redis up, no concurrent demo run in flight, presenter has admin token cached locally.</li>
+        <li><strong>Before demo day, T-1h.</strong> Run all three fixtures end-to-end on the demo backend. Any path fails → don't present.</li>
+        <li><strong>Before GAPS.md is committed.</strong> Second pair of eyes on tone. Strip flourishes. Decide repo vs wiki vs burn.</li>
+      </ol>
+    </div>
+  </section>
+
+  <h2>Failure deep-dives</h2>
+
+  <div class="fail-grid">
+
+    <div class="card n1">
+      <div class="card-head"><span class="card-num">#1</span><span class="card-sev confirmed">Verified in code · Most likely</span></div>
+      <div class="card-title">Plan 75 convergence assumption is wrong</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">Day 3 of impl. <code>assemble_case</code> wired as <code>agent_step</code> with three decision-routed predecessors. Clean-path smoke test: <code>route_qa</code> returns <code>pass</code>; the other two get <code>_skipped</code>. <code>assemble_case</code> never runs — status SKIPPED. The skip propagates because <code>_should_skip</code> only exempts <code>node_type: merge</code>. §13 Q7 was supposed to catch this but the "reference precedent" template doesn't actually exercise this pattern. Under time pressure the team converts to <code>merge</code> + downstream node, blowing the clean three-path visual. The architect spends the first five minutes of the walkthrough explaining six rectangles where the slide shows three.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text">Decision-node skip propagation is graph-aware (a skipped branch satisfies its successor), when in fact <code>_should_skip</code> propagates through any non-merge dependency unconditionally.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal">First dry-run convergence step shows <code>SKIPPED</code> despite a predecessor branch completing.</div>
+          <div class="signal">Grep <code>config/workflow_templates/*.yaml</code> for steps with <code>depends_on</code> ≥2 decision/condition nodes returns zero non-merge hits.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card n2">
+      <div class="card-head"><span class="card-num">#2</span><span class="card-sev confirmed">Verified in code</span></div>
+      <div class="card-title">Chat trigger can't supply applicant context</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">UI works beautifully. Two weeks later a PM tries "demo onboard uk" in chat. Director matches <code>match_patterns</code>, calls <code>run_workflow</code> with <code>context_overrides=None</code> (signature is <code>dict[str, str]</code>, can't carry nested <code>applicant</code> anyway). Workflow launches with <code>context: {applicant: {}, fixture_name: ""}</code>. The first agent hallucinates a verdict for "John Doe, address unknown". The stakeholder notices; the PM doesn't. Retrofit options both bad — team quietly removes <code>match_patterns</code>. "UI + chat" becomes "UI only" in a README diff nobody reads.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text"><code>match_patterns</code> is equivalent to the UI trigger, when it's a context-free pattern match — can launch a workflow but cannot supply structured parameters.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal"><code>run_workflow</code>'s signature is <code>context_overrides: dict[str, str] | None</code> — flat string dict.</div>
+          <div class="signal">No existing template uses <code>match_patterns</code> with required nested parameters; deep-research only works because its defaults are safe.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card n3">
+      <div class="card-head"><span class="card-num">#3</span><span class="card-sev likely">Plausible · Reputational</span></div>
+      <div class="card-title">GAPS.md becomes the vendor's kill-shot</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">UK challenger bank, warm intro from a board member. Two days before the meeting, the bank's vendor-risk analyst does her pre-read. She finds <code>77-gaps-demo-uk-onboarding.md</code>, copy-pastes §17 into a one-page memo titled "Vendor Self-Disclosure: Mission Control", sends it with one line: "Their own document calls two of six agents 'LLM theatre' and the audit trail 'not immutable'. Recommend we decline." The CRO never takes the meeting. Internally, a skeptical exec forwards the same §17 under the subject "Per the team's own assessment". "LLM theatre" — written by us, about us — becomes the meme that defines the project in three rooms we weren't in.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text">The audience for "radical honesty" will always be the original team and a charitable exec in the same room — never a hostile reader, a procurement gatekeeper, or a screenshot taken out of context.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal">GAPS.md uses rhetorical flourishes ("roast", "theatre", "illustrative only") rather than neutral engineering language.</div>
+          <div class="signal">No one asks "who else might read this, and what would they screenshot?" before commit.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card n4">
+      <div class="card-head"><span class="card-num">#4</span><span class="card-sev confirmed">Verified in code · Live-demo risk</span></div>
+      <div class="card-title">SSE reconnect loses the gate event</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">Twelve minutes into the <code>adverse_media</code> walkthrough, JWT expires mid-stream. <code>useFetchSse</code> exits its loop, hits 401, calls <code>refreshTokens()</code>, then <code>setTimeout(backoff)</code> — minimum 1s. During the reconnect gap, the workflow emits the <code>GateApprovalRequested</code> for the second approver. New connection picks up future events only — the gate event is lost. <code>GateApproval</code> never mounts. The Approve button never appears. Workflow sits in <code>WAITING_FOR_APPROVAL</code>. Presenter says "give it a moment" three times, then refreshes. Forty seconds of dead air in front of execs.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text">SSE delivery is reliable enough that the frontend has no replay-from-cursor mechanism — reconnect resumes from "now," not from the last seen event ID.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal">Backend SSE endpoint accepts no <code>Last-Event-ID</code> header or <code>?since=</code> cursor.</div>
+          <div class="signal">JWT TTL shorter than the longest demo run.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card n5">
+      <div class="card-head"><span class="card-num">#5</span><span class="card-sev likely">Most dangerous · Reputational</span></div>
+      <div class="card-title">Four-eyes credibility collapse</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">34 minutes in. Presenter approves the first gate, then — without switching user, without moving the mouse — approves the second. Both attributed to the same session. Sarah Whitfield, ex-PRA supervisor on the prospect's risk committee, waits for the disclaimer, then asks evenly: "So what I just watched isn't four-eyes. It's one person clicking twice and the system letting them. Is dual-control enforcement a roadmap item, or does the platform genuinely not model identity separation?" Presenter says <em>both</em> — the worst possible answer. Two weeks later the recording surfaces in the prospect's compliance Slack with the timestamp pinned to the double-click. Verbal disclaimer isn't in the recording. Deal stalls in SMCR review for questions the platform was never designed to answer.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text">A verbal disclaimer can neutralise a visual demonstration of a regulatory control being violated, in front of an audience trained to trust what they see over what they're told.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal">During dry-run, a non-compliance reviewer says "wait, you clicked it yourself twice?" — and the team rationalises rather than redesigns.</div>
+          <div class="signal">GAPS.md entry on four-eyes is a defensive paragraph, not a crisp one-line known limitation.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card n6">
+      <div class="card-head"><span class="card-num">#6</span><span class="card-sev likely">Operational</span></div>
+      <div class="card-title">The two-step seed trap</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">13:47. Cara flips the flag, restarts, clicks the tile. Form posts. Workflow ID comes back. Four seconds later: <code>AgentNotFoundError: demo.uk.onboarding.supervisor.agent</code>. The toggle-only seeder ran successfully, logged "0 entries updated", exited 0. No alarm. RUNBOOK mentioned <code>admin seed-catalog --force</code> on page 2 in a paragraph she'd skimmed because the email said "just a flag flip." Exec walkthrough is at 14:00. She pages the demo author at 13:54 — he's on a flight. Tries the force-seed at 13:57; admin token IAM round-trip takes six minutes. Execs see a spinning loader.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text">A two-step procedure (seed-then-toggle) will be reliably executed in the correct order by an operator who treats "enable the demo" as a single atomic action.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal">Toggle-only seeder logs "0 entries updated" — indistinguishable from "already correct" vs "rows don't exist".</div>
+          <div class="signal">No startup validation that the referenced catalog rows exist; failure surfaces only at dispatch.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card n7">
+      <div class="card-head"><span class="card-num">#7</span><span class="card-sev confirmed">Verified in code</span></div>
+      <div class="card-title">Supervisor reskin breaks on semantics, not surface</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">Audit saw "supervisor — Haiku, three tools, structured output" and concluded REUSE-WITH-CONFIG. Six months in, the implementer discovers <code>mission.supervisor.agent</code> is a hardwired post-run autonomy classifier. <code>create_event_agent</code> returns <code>SupervisorDecision</code> — a closed enum of <code>wait | advance | refine | propose-complete | escalate</code> — meaningless for onboarding triage. All three "reusable" tools hardcode-import adapters keyed off <code>mission_id</code> assuming a <code>MissionPlan</code> row exists. Demo has no <code>MissionPlan</code>. Tools return <code>{"error": "..."}</code>. Implementer Frankensteins a parallel deps class, stubs the tools, and force-maps <code>SupervisorDecision</code> to onboarding actions. QA later asks "why does the demo supervisor sometimes return <code>propose-complete</code> after a KYC step?" Nobody can answer.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text">"Same agent shape" (LLM + tools + prompt) is equivalent to "same agent semantics," ignoring that <code>SupervisorDecision</code>'s output enum and <code>mission_id</code>-keyed introspection are load-bearing for the autonomy loop.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal">Plan doesn't specify which factory (<code>create_event_agent</code> vs <code>create_agent</code>) it reuses.</div>
+          <div class="signal">Plan never addresses what <code>SupervisorDecision</code>'s five-action enum means in an onboarding context.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card n8">
+      <div class="card-head"><span class="card-num">#8</span><span class="card-sev likely">Strategic · Opportunity cost</span></div>
+      <div class="card-title">The demo nobody asked for</div>
+      <div class="card-section">
+        <div class="lbl">Failure story</div>
+        <div class="text">Branch shipped clean in early June. Walkthrough slips to mid-July (quarter-end), then August (one exec on leave), then "let's roll it into the September offsite." At the offsite it gets 8 minutes after lunch to an audience of the COO's chief of staff, two engineering leads, and a PM who already uses the real tool. COO joins for the last 3 minutes, says "neat, send me the recording," and pivots. No recording requested. No follow-up. Meanwhile the platform team moved on; Plan 75 shipped a real customer-facing capability in August and consumed all the oxygen. By October, the catalog_seeder has been refactored twice, gate.yaml shape has drifted, the demo can't be driven. Q4 retro flags "the two weeks on Plan 77" as why we require a signed exec commitment before demo builds.</div>
+      </div>
+      <div class="assumption"><div class="lbl">Underlying assumption</div><div class="text">Executive attention is a resource you can earn by building something impressive — rather than a calendar slot you must secure in writing before you write a line of code.</div></div>
+      <div class="card-section">
+        <div class="lbl">Early warning signs</div>
+        <div class="signals">
+          <div class="signal">No exec name on the plan as requesting sponsor — only "executives" (plural, abstract).</div>
+          <div class="signal">Walkthrough date is "TBD" or floating, not a fixed calendar invite predating commit 1.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="meta">
+    Premortem generated 2026-05-22 · Plan target: <code>docs/97-plans/77-plan-demo-uk-onboarding.md</code> · Full transcript: <code>77-premortem-transcript-2026-05-22.md</code>
+  </div>
+</div>
+</body>
+</html>
