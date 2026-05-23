@@ -1,0 +1,44 @@
+agent_name: deliberation.synthesiser.agent
+agent_type: vertical
+description: "Synthesiser for the Think Tank. Reads the full transcript and produces the FinalDeliverable (structured + Markdown) preserving live disagreement and the minority position."
+enabled: true
+chat_enabled: false
+model:
+  name: "copilot:claude-opus-4.7"
+  temperature: 0.3
+  max_tokens: 16384
+max_budget_usd: 8.00
+max_input_length: 1000000
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools: []
+
+interface:
+  input:
+    question: string
+    research_packet: object
+    mainstream_consensus: string
+    all_rounds: object
+    critic_reports: object
+  output:
+    question_restated: string
+    committed_answer: string
+    confidence: number
+    cruxes: array
+    minority_position: object
+    mainstream_prior: string
+    deliberation_vs_mainstream: string
+    forward_claim: object
+    biggest_things_that_could_be_wrong: array
+    sycophancy_flags: array
+    report_markdown: string
+    recommendation_markdown: string
+
+scope:
+  read: []
+  write: []
