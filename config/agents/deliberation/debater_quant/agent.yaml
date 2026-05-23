@@ -1,0 +1,36 @@
+agent_name: deliberation.debater_quant.agent
+agent_type: vertical
+description: "Reductionist Quant debater for the Think Tank. Reasons in mechanisms, measurable quantities, and falsifiable claims with horizons."
+enabled: true
+chat_enabled: false
+model:
+  name: "copilot:claude-opus-4.7"
+  temperature: 0.7
+  max_tokens: 4096
+max_budget_usd: 3.00
+max_input_length: 100000
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools: []
+
+interface:
+  input:
+    question: string
+    research_packet: object
+    round_index: number
+  output:
+    debater_id: string
+    round_index: number
+    position: string
+    load_bearing_claims: array
+    decision: string
+    confidence: number
+
+scope:
+  read: []
+  write: []
