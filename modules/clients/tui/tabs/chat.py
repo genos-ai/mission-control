@@ -153,7 +153,7 @@ class ChatTab(Static):
             label = self.query_one("#chat-agent-label", Label)
             label.update(f"[bold]{event.agent_name}[/bold]")
         except Exception:
-            pass
+            logger.debug("chat agent label update failed", exc_info=True)
 
         self.run_worker(
             self._load_messages(event.session_id), thread=False,
@@ -187,7 +187,7 @@ class ChatTab(Static):
                         log.write(f"  [dim]${cost:.4f}[/dim]")
                 log.write("")
         except Exception:
-            pass
+            logger.debug("chat messages render failed", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "chat-new-btn":
@@ -249,7 +249,7 @@ class ChatTab(Static):
                 log.write(f"[bold]You:[/bold] {content}")
                 log.write("")
             except Exception:
-                pass
+                logger.debug("chat user message display failed", exc_info=True)
 
             await self.app.bridge.send_message(
                 session_id=session_id, content=content,

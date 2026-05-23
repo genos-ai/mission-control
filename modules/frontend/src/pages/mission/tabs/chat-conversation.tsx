@@ -244,7 +244,7 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
       }
     }
 
-    entries.sort((a, b) => a.ts.localeCompare(b.ts))
+    entries.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
     return entries
   }, [messages, historicalEvents, liveEvents])
 

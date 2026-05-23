@@ -18,6 +18,10 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widget import Widget
+
+from modules.backend.core.logging import get_logger
+
+logger = get_logger(__name__)
 from textual.widgets import Button, Label, Static
 
 
@@ -350,7 +354,7 @@ class NotificationListModal(ModalScreen):
             for record in records:
                 scroll.mount(_NotificationRow(record))
         except Exception:
-            pass
+            logger.debug("notification history render failed", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "notif-mark-read-btn":

@@ -140,7 +140,7 @@ class ProfileScreen(Screen):
                 )
                 name_input.value = profile.get("display_name", "")
             except Exception:
-                pass
+                logger.debug("profile name field update failed", exc_info=True)
 
             # Show profile info
             try:
@@ -153,7 +153,7 @@ class ProfileScreen(Screen):
                     f"Account type: {'Service account' if self._is_service_account else 'User'}",
                 )
             except Exception:
-                pass
+                logger.debug("profile info render failed", exc_info=True)
 
             # Hide password section for service accounts
             if self._is_service_account:
@@ -183,7 +183,7 @@ class ProfileScreen(Screen):
                 widget = self.query_one(f"#{widget_id}")
                 widget.display = False
             except Exception:
-                pass
+                logger.debug("profile widget hide failed: %s", widget_id, exc_info=True)
 
     def _render_keys(self, keys: list[dict[str, Any]]) -> None:
         try:
@@ -198,7 +198,7 @@ class ProfileScreen(Screen):
                     key=k.get("id", ""),
                 )
         except Exception:
-            pass
+            logger.debug("API keys table render failed", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "profile-save-name-btn":
@@ -267,7 +267,7 @@ class ProfileScreen(Screen):
                 try:
                     self.query_one(wid, Input).value = ""
                 except Exception:
-                    pass
+                    logger.debug("password field clear failed: %s", wid, exc_info=True)
         except Exception as exc:
             logger.error("Failed to change password", exc_info=True)
             self.app.notify(f"Password change failed: {exc}", severity="error")

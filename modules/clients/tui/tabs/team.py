@@ -135,7 +135,7 @@ class TeamTab(Static):
             old = panel.query_one("#team-detail-content")
             old.remove()
         except Exception:
-            pass
+            logger.debug("team detail panel cleanup failed", exc_info=True)
         # Also remove any existing prompt editors
         for child in list(panel.children):
             if isinstance(child, (PromptEditor, Static, _AgentDetailView)):

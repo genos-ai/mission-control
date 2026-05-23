@@ -11,23 +11,17 @@ from typing import Any, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.agents.deps.base import FileScope
-from modules.backend.agents.mission.workflow.agent import (
-    create_agent,
-    run_conversational,
-)
-from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
-from modules.backend.agents.mission_control.helpers import assemble_instructions
+from modules.backend.agents.mission.workflow.architect.agent import run_conversational
+from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
+from modules.backend.agents.mission_control.helpers.agent_setup import build_deps_from_config
 from modules.backend.core.model_builder import _build_model
 from modules.backend.core.agent_registry import get_registry
-from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
-from modules.backend.events.types import SessionEvent
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
 
-ARCHITECT_AGENT_NAME = "mission.workflow.agent"
+ARCHITECT_AGENT_NAME = "mission.workflow.architect"
 
 
 class WorkflowArchitectService(BaseService):
@@ -175,11 +169,11 @@ class WorkflowArchitectService(BaseService):
         return recommendations
 
     def _create_agent(self):
-        """Create the architect agent from the registry config."""
+        """Get the architect agent from the registry (cached)."""
         registry = get_registry()
-        config = registry.get(ARCHITECT_AGENT_NAME)  # raises KeyError if missing
+        config = registry.get(ARCHITECT_AGENT_NAME)
         model = _build_model(config.model)
-        return create_agent(model)
+        return registry.get_instance(ARCHITECT_AGENT_NAME, model)
 
     def _build_deps(
         self,
@@ -189,19 +183,13 @@ class WorkflowArchitectService(BaseService):
         session_id: str | None = None,
         on_event: Any = None,
     ) -> ArchitectAgentDeps:
-        """Build deps for the architect agent."""
-        project_root = find_project_root()
-        scope = FileScope(read_paths=["config/", "modules/"], write_paths=[])
-
+        """Build deps for the architect agent from registry config."""
         registry = get_registry()
-        config = None
-        if registry.has(ARCHITECT_AGENT_NAME):
-            config = registry.get(ARCHITECT_AGENT_NAME)
+        config = registry.get(ARCHITECT_AGENT_NAME)
+        common = build_deps_from_config(config)
 
         return ArchitectAgentDeps(
-            project_root=project_root,
-            scope=scope,
-            config=config,
+            **common,
             session_id=session_id,
             on_event=on_event,
             mission_id=mission_id,

@@ -90,16 +90,50 @@ def check_bare_except(path: Path, rel: str) -> list[Violation]:
 
 
 def check_swallowed_exception(path: Path, rel: str) -> list[Violation]:
-    """002.3b — No except Exception/BaseException followed by pass."""
+    """002.3b — No except Exception/BaseException silently swallowed with pass.
+
+    Catches all four forms:
+      except Exception: pass                    (inline, bare)
+      except Exception:\\n    pass              (next-line, bare)
+      except (X, Exception): pass              (inline, tuple)
+      except (X, Exception):\\n    pass        (next-line, tuple)
+    """
     violations = []
     lines = path.read_text().splitlines()
+
+    # Matches bare or tuple except clauses that include Exception/BaseException.
+    # Handles optional `as <name>` and trailing colon.
+    broad_except = re.compile(
+        r"\s*except\s+"
+        r"(?:"
+        r"(?:Exception|BaseException)"  # bare: except Exception
+        r"|"
+        r"\([^)]*\b(?:Exception|BaseException)\b[^)]*\)"  # tuple: except (X, Exception)
+        r")"
+        r"\s*(?:as\s+\w+\s*)?:"
+    )
+
     for i, line in enumerate(lines):
-        if re.match(r"\s*except\s+(Exception|BaseException)", line):
-            if i + 1 < len(lines) and lines[i + 1].strip() == "pass":
-                violations.append(Violation(
-                    "002.3", "error", rel, i + 1,
-                    "Swallowed exception: except Exception/BaseException with pass",
-                ))
+        m = broad_except.match(line)
+        if not m:
+            continue
+
+        # Inline: except Exception: pass [# comment]
+        rest = line[m.end():]
+        if re.match(r"\s*pass\s*(#.*)?$", rest):
+            violations.append(Violation(
+                "002.3", "error", rel, i + 1,
+                "Swallowed exception: except Exception/BaseException with pass",
+            ))
+            continue
+
+        # Next-line: except Exception:\n    pass
+        if i + 1 < len(lines) and lines[i + 1].strip() == "pass":
+            violations.append(Violation(
+                "002.3", "error", rel, i + 1,
+                "Swallowed exception: except Exception/BaseException with pass",
+            ))
+
     return violations
 
 

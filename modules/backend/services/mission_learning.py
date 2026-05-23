@@ -135,9 +135,7 @@ class MissionLearningService(BaseService):
             svc = MissionLearningService(db)
             yield svc
             await db.commit()
-            # Fire embeds after commit so rows are visible to new sessions
-            for learning_id in svc._embed_queue:
-                _schedule_embed("mission_learnings", learning_id)
+            svc.flush_embeds()
 
     async def create_learning(
         self,
@@ -169,10 +167,14 @@ class MissionLearningService(BaseService):
             occurrence_count=occurrence_count,
         )
 
-        # Queue embed ID — caller must fire _schedule_embed after committing
         self._embed_queue.append(str(learning.id))
-
         return learning
+
+    def flush_embeds(self) -> None:
+        """Fire embed tasks for all queued learning IDs. Call after committing."""
+        for learning_id in self._embed_queue:
+            _schedule_embed("mission_learnings", learning_id)
+        self._embed_queue.clear()
 
     async def get_by_id(self, learning_id: str) -> MissionLearning:
         """Get a single learning by ID. Raises NotFoundError if missing."""

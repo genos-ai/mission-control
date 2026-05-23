@@ -296,6 +296,41 @@ async def update_workflow(
     }
 
 
+async def get_workflow_definition(
+    session: AsyncSession,
+    *,
+    mission_id: str | None,
+    name: str,
+) -> dict[str, Any] | None:
+    """Fetch the full definition of a workflow by name.
+
+    Returns all steps, edges, objective, and config, or None if not found.
+    Looks up by mission_id (mission workflows) or None (system templates).
+    """
+    from modules.backend.core.exceptions import NotFoundError
+
+    svc = WorkflowDefinitionService(session)
+    try:
+        workflow = await svc.get_workflow(mission_id, name)
+    except NotFoundError:
+        return None
+
+    return {
+        "id": str(workflow.id),
+        "name": workflow.name,
+        "description": workflow.description,
+        "version": workflow.version,
+        "objective": workflow.objective,
+        "steps": workflow.steps,
+        "edges": workflow.edges_json,
+        "trigger_config": workflow.trigger_config,
+        "budget_config": workflow.budget_config,
+        "context": workflow.context,
+        "enabled": workflow.enabled,
+        "designed_by": workflow.designed_by,
+    }
+
+
 async def list_mission_workflows(
     session: AsyncSession,
     *,

@@ -1,145 +1,133 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, Wand2 } from 'lucide-react'
-import { useDrawerStore } from '@/stores/drawer'
-import { useArchitectChat } from '@/hooks/use-workflows'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { useState, useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { ChevronRight, RefreshCw, GitBranch } from 'lucide-react'
+import { useConsoleStore } from '@/stores/console'
+import { useSessions, useCreateSession } from '@/hooks/use-sessions'
+import { workflowKeys } from '@/hooks/use-workflows'
+import { Conversation } from '@/pages/mission/tabs/chat-conversation'
 import { Spinner } from '@/components/ui/spinner'
-import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
-import type { ArchitectGraphProposal } from '@/types'
+import { Button } from '@/components/ui/button'
 
-interface Message {
-  role: 'user' | 'architect'
-  content: string
-  graphProposal?: ArchitectGraphProposal | null
-}
+const ARCHITECT_AGENT = 'mission.workflow.architect'
 
-export function ArchitectChatPanel() {
-  const { context } = useDrawerStore()
-  const missionId = context.missionId as string | undefined
+export function ArchitectChat({
+  missionId,
+  workflowId,
+  workflowName,
+  onClose,
+}: {
+  missionId: string
+  workflowId?: string
+  workflowName?: string
+  onClose?: () => void
+}) {
+  const qc = useQueryClient()
+  const { data: sessions, isLoading: sessionsLoading } = useSessions({
+    mission_id: missionId,
+    status: 'active',
+  })
+  const createSession = useCreateSession()
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [graphUpdated, setGraphUpdated] = useState(false)
+  const initRef = useRef(false)
 
-  if (!missionId) {
-    return <p className="text-sm text-muted-foreground">No mission selected.</p>
-  }
-
-  return <ArchitectChat missionId={missionId} />
-}
-
-function ArchitectChat({ missionId }: { missionId: string }) {
-  const { context } = useDrawerStore()
-  const onApplyProposal = context.onApplyProposal as
-    | ((proposal: ArchitectGraphProposal) => void)
-    | undefined
-  const chatMutation = useArchitectChat(missionId)
-  const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<Message[]>([])
-  const scrollRef = useRef<HTMLDivElement>(null)
-
+  // Find an existing architect session for this workflow, or create one.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [messages])
+    if (sessionsLoading || initRef.current) return
+    initRef.current = true
 
-  const handleSend = () => {
-    const text = input.trim()
-    if (!text) return
+    const existing = sessions?.find(
+      (s) =>
+        s.agent_id === ARCHITECT_AGENT &&
+        (!workflowId || s.goal?.includes(workflowId)),
+    )
 
-    setMessages((prev) => [...prev, { role: 'user', content: text }])
-    setInput('')
-
-    chatMutation.mutate(text, {
-      onSuccess: (data) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'architect',
-            content: data.response,
-            graphProposal: data.graph_proposal ?? null,
-          },
-        ])
-      },
-      onError: (err) => {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'architect', content: `Error: ${err.message}` },
-        ])
-      },
-    })
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault()
-      handleSend()
+    if (existing) {
+      setSessionId(existing.id)
+      return
     }
+
+    createSession
+      .mutateAsync({
+        goal: workflowId
+          ? `Workflow ${workflowId}${workflowName ? ': ' + workflowName : ''}`
+          : 'Workflow Design',
+        mission_id: missionId,
+        agent_id: ARCHITECT_AGENT,
+      })
+      .then((s) => setSessionId(s.id))
+      .catch(() => {})
+  }, [sessions, sessionsLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show reload banner when the architect saves the workflow via its tools.
+  const events = useConsoleStore((s) => s.events)
+  useEffect(() => {
+    const updated = events.some(
+      (e) =>
+        e.event_type === 'workflow.graph.updated' &&
+        (!workflowId || String(e.data.workflow_id ?? '') === workflowId),
+    )
+    if (updated) setGraphUpdated(true)
+  }, [events, workflowId])
+
+  const handleReload = () => {
+    qc.invalidateQueries({ queryKey: workflowKeys.missionWorkflows(missionId) })
+    setGraphUpdated(false)
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="mb-3">
-        <p className="text-xs text-muted-foreground">
-          Describe what you want to automate. The Architect will design a
-          workflow for your mission.
-        </p>
-      </div>
-
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={
-              msg.role === 'user'
-                ? 'ml-8 rounded-lg bg-primary/10 p-3 text-sm'
-                : 'mr-8 rounded-lg border p-3 text-sm'
-            }
-          >
-            <span className="mb-1 block text-[10px] font-semibold uppercase text-muted-foreground">
-              {msg.role === 'user' ? 'You' : 'Architect'}
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
+        <div className="flex items-center gap-1.5">
+          <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium">Architect</span>
+          {workflowName && (
+            <span className="max-w-[120px] truncate text-[10px] text-muted-foreground/50">
+              {workflowName}
             </span>
-            {msg.role === 'architect' ? (
-              <MarkdownRenderer content={msg.content} />
-            ) : (
-              <div className="whitespace-pre-wrap">{msg.content}</div>
-            )}
-            {msg.graphProposal && onApplyProposal && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="mt-2 gap-1.5 text-xs"
-                onClick={() => onApplyProposal(msg.graphProposal!)}
-              >
-                <Wand2 className="h-3.5 w-3.5" />
-                Apply to Canvas
-              </Button>
-            )}
-          </div>
-        ))}
-
-        {chatMutation.isPending && (
-          <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-            <Spinner /> Thinking...
-          </div>
+          )}
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
 
-      {/* Input */}
-      <div className="mt-3 flex items-end gap-2 border-t pt-3">
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={2}
-          placeholder="Describe your workflow..."
-          className="flex-1 resize-none"
-        />
-        <Button
-          size="icon"
-          onClick={handleSend}
-          disabled={chatMutation.isPending || !input.trim()}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
-      </div>
+      {/* Graph updated banner */}
+      {graphUpdated && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+          <span>Workflow updated by architect</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 gap-1 text-xs text-emerald-300 hover:text-emerald-200"
+            onClick={handleReload}
+          >
+            <RefreshCw className="h-3 w-3" />
+            Reload
+          </Button>
+        </div>
+      )}
+
+      {/* Conversation */}
+      {sessionsLoading || createSession.isPending || !sessionId ? (
+        <div className="flex flex-1 items-center justify-center">
+          <Spinner />
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Conversation
+            sessionId={sessionId}
+            missionId={missionId}
+            targetAgent={ARCHITECT_AGENT}
+          />
+        </div>
+      )}
     </div>
   )
 }

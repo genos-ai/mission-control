@@ -368,7 +368,7 @@ class MissionService(BaseService):
                 except (json.JSONDecodeError, TypeError):
                     data = {}
             events.append({
-                "event_id": str(row.id),
+                "event_id": str(data.get('event_id') or row.id),
                 "event_type": row.event_type,
                 "category": "execution",
                 "timestamp": row.timestamp,

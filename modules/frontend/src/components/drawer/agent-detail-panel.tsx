@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCatalog, useCatalogAgent } from '@/hooks/use-catalog'
 import { useAddToTeam } from '@/hooks/use-team'
@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import type { AgentCatalogItem } from '@/types'
@@ -134,6 +135,7 @@ function AgentDetail({
 function AddFromCatalog({ missionId }: { missionId: string }) {
   const { data: agents, isLoading } = useCatalog()
   const { open: openDrawer } = useDrawerStore()
+  const [query, setQuery] = useState('')
 
   if (isLoading) return <Spinner />
 
@@ -145,14 +147,35 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
     )
   }
 
+  const q = query.toLowerCase().trim()
+  const filtered = agents.filter((a) => {
+    if (!a.enabled) return false
+    if (!q) return true
+    return (
+      a.agent_name.toLowerCase().includes(q) ||
+      a.description.toLowerCase().includes(q) ||
+      a.agent_type.toLowerCase().includes(q) ||
+      a.keywords.some((k) => k.toLowerCase().includes(q))
+    )
+  })
+
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Select an agent to add to your mission team.
-      </p>
-      {agents
-        .filter((a) => a.enabled)
-        .map((agent) => (
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search agents..."
+          className="pl-8 h-8 text-sm"
+        />
+      </div>
+      {filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-4">
+          No agents match &quot;{query}&quot;
+        </p>
+      ) : (
+        filtered.map((agent) => (
           <CatalogPickCard
             key={agent.id}
             agent={agent}
@@ -163,7 +186,8 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
               })
             }
           />
-        ))}
+        ))
+      )}
     </div>
   )
 }

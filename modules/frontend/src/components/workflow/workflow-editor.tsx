@@ -20,10 +20,11 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import toast from 'react-hot-toast'
-import { UserRound, Clock, Send, Loader2 } from 'lucide-react'
-import type { WorkflowStep, ArchitectGraphProposal } from '@/types'
-import { useDrawerStore } from '@/stores/drawer'
+import { UserRound, Clock, Send, Loader2, ChevronLeft } from 'lucide-react'
+import type { WorkflowStep } from '@/types'
 import { useWorkflowRunStatus, type PendingHumanInput } from '@/hooks/use-workflow-run-status'
+import { useResizable } from '@/hooks/use-resizable'
+import { ArchitectChat } from '@/components/drawer/architect-chat-panel'
 import { useWorkflowRuns, useRespondToHumanInput } from '@/hooks/use-workflows'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -295,6 +296,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const [showHistory, setShowHistory] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [showPalette, setShowPalette] = useState(false)
+  const [architectOpen, setArchitectOpen] = useState(false)
+  const { width: architectWidth, onMouseDown: onArchitectResize } = useResizable(380)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRef = useRef<HistoryEntry[]>([])
   const redoRef = useRef<HistoryEntry[]>([])
@@ -741,75 +744,9 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     [nodes, setNodes, pushHistory],
   )
 
-  // ── Architect integration ────────────────────────────────────────────────
-
-  const drawerStore = useDrawerStore()
-
-  const handleApplyProposal = useCallback(
-    (proposal: ArchitectGraphProposal) => {
-      pushHistory()
-
-      // Convert proposal nodes to WorkflowStep + React Flow nodes
-      const newSteps: WorkflowStep[] = proposal.nodes.map((n) => ({
-        id: n.id,
-        description: n.label,
-        node_type: 'agent_step',
-        capability: n.capability || null,
-        roster: 'default',
-        complexity_tier: (n.complexity_tier as 'simple' | 'complex') ?? 'simple',
-        cost_ceiling_usd: null,
-        environment: (n.environment as 'local' | 'container') ?? 'local',
-        input: {},
-        output_mapping: null,
-        depends_on: [],
-        timeout_seconds: null,
-        max_refinement_rounds: 1,
-        termination: 'completion',
-        max_iterations: null,
-      }))
-
-      const newFlowEdges: Edge[] = proposal.edges.map((e) => ({
-        id: `${e.source}->${e.target}`,
-        source: e.source,
-        target: e.target,
-        style: { stroke: 'hsl(var(--muted-foreground) / 0.4)', strokeWidth: 1.5 },
-      }))
-
-      // Build depends_on from edges
-      const depsMap: Record<string, string[]> = {}
-      for (const e of proposal.edges) {
-        if (!depsMap[e.target]) depsMap[e.target] = []
-        depsMap[e.target].push(e.source)
-      }
-      for (const s of newSteps) {
-        s.depends_on = depsMap[s.id] ?? []
-      }
-
-      let newNodes: Node[] = newSteps.map((step) => ({
-        id: step.id,
-        type: STEP_NODE_TYPE_MAP[step.node_type ?? 'agent_step'] ?? 'workflowStep',
-        position: { x: 0, y: 0 },
-        data: { step },
-      }))
-
-      // Auto-layout the proposed graph
-      newNodes = dagreLayout(newNodes, newFlowEdges)
-
-      setNodes(newNodes)
-      setEdges(newFlowEdges)
-      setIsDirty(true)
-      setSelectedStep(null)
-      toast.success(`Applied workflow proposal (${newNodes.length} nodes)`)
-    },
-    [setNodes, setEdges, pushHistory],
-  )
-
   const handleOpenArchitect = useCallback(() => {
-    drawerStore.open('architect-chat', {
-      missionId,
-      onApplyProposal: handleApplyProposal,
-    })
-  }, [drawerStore, missionId, handleApplyProposal])
+    setArchitectOpen((v) => !v)
+  }, [])
 
   // Palette selection → add node + close palette
   const handlePaletteSelect = useCallback(
@@ -946,6 +883,30 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
               onClose={() => { setShowHistory(false); setSelectedRunId(null) }}
             />
           </div>
+        )}
+
+        {/* Architect chat — inline collapsible panel */}
+        {architectOpen ? (
+          <div className="relative flex shrink-0 flex-col border-l bg-background" style={{ width: architectWidth }}>
+            <div
+              onMouseDown={onArchitectResize}
+              className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20 transition-colors z-10"
+            />
+            <ArchitectChat
+              missionId={missionId!}
+              workflowId={workflow.id}
+              workflowName={workflow.name}
+              onClose={() => setArchitectOpen(false)}
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setArchitectOpen(true)}
+            className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            title="Open architect chat"
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </button>
         )}
       </div>
     </div>

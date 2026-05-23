@@ -113,7 +113,19 @@
       "Bash(python3 -c \":*)",
       "Bash(redis-cli PUBSUB CHANNELS \"*\")",
       "Bash(MC_AGENT_TRACE=1 MC_LOG_LEVEL=DEBUG python -c \":*)",
-      "Read(//Users/frontend/development/mission-control/modules/frontend/src/**)"
+      "Read(//Users/frontend/development/mission-control/modules/frontend/src/**)",
+      "Read(//private/var/log/**)",
+      "Skill(tavily-extract)",
+      "Skill(tavily-extract:*)",
+      "Bash(find /Users/herman.young -path \"*/claude_agent_sdk*\" -name \"*.py\" 2>/dev/null | head -10)",
+      "Read(//Users/herman.young/**)",
+      "Bash(opengrep --version)",
+      "Bash(betterleaks version *)",
+      "Bash(opengrep --help)",
+      "Bash(betterleaks --help)",
+      "Bash(opengrep scan *)",
+      "Bash(betterleaks dir *)",
+      "Bash(open /Users/herman.young/development/mission-control/docs/97-plans/77-premortem-report-2026-05-22.html)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

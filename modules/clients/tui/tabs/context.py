@@ -114,7 +114,7 @@ class ContextTab(Static):
             size_info = await self.app.bridge.get_context_size(mission_id)
             self._render_size(size_info)
         except Exception:
-            pass
+            logger.debug("context size load failed", exc_info=True)
 
     @staticmethod
     def _dict_section_to_md(
@@ -192,7 +192,7 @@ class ContextTab(Static):
             md_text = "\n".join(lines) if lines else "*Empty context*"
             md_widget.update(md_text)
         except Exception:
-            pass
+            logger.debug("context render failed", exc_info=True)
 
     def _show_empty_state(self) -> None:
         """Show placeholder when no context exists."""
@@ -205,7 +205,7 @@ class ContextTab(Static):
                 "your agents.",
             )
         except Exception:
-            pass
+            logger.debug("context empty state display failed", exc_info=True)
 
     def _render_history(self, history: list[dict[str, Any]]) -> None:
         """Render change history entries."""
@@ -229,7 +229,7 @@ class ContextTab(Static):
                     _ChangeEntry(change, classes="mission-item"),
                 )
         except Exception:
-            pass
+            logger.debug("context history render failed", exc_info=True)
 
     def _render_size(self, size_info: dict[str, Any]) -> None:
         """Show context size in the footer."""
@@ -250,7 +250,7 @@ class ContextTab(Static):
                 f"{pct:.0f}% capacity[/{color}]",
             )
         except Exception:
-            pass
+            logger.debug("context size label update failed", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "context-refresh-btn":

@@ -34,7 +34,7 @@ async def store_learning(
         Confirmation string with the new learning ID.
     """
     from modules.backend.core.database import get_async_session
-    from modules.backend.services.mission_learning import MissionLearningService, _schedule_embed
+    from modules.backend.services.mission_learning import MissionLearningService
 
     async with get_async_session() as db:
         svc = MissionLearningService(db)
@@ -51,9 +51,7 @@ async def store_learning(
         learning_id = str(learning.id)
         await db.commit()
 
-    # Fire embeds after commit so rows are visible to new sessions
-    for lid in svc._embed_queue:
-        _schedule_embed("mission_learnings", lid)
+    svc.flush_embeds()
 
     logger.info("Learning stored", extra={"learning_id": learning_id, "mission_id": mission_id})
     return f"Learning stored (id={learning_id}): {title}"

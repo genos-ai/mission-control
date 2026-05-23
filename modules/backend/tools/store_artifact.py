@@ -43,13 +43,14 @@ async def store_artifact(
             artifact_type=artifact_type,
             content_type=content_type,
         )
+        artifact_id = str(artifact.id)
         await db.commit()
 
     logger.info(
         "Artifact stored",
-        extra={"artifact_id": artifact.id, "mission_id": mission_id, "title": title},
+        extra={"artifact_id": artifact_id, "mission_id": mission_id, "title": title},
     )
-    return f"Artifact stored (id={artifact.id}): {title}"
+    return f"Artifact stored (id={artifact_id}): {title}"
 
 
 # ── Registry integration ─────────────────────────────────

@@ -9,7 +9,10 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.widgets import Static
 
+from modules.backend.core.logging import get_logger
 from modules.clients.common.gate_helpers import STATUS_ICONS
+
+logger = get_logger(__name__)
 
 
 class DagRenderer(Static):
@@ -38,7 +41,7 @@ class DagRenderer(Static):
             child = self.query_one(Static)
             child.update(self._render_dag())
         except Exception:
-            pass
+            logger.debug("DAG render update failed", exc_info=True)
 
     def update_step_status(
         self, step_id: str, status: str,

@@ -23,7 +23,7 @@ export const DEFAULT_CHAT_AGENT = 'mission.director.agent'
 export const AGENT_ICONS: Record<string, LucideIcon> = {
   'mission.director.agent':       Brain,
   'platform.director.agent':      Brain,
-  'mission.workflow.agent':       GitBranch,
+  'mission.workflow.architect':   GitBranch,
   'platform.health.agent':        Activity,
   'software.architecture.agent':  Layers,
   'software.quality.agent':       ShieldCheck,

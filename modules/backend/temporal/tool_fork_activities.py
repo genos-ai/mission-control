@@ -74,30 +74,23 @@ async def execute_design_workflow(input: DesignWorkflowInput) -> ToolForkResult:
     )
 
     try:
-        from modules.backend.agents.mission_control.helpers import (
-            _build_model,
-            assemble_instructions,
-        )
-        from modules.backend.agents.mission_control.registry import get_registry
-        from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
-        from modules.backend.agents.deps.base import FileScope
-        from modules.backend.core.config import find_project_root
+        from modules.backend.agents.mission_control.helpers import _build_model
+        from modules.backend.agents.mission_control.helpers.agent_setup import build_deps_from_config
+        from modules.backend.core.agent_registry import get_registry
+        from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
         from modules.backend.core.database import get_async_session
+
+        _ARCHITECT = "mission.workflow.architect"
 
         async with get_async_session() as db:
             registry = get_registry()
-            agent_config = registry.get("mission.workflow.agent")
+            agent_config = registry.get(_ARCHITECT)
             model = _build_model(agent_config.model)
-            architect = registry.get_instance("mission.workflow.agent", model)
+            architect = registry.get_instance(_ARCHITECT, model)
 
-            scope = FileScope(
-                read_paths=agent_config.scope.read,
-                write_paths=agent_config.scope.write,
-            )
+            common = build_deps_from_config(agent_config)
             deps = ArchitectAgentDeps(
-                project_root=find_project_root(),
-                scope=scope,
-                config=agent_config,
+                **common,
                 session_id=input.session_id,
                 mission_id=input.mission_id,
                 db_session=db,

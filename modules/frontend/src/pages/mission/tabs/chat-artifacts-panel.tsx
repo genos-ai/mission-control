@@ -1,24 +1,56 @@
-import {
-  Loader2,
-  ChevronRight,
-  ChevronDown,
-  Package,
-} from 'lucide-react'
-import { formatUtc } from '@/lib/format-date'
-import { useWorkspaceStore } from '@/stores/workspace'
-import { useMissionArtifacts, type MissionArtifact } from '@/hooks/use-mission-artifacts'
+import { useMemo, useRef, useEffect } from 'react'
+import { ChevronRight, AlertTriangle, Zap, Inbox } from 'lucide-react'
+import { useConsoleStore } from '@/stores/console'
 import { useResizable } from '@/hooks/use-resizable'
-import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
-import { StreamingArtifactCard } from '@/components/workspace/streaming-artifact-card'
+import { formatUtc } from '@/lib/format-date'
+import { cn } from '@/lib/cn'
 
-export function ArtifactsPanel({ missionId, onClose }: { missionId: string; onClose: () => void }) {
-  // Durable artifacts via react-query (Plan 43). SSE invalidation wired
-  // in layout.tsx — the query refetches when mission.artifact.found
-  // fires, so newly persisted rows appear live without a page refresh.
-  const { data: artifacts = [], isLoading } = useMissionArtifacts(missionId)
-  const streaming = useWorkspaceStore((s) => s.streamingArtifact)
-  const hasContent = streaming || artifacts.length > 0
-  const { width, onMouseDown } = useResizable(280)
+const MIN_RESULT_LENGTH = 200
+
+export function ToolOutputPanel({
+  activeAgent,
+  activeSessionId,
+  onClose,
+}: {
+  activeAgent: string
+  activeSessionId: string | null
+  onClose: () => void
+}) {
+  const { width, onMouseDown } = useResizable(300)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const events = useConsoleStore((s) => s.events)
+
+  const toolResults = useMemo(() => {
+    return events.filter((e) => {
+      if (e.event_type !== 'agent.tool.returned') return false
+
+      const agentId = String(e.data.agent_id ?? e.source ?? '')
+      if (agentId !== activeAgent) return false
+
+      // If we have a session, scope to it; otherwise accept all
+      if (activeSessionId) {
+        const sid = String(e.data.session_id ?? '')
+        if (sid && sid !== activeSessionId) return false
+      }
+
+      const status = String(e.data.status ?? '')
+      const result = String(e.data.result ?? '')
+
+      return status === 'error' || result.length > MIN_RESULT_LENGTH
+    })
+  }, [events, activeAgent, activeSessionId])
+
+  // Scroll to bottom when new results arrive
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [toolResults.length])
+
+  const agentShort = activeAgent.endsWith('.agent')
+    ? activeAgent.slice(0, -6)
+    : activeAgent
 
   return (
     <div className="relative flex shrink-0 flex-col border-l" style={{ width }}>
@@ -26,18 +58,17 @@ export function ArtifactsPanel({ missionId, onClose }: { missionId: string; onCl
         onMouseDown={onMouseDown}
         className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20 transition-colors z-10"
       />
+
+      {/* Header */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium">Artifacts</span>
-          {streaming && (
-            <span className="flex items-center gap-1 text-[10px] text-amber-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-              live
-            </span>
-          )}
-          {!streaming && artifacts.length > 0 && (
-            <span className="text-[10px] text-muted-foreground/60">
-              {artifacts.length}
+          <span className="text-xs font-medium">Outputs</span>
+          <span className="text-[10px] text-muted-foreground/50 truncate max-w-[100px]">
+            {agentShort}
+          </span>
+          {toolResults.length > 0 && (
+            <span className="text-[10px] text-muted-foreground/50">
+              · {toolResults.length}
             </span>
           )}
         </div>
@@ -48,28 +79,20 @@ export function ArtifactsPanel({ missionId, onClose }: { missionId: string; onCl
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="h-9 shrink-0 border-b" />
 
-      <div className="flex-1 overflow-y-auto">
-        {isLoading && !streaming ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/50" />
-          </div>
-        ) : !hasContent ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 px-5 py-8">
-            <Package className="h-6 w-6 text-muted-foreground/30" />
-            <p className="text-center text-xs leading-relaxed text-muted-foreground/70">
-              No artifacts yet.
-            </p>
-            <p className="max-w-[220px] text-center text-[11px] leading-relaxed text-muted-foreground/50">
-              Artifacts appear here when agents produce reports, findings, or code during a run. They are persisted across sessions and survive backend restarts.
+      {/* Content */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        {toolResults.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-5 py-8">
+            <Inbox className="h-5 w-5 text-muted-foreground/20" />
+            <p className="text-center text-[11px] text-muted-foreground/40">
+              Tool outputs will appear here during a run.
             </p>
           </div>
         ) : (
           <div className="space-y-px p-2">
-            {streaming && <StreamingArtifactCard streaming={streaming} />}
-            {artifacts.map((a) => (
-              <ArtifactCard key={a.id} artifact={a} />
+            {toolResults.map((e) => (
+              <ToolResultCard key={e.event_id} event={e} />
             ))}
           </div>
         )}
@@ -78,27 +101,38 @@ export function ArtifactsPanel({ missionId, onClose }: { missionId: string; onCl
   )
 }
 
-export function ArtifactCard({ artifact }: { artifact: MissionArtifact }) {
-  const content = artifact.content_text ?? ''
-  const agentShort = artifact.agent_id.endsWith('.agent')
-    ? artifact.agent_id.slice(0, -6)
-    : artifact.agent_id
+function ToolResultCard({ event }: { event: ReturnType<typeof useConsoleStore.getState>['events'][number] }) {
+  const d = event.data
+  const tool = String(d.tool_name ?? '')
+  const status = String(d.status ?? '')
+  const result = String(d.result ?? '')
+  const isError = status === 'error'
+
   return (
-    <details className="group rounded border border-violet-500/15 bg-violet-500/5 p-2 text-xs">
+    <details className={cn(
+      'group rounded border p-2 text-xs',
+      isError
+        ? 'border-destructive/20 bg-destructive/5'
+        : 'border-border/50 bg-muted/20',
+    )}>
       <summary className="flex cursor-pointer list-none items-start gap-1.5">
-        <Package className="mt-0.5 h-3 w-3 shrink-0 text-violet-400" />
+        {isError
+          ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+          : <Zap className="mt-0.5 h-3 w-3 shrink-0 text-amber-400/70" />
+        }
         <div className="min-w-0 flex-1">
-          <p className="font-medium leading-snug">{artifact.title}</p>
-          <p className="text-[10px] text-muted-foreground/60">
-            {agentShort}
-            {' · '}{artifact.artifact_type}
-            {' · '}{formatUtc(artifact.created_at)}
+          <p className={cn('font-medium font-mono leading-snug', isError ? 'text-destructive' : '')}>
+            {tool}
+          </p>
+          <p className="text-[10px] text-muted-foreground/50">
+            {formatUtc(event.timestamp)}
           </p>
         </div>
-        <ChevronDown className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
-      <div className="mt-2 border-t border-violet-500/15 pt-2">
-        <MarkdownRenderer content={content} className="text-xs" />
+      <div className="mt-2 border-t border-border/30 pt-2">
+        <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] text-muted-foreground leading-relaxed">
+          {result}
+        </pre>
       </div>
     </details>
   )

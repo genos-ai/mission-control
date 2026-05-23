@@ -134,7 +134,7 @@ class CatalogScreen(Screen):
             old = panel.query_one("#catalog-detail-content")
             old.remove()
         except Exception:
-            pass
+            logger.debug("catalog detail panel cleanup failed", exc_info=True)
 
         name = agent.get("agent_name", "Unknown")
         agent_type = agent.get("agent_type", "")

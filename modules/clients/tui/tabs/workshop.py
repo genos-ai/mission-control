@@ -139,7 +139,7 @@ class WorkshopTab(Static):
                 )
                 select.set_options(options)
             except Exception:
-                pass
+                logger.debug("workshop agent select population failed", exc_info=True)
         except Exception as exc:
             logger.warning("Could not load team for workshop", exc_info=True)
 
@@ -153,7 +153,7 @@ class WorkshopTab(Static):
                 "[dim]Press Alt+4 to go to Workflows[/dim]",
             )
         except Exception:
-            pass
+            logger.debug("workshop empty state display failed", exc_info=True)
 
     async def on_select_changed(self, event: Select.Changed) -> None:
         """Handle agent selection."""
@@ -187,14 +187,14 @@ class WorkshopTab(Static):
                 )
                 sys_prompt.load_text(member.get("system_prompt", ""))
             except Exception:
-                pass
+                logger.debug("workshop system prompt load failed", exc_info=True)
             try:
                 user_prompt = self.query_one(
                     "#workshop-user-prompt", TextArea,
                 )
                 user_prompt.load_text(member.get("user_prompt", ""))
             except Exception:
-                pass
+                logger.debug("workshop user prompt load failed", exc_info=True)
 
         # Load cached inputs
         try:
@@ -237,7 +237,7 @@ class WorkshopTab(Static):
                 )
             content.update("\n".join(lines))
         except Exception:
-            pass
+            logger.debug("workshop cached inputs render failed", exc_info=True)
 
     def _render_prev_runs(self) -> None:
         """Render previous workshop runs."""
@@ -254,7 +254,7 @@ class WorkshopTab(Static):
                 parts.append(f"[dim]#{run_id} · ${cost:.3f}[/dim]  ")
             panel.update("".join(parts))
         except Exception:
-            pass
+            logger.debug("workshop prev runs render failed", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "workshop-sys-toggle":
@@ -279,7 +279,7 @@ class WorkshopTab(Static):
                 area.add_class("workshop-hidden")
                 btn.label = "▸ System Prompt"
         except Exception:
-            pass
+            logger.debug("workshop system prompt toggle failed", exc_info=True)
 
     def _toggle_cached_inputs(self) -> None:
         """Toggle cached inputs visibility."""
@@ -296,7 +296,7 @@ class WorkshopTab(Static):
                 content.add_class("workshop-hidden")
                 btn.label = "▸ Cached Inputs"
         except Exception:
-            pass
+            logger.debug("workshop cached inputs toggle failed", exc_info=True)
 
     async def _save_prompt(self) -> None:
         """Save current user prompt to team member."""
@@ -347,7 +347,7 @@ class WorkshopTab(Static):
             output_panel = self.query_one("#workshop-output", Static)
             output_panel.update("[yellow]Running test...[/yellow]")
         except Exception:
-            pass
+            logger.debug("workshop test status display failed", exc_info=True)
 
         try:
             user_prompt = self.query_one(
@@ -383,7 +383,7 @@ class WorkshopTab(Static):
                     f"{output_text}",
                 )
             except Exception:
-                pass
+                logger.debug("workshop test result display failed", exc_info=True)
 
             # Refresh previous runs
             self._test_runs = await self.app.bridge.list_workshop_runs(
@@ -401,5 +401,5 @@ class WorkshopTab(Static):
                 output_panel = self.query_one("#workshop-output", Static)
                 output_panel.update(f"[red]Test failed: {exc}[/red]")
             except Exception:
-                pass
+                logger.debug("workshop test error display failed", exc_info=True)
             self.app.notify(f"Test failed: {exc}", severity="error")

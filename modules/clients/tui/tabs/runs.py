@@ -142,7 +142,7 @@ class RunsTab(Static):
             label = self.query_one("#runs-page-label", Label)
             label.update(f"Page {self._page + 1}/{total_pages}")
         except Exception:
-            pass
+            logger.debug("runs page label update failed", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "runs-prev-btn" and self._page > 0:

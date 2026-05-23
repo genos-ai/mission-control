@@ -33,7 +33,7 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { DEFAULT_CHAT_AGENT, getAgentIcon } from './chat-constants'
 import { Conversation } from './chat-conversation'
-import { ArtifactsPanel } from './chat-artifacts-panel'
+import { ToolOutputPanel } from './chat-artifacts-panel'
 
 // ---------------------------------------------------------------------------
 // Root
@@ -109,14 +109,18 @@ export default function ChatTab() {
         />
       </div>
 
-      {/* Right — artifacts */}
+      {/* Right — tool output */}
       {rightOpen ? (
-        <ArtifactsPanel missionId={missionId!} onClose={() => setRightOpen(false)} />
+        <ToolOutputPanel
+          activeAgent={activeAgent}
+          activeSessionId={activeSessionId}
+          onClose={() => setRightOpen(false)}
+        />
       ) : (
         <button
           onClick={() => setRightOpen(true)}
           className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-          title="Open artifacts panel"
+          title="Open outputs panel"
         >
           <ChevronLeft className="h-3 w-3" />
         </button>

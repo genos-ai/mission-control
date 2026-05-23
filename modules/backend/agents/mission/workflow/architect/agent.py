@@ -18,11 +18,8 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 from pydantic_ai.usage import UsageLimits
 
-from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
-from modules.backend.agents.mission_control.helpers import (
-    _build_model,
-    assemble_instructions,
-)
+from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
+from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.adapters import workflow_design
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
@@ -31,16 +28,12 @@ from modules.backend.events.types import WorkflowGraphEvent
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent:
+def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     """Create the Workflow Architect agent instance.
 
-    Model resolved from caller (registry or direct). System prompt
-    loaded from config/prompts/agents/horizontal/workflow_architect/system.md.
+    Model is always pre-built by the caller (AgentRegistry.get_instance).
     """
-    if isinstance(model, str):
-        model = _build_model(model)
-
-    system_prompt = assemble_instructions("mission", "workflow")
+    system_prompt = assemble_instructions("mission.workflow.architect")
 
     agent: Agent[ArchitectAgentDeps, str] = Agent(
         model,
@@ -229,6 +222,38 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             )
             return json.dumps({"error": str(e)})
 
+    # -- Tool: get_workflow --------------------------------------------------
+
+    @agent.tool
+    async def get_workflow(
+        ctx: RunContext[ArchitectAgentDeps],
+        name: str,
+    ) -> str:
+        """Fetch the full step and edge definitions of an existing workflow.
+
+        Use this before proposing changes so you have the current state.
+
+        Args:
+            name: Workflow name to fetch.
+
+        Returns:
+            JSON with full workflow definition including all steps and edges,
+            or an error message if not found.
+        """
+        if ctx.deps.db_session is None:
+            return json.dumps({"error": "No database session available"})
+        if not ctx.deps.mission_id:
+            return json.dumps({"error": "No mission_id in context"})
+
+        result = await workflow_design.get_workflow_definition(
+            ctx.deps.db_session,
+            mission_id=ctx.deps.mission_id,
+            name=name,
+        )
+        if result is None:
+            return json.dumps({"error": f"Workflow '{name}' not found"})
+        return json.dumps(result, indent=2, default=str)
+
     # -- Tool: update_workflow -----------------------------------------------
 
     @agent.tool
@@ -294,6 +319,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             )
             return json.dumps({"error": str(e)})
 
+    logger.info("Workflow architect agent created", extra={"model": str(model)})
     return agent
 
 

@@ -75,8 +75,8 @@ def _build_agent_deps(
         return HealthAgentDeps(**common, app_config=get_app_config())
     if category == "software":
         return QaAgentDeps(**common)
-    if "mission.workflow" in agent_name:
-        from modules.backend.agents.mission.workflow.deps import ArchitectAgentDeps
+    if "mission.workflow.architect" in agent_name:
+        from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
         return ArchitectAgentDeps(**common, mission_id=mission_id, db_session=db_session)
     if "mission.supervisor" in agent_name:
         from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps

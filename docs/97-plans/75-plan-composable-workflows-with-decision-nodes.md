@@ -1,10 +1,15 @@
 # Plan 75: Composable Workflows with Decision Nodes
 
-## Status: Pending
+## Status: Closed (2026-05-21)
 
 **Priority:** High
 **Dependencies:** Plan 45 (Rich Workflow Model), Plan 53 (Workflow DB), Plan 72 (Task First-Class)
 **Branch:** `feature/75-composable-workflows`
+
+**Implementation notes:**
+- All 7 phases shipped. Phase 3 (edge-option coverage) lives in `services/workflow_validator.py:158` (`_check_decision_edges`, called from `save_graph`) rather than `workflow_definition.py` — equivalent validation, different home.
+- Follow-up after MVP: added `edges` field to `WorkflowSchema` so YAML-seeded templates can declare labeled decision-routing edges (derived edges are unlabeled). First template: `config/workflow_templates/general.decision-routing.workflow.yaml`.
+- Follow-up: `condition_evaluator._REF_RE` extended to allow hyphens in node IDs (e.g. `@node.check-mcd.output`).
 
 ---
 
