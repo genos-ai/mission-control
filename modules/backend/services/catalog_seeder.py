@@ -170,7 +170,7 @@ async def seed_catalog(
                     if config.interface else None
                 ),
                 constraints={
-                    "timeout_seconds": getattr(config, "timeout_seconds", 120),
+                    "timeout_seconds": getattr(config, "timeout_seconds", None) or 120,
                     "cost_ceiling_usd": config.max_budget_usd,
                     "retry_budget": 2,
                 },

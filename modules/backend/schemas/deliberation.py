@@ -13,7 +13,7 @@ artifact, see Plan 79 §7 store-deliverable-json step).
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 
 # =============================================================================
@@ -88,6 +88,17 @@ class ResearchPacketVerification(BaseModel):
     mainstream_consensus_looks_plausible: bool
     under_discussed_angles_actually_under_discussed: bool
     notes: str = ""
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def gate(self) -> Literal["passed", "failed"]:
+        """String form of `passed` matching the research-gate decision option keys.
+
+        The workflow's research-gate decision node uses a rule resolver
+        whose expression resolves to one of its option keys. Booleans
+        don't match the keys, so we derive the matching string here.
+        """
+        return "passed" if self.passed else "failed"
 
 
 # =============================================================================
@@ -221,6 +232,13 @@ class StanceDelta(BaseModel):
     delta: float = Field(ge=0.0, description="Aggregate change in stance vectors")
     threshold: float
     should_continue: bool
+    gate: Literal["continue", "halt"] = Field(
+        description=(
+            "String form of should_continue matching the stop-rN decision "
+            "option keys. The decision rule resolver expects an exact "
+            "option-key string, not a bool."
+        ),
+    )
     per_debater: dict[str, float]
     reasoning: str
 

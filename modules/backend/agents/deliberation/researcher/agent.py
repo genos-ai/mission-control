@@ -42,7 +42,10 @@ def create_agent(
         deps_type=ResearchAgentDeps,
         output_type=ResearchPacket,
         instructions=instructions,
-        output_retries=1,
+        # 2 retries: same Copilot narrative-vs-tool quirk as the verifier.
+        # The packet is large (many sourced claims) so retries cost less
+        # than a corrupted run.
+        output_retries=2,
     )
 
     if tool_names:

@@ -94,6 +94,10 @@ async def compute_stance_delta(
         "delta": aggregate,
         "threshold": threshold,
         "should_continue": should_continue,
+        # String form matching the stop-rN decision option keys
+        # ("continue" / "halt"). The decision rule resolver expects
+        # the expression result to equal an option key, not a bool.
+        "gate": "continue" if should_continue else "halt",
         "per_debater": per_debater,
         "reasoning": reasoning,
     }

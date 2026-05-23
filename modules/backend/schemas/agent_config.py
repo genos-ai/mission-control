@@ -143,6 +143,12 @@ class AgentConfigSchema(_StrictBase):
     max_tokens: int | None = None
     max_requests: int | None = None
 
+    # Per-agent task timeout (wall-clock seconds for one execute_agent attempt).
+    # The catalog seeder reads this; absent → defaults to 120s in
+    # services/catalog_seeder.py. Override on long-running agents (web
+    # research, large-context synthesis).
+    timeout_seconds: int | None = None
+
     # Agent-specific optional fields
     file_size_limit: int | None = None
     rules: list[ComplianceRuleSchema] | None = None

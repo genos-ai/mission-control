@@ -181,6 +181,33 @@ class TestComputeStanceDelta:
         # Edge case: zero vector → distance 1.0 (cannot normalise).
         assert _cosine_distance([0.0, 0.0], [1.0, 0.0]) == 1.0
 
+    @pytest.mark.asyncio
+    async def test_emits_gate_field_matching_should_continue(self, monkeypatch):
+        # The decision rule resolver needs the option-key string, not a
+        # bool. compute_stance_delta emits both for downstream flexibility.
+        embedder = _MockEmbedder({"p1": [1.0, 0.0, 0.0]})
+        monkeypatch.setattr(
+            "modules.backend.tools.compute_stance_delta.get_embedder",
+            lambda: embedder,
+        )
+        # Stable case → gate=halt
+        prev = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
+        curr = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
+        result = await compute_stance_delta(
+            previous_round=prev, current_round=curr, threshold=0.15,
+        )
+        assert result["should_continue"] is False
+        assert result["gate"] == "halt"
+
+        # Active revision → gate=continue
+        curr2 = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
+        curr2["systems"] = _turn("p1", decision="CONCEDE_PARTIAL")
+        result2 = await compute_stance_delta(
+            previous_round=prev, current_round=curr2, threshold=0.15,
+        )
+        assert result2["should_continue"] is True
+        assert result2["gate"] == "continue"
+
     def test_has_active_revision_detects_decisions(self):
         assert _has_active_revision({"decision": "CONCEDE_PARTIAL"}) is True
         assert _has_active_revision({"decision": "CONCEDE_FULL"}) is True

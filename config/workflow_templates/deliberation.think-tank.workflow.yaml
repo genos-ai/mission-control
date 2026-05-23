@@ -173,7 +173,10 @@ steps:
     node_type: decision
     decision_config:
       resolver: rule
-      expression: "@node.verify-research.output.passed == true"
+      # Expression must evaluate to one of the option keys (string).
+      # `gate` is a computed field on ResearchPacketVerification that
+      # derives "passed" or "failed" from the `passed` bool.
+      expression: "@node.verify-research.output.gate"
       options:
         - key: passed
           label: "Packet passed verification — proceed to blind opening"
@@ -420,7 +423,10 @@ steps:
     node_type: decision
     decision_config:
       resolver: rule
-      expression: "@node.delta-r1.output.should_continue == true"
+      # `gate` is "continue" or "halt" — matches the option keys below.
+      # The rule resolver expects the expression result to equal an option
+      # key string; a boolean (should_continue) would not match.
+      expression: "@node.delta-r1.output.gate"
       options:
         - key: continue
           label: "Stance still moving — continue to round 2"
@@ -561,7 +567,7 @@ steps:
     node_type: decision
     decision_config:
       resolver: rule
-      expression: "@node.delta-r2.output.should_continue == true"
+      expression: "@node.delta-r2.output.gate"
       options:
         - key: continue
           label: "Stance still moving — continue to round 3"

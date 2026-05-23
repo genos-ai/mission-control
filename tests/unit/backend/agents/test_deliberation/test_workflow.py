@@ -238,18 +238,23 @@ class TestEarlyStopGating:
         opts = {o.key for o in steps["stop-r1"].decision_config.options}
         assert opts == {"continue", "halt"}
 
-    def test_stop_r1_expression_reads_delta_should_continue(self, workflow):
+    def test_stop_r1_expression_reads_delta_gate(self, workflow):
+        # Rule resolver expects an option-key string ("continue"/"halt"),
+        # so the expression points at the `gate` field (not `should_continue`
+        # which is a bool that would not match either key).
         steps = {s.id: s for s in workflow.steps}
         assert (
             steps["stop-r1"].decision_config.expression
-            == "@node.delta-r1.output.should_continue == true"
+            == "@node.delta-r1.output.gate"
         )
 
-    def test_research_gate_uses_verifier_passed(self, workflow):
+    def test_research_gate_uses_verifier_gate(self, workflow):
+        # Same pattern — uses ResearchPacketVerification.gate (a
+        # computed_field derived from `passed`) rather than the raw bool.
         steps = {s.id: s for s in workflow.steps}
         assert (
             steps["research-gate"].decision_config.expression
-            == "@node.verify-research.output.passed == true"
+            == "@node.verify-research.output.gate"
         )
 
     def test_halt_uses_halt_workflow_tool(self, workflow):

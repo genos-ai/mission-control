@@ -157,6 +157,11 @@ async def _run_workflow(
 ) -> None:
     """Execute a named workflow via API."""
     wf_name = workflow.get("name") or workflow.get("workflow_name", "")
+    # The workflow seeder strips the .workflow suffix before storing in DB
+    # (see services/workflow_seeder.py), so the run endpoint expects the
+    # stripped form. GET /workflows returns workflow_name with the suffix.
+    if wf_name.endswith(".workflow"):
+        wf_name = wf_name[: -len(".workflow")]
     console = get_console()
 
     if dry_run:

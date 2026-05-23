@@ -9,6 +9,7 @@ model:
   max_tokens: 16384
 max_budget_usd: 8.00
 max_input_length: 1000000
+timeout_seconds: 1200
 
 execution:
   mode: local

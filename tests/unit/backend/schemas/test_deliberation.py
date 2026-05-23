@@ -331,11 +331,13 @@ class TestStanceDelta:
             delta=0.08,
             threshold=0.15,
             should_continue=False,
+            gate="halt",
             per_debater={"systems": 0.05, "quant": 0.1, "empiricist": 0.07,
                          "ethicist": 0.1},
             reasoning="stance change 0.08 < threshold 0.15; no active revision",
         )
         assert d.should_continue is False
+        assert d.gate == "halt"
 
     def test_delta_must_be_non_negative(self):
         with pytest.raises(ValidationError):
@@ -343,6 +345,20 @@ class TestStanceDelta:
                 delta=-0.1,
                 threshold=0.15,
                 should_continue=False,
+                gate="halt",
+                per_debater={},
+                reasoning="",
+            )
+
+    def test_gate_is_literal(self):
+        # Catches typos in the option-key string emitted by
+        # compute_stance_delta.
+        with pytest.raises(ValidationError):
+            StanceDelta(
+                delta=0.0,
+                threshold=0.15,
+                should_continue=False,
+                gate="stop",  # not in Literal["continue", "halt"]
                 per_debater={},
                 reasoning="",
             )

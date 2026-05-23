@@ -39,7 +39,10 @@ def create_agent(
         deps_type=BaseAgentDeps,
         output_type=ResearchPacketVerification,
         instructions=instructions,
-        output_retries=1,
+        # 3 retries: Copilot occasionally returns Markdown narrative instead
+        # of invoking the final_result tool — observed during smoke testing.
+        # Retries give PydanticAI a chance to re-prompt with the schema.
+        output_retries=3,
     )
 
     logger.info(
