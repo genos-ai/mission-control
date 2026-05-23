@@ -39,9 +39,6 @@ def create_agent(
         deps_type=BaseAgentDeps,
         output_type=ResearchPacketVerification,
         instructions=instructions,
-        # output_retries=1 per Plan 79 §6.1: the verifier's schema is
-        # tolerant (issues + issues_text + a handful of booleans). One
-        # retry is enough for transient formatting errors.
         output_retries=1,
     )
 

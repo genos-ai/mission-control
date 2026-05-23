@@ -42,10 +42,6 @@ def create_agent(
         deps_type=ResearchAgentDeps,
         output_type=ResearchPacket,
         instructions=instructions,
-        # output_retries=1 per Plan 79 §6.1: ResearchPacket is a tolerant
-        # schema with no strict cross-field validators. Real failures are
-        # almost always content (bad packet), not format (the verifier
-        # catches those).
         output_retries=1,
     )
 

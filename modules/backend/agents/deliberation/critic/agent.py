@@ -41,10 +41,6 @@ def create_agent(
         deps_type=BaseAgentDeps,
         output_type=CriticReport,
         instructions=instructions,
-        # output_retries=3 per Plan 79 §6.1 — the CriticReport schema has
-        # a strict field_validator that requires all four debater IDs in
-        # the `attacks` dict. The LLM may miss one on the first try; the
-        # retry lets it self-correct.
         output_retries=3,
     )
 

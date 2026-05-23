@@ -34,9 +34,6 @@ def create_agent(
         deps_type=BaseAgentDeps,
         output_type=DebaterTurn,
         instructions=instructions,
-        # output_retries=2 per Plan 79 §6.1 — DebaterTurn has Literal
-        # fields (debater_id, decision) that may need one retry under
-        # transient LLM formatting issues.
         output_retries=2,
     )
 

@@ -38,10 +38,6 @@ def create_agent(
         deps_type=BaseAgentDeps,
         output_type=FinalDeliverable,
         instructions=instructions,
-        # output_retries=3 per Plan 79 §6.1 — FinalDeliverable has the
-        # strictest validators (cruxes min_length=2, report_markdown
-        # min_length=200, biggest_things bounds, etc). Retries give the
-        # model a chance to fix transient schema misses.
         output_retries=3,
     )
 
