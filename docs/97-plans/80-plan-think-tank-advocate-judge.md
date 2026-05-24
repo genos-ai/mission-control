@@ -1,6 +1,6 @@
 # Plan 80: Think Tank — Advocate-Judge Architecture
 
-## Status: Draft v1 (2026-05-24)
+## Status: Draft v2 (2026-05-24 — multi-provider heterogeneity added; workflow takes canonical name from day 1)
 
 **Branch:** `feature/80-advocate-judge` (to be cut off `main`; do not extend `feature/79-think-tank-deliberation`)
 **Priority:** Medium-High (same user need as Plan 79; different architecture)
@@ -44,6 +44,8 @@ The big ones, with one-line justification:
 7. **Keep `FinalDeliverable` schema from Plan 79 unchanged.** It's the anti-flattening machinery that empirically works (`cruxes ≥ 2`, `minority_position` required-or-null, `merely_reproduces` enum, `sycophancy_flags`). Survives the rewrite.
 8. **Judge is Opus 4.6 with `reasoning_effort=high`.** Extended thinking matters most at the synthesis step. Advocates and researchers can also be Opus 4.6 but with normal effort.
 9. **No CLI/API in the loop.** v2's CLI invocation timed out at 5 min (httpx ReadTimeout) because the synchronous POST endpoint blocks for the run's full duration. Use `scripts/think_tank_advocate_judge.py` for ad-hoc runs and the wave-engine workflow for mission-attached runs. Both call the same executor.
+10. **Multi-provider model heterogeneity is the recommended default for the advocate roles.** Each per-side researcher + advocate pair SHOULD use a different model family where available (Claude / GPT / Gemini), because different families have different training data, different RLHF, different priors. This adds *structural reasoning diversity* on top of structural information asymmetry — exactly the mechanism the persona-prompting literature (Hu & Collier; Wharton "Playing Pretend") shows is missing from same-model-different-prompt setups. The judge stays single-model (otherwise you need a meta-judge). Fallback: if a provider isn't locally wired, single-family is acceptable — the architecture's structural information-asymmetry guarantees still hold. See §5.1.
+11. **Workflow takes the canonical `deliberation.think-tank.workflow` name from day 1.** No "advocate-judge.workflow" dev-name interim. v2's YAML is moved to `deliberation.think-tank.v2.workflow.yaml` with `enabled: false` at the start of Phase 6, mirroring how v1 was preserved as `deliberation.think-tank.v1.workflow.yaml`. The architecture name lives in the code identifiers (`advocate_judge_loop.py`, etc.); the brand name lives in the workflow slot. They're different layers.
 
 ## 3. What we reuse from Plan 79 (verbatim)
 
@@ -70,7 +72,7 @@ To pre-empt the "rewrite from scratch" temptation — substantial pieces survive
 | Critic-per-round agent | Subsumed by the bilateral-attacks phase. Every advocate attacks every other advocate's load-bearing claim. |
 | Multi-round debate with sparse topology | Empirical sycophancy risk past round 1–2 outweighs marginal gain. One advocacy round + one attacks round. |
 | Stance-delta early stopping (`compute_stance_delta` tool, `StanceDelta` schema) | Category error per v2's own docstring. Delete; fixed cost. |
-| Workflow templates `deliberation.think-tank.workflow.yaml` (v2 single-step) and `…v1.workflow.yaml` (v1 34-step) | Replaced by a single new YAML for Advocate-Judge. v2 YAML is reference. |
+| Workflow templates `deliberation.think-tank.workflow.yaml` (v2 single-step) — v1 is already archived at `…v1.workflow.yaml` | v2 YAML moves to `…v2.workflow.yaml` with `enabled: false` at the start of Phase 6, mirroring the v1 archive. The canonical `deliberation.think-tank.workflow.yaml` path is reused for the new architecture (§10). |
 | `deliberation_loop.py` executor | Replaced by new `advocate_judge_loop.py` executor. v2 is reference. |
 | Per-round `research_requests` from debater turns dispatched between rounds | No multi-round; no follow-up research between rounds. Per-side researcher is sized to do its job in one pass. |
 
@@ -78,17 +80,45 @@ To pre-empt the "rewrite from scratch" temptation — substantial pieces survive
 
 Seven roles in concept but **5 agent YAMLs** (researcher and advocate are role-shared across the N candidates; N = 3 or 4):
 
-| Role | YAML | Model | Reasoning effort | Tools | Why |
+| Role | YAML | Default model | Reasoning effort | Tools | Why |
 |---|---|---|---|---|---|
 | Framer | `deliberation.advocate_judge_framer.agent` | copilot:claude-opus-4.6 | medium | search_web, fetch_url | Knowledge of the answer space matters; one shallow search for "schools of thought on X" is enough. |
-| Framings validator | `deliberation.advocate_judge_framings_validator.agent` | copilot:claude-opus-4.6 | medium | (none) | Pure reasoning over the framer's output. P13 separate-agent rule. |
-| Per-side researcher | `deliberation.advocate_judge_side_researcher.agent` | copilot:claude-opus-4.6 | medium | search_web, fetch_url, query_knowledge | Narrow brief: find the strongest evidence for ONE candidate. |
-| Per-side advocate | `deliberation.advocate_judge_advocate.agent` | copilot:claude-opus-4.6 | high | (none) | Writes the strongest case from its packet; structured. |
-| Judge | `deliberation.advocate_judge_judge.agent` | copilot:claude-opus-4.6 | high | (none) | The synthesis step where reasoning quality matters most. |
+| Framings validator | `deliberation.advocate_judge_framings_validator.agent` | copilot:gpt-5.5 (different family from framer) | medium | (none) | Pure reasoning over the framer's output. P13 separate-agent rule. Different family from framer so the audit catches family-specific priors. |
+| Per-side researcher | `deliberation.advocate_judge_side_researcher.agent` | **per-side override** (see §5.1) | medium | search_web, fetch_url, query_knowledge | Narrow brief: find the strongest evidence for ONE candidate. Different family per side surfaces different sources. |
+| Per-side advocate | `deliberation.advocate_judge_advocate.agent` | **per-side override** (see §5.1) | high | (none) | Writes the strongest case from its packet; structured. Different family per side prevents shared-model convergence. |
+| Judge | `deliberation.advocate_judge_judge.agent` | copilot:claude-opus-4.7 (or anthropic:claude-opus-4-7 with extended thinking) | high | (none) | Synthesis step where reasoning quality matters most. One model only (otherwise need a meta-judge). |
 
-Per-side researcher and per-side advocate are invoked N times in parallel by the executor; the YAMLs themselves are not duplicated. The candidate label is passed via `instructions`/`inputs`, not encoded in the agent identity.
+Per-side researcher and per-side advocate are invoked N times in parallel by the executor; the YAMLs themselves are not duplicated. The candidate label and the **per-side model assignment** are passed via `instructions`/`inputs`, not encoded in the agent identity.
 
 The **attacks** phase reuses the per-side advocate YAML with a different instruction (Phase 4 in §9). Attempted simplification — splitting "advocate" and "attacker" into separate YAMLs — adds files without changing behaviour, because the model's task is the same shape: read its own assignment, write structured output. Keep as one YAML, two instruction templates.
+
+### 5.1 Per-side model assignment
+
+**Currently wired providers** (verified in [modules/backend/core/model_builder.py](../../modules/backend/core/model_builder.py)): `anthropic:`, `openai:`, `copilot:`. The Copilot SDK covers both Claude and GPT under one credential. **Google / Gemini is NOT wired** — see Phase 0 below for the small add.
+
+For N=3 with all three families wired (post-Phase 0):
+
+| Side index | Researcher model | Advocate model (same model) |
+|---|---|---|
+| 0 | `copilot:claude-opus-4.6` | `copilot:claude-opus-4.6` |
+| 1 | `copilot:gpt-5.5` | `copilot:gpt-5.5` |
+| 2 | `google:gemini-2.5-pro` | `google:gemini-2.5-pro` |
+
+For N=4, add a 4th side using a 2nd-generation rotation (e.g. `copilot:claude-sonnet-4.6` for side 3) — still better than re-using a family already in use.
+
+If Phase 0 is skipped (Gemini not wired), the rotation falls back to:
+
+| Side index | Researcher / Advocate model |
+|---|---|
+| 0 | `copilot:claude-opus-4.6` |
+| 1 | `copilot:gpt-5.5` |
+| 2 | `copilot:claude-sonnet-4.6` (repeats Claude family) — logs a `sycophancy_flags` entry noting reduced heterogeneity |
+
+Implementation: `AdvocateJudgeConfig` carries a `side_models: list[str] | None` field. If None (default), the executor uses the rotation appropriate to the currently-wired providers. If the user passes an explicit `side_models` list, it overrides — but the executor still validates each model string via `_build_model` at start, failing loud on unknown provider prefixes rather than mid-run.
+
+The judge's model is fixed per `AdvocateJudgeConfig.judge_model` (default `copilot:claude-opus-4.7`). Per-side researcher and advocate models are bound at executor dispatch via the `model` parameter to the per-call agent factory; `_build_model` handles provider routing.
+
+Provider availability check happens at executor start (Phase 1 in §12) so misconfiguration trips immediately, not 20 minutes into a run.
 
 ## 6. Schemas
 
@@ -514,24 +544,28 @@ Failure handling: any phase failure raises; the loop catches at top and returns 
 
 ## 10. Workflow YAML
 
-New file: `config/workflow_templates/deliberation.advocate-judge.workflow.yaml`. Single step with `type: advocate_judge_loop`. Mirrors v2's collapsed YAML structure.
+The new YAML takes the **canonical `deliberation.think-tank.workflow` name from day 1** (per architectural decision §2.11). v2's existing YAML at `config/workflow_templates/deliberation.think-tank.workflow.yaml` is moved to `deliberation.think-tank.v2.workflow.yaml` with `enabled: false`, mirroring how v1 was preserved as `…v1.workflow.yaml`.
+
+New file (replacing v2's at the same path): `config/workflow_templates/deliberation.think-tank.workflow.yaml`. Single step with `type: advocate_judge_loop`.
 
 ```yaml
-workflow_name: deliberation.advocate-judge.workflow
-description: "Asymmetric advocate-judge deliberation for contested open questions"
+workflow_name: deliberation.think-tank.workflow
+description: "Think Tank — advocate-judge deliberation for contested open questions"
 objective:
-  statement: "Produce a Advocate-Judge deliberation preserving live disagreement"
+  statement: "Produce a structured deliberation preserving live disagreement"
   category: research
   owner: user
   priority: normal
-version: 1
+version: 3  # v1 = 34-step wave-engine; v2 = collapsed deliberation_loop; v3 = advocate-judge
 enabled: true
 
 trigger:
   type: on_demand
   match_patterns:
-    - "advocate-judge"
+    - "think tank"
     - "deliberate"
+    - "advocate-judge"
+    - "contested question"
 
 budget:
   # Conservative cap. Realistic worst case at N=4 is ~$15 (per-side
@@ -543,11 +577,15 @@ parameters:
   - { key: question, label: "Question", type: text, required: true }
   - { key: max_candidates, label: "Max candidates", type: number, default: 4 }
   - { key: min_candidates, label: "Min candidates", type: number, default: 3 }
+  - { key: side_models, label: "Per-side model override (CSV)", type: text, required: false, default: "" }
+  - { key: judge_model, label: "Judge model", type: text, required: false, default: "copilot:claude-opus-4.7" }
 
 context:
   question: ""
   max_candidates: 4
   min_candidates: 3
+  side_models: ""
+  judge_model: "copilot:claude-opus-4.7"
 
 steps:
   - id: advocate_judge
@@ -564,6 +602,8 @@ steps:
       loop_config:
         max_candidates: "@context.max_candidates"
         min_candidates: "@context.min_candidates"
+        side_models: "@context.side_models"
+        judge_model: "@context.judge_model"
     timeout_seconds: 3600
     termination: completion
     depends_on: []
@@ -585,12 +625,13 @@ with a `_dispatch_advocate_judge_loop` helper that mirrors `_dispatch_deliberati
 
 ## 12. Phases (implementation order)
 
-1. **Phase 1 — Schemas + executor skeleton.** Write `deliberation_advocate_judge.py` schemas. Write `advocate_judge_loop.py` skeleton that calls a noop `execute_agent_fn` (returns fake outputs) so the orchestration can be unit-tested without LLMs. Tests: schema validation; executor topology (asymmetric inputs, blind inputs, union-at-attacks).
+0. **Phase 0 — Google provider hookup (optional but recommended).** Add a `google:` branch to `_build_model` in [modules/backend/core/model_builder.py](../../modules/backend/core/model_builder.py) using `pydantic_ai.models.google.GoogleModel`, plus an env-var or config-driven API key in `model_providers.py`. Tests: `_build_model("google:gemini-2.5-pro")` returns a working model; a hello-world prompt to it succeeds. Without this phase, the rotation in §5.1 falls back to 2 families with a re-use note — the architecture works, the heterogeneity signal weakens. Estimated effort: half day.
+1. **Phase 1 — Schemas + executor skeleton.** Write `deliberation_advocate_judge.py` schemas (including `AdvocateJudgeConfig` with `side_models` and `judge_model` fields per §5.1). Write `advocate_judge_loop.py` skeleton that calls a noop `execute_agent_fn` (returns fake outputs) so the orchestration can be unit-tested without LLMs. Include a provider-availability check at executor start that calls `_build_model` once per resolved per-side model string and fails loud if any provider isn't wired — so misconfiguration trips immediately, not 20 min into a run. Tests: schema validation; executor topology (asymmetric inputs, blind inputs, union-at-attacks); provider rotation fallback when N exceeds available families.
 2. **Phase 2 — Framer + validator.** YAMLs, system prompts, agent modules (`create_agent`). Tests: framer produces valid CandidateSet; validator produces FramingValidation; revised_set replaces original when verdict=revised.
 3. **Phase 3 — Per-side researcher.** YAML, system prompt, agent module. Tests: with stubbed search_web, produces valid SidePacket; weakest_link is populated; sources all have URLs.
 4. **Phase 4 — Per-side advocate (blind case + attacks).** YAML, two system prompts (one for blind case, one for attacks). Tests: blind case schema; attacks schema with N-1 entries; cited_evidence_urls are subset of union of packets.
 5. **Phase 5 — Judge.** YAML, system prompt, agent module. Tests: produces valid FinalDeliverable; cruxes ≥ 2; minority_position present if any case survived attack while non-mainstream.
-6. **Phase 6 — Wire executor end-to-end + dispatch loop fork.** Connect to `_make_agent_executor`. Workflow YAML registered. `scripts/think_tank_advocate_judge.py` works.
+6. **Phase 6 — Wire executor end-to-end + dispatch loop fork + workflow YAML cutover.** Connect to `_make_agent_executor` (passing the per-side resolved model per agent dispatch). Add `advocate_judge_loop` fork to dispatch loop. Move v2's `config/workflow_templates/deliberation.think-tank.workflow.yaml` to `…v2.workflow.yaml` with `enabled: false` (mirrors v1's archive at `…v1.workflow.yaml`); write the new YAML at the canonical path with `workflow_name: deliberation.think-tank.workflow`. `scripts/think_tank_advocate_judge.py` works against the new executor (no workflow involvement).
 7. **Phase 7 — Live smoke run.** Direct script on Q1 ("UK knowledge work 2030"). Goal: produces a valid FinalDeliverable end-to-end. Cost ≤ $20, wall time ≤ 30 min. If it fails: triage failure mode, fix, retry.
 8. **Phase 8 — A/B comparison vs baseline.** Run Advocate-Judge on all 3 validation questions (Q1, Q2, Q3 from validation findings doc). Use existing `scripts/think_tank_anonymise.py` to blind-pair Advocate-Judge outputs with the baseline outputs already in `var/validation/baseline/`. Read blind and score on 3 dimensions: preserves disagreement / cruxes are real disagreements / minority has substance. Unmask. Document outcome in `docs/98-research/034-Advocate-Judge-Validation-Findings.md`.
 9. **Phase 9 — Decision gate.** If Advocate-Judge measurably beats baseline on at least 2 of 3 questions on at least 2 of 3 dimensions, ship: promote to default Think Tank workflow; archive v2 code permanently; close Plan 79. If not, do not ship — recommend the single-call baseline as the production "deliberation" implementation and downgrade Plan 80 to research-only.
@@ -612,7 +653,8 @@ The decision in Phase 9 is mechanical, not aspirational. If Advocate-Judge doesn
 3. **The judge's "merely_reproduces" judgement is itself biased by being one LLM.** Sub-mitigation: the schema's enum forces an explicit choice, and the synthesiser cannot quietly hedge. Real mitigation would be a separate auditor — out of scope for v1.
 4. **No follow-up research between phases.** A debater in Plan 79 could ask for more research mid-deliberation. Advocate-Judge cannot — the per-side researchers are sized to do their job in one pass. If real questions need iterative research, this is the first place to extend.
 5. **Cost is bounded but not measured yet.** Worst case at N=4 estimated ~$15 (3 researchers + 4 advocates + 4 attackers + 1 judge at Opus 4.6 with extended thinking). Real runs may differ; Phase 7 smoke run is the first data point.
-6. **Persona-based debaters were the structural diversity mechanism in Plan 79.** Advocate-Judge substitutes structural information asymmetry for prompt-based persona diversity. The bet (per the architectural memo and Khan et al. evidence) is that structural diversity is more durable than persona diversity. Phase 8 A/B comparison is the empirical test of that bet.
+6. **Persona-based debaters were the structural diversity mechanism in Plan 79.** Advocate-Judge substitutes two structural mechanisms: (a) information asymmetry (different evidence per side), and (b) model-family heterogeneity (different priors per side, §5.1). Both are structural rather than prompt-based. The bet (per the architectural memo and Khan et al. evidence) is that structural diversity is more durable than persona diversity. Phase 8 A/B comparison tests the combined bet against the single-call baseline. If Phase 8 ships, a follow-on experiment could disentangle the two mechanisms (single-family vs multi-family) to attribute the gain.
+7. **Provider availability is an operational dependency.** The recommended per-side rotation (Claude / GPT / Gemini) assumes all three providers are wired locally. Copilot SDK covers Claude + GPT under one credential; Google provider is a separate hookup. If a provider isn't available, executor falls back to repeating available families (with a `sycophancy_flags` entry noting the reduced heterogeneity) — so the run continues but the experimental signal weakens. Production deployments should monitor that all configured providers stay healthy.
 
 ## 15. Out of scope for v1
 
@@ -646,18 +688,22 @@ The decision in Phase 9 is mechanical, not aspirational. If Advocate-Judge doesn
 - `config/prompts/agents/deliberation/advocate_judge_advocate/system_case.md` (Phase 4)
 - `config/prompts/agents/deliberation/advocate_judge_advocate/system_attacks.md` (Phase 4)
 - `config/prompts/agents/deliberation/advocate_judge_judge/system.md` (Phase 5)
-- `config/workflow_templates/deliberation.advocate-judge.workflow.yaml` (Phase 6)
+- `config/workflow_templates/deliberation.think-tank.workflow.yaml` (Phase 6 — replaces v2's content at this path; v2 YAML moves to `…v2.workflow.yaml`)
 - `scripts/think_tank_advocate_judge.py` — standalone direct invocation (Phase 6)
 - `tests/unit/backend/agents/test_advocate_judge/` — unit tests per phase
 - `docs/98-research/034-Advocate-Judge-Validation-Findings.md` — A/B writeup (Phase 8)
 
-**Modified files:**
-- `modules/backend/agents/mission_control/dispatch/loop.py` — add `advocate_judge_loop` task-type fork (~30 lines, mirrors deliberation_loop fork at line 344)
+**Modified / renamed files:**
+- `modules/backend/agents/mission_control/dispatch/loop.py` — add `advocate_judge_loop` task-type fork (~30 lines, mirrors deliberation_loop fork at line 344).
+- `modules/backend/core/model_builder.py` — add `google:` branch to `_build_model` (Phase 0, optional but recommended).
+- `modules/backend/core/model_providers.py` — add `get_google_provider()` parallel to `get_anthropic_provider()` / `get_openai_provider()` (Phase 0).
+- `config/workflow_templates/deliberation.think-tank.workflow.yaml` — git mv to `deliberation.think-tank.v2.workflow.yaml`; set `enabled: false` in the moved file (Phase 6).
 
 **Imported unchanged:**
 - `modules/backend/schemas/deliberation.py` (for FinalDeliverable + supporting types)
 - `modules/backend/tools/{search_web,fetch_url,query_knowledge,store_artifact,store_learning}.py`
 - `modules/backend/core/copilot_model.py`
+- `modules/backend/core/model_builder.py` — multi-provider `_build_model` (anthropic / openai / copilot / google) already supports the per-side model strings in §5.1
 - `modules/backend/agents/mission_control/helpers/agent_executor.py`
 - `modules/backend/agents/mission_control/{gate,models}.py`
 
@@ -667,6 +713,7 @@ The decision in Phase 9 is mechanical, not aspirational. If Advocate-Judge doesn
 
 Rough budget, assuming the executor wiring (Phase 1) and one agent (Phase 2) reveal no surprises:
 
+- Phase 0 (Google provider hookup, optional): half day
 - Phase 1 (schemas + skeleton + tests): half day
 - Phase 2 (framer + validator + tests): half day
 - Phase 3 (researcher + tests): half day
@@ -677,4 +724,4 @@ Rough budget, assuming the executor wiring (Phase 1) and one agent (Phase 2) rev
 - Phase 8 (A/B comparison run + write-up): half day
 - Phase 9 (decision + ship-or-archive): half day
 
-**Total: ~5 days of focused work.** Most of the risk is in Phase 7 (live debug); the structural work in Phases 1–6 should be straightforward because the patterns are well-established in v2.
+**Total: ~5–5.5 days of focused work** (Phase 0 adds half a day if Gemini support is included). Most of the risk is in Phase 7 (live debug); the structural work in Phases 0–6 should be straightforward because the patterns are well-established in v2.
