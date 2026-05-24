@@ -134,7 +134,11 @@
       "Bash(tee var/validation/logs/q3_solo_baseline.log)",
       "Bash(mc --help)",
       "Bash(tee var/validation/logs/q1_v2.log)",
-      "Bash(tee var/validation/logs/q1_v2_direct.log)"
+      "Bash(tee var/validation/logs/q1_v2_direct.log)",
+      "Bash(ps -p 94018 -o pid,command)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import psutil; print\\(psutil.__version__\\)\")",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/pip install *)",
+      "Bash(ps -o pid,etime,cmd -p 29676)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
