@@ -895,11 +895,70 @@ def cmd_check(args):
         sys.exit(1)
 
 
+def cmd_tree(args):
+    """Show all services.py subcommands and their flags (rule 010.1)."""
+    parser = _build_parser()
+    subaction = next(
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    )
+    help_by_name = {ca.dest: (ca.help or "") for ca in subaction._choices_actions}
+    names = sorted(subaction.choices.keys())
+
+    print("services  Mission Control service manager")
+    for i, name in enumerate(names):
+        last = i == len(names) - 1
+        connector = "└── " if last else "├── "
+        sub = subaction.choices[name]
+        flags = [
+            a.option_strings[-1]
+            for a in sub._actions
+            if a.option_strings and a.dest != "help"
+        ]
+        flag_str = (" " + " ".join(f"[{f}]" for f in flags)) if flags else ""
+        print(f"{connector}{name}{flag_str}  {help_by_name.get(name, '')}".rstrip())
+
+
 # ===========================================================================
 # CLI
 # ===========================================================================
 
-def main():
+
+def _add_start_arguments(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--host", default="0.0.0.0", help="Backend host (default: 0.0.0.0)")
+    p.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Run backend (and frontend) in the background: new session, logs appended to "
+            f"var/logs/services-backend-<backend-port>.log and "
+            f"var/logs/services-frontend-{FRONTEND_PORT}.log; "
+            "exit after TCP readiness. Implies no uvicorn --reload."
+        ),
+    )
+    p.add_argument("--no-reload", action="store_true", help="Disable backend auto-reload")
+    p.add_argument("--backend-only", action="store_true", help="Skip frontend dev server")
+    p.add_argument("--no-migrate", action="store_true", help="Skip database migrations")
+    p.add_argument("--no-seed", action="store_true", help="Skip dev user seeding")
+    p.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default=None,
+        help="Console log level filter (file logging unaffected)",
+    )
+    p.add_argument(
+        "--log-format",
+        choices=["json", "console"],
+        default=None,
+        help="Console log format: 'console' for colored human-readable output",
+    )
+    p.add_argument(
+        "--trace",
+        action="store_true",
+        help="Enable agent tracing — logs full prompts/responses at DEBUG + emits to console",
+    )
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Mission Control service manager",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -913,6 +972,7 @@ Examples:
   python services.py restart                Restart everything
   python services.py status                 Show what's running
   python services.py check                  Run preflight checks
+  python services.py tree                   Show all commands and flags
 
 Logging:
   python services.py restart --log-level WARNING                  Errors/warnings only (no INFO)
@@ -927,58 +987,24 @@ Logging:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    def add_start_arguments(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--host", default="0.0.0.0", help="Backend host (default: 0.0.0.0)")
-        p.add_argument(
-            "--daemon",
-            action="store_true",
-            help=(
-                "Run backend (and frontend) in the background: new session, logs appended to "
-                f"var/logs/services-backend-<backend-port>.log and "
-                f"var/logs/services-frontend-{FRONTEND_PORT}.log; "
-                "exit after TCP readiness. Implies no uvicorn --reload."
-            ),
-        )
-        p.add_argument("--no-reload", action="store_true", help="Disable backend auto-reload")
-        p.add_argument("--backend-only", action="store_true", help="Skip frontend dev server")
-        p.add_argument("--no-migrate", action="store_true", help="Skip database migrations")
-        p.add_argument("--no-seed", action="store_true", help="Skip dev user seeding")
-        p.add_argument(
-            "--log-level",
-            choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-            default=None,
-            help="Console log level filter (file logging unaffected)",
-        )
-        p.add_argument(
-            "--log-format",
-            choices=["json", "console"],
-            default=None,
-            help="Console log format: 'console' for colored human-readable output",
-        )
-        p.add_argument(
-            "--trace",
-            action="store_true",
-            help="Enable agent tracing — logs full prompts/responses at DEBUG + emits to console",
-        )
-
-    # -- start --
     p_start = subparsers.add_parser("start", help="Start development services")
-    add_start_arguments(p_start)
+    _add_start_arguments(p_start)
 
-    # -- stop --
     p_stop = subparsers.add_parser("stop", help="Stop running services")
     p_stop.add_argument("--backend-only", action="store_true", help="Stop backend only")
 
-    # -- restart --
     p_restart = subparsers.add_parser("restart", help="Restart services (stop + start)")
-    add_start_arguments(p_restart)
+    _add_start_arguments(p_restart)
 
-    # -- status --
     subparsers.add_parser("status", help="Show service status")
-
-    # -- check --
     subparsers.add_parser("check", help="Run preflight checks only")
+    subparsers.add_parser("tree", help="Show all commands in a tree structure")
 
+    return parser
+
+
+def main():
+    parser = _build_parser()
     args = parser.parse_args()
 
     commands = {
@@ -987,6 +1013,7 @@ Logging:
         "restart": cmd_restart,
         "status": cmd_status,
         "check": cmd_check,
+        "tree": cmd_tree,
     }
 
     if not args.command:

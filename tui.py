@@ -6,9 +6,10 @@ Calls backend services directly (not via HTTP) for gate integration
 and real-time event streaming.
 
 Usage:
-    python tui.py
-    python tui.py --verbose
-    python tui.py --debug
+    python tui.py                Launch the dashboard
+    python tui.py --verbose      Launch with INFO logging
+    python tui.py --debug        Launch with DEBUG logging
+    python tui.py tree           Show all commands (rule 010.1)
 """
 
 from __future__ import annotations
@@ -25,11 +26,15 @@ from modules.backend.core.config import validate_project_root
 from modules.backend.core.logging import bind_context, get_logger, setup_logging
 
 
-@click.command()
+@click.group(invoke_without_command=True)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output (INFO level logging).")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug output (DEBUG level logging).")
-def main(verbose: bool, debug: bool) -> None:
+@click.pass_context
+def main(ctx: click.Context, verbose: bool, debug: bool) -> None:
     """Mission Control — Interactive Agent Dashboard."""
+    if ctx.invoked_subcommand is not None:
+        return
+
     validate_project_root()
 
     # Disable console logging — Textual owns stdout/stderr.
@@ -50,6 +55,27 @@ def main(verbose: bool, debug: bool) -> None:
 
     app = MissionControlApp()
     app.run()
+
+
+@main.command()
+def tree() -> None:
+    """Show all commands in a tree structure (rule 010.1)."""
+    from rich.tree import Tree
+
+    from modules.clients.common.display import get_console
+
+    console_obj = get_console()
+    root = Tree(
+        "[bold cyan]tui[/bold cyan]  [dim]Mission Control — Interactive Agent Dashboard[/dim]"
+    )
+    for name in sorted(main.commands):
+        cmd = main.commands[name]
+        label = f"[cyan]{name}[/cyan]"
+        if cmd.help:
+            short = cmd.help.split("\n")[0]
+            label += f"  [dim]{short}[/dim]"
+        root.add(label)
+    console_obj.print(root)
 
 
 if __name__ == "__main__":
