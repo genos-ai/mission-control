@@ -60,6 +60,8 @@ dependencies = [
     "rich>=13.7.0",
     # TUI
     "textual>=1.0.0",
+    # Service management (services.py: detect worker process by cmdline)
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]

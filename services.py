@@ -759,16 +759,13 @@ def cmd_stop(args):
     total += stop_port(args.port, f"Backend (:{args.port})")
 
     # Stop Temporal worker (find by process name)
-    try:
-        import psutil
-        for proc in psutil.process_iter(["pid", "cmdline"]):
-            cmdline = proc.info.get("cmdline") or []
-            if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
-                proc.terminate()
-                total += 1
-                print(f"  Temporal Worker: sent SIGTERM to PID {proc.pid}")
-    except ImportError:
-        pass  # psutil not available, skip worker stop
+    import psutil
+    for proc in psutil.process_iter(["pid", "cmdline"], ad_value=None):
+        cmdline = proc.info.get("cmdline") or []
+        if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
+            proc.terminate()
+            total += 1
+            print(f"  Temporal Worker: sent SIGTERM to PID {proc.pid}")
 
     # Stop Temporal server
     total += stop_port(TEMPORAL_PORT, f"Temporal (:{TEMPORAL_PORT})")
@@ -817,17 +814,14 @@ def cmd_status(args):
         print(f"  Temporal (:{TEMPORAL_PORT})  ... stopped")
 
     # Check Temporal worker by process name
+    import psutil
     worker_running = False
-    try:
-        import psutil
-        for proc in psutil.process_iter(["pid", "cmdline"]):
-            cmdline = proc.info.get("cmdline") or []
-            if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
-                print(f"  Temporal Worker .. RUNNING (PID {proc.pid})")
-                worker_running = True
-                break
-    except ImportError:
-        pass
+    for proc in psutil.process_iter(["pid", "cmdline"], ad_value=None):
+        cmdline = proc.info.get("cmdline") or []
+        if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
+            print(f"  Temporal Worker .. RUNNING (PID {proc.pid})")
+            worker_running = True
+            break
     if not worker_running:
         print("  Temporal Worker .. stopped")
 
