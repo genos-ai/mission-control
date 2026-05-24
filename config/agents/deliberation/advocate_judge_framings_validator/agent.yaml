@@ -1,0 +1,33 @@
+agent_name: deliberation.advocate_judge_framings_validator.agent
+agent_type: vertical
+description: "Audits the framer's CandidateSet for hidden bias and missing schools of thought. Approves or revises. P13 separate-agent rule. Phase 1 of the Advocate-Judge architecture (Plan 80)."
+enabled: true
+chat_enabled: false
+model:
+  name: "copilot:gpt-5.5"
+  temperature: 0.2
+  max_tokens: 4096
+max_budget_usd: 1.50
+max_input_length: 8000
+timeout_seconds: 180
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools: []
+
+interface:
+  input:
+    question: string
+    candidate_set: object
+  output:
+    verdict: string
+    revised_set: object
+    rationale: string
+
+scope:
+  read: []
+  write: []

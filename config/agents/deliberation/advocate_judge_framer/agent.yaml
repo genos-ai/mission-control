@@ -1,0 +1,35 @@
+agent_name: deliberation.advocate_judge_framer.agent
+agent_type: vertical
+description: "Decomposes a contested question into 3-5 candidate answers (the live answer space) plus the mainstream consensus. Phase 1 of the Advocate-Judge architecture (Plan 80)."
+enabled: true
+chat_enabled: false
+model:
+  name: "copilot:claude-opus-4.6"
+  temperature: 0.3
+  max_tokens: 4096
+max_budget_usd: 2.00
+max_input_length: 8000
+timeout_seconds: 300
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools:
+  - search_web
+  - fetch_url
+
+interface:
+  input:
+    question: string
+    min_candidates: number
+    max_candidates: number
+  output:
+    candidates: array
+    mainstream_consensus: string
+
+scope:
+  read: []
+  write: []
