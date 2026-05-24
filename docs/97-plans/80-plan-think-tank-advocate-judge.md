@@ -1,6 +1,79 @@
 # Plan 80: Think Tank — Advocate-Judge Architecture
 
-## Status: Draft v2 (2026-05-24 — multi-provider heterogeneity added; workflow takes canonical name from day 1)
+## Status: DISCARDED 2026-05-24
+
+This plan is no longer the path forward. Rationale below; the rest of the
+document is preserved as a decision record.
+
+### Why discarded
+
+Plan 79's validation failure mode was diagnosed in this plan as "one
+researcher producing five things in one shot for a contested question
+under a strict verifier is unsolvable." The fix proposed here was
+structural — Advocate-Judge across N candidates with information
+asymmetry, single-round attacks, judge synthesis.
+
+That diagnosis of the *researcher* step is correct. The proposed fix
+for the *whole deliberation topology* is more than the data demands.
+The empirical evidence in §1 (Khan et al. 76% vs 48% on QuALITY,
+Hu & Collier on persona prompting, Du et al. on diminishing returns)
+supports the debate-architecture changes, but **none of those papers
+test against v1-with-decomposed-research as a baseline.** Plan 79's
+shelving validation also ran against the broken researcher. We have
+no data on whether v1 with the research step fixed beats the
+single-call baseline.
+
+The disciplined sequence:
+
+1. Decompose v1's `deliberation.researcher` into the existing
+   `research.deep-research-pipeline.workflow` (sub-workflow call).
+   Half-day change.
+2. Run the same A/B validation Plan 80 prescribes (§Phase 8) —
+   v1-with-decomposed-research vs single-call baseline.
+3. If v1-fixed beats baseline → ship v1-fixed. Plan 80's
+   debate-restructuring stays as "interesting future research."
+4. If v1-fixed still loses → re-open Plan 80 with empirical
+   justification.
+
+Discard cost vs build cost:
+- Plan 80 v3 build: ~5 days + new schemas + multi-provider + ~$50-100
+  validation budget.
+- v1 research-decomposition fix: ~1 day, no new schemas, validates
+  with existing pipeline.
+
+The Plan 80 decision gate (§Phase 9 — "mechanical, not aspirational")
+applies recursively: if we can't prove v3 is needed, we don't ship v3.
+
+### What gets preserved from this branch
+
+The infrastructure built on `feature/80-advocate-judge` is **kept** —
+it was platform work, not Advocate-Judge-specific:
+
+- `manual` gate mode (Plan 80g)
+- Unified task lifecycle (Plan 80h)
+- `task_approval` module
+- `mc plan` / `mc gate` / `mc runs` CLI subgroups
+- Async workflow run endpoint for interactive modes
+- Workflow status truth-write fix
+- Gate mode `off` collapsed into `autonomous`
+
+What gets discarded:
+- `modules/backend/agents/mission_control/dispatch/advocate_judge_loop.py`
+- `modules/backend/schemas/deliberation_advocate_judge.py`
+- `modules/backend/agents/deliberation/advocate_judge_framer/`
+- `modules/backend/agents/deliberation/advocate_judge_framings_validator/`
+- `config/agents/deliberation/advocate_judge_*/agent.yaml`
+- `config/prompts/agents/deliberation/advocate_judge_*/system.md`
+- Tests under `tests/unit/backend/agents/test_advocate_judge/`
+
+These are dead code (never wired into any dispatch path or workflow
+YAML) and should be removed in a cleanup commit.
+
+---
+
+## Original plan body (preserved below for context)
+
+## Status (original): Draft v2 (2026-05-24 — multi-provider heterogeneity added; workflow takes canonical name from day 1)
 
 **Branch:** `feature/80-advocate-judge` (to be cut off `main`; do not extend `feature/79-think-tank-deliberation`)
 **Priority:** Medium-High (same user need as Plan 79; different architecture)
