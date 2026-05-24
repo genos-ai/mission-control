@@ -3,7 +3,7 @@
 **Date:** 2026-05-24
 **Plan:** 79 (Think Tank multi-agent deliberation)
 **Compared:** v2 (7-agent orchestrated deliberation) vs single-call baseline (Opus 4.6, extended thinking, web search, same `FinalDeliverable` schema)
-**Recommendation:** v2 architecture is not load-bearing. Commit to a rewrite (Shape 4 — asymmetric multi-advocate + judge, per [022/032 architectural memo](../97-plans/79-plan-think-tank-deliberation-mission.md)).
+**Recommendation:** v2 architecture is not load-bearing. Commit to a rewrite (Advocate-Judge — asymmetric multi-advocate + judge, per [022/032 architectural memo](../97-plans/79-plan-think-tank-deliberation-mission.md)).
 
 ---
 
@@ -80,13 +80,13 @@ The original architectural memo identified five possible shapes:
 
 The validation result doesn't elevate the baseline to "good enough" — it elevates it to "the bar to beat." Baseline reliably produces well-structured deliverables; we don't yet know if its disagreement is *real* or *plausible-looking*. The empirical literature (Khan et al. 76% vs 48% on QuALITY; Liang et al. on Degeneration of Thought) says structured adversarial pressure with information asymmetry beats single-pass on contested-disagreement tasks. But that only matters if the structured system actually runs.
 
-**Shape 4 (asymmetric multi-advocate + judge) directly addresses v2's failure mode** by re-scoping the research task: each side-advocate's dedicated researcher has the narrow job of *"find the strongest evidence for answer X"* rather than the unsolvable *"build a balanced, fully-cited packet on a contested topic."* Narrow + adversarial scope is searchable; broad + neutral scope is not.
+**Advocate-Judge (asymmetric multi-advocate + judge) directly addresses v2's failure mode** by re-scoping the research task: each side-advocate's dedicated researcher has the narrow job of *"find the strongest evidence for answer X"* rather than the unsolvable *"build a balanced, fully-cited packet on a contested topic."* Narrow + adversarial scope is searchable; broad + neutral scope is not.
 
 ## Recommendation
 
 1. **Stop iterating on v2.** The failure mode is architectural, not a bug. Patching the researcher prompt to be more permissive would either re-introduce the fabrication failure mode or weaken the citation discipline that made the verifier worth having.
-2. **Commit to Shape 4 as the next implementation.** Five phases (framer + framings critic → asymmetric researchers in parallel → advocate cases blind → one bilateral attacks round → judge). Maps cleanly onto Mission Control's wave-engine primitives as ~5 steps without per-step Planning Agent overhead.
-3. **Keep the single-call baseline ([scripts/think_tank_baseline.py](../../scripts/think_tank_baseline.py)) in the repo** as the bar Shape 4 must beat. Run it on the same questions when Shape 4 is ready. If Shape 4 doesn't measurably improve disagreement-preservation or crux quality, the simpler architecture wins.
+2. **Commit to Advocate-Judge as the next implementation.** Five phases (framer + framings critic → asymmetric researchers in parallel → advocate cases blind → one bilateral attacks round → judge). Maps cleanly onto Mission Control's wave-engine primitives as ~5 steps without per-step Planning Agent overhead.
+3. **Keep the single-call baseline ([scripts/think_tank_baseline.py](../../scripts/think_tank_baseline.py)) in the repo** as the bar Advocate-Judge must beat. Run it on the same questions when Advocate-Judge is ready. If Advocate-Judge doesn't measurably improve disagreement-preservation or crux quality, the simpler architecture wins.
 4. **Preserve from v2:** the FinalDeliverable schema (the anti-flattening machinery: `cruxes ≥ 2`, required-or-null `minority_position`, `merely_reproduces` enum, `sycophancy_flags`) is doing real work and survives the rewrite.
 5. **Discard from v2:** persona-based debaters (4 fixed reasoning lenses), stance-delta early-stopping (embedding cosine on Pydantic output is a category error per `StanceDelta` docstring), the multi-round + sparse-topology orchestration, the over-broad researcher.
 
@@ -96,12 +96,12 @@ The empirical literature gave us a clue we underweighted: persona prompting chan
 
 - Baseline script: [scripts/think_tank_baseline.py](../../scripts/think_tank_baseline.py)
 - v2 direct-invocation script: [scripts/think_tank_v2.py](../../scripts/think_tank_v2.py)
-- Anonymisation harness (unused this round; ready for Shape-4-vs-baseline): [scripts/think_tank_anonymise.py](../../scripts/think_tank_anonymise.py)
+- Anonymisation harness (unused this round; ready for advocate-judge-vs-baseline): [scripts/think_tank_anonymise.py](../../scripts/think_tank_anonymise.py)
 - Baseline deliverables: [var/validation/baseline/](../../var/validation/baseline/)
 - v2 failure log: [var/validation/v2/q1.json](../../var/validation/v2/q1.json), [var/validation/logs/q1_v2_direct.log](../../var/validation/logs/q1_v2_direct.log)
 
 ## Caveats
 
 - This is a 3-question, 1-attempt v2 sample. A patient observer would say "the researcher refusal could be transient" — but the same failure mode has now appeared across multiple iterations including after the *"8 bugs fixed"* commit ([a1a23fe](../../) on `feature/79-think-tank-deliberation`). The signal is not noise.
-- Deliverable *quality* (vs structural shape) was not blind-scored, because there are no v2 deliverables to score. The baseline alone could be subtly wrong in ways a multi-agent system would catch. Shape 4 vs baseline blind comparison should happen once Shape 4 produces deliverables.
+- Deliverable *quality* (vs structural shape) was not blind-scored, because there are no v2 deliverables to score. The baseline alone could be subtly wrong in ways a multi-agent system would catch. Advocate-Judge vs baseline blind comparison should happen once Advocate-Judge produces deliverables.
 - Cost is not analysed here. Baseline ran at <$5 per question; v2 cost data is contaminated by its failures.

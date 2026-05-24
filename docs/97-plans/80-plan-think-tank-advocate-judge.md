@@ -1,8 +1,8 @@
-# Plan 80: Think Tank — Shape 4 (Asymmetric Multi-Advocate + Judge)
+# Plan 80: Think Tank — Advocate-Judge Architecture
 
 ## Status: Draft v1 (2026-05-24)
 
-**Branch:** `feature/80-think-tank-shape4` (to be cut off `main`; do not extend `feature/79-think-tank-deliberation`)
+**Branch:** `feature/80-advocate-judge` (to be cut off `main`; do not extend `feature/79-think-tank-deliberation`)
 **Priority:** Medium-High (same user need as Plan 79; different architecture)
 **Reference research:** [docs/98-research/032-Think Tank-A Multi-Agent Deliberation System for Contested Questions.md](../98-research/032-Think%20Tank-A%20Multi-Agent%20Deliberation%20System%20for%20Contested%20Questions.md)
 **Reference validation:** [docs/98-research/033-Think-Tank-v2-Validation-Findings.md](../98-research/033-Think-Tank-v2-Validation-Findings.md)
@@ -27,9 +27,9 @@ Plan 79's 7-agent architecture (4 persona debaters + critic + researcher + verif
 
 The validation findings doc establishes this failure is **architectural, not a prompt bug**: one researcher producing {sourced claims, expert disagreements, mainstream consensus, under-discussed angles, base rates} for a contested question under a strict verifier is an unsolvable task structure. Five distinct cognitive tasks, one prompt, fear-driven framing — the model will either fabricate, refuse, or both depending on which knob you turn.
 
-**Shape 4 re-scopes the research task by making it adversarial-per-side.** Each candidate answer gets a dedicated researcher whose narrow brief is *"find the strongest evidence that answer X is correct."* That brief is *searchable* — the model knows what it's looking for and stops when it has it. The balanced-packet construction is moved one layer up (into a deliberate framing step) and one layer down (into the judge, who reads all sides' evidence at once).
+**Advocate-Judge re-scopes the research task by making it adversarial-per-side.** Each candidate answer gets a dedicated researcher whose narrow brief is *"find the strongest evidence that answer X is correct."* That brief is *searchable* — the model knows what it's looking for and stops when it has it. The balanced-packet construction is moved one layer up (into a deliberate framing step) and one layer down (into the judge, who reads all sides' evidence at once).
 
-Information asymmetry between sides is the structural anti-convergence mechanism the empirical literature endorses (Khan et al. ICML 2024 Best Paper: 76% vs 48% on QuALITY with adversarial debate-with-judge). Persona diversity — which Plan 79 leaned on heavily — empirically changes style more than reasoning (Hu & Collier ACL 2024; Wharton "Playing Pretend"). Shape 4 keeps the mechanism the literature endorses and drops the mechanism the literature doesn't.
+Information asymmetry between sides is the structural anti-convergence mechanism the empirical literature endorses (Khan et al. ICML 2024 Best Paper: 76% vs 48% on QuALITY with adversarial debate-with-judge). Persona diversity — which Plan 79 leaned on heavily — empirically changes style more than reasoning (Hu & Collier ACL 2024; Wharton "Playing Pretend"). Advocate-Judge keeps the mechanism the literature endorses and drops the mechanism the literature doesn't.
 
 ## 2. Architectural decisions (committed for v1)
 
@@ -40,10 +40,10 @@ The big ones, with one-line justification:
 3. **Single round of advocacy + single round of bilateral attacks.** No multi-round debate. "Talk Isn't Always Cheap" (2025) and "Peacemaker or Troublemaker" (2025) both show sycophancy intensifies past round 1–2. Cap at one substantive exchange.
 4. **No stance-delta early stopping.** Stance-delta on Pydantic structured output is a category error (embedding the prose form, not the belief); v2's own `StanceDelta` docstring acknowledges this. Fixed cost is simpler and avoids false stops.
 5. **Asymmetric research is THE anti-convergence mechanism.** Each side has dedicated evidence its opponents don't see at research time. Cannot be sycophant-converged because the priors are structurally different.
-6. **One Python executor, one wave-engine step** (`type: shape4_loop`). Same pattern as v2's `deliberation_loop` — bypasses per-step Planning Agent overhead. Per-phase narrative events emit for Kanban visibility.
+6. **One Python executor, one wave-engine step** (`type: advocate_judge_loop`). Same pattern as v2's `deliberation_loop` — bypasses per-step Planning Agent overhead. Per-phase narrative events emit for Kanban visibility.
 7. **Keep `FinalDeliverable` schema from Plan 79 unchanged.** It's the anti-flattening machinery that empirically works (`cruxes ≥ 2`, `minority_position` required-or-null, `merely_reproduces` enum, `sycophancy_flags`). Survives the rewrite.
 8. **Judge is Opus 4.6 with `reasoning_effort=high`.** Extended thinking matters most at the synthesis step. Advocates and researchers can also be Opus 4.6 but with normal effort.
-9. **No CLI/API in the loop.** v2's CLI invocation timed out at 5 min (httpx ReadTimeout) because the synchronous POST endpoint blocks for the run's full duration. Use `scripts/think_tank_shape4.py` for ad-hoc runs and the wave-engine workflow for mission-attached runs. Both call the same executor.
+9. **No CLI/API in the loop.** v2's CLI invocation timed out at 5 min (httpx ReadTimeout) because the synchronous POST endpoint blocks for the run's full duration. Use `scripts/think_tank_advocate_judge.py` for ad-hoc runs and the wave-engine workflow for mission-attached runs. Both call the same executor.
 
 ## 3. What we reuse from Plan 79 (verbatim)
 
@@ -58,7 +58,7 @@ To pre-empt the "rewrite from scratch" temptation — substantial pieces survive
 | `modules/backend/agents/mission_control/gate.py` (`NoOpGate`, `GateReviewer`) | Used unchanged | Sufficient for autonomous runs. |
 | `modules/backend/agents/mission_control/models.py` (`NoOpEventBus`, `EventBusProtocol`, `ExecuteAgentFn`) | Used unchanged | Protocols are good. |
 | `modules/backend/tools/store_artifact.py`, `store_learning.py` | Used unchanged | Persistence works. |
-| `scripts/think_tank_anonymise.py` | Used unchanged | Will be reused to A/B Shape 4 outputs vs the baseline outputs already in `var/validation/baseline/`. |
+| `scripts/think_tank_anonymise.py` | Used unchanged | Will be reused to A/B Advocate-Judge outputs vs the baseline outputs already in `var/validation/baseline/`. |
 
 ## 4. What we discard from Plan 79 (explicit non-goals)
 
@@ -70,8 +70,8 @@ To pre-empt the "rewrite from scratch" temptation — substantial pieces survive
 | Critic-per-round agent | Subsumed by the bilateral-attacks phase. Every advocate attacks every other advocate's load-bearing claim. |
 | Multi-round debate with sparse topology | Empirical sycophancy risk past round 1–2 outweighs marginal gain. One advocacy round + one attacks round. |
 | Stance-delta early stopping (`compute_stance_delta` tool, `StanceDelta` schema) | Category error per v2's own docstring. Delete; fixed cost. |
-| Workflow templates `deliberation.think-tank.workflow.yaml` (v2 single-step) and `…v1.workflow.yaml` (v1 34-step) | Replaced by a single new YAML for Shape 4. v2 YAML is reference. |
-| `deliberation_loop.py` executor | Replaced by new `shape4_loop.py` executor. v2 is reference. |
+| Workflow templates `deliberation.think-tank.workflow.yaml` (v2 single-step) and `…v1.workflow.yaml` (v1 34-step) | Replaced by a single new YAML for Advocate-Judge. v2 YAML is reference. |
+| `deliberation_loop.py` executor | Replaced by new `advocate_judge_loop.py` executor. v2 is reference. |
 | Per-round `research_requests` from debater turns dispatched between rounds | No multi-round; no follow-up research between rounds. Per-side researcher is sized to do its job in one pass. |
 
 ## 5. Agent roster
@@ -80,11 +80,11 @@ Seven roles in concept but **5 agent YAMLs** (researcher and advocate are role-s
 
 | Role | YAML | Model | Reasoning effort | Tools | Why |
 |---|---|---|---|---|---|
-| Framer | `deliberation.shape4_framer.agent` | copilot:claude-opus-4.6 | medium | search_web, fetch_url | Knowledge of the answer space matters; one shallow search for "schools of thought on X" is enough. |
-| Framings validator | `deliberation.shape4_framings_validator.agent` | copilot:claude-opus-4.6 | medium | (none) | Pure reasoning over the framer's output. P13 separate-agent rule. |
-| Per-side researcher | `deliberation.shape4_side_researcher.agent` | copilot:claude-opus-4.6 | medium | search_web, fetch_url, query_knowledge | Narrow brief: find the strongest evidence for ONE candidate. |
-| Per-side advocate | `deliberation.shape4_advocate.agent` | copilot:claude-opus-4.6 | high | (none) | Writes the strongest case from its packet; structured. |
-| Judge | `deliberation.shape4_judge.agent` | copilot:claude-opus-4.6 | high | (none) | The synthesis step where reasoning quality matters most. |
+| Framer | `deliberation.advocate_judge_framer.agent` | copilot:claude-opus-4.6 | medium | search_web, fetch_url | Knowledge of the answer space matters; one shallow search for "schools of thought on X" is enough. |
+| Framings validator | `deliberation.advocate_judge_framings_validator.agent` | copilot:claude-opus-4.6 | medium | (none) | Pure reasoning over the framer's output. P13 separate-agent rule. |
+| Per-side researcher | `deliberation.advocate_judge_side_researcher.agent` | copilot:claude-opus-4.6 | medium | search_web, fetch_url, query_knowledge | Narrow brief: find the strongest evidence for ONE candidate. |
+| Per-side advocate | `deliberation.advocate_judge_advocate.agent` | copilot:claude-opus-4.6 | high | (none) | Writes the strongest case from its packet; structured. |
+| Judge | `deliberation.advocate_judge_judge.agent` | copilot:claude-opus-4.6 | high | (none) | The synthesis step where reasoning quality matters most. |
 
 Per-side researcher and per-side advocate are invoked N times in parallel by the executor; the YAMLs themselves are not duplicated. The candidate label is passed via `instructions`/`inputs`, not encoded in the agent identity.
 
@@ -92,7 +92,7 @@ The **attacks** phase reuses the per-side advocate YAML with a different instruc
 
 ## 6. Schemas
 
-All in `modules/backend/schemas/deliberation_shape4.py`. Reuse `SourcedClaim`, `LoadBearingClaim`, `FinalDeliverable` from `modules/backend/schemas/deliberation.py`.
+All in `modules/backend/schemas/deliberation_advocate_judge.py`. Reuse `SourcedClaim`, `LoadBearingClaim`, `FinalDeliverable` from `modules/backend/schemas/deliberation.py`.
 
 ```python
 from typing import Literal
@@ -162,7 +162,7 @@ The judge consumes the union and produces `FinalDeliverable` (reused unchanged f
 
 ## 7. System prompts
 
-Stored in `config/prompts/agents/deliberation/shape4_<role>/system.md`. Sketches here; final wording during implementation Phase 2.
+Stored in `config/prompts/agents/deliberation/advocate_judge_<role>/system.md`. Sketches here; final wording during implementation Phase 2.
 
 ### 7.1 Framer
 
@@ -443,16 +443,16 @@ These are structural anti-convergence properties, not prompt instructions. The m
 
 ## 9. Executor
 
-New file: `modules/backend/agents/mission_control/dispatch/shape4_loop.py`.
+New file: `modules/backend/agents/mission_control/dispatch/advocate_judge_loop.py`.
 
 Shape mirrors `deliberation_loop.py` (v2 reference). Skeleton:
 
 ```python
-async def execute_shape4_loop(
+async def execute_advocate_judge_loop(
     *,
     task_id: str,
     question: str,
-    config: Shape4Config,
+    config: AdvocateJudgeConfig,
     execute_agent_fn: ExecuteAgentFn,
     mission_id: str | None = None,
     gate: GateReviewer | None = None,
@@ -514,13 +514,13 @@ Failure handling: any phase failure raises; the loop catches at top and returns 
 
 ## 10. Workflow YAML
 
-New file: `config/workflow_templates/deliberation.think-tank-shape4.workflow.yaml`. Single step with `type: shape4_loop`. Mirrors v2's collapsed YAML structure.
+New file: `config/workflow_templates/deliberation.advocate-judge.workflow.yaml`. Single step with `type: advocate_judge_loop`. Mirrors v2's collapsed YAML structure.
 
 ```yaml
-workflow_name: deliberation.think-tank-shape4.workflow
+workflow_name: deliberation.advocate-judge.workflow
 description: "Asymmetric advocate-judge deliberation for contested open questions"
 objective:
-  statement: "Produce a Shape 4 deliberation preserving live disagreement"
+  statement: "Produce a Advocate-Judge deliberation preserving live disagreement"
   category: research
   owner: user
   priority: normal
@@ -530,7 +530,6 @@ enabled: true
 trigger:
   type: on_demand
   match_patterns:
-    - "shape4"
     - "advocate-judge"
     - "deliberate"
 
@@ -551,16 +550,16 @@ context:
   min_candidates: 3
 
 steps:
-  - id: shape4
-    label: "Shape 4 deliberation"
+  - id: advocate_judge
+    label: "Advocate-Judge deliberation"
     description: "Asymmetric multi-advocate + judge deliberation"
-    capability: deliberation.shape4_framer  # arbitrary; type routes elsewhere
+    capability: deliberation.advocate_judge_framer  # arbitrary; type routes elsewhere
     roster: default
     complexity_tier: complex
     cost_ceiling_usd: 75.00
     environment: local
     input:
-      type: "shape4_loop"
+      type: "advocate_judge_loop"
       question: "@context.question"
       loop_config:
         max_candidates: "@context.max_candidates"
@@ -573,37 +572,37 @@ steps:
 Dispatch loop wiring: add a fork in `modules/backend/agents/mission_control/dispatch/loop.py` next to `deliberation_loop` (line 344):
 
 ```python
-if task_type == "shape4_loop":
-    coros.append(_dispatch_shape4_loop(...))
+if task_type == "advocate_judge_loop":
+    coros.append(_dispatch_advocate_judge_loop(...))
     continue
 ```
 
-with a `_dispatch_shape4_loop` helper that mirrors `_dispatch_deliberation_loop` (lines 670–745).
+with a `_dispatch_advocate_judge_loop` helper that mirrors `_dispatch_deliberation_loop` (lines 670–745).
 
 ## 11. CLI standalone script
 
-`scripts/think_tank_shape4.py` — direct-invocation Python script, mirrors `scripts/think_tank_v2.py`. Same `--question`, `--out`, and per-phase config flags. Used for the A/B comparison in Phase 9 below.
+`scripts/think_tank_advocate_judge.py` — direct-invocation Python script, mirrors `scripts/think_tank_v2.py`. Same `--question`, `--out`, and per-phase config flags. Used for the A/B comparison in Phase 9 below.
 
 ## 12. Phases (implementation order)
 
-1. **Phase 1 — Schemas + executor skeleton.** Write `deliberation_shape4.py` schemas. Write `shape4_loop.py` skeleton that calls a noop `execute_agent_fn` (returns fake outputs) so the orchestration can be unit-tested without LLMs. Tests: schema validation; executor topology (asymmetric inputs, blind inputs, union-at-attacks).
+1. **Phase 1 — Schemas + executor skeleton.** Write `deliberation_advocate_judge.py` schemas. Write `advocate_judge_loop.py` skeleton that calls a noop `execute_agent_fn` (returns fake outputs) so the orchestration can be unit-tested without LLMs. Tests: schema validation; executor topology (asymmetric inputs, blind inputs, union-at-attacks).
 2. **Phase 2 — Framer + validator.** YAMLs, system prompts, agent modules (`create_agent`). Tests: framer produces valid CandidateSet; validator produces FramingValidation; revised_set replaces original when verdict=revised.
 3. **Phase 3 — Per-side researcher.** YAML, system prompt, agent module. Tests: with stubbed search_web, produces valid SidePacket; weakest_link is populated; sources all have URLs.
 4. **Phase 4 — Per-side advocate (blind case + attacks).** YAML, two system prompts (one for blind case, one for attacks). Tests: blind case schema; attacks schema with N-1 entries; cited_evidence_urls are subset of union of packets.
 5. **Phase 5 — Judge.** YAML, system prompt, agent module. Tests: produces valid FinalDeliverable; cruxes ≥ 2; minority_position present if any case survived attack while non-mainstream.
-6. **Phase 6 — Wire executor end-to-end + dispatch loop fork.** Connect to `_make_agent_executor`. Workflow YAML registered. `scripts/think_tank_shape4.py` works.
+6. **Phase 6 — Wire executor end-to-end + dispatch loop fork.** Connect to `_make_agent_executor`. Workflow YAML registered. `scripts/think_tank_advocate_judge.py` works.
 7. **Phase 7 — Live smoke run.** Direct script on Q1 ("UK knowledge work 2030"). Goal: produces a valid FinalDeliverable end-to-end. Cost ≤ $20, wall time ≤ 30 min. If it fails: triage failure mode, fix, retry.
-8. **Phase 8 — A/B comparison vs baseline.** Run Shape 4 on all 3 validation questions (Q1, Q2, Q3 from validation findings doc). Use existing `scripts/think_tank_anonymise.py` to blind-pair Shape 4 outputs with the baseline outputs already in `var/validation/baseline/`. Read blind and score on 3 dimensions: preserves disagreement / cruxes are real disagreements / minority has substance. Unmask. Document outcome in `docs/98-research/034-Shape-4-Validation-Findings.md`.
-9. **Phase 9 — Decision gate.** If Shape 4 measurably beats baseline on at least 2 of 3 questions on at least 2 of 3 dimensions, ship: promote to default Think Tank workflow; archive v2 code permanently; close Plan 79. If not, do not ship — recommend the single-call baseline as the production "deliberation" implementation and downgrade Plan 80 to research-only.
+8. **Phase 8 — A/B comparison vs baseline.** Run Advocate-Judge on all 3 validation questions (Q1, Q2, Q3 from validation findings doc). Use existing `scripts/think_tank_anonymise.py` to blind-pair Advocate-Judge outputs with the baseline outputs already in `var/validation/baseline/`. Read blind and score on 3 dimensions: preserves disagreement / cruxes are real disagreements / minority has substance. Unmask. Document outcome in `docs/98-research/034-Advocate-Judge-Validation-Findings.md`.
+9. **Phase 9 — Decision gate.** If Advocate-Judge measurably beats baseline on at least 2 of 3 questions on at least 2 of 3 dimensions, ship: promote to default Think Tank workflow; archive v2 code permanently; close Plan 79. If not, do not ship — recommend the single-call baseline as the production "deliberation" implementation and downgrade Plan 80 to research-only.
 
-The decision in Phase 9 is mechanical, not aspirational. If Shape 4 doesn't beat the baseline, the answer to "what should Think Tank be" is "the baseline" — and the value of the work was the validation, not the rewrite.
+The decision in Phase 9 is mechanical, not aspirational. If Advocate-Judge doesn't beat the baseline, the answer to "what should Think Tank be" is "the baseline" — and the value of the work was the validation, not the rewrite.
 
 ## 13. Acceptance criteria
 
-- Schemas: `deliberation_shape4.py` passes mypy strict; all schemas have ConfigDict(extra="forbid"); FinalDeliverable from `deliberation.py` is reused (no duplication).
-- Executor: `shape4_loop.py` runs end-to-end with stubbed `execute_agent_fn` in <1s for unit tests; per-phase narrative events emit in correct order; mission_id=None skips persistence cleanly.
+- Schemas: `deliberation_advocate_judge.py` passes mypy strict; all schemas have ConfigDict(extra="forbid"); FinalDeliverable from `deliberation.py` is reused (no duplication).
+- Executor: `advocate_judge_loop.py` runs end-to-end with stubbed `execute_agent_fn` in <1s for unit tests; per-phase narrative events emit in correct order; mission_id=None skips persistence cleanly.
 - Live run: Q1 produces a FinalDeliverable with cruxes ≥ 2, minority_position evaluation completed (either populated or explicitly null), deliberation_vs_mainstream picked from the enum honestly, sycophancy_flags populated if any.
-- A/B vs baseline: deliverables for Q1, Q2, Q3 land in `var/validation/shape4/`; anonymisation harness pairs them with baseline; key file persisted; reveal mechanism works.
+- A/B vs baseline: deliverables for Q1, Q2, Q3 land in `var/validation/advocate_judge/`; anonymisation harness pairs them with baseline; key file persisted; reveal mechanism works.
 - Workflow YAML: registers cleanly; mission-attached run via `mc.py run` produces artifacts in the mission's artifact store.
 
 ## 14. Caveats and open questions
@@ -611,9 +610,9 @@ The decision in Phase 9 is mechanical, not aspirational. If Shape 4 doesn't beat
 1. **N is chosen by the framer.** That's a single point of decision that could be biased toward conventional N=3. Mitigation: framings_validator explicitly checks for missing schools. If this turns out to be a real bias, add a config knob `--force-n=4`.
 2. **The framings_validator is itself an LLM and could miss bias.** P13 (no self-evaluation) is satisfied by it being a different agent, but two Claude calls share priors. If validation results show systematic under-counting of contrarian camps, consider human-in-the-loop framing review (Shape H from the original architectural memo).
 3. **The judge's "merely_reproduces" judgement is itself biased by being one LLM.** Sub-mitigation: the schema's enum forces an explicit choice, and the synthesiser cannot quietly hedge. Real mitigation would be a separate auditor — out of scope for v1.
-4. **No follow-up research between phases.** A debater in Plan 79 could ask for more research mid-deliberation. Shape 4 cannot — the per-side researchers are sized to do their job in one pass. If real questions need iterative research, this is the first place to extend.
+4. **No follow-up research between phases.** A debater in Plan 79 could ask for more research mid-deliberation. Advocate-Judge cannot — the per-side researchers are sized to do their job in one pass. If real questions need iterative research, this is the first place to extend.
 5. **Cost is bounded but not measured yet.** Worst case at N=4 estimated ~$15 (3 researchers + 4 advocates + 4 attackers + 1 judge at Opus 4.6 with extended thinking). Real runs may differ; Phase 7 smoke run is the first data point.
-6. **Persona-based debaters were the structural diversity mechanism in Plan 79.** Shape 4 substitutes structural information asymmetry for prompt-based persona diversity. The bet (per the architectural memo and Khan et al. evidence) is that structural diversity is more durable than persona diversity. Phase 8 A/B comparison is the empirical test of that bet.
+6. **Persona-based debaters were the structural diversity mechanism in Plan 79.** Advocate-Judge substitutes structural information asymmetry for prompt-based persona diversity. The bet (per the architectural memo and Khan et al. evidence) is that structural diversity is more durable than persona diversity. Phase 8 A/B comparison is the empirical test of that bet.
 
 ## 15. Out of scope for v1
 
@@ -629,31 +628,31 @@ The decision in Phase 9 is mechanical, not aspirational. If Shape 4 doesn't beat
 ## 16. File manifest
 
 **New files:**
-- `modules/backend/schemas/deliberation_shape4.py` — Shape 4 schemas (Phase 1)
-- `modules/backend/agents/mission_control/dispatch/shape4_loop.py` — executor (Phases 1, 6)
-- `modules/backend/agents/deliberation/shape4_framer/agent.py` — framer module (Phase 2)
-- `modules/backend/agents/deliberation/shape4_framings_validator/agent.py` (Phase 2)
-- `modules/backend/agents/deliberation/shape4_side_researcher/agent.py` (Phase 3)
-- `modules/backend/agents/deliberation/shape4_advocate/agent.py` (Phase 4)
-- `modules/backend/agents/deliberation/shape4_judge/agent.py` (Phase 5)
-- `config/agents/deliberation/shape4_framer/agent.yaml` (Phase 2)
-- `config/agents/deliberation/shape4_framings_validator/agent.yaml` (Phase 2)
-- `config/agents/deliberation/shape4_side_researcher/agent.yaml` (Phase 3)
-- `config/agents/deliberation/shape4_advocate/agent.yaml` (Phase 4)
-- `config/agents/deliberation/shape4_judge/agent.yaml` (Phase 5)
-- `config/prompts/agents/deliberation/shape4_framer/system.md` (Phase 2)
-- `config/prompts/agents/deliberation/shape4_framings_validator/system.md` (Phase 2)
-- `config/prompts/agents/deliberation/shape4_side_researcher/system.md` (Phase 3)
-- `config/prompts/agents/deliberation/shape4_advocate/system_case.md` (Phase 4)
-- `config/prompts/agents/deliberation/shape4_advocate/system_attacks.md` (Phase 4)
-- `config/prompts/agents/deliberation/shape4_judge/system.md` (Phase 5)
-- `config/workflow_templates/deliberation.think-tank-shape4.workflow.yaml` (Phase 6)
-- `scripts/think_tank_shape4.py` — standalone direct invocation (Phase 6)
-- `tests/unit/backend/agents/test_shape4/` — unit tests per phase
-- `docs/98-research/034-Shape-4-Validation-Findings.md` — A/B writeup (Phase 8)
+- `modules/backend/schemas/deliberation_advocate_judge.py` — Advocate-Judge schemas (Phase 1)
+- `modules/backend/agents/mission_control/dispatch/advocate_judge_loop.py` — executor (Phases 1, 6)
+- `modules/backend/agents/deliberation/advocate_judge_framer/agent.py` — framer module (Phase 2)
+- `modules/backend/agents/deliberation/advocate_judge_framings_validator/agent.py` (Phase 2)
+- `modules/backend/agents/deliberation/advocate_judge_side_researcher/agent.py` (Phase 3)
+- `modules/backend/agents/deliberation/advocate_judge_advocate/agent.py` (Phase 4)
+- `modules/backend/agents/deliberation/advocate_judge_judge/agent.py` (Phase 5)
+- `config/agents/deliberation/advocate_judge_framer/agent.yaml` (Phase 2)
+- `config/agents/deliberation/advocate_judge_framings_validator/agent.yaml` (Phase 2)
+- `config/agents/deliberation/advocate_judge_side_researcher/agent.yaml` (Phase 3)
+- `config/agents/deliberation/advocate_judge_advocate/agent.yaml` (Phase 4)
+- `config/agents/deliberation/advocate_judge_judge/agent.yaml` (Phase 5)
+- `config/prompts/agents/deliberation/advocate_judge_framer/system.md` (Phase 2)
+- `config/prompts/agents/deliberation/advocate_judge_framings_validator/system.md` (Phase 2)
+- `config/prompts/agents/deliberation/advocate_judge_side_researcher/system.md` (Phase 3)
+- `config/prompts/agents/deliberation/advocate_judge_advocate/system_case.md` (Phase 4)
+- `config/prompts/agents/deliberation/advocate_judge_advocate/system_attacks.md` (Phase 4)
+- `config/prompts/agents/deliberation/advocate_judge_judge/system.md` (Phase 5)
+- `config/workflow_templates/deliberation.advocate-judge.workflow.yaml` (Phase 6)
+- `scripts/think_tank_advocate_judge.py` — standalone direct invocation (Phase 6)
+- `tests/unit/backend/agents/test_advocate_judge/` — unit tests per phase
+- `docs/98-research/034-Advocate-Judge-Validation-Findings.md` — A/B writeup (Phase 8)
 
 **Modified files:**
-- `modules/backend/agents/mission_control/dispatch/loop.py` — add `shape4_loop` task-type fork (~30 lines, mirrors deliberation_loop fork at line 344)
+- `modules/backend/agents/mission_control/dispatch/loop.py` — add `advocate_judge_loop` task-type fork (~30 lines, mirrors deliberation_loop fork at line 344)
 
 **Imported unchanged:**
 - `modules/backend/schemas/deliberation.py` (for FinalDeliverable + supporting types)
