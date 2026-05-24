@@ -90,9 +90,11 @@ class AutonomousPostRunReviewer:
             from modules.backend.agents.mission_control.gate_manual import (
                 ManualGateReviewer,
             )
+            from modules.backend.core.config import get_app_config
             from modules.backend.core.database import get_session_factory
             manual = ManualGateReviewer(
                 session_factory=get_session_factory(),
+                timeout_seconds=get_app_config().gate.manual.timeout_seconds,
             )
             return await manual.review(context)
 

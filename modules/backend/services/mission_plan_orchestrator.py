@@ -797,7 +797,10 @@ class MissionPlanOrchestrator(BaseService):
         gate_reviewer = None
         if plan.gate_mode and plan.gate_mode != "off":
             from modules.backend.agents.mission_control.gate import create_gate
-            gate_reviewer = create_gate(mode_override=plan.gate_mode)
+            gate_reviewer = create_gate(
+                mode_override=plan.gate_mode,
+                event_bus=self._event_bus,
+            )
 
         # Load outputs from prior waves so downstream tasks can resolve
         # from_upstream references to tasks that completed in earlier
@@ -975,6 +978,7 @@ class MissionPlanOrchestrator(BaseService):
             mission_obj = await self._mission_repo.get_by_id(plan.mission_id)
             context = GateContext(
                 gate_type="post_run", mission_id=plan.mission_id,
+                session_id=session_id,
                 total_cost_usd=plan.total_spent_usd,
                 budget_usd=plan.budget_usd_ceiling or 0.0,
                 recent_run_outcomes=recent, plan_task_summary=summary,

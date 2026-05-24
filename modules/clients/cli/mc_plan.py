@@ -21,7 +21,7 @@ from typing import Any
 
 import click
 
-from modules.clients.cli.api_client import ApiError, CliApiClient
+from modules.clients.cli.api_client import ApiError, CliApiClient, resolve_short_id
 from modules.clients.common.display import build_table, get_console, styled_status
 
 
@@ -242,21 +242,9 @@ async def _resolve_task_id(api: CliApiClient, mission_id: str, task_id: str) -> 
     Short prefixes match against the tasks table for this mission's plan.
     Fails loud on no match or ambiguous match.
     """
-    if len(task_id) >= 32 and "-" in task_id:
-        return task_id
-    if len(task_id) < 4:
-        click.echo(f"Task id prefix '{task_id}' too short (need >= 4 chars).", err=True)
-        sys.exit(1)
-    plan = await api.get(f"/missions/{mission_id}/plan")
-    matches = [t["id"] for t in plan.get("tasks", []) if t["id"].startswith(task_id)]
-    if not matches:
-        click.echo(f"No task id starts with '{task_id}'.", err=True)
-        sys.exit(1)
-    if len(matches) > 1:
-        click.echo(
-            f"Ambiguous prefix '{task_id}' matches {len(matches)} tasks:\n  "
-            + "\n  ".join(matches),
-            err=True,
-        )
-        sys.exit(1)
-    return matches[0]
+    return await resolve_short_id(
+        api,
+        list_url=f"/missions/{mission_id}/plan",
+        list_field="tasks",
+        prefix=task_id,
+    )

@@ -15,12 +15,9 @@ Typical loop:
 from __future__ import annotations
 
 import json
-import sys
 from typing import Any
 
-import click
-
-from modules.clients.cli.api_client import ApiError, CliApiClient
+from modules.clients.cli.api_client import ApiError, CliApiClient, resolve_short_id
 from modules.clients.common.display import build_table, get_console
 
 
@@ -126,26 +123,10 @@ async def _resolve_gate_id(
     api: CliApiClient, mission_id: str, gate_id: str,
 ) -> str:
     """Accept full UUID or unique ≥4-char prefix, matched against pending gates."""
-    if len(gate_id) >= 32 and "-" in gate_id:
-        return gate_id
-    if len(gate_id) < 4:
-        click.echo(f"Gate id prefix '{gate_id}' too short (need ≥ 4 chars).", err=True)
-        sys.exit(1)
-    data = await api.get(f"/missions/{mission_id}/gates/pending")
-    gates = data.get("gates", []) if isinstance(data, dict) else []
-    matches = [g["id"] for g in gates if g["id"].startswith(gate_id)]
-    if not matches:
-        click.echo(
-            f"No pending gate id starts with '{gate_id}'. "
-            "Use `mc gate list` to see what's waiting.",
-            err=True,
-        )
-        sys.exit(1)
-    if len(matches) > 1:
-        click.echo(
-            f"Ambiguous prefix '{gate_id}' matches {len(matches)} gates:\n  "
-            + "\n  ".join(matches),
-            err=True,
-        )
-        sys.exit(1)
-    return matches[0]
+    return await resolve_short_id(
+        api,
+        list_url=f"/missions/{mission_id}/gates/pending",
+        list_field="gates",
+        prefix=gate_id,
+        not_found_hint="Use `mc gate list` to see what's waiting.",
+    )

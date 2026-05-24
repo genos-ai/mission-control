@@ -51,6 +51,16 @@ class GateRequest(UUIDMixin, Base):
         nullable=True,
         index=True,
     )
+    session_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment=(
+            "Transport session the gate fired within (P15). Nullable for "
+            "back-compat with rows where the dispatcher hadn't been wired."
+        ),
+    )
     gate_type: Mapped[str] = mapped_column(
         String(50), nullable=False, index=True,
         comment="pre_dispatch | pre_layer | post_task | verification_failed | post_layer | post_run",

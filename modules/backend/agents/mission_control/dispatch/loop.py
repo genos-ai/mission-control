@@ -120,6 +120,7 @@ async def dispatch(
     decision = await _gate.review(GateContext(
         gate_type="pre_dispatch",
         mission_id=plan.mission_id,
+        session_id=_sid,
         layer_index=0,
         total_layers=len(layers),
         pending_tasks=[
@@ -401,6 +402,7 @@ async def _execute_layer(
     decision = await gate.review(GateContext(
         gate_type="pre_layer",
         mission_id=plan.mission_id,
+        session_id=session_id,
         layer_index=layer_idx,
         total_layers=len(layers),
         pending_tasks=[
@@ -476,6 +478,7 @@ async def _execute_layer(
     decision = await gate.review(GateContext(
         gate_type="post_layer",
         mission_id=plan.mission_id,
+        session_id=session_id,
         layer_index=layer_idx,
         total_layers=len(layers),
         completed_tasks=[r.model_dump() for r in task_results],

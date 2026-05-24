@@ -427,6 +427,52 @@ def extract_list(response: Any, field: str) -> list:
     return []
 
 
+async def resolve_short_id(
+    api: "CliApiClient",
+    *,
+    list_url: str,
+    list_field: str,
+    prefix: str,
+    min_prefix_len: int = 4,
+    not_found_hint: str | None = None,
+) -> str:
+    """Resolve a full UUID from a short prefix by listing + matching.
+
+    Used by ``mc plan`` / ``mc gate`` (and any future CLI surface that
+    accepts short ids). Pass-through for full UUIDs; for shorter input,
+    fetches ``list_url``, extracts ``list_field``, and matches by prefix.
+    Fails loud on no-match or ambiguous match.
+    """
+    if len(prefix) >= 32 and "-" in prefix:
+        return prefix
+    if len(prefix) < min_prefix_len:
+        import click
+        click.echo(
+            f"Id prefix {prefix!r} too short (need >= {min_prefix_len} chars).",
+            err=True,
+        )
+        sys.exit(1)
+    response = await api.get(list_url)
+    items = response.get(list_field, []) if isinstance(response, dict) else []
+    matches = [item["id"] for item in items if item.get("id", "").startswith(prefix)]
+    if not matches:
+        import click
+        msg = f"No id starts with {prefix!r}."
+        if not_found_hint:
+            msg += f" {not_found_hint}"
+        click.echo(msg, err=True)
+        sys.exit(1)
+    if len(matches) > 1:
+        import click
+        click.echo(
+            f"Ambiguous prefix {prefix!r} matches {len(matches)} items:\n  "
+            + "\n  ".join(matches),
+            err=True,
+        )
+        sys.exit(1)
+    return matches[0]
+
+
 def setup_cli_logging(verbose: bool, debug: bool) -> None:
     """Configure logging for the thin CLI client.
 

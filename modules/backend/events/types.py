@@ -629,6 +629,37 @@ class SupervisorDecisionEmittedEvent(SessionEvent):
     reviewer: str = ""
 
 
+class GateRequestOpenedEvent(SessionEvent):
+    """A manual gate paused; awaiting an external decision (Plan 80g).
+
+    Emitted by ``ManualGateReviewer`` after persisting the GateRequest
+    row. Watchers (TUI, web UI, scripts) can subscribe to surface a
+    "pending approval" notification without polling.
+    """
+
+    event_type: str = "gate.request.opened"
+    request_id: str = ""
+    mission_id: str = ""
+    gate_type: str = ""
+    timeout_seconds: int = 0
+
+
+class GateRequestDecidedEvent(SessionEvent):
+    """A manual gate received a decision (Plan 80g).
+
+    Emitted from the /decide endpoint after the decision_json is
+    persisted and the dispatcher's asyncio.Event is fired.
+    """
+
+    event_type: str = "gate.request.decided"
+    request_id: str = ""
+    mission_id: str = ""
+    gate_type: str = ""
+    action: str = ""
+    reason: str | None = None
+    reviewer: str = ""
+
+
 # =============================================================================
 # Session Followup Events (Plan 51 Phase A)
 # =============================================================================

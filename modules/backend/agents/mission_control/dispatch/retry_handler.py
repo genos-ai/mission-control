@@ -51,6 +51,7 @@ async def execute_with_retry(
     gate: GateReviewer | None = None,
     mission_id: str | None = None,
     budget_usd: float = 0.0,
+    session_id: str | None = None,
 ) -> TaskResult:
     """Execute a task with 3-tier verification and retry-with-feedback.
 
@@ -170,6 +171,7 @@ async def execute_with_retry(
                 mission_id=mission_id,
                 budget_usd=budget_usd,
                 execution_id=execution_id,
+                session_id=session_id,
             )
             if isinstance(result, TaskResult):
                 return result
@@ -192,6 +194,7 @@ async def execute_with_retry(
             mission_id=mission_id,
             budget_usd=budget_usd,
             execution_id=execution_id,
+            session_id=session_id,
         )
         if isinstance(result, str):
             instructions = result
@@ -217,6 +220,7 @@ async def _handle_verification_failure(
     mission_id: str,
     budget_usd: float,
     execution_id: str,
+    session_id: str | None = None,
 ) -> TaskResult | str:
     """Handle a verification failure. Returns TaskResult to stop, or str (new instructions) to retry."""
     from modules.backend.agents.mission_control.verification import build_retry_feedback
@@ -227,6 +231,7 @@ async def _handle_verification_failure(
         gate_decision = await gate.review(GateContext(
             gate_type="verification_failed",
             mission_id=mission_id,
+            session_id=session_id,
             task_id=task.task_id,
             task_output=output,
             verification=build_verification_outcome(verification).model_dump(),
@@ -304,11 +309,13 @@ async def _handle_post_task_gate(
     mission_id: str,
     budget_usd: float,
     execution_id: str,
+    session_id: str | None = None,
 ) -> TaskResult | str:
     """Handle the post-task gate review. Returns TaskResult to finish, or str (new instructions) to retry."""
     gate_decision = await gate.review(GateContext(
         gate_type="post_task",
         mission_id=mission_id,
+        session_id=session_id,
         task_id=task.task_id,
         task_output=output,
         verification=build_verification_outcome(verification).model_dump(),

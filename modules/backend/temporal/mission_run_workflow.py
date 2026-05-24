@@ -127,6 +127,7 @@ class MissionRunWorkflow:
                 budget_usd_ceiling=input.mission_budget_usd,
                 total_spent_usd=self._total_cost,
                 mission_brief=input.mission_brief,
+                session_id=_session_id,
             )
 
             eval_result = await workflow.execute_activity(

@@ -42,6 +42,10 @@ class GateContext:
     gate_type: str               # pre_dispatch, pre_layer, post_task,
                                  # verification_failed, post_layer, post_run
     mission_id: str
+    # Session is the transport primitive (P15) — gates fire within an
+    # execution session. Optional to keep older callers compiling; should
+    # be populated by every dispatcher.
+    session_id: str | None = None
     layer_index: int = 0
     total_layers: int = 0
 

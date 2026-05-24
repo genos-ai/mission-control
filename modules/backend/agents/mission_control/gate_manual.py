@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -54,23 +54,25 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _dataclass_to_dict(obj: Any) -> Any:
-    """Recursively serialise dataclasses + dicts for JSONB storage."""
-    if is_dataclass(obj):
-        return {k: _dataclass_to_dict(v) for k, v in asdict(obj).items()}
-    if isinstance(obj, dict):
-        return {k: _dataclass_to_dict(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_dataclass_to_dict(v) for v in obj]
-    return obj
+async def fire_decision(request_id: str) -> None:
+    """Called by the /decide endpoint to unblock the waiting reviewer.
 
-
-async def _fire_decision(request_id: str) -> None:
-    """Called by the /decide endpoint to unblock the waiting reviewer."""
+    If the Event isn't in this process's registry, the decision-receiving
+    worker is NOT the dispatcher worker — manual mode is single-process
+    by design (see module docstring). Log loud so the next caller knows
+    why the gate never released.
+    """
     async with _LOCK:
         event = _PENDING.get(request_id)
-    if event is not None:
-        event.set()
+    if event is None:
+        logger.error(
+            "Manual gate decision arrived in a worker that doesn't own the "
+            "pending Event — single-process invariant violated. The "
+            "dispatcher will time out. Run uvicorn with one worker.",
+            extra={"request_id": request_id},
+        )
+        return
+    event.set()
 
 
 class ManualGateReviewer:
@@ -81,6 +83,7 @@ class ManualGateReviewer:
         *,
         session_factory,        # callable returning an AsyncSession context manager
         timeout_seconds: int = 1800,
+        event_bus: Any = None,  # optional SessionEventBus; emits GateRequestOpenedEvent
     ):
         """session_factory yields ``AsyncSession`` instances. The reviewer
         opens short-lived sessions for the create-row and read-back steps
@@ -88,6 +91,7 @@ class ManualGateReviewer:
         """
         self._session_factory = session_factory
         self._timeout_seconds = timeout_seconds
+        self._event_bus = event_bus
 
     async def review(self, context: GateContext) -> GateDecision:
         request_id = str(uuid.uuid4())
@@ -98,6 +102,7 @@ class ManualGateReviewer:
 
         try:
             await self._persist_pending(request_id, context)
+            await self._emit_opened(request_id, context)
             logger.info(
                 "Manual gate paused — awaiting decision",
                 extra={
@@ -121,6 +126,16 @@ class ManualGateReviewer:
                     reason=f"manual gate timeout after {self._timeout_seconds}s",
                     reviewer=f"manual:timeout:{request_id}",
                 )
+            except asyncio.CancelledError:
+                # Dispatcher coroutine was cancelled (mission abort, backend
+                # shutdown, Temporal activity cancel). Mark the row CANCELLED
+                # before re-raising so it doesn't sit PENDING forever.
+                await self._persist_cancelled(request_id)
+                logger.warning(
+                    "Manual gate cancelled mid-wait",
+                    extra={"request_id": request_id, "gate_type": context.gate_type},
+                )
+                raise
 
             decision = await self._read_decision(request_id)
             logger.info(
@@ -144,8 +159,9 @@ class ManualGateReviewer:
                 id=request_id,
                 mission_id=context.mission_id,
                 plan_id=None,           # GateContext has no plan_id; the dispatcher knows it
+                session_id=context.session_id,
                 gate_type=context.gate_type,
-                context_json=_dataclass_to_dict(context),
+                context_json=asdict(context),
                 status=GateRequestStatus.PENDING,
                 created_at=_utc_now(),
             )
@@ -164,6 +180,36 @@ class ManualGateReviewer:
                 ),
             )
             await session.commit()
+
+    async def _persist_cancelled(self, request_id: str) -> None:
+        from sqlalchemy import update
+        async with self._session_factory() as session:
+            await session.execute(
+                update(GateRequest)
+                .where(GateRequest.id == request_id)
+                .values(status=GateRequestStatus.CANCELLED),
+            )
+            await session.commit()
+
+    async def _emit_opened(self, request_id: str, context: GateContext) -> None:
+        """Best-effort GateRequestOpenedEvent emission; never fail the gate."""
+        if self._event_bus is None:
+            return
+        try:
+            from modules.backend.events.types import GateRequestOpenedEvent
+            await self._event_bus.publish(GateRequestOpenedEvent(
+                session_id=context.session_id or context.mission_id,
+                source=f"manual_gate:{request_id}",
+                request_id=request_id,
+                mission_id=context.mission_id,
+                gate_type=context.gate_type,
+                timeout_seconds=self._timeout_seconds,
+            ))
+        except Exception:
+            logger.warning(
+                "Failed to emit GateRequestOpenedEvent",
+                exc_info=True, extra={"request_id": request_id},
+            )
 
     async def _read_decision(self, request_id: str) -> GateDecision:
         from sqlalchemy import select
@@ -184,7 +230,5 @@ class ManualGateReviewer:
             return GateDecision(
                 action=action,
                 reason=data.get("reason"),
-                modified_instructions=data.get("modified_instructions"),
-                modified_inputs=data.get("modified_inputs"),
                 reviewer=data.get("reviewer", f"manual:{request_id}"),
             )

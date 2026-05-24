@@ -532,13 +532,25 @@ def _make_decide_command(action_name: str, action_value: str, help_text: str):
 
 
 gate.command("approve")(_make_decide_command("approve", "continue",
-    "Approve the gate; dispatcher continues."))
+    "Approve a standard gate (pre_dispatch/pre_layer/post_task/...); dispatcher continues."))
 gate.command("reject")(_make_decide_command("reject", "abort",
     "Reject the gate; dispatcher aborts."))
 gate.command("skip")(_make_decide_command("skip", "skip",
     "Skip the gated task / layer."))
 gate.command("retry")(_make_decide_command("retry", "retry",
     "Retry the gated task (post_task / verification_failed only)."))
+
+# post_run / autonomy-loop actions (only valid for gate_type=post_run)
+gate.command("advance")(_make_decide_command("advance", "advance_approved",
+    "post_run: advance approved tasks; daemon picks them up."))
+gate.command("refine")(_make_decide_command("refine", "advance_refine",
+    "post_run: wake Planning Agent to generate next wave."))
+gate.command("wait")(_make_decide_command("wait", "wait",
+    "post_run: pause; daemon already has approved tasks."))
+gate.command("complete")(_make_decide_command("complete", "propose_complete",
+    "post_run: propose mission as complete; Director asks user to confirm."))
+gate.command("escalate")(_make_decide_command("escalate", "escalate",
+    "post_run: escalate to Director for user attention."))
 
 
 # =============================================================================

@@ -42,6 +42,7 @@ class PostRunEvalInput:
     budget_usd_ceiling: float = 0.0
     total_spent_usd: float = 0.0
     mission_brief: str = ""
+    session_id: str | None = None
 
 
 @dataclass
@@ -144,6 +145,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
         context = GateContext(
             gate_type="post_run",
             mission_id=input.mission_id,
+            session_id=input.session_id,
             total_cost_usd=input.total_spent_usd,
             budget_usd=input.budget_usd_ceiling,
             recent_run_outcomes=recent,

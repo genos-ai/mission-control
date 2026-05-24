@@ -471,6 +471,7 @@ async def execute_research_loop(
             decision = await _gate.review(GateContext(
                 gate_type="research_iteration",
                 mission_id=mission_id,
+                session_id=_sid,
                 layer_index=iteration,
                 total_layers=config.max_iterations,
                 total_cost_usd=total_cost,

@@ -21,10 +21,17 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 
-from modules.backend.agents.mission_control.gate_manual import _fire_decision
+from modules.backend.agents.mission_control.gate_manual import fire_decision
 from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.events.bus import SessionEventBus
+from modules.backend.events.types import GateRequestDecidedEvent
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.schemas.base import ApiResponse
+from typing import Annotated
+from fastapi import Depends
+from modules.backend.core.dependencies import get_event_bus
+
+EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 
 router = APIRouter()
 
@@ -35,29 +42,34 @@ router = APIRouter()
 
 
 class GateDecisionSubmission(BaseModel):
-    """Body for POST /gates/{rid}/decide."""
+    """Body for POST /gates/{rid}/decide.
+
+    The action vocabulary is union of the standard gate actions and the
+    post_run autonomy-loop actions. The endpoint validates that the
+    submitted action is appropriate for the gate's gate_type — e.g. you
+    cannot submit `advance_refine` for a `pre_layer` gate.
+    """
 
     action: Literal[
-        "continue", "skip", "retry", "abort", "modify",
+        # Standard gate actions (pre_dispatch, pre_layer, post_task,
+        # verification_failed, post_layer):
+        "continue", "skip", "retry", "abort",
+        # post_run autonomy-loop actions:
+        "wait", "advance_approved", "advance_refine",
+        "propose_complete", "escalate",
     ] = Field(
         ...,
         description=(
-            "Standard actions: continue (approve), skip, retry, abort. "
-            "`modify` accepts a payload via modified_instructions / "
-            "modified_inputs but is reserved for future use."
+            "Standard: continue (approve), skip, retry, abort. "
+            "post_run: wait, advance_approved, advance_refine, "
+            "propose_complete, escalate. `modify` is intentionally NOT "
+            "exposed here — it requires modified_instructions plumbing "
+            "that isn't end-to-end yet (Plan 80g v2)."
         ),
     )
     reason: str | None = Field(
         None, max_length=2000,
         description="Optional reviewer note attached to the decision.",
-    )
-    modified_instructions: str | None = Field(
-        None, max_length=10000,
-        description="When action=modify, replacement instructions for the task.",
-    )
-    modified_inputs: dict[str, Any] | None = Field(
-        None,
-        description="When action=modify, replacement inputs for the task.",
     )
 
 
@@ -171,6 +183,7 @@ async def decide_gate(
     db: DbSession,
     current_user: CurrentUser,
     request_id: RequestId,
+    event_bus: EventBus,
 ) -> ApiResponse:
     """Record the decision and fire the asyncio.Event that unblocks the dispatcher.
 
@@ -190,11 +203,11 @@ async def decide_gate(
             ),
         )
 
+    _validate_action_for_gate_type(row.gate_type, body.action)
+
     decision_payload = {
         "action": body.action,
         "reason": body.reason,
-        "modified_instructions": body.modified_instructions,
-        "modified_inputs": body.modified_inputs,
         "reviewer": f"user:{current_user.id}",
     }
 
@@ -211,7 +224,28 @@ async def decide_gate(
     await db.commit()
 
     # Wake the waiting dispatcher (process-local asyncio.Event).
-    await _fire_decision(request_id_path)
+    await fire_decision(request_id_path)
+
+    # Emit lifecycle event so watchers (TUI / console) see the resolution.
+    try:
+        await event_bus.publish(GateRequestDecidedEvent(
+            session_id=row.session_id or row.mission_id,
+            source=f"manual_gate:{request_id_path}",
+            request_id=request_id_path,
+            mission_id=row.mission_id,
+            gate_type=row.gate_type,
+            action=body.action,
+            reason=body.reason,
+            reviewer=f"user:{current_user.id}",
+        ))
+    except Exception:
+        # Event-bus failures must not fail the decision response — the
+        # decision is already committed. Log and continue.
+        from modules.backend.core.logging import get_logger
+        get_logger(__name__).warning(
+            "Failed to emit GateRequestDecidedEvent",
+            exc_info=True, extra={"request_id": request_id_path},
+        )
 
     return ApiResponse(
         success=True,
@@ -223,6 +257,36 @@ async def decide_gate(
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+_STANDARD_ACTIONS: frozenset[str] = frozenset(
+    {"continue", "skip", "retry", "abort"},
+)
+_POST_RUN_ACTIONS: frozenset[str] = frozenset(
+    {"wait", "advance_approved", "advance_refine", "propose_complete", "escalate"},
+)
+
+
+def _validate_action_for_gate_type(gate_type: str, action: str) -> None:
+    """Reject actions that don't belong to the gate's vocabulary.
+
+    Mixing the two action sets (e.g. `advance_refine` for a `pre_layer`
+    gate or `continue` for a `post_run` gate) is silent corruption — the
+    consumer of the decision wouldn't know what to do. Fail loud at the
+    boundary instead.
+    """
+    if gate_type == "post_run":
+        valid = _POST_RUN_ACTIONS
+    else:
+        valid = _STANDARD_ACTIONS
+    if action not in valid:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Action {action!r} is not valid for gate_type {gate_type!r}. "
+                f"Valid actions: {sorted(valid)}."
+            ),
+        )
 
 
 async def _load_gate(db: Any, mission_id: str, request_id: str) -> GateRequest:

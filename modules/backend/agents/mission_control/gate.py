@@ -138,6 +138,7 @@ class ConfigurableGate:
         console: Any = None,    # Rich Console for CLI modes
         verbose: bool = False,
         session_factory: Any = None,  # callable yielding AsyncSession; required for `manual` mode
+        event_bus: Any = None,        # SessionEventBus; optional, used by `manual` for lifecycle events
     ):
         from modules.backend.core.config_schema import GateSchema
 
@@ -148,6 +149,7 @@ class ConfigurableGate:
         self._console = console
         self._verbose = verbose
         self._session_factory = session_factory
+        self._event_bus = event_bus
 
         self._llm: LlmGateReviewer | None = None
         self._cli: Any = None  # CliGateReviewer — lazy to avoid Rich import
@@ -188,6 +190,7 @@ class ConfigurableGate:
                 timeout_seconds=self._config.manual.timeout_seconds
                 if hasattr(self._config, "manual") and self._config.manual is not None
                 else 1800,
+                event_bus=self._event_bus,
             )
         return self._manual
 
@@ -290,6 +293,7 @@ def create_gate(
     console: Any = None,
     verbose: bool = False,
     session_factory: Any = None,
+    event_bus: Any = None,
 ) -> GateReviewer | None:
     """Create the appropriate gate reviewer from config + CLI override.
 
@@ -298,6 +302,9 @@ def create_gate(
     ``session_factory`` is only required when the effective gate mode is
     ``manual`` (which persists pause rows). If omitted, the global async
     session factory is used; pass an explicit one for tests.
+
+    ``event_bus`` is optional. When provided, ``manual`` mode emits
+    GateRequestOpenedEvent so watchers can react in real time.
     """
     from modules.backend.core.config import get_app_config
     from modules.backend.core.database import get_session_factory
@@ -315,4 +322,5 @@ def create_gate(
         console=console,
         verbose=verbose,
         session_factory=session_factory or get_session_factory(),
+        event_bus=event_bus,
     )

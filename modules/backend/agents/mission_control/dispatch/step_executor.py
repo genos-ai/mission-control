@@ -136,6 +136,7 @@ async def execute_with_step_events(
         gate=gate,
         mission_id=mission_id,
         budget_usd=budget_usd,
+        session_id=session_id,
     )
 
     await _emit(event_bus, PlanStepCompletedEvent,
