@@ -354,13 +354,44 @@ class WorkflowRunWavesMixin:
                 _wave_skipped = [sid for sid in wave_step_ids if sid not in set(executable_ids)]
                 _state_updates: list[tuple[str, TaskStatus]] = (
                     [(sid, TaskStatus.SKIPPED) for sid in _wave_skipped]
-                    + [(sid, TaskStatus.RUNNING) for sid in executable_ids]
                 )
                 if _state_updates:
                     await self._sync_plan_task_states(
                         _plan_id, run.mission_id, _state_updates, session_id,
                         step_task_map=_step_task_map,
                     )
+
+            # ── Pre-execution approval (Plan 80h) ────────────────────
+            # Block until each executable step's task is APPROVED. For
+            # autonomous mode this is a fast pass-through (auto-approver
+            # already transitioned the task at creation). For interactive
+            # modes (manual/interactive/ai_assisted), waits for the
+            # operator to approve via `mc plan approve <task_id>`. The
+            # waits run in parallel — operator can approve in any order.
+            if _step_task_map and executable_ids:
+                from modules.backend.agents.mission_control.task_approval import (
+                    wait_until_approved,
+                )
+                from modules.backend.core.database import get_session_factory
+                factory = get_session_factory()
+                waiters = [
+                    wait_until_approved(
+                        task_id=_step_task_map[sid],
+                        session_factory=factory,
+                    )
+                    for sid in executable_ids
+                    if sid in _step_task_map
+                ]
+                if waiters:
+                    await asyncio.gather(*waiters)
+
+            # Now transition approved tasks to RUNNING.
+            if _plan_id and executable_ids:
+                await self._sync_plan_task_states(
+                    _plan_id, run.mission_id,
+                    [(sid, TaskStatus.RUNNING) for sid in executable_ids],
+                    session_id, step_task_map=_step_task_map,
+                )
 
             # Execute all steps in this wave concurrently
             wave_steps = [step_map[sid] for sid in executable_ids]
@@ -445,7 +476,14 @@ class WorkflowRunWavesMixin:
         ctx: StepContext,
         gate: object | None = None,
     ) -> tuple[Any, dict]:
-        """Execute a single workflow step, dispatching by node_type."""
+        """Execute a single workflow step, dispatching by node_type.
+
+        Pre-execution approval (Plan 80h): the per-step pre_layer gate
+        was removed in favour of the unified task lifecycle. The wave-
+        level wait happens in ``_execute_steps`` before this method is
+        called. By the time we get here the task is already APPROVED
+        (or autonomously auto-approved).
+        """
         node_type = getattr(step, "node_type", "agent_step")
 
         if node_type == "condition":

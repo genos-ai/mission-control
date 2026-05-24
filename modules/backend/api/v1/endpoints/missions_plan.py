@@ -394,6 +394,14 @@ async def approve_task(
     plan = await service.get_or_create_plan(mission_id)
     transitioned = await service.approve_task(plan.id, task_id, current_user.id)
 
+    # Wake any dispatcher blocked on these task IDs (Plan 80h: pre-execution
+    # approval IS the task lifecycle, no separate gate). notify_approved is
+    # a no-op when no waiter is registered, so it's safe to call for every
+    # transitioned task including transitive dependencies.
+    from modules.backend.agents.mission_control.task_approval import notify_approved
+    for t in transitioned:
+        await notify_approved(t.id)
+
     response = TaskTransitionResponse(
         target_task_id=task_id,
         transitioned_task_ids=[t.id for t in transitioned],
@@ -466,6 +474,10 @@ async def retry_task(
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     task = await service.retry_task(plan.id, task_id, current_user.id)
+
+    # Wake any dispatcher blocked on this task (Plan 80h).
+    from modules.backend.agents.mission_control.task_approval import notify_approved
+    await notify_approved(task.id)
 
     response = TaskTransitionResponse(
         target_task_id=task_id,

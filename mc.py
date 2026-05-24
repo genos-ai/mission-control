@@ -170,7 +170,7 @@ def mission(ctx):
 @click.option("--description", required=True, help="Mission description.")
 @click.option("--brief", default=None, help="Strategic brief for agents.")
 @click.option("--gate", "gate_mode",
-              type=click.Choice(["off", "interactive", "ai_assisted", "autonomous"]),
+              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
               default=None, help="Default gate mode.")
 @click.option("--budget", type=float, default=None, help="Budget ceiling in USD.")
 def mission_create(name, description, brief, gate_mode, budget):
@@ -226,7 +226,7 @@ def mission_info(ctx):
 
 @mission.command("set-gate")
 @click.option("--mode", required=True,
-              type=click.Choice(["off", "interactive", "ai_assisted", "autonomous"]),
+              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
               help="Gate mode.")
 @click.pass_obj
 def mission_set_gate(ctx, mode):
@@ -313,7 +313,7 @@ def mission_unarchive(name_or_id):
 @click.option("--objective", "-o", required=True, help="Objective text or workflow name.")
 @click.option("--budget", type=float, default=None, help="Cost ceiling override.")
 @click.option("--gate", "gate_override",
-              type=click.Choice(["off", "interactive", "ai_assisted", "autonomous"]),
+              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
               default=None, help="Gate mode override.")
 @click.option("--step", is_flag=True, help="Alias for --gate interactive.")
 @click.option("--dry-run", is_flag=True, help="Show plan + estimated cost, don't execute.")
@@ -358,7 +358,7 @@ def run(ctx, objective, budget, gate_override, step, dry_run, context):
 @mc.command()
 @click.option("--run", "n", type=int, required=True, help="Nth most recent execution to retry.")
 @click.option("--gate", "gate_override",
-              type=click.Choice(["off", "interactive", "ai_assisted", "autonomous"]),
+              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
               default=None, help="Gate mode override.")
 @click.pass_obj
 def retry(ctx, n, gate_override):
@@ -478,79 +478,105 @@ def plan_dispatch(ctx):
 @mc.group("gate", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.pass_context
 def gate(ctx):
-    """Manual gate review (use with `mc run --gate manual`)."""
+    """Gate configuration + post-execution decisions.
+
+    Pre-execution approval is via `mc plan approve` (the task lifecycle).
+    `mc gate` is for setting the gate mode and deciding the rare
+    post-execution gates (post_task, verification_failed, post_run, ...).
+    """
     if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
+        # Default: show current mode + any pending gates.
+        from modules.clients.cli.mc_gate import show as gate_show_fn
 
+        async def _run():
+            async with api_client() as api:
+                mid = await require_mission(api)
+                await gate_show_fn(api, mission_id=mid)
 
-@gate.command("list")
-@click.pass_obj
-def gate_list(ctx):
-    """List pending gate requests for the current mission."""
-    from modules.clients.cli.mc_gate import list_pending
-
-    async def _run():
-        async with api_client() as api:
-            mid = await require_mission(api)
-            await list_pending(api, mission_id=mid)
-
-    asyncio.run(_run())
+        asyncio.run(_run())
 
 
 @gate.command("show")
-@click.argument("request_id")
 @click.pass_obj
-def gate_show(ctx, request_id):
-    """Show full context (serialised GateContext) for one gate request."""
+def gate_show(ctx):
+    """Show the current gate mode and any pending post-execution gates."""
     from modules.clients.cli.mc_gate import show as gate_show_fn
 
     async def _run():
         async with api_client() as api:
             mid = await require_mission(api)
-            await gate_show_fn(api, mission_id=mid, request_id=request_id)
+            await gate_show_fn(api, mission_id=mid)
 
     asyncio.run(_run())
 
 
-def _make_decide_command(action_name: str, action_value: str, help_text: str):
-    @click.argument("request_id")
-    @click.option("--reason", default=None, help="Optional note attached to the decision.")
-    @click.pass_obj
-    def _cmd(ctx, request_id, reason):
-        from modules.clients.cli.mc_gate import decide
+@gate.command("set")
+@click.argument("mode",
+    type=click.Choice(["autonomous", "manual", "interactive", "ai_assisted"]))
+@click.pass_obj
+def gate_set(ctx, mode):
+    """Set the gate mode for the current mission's plan."""
+    from modules.clients.cli.mc_gate import set_mode
 
-        async def _run():
-            async with api_client() as api:
-                mid = await require_mission(api)
-                await decide(api, mission_id=mid, request_id=request_id,
-                             action=action_value, reason=reason)
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await set_mode(api, mission_id=mid, mode=mode)
 
-        asyncio.run(_run())
-    _cmd.__name__ = f"gate_{action_name}"
-    _cmd.__doc__ = help_text
-    return _cmd
+    asyncio.run(_run())
 
 
-gate.command("approve")(_make_decide_command("approve", "continue",
-    "Approve a standard gate (pre_dispatch/pre_layer/post_task/...); dispatcher continues."))
-gate.command("reject")(_make_decide_command("reject", "abort",
-    "Reject the gate; dispatcher aborts."))
-gate.command("skip")(_make_decide_command("skip", "skip",
-    "Skip the gated task / layer."))
-gate.command("retry")(_make_decide_command("retry", "retry",
-    "Retry the gated task (post_task / verification_failed only)."))
+@gate.command("modes")
+@click.pass_obj
+def gate_modes(ctx):
+    """List the four supported gate modes with descriptions."""
+    from modules.clients.cli.mc_gate import list_modes
 
-# post_run / autonomy-loop actions (only valid for gate_type=post_run)
-gate.command("advance")(_make_decide_command("advance", "advance_approved",
-    "post_run: advance approved tasks; daemon picks them up."))
-gate.command("refine")(_make_decide_command("refine", "advance_refine",
-    "post_run: wake Planning Agent to generate next wave."))
-gate.command("wait")(_make_decide_command("wait", "wait",
-    "post_run: pause; daemon already has approved tasks."))
-gate.command("complete")(_make_decide_command("complete", "propose_complete",
-    "post_run: propose mission as complete; Director asks user to confirm."))
-gate.command("escalate")(_make_decide_command("escalate", "escalate",
-    "post_run: escalate to Director for user attention."))
+    async def _run():
+        async with api_client() as api:
+            await list_modes(api)
+
+    asyncio.run(_run())
+
+
+@gate.command("pending")
+@click.pass_obj
+def gate_pending(ctx):
+    """List pending post-execution gates (rare)."""
+    from modules.clients.cli.mc_gate import pending
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await pending(api, mission_id=mid)
+
+    asyncio.run(_run())
+
+
+@gate.command("decide")
+@click.argument("gate_id")
+@click.argument("action")
+@click.option("--reason", default=None, help="Optional note attached to the decision.")
+@click.pass_obj
+def gate_decide(ctx, gate_id, action, reason):
+    """Decide a pending post-execution gate.
+
+    Valid actions depend on the gate type:
+      post_task / verification_failed:  continue | skip | retry | abort
+      post_layer:                       continue | abort
+      post_run:                         wait | advance_approved |
+                                        advance_refine | propose_complete |
+                                        escalate
+    """
+    from modules.clients.cli.mc_gate import decide
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await decide(api, mission_id=mid, gate_id=gate_id,
+                         action=action, reason=reason)
+
+    asyncio.run(_run())
 
 
 # =============================================================================

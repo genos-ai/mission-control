@@ -480,9 +480,20 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
 
             # Mark as workflow-managed so the Temporal autonomous scheduler
             # (find_ready_plans) skips these — the workflow engine owns dispatch.
-            plan.gate_mode = "workflow_managed"
+            #
+            # Plan 80g: when the plan's gate_mode is `manual` (or other
+            # interactive modes), preserve it — workflow_run_waves now calls
+            # ConfigurableGate.review() before each step, so the gate fires
+            # during execution. Setting `workflow_managed` here would lose
+            # that mode and the gate would silently no-op.
+            if plan.gate_mode not in ("manual", "interactive", "ai_assisted"):
+                plan.gate_mode = "workflow_managed"
 
-            # Auto-approve all tasks — workflow dispatch is pre-approved.
+            # Plan 80h: tasks always start PROPOSED. Mode determines who
+            # triggers the PROPOSED → APPROVED transition:
+            #   - autonomous: auto-approver below transitions immediately
+            #   - manual / interactive / ai_assisted: operator approves
+            #     via `mc plan approve <task_id>` (or TTY prompt etc.)
             from modules.backend.models.task import TaskStatus
             from modules.backend.core.utils import utc_now
             from modules.backend.repositories.task import TaskRepository
@@ -490,10 +501,27 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             tasks = await task_repo.get_by_plan_id(
                 plan.id, status=TaskStatus.PROPOSED,
             )
-            now = utc_now()
-            for task in tasks:
-                task.status = TaskStatus.APPROVED
-                task.approved_at = now
+            if plan.gate_mode in ("workflow_managed", "autonomous"):
+                # Autonomous-mode auto-approver: transition immediately at
+                # creation. Same end state as the legacy bulk-approve, but
+                # routed through the canonical lifecycle so the Kanban
+                # tells the truth.
+                now = utc_now()
+                for task in tasks:
+                    task.status = TaskStatus.APPROVED
+                    task.approved_at = now
+                logger.info(
+                    "Autonomous gate mode — auto-approved %d tasks at creation",
+                    len(tasks),
+                    extra={"mission_id": mission_id, "plan_id": plan.id},
+                )
+            else:
+                logger.info(
+                    "Interactive gate mode — %d tasks left PROPOSED for operator approval",
+                    len(tasks),
+                    extra={"mission_id": mission_id, "plan_id": plan.id,
+                           "gate_mode": plan.gate_mode},
+                )
             await self._session.commit()
 
             logger.info(

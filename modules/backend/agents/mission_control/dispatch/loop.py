@@ -115,31 +115,11 @@ async def dispatch(
             extra={"execution_mode": execution_mode, "mission_id": plan.mission_id},
         )
 
+    # Plan 80h: pre_dispatch / pre_layer gates removed. Pre-execution
+    # approval is the task lifecycle (PROPOSED → APPROVED). Tasks that
+    # need operator approval will park here when the wave engine waits
+    # on their state. The user transitions them via `mc plan approve`.
     gate_decisions: list[GateDecisionRecord] = []
-
-    decision = await _gate.review(GateContext(
-        gate_type="pre_dispatch",
-        mission_id=plan.mission_id,
-        session_id=_sid,
-        layer_index=0,
-        total_layers=len(layers),
-        pending_tasks=[
-            {"task_id": t.task_id, "agent": t.agent, "description": t.description}
-            for t in plan.tasks
-        ],
-        total_cost_usd=0.0,
-        budget_usd=mission_budget_usd,
-    ))
-    gate_decisions.append(GateDecisionRecord(
-        gate_type="pre_dispatch", layer_index=0,
-        action=decision.action.value, reason=decision.reason,
-        reviewer=decision.reviewer,
-    ))
-    if decision.action == GateAction.ABORT:
-        logger.info("Mission aborted at pre_dispatch gate", extra={"reason": decision.reason})
-        outcome = aborted_outcome(plan, decision.reason, start_time)
-        outcome.gate_decisions = gate_decisions
-        return outcome
 
     await _emit(_bus, PlanCreatedEvent,
         session_id=_sid,
@@ -399,42 +379,22 @@ async def _execute_layer(
     if not coros:
         return None
 
-    decision = await gate.review(GateContext(
-        gate_type="pre_layer",
-        mission_id=plan.mission_id,
-        session_id=session_id,
-        layer_index=layer_idx,
-        total_layers=len(layers),
-        pending_tasks=[
-            {
-                "task_id": t.task_id,
-                "agent": t.agent,
-                "description": t.description,
-                "instructions": (t.instructions or "")[:500],
-                "input_keys": list(resolved_inputs_map.get(t.task_id, {}).keys()),
-            }
-            for t in layer_tasks
-        ],
-        completed_tasks=[r.model_dump() for r in task_results],
-        total_cost_usd=total_cost,
-        budget_usd=mission_budget_usd,
-    ))
-    gate_decisions.append(GateDecisionRecord(
-        gate_type="pre_layer", layer_index=layer_idx,
-        action=decision.action.value, reason=decision.reason,
-        reviewer=decision.reviewer,
-    ))
-    if decision.action == GateAction.ABORT:
-        logger.info("Mission aborted at pre_layer gate", extra={"layer": layer_idx})
-        for c in coros:
-            c.close()
-        return {"aborted": True, "abort_reason": decision.reason}
-    if decision.action == GateAction.SKIP:
-        for c in coros:
-            c.close()
-        for t in layer_tasks:
-            task_results.append(skipped_result(t, decision.reason))
-        return None
+    # Plan 80h: pre_layer gate removed. Pre-execution approval is the
+    # task lifecycle. Wait until every task in this layer is APPROVED
+    # before dispatching. For autonomous mode the rule engine has
+    # already transitioned them, so this is fast. For interactive modes
+    # the operator approves each task via `mc plan approve <id>`.
+    from modules.backend.agents.mission_control.task_approval import (
+        wait_until_approved,
+    )
+    from modules.backend.core.database import get_session_factory
+    _factory = get_session_factory()
+    waiters = [
+        wait_until_approved(task_id=t.task_id, session_factory=_factory)
+        for t in layer_tasks
+    ]
+    if waiters:
+        await asyncio.gather(*waiters)
 
     results = await asyncio.gather(*coros, return_exceptions=True)
 

@@ -266,9 +266,55 @@ async def run_mission_workflow(
     body = body or {}
     triggered_by = body.get("triggered_by", "user:api")
     context_overrides = body.get("context_overrides")
+    gate_mode_override = body.get("gate_mode")
+
+    # Resolve effective gate mode: explicit body override wins, else fall
+    # back to the plan's persisted gate_mode. Interactive modes return
+    # the endpoint immediately (Plan 80h) — synchronous blocking is
+    # meaningless when the workflow is waiting on operator approval.
+    from modules.backend.repositories.mission_plan import MissionPlanRepository
+    plan_repo = MissionPlanRepository(db)
+    existing_plan = await plan_repo.get_by_mission_id(mission_id)
+    effective_gate_mode = gate_mode_override or (
+        existing_plan.gate_mode if existing_plan else None
+    )
+    interactive = effective_gate_mode in ("manual", "interactive", "ai_assisted")
 
     redis = AsyncRedis.from_url(get_redis_url())
     event_bus = SessionEventBus(redis, mission_id=mission_id)
+
+    if interactive:
+        # Fire-and-forget: the service is invoked in a background task so
+        # the endpoint can return immediately. The task survives until the
+        # backend process exits — for production resilience this should
+        # eventually move to a Temporal workflow (follow-up).
+        import asyncio
+        async def _run_in_background() -> None:
+            try:
+                async with WorkflowRunService.factory(event_bus=event_bus) as svc:
+                    await svc.run_workflow(
+                        workflow_name=workflow_name,
+                        triggered_by=triggered_by,
+                        mission_id=mission_id,
+                        context_overrides=context_overrides,
+                    )
+            finally:
+                await redis.aclose()
+        asyncio.create_task(_run_in_background())
+        return ApiResponse(
+            success=True,
+            data={
+                "status": "pending_approval",
+                "workflow_name": workflow_name,
+                "gate_mode": effective_gate_mode,
+                "next": "Approve tasks via `mc plan approve <task_id>` or "
+                        "`mc plan approve --next`. View pending tasks with "
+                        "`mc plan show --status proposed`.",
+            },
+            metadata={"request_id": request_id},
+        )
+
+    # Autonomous mode: synchronous (legacy behaviour).
     try:
         async with WorkflowRunService.factory(event_bus=event_bus) as svc:
             run = await svc.run_workflow(

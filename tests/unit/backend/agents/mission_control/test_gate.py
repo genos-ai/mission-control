@@ -90,7 +90,7 @@ def _plan(mission_id: str = "test", tasks: list[dict] | None = None) -> TaskPlan
     })
 
 
-def _gate_config(mode: str = "off", **overrides) -> GateSchema:
+def _gate_config(mode: str = "autonomous", **overrides) -> GateSchema:
     """Build a GateSchema for testing."""
     return GateSchema(mode=mode, **overrides)
 
@@ -287,7 +287,7 @@ class TestLlmGateReviewer:
 class TestGateSchema:
     def test_defaults(self):
         schema = GateSchema()
-        assert schema.mode == "off"
+        assert schema.mode == "autonomous"
         assert schema.ai.model == "copilot:claude-haiku-4.5"
         assert schema.ai.temperature == 0.0
         assert schema.points.pre_dispatch.enabled is True
@@ -321,7 +321,7 @@ class TestGateSchema:
 
     def test_strict_rejects_unknown_keys(self):
         with pytest.raises(Exception):  # ValidationError
-            GateSchema(mode="off", unknown_key="bad")
+            GateSchema(mode="autonomous", unknown_key="bad")
 
     def test_rejects_invalid_mode(self):
         with pytest.raises(Exception):  # ValidationError
@@ -333,15 +333,6 @@ class TestGateSchema:
 
 class TestConfigurableGate:
     @pytest.mark.asyncio
-    async def test_off_mode_continues(self):
-        config = _gate_config("off")
-        gate = ConfigurableGate(config=config)
-        ctx = GateContext(gate_type="pre_dispatch", mission_id="test")
-        decision = await gate.review(ctx)
-        assert decision.action == GateAction.CONTINUE
-        assert decision.reviewer == "config:off"
-
-    @pytest.mark.asyncio
     async def test_disabled_point_continues(self):
         points = GatePointsSchema(
             pre_dispatch=GatePointSchema(enabled=False),
@@ -352,19 +343,6 @@ class TestConfigurableGate:
         decision = await gate.review(ctx)
         assert decision.action == GateAction.CONTINUE
         assert decision.reviewer == "config:disabled"
-
-    @pytest.mark.asyncio
-    async def test_per_point_mode_overrides_top_level(self):
-        """verification_failed set to ai_assisted even when top-level is autonomous."""
-        points = GatePointsSchema(
-            verification_failed=GatePointSchema(mode="off"),
-        )
-        config = _gate_config("interactive", points=points)
-        gate = ConfigurableGate(config=config)
-        ctx = GateContext(gate_type="verification_failed", mission_id="test")
-        decision = await gate.review(ctx)
-        assert decision.action == GateAction.CONTINUE
-        assert decision.reviewer == "config:off"
 
     def test_effective_mode_inherits(self):
         config = _gate_config("autonomous")
@@ -381,7 +359,7 @@ class TestConfigurableGate:
 
     def test_rejects_wrong_config_type(self):
         with pytest.raises(TypeError, match="Expected GateSchema"):
-            ConfigurableGate(config={"mode": "off"})
+            ConfigurableGate(config={"mode": "autonomous"})
 
 
 # ── Auto-continue rules tests ───────────────────────────────────
@@ -477,15 +455,23 @@ class TestGateProtocol:
         assert hasattr(gate, "review")
 
     def test_configurable_gate_satisfies_protocol(self):
-        config = _gate_config("off")
+        config = _gate_config("autonomous")
         gate: GateReviewer = ConfigurableGate(config=config)
         assert hasattr(gate, "review")
 
 
 # ── Integration with dispatch ────────────────────────────────────
+#
+# Plan 80h: pre_dispatch / pre_layer gate types were removed in favour
+# of the unified task lifecycle (PROPOSED → APPROVED via the canonical
+# task-state path). The previous TestGateDispatchIntegration class
+# tested the old pre-execution gate semantics that no longer exist.
+# Re-establishing dispatcher integration tests against the new model
+# needs a real-DB fixture so the wait_until_approved logic can read
+# task state — out of scope for this round; tracked as a follow-up.
 
 
-class TestGateDispatchIntegration:
+class _TestGateDispatchIntegrationRemoved:
     """Integration tests that verify gate works with dispatch.
 
     These use minimal mocks to test the gate mechanism without
