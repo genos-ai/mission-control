@@ -4,7 +4,7 @@ description: "Distributional Ethicist debater for the Think Tank. Reasons about 
 enabled: true
 chat_enabled: false
 model:
-  name: "copilot:claude-opus-4.7"
+  name: "copilot:claude-opus-4.6"
   temperature: 0.7
   max_tokens: 4096
 max_budget_usd: 3.00

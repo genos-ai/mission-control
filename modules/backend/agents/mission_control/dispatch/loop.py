@@ -336,6 +336,34 @@ async def _execute_layer(
             )
             continue
 
+        # ── Deliberation loop fork (Plan 79 v2) ───────────────────────
+        # If the task's static inputs declare type=deliberation_loop,
+        # route to execute_deliberation_loop() — same pattern as
+        # research_loop above. Bypasses Planning Agent's per-step
+        # overhead which the v1 wave-engine workflow ran into.
+        if task_type == "deliberation_loop":
+            try:
+                resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
+            except KeyError as e:
+                task_results.append(failed_result(task, str(e)))
+                await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(e))
+                continue
+            resolved_inputs = dict(resolved_inputs)
+            layer_tasks.append(task)
+            resolved_inputs_map[task.task_id] = resolved_inputs
+            coros.append(
+                _dispatch_deliberation_loop(
+                    task_id=task.task_id,
+                    resolved_inputs=resolved_inputs,
+                    execute_agent_fn=execute_agent_fn,
+                    mission_id=plan.mission_id,
+                    gate=gate,
+                    event_bus=event_bus,
+                    session_id=session_id,
+                )
+            )
+            continue
+
         # ── Workflow task fork (Plan 53 Phase B) ──────────────────────
         # If the task's agent field starts with "workflow:", delegate to
         # WorkflowRunService instead of the standard single-agent path.
@@ -630,6 +658,84 @@ async def _dispatch_research_loop(
     return await execute_research_loop(
         task_id=task_id,
         query=query,
+        config=config,
+        execute_agent_fn=execute_agent_fn,
+        mission_id=mission_id,
+        gate=gate,
+        event_bus=event_bus,
+        session_id=session_id,
+    )
+
+
+async def _dispatch_deliberation_loop(
+    *,
+    task_id: str,
+    resolved_inputs: dict[str, Any],
+    execute_agent_fn: ExecuteAgentFn,
+    mission_id: str | None,
+    gate: GateReviewer,
+    event_bus: EventBusProtocol,
+    session_id: str,
+) -> TaskResult:
+    """Dispatch a deliberation_loop task (Plan 79 v2).
+
+    Mirrors ``_dispatch_research_loop``: parses ``DeliberationConfig`` from
+    the task's ``loop_config`` input, delegates to ``execute_deliberation_loop()``,
+    returns the resulting ``TaskResult``.
+    """
+    from modules.backend.agents.mission_control.dispatch.deliberation_loop import (
+        DeliberationConfig,
+        execute_deliberation_loop,
+    )
+
+    loop_config_raw = resolved_inputs.get("loop_config") or {}
+    if not isinstance(loop_config_raw, dict):
+        logger.warning(
+            "deliberation_loop task has invalid loop_config (not a dict)",
+            extra={"task_id": task_id, "mission_id": mission_id},
+        )
+        return TaskResult(
+            task_id=task_id,
+            agent_name="deliberation",
+            status=TaskStatus.FAILED,
+            output_reference={
+                "error": "deliberation_loop task requires a 'loop_config' "
+                         "dict in inputs.static.",
+            },
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+
+    try:
+        config = DeliberationConfig.from_dict(loop_config_raw)
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            "deliberation_loop task has invalid loop_config",
+            extra={"task_id": task_id, "error": str(exc), "mission_id": mission_id},
+        )
+        return TaskResult(
+            task_id=task_id,
+            agent_name="deliberation",
+            status=TaskStatus.FAILED,
+            output_reference={"error": f"Invalid loop_config: {exc}"},
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+
+    question = resolved_inputs.get("question", "")
+    if not question:
+        return TaskResult(
+            task_id=task_id,
+            agent_name="deliberation",
+            status=TaskStatus.FAILED,
+            output_reference={"error": "deliberation_loop task requires a 'question' input."},
+            cost_usd=0.0,
+            token_usage=TaskTokenUsage(),
+        )
+
+    return await execute_deliberation_loop(
+        task_id=task_id,
+        question=question,
         config=config,
         execute_agent_fn=execute_agent_fn,
         mission_id=mission_id,

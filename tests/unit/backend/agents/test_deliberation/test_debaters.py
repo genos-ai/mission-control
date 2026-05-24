@@ -71,8 +71,9 @@ class TestDebaterAgents:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         assert config.agent_name == agent_name
-        # All four use Opus 4.7 per Plan 79 §6.1.
-        assert config.model.name == "copilot:claude-opus-4.7"
+        # All four use Opus 4.6 per Plan 79 §6.1 (downshifted from 4.7
+        # which is not yet available in the Copilot SDK).
+        assert config.model.name == "copilot:claude-opus-4.6"
         # All four use the high max_input_length (sparse topology
         # round inputs can be ~5-20 KB).
         assert config.max_input_length == 100000

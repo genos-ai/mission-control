@@ -149,7 +149,7 @@ class TestSynthesiserAgent:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         assert config.agent_name == "deliberation.synthesiser.agent"
-        assert config.model.name == "copilot:claude-opus-4.7"
+        assert config.model.name == "copilot:claude-opus-4.6"
         # The synthesiser receives the full transcript — needs the
         # 1M max_input_length per §6.1.
         assert config.max_input_length == 1_000_000

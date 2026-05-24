@@ -116,7 +116,7 @@ class TestCriticAgent:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         assert config.agent_name == "deliberation.critic.agent"
-        assert config.model.name == "copilot:claude-opus-4.7"
+        assert config.model.name == "copilot:claude-opus-4.6"
         # Critic temperature is 0.4 per §6.1 — sharper than debaters (0.7)
         # but not 0.0 (some variance in attack strength).
         assert config.model.temperature == 0.4

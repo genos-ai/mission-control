@@ -125,7 +125,16 @@
       "Bash(betterleaks --help)",
       "Bash(opengrep scan *)",
       "Bash(betterleaks dir *)",
-      "Bash(open /Users/herman.young/development/mission-control/docs/97-plans/77-premortem-report-2026-05-22.html)"
+      "Bash(open /Users/herman.young/development/mission-control/docs/97-plans/77-premortem-report-2026-05-22.html)",
+      "Bash(nc -zv localhost 7233)",
+      "Bash(nc -zv localhost 8233)",
+      "Bash(tee outputs/validation/logs/q1_solo_baseline.log)",
+      "Bash(tee var/validation/logs/q1_solo_baseline.log)",
+      "Bash(tee var/validation/logs/q2_solo_baseline.log)",
+      "Bash(tee var/validation/logs/q3_solo_baseline.log)",
+      "Bash(mc --help)",
+      "Bash(tee var/validation/logs/q1_v2.log)",
+      "Bash(tee var/validation/logs/q1_v2_direct.log)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

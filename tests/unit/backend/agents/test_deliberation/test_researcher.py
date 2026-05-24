@@ -74,7 +74,7 @@ class TestResearcherAgent:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         assert config.agent_name == "deliberation.researcher.agent"
-        assert config.model.name == "copilot:claude-sonnet-4.6"
+        assert config.model.name == "copilot:claude-opus-4.6"
         assert config.max_input_length == 20000
         # The researcher MUST declare its tools so the agent_executor
         # injects them. Empty tools = no search = bad packet = halted run.

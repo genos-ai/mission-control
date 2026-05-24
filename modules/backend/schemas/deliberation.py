@@ -122,6 +122,12 @@ class DebaterTurn(BaseModel):
     CONCEDE_FULL with no specific refutation in `decision_justification`
     is mechanically visible to the synthesiser (see
     FinalDeliverable.sycophancy_flags).
+
+    The `research_requests` field lets a debater ask for follow-up
+    research before the next round. The deliberation loop pools these
+    requests after each round, dispatches the researcher against each,
+    and appends the new findings to the packet for subsequent rounds.
+    Empty list = no request.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -136,6 +142,20 @@ class DebaterTurn(BaseModel):
     decision: Literal["HOLD", "REFINE", "CONCEDE_PARTIAL", "CONCEDE_FULL"]
     decision_justification: str = Field(..., min_length=1, max_length=500)
     confidence: float = Field(ge=0.0, le=1.0)
+    research_requests: list[str] = Field(
+        default_factory=list,
+        max_length=3,
+        description=(
+            "Optional list of specific follow-up research questions this "
+            "debater wants answered before the next round. Each question "
+            "should be focused and answerable by a search-tool-equipped "
+            "agent (e.g. \"What is the empirical false-positive rate of "
+            "LLM-based static analysis on Python codebases at >100K LOC?\"). "
+            "Empty list = no request. The deliberation orchestrator "
+            "dispatches the researcher against pooled requests between "
+            "rounds and appends the new findings to the packet."
+        ),
+    )
 
 
 # =============================================================================
