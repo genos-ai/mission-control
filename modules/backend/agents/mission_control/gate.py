@@ -258,9 +258,6 @@ class ConfigurableGate:
 
         effective_mode = self._effective_mode(gate_type)
 
-        if effective_mode == "off":
-            return GateDecision(action=GateAction.CONTINUE, reviewer="config:off")
-
         if effective_mode == "interactive":
             return await self._get_cli().review(context)
 
@@ -281,7 +278,7 @@ class ConfigurableGate:
                 )
             return await self._get_llm().review(context)
 
-        logger.warning("Unknown gate mode '%s', falling back to off", effective_mode)
+        logger.warning("Unknown gate mode '%s', defaulting to CONTINUE", effective_mode)
         return GateDecision(
             action=GateAction.CONTINUE,
             reviewer=f"config:unknown:{effective_mode}",
@@ -294,10 +291,8 @@ def create_gate(
     verbose: bool = False,
     session_factory: Any = None,
     event_bus: Any = None,
-) -> GateReviewer | None:
+) -> GateReviewer:
     """Create the appropriate gate reviewer from config + CLI override.
-
-    Returns GateReviewer instance, or None if mode is "off".
 
     ``session_factory`` is only required when the effective gate mode is
     ``manual`` (which persists pause rows). If omitted, the global async
@@ -313,9 +308,6 @@ def create_gate(
 
     if mode_override is not None:
         config = config.model_copy(update={"mode": mode_override})
-
-    if config.mode == "off":
-        return None
 
     return ConfigurableGate(
         config=config,

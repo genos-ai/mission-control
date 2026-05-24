@@ -84,7 +84,7 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     )
     gate_mode: Mapped[str | None] = mapped_column(
         String(20), nullable=True, default=None,
-        comment="Default gate mode: off, interactive, ai_assisted, autonomous",
+        comment="Default gate mode: interactive, manual, ai_assisted, autonomous",
     )
     tier: Mapped[str] = mapped_column(
         Enum(MissionTier, native_enum=False),

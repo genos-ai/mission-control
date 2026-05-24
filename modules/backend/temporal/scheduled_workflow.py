@@ -3,7 +3,7 @@ Scheduled Mission Check Workflow (Plan 52 Phase D).
 
 Replaces MissionPlanDaemon's asyncio polling loop with a Temporal
 scheduled workflow. Fires on a configurable interval, checks for
-missions with approved tasks in autonomous/off gate_mode, and
+missions with approved tasks in autonomous gate_mode, and
 starts a MissionRunWorkflow for each one.
 
 No more Redis locking, heartbeat monitoring, or crash recovery —
@@ -30,7 +30,7 @@ class ScheduledMissionCheckWorkflow:
 
     This workflow runs once per scheduled trigger (every 1s).
     It queries the DB for missions with approved tasks in autonomous
-    or off gate_mode, then starts a MissionRunWorkflow for each.
+    gate_mode, then starts a MissionRunWorkflow for each.
 
     The workflow itself is short-lived — it checks, starts children,
     and completes. The Temporal schedule fires it again on the next

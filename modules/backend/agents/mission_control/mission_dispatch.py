@@ -297,7 +297,12 @@ async def handle_mission(
         )
 
     # Persist plan to mission_plans for Kanban board visibility
-    if db_session is not None and mission_id:
+    if db_session is not None and mission_id and precomputed_plan is None:
+        # Plan 80h: only persist when handle_mission produced the plan
+        # itself (Planning Agent path). When the caller supplied
+        # `precomputed_plan`, the caller already wrote the plan to the
+        # DB — re-persisting here would reconcile our 1-task slice
+        # against the caller's full plan and CANCEL everything else.
         try:
             from modules.backend.services.mission_plan import MissionPlanService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator

@@ -485,6 +485,61 @@ async def get_workflow_run(
     )
 
 
+@router.post(
+    "/{mission_id}/workflow-runs/{run_id}/cancel",
+    response_model=ApiResponse,
+    summary="Cancel a workflow run",
+)
+async def cancel_workflow_run(
+    mission_id: str,
+    run_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Mark a workflow run as CANCELLED.
+
+    Use cases:
+      - Stale RUNNING rows whose dispatcher coroutine died on backend
+        restart (Plan 80h orphan recovery).
+      - Operator-aborted runs.
+
+    Idempotent: no-op when the run is already in a terminal state.
+    """
+    from datetime import datetime, timezone
+
+    from modules.backend.models.workflow_run import WorkflowRunState
+    from modules.backend.repositories.workflow_run import WorkflowRunRepository
+
+    repo = WorkflowRunRepository(db)
+    run = await repo.get_by_id(run_id)
+    if run.mission_id != mission_id:
+        raise NotFoundError(f"Workflow run {run_id} not found in mission {mission_id}")
+
+    current = run.status.value if hasattr(run.status, "value") else str(run.status)
+    terminal = {
+        WorkflowRunState.COMPLETED.value,
+        WorkflowRunState.FAILED.value,
+        WorkflowRunState.CANCELLED.value,
+    }
+    if str(current).lower() in terminal:
+        return ApiResponse(
+            success=True,
+            data={"id": run.id, "status": str(current),
+                  "message": "Already in terminal state — no-op."},
+            metadata={"request_id": request_id},
+        )
+
+    run.status = WorkflowRunState.CANCELLED
+    run.completed_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return ApiResponse(
+        success=True,
+        data={"id": run.id, "status": "CANCELLED"},
+        metadata={"request_id": request_id},
+    )
+
+
 # ---- Workflow schedules ----
 
 

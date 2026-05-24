@@ -260,16 +260,6 @@ class TestRuleApprovedTasks:
 
 class TestRuleProposedTasks:
     @pytest.mark.asyncio
-    async def test_off_mode_auto_advances(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="off")
-        ctx = _context(proposed=2, total_completed=5, total_cost_usd=1.0)
-
-        decision = await reviewer.review(ctx)
-
-        assert decision.action == GateAction.ADVANCE_APPROVED
-        assert _parse_rule(decision) == 5
-
-    @pytest.mark.asyncio
     async def test_autonomous_mode_auto_advances(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(proposed=2, total_completed=5, total_cost_usd=1.0)

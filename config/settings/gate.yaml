@@ -6,17 +6,16 @@
 # The gate pauses execution at key decision points for human and/or AI review.
 #
 # Modes:
-#   off          - No gate reviews (default). Zero overhead.
 #   interactive  - Human reviews via Rich CLI at each enabled gate point (TTY-bound).
 #   manual       - Human reviews via HTTP API (any client). Step-by-step approval
 #                  works from CLI (`mc gate approve <id>`), TUI, or scripts.
 #   ai_assisted  - AI produces a recommendation, human makes final decision.
-#   autonomous   - AI makes all gate decisions. No human interaction.
+#   autonomous   - AI makes all gate decisions. No human interaction (default).
 #
 # CLI override: --gate <mode>  (e.g., --gate manual)
 # Legacy alias: --step is equivalent to --gate interactive
 
-mode: "off"
+mode: "autonomous"
 
 # ---------------------------------------------------------------------------
 # AI reviewer settings (used in ai_assisted and autonomous modes)

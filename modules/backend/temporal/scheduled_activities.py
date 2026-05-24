@@ -3,7 +3,7 @@ Scheduled workflow activities (Plan 52 Phase D).
 
 Activities for the ScheduledMissionCheckWorkflow. One activity:
 find_ready_plans — queries the DB for missions with approved tasks
-in autonomous/off gate_mode, same logic as MissionPlanDaemon's
+in autonomous gate_mode, same logic as MissionPlanDaemon's
 _find_ready_plan_ids but as a Temporal Activity.
 """
 
@@ -39,7 +39,7 @@ async def find_ready_plans() -> list[dict]:
 
     async with get_async_session() as db:
         # Find plans that have at least one approved task and are in
-        # autonomous or off gate_mode with active status.
+        # autonomous gate_mode (or unset) with active status.
         approved_count = (
             select(func.count())
             .where(
@@ -59,7 +59,6 @@ async def find_ready_plans() -> list[dict]:
                 MissionPlan.status == MissionPlanStatus.ACTIVE,
                 or_(
                     MissionPlan.gate_mode == "autonomous",
-                    MissionPlan.gate_mode == "off",
                     MissionPlan.gate_mode.is_(None),
                 ),
                 approved_count > 0,

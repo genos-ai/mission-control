@@ -60,17 +60,17 @@ async def show(
         return
 
     plan_status = plan.get("status", "?")
-    gate_mode = plan.get("gate_mode") or "off"
+    gate_mode = plan.get("gate_mode") or "autonomous"
     spent = plan.get("total_spent_usd", 0.0) or 0.0
     ceiling = plan.get("budget_usd_ceiling")
-    header = f"Plan {plan.get('id', '')[:8]}  status={plan_status}  gate={gate_mode}  spent=${spent:.2f}"
+    header = f"Plan {plan.get('id', '')}  status={plan_status}  gate={gate_mode}  spent=${spent:.2f}"
     if ceiling:
         header += f" / ${ceiling:.2f}"
     console.print(f"[bold]{header}[/bold]\n")
 
     columns = [
         ("#",      {"justify": "right", "width": 4}),
-        ("ID",     {"style": "cyan", "width": 10}),
+        ("ID",     {"style": "cyan", "width": 38}),
         ("Status", {"width": 11}),
         ("Agent",  {"width": 38}),
         ("Cost",   {"justify": "right", "width": 8}),
@@ -80,21 +80,69 @@ async def show(
         columns.append(("Deps", {"ratio": 1, "no_wrap": False}))
 
     table = build_table(columns=columns)
-    id_short_map = {t["id"]: t["id"][:8] for t in tasks}
     for i, t in enumerate(tasks, start=1):
         row = [
             str(i),
-            t["id"][:8],
+            t["id"],
             styled_status(t.get("status", "")),
             t.get("agent", "")[:38],
             f"${t.get('cost_usd', 0):.2f}",
-            (t.get("description") or "")[:120],
+            t.get("description") or "",
         ]
         if show_deps:
-            dep_short = ", ".join(id_short_map.get(d, d[:8]) for d in t.get("dependencies", []))
-            row.append(dep_short or "[dim]—[/dim]")
+            deps = ", ".join(t.get("dependencies", []))
+            row.append(deps or "[dim]—[/dim]")
         table.add_row(*row)
     console.print(table)
+
+
+# =============================================================================
+# Task detail — single-task view including instructions + failure_reason
+# =============================================================================
+
+
+async def task_detail(
+    api: CliApiClient,
+    *,
+    mission_id: str,
+    task_id: str,
+) -> None:
+    """Print full detail for one task: instructions, deps, result, failure reason."""
+    console = get_console()
+    resolved_id = await _resolve_task_id(api, mission_id, task_id)
+    plan = await api.get(f"/missions/{mission_id}/plan")
+    task = next((t for t in plan.get("tasks", []) if t["id"] == resolved_id), None)
+    if task is None:
+        console.print(f"[red]Task {resolved_id} not found in plan.[/red]")
+        return
+
+    status = (task.get("status") or "").lower()
+    console.print(
+        f"[bold]Task {resolved_id}[/bold]  "
+        f"status=[cyan]{status}[/cyan]  "
+        f"agent=[cyan]{task.get('agent', '?')}[/cyan]  "
+        f"cost=${task.get('cost_usd', 0):.4f}  "
+        f"duration={task.get('duration_seconds', 0):.1f}s"
+    )
+    if task.get("retry_count"):
+        console.print(f"  [dim]retries: {task['retry_count']}[/dim]")
+    if task.get("approved_at"):
+        console.print(f"  [dim]approved: {task['approved_at']}[/dim]")
+    console.print(f"\n[bold]Description:[/bold]")
+    console.print(f"  {task.get('description') or '(none)'}")
+    if task.get("instructions"):
+        console.print(f"\n[bold]Instructions:[/bold]")
+        console.print(f"  {task['instructions'][:2000]}")
+        if len(task['instructions']) > 2000:
+            console.print(f"  [dim]... ({len(task['instructions'])} chars total)[/dim]")
+    if task.get("dependencies"):
+        console.print(f"\n[bold]Dependencies:[/bold]  {', '.join(task['dependencies'])}")
+    if task.get("failure_reason"):
+        console.print(f"\n[bold red]Failure reason:[/bold red]")
+        console.print(f"  {task['failure_reason']}")
+    if task.get("result_summary"):
+        console.print(f"\n[bold]Result summary:[/bold]")
+        console.print(f"  {task['result_summary'][:1000]}")
 
 
 # =============================================================================
@@ -127,7 +175,7 @@ async def approve(
             return
         task_id = picked["id"]
         console.print(
-            f"[bold]Next ready:[/bold] {task_id[:8]}  "
+            f"[bold]Next ready:[/bold] {task_id}  "
             f"[dim]{picked.get('agent', '')}[/dim]  "
             f"{(picked.get('description') or '')[:80]}"
         )
@@ -136,7 +184,7 @@ async def approve(
     result = await api.post(f"/missions/{mission_id}/plan/tasks/{resolved_id}/approve")
     flipped = result.get("transitioned_task_ids", [])
     console.print(
-        f"[green]Approved[/green] {resolved_id[:8]}"
+        f"[green]Approved[/green] {resolved_id}"
         + (f" (+{len(flipped) - 1} transitive deps)" if len(flipped) > 1 else "")
     )
 
@@ -150,15 +198,51 @@ async def reject(
     api: CliApiClient,
     *,
     mission_id: str,
-    task_id: str,
+    task_id: str | None,
+    reject_all: bool = False,
 ) -> None:
-    """Reject one task (transitively cancels dependents)."""
+    """Reject one task (transitively cancels dependents).
+
+    With ``reject_all=True``, cancels every non-terminal task in the plan.
+    Order doesn't matter — reject is idempotent and already-cancelled
+    rows are no-ops, so repeated calls on overlapping dep chains are safe.
+    """
     console = get_console()
+
+    if reject_all:
+        plan = await api.get(f"/missions/{mission_id}/plan")
+        non_terminal = frozenset({"proposed", "approved", "queued", "running"})
+        candidates = [
+            t["id"] for t in plan.get("tasks", [])
+            if (t.get("status") or "").lower() in non_terminal
+        ]
+        if not candidates:
+            console.print("[dim]No non-terminal tasks to cancel.[/dim]")
+            return
+        console.print(f"[bold]Cancelling {len(candidates)} non-terminal task(s)...[/bold]")
+        cancelled_total = 0
+        for tid in candidates:
+            try:
+                result = await api.post(f"/missions/{mission_id}/plan/tasks/{tid}/reject")
+                cancelled_total += len(result.get("transitioned_task_ids", []))
+            except ApiError as exc:
+                # Race: a previous transitive cancel already covered this id.
+                # Skip and move on.
+                console.print(f"  [dim]{tid}: {exc.message}[/dim]")
+        console.print(
+            f"[yellow]Cancelled[/yellow] {cancelled_total} task transition(s) total."
+        )
+        return
+
+    if not task_id:
+        console.print("[red]Provide TASK_ID or --all.[/red]")
+        sys.exit(1)
+
     resolved_id = await _resolve_task_id(api, mission_id, task_id)
     result = await api.post(f"/missions/{mission_id}/plan/tasks/{resolved_id}/reject")
     cancelled = result.get("transitioned_task_ids", [])
     console.print(
-        f"[yellow]Rejected[/yellow] {resolved_id[:8]}"
+        f"[yellow]Rejected[/yellow] {resolved_id}"
         + (f" (+{len(cancelled) - 1} transitive dependents cancelled)" if len(cancelled) > 1 else "")
     )
 
@@ -179,7 +263,7 @@ async def retry_one(
     resolved_id = await _resolve_task_id(api, mission_id, task_id)
     await api.post(f"/missions/{mission_id}/plan/tasks/{resolved_id}/retry")
     console.print(
-        f"[cyan]Retrying[/cyan] {resolved_id[:8]}  "
+        f"[cyan]Retrying[/cyan] {resolved_id}  "
         f"[dim](status flipped FAILED → APPROVED; run `mc plan dispatch` to re-execute)[/dim]"
     )
 

@@ -513,7 +513,7 @@ class MissionPlanOrchestrator(BaseService):
         task_count = len(plan.tasks)
 
         # 5. Auto-approve (gate mode permitting)
-        effective_gate = plan.gate_mode or "off"
+        effective_gate = plan.gate_mode or "autonomous"
         if effective_gate == "interactive":
             self._log_operation(
                 "run_objective: interactive gate — stopping after refine",
@@ -795,7 +795,7 @@ class MissionPlanOrchestrator(BaseService):
 
         # Build the gate reviewer from the plan's gate_mode (Plan 42 §10.4)
         gate_reviewer = None
-        if plan.gate_mode and plan.gate_mode != "off":
+        if plan.gate_mode:
             from modules.backend.agents.mission_control.gate import create_gate
             gate_reviewer = create_gate(
                 mode_override=plan.gate_mode,

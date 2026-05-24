@@ -67,7 +67,7 @@ def upgrade() -> None:
                 sa.String(20),
                 nullable=True,
                 comment=(
-                    "Autonomy mode: off, interactive, ai_assisted, autonomous. "
+                    "Autonomy mode: interactive, manual, ai_assisted, autonomous. "
                     "Inherits from missions.gate_mode at creation; can be "
                     "changed per-plan without affecting the mission default."
                 ),

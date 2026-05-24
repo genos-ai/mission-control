@@ -742,7 +742,7 @@ async def admin_emergency_stop(
     """Atomically pause every active autonomous plan.
 
     Sets ``status = paused`` on all ``mission_plans`` rows where
-    ``status = active`` AND ``gate_mode in {autonomous, off}``.
+    ``status = active`` AND ``gate_mode = autonomous``.
     This is a single UPDATE query — no per-plan loop, no race window.
 
     Use this when something is wrong and you need all autonomous
@@ -769,7 +769,7 @@ async def admin_emergency_stop(
         update(MissionPlan)
         .where(
             MissionPlan.status == MissionPlanStatus.ACTIVE,
-            MissionPlan.gate_mode.in_({"autonomous", "off"}),
+            MissionPlan.gate_mode == "autonomous",
         )
         .values(status=MissionPlanStatus.PAUSED)
     )

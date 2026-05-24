@@ -23,6 +23,7 @@ from modules.backend.models.mission import (
     MissionStatus,
 )
 from modules.backend.models.mission_event import MissionEvent
+from modules.backend.models.mission_plan import VALID_GATE_MODES
 from modules.backend.repositories.mission import (
     MissionMemberRepository,
     MissionRepository,
@@ -427,9 +428,11 @@ class MissionService(BaseService):
 
     async def set_gate_mode(self, mission_id: str, mode: str) -> Mission:
         """Update the default gate mode for a mission."""
-        valid_modes = {"off", "interactive", "ai_assisted", "autonomous"}
-        if mode not in valid_modes:
-            raise ValueError(f"Invalid gate mode: {mode}. Valid: {', '.join(sorted(valid_modes))}")
+        if mode not in VALID_GATE_MODES:
+            raise ValueError(
+                f"Invalid gate mode: {mode}. "
+                f"Valid: {', '.join(sorted(VALID_GATE_MODES))}"
+            )
         mission = await self.get_mission(mission_id)
         mission.gate_mode = mode
         await self._session.flush()

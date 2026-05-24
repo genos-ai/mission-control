@@ -116,7 +116,16 @@ async def wait_until_approved(
         raise TaskApprovalUnknown(
             f"Cannot wait for task {task_id}: row does not exist.",
         )
-    if initial == TaskStatus.APPROVED.value:
+    # PROPOSED is the only state that requires waiting. Anything else is
+    # "past approval" (APPROVED / QUEUED / RUNNING / COMPLETED / FAILED /
+    # SKIPPED) or an explicit no-go (CANCELLED). For the past-approval set
+    # we proceed immediately; for CANCELLED we raise so the dispatcher
+    # doesn't run cancelled work.
+    if initial == TaskStatus.CANCELLED.value:
+        raise TaskApprovalCancelled(
+            f"Task {task_id} is CANCELLED; refusing to dispatch.",
+        )
+    if initial != TaskStatus.PROPOSED.value:
         return
 
     # Register the Event BEFORE re-checking state, so an approval that
@@ -161,6 +170,14 @@ async def wait_until_approved(
 
 class TaskApprovalUnknown(Exception):
     """Raised when wait_until_approved is called for a non-existent task."""
+
+
+class TaskApprovalCancelled(Exception):
+    """Raised when wait_until_approved finds the task already CANCELLED.
+
+    Cancellation is an explicit operator decision (or a transitive consequence
+    of one); the dispatcher must not run a cancelled task.
+    """
 
 
 class TaskApprovalTimeout(Exception):

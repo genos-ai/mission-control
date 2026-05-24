@@ -122,7 +122,7 @@ export default function MissionLayout() {
 
   // Plan is autonomously dispatching if active + gate_mode allows it
   const planIsAutonomous = plan?.status === 'active' &&
-    (plan?.gate_mode === 'autonomous' || plan?.gate_mode === 'off')
+    plan?.gate_mode === 'autonomous'
   const planIsPaused = plan?.status === 'paused'
 
   async function handlePlanPauseResume() {

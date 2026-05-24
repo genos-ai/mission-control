@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Apply migration."""
-    op.add_column('missions', sa.Column('gate_mode', sa.String(length=20), nullable=True, comment='Default gate mode: off, interactive, ai_assisted, autonomous'))
+    op.add_column('missions', sa.Column('gate_mode', sa.String(length=20), nullable=True, comment='Default gate mode: interactive, manual, ai_assisted, autonomous'))
 
 
 def downgrade() -> None:

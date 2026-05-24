@@ -117,8 +117,8 @@ export function PlanTopBar({
           className="h-6 appearance-none rounded border bg-transparent pl-2 pr-6 text-[10px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           title="Autonomy mode (Plan 42 §10.4)"
         >
-          <option value="off">off — fully autonomous</option>
           <option value="interactive">interactive — human in loop</option>
+          <option value="manual">manual — external approval</option>
           <option value="ai_assisted">ai_assisted — AI in loop</option>
           <option value="autonomous">autonomous — unattended</option>
         </select>

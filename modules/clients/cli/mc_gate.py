@@ -93,14 +93,14 @@ async def show(api: CliApiClient, *, mission_id: str) -> None:
     console.print(f"\n[bold]{len(gates)} pending gate(s):[/bold]")
     table = build_table(columns=[
         ("#",         {"justify": "right", "width": 4}),
-        ("ID",        {"style": "cyan", "width": 10}),
+        ("ID",        {"style": "cyan", "width": 38}),
         ("Gate type", {"width": 22}),
         ("Created",   {"width": 19}),
     ])
     for i, g in enumerate(gates, start=1):
         table.add_row(
             str(i),
-            g["id"][:8],
+            g["id"],
             g.get("gate_type", "?"),
             g.get("created_at", "")[:19],
         )
@@ -165,7 +165,7 @@ async def pending(api: CliApiClient, *, mission_id: str) -> None:
 
     table = build_table(columns=[
         ("#",         {"justify": "right", "width": 4}),
-        ("ID",        {"style": "cyan", "width": 10}),
+        ("ID",        {"style": "cyan", "width": 38}),
         ("Gate type", {"width": 22}),
         ("Created",   {"width": 19}),
         ("Valid actions", {"ratio": 1, "no_wrap": False}),
@@ -175,7 +175,7 @@ async def pending(api: CliApiClient, *, mission_id: str) -> None:
         actions = ", ".join(VALID_ACTIONS_BY_GATE.get(gt, ["?"]))
         table.add_row(
             str(i),
-            g["id"][:8],
+            g["id"],
             gt,
             g.get("created_at", "")[:19],
             actions,
@@ -208,7 +208,7 @@ async def decide(
         body=body,
     )
     console.print(
-        f"[green]Decided[/green] {resolved[:8]}  action=[cyan]{action}[/cyan]"
+        f"[green]Decided[/green] {resolved}  action=[cyan]{action}[/cyan]"
         + (f"  reason={reason!r}" if reason else "")
     )
 

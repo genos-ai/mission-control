@@ -26,7 +26,7 @@ export type PlanTaskStatus =
 
 export type MissionPlanStatus = 'active' | 'paused' | 'completed' | 'archived'
 
-export type GateMode = 'off' | 'interactive' | 'ai_assisted' | 'autonomous'
+export type GateMode = 'interactive' | 'manual' | 'ai_assisted' | 'autonomous'
 
 /** Unified task: definition fields + state fields merged (Plan 72). */
 export interface PlanTask {

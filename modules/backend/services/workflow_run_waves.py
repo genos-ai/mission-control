@@ -191,6 +191,7 @@ class WorkflowRunWavesMixin:
         session_id: str,
         *,
         failure_reason: str | None = None,
+        failure_reasons: dict[str, str] | None = None,
         cost_map: dict[str, float] | None = None,
         step_task_map: dict[str, str] | None = None,
     ) -> None:
@@ -226,8 +227,11 @@ class WorkflowRunWavesMixin:
 
                     if to_status == TaskStatus.RUNNING:
                         task.last_attempt_at = utc_now()
-                    if failure_reason and to_status == TaskStatus.FAILED:
-                        task.failure_reason = failure_reason[:500]
+                    if to_status == TaskStatus.FAILED:
+                        # Prefer per-step reason; fall back to shared one.
+                        reason = (failure_reasons or {}).get(step_id) or failure_reason
+                        if reason:
+                            task.failure_reason = reason[:500]
                     if cost_map and step_id in cost_map:
                         task.cost_usd = cost_map[step_id]
 
@@ -399,6 +403,7 @@ class WorkflowRunWavesMixin:
                 continue
             results = await self._execute_wave(
                 run, wave_steps, session_id, completed_outcomes, gate=gate,
+                step_task_map=_step_task_map,
             )
 
             # Collect results sequentially (cost, outcomes, events)
@@ -421,20 +426,44 @@ class WorkflowRunWavesMixin:
                     cost_usd=execution.total_cost_usd,
                 ))
 
-            # Kanban: mark wave steps as completed
+            # Kanban: per-step terminal status reflects the inner execution
+            # outcome (Plan 80h fix). Previously every step was force-written
+            # to COMPLETED regardless of whether handle_mission's inner agent
+            # actually failed — the Kanban lied while the trace told the truth.
             if _plan_id and wave_steps:
                 _cost_map = {
                     s.id: getattr(ex, 'total_cost_usd', 0.0)
                     for s, (ex, _) in zip(wave_steps, results)
                 }
-                _completions: list[tuple[str, TaskStatus]] = [
-                    (step.id, TaskStatus.COMPLETED)
-                    for step in wave_steps
-                ]
+                _step_statuses: list[tuple[str, TaskStatus]] = []
+                _failure_reasons: dict[str, str] = {}
+                for step, (execution, _) in zip(wave_steps, results):
+                    ex_status = (
+                        execution.status
+                        if isinstance(execution.status, str)
+                        else execution.status.value
+                    ).lower()
+                    if ex_status in ("success", "partial"):
+                        ts = TaskStatus.COMPLETED
+                    elif ex_status == "skipped":
+                        ts = TaskStatus.SKIPPED
+                    else:
+                        ts = TaskStatus.FAILED
+                        # Pull the most specific failure reason we can find.
+                        # Order: abort_reason on the outcome, first task_result's
+                        # failure path, fall back to a generic message.
+                        reason = (
+                            getattr(execution, "abort_reason", None)
+                            or self._extract_first_task_failure(execution)
+                            or f"Step '{step.id}' execution failed (status={ex_status})"
+                        )
+                        _failure_reasons[step.id] = str(reason)
+                    _step_statuses.append((step.id, ts))
                 await self._sync_plan_task_states(
-                    _plan_id, run.mission_id, _completions, session_id,
+                    _plan_id, run.mission_id, _step_statuses, session_id,
                     cost_map=_cost_map,
                     step_task_map=_step_task_map,
+                    failure_reasons=_failure_reasons or None,
                 )
 
     async def _execute_wave(
@@ -444,22 +473,31 @@ class WorkflowRunWavesMixin:
         session_id: str,
         completed_outcomes: dict[str, dict],
         gate: object | None = None,
+        step_task_map: dict[str, str] | None = None,
     ) -> list[tuple[Any, dict]]:
         """Execute all steps in a wave concurrently.
 
         Each step gets its own DB session via the factory to avoid
         SQLAlchemy async flush conflicts.
+
+        ``step_task_map`` (Plan 80h) passes the step → task UUID map down
+        to ``_execute_step`` so handle_mission can be given a precomputed
+        TaskPlan that points at the workflow's task, skipping the
+        Planning Agent.
         """
         if self._step_context_factory is None:
             raise RuntimeError(
                 "step_context_factory is required to execute workflows"
             )
 
+        _step_task_map = step_task_map or {}
+
         async def _run_step(step: WorkflowStepSchema) -> tuple[Any, dict]:
             async with self._step_context_factory() as ctx:
                 return await self._execute_step(
                     run, step, session_id, completed_outcomes,
                     ctx, gate=gate,
+                    step_task_id=_step_task_map.get(step.id),
                 )
 
         results = await asyncio.gather(
@@ -475,6 +513,7 @@ class WorkflowRunWavesMixin:
         completed_outcomes: dict[str, dict],
         ctx: StepContext,
         gate: object | None = None,
+        step_task_id: str | None = None,
     ) -> tuple[Any, dict]:
         """Execute a single workflow step, dispatching by node_type.
 
@@ -483,6 +522,11 @@ class WorkflowRunWavesMixin:
         level wait happens in ``_execute_steps`` before this method is
         called. By the time we get here the task is already APPROVED
         (or autonomously auto-approved).
+
+        ``step_task_id`` is the UUID of the Task row that represents
+        this step in the plan. Used to build a precomputed_plan for
+        handle_mission so it skips the Planning Agent (which would
+        otherwise create a competing plan and break the workflow).
         """
         node_type = getattr(step, "node_type", "agent_step")
 
@@ -571,6 +615,40 @@ class WorkflowRunWavesMixin:
         event_bus = self._event_bus or NoOpEventBus()
         budget = cost_ceiling or get_default_budget_usd()
 
+        # Build a 1-task precomputed_plan pointing at the workflow's task
+        # (Plan 80h). Without this, handle_mission runs its Planning Agent
+        # and produces a competing plan whose task IDs don't match the
+        # workflow's, breaking the unified task-lifecycle approval.
+        from modules.backend.schemas.task_plan import (
+            TaskDefinition, TaskInputs, TaskPlan,
+        )
+        # Agent name in roster is `<capability>.agent` (see ExecutionRecord
+        # logging above and the elsewhere-used convention). Workflow YAML
+        # exposes only the capability prefix.
+        precomputed_plan_agent = (
+            f"{step.capability}.agent" if step.capability
+            else f"workflow:{step.node_type}"
+        )
+        precomputed_plan: TaskPlan | None = None
+        if step_task_id:
+            precomputed_plan = TaskPlan(
+                version="1.0.0",
+                mission_id=run.mission_id,
+                summary=step.description or step.label or step.id,
+                estimated_cost_usd=cost_ceiling or 0.0,
+                estimated_duration_seconds=step.timeout_seconds or 0,
+                tasks=[
+                    TaskDefinition(
+                        task_id=step_task_id,
+                        agent=precomputed_plan_agent,
+                        description=step.description or step.label or step.id,
+                        instructions=objective,
+                        dependencies=[],
+                        inputs=TaskInputs(static=step.input or {}),
+                    ),
+                ],
+            )
+
         try:
             from modules.backend.agents.mission_control.mission_dispatch import handle_mission
 
@@ -587,6 +665,7 @@ class WorkflowRunWavesMixin:
                 db_session=ctx.db,
                 gate=gate,
                 execution_mode=resolved_mode,
+                precomputed_plan=precomputed_plan,
                 container_image=step.container_image,
                 extra_volumes=step.extra_volumes,
                 execution_record_id=record.id,
@@ -1305,6 +1384,42 @@ class WorkflowRunWavesMixin:
                 roster_name = f"{step.roster}-{step.complexity_tier}"
 
         return resolved_mode, roster_name
+
+    @staticmethod
+    def _extract_first_task_failure(execution: Any) -> str | None:
+        """Pull a human-meaningful failure reason from an ExecutionOutcome.
+
+        Looks at the first task_results entry's output_reference,
+        retry_history, and verification_outcome for any error /
+        failure_reason / abort_reason hint. Returns None when we can't
+        find a specific reason — caller should fall back to a generic
+        message.
+        """
+        task_results = getattr(execution, "task_results", None) or []
+        if not task_results:
+            return None
+        first = task_results[0]
+        output = getattr(first, "output_reference", None) or {}
+        if isinstance(output, dict):
+            for key in ("error", "failure_reason", "abort_reason"):
+                value = output.get(key)
+                if value:
+                    return str(value)
+        retry_history = getattr(first, "retry_history", None) or []
+        if retry_history:
+            last = retry_history[-1]
+            reason = getattr(last, "failure_reason", None)
+            if reason:
+                return str(reason)
+        verification = getattr(first, "verification_outcome", None)
+        if verification:
+            for tier_attr in ("tier_3", "tier_2", "tier_1"):
+                tier = getattr(verification, tier_attr, None)
+                tier_status = getattr(tier, "status", None) if tier else None
+                tier_reason = getattr(tier, "failure_reason", None) if tier else None
+                if tier_status == "fail" and tier_reason:
+                    return f"{tier_attr}: {tier_reason}"
+        return None
 
     @staticmethod
     def _should_skip(

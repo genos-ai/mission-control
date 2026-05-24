@@ -1176,7 +1176,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 s = t.status.value if hasattr(t.status, "value") else str(t.status)
                 counts[s] = counts.get(s, 0) + 1
 
-            gate = plan.gate_mode or "off"
+            gate = plan.gate_mode or "autonomous"
             parts.append(f"[Plan State]")
             parts.append(f"Version: {plan.version} | Gate: {gate} | Tasks: {len(tasks)}")
             if counts:

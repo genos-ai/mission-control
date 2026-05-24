@@ -16,8 +16,8 @@ interface RunModalProps {
 
 const GATE_OPTIONS = [
   { value: '', label: 'Default' },
-  { value: 'off', label: 'Off' },
   { value: 'interactive', label: 'Interactive (step-through)' },
+  { value: 'manual', label: 'Manual (HTTP approval)' },
   { value: 'ai_assisted', label: 'AI Assisted' },
   { value: 'autonomous', label: 'Autonomous' },
 ]

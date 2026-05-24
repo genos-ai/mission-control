@@ -127,6 +127,27 @@ Borrow the concepts instead.
 
 ---
 
+## Live Agent Activity Visibility (CLI / Console)
+
+While walking through the v1 workflow with `--gate manual`, when a task transitions to RUNNING the operator is **blind to what the agent is doing**. Tool calls, intermediate reasoning, token usage, cost accumulation, and progress are all happening in the backend but only visible by grepping `var/logs/system.jsonl`. The CLI `mc plan task <id>` shows post-hoc state but doesn't stream live activity.
+
+The backend already emits rich events (`Copilot tool call`, `Tool call → PydanticAI`, `Tool result`, `Copilot request completed`) for every agent step — these need to surface to the operator in real time.
+
+- [ ] **`mc plan task <id> --watch`** — open an SSE stream filtered to the given task's lifecycle events. Print: tool calls + arguments, tool results (summarised), token deltas, status changes, completion.
+- [ ] **`mc agent watch <agent_name>`** — live tail of one agent's activity across whatever it's running (useful when debugging a specific agent).
+- [ ] **Default `mc plan show` enriches RUNNING rows** with a one-liner like `[3 tool calls, 12.4k input tokens, 6s elapsed]` so static `mc plan show` snapshots also tell some story about active work.
+- [ ] **Verify what `mc console monitor` already shows** — it may already cover some of this; confirm the gap before duplicating.
+
+This isn't just polish — it's the difference between operator-controlled debugging (the whole point of `manual` mode) and "approve and pray."
+
+---
+
+## Async Run Endpoint Hardening (Plan 80h follow-up)
+
+- [ ] **Temporal-backed dispatch for workflow runs in interactive modes** — `modules/backend/api/v1/endpoints/missions_workflows.py` currently uses `asyncio.create_task` to fire-and-return when the gate mode is `manual` / `interactive` / `ai_assisted`. The background task dies if the backend process restarts (e.g. uvicorn `--reload` triggers, deploy, crash), orphaning any waiting dispatchers and leaving `workflow_runs.status='RUNNING'` rows stuck. Production-grade: route through `MissionRunWorkflow` (Plan 52) so durability survives process restarts. Marked in the endpoint code with a follow-up comment.
+
+---
+
 ## Plan Version History
 
 The plan board shows a version counter (e.g. v18) that increments on each refinement, but previous versions are not stored. There's no way to view what the plan looked like at v15 vs v18.

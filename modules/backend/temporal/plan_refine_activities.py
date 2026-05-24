@@ -58,7 +58,7 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
             # (e.g. admin acting on behalf of a user).
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
-            gate = refined.gate_mode or "off"
+            gate = refined.gate_mode or "autonomous"
             approved_count = 0
             if gate != "interactive":
                 mission = await MissionService(db).get_mission(input.mission_id)

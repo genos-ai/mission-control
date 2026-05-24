@@ -351,6 +351,72 @@ def run(ctx, objective, budget, gate_override, step, dry_run, context):
 
 
 # =============================================================================
+# Runs — workflow-run lifecycle (list / show / cancel)
+# =============================================================================
+
+
+@mc.group("runs", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def runs(ctx):
+    """Manage existing workflow runs (list active, show detail, cancel)."""
+    if ctx.invoked_subcommand is None:
+        from modules.clients.cli.mc_runs import list_runs
+
+        async def _run():
+            async with api_client() as api:
+                mid = await require_mission(api)
+                await list_runs(api, mission_id=mid, include_terminal=False)
+
+        asyncio.run(_run())
+
+
+@runs.command("list")
+@click.option("--all", "include_terminal", is_flag=True,
+              help="Include completed / failed / cancelled runs (default: active only).")
+@click.pass_obj
+def runs_list(ctx, include_terminal):
+    """List workflow runs for the current mission (active by default)."""
+    from modules.clients.cli.mc_runs import list_runs
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await list_runs(api, mission_id=mid, include_terminal=include_terminal)
+
+    asyncio.run(_run())
+
+
+@runs.command("show")
+@click.argument("run_id")
+@click.pass_obj
+def runs_show(ctx, run_id):
+    """Show full detail for one workflow run."""
+    from modules.clients.cli.mc_runs import show_run
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await show_run(api, mission_id=mid, run_id=run_id)
+
+    asyncio.run(_run())
+
+
+@runs.command("cancel")
+@click.argument("run_id")
+@click.pass_obj
+def runs_cancel(ctx, run_id):
+    """Mark a workflow run as CANCELLED (useful for stale RUNNING orphans)."""
+    from modules.clients.cli.mc_runs import cancel_run
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await cancel_run(api, mission_id=mid, run_id=run_id)
+
+    asyncio.run(_run())
+
+
+# =============================================================================
 # Retry command
 # =============================================================================
 
@@ -409,6 +475,21 @@ def plan_show(ctx, status_filter, show_deps):
     asyncio.run(_run())
 
 
+@plan.command("task")
+@click.argument("task_id")
+@click.pass_obj
+def plan_task(ctx, task_id):
+    """Show full detail for one task (status, instructions, deps, failure reason)."""
+    from modules.clients.cli.mc_plan import task_detail
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await task_detail(api, mission_id=mid, task_id=task_id)
+
+    asyncio.run(_run())
+
+
 @plan.command("approve")
 @click.argument("task_id", required=False)
 @click.option("--next", "pick_next", is_flag=True,
@@ -427,16 +508,18 @@ def plan_approve(ctx, task_id, pick_next):
 
 
 @plan.command("reject")
-@click.argument("task_id")
+@click.argument("task_id", required=False)
+@click.option("--all", "reject_all", is_flag=True,
+              help="Cancel ALL non-terminal tasks in the plan.")
 @click.pass_obj
-def plan_reject(ctx, task_id):
-    """Reject one task (also cancels transitive dependents)."""
+def plan_reject(ctx, task_id, reject_all):
+    """Reject one task (also cancels transitive dependents); --all cancels everything non-terminal."""
     from modules.clients.cli.mc_plan import reject as plan_reject_fn
 
     async def _run():
         async with api_client() as api:
             mid = await require_mission(api)
-            await plan_reject_fn(api, mission_id=mid, task_id=task_id)
+            await plan_reject_fn(api, mission_id=mid, task_id=task_id, reject_all=reject_all)
 
     asyncio.run(_run())
 

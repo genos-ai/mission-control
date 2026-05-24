@@ -72,7 +72,7 @@ class AutonomousPostRunReviewer:
         cost_floor_usd: float = DEFAULT_COST_FLOOR_USD,
     ) -> None:
         self._session = session
-        self._gate_mode = gate_mode or "off"
+        self._gate_mode = gate_mode or "autonomous"
         self._stall_threshold = stall_threshold
         self._budget_safety_factor = budget_safety_factor
         self._cost_floor_usd = cost_floor_usd
@@ -183,7 +183,7 @@ class AutonomousPostRunReviewer:
                     rule="4-headroom",
                 )
 
-            if self._gate_mode in ("off", "autonomous"):
+            if self._gate_mode == "autonomous":
                 # Rule #5
                 return self._decide(
                     GateAction.ADVANCE_APPROVED,

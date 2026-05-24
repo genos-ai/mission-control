@@ -54,7 +54,6 @@ class MissionPlanStatus(str, enum.Enum):
 # MissionPlanService can pass this string straight to create_gate(mode_override=...).
 # Plan 42 §10.4: autonomy is gate mode lifted to plan level.
 VALID_GATE_MODES: frozenset[str] = frozenset({
-    "off",
     "interactive",
     "manual",
     "ai_assisted",
@@ -120,7 +119,7 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         String(20),
         nullable=True,
         comment=(
-            "Autonomy mode: off, interactive, ai_assisted, autonomous. "
+            "Autonomy mode: interactive, manual, ai_assisted, autonomous. "
             "Inherits from missions.gate_mode at creation."
         ),
     )

@@ -487,7 +487,7 @@ class GateAiSchema(_StrictBase):
     )
 
 
-_GateMode = Literal["off", "interactive", "manual", "ai_assisted", "autonomous"]
+_GateMode = Literal["interactive", "manual", "ai_assisted", "autonomous"]
 
 
 class GatePointSchema(_StrictBase):
@@ -575,7 +575,7 @@ class GateManualSchema(_StrictBase):
 class GateSchema(_StrictBase):
     """Gate reviewer configuration (gate.yaml)."""
 
-    mode: _GateMode = "off"
+    mode: _GateMode = "autonomous"
     ai: GateAiSchema = Field(default_factory=GateAiSchema)
     manual: GateManualSchema = Field(default_factory=GateManualSchema)
     points: GatePointsSchema = Field(default_factory=GatePointsSchema)
