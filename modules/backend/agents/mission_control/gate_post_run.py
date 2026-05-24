@@ -81,6 +81,21 @@ class AutonomousPostRunReviewer:
         """Evaluate the 8-branch decision matrix. First match wins."""
         self._mission_id = context.mission_id
 
+        # ── Manual gate mode (Plan 80g) ─────────────────────────────
+        # When the mission's gate_mode is "manual", defer the supervisor
+        # decision to an external HTTP client (CLI / TUI / script) via
+        # ManualGateReviewer. This stops the autonomy loop from spawning
+        # new plans without explicit operator approval.
+        if self._gate_mode == "manual":
+            from modules.backend.agents.mission_control.gate_manual import (
+                ManualGateReviewer,
+            )
+            from modules.backend.core.database import get_session_factory
+            manual = ManualGateReviewer(
+                session_factory=get_session_factory(),
+            )
+            return await manual.review(context)
+
         execution_record_id = context.plan_task_summary.get("execution_record_id")
 
         # ── §4.6a Idempotency check ─────────────────────────────────

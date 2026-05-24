@@ -7,11 +7,13 @@
 #
 # Modes:
 #   off          - No gate reviews (default). Zero overhead.
-#   interactive  - Human reviews via Rich CLI at each enabled gate point.
+#   interactive  - Human reviews via Rich CLI at each enabled gate point (TTY-bound).
+#   manual       - Human reviews via HTTP API (any client). Step-by-step approval
+#                  works from CLI (`mc gate approve <id>`), TUI, or scripts.
 #   ai_assisted  - AI produces a recommendation, human makes final decision.
 #   autonomous   - AI makes all gate decisions. No human interaction.
 #
-# CLI override: --gate <mode>  (e.g., --gate ai_assisted)
+# CLI override: --gate <mode>  (e.g., --gate manual)
 # Legacy alias: --step is equivalent to --gate interactive
 
 mode: "off"
@@ -24,6 +26,12 @@ ai:
   temperature: 0.0                                  # Deterministic decisions
   max_tokens: 1024                                  # Plenty for a structured decision
   budget_per_review_usd: 0.01                       # Not yet enforced — reserved for future cost-gating
+
+# ---------------------------------------------------------------------------
+# Manual mode settings
+# ---------------------------------------------------------------------------
+manual:
+  timeout_seconds: 1800                              # 30 min — auto-ABORT if no decision arrives
 
 # ---------------------------------------------------------------------------
 # Per-gate-point configuration

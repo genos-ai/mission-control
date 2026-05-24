@@ -43,6 +43,7 @@ from modules.backend.models.user import SystemRole, User
 from modules.backend.models.api_key import ApiKey
 from modules.backend.models.workflow_schedule import WorkflowSchedule
 from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
+from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 
 __all__ = [
     "AgentCatalog",
@@ -55,6 +56,8 @@ __all__ = [
     "Embedding",
     "ExecutionDecision",
     "ExecutionRecord",
+    "GateRequest",
+    "GateRequestStatus",
     "HumanInputRequest",
     "HumanInputRequestStatus",
     "IntentSource",

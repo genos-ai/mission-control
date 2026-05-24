@@ -56,6 +56,7 @@ class MissionPlanStatus(str, enum.Enum):
 VALID_GATE_MODES: frozenset[str] = frozenset({
     "off",
     "interactive",
+    "manual",
     "ai_assisted",
     "autonomous",
 })

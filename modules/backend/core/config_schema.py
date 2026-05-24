@@ -487,7 +487,7 @@ class GateAiSchema(_StrictBase):
     )
 
 
-_GateMode = Literal["off", "interactive", "ai_assisted", "autonomous"]
+_GateMode = Literal["off", "interactive", "manual", "ai_assisted", "autonomous"]
 
 
 class GatePointSchema(_StrictBase):
@@ -559,11 +559,25 @@ class ModelsSchema(_StrictBase):
     )
 
 
+class GateManualSchema(_StrictBase):
+    """Manual gate configuration (Plan 80g)."""
+
+    timeout_seconds: int = Field(
+        default=1800,
+        description=(
+            "How long a manual gate waits for an HTTP decision before "
+            "auto-aborting. 30 min default; reduce for ephemeral runs, "
+            "increase for long unattended sessions."
+        ),
+    )
+
+
 class GateSchema(_StrictBase):
     """Gate reviewer configuration (gate.yaml)."""
 
     mode: _GateMode = "off"
     ai: GateAiSchema = Field(default_factory=GateAiSchema)
+    manual: GateManualSchema = Field(default_factory=GateManualSchema)
     points: GatePointsSchema = Field(default_factory=GatePointsSchema)
     auto_rules: GateAutoRulesSchema = Field(default_factory=GateAutoRulesSchema)
 

@@ -137,6 +137,7 @@ class ConfigurableGate:
         config: Any,            # GateSchema from config_schema.py
         console: Any = None,    # Rich Console for CLI modes
         verbose: bool = False,
+        session_factory: Any = None,  # callable yielding AsyncSession; required for `manual` mode
     ):
         from modules.backend.core.config_schema import GateSchema
 
@@ -146,9 +147,11 @@ class ConfigurableGate:
         self._config = config
         self._console = console
         self._verbose = verbose
+        self._session_factory = session_factory
 
         self._llm: LlmGateReviewer | None = None
         self._cli: Any = None  # CliGateReviewer — lazy to avoid Rich import
+        self._manual: Any = None  # ManualGateReviewer — lazy
 
     def _get_llm(self) -> LlmGateReviewer:
         if self._llm is None:
@@ -168,6 +171,25 @@ class ConfigurableGate:
                 verbose=self._verbose,
             )
         return self._cli
+
+    def _get_manual(self):
+        if self._manual is None:
+            if self._session_factory is None:
+                raise RuntimeError(
+                    "Gate mode 'manual' requires a session_factory at "
+                    "ConfigurableGate construction time. Update create_gate() "
+                    "callers to pass the AsyncSession factory.",
+                )
+            from modules.backend.agents.mission_control.gate_manual import (
+                ManualGateReviewer,
+            )
+            self._manual = ManualGateReviewer(
+                session_factory=self._session_factory,
+                timeout_seconds=self._config.manual.timeout_seconds
+                if hasattr(self._config, "manual") and self._config.manual is not None
+                else 1800,
+            )
+        return self._manual
 
     def _effective_mode(self, gate_type: str) -> str:
         point_config = getattr(self._config.points, gate_type, None)
@@ -239,6 +261,9 @@ class ConfigurableGate:
         if effective_mode == "interactive":
             return await self._get_cli().review(context)
 
+        if effective_mode == "manual":
+            return await self._get_manual().review(context)
+
         if effective_mode == "ai_assisted":
             recommendation = await self._get_llm().review(context)
             context.ai_recommendation = recommendation
@@ -264,12 +289,18 @@ def create_gate(
     mode_override: str | None = None,
     console: Any = None,
     verbose: bool = False,
+    session_factory: Any = None,
 ) -> GateReviewer | None:
     """Create the appropriate gate reviewer from config + CLI override.
 
     Returns GateReviewer instance, or None if mode is "off".
+
+    ``session_factory`` is only required when the effective gate mode is
+    ``manual`` (which persists pause rows). If omitted, the global async
+    session factory is used; pass an explicit one for tests.
     """
     from modules.backend.core.config import get_app_config
+    from modules.backend.core.database import get_session_factory
 
     config = get_app_config().gate
 
@@ -283,4 +314,5 @@ def create_gate(
         config=config,
         console=console,
         verbose=verbose,
+        session_factory=session_factory or get_session_factory(),
     )

@@ -471,6 +471,77 @@ def plan_dispatch(ctx):
 
 
 # =============================================================================
+# Gate — manual approval over the HTTP API
+# =============================================================================
+
+
+@mc.group("gate", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def gate(ctx):
+    """Manual gate review (use with `mc run --gate manual`)."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@gate.command("list")
+@click.pass_obj
+def gate_list(ctx):
+    """List pending gate requests for the current mission."""
+    from modules.clients.cli.mc_gate import list_pending
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await list_pending(api, mission_id=mid)
+
+    asyncio.run(_run())
+
+
+@gate.command("show")
+@click.argument("request_id")
+@click.pass_obj
+def gate_show(ctx, request_id):
+    """Show full context (serialised GateContext) for one gate request."""
+    from modules.clients.cli.mc_gate import show as gate_show_fn
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await gate_show_fn(api, mission_id=mid, request_id=request_id)
+
+    asyncio.run(_run())
+
+
+def _make_decide_command(action_name: str, action_value: str, help_text: str):
+    @click.argument("request_id")
+    @click.option("--reason", default=None, help="Optional note attached to the decision.")
+    @click.pass_obj
+    def _cmd(ctx, request_id, reason):
+        from modules.clients.cli.mc_gate import decide
+
+        async def _run():
+            async with api_client() as api:
+                mid = await require_mission(api)
+                await decide(api, mission_id=mid, request_id=request_id,
+                             action=action_value, reason=reason)
+
+        asyncio.run(_run())
+    _cmd.__name__ = f"gate_{action_name}"
+    _cmd.__doc__ = help_text
+    return _cmd
+
+
+gate.command("approve")(_make_decide_command("approve", "continue",
+    "Approve the gate; dispatcher continues."))
+gate.command("reject")(_make_decide_command("reject", "abort",
+    "Reject the gate; dispatcher aborts."))
+gate.command("skip")(_make_decide_command("skip", "skip",
+    "Skip the gated task / layer."))
+gate.command("retry")(_make_decide_command("retry", "retry",
+    "Retry the gated task (post_task / verification_failed only)."))
+
+
+# =============================================================================
 # Status + History
 # =============================================================================
 
