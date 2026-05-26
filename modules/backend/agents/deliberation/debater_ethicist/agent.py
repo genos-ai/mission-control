@@ -33,7 +33,7 @@ def create_agent(
         deps_type=BaseAgentDeps,
         output_type=DebaterTurn,
         instructions=instructions,
-        output_retries=2,
+        output_retries=3,
     )
 
     logger.info(

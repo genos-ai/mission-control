@@ -166,7 +166,7 @@ class LoadBearingClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     claim: str = Field(..., min_length=1, max_length=500)
-    if_this_fails: str = Field(..., min_length=1, max_length=300)
+    if_this_fails: str = Field(..., min_length=1, max_length=600)
 
 
 class DebaterTurn(BaseModel):
@@ -192,7 +192,7 @@ class DebaterTurn(BaseModel):
     load_bearing_claims: list[LoadBearingClaim] = Field(
         ..., min_length=2, max_length=3,
     )
-    what_would_change_my_mind: str = Field(..., min_length=1, max_length=1000)
+    what_would_change_my_mind: str = Field(..., min_length=1, max_length=2000)
     decision: Literal["HOLD", "REFINE", "CONCEDE_PARTIAL", "CONCEDE_FULL"]
     decision_justification: str = Field(..., min_length=1, max_length=500)
     confidence: float = Field(ge=0.0, le=1.0)
