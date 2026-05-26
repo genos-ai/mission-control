@@ -147,7 +147,9 @@
       "Bash(pytest tests/unit/backend/services/test_workflow_definition.py::TestCreateWorkflow::test_creates_workflow -q)",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import openai; print\\(openai.__version__\\); import inspect; sig = inspect.signature\\(openai.AsyncOpenAI.__init__\\); print\\(sig\\)\")",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider; print\\('aio entra OK'\\); from modules.backend.core.model_providers import get_foundry_provider; print\\('foundry factory import OK'\\)\")",
-      "Bash(/opt/anaconda3/envs/mission-control/bin/python scripts/foundry_smoke.py --verbose)"
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python scripts/foundry_smoke.py --verbose)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c ' *)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py credits)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
