@@ -215,6 +215,14 @@ class WorkflowDefinitionService(BaseService):
             description=template.description,
             objective=template.objective.model_dump(),
             steps=[s.model_dump() for s in template.steps],
+            # CRITICAL: pass the template's labelled edges through.
+            # Without this, create_workflow falls back to
+            # _derive_edges(steps) which strips condition-routing
+            # labels like {label: "passed"} / {label: "failed"} on
+            # decision-gate edges. That breaks downstream
+            # condition-based skip routing (e.g. halt-bad-research
+            # always fires regardless of the verifier's verdict).
+            edges_json=template.edges if template.edges else None,
             trigger_config=template.trigger.model_dump(),
             budget_config=template.budget.model_dump(),
             parameters=[p.model_dump() for p in template.parameters],
