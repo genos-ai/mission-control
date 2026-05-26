@@ -73,6 +73,20 @@ Return a `CriticReport` with:
   `CriticAttack`. The schema validator rejects missing or extra keys.
 - `convergence_flag`: a `ConvergenceFlag` as described above.
 
+**Per-attack field checklist (all four are required for every debater
+— the schema rejects partial entries):**
+
+For each of `systems`, `quant`, `empiricist`, `ethicist` you MUST
+emit all four fields below. Missing `what_would_vindicate_the_debater`
+on the last entry has been the dominant validation failure — verify
+all four debater entries have all four fields before returning.
+
+- `load_bearing_assumption` — one sentence
+- `attack` — strongest reason it may be wrong
+- `steelman_of_attack` — pre-empt the debater's best reply
+- `what_would_vindicate_the_debater` — the observation that would
+  defeat your attack and re-establish their position
+
 ### A note on the early-stop signal
 
 The orchestration uses a deterministic stance-delta computation

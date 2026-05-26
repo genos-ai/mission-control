@@ -1507,8 +1507,18 @@ class WorkflowRunWavesMixin:
             edge_label = edges_map.get((dep_id, step_id))
             if edge_label is None:
                 continue  # no label on edge — always run
-            if edge_label != branch_taken:
+            if edge_label != branch_taken and not is_merge:
                 return True
+            # Merge nodes: the edge-label-mismatch check is suppressed.
+            # A merge is a multi-path join point: it should run whenever
+            # *any* incoming branch reached it, not require *every*
+            # condition/decision dep's branch label to match. Without
+            # this guard, a merge that has both labelled (e.g. halt/
+            # continue) and unlabelled (always-run) incoming edges gets
+            # skipped whenever a labelled dep chose the unmatched
+            # branch, even though the unlabelled dep correctly reached
+            # the merge. _execute_merge_step already filters skipped
+            # deps at runtime; this matches that intent here.
 
         return False
 
