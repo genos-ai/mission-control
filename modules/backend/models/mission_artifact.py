@@ -40,10 +40,12 @@ class ArtifactType(str, enum.Enum):
     are user-facing deliverables, not intermediate execution data.
 
     Domain-specific report types:
-    ``research_report``       — research synthesizer output (executive summary, sections, sources)
-    ``vulnerability_report``  — pentest/security scan findings with severity and remediation
-    ``quality_audit``         — code quality assessment with scores and issues
-    ``architecture_review``   — architecture analysis with recommendations
+    ``research_report``           — research synthesizer output (executive summary, sections, sources)
+    ``vulnerability_report``      — pentest/security scan findings with severity and remediation
+    ``quality_audit``             — code quality assessment with scores and issues
+    ``architecture_review``       — architecture analysis with recommendations
+    ``deliberation_deliverable``  — Think Tank synthesiser FinalDeliverable (Plan 79; cruxes, minority position, committed answer)
+    ``deliberation_transcript``   — Think Tank full debate transcript (Plan 79; rounds, critic reports, stance deltas)
 
     Generic types (for agents that don't fit a specific domain):
     ``report``    — general-purpose report
@@ -56,6 +58,8 @@ class ArtifactType(str, enum.Enum):
     VULNERABILITY_REPORT = "vulnerability_report"
     QUALITY_AUDIT = "quality_audit"
     ARCHITECTURE_REVIEW = "architecture_review"
+    DELIBERATION_DELIVERABLE = "deliberation_deliverable"
+    DELIBERATION_TRANSCRIPT = "deliberation_transcript"
 
     # Generic
     REPORT = "report"
