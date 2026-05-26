@@ -35,7 +35,7 @@
 # `@node.research.output` still resolves to a ResearchPacket.
 # =============================================================================
 
-workflow_name: deliberation.think-tank.v1.workflow
+workflow_name: deliberation.think-tank.workflow
 description: "Multi-agent deliberation for contested open questions"
 objective:
   statement: "Produce a structured deliberation on a contested question, preserving live disagreement"
