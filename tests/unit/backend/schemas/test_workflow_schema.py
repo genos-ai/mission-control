@@ -8,6 +8,7 @@ import pytest
 
 from modules.backend.schemas.workflow import (
     WorkflowBudgetSchema,
+    WorkflowEdgeSchema,
     WorkflowObjectiveSchema,
     WorkflowOutputFieldMapping,
     WorkflowSchema,
@@ -510,3 +511,89 @@ class TestNodeRefLoadTimeValidation:
             with open(path) as f:
                 data = yaml.safe_load(f)
             WorkflowSchema(**data)
+
+
+# =============================================================================
+# WorkflowEdgeSchema — id auto-fill (visual-editor edge persistence)
+# =============================================================================
+
+
+class TestWorkflowEdgeSchemaIdAutoFill:
+    """When YAML omits the edge `id` it must be synthesised deterministically
+    so React Flow does not collapse multiple edges sharing the same default
+    key — notably the four `passed`/`continue` edges leaving decision nodes."""
+
+    def test_id_synthesised_with_default_handle(self):
+        edge = WorkflowEdgeSchema(source="step-a", target="step-b")
+        assert edge.id == "step-a->step-b"
+
+    def test_id_synthesised_with_named_source_handle(self):
+        edge = WorkflowEdgeSchema(
+            source="research-gate",
+            target="open-systems",
+            source_handle="passed",
+        )
+        assert edge.id == "research-gate:passed->open-systems"
+
+    def test_explicit_id_preserved(self):
+        edge = WorkflowEdgeSchema(
+            id="custom-id",
+            source="step-a",
+            target="step-b",
+            source_handle="passed",
+        )
+        assert edge.id == "custom-id"
+
+    def test_default_output_handle_collapses_to_simple_form(self):
+        edge = WorkflowEdgeSchema(
+            source="step-a",
+            target="step-b",
+            source_handle="output",
+        )
+        assert edge.id == "step-a->step-b"
+
+    def test_workflow_loaded_with_idless_edges_validates(self):
+        workflow = WorkflowSchema(**_minimal_workflow(
+            steps=[
+                {"id": "step-a", "capability": "test.agent"},
+                {"id": "step-b", "capability": "test.agent",
+                 "depends_on": ["step-a"]},
+            ],
+            edges=[
+                {"source": "step-a", "target": "step-b"},
+            ],
+        ))
+        assert len(workflow.edges) == 1
+        assert workflow.edges[0].id == "step-a->step-b"
+
+    def test_decision_node_fan_out_edges_get_unique_ids(self):
+        """Decision-node siblings must not collide on edge id — the visual
+        editor regression that motivated this contract."""
+        workflow = WorkflowSchema(**_minimal_workflow(
+            steps=[
+                {"id": "gate", "node_type": "decision",
+                 "decision_config": {
+                     "resolver": "rule",
+                     "expression": "@node.gate.output.passed == true",
+                     "options": [
+                         {"key": "passed", "label": "Passed"},
+                         {"key": "failed", "label": "Failed"},
+                     ],
+                 }},
+                {"id": "a", "capability": "test.agent", "depends_on": ["gate"]},
+                {"id": "b", "capability": "test.agent", "depends_on": ["gate"]},
+                {"id": "c", "capability": "test.agent", "depends_on": ["gate"]},
+            ],
+            edges=[
+                {"source": "gate", "target": "a", "source_handle": "passed"},
+                {"source": "gate", "target": "b", "source_handle": "passed"},
+                {"source": "gate", "target": "c", "source_handle": "passed"},
+            ],
+        ))
+        ids = [e.id for e in workflow.edges]
+        assert ids == [
+            "gate:passed->a",
+            "gate:passed->b",
+            "gate:passed->c",
+        ]
+        assert len(set(ids)) == 3

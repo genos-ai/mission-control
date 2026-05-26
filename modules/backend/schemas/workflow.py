@@ -118,12 +118,28 @@ class WorkflowEdgeSchema(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(..., description="Unique edge ID, e.g. 'step-a->step-b'")
+    id: str | None = Field(
+        default=None,
+        description=(
+            "Unique edge ID, e.g. 'step-a->step-b'. When omitted in YAML "
+            "templates, auto-filled from (source, source_handle, target). "
+            "Required at runtime — React Flow drops edges sharing a key."
+        ),
+    )
     source: str = Field(..., description="Source node (step) ID")
     target: str = Field(..., description="Target node (step) ID")
     source_handle: str = Field(default="output")
     target_handle: str = Field(default="input")
     label: str | None = Field(None, description="Optional edge label")
+
+    @model_validator(mode="after")
+    def _fill_id(self) -> "WorkflowEdgeSchema":
+        if self.id is None:
+            if self.source_handle and self.source_handle != "output":
+                self.id = f"{self.source}:{self.source_handle}->{self.target}"
+            else:
+                self.id = f"{self.source}->{self.target}"
+        return self
 
 
 class ConditionConfig(BaseModel):
@@ -517,7 +533,7 @@ class WorkflowSchema(BaseModel):
         description="User-facing input parameters shown before run. Values merge into context.",
     )
     context: dict[str, Any] = Field(default_factory=dict)
-    edges: list[dict[str, Any]] = Field(
+    edges: list[WorkflowEdgeSchema] = Field(
         default_factory=list,
         description=(
             "Explicit edge definitions. When non-empty, used verbatim instead of deriving "

@@ -118,7 +118,7 @@ async def seed_workflows(
                 description=schema.description,
                 objective=schema.objective.model_dump(),
                 steps=[s.model_dump() for s in schema.steps],
-                edges_json=schema.edges if schema.edges else None,
+                edges_json=[e.model_dump() for e in schema.edges] if schema.edges else None,
                 trigger_config=schema.trigger.model_dump(),
                 budget_config=schema.budget.model_dump(),
                 context=schema.context,

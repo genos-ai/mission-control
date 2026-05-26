@@ -222,7 +222,7 @@ class WorkflowDefinitionService(BaseService):
             # decision-gate edges. That breaks downstream
             # condition-based skip routing (e.g. halt-bad-research
             # always fires regardless of the verifier's verdict).
-            edges_json=template.edges if template.edges else None,
+            edges_json=[e.model_dump() for e in template.edges] if template.edges else None,
             trigger_config=template.trigger.model_dump(),
             budget_config=template.budget.model_dump(),
             parameters=[p.model_dump() for p in template.parameters],

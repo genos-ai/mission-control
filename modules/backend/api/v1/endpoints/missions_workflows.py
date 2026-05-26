@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.schemas.base import ApiResponse
+from modules.backend.schemas.workflow import WorkflowEdgeSchema
 from modules.backend.schemas.workflow_schedule import (
     WorkflowScheduleCreateRequest,
     WorkflowScheduleResponse,
@@ -373,7 +374,7 @@ async def delete_mission_workflow(
 class SaveGraphRequest(BaseModel):
     """Request body for saving workflow canvas state, edges, and optionally steps."""
     canvas_state: dict[str, Any] = Field(default_factory=dict)
-    edges_json: list[dict[str, Any]] | None = None
+    edges_json: list[WorkflowEdgeSchema] | None = None
     steps: list[dict[str, Any]] | None = None
 
 
@@ -393,10 +394,15 @@ async def save_workflow_graph(
     from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     service = WorkflowDefinitionService(db)
+    edges_payload = (
+        [e.model_dump() for e in data.edges_json]
+        if data.edges_json is not None
+        else None
+    )
     workflow, warnings = await service.save_graph(
         workflow_id=workflow_id,
         canvas_state=data.canvas_state,
-        edges_json=data.edges_json,
+        edges_json=edges_payload,
         steps=data.steps,
     )
     return ApiResponse(
@@ -416,7 +422,7 @@ async def save_workflow_graph(
 class ValidateGraphRequest(BaseModel):
     """Request body for validating a workflow graph."""
     steps: list[dict[str, Any]]
-    edges_json: list[dict[str, Any]] = Field(default_factory=list)
+    edges_json: list[WorkflowEdgeSchema] = Field(default_factory=list)
 
 
 @router.post(
@@ -434,7 +440,11 @@ async def validate_workflow_graph_endpoint(
     """Validate a workflow graph without saving. Returns validation errors/warnings."""
     from modules.backend.services.workflow_validator import validate_workflow_graph
 
-    errors = validate_workflow_graph(data.steps, data.edges_json, current_workflow_id=workflow_id)
+    errors = validate_workflow_graph(
+        data.steps,
+        [e.model_dump() for e in data.edges_json],
+        current_workflow_id=workflow_id,
+    )
     return ApiResponse(
         success=len(errors) == 0,
         data={

@@ -143,3 +143,50 @@ class TestLockWorkflow:
 
         locked = await service.lock_workflow(wf.id)
         assert locked.locked_at is not None
+
+
+class TestSeederEdgeIdNormalisation:
+    """Persisted edges must always carry an `id` — the visual editor's React
+    Flow drops edges sharing a synthesized key, so a YAML template that
+    omits ids must not flow through untouched."""
+
+    @pytest.mark.asyncio
+    async def test_seed_deliberation_think_tank_persists_edge_ids(
+        self, service, db_session,
+    ):
+        from pathlib import Path
+
+        import yaml
+
+        from modules.backend.schemas.workflow import WorkflowSchema
+
+        yaml_path = (
+            Path(__file__).resolve().parents[4]
+            / "config/workflow_templates/deliberation.think-tank.workflow.yaml"
+        )
+        raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        schema = WorkflowSchema(**raw)
+
+        # Simulate the seeder's persistence path (system template: mission_id=None).
+        workflow = await service.create_workflow(
+            mission_id=None,
+            name="deliberation.think-tank-seedtest",
+            description=schema.description,
+            objective=schema.objective.model_dump(),
+            steps=[s.model_dump() for s in schema.steps],
+            edges_json=[e.model_dump() for e in schema.edges] if schema.edges else None,
+            trigger_config=schema.trigger.model_dump(),
+            budget_config=schema.budget.model_dump(),
+            context=schema.context,
+            designed_by="test:seeder",
+        )
+
+        assert workflow.edges_json, "Seeded workflow has no edges persisted"
+        for edge in workflow.edges_json:
+            assert edge.get("id"), f"Persisted edge missing id: {edge}"
+
+        ids = [e["id"] for e in workflow.edges_json]
+        assert len(ids) == len(set(ids)), (
+            "Persisted edge ids are not unique — React Flow will drop "
+            f"collisions: duplicates in {ids}"
+        )
