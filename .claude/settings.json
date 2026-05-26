@@ -138,7 +138,9 @@
       "Bash(ps -p 94018 -o pid,command)",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import psutil; print\\(psutil.__version__\\)\")",
       "Bash(/opt/anaconda3/envs/mission-control/bin/pip install *)",
-      "Bash(ps -o pid,etime,cmd -p 29676)"
+      "Bash(ps -o pid,etime,cmd -p 29676)",
+      "Skill(tavily-search)",
+      "Skill(tavily-search:*)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
