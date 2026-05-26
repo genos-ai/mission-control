@@ -68,6 +68,14 @@ model_pricing:
     cache_read: 0.50
     cache_write_5m: 6.25
     cache_write_1h: 10.00
+  # Plan 82 — illustrative rates; verify against the Foundry pricing page for the
+  # deployment region before the Phase 2 canary flip. cache_read kept; cache_write
+  # fields omitted because Azure OpenAI v1 doesn't surface cache_write events
+  # (and ModelPricingRateSchema defaults the missing fields to 0.0).
+  "foundry:gpt-4.1":
+    input: 2.50
+    output: 10.00
+    cache_read: 0.625
   default:
     input: 3.00
     output: 15.00

@@ -4,9 +4,11 @@
 # Switch auth_mode without changing any agent code or config.
 #
 # Auth modes:
-#   api_key      — standard API key (default, billed per-token)
-#   auth_token   — subscription/OAuth bearer token (blocked by Anthropic API)
-#   codex_oauth  — ChatGPT subscription OAuth (blocked by OpenAI API)
+#   api_key       — standard API key (default, billed per-token)
+#   auth_token    — subscription/OAuth bearer token (blocked by Anthropic API)
+#   codex_oauth   — ChatGPT subscription OAuth (blocked by OpenAI API)
+#   entra         — Azure Entra ID via DefaultAzureCredential (foundry-only)
+#   bearer_token  — pre-fetched Azure bearer from env (foundry-only)
 #
 # Both Anthropic and OpenAI reject subscription OAuth tokens for
 # programmatic API access. Subscription auth only works through
@@ -22,3 +24,19 @@ anthropic:
 openai:
   auth_mode: api_key
   env_var: OPENAI_API_KEY
+
+# Foundry — Azure AI Foundry (Azure OpenAI on Foundry, v1 GA endpoint).
+#
+# Auth modes (in priority order):
+#   entra         — DefaultAzureCredential + scope (recommended; picks up
+#                   `az login` locally and managed identity in prod).
+#                   No env_var required.
+#   api_key       — static API key from env_var (set env_var: AZURE_OPENAI_API_KEY)
+#   bearer_token  — pre-fetched bearer from env_var (set env_var: AZURE_OPENAI_AUTH_TOKEN)
+#
+# base_url is the resource endpoint WITHOUT the /openai/v1/ suffix —
+# get_foundry_provider() appends it.
+foundry:
+  auth_mode: entra
+  base_url: https://gis-mission-control-resource.openai.azure.com
+  scope: https://ai.azure.com/.default

@@ -52,6 +52,9 @@ jsonschema>=4.20.0
 json-repair>=0.30.0
 import-linter>=2.0
 
+# Azure Entra ID auth for Foundry provider (Plan 82)
+azure-identity>=1.17.1
+
 # Durable Execution
 temporalio>=1.20.0
 

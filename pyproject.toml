@@ -44,6 +44,8 @@ dependencies = [
     "claude-agent-sdk>=0.1.0",
     # Subscription-based model auth (Plan 55/58)
     "codex-auth>=0.1.0",
+    # Azure Entra ID auth for Foundry provider (Plan 82)
+    "azure-identity>=1.17.1",
     # Durable Execution
     "temporalio>=1.20.0",
     # Agent execution isolation (Plan 47): containerized user-tier agents

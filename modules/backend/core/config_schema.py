@@ -520,11 +520,18 @@ class GateAutoRulesSchema(_StrictBase):
 
 
 class ProviderAuthSchema(_StrictBase):
-    """Authentication configuration for a model provider."""
+    """Authentication configuration for a model provider.
 
-    auth_mode: str = "api_key"  # "api_key" | "auth_token" | "codex_oauth"
+    Provider-specific fields (e.g. ``scope`` for Foundry Entra auth) live here
+    rather than in a subclass. If a third provider needs its own quirk field,
+    promote this to ``ProviderAuthBase`` + per-provider subclasses instead of
+    growing the union — the pattern-of-three threshold for splitting is real.
+    """
+
+    auth_mode: str = "api_key"  # "api_key" | "auth_token" | "codex_oauth" | "entra" | "bearer_token"
     env_var: str | None = None
     base_url: str | None = None
+    scope: str | None = None  # foundry-only: Entra ID token scope
 
 
 class ProvidersSchema(_StrictBase):
@@ -538,6 +545,14 @@ class ProvidersSchema(_StrictBase):
     openai: ProviderAuthSchema = Field(
         default_factory=lambda: ProviderAuthSchema(
             auth_mode="api_key", env_var="OPENAI_API_KEY",
+        ),
+    )
+    foundry: ProviderAuthSchema = Field(
+        default_factory=lambda: ProviderAuthSchema(
+            auth_mode="entra",
+            env_var=None,
+            base_url=None,
+            scope="https://ai.azure.com/.default",
         ),
     )
 
