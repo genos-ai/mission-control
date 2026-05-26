@@ -227,7 +227,7 @@ class AgentConfigSchema(_StrictBase):
 
         # Known provider check
         provider = model_name.split(":")[0] if ":" in model_name else ""
-        known_providers = {"anthropic", "openai", "google", "bedrock", "copilot"}
+        known_providers = {"anthropic", "openai", "google", "bedrock", "copilot", "foundry"}
         if provider and provider not in known_providers:
             raise ValueError(
                 f"Unknown model provider '{provider}' for agent '{self.agent_name}'. "

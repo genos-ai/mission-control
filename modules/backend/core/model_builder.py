@@ -137,7 +137,20 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
         from modules.backend.core.copilot_model import CopilotModel
         return CopilotModel(model_id=bare_name)
 
-    raise ValidationError(f"Unsupported model provider in '{model_name}'. Expected 'anthropic:...', 'openai:...', or 'copilot:...'.")
+    if model_name.startswith("foundry:"):
+        # Native JSON-schema output is not supported by the gpt-4.1 deployment
+        # (Phase 0 smoke Test 5 failed), so no ModelProfile override is needed —
+        # PydanticAI defaults to tool mode (P17), which works fine.
+        bare_name = model_name.split(":", 1)[1]
+        from pydantic_ai.models.openai import OpenAIModel
+        from modules.backend.core.model_providers import get_foundry_provider
+        provider = get_foundry_provider()
+        return OpenAIModel(bare_name, provider=provider)
+
+    raise ValidationError(
+        f"Unsupported model provider in '{model_name}'. "
+        "Expected 'anthropic:...', 'openai:...', 'copilot:...', or 'foundry:...'."
+    )
 
 
 def _get_model_name(config_model: str | AgentModelSchema) -> str:
