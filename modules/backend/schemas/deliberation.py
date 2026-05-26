@@ -165,8 +165,8 @@ class LoadBearingClaim(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    claim: str = Field(..., min_length=1, max_length=500)
-    if_this_fails: str = Field(..., min_length=1, max_length=600)
+    claim: str = Field(..., min_length=1, max_length=1000)
+    if_this_fails: str = Field(..., min_length=1, max_length=1000)
 
 
 class DebaterTurn(BaseModel):
@@ -188,13 +188,13 @@ class DebaterTurn(BaseModel):
 
     debater_id: Literal["systems", "quant", "empiricist", "ethicist"]
     round_index: int = Field(ge=0, le=5)
-    position: str = Field(..., min_length=1, max_length=2000)
+    position: str = Field(..., min_length=1, max_length=4000)
     load_bearing_claims: list[LoadBearingClaim] = Field(
         ..., min_length=2, max_length=3,
     )
     what_would_change_my_mind: str = Field(..., min_length=1, max_length=2000)
     decision: Literal["HOLD", "REFINE", "CONCEDE_PARTIAL", "CONCEDE_FULL"]
-    decision_justification: str = Field(..., min_length=1, max_length=500)
+    decision_justification: str = Field(..., min_length=1, max_length=1000)
     confidence: float = Field(ge=0.0, le=1.0)
     research_requests: list[str] = Field(
         default_factory=list,
@@ -387,7 +387,7 @@ class FinalDeliverable(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question_restated: str
-    committed_answer: str = Field(..., min_length=1, max_length=2000)
+    committed_answer: str = Field(..., min_length=1, max_length=4000)
     confidence: float = Field(ge=0.0, le=1.0)
     cruxes: list[CruxRecord] = Field(..., min_length=2, max_length=5)
     minority_position: MinorityPosition | None
@@ -423,7 +423,7 @@ class FinalDeliverable(BaseModel):
     recommendation_markdown: str = Field(
         ...,
         min_length=20,
-        max_length=2000,
+        max_length=4000,
         description=(
             "Single-paragraph recommendation derived from "
             "biggest_things_that_could_be_wrong. Persisted as the "
