@@ -145,6 +145,118 @@ class TestLockWorkflow:
         assert locked.locked_at is not None
 
 
+class TestEdgeNormalisation:
+    """Every write method on WorkflowDefinitionService must run edges
+    through WorkflowEdgeSchema so that raw-dict callers cannot reintroduce
+    the missing-edge-id regression that plan81_001 backfilled."""
+
+    @pytest.mark.asyncio
+    async def test_create_workflow_fills_missing_edge_ids(
+        self, service, db_session,
+    ):
+        mission = await _seed_mission(db_session)
+        wf = await service.create_workflow(
+            mission_id=mission.id,
+            name="edges-no-id",
+            description="raw dicts without ids",
+            objective=_minimal_objective(),
+            steps=[
+                _minimal_step(),
+                {**_minimal_step(), "id": "step-2", "depends_on": ["step-1"]},
+            ],
+            edges_json=[
+                {"source": "step-1", "target": "step-2"},
+            ],
+        )
+        assert wf.edges_json == [
+            {
+                "id": "step-1->step-2",
+                "source": "step-1",
+                "target": "step-2",
+                "source_handle": "output",
+                "target_handle": "input",
+                "label": None,
+            },
+        ]
+
+    @pytest.mark.asyncio
+    async def test_create_workflow_rejects_malformed_edge(
+        self, service, db_session,
+    ):
+        mission = await _seed_mission(db_session)
+        with pytest.raises(ValidationError, match="Invalid edge definition"):
+            await service.create_workflow(
+                mission_id=mission.id,
+                name="bad-edge",
+                description="edge missing source",
+                objective=_minimal_objective(),
+                steps=[_minimal_step()],
+                edges_json=[{"target": "step-1"}],  # missing required `source`
+            )
+
+    @pytest.mark.asyncio
+    async def test_create_workflow_preserves_valid_edges(
+        self, service, db_session,
+    ):
+        mission = await _seed_mission(db_session)
+        edges = [
+            {
+                "id": "custom-id",
+                "source": "step-1",
+                "target": "step-2",
+                "source_handle": "passed",
+                "target_handle": "input",
+                "label": "ok",
+            },
+        ]
+        wf = await service.create_workflow(
+            mission_id=mission.id,
+            name="edges-explicit",
+            description="explicit edges round-trip",
+            objective=_minimal_objective(),
+            steps=[
+                _minimal_step(),
+                {**_minimal_step(), "id": "step-2", "depends_on": ["step-1"]},
+            ],
+            edges_json=edges,
+        )
+        assert wf.edges_json == edges
+
+    @pytest.mark.asyncio
+    async def test_save_graph_normalises_edges(self, service, db_session):
+        mission = await _seed_mission(db_session)
+        wf = await service.create_workflow(
+            mission.id, "save-graph-norm", "desc",
+            _minimal_objective(), [_minimal_step()],
+        )
+        steps = [
+            _minimal_step(),
+            {**_minimal_step(), "id": "step-2", "depends_on": ["step-1"]},
+        ]
+        updated, _warnings = await service.save_graph(
+            workflow_id=wf.id,
+            canvas_state={},
+            edges_json=[{"source": "step-1", "target": "step-2"}],
+            steps=steps,
+        )
+        assert updated.edges_json[0]["id"] == "step-1->step-2"
+
+    @pytest.mark.asyncio
+    async def test_update_workflow_normalises_edges(
+        self, service, db_session,
+    ):
+        mission = await _seed_mission(db_session)
+        wf = await service.create_workflow(
+            mission.id, "update-norm", "desc",
+            _minimal_objective(), [_minimal_step()],
+        )
+        updated = await service.update_workflow(
+            wf.id,
+            edges_json=[{"source": "step-1", "target": "step-1"}],
+        )
+        assert updated.edges_json[0]["id"] == "step-1->step-1"
+
+
 class TestSeederEdgeIdNormalisation:
     """Persisted edges must always carry an `id` — the visual editor's React
     Flow drops edges sharing a synthesized key, so a YAML template that

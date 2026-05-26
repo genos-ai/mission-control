@@ -20,7 +20,7 @@ from modules.backend.core.logging import get_logger
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.workflow_definition import WorkflowDefinitionRepository
-from modules.backend.schemas.workflow import WorkflowSchema
+from modules.backend.schemas.workflow import WorkflowEdgeSchema
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -86,6 +86,9 @@ class WorkflowDefinitionService(BaseService):
             )
 
         self._validate_steps(steps)
+        resolved_edges = self._normalise_edges(
+            edges_json if edges_json is not None else self._derive_edges(steps)
+        )
 
         workflow = await self._repo.create(
             mission_id=mission_id,
@@ -93,7 +96,7 @@ class WorkflowDefinitionService(BaseService):
             description=description,
             objective=objective,
             steps=steps,
-            edges_json=edges_json if edges_json is not None else self._derive_edges(steps),
+            edges_json=resolved_edges,
             trigger_config=trigger_config or {"type": "on_demand"},
             budget_config=budget_config or {"max_cost_usd": get_default_budget_usd()},
             parameters=parameters or [],
@@ -145,6 +148,8 @@ class WorkflowDefinitionService(BaseService):
             self._validate_steps(updates["steps"])
             if "edges_json" not in updates:
                 updates["edges_json"] = self._derive_edges(updates["steps"])
+        if "edges_json" in updates:
+            updates["edges_json"] = self._normalise_edges(updates["edges_json"])
         return await self._repo.update(workflow_id, **updates)
 
     async def save_graph(
@@ -160,17 +165,18 @@ class WorkflowDefinitionService(BaseService):
         Returns (workflow, validation_warnings) — warnings are non-blocking.
         """
         updates: dict[str, Any] = {"canvas_state": canvas_state}
-        if edges_json is not None:
-            updates["edges_json"] = edges_json
+        normalised_edges = self._normalise_edges(edges_json)
+        if normalised_edges is not None:
+            updates["edges_json"] = normalised_edges
         if steps is not None:
             self._validate_steps(steps)
             updates["steps"] = steps
 
         # Run graph validation when both steps and edges are available
         warnings: list[str] = []
-        if steps is not None and edges_json is not None:
+        if steps is not None and normalised_edges is not None:
             from modules.backend.services.workflow_validator import validate_workflow_graph
-            warnings = validate_workflow_graph(steps, edges_json, current_workflow_id=workflow_id)
+            warnings = validate_workflow_graph(steps, normalised_edges, current_workflow_id=workflow_id)
 
         workflow = await self._repo.update(workflow_id, **updates)
         return workflow, warnings
@@ -245,3 +251,20 @@ class WorkflowDefinitionService(BaseService):
                 WorkflowStepSchema(**step_data)
         except (TypeError, ValueError, KeyError) as e:
             raise ValidationError(f"Invalid step definition: {e}") from e
+
+    def _normalise_edges(
+        self, edges: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        """Run each edge through WorkflowEdgeSchema to fail fast on malformed
+        input and auto-fill the `id` field that React Flow requires.
+
+        Mirrors _validate_steps: a single chokepoint called from every write
+        method so a future caller passing raw dicts cannot reintroduce the
+        missing-edge-id regression that plan81_001 backfilled.
+        """
+        if edges is None:
+            return None
+        try:
+            return [WorkflowEdgeSchema(**e).model_dump() for e in edges]
+        except (TypeError, ValueError, KeyError) as e:
+            raise ValidationError(f"Invalid edge definition: {e}") from e
