@@ -69,8 +69,10 @@ Auth modes (config-driven, no code branches in agents):
 | [modules/backend/schemas/agent_config.py](../../modules/backend/schemas/agent_config.py) (line 91, 211, 230) | Add `output_mode: Literal["tool", "native"] = "tool"` to `AgentModelSchema`. Add validator that `output_mode="native"` requires provider in `{"openai", "foundry"}`. Add `"foundry"` to `known_providers`. |
 | [admin.py](../../admin.py) (line 1022) | `catalog set-provider` Click choice gains `"foundry"`. Add `TO_FOUNDRY` mapping dict and reverse mapping. |
 | [config/agents/mission_control.yaml](../../config/agents/mission_control.yaml) (line 46) | Add `foundry:gpt-4.1` pricing row. |
+| [modules/clients/cli/credits.py](../../modules/clients/cli/credits.py) | Extend `check_credits` to force a token acquisition when any roster model starts with `foundry:` — surfaces `az login` expiry at preflight instead of mid-dispatch (see §4.8). |
 | `scripts/foundry_smoke.py` | **New** — ~50-line smoke test that calls `get_foundry_provider()` and exercises structured output + tool calls + streaming + cached_tokens reporting against the live deployment. |
-| [pyproject.toml](../../pyproject.toml) | Add `azure-identity>=1.17.1` to `[project] dependencies` (canonical declaration; `requirements.txt` regenerates from this). |
+| [pyproject.toml](../../pyproject.toml) | Add `azure-identity>=1.17.1` to `[project] dependencies` (the canonical declaration). |
+| [requirements.txt](../../requirements.txt) | Add the same `azure-identity>=1.17.1` pin. The file is hand-maintained for compatibility with tools that read it directly (header says so) — it does **not** auto-regenerate from `pyproject.toml`. Both files must be edited in the same commit. |
 
 No new agent code. No new schemas in `agents/`. No `FoundryModel(Model)` subclass. No tool bridge. The diff lands at roughly **~250 lines of production code + ~80 lines of smoke test**.
 
@@ -101,18 +103,26 @@ Deliverable: `scripts/foundry_smoke.py`.
 """Foundry provider smoke test — run before flipping any agent.
 
 Exercises the production factory get_foundry_provider() against the live deployment.
-Tests: structured output, tool calls, streaming, cached_tokens reporting.
-Reads endpoint + auth from providers.yaml (via the existing config loader).
+Tests: structured output (tool mode), tool calls, streaming, cost attribution,
+native structured output (advisory). Reads endpoint + auth from providers.yaml.
 """
 
 import asyncio
+import logging
 import os
+import sys
+
+import click
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.profiles import ModelProfile
 
+from modules.backend.agents.mission_control.cost import compute_cost_usd
+from modules.backend.core.logging import get_logger
 from modules.backend.core.model_providers import get_foundry_provider
+
+logger = get_logger(__name__)
 
 
 class PersonInfo(BaseModel):
@@ -121,61 +131,114 @@ class PersonInfo(BaseModel):
     occupation: str
 
 
-async def main() -> None:
-    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1")
+async def _run(deployment: str) -> int:
+    """Returns process exit code (0 on Tests 1–4 pass, 1 otherwise). Test 5 is advisory."""
     provider = get_foundry_provider()
+    failures: list[str] = []
 
-    # Test 1: structured output via PydanticAI's final_result tool path (default)
+    # Test 1: structured output via PydanticAI's final_result tool path (default).
     tool_model = OpenAIModel(deployment, provider=provider)
     agent = Agent(tool_model, output_type=PersonInfo)
     result = await agent.run("Jane Doe is a 42-year-old risk analyst.")
     assert result.output.name == "Jane Doe"
     assert result.output.age == 42
-    print(f"PASS structured output (tool mode): {result.output}")
+    logger.info("PASS Test 1 structured output (tool mode): %s", result.output)
 
-    # Test 2: tool call
+    # Test 2: tool call.
     tool_agent = Agent(tool_model)
+
     @tool_agent.tool_plain
     def add(a: int, b: int) -> int:
         return a + b
+
     r2 = await tool_agent.run("Use the tool to compute 17 + 25.")
     assert "42" in r2.output
-    print(f"PASS tool call: {r2.output}")
+    logger.info("PASS Test 2 tool call: %s", r2.output)
 
-    # Test 3: streaming
+    # Test 3: streaming — must yield at least one non-empty chunk.
+    chunks: list[str] = []
     async with tool_agent.run_stream("Say 'hello' once.") as stream:
         async for chunk in stream.stream_text():
-            pass
-    print("PASS streaming")
+            chunks.append(chunk)
+    assert chunks, "stream yielded zero chunks"
+    assert "".join(chunks).strip(), "stream produced only empty text"
+    logger.info("PASS Test 3 streaming: %d chunks, %d chars", len(chunks), len("".join(chunks)))
 
-    # Test 4: cached_tokens reporting (empirical gap from research)
+    # Test 4: cost attribution — proves the pricing row is wired correctly.
+    # If this matches the 'default' fallback rate, cost.py is silently misattributing.
     usage = result.usage()
-    print(f"USAGE: input={usage.input_tokens} output={usage.output_tokens} cached={getattr(usage, 'cache_read_tokens', 'N/A')}")
-
-    # Test 5: native structured output mode via ModelProfile override.
-    # This is the EXACT production path — _build_model() will construct the
-    # Model the same way when an agent sets output_mode: native.
-    native_model = OpenAIModel(
-        deployment,
-        provider=provider,
-        profile=ModelProfile(default_structured_output_mode="native"),
+    model_key = f"foundry:{deployment}"
+    cost = compute_cost_usd(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        model=model_key,
+        cache_read_tokens=getattr(usage, "cache_read_tokens", 0) or 0,
     )
-    native_agent = Agent(native_model, output_type=PersonInfo)
-    r5 = await native_agent.run("Bob Lee is a 29-year-old chef.")
-    assert r5.output.name == "Bob Lee"
-    assert r5.output.age == 29
-    print(f"PASS structured output (native mode): {r5.output}")
+    default_cost = compute_cost_usd(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        model="__nonexistent__",  # forces the silent default-rate fallback
+    )
+    cached = getattr(usage, "cache_read_tokens", None)
+    logger.info(
+        "USAGE: input=%d output=%d cached=%s cost=$%.6f default_fallback=$%.6f",
+        usage.input_tokens, usage.output_tokens, cached, cost, default_cost,
+    )
+    assert cost > 0, f"cost is zero — pricing row missing for {model_key!r}"
+    assert cost != default_cost, (
+        f"cost equals the default-rate fallback (${default_cost:.6f}); pricing row for "
+        f"{model_key!r} is not being picked up by compute_cost_usd"
+    )
+    logger.info("PASS Test 4 cost attribution: $%.6f for %s", cost, model_key)
+
+    # Test 5 (ADVISORY): native structured output mode via ModelProfile override.
+    # This is the EXACT production path — _build_model() will construct the Model the
+    # same way when an agent sets output_mode: native. Failure here does not fail the
+    # smoke run; it just dictates that §4.4 _build_profile and §4.5 output_mode do not
+    # ship. Tests 1–4 are the hard gate.
+    try:
+        native_model = OpenAIModel(
+            deployment,
+            provider=provider,
+            profile=ModelProfile(default_structured_output_mode="native"),
+        )
+        native_agent = Agent(native_model, output_type=PersonInfo)
+        r5 = await native_agent.run("Bob Lee is a 29-year-old chef.")
+        assert r5.output.name == "Bob Lee"
+        assert r5.output.age == 29
+        logger.info("PASS Test 5 structured output (native mode): %s", r5.output)
+    except Exception as exc:
+        failures.append(f"Test 5 (native mode, ADVISORY): {exc}")
+        logger.warning("ADVISORY FAIL Test 5 native mode: %s — drop §4.4/§4.5 native wiring", exc)
+
+    if failures:
+        logger.warning("Advisory failures: %s", failures)
+    return 0
+
+
+@click.command()
+@click.option("--deployment", default=lambda: os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1"),
+              help="Foundry deployment name (defaults to $AZURE_OPENAI_DEPLOYMENT or 'gpt-4.1').")
+@click.option("--verbose", is_flag=True, help="INFO-level logging.")
+@click.option("--debug", is_flag=True, help="DEBUG-level logging.")
+def main(deployment: str, verbose: bool, debug: bool) -> None:
+    """Foundry provider smoke test. Exits 0 if Tests 1–4 pass; Test 5 is advisory."""
+    level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
+    logging.basicConfig(level=level, format="%(levelname)s %(name)s — %(message)s")
+    sys.exit(asyncio.run(_run(deployment)))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
 ```
 
-Run via `python scripts/foundry_smoke.py` after `az login`. The smoke test is also the canonical empirical answer to the open question on `cached_tokens` reporting — if the USAGE line shows `cached=<int>`, we get cache attribution for free in our cost tracker.
+Run via `python scripts/foundry_smoke.py --verbose` after `az login`. The smoke test is also the canonical empirical answer to the open question on `cached_tokens` reporting — if the USAGE line shows `cached=<int>` (not `None`), we get cache attribution for free in the cost tracker.
 
-**Gate:** all five assertions pass.
+**Gate:** Tests 1–4 (tool-mode structured output, tool call, streaming, cost attribution) must pass. Test 5 (native mode) is **advisory**: its result decides whether §4.4's `_build_profile` helper and §4.5's `output_mode` field ship at all (see §4.4/§4.5 contingency notes).
+
 - If Test 1 (tool mode) fails — deployment configuration issue, fix before Phase 1.
 - If Tests 2 or 3 (tool call, streaming) fail — **stop and re-evaluate the plan**; we may need `OpenAIResponsesModel` instead of `OpenAIModel`.
+- If Test 4 (cost attribution) fails — pricing row missing or misnamed; fix before Phase 2 (the silent fallback in `cost.py:28-31` makes this invisible at runtime).
 - If Test 5 (native mode) fails — the native opt-in is not viable on this deployment. Ship the plan without §4.5's `output_mode` field and validator, and without the `_build_profile` helper in §4.4; agents can still use foundry via tool mode. Document the failure.
 
 ---
@@ -186,7 +249,7 @@ After Phase 0 ships, the factory exists but no agent can reference `foundry:` be
 
 **Phase 0 ships:** §4.1 (`ProviderAuthSchema` extension), §4.2 (`providers.yaml`), §4.3 (`get_foundry_provider()`), §4.7 (`pyproject.toml`), plus the smoke script.
 
-**Phase 1 ships:** §4.4 (`_build_model()` branch), §4.5 (`known_providers`), §4.6 (pricing row).
+**Phase 1 ships:** §4.4 (`_build_model()` branch — with or without the `profile=` argument depending on smoke Test 5), §4.5 (`output_mode` field + `known_providers`; ship only if Test 5 passed), §4.6 (pricing row), §4.8 (credits-command preflight).
 
 The sub-sections below are the canonical reference for both phases — code blocks are not duplicated.
 
@@ -196,7 +259,13 @@ The sub-sections below are the canonical reference for both phases — code bloc
 
 ```python
 class ProviderAuthSchema(_StrictBase):
-    """Authentication configuration for a model provider."""
+    """Authentication configuration for a model provider.
+
+    Provider-specific fields (e.g. ``scope`` for Foundry Entra auth) live here
+    rather than in a subclass. If a third provider needs its own quirk field,
+    promote this to ``ProviderAuthBase`` + per-provider subclasses instead of
+    growing the union — the pattern-of-three threshold for splitting is real.
+    """
 
     auth_mode: str = "api_key"  # "api_key" | "auth_token" | "codex_oauth" | "entra" | "bearer_token"
     env_var: str | None = None
@@ -204,7 +273,7 @@ class ProviderAuthSchema(_StrictBase):
     scope: str | None = None  # foundry-only: Entra ID token scope (e.g. "https://ai.azure.com/.default")
 ```
 
-The `scope` field is unused by Anthropic and OpenAI configs — it follows the existing shape of `base_url` (also provider-specific). The pragmatic alternative (a `FoundryProviderAuthSchema` subclass) buys ~5 lines of type safety against a near-zero misconfiguration risk; not worth the split.
+The `scope` field is unused by Anthropic and OpenAI configs — it follows the existing shape of `base_url` (also provider-specific). The pragmatic alternative (a `FoundryProviderAuthSchema` subclass) buys ~5 lines of type safety against a near-zero misconfiguration risk; not worth the split today. The class docstring records the trigger for revisiting that decision.
 
 [modules/backend/core/config_schema.py:530-542](../../modules/backend/core/config_schema.py#L530-L542):
 
@@ -308,6 +377,8 @@ def get_foundry_provider():
 
 ### 4.4 `_build_model()` branch
 
+**Contingency:** the `profile=` argument and `_build_profile` helper below ship **only if Test 5 of the Phase 0 smoke passes**. If Test 5 fails, the branch reduces to `return OpenAIModel(bare_name, provider=provider)` — drop the `profile` argument and skip §4.5 entirely.
+
 [modules/backend/core/model_builder.py:113-140](../../modules/backend/core/model_builder.py#L113-L140) — add before the final `raise`:
 
 ```python
@@ -316,11 +387,11 @@ def get_foundry_provider():
         from pydantic_ai.models.openai import OpenAIModel
         from modules.backend.core.model_providers import get_foundry_provider
         provider = get_foundry_provider()
-        profile = _build_profile(config_model)
+        profile = _build_profile(config_model)  # omit if Test 5 failed
         return OpenAIModel(bare_name, provider=provider, profile=profile)
 ```
 
-Add a tiny helper at module scope:
+Add a tiny helper at module scope (omit if Test 5 failed):
 
 ```python
 def _build_profile(config_model: str | AgentModelSchema):
@@ -344,6 +415,8 @@ Update the final error message to list all four providers. Note: use `OpenAIMode
 
 ### 4.5 `AgentModelSchema` extension + provider validation
 
+**Contingent on Test 5 passing** (see §4.4). If Test 5 fails, do not ship this subsection — agents stay on the implicit tool-mode default for all providers.
+
 [modules/backend/schemas/agent_config.py](../../modules/backend/schemas/agent_config.py).
 
 Line 91 — extend `AgentModelSchema` with the opt-in field:
@@ -362,7 +435,10 @@ class AgentModelSchema(_StrictBase):
             "How PydanticAI enforces structured output. 'tool' uses the hidden "
             "final_result tool call (portable across all providers). 'native' uses "
             "response_format with json_schema strict mode (lower latency, model-level "
-            "schema enforcement at decode time, but requires openai or foundry provider)."
+            "schema enforcement at decode time, but requires openai or foundry provider). "
+            "Only effective when the agent's model is given in dict form "
+            "(model: { name: ..., output_mode: native }); bare-string models cannot set "
+            "this field and silently default to 'tool'."
         ),
     )
 ```
@@ -388,6 +464,8 @@ if isinstance(self.model, AgentModelSchema) and self.model.output_mode == "nativ
 
 This validator fires at YAML load time — there's no path where a misconfigured agent reaches dispatch.
 
+**Discoverability note:** `output_mode` is a field on `AgentModelSchema`, so it is only available when an agent's YAML uses the dict form (`model: { name: foundry:gpt-4.1, output_mode: native, ... }`). Agents that use the bare-string form (`model: foundry:gpt-4.1`) silently get tool mode — there is no place to set `output_mode` on a string. `_StrictBase` will reject `output_mode:` written as a sibling key of `model:`, so the failure mode is "user notices the field has no effect" rather than "user silently misconfigures." Acceptable; document in the field description that opt-in requires the dict form.
+
 ### 4.6 Pricing row
 
 [config/agents/mission_control.yaml](../../config/agents/mission_control.yaml) line 46 (`model_pricing` block):
@@ -405,12 +483,25 @@ This validator fires at YAML load time — there's no path where a misconfigured
 
 ### 4.7 Dependency
 
-Add `azure-identity>=1.17.1` to both files:
+Add `azure-identity>=1.17.1` to both files in the same commit:
 
 - [pyproject.toml](../../pyproject.toml) `[project] dependencies` — the canonical declaration.
-- [requirements.txt](../../requirements.txt) — its file header confirms it is hand-maintained for compatibility with tools that read it directly, so add the same pin there.
+- [requirements.txt](../../requirements.txt) — hand-maintained per its file header (does not auto-regenerate from `pyproject.toml`). Add the same pin so consumers reading `requirements.txt` directly stay in sync.
 
 `openai` is already pinned in both files; `pydantic_ai.providers.openai.OpenAIProvider` is already imported elsewhere. `pydantic_ai.profiles.ModelProfile` is part of PydanticAI's existing public API (used today by [copilot_model.py:321-326](../../modules/backend/core/copilot_model.py#L321-L326)).
+
+---
+
+### 4.8 Entra-token preflight
+
+`DefaultAzureCredential()` is constructed eagerly inside `get_foundry_provider()` but does **not** acquire a token until the `get_bearer_token_provider`-returned callable is first invoked by `AsyncOpenAI`. That happens at the first agent dispatch. So an expired `az login` (or a misconfigured managed identity in prod) does not surface until a real mission run — at which point the error is a 401 mid-dispatch, hard to attribute.
+
+Add a liveness check to the existing `python admin.py credits` command ([modules/clients/cli/credits.py](../../modules/clients/cli/credits.py)):
+
+- If any roster agent's model starts with `foundry:`, call `get_foundry_provider()` and then *force* a token acquisition by invoking the bearer-token callable once. Report the token's expiry (`AccessToken.expires_on`) and the resolved credential class (e.g. `AzureCliCredential` vs `ManagedIdentityCredential`).
+- On failure, surface the underlying `azure.identity` exception with the standard `az login` remediation hint.
+
+This keeps Foundry on the same preflight surface as the existing Anthropic/Copilot/OpenAI credential checks. No new admin command — extend the one that already exists.
 
 ---
 
@@ -473,7 +564,9 @@ Add a `TO_FOUNDRY` mapping for the model families we expect to migrate. Since Fo
 
 The reverse mapping (`TO_FOUNDRY → original`) is **not** auto-generated because Foundry deployments may not have a 1:1 correspondence with the Claude / Copilot model graph. Document this in the docstring: fleet migrations *from* Foundry back to Anthropic/Copilot still require `--model-map` overrides on the CLI.
 
-**Definition of success for the admin command:** `python admin.py catalog set-provider foundry --dry-run` lists every agent with a sensible target deployment name, and no unmapped entries fall through to the default identity mapping.
+**Deployment-existence gate:** before the command writes (or before `--dry-run` reports "ready"), it must call `AsyncOpenAI(...).models.list()` against the Foundry endpoint and verify that every distinct target deployment name in the post-mapping plan is in the returned list. Unmapped or non-existent deployments must abort the run with the full list of missing names. Otherwise `TO_FOUNDRY` will happily map `claude-sonnet-4.6 → gpt-4.1` even when no `gpt-4.1` deployment exists, and the first agent flipped will 404 at dispatch. This is the same liveness principle as §4.8 applied to the fleet-flip path.
+
+**Definition of success for the admin command:** `python admin.py catalog set-provider foundry --dry-run` lists every agent with a sensible target deployment name, no unmapped entries fall through to the default identity mapping, and every target deployment is verified to exist on the Foundry resource.
 
 ---
 
@@ -502,12 +595,12 @@ The smoke test exists to close these before the canary flip. If any answer is "n
 
 ## 9. Definition of Done
 
-1. Smoke test `scripts/foundry_smoke.py` exists and all four assertions pass against the live Foundry deployment.
+1. Smoke test `scripts/foundry_smoke.py` exists. Tests 1–4 pass against the live Foundry deployment. Test 5's result is recorded and dictates whether §4.4 `_build_profile` + §4.5 `output_mode` ship (pass) or are dropped (fail) — see §3.2 gate.
 2. Provider plumbing committed: schema, providers.yaml, `get_foundry_provider`, `_build_model` branch, `known_providers`, pricing row, requirements.
 3. `system.summarization.agent` runs on `foundry:gpt-4.1` for 24h with no error rate increase. `llm_calls` rows confirm cost attribution.
 4. `admin.py catalog set-provider foundry --dry-run` produces a clean mapping list (every agent has a target deployment, no unmapped entries).
 5. The open empirical questions in §7 are answered in the smoke test output and documented in the plan or a follow-up note.
-6. `MEMORY.md` updated with a project memory pointing to this plan.
+6. `MEMORY.md` updated with a project memory `project_foundry_provider.md` recording: (a) the deployment endpoint and resource name, (b) the default auth mode (`entra` with scope `https://ai.azure.com/.default`), (c) the smoke-script location `scripts/foundry_smoke.py`, (d) the empirical result for Test 5 (native mode supported / not supported on this deployment) — so future plans don't re-test it.
 
 ---
 
