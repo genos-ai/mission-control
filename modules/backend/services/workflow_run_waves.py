@@ -443,7 +443,14 @@ class WorkflowRunWavesMixin:
                         if isinstance(execution.status, str)
                         else execution.status.value
                     ).lower()
-                    if ex_status in ("success", "partial"):
+                    # `completed` is what _execute_step writes for successful
+                    # agent_step outcomes (see line ~676). It joins `success`
+                    # and `partial` (handle_mission outcome status values) as
+                    # an indicator of success on the Kanban. Without this the
+                    # else branch mis-marks every agent_step as FAILED while
+                    # the workflow engine itself correctly advances -- the
+                    # Kanban lied while the trace told the truth.
+                    if ex_status in ("success", "partial", "completed"):
                         ts = TaskStatus.COMPLETED
                     elif ex_status == "skipped":
                         ts = TaskStatus.SKIPPED

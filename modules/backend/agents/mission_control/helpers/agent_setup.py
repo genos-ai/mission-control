@@ -112,7 +112,20 @@ def _build_agent_deps(
             security_config=sec_config,
             evidence_path="@workspace/evidence",
         )
-    if category == "research":
+    # ResearchAgentDeps carries the shared httpx client used by
+    # search_web / fetch_url. Two paths qualify: any research.* agent,
+    # and the three deliberation Phase 0 agents whose factories declare
+    # deps_type=ResearchAgentDeps (deliberation.researcher and the two
+    # Plan 81 additions). Without this branch the dispatcher would hand
+    # them BaseAgentDeps and their tools would silently fail with
+    # "No HTTP client available" -- which was the actual root cause of
+    # the deliberation.researcher refusal pattern that motivated Plan 81.
+    _HTTP_DEPS_AGENT_NAMES = {
+        "deliberation.researcher.agent",
+        "deliberation.evidence_gatherer.agent",
+        "deliberation.research_packet_builder.agent",
+    }
+    if category == "research" or agent_name in _HTTP_DEPS_AGENT_NAMES:
         from modules.backend.agents.research.deps import ResearchAgentDeps
         return ResearchAgentDeps(**common, http_client=_get_research_http_client())
 
