@@ -59,6 +59,60 @@ class ResearchPacket(BaseModel):
 
 
 # =============================================================================
+# Evidence corpus (gather-step output, Plan 81)
+# =============================================================================
+#
+# Output of deliberation.evidence_gatherer.agent. Wide-cast, lightly
+# structured pre-gathered evidence the packet builder reshapes into a
+# ResearchPacket. Intentionally permissive (no min_length on findings)
+# so the gatherer can return partial results instead of refusing when a
+# sub-question yields nothing.
+
+
+class SourcedFinding(BaseModel):
+    """A single finding from the gather step.
+
+    Less structured than SourcedClaim — the gather phase is wide-cast
+    and the shaping happens downstream in the packet builder.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sub_question_id: str = Field(..., min_length=1, max_length=50)
+    claim: str = Field(..., min_length=1, max_length=1000)
+    evidence: str = Field(..., min_length=1, max_length=2000)
+    source_url: str = Field(..., min_length=1, max_length=500)
+    source_title: str = Field("", max_length=500)
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+
+
+class EvidenceCorpus(BaseModel):
+    """Output of deliberation.evidence_gatherer.agent.
+
+    Intentionally permissive on `findings` (no min_length) so the
+    gatherer returns partial results rather than refusing on
+    sub-questions that yield no sources. The packet builder is the
+    enforcer of the ResearchPacket schema minima.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(..., min_length=1, max_length=2000)
+    sub_questions_addressed: list[str] = Field(default_factory=list)
+    findings: list[SourcedFinding] = Field(default_factory=list)
+    numeric_claims: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sub-questions or framings the gatherer could not find "
+            "good sources for. The packet builder uses these as "
+            "candidates for `under_discussed_angles`."
+        ),
+    )
+    notes: str = Field("", max_length=2000)
+
+
+# =============================================================================
 # Research packet verification (research_verifier output)
 # =============================================================================
 

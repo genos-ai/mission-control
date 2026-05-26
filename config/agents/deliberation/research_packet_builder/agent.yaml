@@ -1,0 +1,40 @@
+agent_name: deliberation.research_packet_builder.agent
+agent_type: vertical
+description: "Phase 0 (Plan 81): reshape a pre-gathered EvidenceCorpus into the existing ResearchPacket schema. Low-creativity, low-refusal-risk shaping work."
+enabled: true
+chat_enabled: false
+model:
+  name: "copilot:claude-opus-4.6"
+  temperature: 0.2
+  max_tokens: 8192
+max_budget_usd: 3.00
+max_input_length: 30000
+timeout_seconds: 1800
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools:
+  - search_web
+  - fetch_url
+  - query_knowledge
+
+interface:
+  input:
+    question: string
+    sub_questions: array
+    evidence_corpus: object
+  output:
+    question_restated: string
+    what_is_known: array
+    expert_disagreements: array
+    mainstream_consensus: string
+    under_discussed_angles: array
+    base_rates: array
+
+scope:
+  read: []
+  write: []

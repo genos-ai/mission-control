@@ -1,0 +1,39 @@
+agent_name: deliberation.evidence_gatherer.agent
+agent_type: vertical
+description: "Phase 0 (Plan 81): web-searches each sub-question, returns a flat sourced EvidenceCorpus for the packet builder to reshape into a ResearchPacket."
+enabled: true
+chat_enabled: false
+model:
+  name: "copilot:claude-sonnet-4.6"
+  temperature: 0.2
+  max_tokens: 8192
+max_budget_usd: 4.00
+max_input_length: 20000
+timeout_seconds: 1800
+
+execution:
+  mode: local
+invocation:
+  tier: user
+
+keywords: []
+tools:
+  - search_web
+  - fetch_url
+  - query_knowledge
+
+interface:
+  input:
+    question: string
+    sub_questions: array
+  output:
+    question: string
+    sub_questions_addressed: array
+    findings: array
+    numeric_claims: array
+    gaps: array
+    notes: string
+
+scope:
+  read: []
+  write: []

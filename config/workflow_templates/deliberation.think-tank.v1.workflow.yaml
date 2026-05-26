@@ -11,14 +11,28 @@
 # Use when: the user wants a structured challenge to a contested view.
 # Do NOT use for: factual lookups, well-specified maths, code generation.
 #
-# 34 nodes total:
-#   23 agent_step  (research + verifier + 4 opens + 4×3 round debaters
+# 36 nodes total (Plan 81 — Phase 0 decomposed):
+#   25 agent_step  (research-decompose + research-gather + research
+#                   + verifier + 4 opens + 4×3 round debaters
 #                   + 4 critic rounds + synthesiser)
 #    7 tool_call   (halt-bad-research, delta-r1, delta-r2,
 #                   store-deliverable-markdown, store-deliverable-json,
 #                   store-transcript, store-learning)
 #    3 decision    (research-gate, stop-r1, stop-r2)
 #    1 merge       (final-merge)
+#
+# Plan 81: the original single `research` step (capability
+# `deliberation.researcher`) was decomposed into three steps because
+# on contested questions the model refused — the ResearchPacket
+# schema's deep $defs + sourced-claim minima + verifier threat made
+# one-call evidence assembly unsolvable without fabrication.
+# Decomposition: research-decompose (research.strategist) breaks the
+# question into sub-questions; research-gather
+# (deliberation.evidence_gatherer) web-searches each one into a flat
+# EvidenceCorpus; research
+# (deliberation.research_packet_builder) reshapes that corpus into
+# the existing ResearchPacket. Downstream contract unchanged —
+# `@node.research.output` still resolves to a ResearchPacket.
 # =============================================================================
 
 workflow_name: deliberation.think-tank.v1.workflow
@@ -46,14 +60,15 @@ budget:
   # the step ceiling). Copilot SDK isn't billing per-token anyway —
   # these numbers are budgetary fiction enforced by the planner.
   #
-  # Worst-case sum at full 3-round run:
-  #   researcher 5 + verifier 1
+  # Worst-case sum at full 3-round run (Plan 81 Phase 0 decomposed):
+  #   research-decompose 1 + research-gather 4 + research 3
+  #   + verifier 1
   # + 4 blind opens × 15 = 60
   # + 4 debaters × 3 rounds × 15 = 180
   # + 4 critic rounds × 15 = 60
   # + synthesiser 8
-  # = $314
-  max_cost_usd: 350.00
+  # = $317
+  max_cost_usd: 355.00
 
 parameters:
   - key: question
@@ -83,7 +98,9 @@ context:
 # Edges — explicit because decision nodes require labelled routing.
 # ---------------------------------------------------------------------------
 edges:
-  # Phase 0 → research gate
+  # Phase 0 → research gate (Plan 81: decomposed into 3 upstream steps)
+  - {source: research-decompose,   target: research-gather}
+  - {source: research-gather,      target: research}
   - {source: research,             target: verify-research}
   - {source: verify-research,      target: research-gate}
   - {source: research-gate,        target: halt-bad-research, label: failed,  source_handle: failed}
@@ -149,17 +166,53 @@ steps:
   # ---------------------------------------------------------------------------
   # Phase 0: Research + verification
   # ---------------------------------------------------------------------------
-  - id: research
-    label: "Assemble research packet"
-    description: "Produce a structured evidence packet for the deliberation"
-    capability: deliberation.researcher
+  # Plan 81 — Phase 0 is now THREE steps. The first two
+  # (research-decompose + research-gather) are new; the third
+  # (research) preserves its ID so the ~10 downstream
+  # @node.research.output refs keep resolving. Its capability is
+  # repointed from `deliberation.researcher` to
+  # `deliberation.research_packet_builder`.
+
+  - id: research-decompose
+    label: "Decompose research question"
+    description: "Break the contested question into 3-7 focused sub-questions"
+    capability: research.strategist
+    roster: default
+    complexity_tier: simple
+    cost_ceiling_usd: 1.00
+    input:
+      query: "@context.question"
+    timeout_seconds: 300
+    depends_on: []
+
+  - id: research-gather
+    label: "Gather evidence"
+    description: "Web-search each sub-question; produce a flat sourced EvidenceCorpus"
+    capability: deliberation.evidence_gatherer
     roster: default
     complexity_tier: complex
-    cost_ceiling_usd: 5.00
+    cost_ceiling_usd: 4.00
     input:
       question: "@context.question"
+      sub_questions: "@node.research-decompose.output.sub_questions"
     timeout_seconds: 1800
-    depends_on: []
+    depends_on:
+      - research-decompose
+
+  - id: research
+    label: "Build research packet"
+    description: "Reshape the pre-gathered evidence corpus into a ResearchPacket"
+    capability: deliberation.research_packet_builder
+    roster: default
+    complexity_tier: complex
+    cost_ceiling_usd: 3.00
+    input:
+      question: "@context.question"
+      sub_questions: "@node.research-decompose.output.sub_questions"
+      evidence_corpus: "@node.research-gather.output"
+    timeout_seconds: 1800
+    depends_on:
+      - research-gather
 
   - id: verify-research
     label: "Verify research packet"
