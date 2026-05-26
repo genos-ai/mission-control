@@ -174,6 +174,23 @@ export default function MissionLayout() {
 
   useEffect(() => { setConnected(connected) }, [connected, setConnected])
 
+  // Reconnect catch-up: SSE drops between events stop pushing invalidations,
+  // so on a real reconnect (false → true on the same mission), refetch the
+  // queries that the per-event SSE handler would normally keep fresh. Skips
+  // the initial mount (when no previous connection on this mission existed).
+  const lastConnectedMission = useRef<string | null>(null)
+  useEffect(() => {
+    if (!id || !connected) return
+    const wasReconnect = lastConnectedMission.current === id
+    lastConnectedMission.current = id
+    if (wasReconnect) {
+      queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
+      queryClient.invalidateQueries({ queryKey: artifactKeys.list(id) })
+      queryClient.invalidateQueries({ queryKey: ['executions'] })
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    }
+  }, [connected, id])
+
   // Forward SSE events into workspace + console stores.
   // Uses totalAdded (not sseEvents.length) as the effect trigger so new events
   // are never missed when the ring buffer is full and length stays at 1000.

@@ -255,14 +255,33 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
   if (event.event_type === 'agent.tool.called') {
     const agent = String(d.agent_id ?? event.source ?? '')
     const tool = String(d.tool_name ?? '')
+    const args = (d.tool_args as Record<string, unknown> | undefined) ?? {}
+    const hasArgs = Object.keys(args).length > 0
+    if (!hasArgs) {
+      return (
+        <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground/70">
+          <Zap className="h-3 w-3 text-amber-400" />
+          <span>{shortName(agent)}</span>
+          <span className="text-muted-foreground/40">→</span>
+          <span className="font-medium text-amber-400/90">{tool}</span>
+          <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+        </div>
+      )
+    }
     return (
-      <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground/70">
-        <Zap className="h-3 w-3 text-amber-400" />
-        <span>{shortName(agent)}</span>
-        <span className="text-muted-foreground/40">→</span>
-        <span className="font-medium text-amber-400/90">{tool}</span>
-        <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
-      </div>
+      <details className="group rounded px-1 py-0.5 text-xs text-muted-foreground/70">
+        <summary className="flex cursor-pointer list-none items-center gap-2">
+          <Zap className="h-3 w-3 shrink-0 text-amber-400" />
+          <span>{shortName(agent)}</span>
+          <span className="text-muted-foreground/40">→</span>
+          <span className="font-medium text-amber-400/90">{tool}</span>
+          <ChevronDown className="h-3 w-3 text-muted-foreground/40 transition-transform group-open:rotate-180" />
+          <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+        </summary>
+        <pre className="ml-5 mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-amber-500/15 bg-amber-500/5 p-2 font-mono text-[11px] leading-relaxed">
+          {JSON.stringify(args, null, 2)}
+        </pre>
+      </details>
     )
   }
 
@@ -270,16 +289,80 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
     const tool = String(d.tool_name ?? '')
     const status = String(d.status ?? 'success')
     const result = String(d.result ?? '')
-    if (status !== 'error') return null
+    const isError = status === 'error'
+    const hasResult = result.length > 0
+    if (isError) {
+      return (
+        <details className="group rounded border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-xs" open>
+          <summary className="flex cursor-pointer list-none items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+            <div className="min-w-0 flex-1">
+              <span className="font-medium text-destructive">{tool} failed</span>
+            </div>
+            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+          </summary>
+          {hasResult && (
+            <pre className="ml-5 mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+              {result}
+            </pre>
+          )}
+        </details>
+      )
+    }
+    if (!hasResult) return null
     return (
-      <div className="flex items-start gap-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-xs">
-        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
-        <div className="min-w-0 flex-1">
-          <span className="font-medium text-destructive">{tool} failed</span>
-          <p className="mt-0.5 truncate text-muted-foreground">{result}</p>
+      <details className="group rounded px-1 py-0.5 text-xs text-muted-foreground/70">
+        <summary className="flex cursor-pointer list-none items-center gap-2">
+          <Zap className="h-3 w-3 shrink-0 text-emerald-400/80" />
+          <span className="font-medium text-emerald-400/80">{tool}</span>
+          <span className="text-muted-foreground/40">returned</span>
+          <ChevronDown className="h-3 w-3 text-muted-foreground/40 transition-transform group-open:rotate-180" />
+          <span className="ml-auto text-[10px] tabular-nums">{ts}</span>
+        </summary>
+        <pre className="ml-5 mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-emerald-500/15 bg-emerald-500/5 p-2 font-mono text-[11px] leading-relaxed">
+          {result}
+        </pre>
+      </details>
+    )
+  }
+
+  if (event.event_type === 'agent.response.complete') {
+    const agent = String(d.agent_id ?? event.source ?? '')
+    const content = String(d.full_content ?? '')
+    const cost = d.cost_usd != null ? `$${Number(d.cost_usd).toFixed(4)}` : ''
+    const metadata = (d.metadata as Record<string, unknown> | undefined) ?? {}
+    const thinking = typeof metadata.thinking === 'string' ? metadata.thinking : ''
+    if (!content && !thinking) return null
+    return (
+      <details className="group rounded border border-sky-500/15 bg-sky-500/5 px-3 py-1.5 text-xs">
+        <summary className="flex cursor-pointer list-none items-center gap-2">
+          <Brain className="h-3 w-3 shrink-0 text-sky-400" />
+          <span className="font-medium">{shortName(agent)}</span>
+          <span className="text-muted-foreground/50">responded</span>
+          {thinking && (
+            <Badge variant="outline" className="h-4 text-[9px] border-purple-500/40 text-purple-400">
+              thinking
+            </Badge>
+          )}
+          {cost && <Badge variant="outline" className="h-4 text-[9px]">{cost}</Badge>}
+          <ChevronDown className="h-3 w-3 text-muted-foreground/40 transition-transform group-open:rotate-180" />
+          <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+        </summary>
+        <div className="ml-5 mt-2 space-y-2 border-t border-sky-500/15 pt-2">
+          {thinking && (
+            <details className="rounded border border-purple-500/20 bg-purple-500/5 px-2 py-1.5">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-purple-400">
+                <Brain className="h-3 w-3" />
+                Thinking
+              </summary>
+              <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+                {thinking}
+              </pre>
+            </details>
+          )}
+          {content && <MarkdownRenderer content={content} className="text-sm" />}
         </div>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
-      </div>
+      </details>
     )
   }
 
@@ -348,6 +431,33 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
   const level = getLevelFromEvent(event)
   const message = String(d.message ?? d.narrative ?? d.detail ?? '')
 
+  const hasPayload = !message && d && Object.keys(d).length > 0
+
+  if (hasPayload) {
+    return (
+      <details className={cn('group rounded border-l-2 px-3 py-2', levelStyles(level))}>
+        <summary className="flex cursor-pointer list-none items-start gap-2.5">
+          <LevelIcon level={level} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="h-4 shrink-0 text-[9px] font-mono">
+                {event.event_type}
+              </Badge>
+              {event.source && (
+                <span className="text-[10px] text-muted-foreground/50">{event.source}</span>
+              )}
+            </div>
+          </div>
+          <ChevronDown className="mt-0.5 h-3 w-3 text-muted-foreground/40 transition-transform group-open:rotate-180" />
+          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
+        </summary>
+        <pre className="ml-5 mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] text-muted-foreground/70">
+          {JSON.stringify(d, null, 2)}
+        </pre>
+      </details>
+    )
+  }
+
   return (
     <div className={cn('flex items-start gap-2.5 rounded border-l-2 px-3 py-2', levelStyles(level))}>
       <LevelIcon level={level} />
@@ -362,11 +472,6 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
         </div>
         {message && (
           <p className="mt-1 text-sm">{message}</p>
-        )}
-        {!message && d && Object.keys(d).length > 0 && (
-          <pre className="mt-1 max-h-24 overflow-auto text-[11px] text-muted-foreground/70">
-            {JSON.stringify(d, null, 2)}
-          </pre>
         )}
       </div>
       <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
