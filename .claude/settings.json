@@ -140,7 +140,11 @@
       "Bash(/opt/anaconda3/envs/mission-control/bin/pip install *)",
       "Bash(ps -o pid,etime,cmd -p 29676)",
       "Skill(tavily-search)",
-      "Skill(tavily-search:*)"
+      "Skill(tavily-search:*)",
+      "Bash(pytest tests/unit/backend/schemas/test_workflow_schema.py -q)",
+      "Bash(ruff check *)",
+      "Bash(pytest tests/unit/backend/services/test_workflow_definition.py -q)",
+      "Bash(pytest tests/unit/backend/services/test_workflow_definition.py::TestCreateWorkflow::test_creates_workflow -q)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
