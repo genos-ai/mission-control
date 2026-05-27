@@ -28,6 +28,56 @@ from modules.backend.events.types import WorkflowGraphEvent
 logger = get_logger(__name__)
 
 
+def _summarise_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Reduce a full workflow definition to a compact, model-friendly shape.
+
+    Returns identity + per-step skeleton (id, type, capability/resolver,
+    deps, output summary key). Strips the heavy fields — step `input`,
+    prompts, schemas, full edge labels — that bloat the architect's
+    context without helping it explain or modify the workflow.
+    """
+    steps = workflow.get("steps") or []
+    edges = workflow.get("edges") or []
+
+    step_summaries: list[dict[str, Any]] = []
+    for step in steps:
+        node_type = step.get("node_type") or "agent_step"
+        entry: dict[str, Any] = {
+            "id": step.get("id"),
+            "node_type": node_type,
+            "depends_on": step.get("depends_on") or [],
+        }
+        if node_type == "agent_step" and step.get("capability"):
+            entry["capability"] = step["capability"]
+        if node_type == "decision":
+            cfg = step.get("decision_config") or {}
+            entry["decision"] = {
+                "resolver": cfg.get("resolver"),
+                "options": [o.get("key") for o in (cfg.get("options") or [])],
+            }
+        if node_type == "condition":
+            cfg = step.get("condition_config") or {}
+            entry["condition"] = cfg.get("expression")
+        if step.get("output_mapping", {}).get("summary_key"):
+            entry["summary_key"] = step["output_mapping"]["summary_key"]
+        step_summaries.append(entry)
+
+    return {
+        "id": workflow.get("id"),
+        "name": workflow.get("name"),
+        "description": workflow.get("description"),
+        "version": workflow.get("version"),
+        "enabled": workflow.get("enabled"),
+        "step_count": len(steps),
+        "edge_count": len(edges),
+        "steps": step_summaries,
+        "hint": (
+            "Summary only. Call get_workflow(name, verbose=True) for full "
+            "step inputs, prompts, configs, and edges."
+        ),
+    }
+
+
 def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     """Create the Workflow Architect agent instance.
 
@@ -228,17 +278,23 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     async def get_workflow(
         ctx: RunContext[ArchitectAgentDeps],
         name: str,
+        verbose: bool = False,
     ) -> str:
-        """Fetch the full step and edge definitions of an existing workflow.
+        """Fetch an existing workflow definition.
 
-        Use this before proposing changes so you have the current state.
+        Default returns a compact summary (~1–2 KB) — enough to explain
+        the pipeline to the user. Pass verbose=True only when you need
+        full step inputs, prompts, and configs (e.g. before calling
+        update_workflow with a precise edit). Full payloads can exceed
+        20 KB and bloat the conversation.
 
         Args:
             name: Workflow name to fetch.
+            verbose: When True, return full step/edge JSON. Default False.
 
         Returns:
-            JSON with full workflow definition including all steps and edges,
-            or an error message if not found.
+            JSON summary or full definition. Includes a `hint` field
+            pointing at verbose mode when summary is returned.
         """
         if ctx.deps.db_session is None:
             return json.dumps({"error": "No database session available"})
@@ -252,7 +308,10 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
         )
         if result is None:
             return json.dumps({"error": f"Workflow '{name}' not found"})
-        return json.dumps(result, indent=2, default=str)
+
+        if verbose:
+            return json.dumps(result, indent=2, default=str)
+        return json.dumps(_summarise_workflow(result), indent=2, default=str)
 
     # -- Tool: update_workflow -----------------------------------------------
 
