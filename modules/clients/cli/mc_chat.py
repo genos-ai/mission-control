@@ -6,6 +6,7 @@ architect endpoint. Zero backend service imports.
 """
 
 import json
+from urllib.parse import quote
 
 import click
 
@@ -134,12 +135,11 @@ async def design_repl(
     message_history: list[dict] = []
 
     while True:
+        # Endpoint expects ?message=... as a query parameter (architect_chat
+        # in missions_workflows.py). Multi-turn continuity is via session_id,
+        # not message_history — kept locally for future SSE/session wiring.
         result = await api.post(
-            f"/missions/{mission_id}/architect/chat",
-            body={
-                "message": user_input,
-                "message_history": message_history,
-            },
+            f"/missions/{mission_id}/architect/chat?message={quote(user_input)}",
         )
 
         response = result.get("response", "")
