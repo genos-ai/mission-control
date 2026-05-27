@@ -9,7 +9,7 @@ import asyncio
 import json
 import sys
 
-from modules.clients.cli.report import get_console, create_table
+from modules.clients.cli.report import get_console, build_table
 
 
 def run_workshop(
@@ -102,7 +102,7 @@ async def _action_cached_inputs(cli_logger, *, agent_name, mission_id, limit, **
         console.print(f"[yellow]No cached inputs found for {agent_name}[/yellow]")
         return
 
-    table = create_table(
+    table = build_table(
         f"Cached Inputs — {agent_name}",
         ["ID", "Task", "Cost", "Created"],
     )
@@ -129,7 +129,7 @@ async def _action_history(cli_logger, *, agent_name, limit, **_):
         console.print("[yellow]No workshop runs found[/yellow]")
         return
 
-    table = create_table(
+    table = build_table(
         "Workshop Runs",
         ["ID", "Agent", "Status", "Cost", "Created"],
     )

@@ -164,7 +164,7 @@ class WorkshopService(BaseService):
 
         execution_record = await self._persist_workshop_run(
             agent_name=agent_name,
-            session_id=session_id or "",
+            session_id=session_id,
             output_dict=output_dict,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -297,7 +297,7 @@ class WorkshopService(BaseService):
         self,
         *,
         agent_name: str,
-        session_id: str,
+        session_id: str | None,
         output_dict: dict,
         input_tokens: int,
         output_tokens: int,
@@ -307,7 +307,7 @@ class WorkshopService(BaseService):
         inputs: dict | None,
         had_prompt_override: bool,
     ) -> ExecutionRecord:
-        """Save a workshop run as an ExecutionRecord + TaskExecution."""
+        """Persist a workshop run as an ExecutionRecord (no TaskExecution — see comment below)."""
         record = ExecutionRecord(
             session_id=session_id,
             status=ExecutionRecordStatus.COMPLETED.value,
@@ -327,22 +327,12 @@ class WorkshopService(BaseService):
         await self._session.flush()
         await self._session.refresh(record)
 
-        task_exec = TaskExecution(
-            execution_record_id=record.id,
-            task_id="workshop-run",
-            agent_name=agent_name,
-            status=TaskExecutionStatus.COMPLETED,
-            output_data=output_dict,
-            token_usage={
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-            },
-            cost_usd=cost_usd,
-            started_at=started_at,
-            completed_at=completed_at,
-        )
-        self._session.add(task_exec)
-        await self._session.flush()
+        # Workshop runs do NOT write a TaskExecution. Plan 72 promoted tasks to a
+        # first-class entity with an FK from task_executions.task_id → tasks.id;
+        # workshop runs are not tied to a real task, so any synthetic task_id would
+        # violate the FK. The ExecutionRecord is sufficient audit per the service
+        # docstring ("bypasses the full dispatch/planning/verification pipeline").
+        # Token usage + cost live on the ExecutionRecord row already.
 
         return record
 
