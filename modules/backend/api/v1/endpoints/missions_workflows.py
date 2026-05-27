@@ -686,14 +686,37 @@ async def architect_chat(
     from pydantic_ai.exceptions import ModelHTTPError
     from modules.backend.services.workflow_architect import WorkflowArchitectService
 
-    # Capture graph events emitted by the render_graph tool
-    from modules.backend.events.types import WorkflowGraphEvent
+    # Capture graph events emitted by the render_graph tool, plus every
+    # AgentToolCall/Result event so the client can verify which tools
+    # actually ran (catches model confabulation about phantom tool errors).
+    from modules.backend.events.types import (
+        AgentToolCallEvent,
+        AgentToolResultEvent,
+        WorkflowGraphEvent,
+    )
 
     captured_graphs: list[dict] = []
+    tool_trace: list[dict] = []
 
     async def capture_event(event):
         if isinstance(event, WorkflowGraphEvent):
             captured_graphs.append(event.graph_data)
+        elif isinstance(event, AgentToolCallEvent):
+            tool_trace.append({
+                "phase": "call",
+                "tool": event.tool_name,
+                "tool_call_id": event.tool_call_id,
+                "args": event.tool_args,
+            })
+        elif isinstance(event, AgentToolResultEvent):
+            tool_trace.append({
+                "phase": "result",
+                "tool": event.tool_name,
+                "tool_call_id": event.tool_call_id,
+                "status": event.status,
+                "result": event.result,
+                "error_detail": event.error_detail,
+            })
 
     service = WorkflowArchitectService(db)
     try:
@@ -721,6 +744,7 @@ async def architect_chat(
     data: dict = {
         "response": result.get("response", ""),
         "usage": str(result.get("usage")) if result.get("usage") else None,
+        "tool_trace": tool_trace,
     }
     if captured_graphs:
         data["graph_proposal"] = captured_graphs[-1]  # last rendered graph

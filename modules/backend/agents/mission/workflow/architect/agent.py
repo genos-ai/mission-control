@@ -10,9 +10,10 @@ Entry points:
     run_conversational(agent, deps, message, message_history) — for service layer
 """
 
+import functools
 import json
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
@@ -23,9 +24,93 @@ from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.adapters import workflow_design
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
-from modules.backend.events.types import WorkflowGraphEvent
+from modules.backend.events.types import (
+    AgentToolCallEvent,
+    AgentToolResultEvent,
+    WorkflowGraphEvent,
+)
 
 logger = get_logger(__name__)
+
+_ARCHITECT_AGENT_ID = "mission.workflow.architect"
+
+
+def _observed(tool_name: str) -> Callable:
+    """Wrap an architect tool to emit AgentToolCall/Result events.
+
+    Surfaces every tool invocation to the chat endpoint via deps.on_event,
+    so the user can see exactly which tools ran and what they returned.
+    Without this, the architect can hallucinate tool calls that never
+    happened (e.g. fabricated "permission denied" errors on tools it does
+    not have).
+    """
+
+    def decorator(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        async def wrapper(ctx: RunContext[ArchitectAgentDeps], *args, **kwargs):
+            call_id = str(uuid.uuid4())
+            await _emit(ctx, AgentToolCallEvent(
+                session_id=_session_uuid(ctx.deps.session_id),
+                source="workflow_architect",
+                agent_id=_ARCHITECT_AGENT_ID,
+                tool_name=tool_name,
+                tool_args=kwargs or {},
+                tool_call_id=call_id,
+            ))
+            try:
+                result = await fn(ctx, *args, **kwargs)
+            except Exception as e:
+                await _emit(ctx, AgentToolResultEvent(
+                    session_id=_session_uuid(ctx.deps.session_id),
+                    source="workflow_architect",
+                    agent_id=_ARCHITECT_AGENT_ID,
+                    tool_name=tool_name,
+                    tool_call_id=call_id,
+                    result=None,
+                    status="error",
+                    error_detail=str(e)[:500],
+                ))
+                raise
+            status = "error" if _looks_like_error(result) else "success"
+            await _emit(ctx, AgentToolResultEvent(
+                session_id=_session_uuid(ctx.deps.session_id),
+                source="workflow_architect",
+                agent_id=_ARCHITECT_AGENT_ID,
+                tool_name=tool_name,
+                tool_call_id=call_id,
+                result=str(result)[:500],
+                status=status,
+            ))
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+async def _emit(ctx: RunContext[ArchitectAgentDeps], event: Any) -> None:
+    """Best-effort event emission — never blocks the tool."""
+    if not ctx.deps.on_event or not ctx.deps.session_id:
+        return
+    try:
+        await ctx.deps.on_event(event)
+    except Exception:
+        logger.debug("Failed to emit architect tool event", exc_info=True)
+
+
+def _session_uuid(session_id: Any) -> uuid.UUID:
+    if isinstance(session_id, uuid.UUID):
+        return session_id
+    return uuid.UUID(str(session_id))
+
+
+def _looks_like_error(result: Any) -> bool:
+    """Detect tool error returns. Architect tools return json.dumps({'error': ...})
+    on failure rather than raising — flag those as status=error."""
+    if not isinstance(result, str):
+        return False
+    head = result[:80].lower()
+    return '"error"' in head
 
 
 def _summarise_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +179,7 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     # -- Tool: browse_catalog ------------------------------------------------
 
     @agent.tool
+    @_observed("browse_catalog")
     async def browse_catalog(
         ctx: RunContext[ArchitectAgentDeps],
         agent_type: str | None = None,
@@ -123,6 +209,7 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     # -- Tool: validate_workflow ---------------------------------------------
 
     @agent.tool
+    @_observed("validate_workflow")
     async def validate_workflow(
         ctx: RunContext[ArchitectAgentDeps],
         steps: list[dict[str, Any]],
@@ -147,6 +234,7 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     # -- Tool: render_graph --------------------------------------------------
 
     @agent.tool
+    @_observed("render_graph")
     async def render_graph(
         ctx: RunContext[ArchitectAgentDeps],
         steps: list[dict[str, Any]],
@@ -187,6 +275,7 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     # -- Tool: list_workflows ------------------------------------------------
 
     @agent.tool
+    @_observed("list_workflows")
     async def list_workflows(
         ctx: RunContext[ArchitectAgentDeps],
     ) -> str:
@@ -213,6 +302,7 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     # -- Tool: save_workflow -------------------------------------------------
 
     @agent.tool
+    @_observed("save_workflow")
     async def save_workflow(
         ctx: RunContext[ArchitectAgentDeps],
         name: str,
@@ -275,6 +365,7 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     # -- Tool: get_workflow --------------------------------------------------
 
     @agent.tool
+    @_observed("get_workflow")
     async def get_workflow(
         ctx: RunContext[ArchitectAgentDeps],
         name: str,
@@ -316,6 +407,7 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
     # -- Tool: update_workflow -----------------------------------------------
 
     @agent.tool
+    @_observed("update_workflow")
     async def update_workflow(
         ctx: RunContext[ArchitectAgentDeps],
         name: str,

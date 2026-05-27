@@ -110,6 +110,29 @@ async def chat_repl(
             console.print()
 
 
+def _format_tool_trace(trace: list[dict]) -> str:
+    """Render the architect's tool trace as `name ✓` / `name ✗` chips.
+
+    Pairs each call with its matching result by tool_call_id so the user
+    sees exactly which tools actually ran and whether each one succeeded.
+    """
+    if not trace:
+        return ""
+    results_by_id: dict[str, str] = {}
+    for entry in trace:
+        if entry.get("phase") == "result":
+            results_by_id[entry.get("tool_call_id", "")] = entry.get("status", "")
+    chips: list[str] = []
+    for entry in trace:
+        if entry.get("phase") != "call":
+            continue
+        name = entry.get("tool", "?")
+        status = results_by_id.get(entry.get("tool_call_id", ""))
+        glyph = "✓" if status == "success" else ("✗" if status == "error" else "…")
+        chips.append(f"{name} {glyph}")
+    return ", ".join(chips)
+
+
 async def design_repl(
     api: CliApiClient,
     description: str | None,
@@ -132,27 +155,28 @@ async def design_repl(
         except (click.Abort, EOFError):
             return
 
-    message_history: list[dict] = []
-
     while True:
         # Endpoint expects ?message=... as a query parameter (architect_chat
-        # in missions_workflows.py). Multi-turn continuity is via session_id,
-        # not message_history — kept locally for future SSE/session wiring.
+        # in missions_workflows.py). Multi-turn continuity is via session_id
+        # on the endpoint side, not by client-sent history.
         result = await api.post(
             f"/missions/{mission_id}/architect/chat?message={quote(user_input)}",
         )
 
         response = result.get("response", "")
-        new_history = result.get("all_messages", [])
-        if new_history:
-            message_history = new_history
+        tool_trace = result.get("tool_trace") or []
+        tool_summary = _format_tool_trace(tool_trace)
 
         if verbose:
+            if tool_trace:
+                print(json.dumps({"type": "tool_trace", "trace": tool_trace}, default=str), flush=True)
             print(json.dumps({"type": "architect_response", "response": response}, default=str), flush=True)
             workflow_yaml = result.get("workflow_yaml")
             if workflow_yaml:
                 print(json.dumps({"type": "workflow_generated", "yaml": workflow_yaml}, default=str), flush=True)
         else:
+            if tool_summary:
+                console.print(f"\n[dim]tools: {tool_summary}[/dim]")
             console.print(f"\n[bold cyan]architect:[/bold cyan] {response}\n")
             if result.get("workflow_yaml"):
                 console.print("[green]Workflow generated. Save with /save <name>[/green]")
