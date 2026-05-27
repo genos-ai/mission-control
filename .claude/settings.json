@@ -163,7 +163,10 @@
       "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py db query llm_calls --limit 5)",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop run system.summarization.agent --inputs '{\"mission_outcomes\":[\"Plan 82 Phase 0 shipped: Foundry provider factory + smoke test passing\",\"Plan 82 Phase 1 shipped: _build_model branch + credits Entra preflight\",\"Plan 82 Phase 2 canary: switched system.summarization.agent to foundry:gpt-4.1\"],\"target_length\":80}')",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop run system.summarization.agent --inputs '{\"mission_outcomes\":[\"Plan 82 Phase 0 shipped: Foundry provider factory\",\"Plan 82 Phase 1 shipped: _build_model branch + credits Entra preflight\",\"Plan 82 Phase 2 canary: switched system.summarization.agent to foundry:gpt-4.1\"],\"target_length\":80}')",
-      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py catalog models)"
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py catalog models)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py catalog detail system.planning.agent)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py catalog set-model system.planning.agent foundry:gpt-4.1)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop run research.analyst.agent --inputs '{\"sub_question\":\"What is the current GA status of Claude Opus 4.7 on Azure AI Foundry?\",\"compressed_findings\":\"Microsoft Tech Community announced Claude Opus 4.7 generally available in Microsoft Foundry in March 2026. The model is in the public catalog at ai.azure.com/catalog. Microsoft is positioning Foundry as the enterprise governance layer for both Anthropic and OpenAI models.\"}')"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
