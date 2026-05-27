@@ -115,6 +115,20 @@ class AgentModelSchema(_StrictBase):
         default_factory=list,
         description="Provider beta feature flags, e.g. ['structured-outputs-2025-11-13'].",
     )
+    output_mode: Literal["tool", "native"] = Field(
+        default="tool",
+        description=(
+            "How PydanticAI enforces structured output. 'tool' (default) uses the "
+            "hidden final_result tool call — portable across all four providers and "
+            "the safe choice for P17-style incremental tool building. 'native' uses "
+            "response_format with json_schema strict mode (constrained decoding at "
+            "the model layer, one fewer round-trip). Requires provider in {openai, "
+            "foundry}; rejected at YAML load time otherwise. Only takes effect when "
+            "the agent's model is in dict form (model: { name: ..., output_mode: "
+            "native }); bare-string model declarations cannot set this field and "
+            "silently default to 'tool'."
+        ),
+    )
 
 
 class AgentConfigSchema(_StrictBase):
@@ -233,6 +247,17 @@ class AgentConfigSchema(_StrictBase):
                 f"Unknown model provider '{provider}' for agent '{self.agent_name}'. "
                 f"Known: {', '.join(sorted(known_providers))}"
             )
+
+        # Native JSON-schema mode requires response_format support — only the
+        # OpenAI-wire providers (openai, foundry) pass that through to the model.
+        if isinstance(self.model, AgentModelSchema) and self.model.output_mode == "native":
+            if provider not in {"openai", "foundry"}:
+                raise ValueError(
+                    f"Agent '{self.agent_name}': output_mode='native' requires an "
+                    f"openai or foundry provider (got '{provider}'). Native "
+                    f"JSON-schema strict mode only works on providers that pass "
+                    f"response_format through to the model."
+                )
 
         return self
 

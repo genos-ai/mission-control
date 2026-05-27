@@ -88,6 +88,39 @@ def _get_default_cache_ttl() -> str:
     return get_app_config().cost.default_cache_ttl
 
 
+def _build_profile(config_model: str | AgentModelSchema):
+    """Return a ModelProfile that pins structured-output mode, or None for defaults.
+
+    Used by the foundry: branch of `_build_model` to opt in to native JSON-schema
+    output per agent. Phase 0 Test 6/7 proved Azure gpt-4.1 accepts response_format
+    json_schema strict=true at the wire level and that a profile override unlocks
+    the path through PydanticAI.
+
+    Built on top of PydanticAI's own factory (`openai_model_profile(model_name)`)
+    rather than instantiating OpenAIModelProfile directly — the factory populates
+    crucial openai-specific defaults that the dataclass leaves None:
+      - supports_json_schema_output=True (the actual unlock)
+      - json_schema_transformer=OpenAIJsonSchemaTransformer (rewrites Pydantic
+        schemas to OpenAI strict-mode shape: additionalProperties=false, all
+        fields required, no $ref — without it, complex Pydantic output_types
+        fail at request submission)
+      - openai_supports_strict_tool_definition, supported_builtin_tools, etc.
+    We then patch only `default_structured_output_mode` via dataclasses.replace.
+
+    Returns None when config_model is a bare string (no opt-in possible) or when
+    output_mode is "tool" (let PydanticAI's per-model defaults apply unchanged).
+    """
+    if not isinstance(config_model, AgentModelSchema):
+        return None
+    if config_model.output_mode == "tool":
+        return None
+    import dataclasses
+    from pydantic_ai.profiles.openai import openai_model_profile
+    bare_name = config_model.name.split(":", 1)[1] if ":" in config_model.name else config_model.name
+    base = openai_model_profile(bare_name)
+    return dataclasses.replace(base, default_structured_output_mode=config_model.output_mode)
+
+
 def _resolve_model_alias(model_name: str) -> str:
     """Resolve a model alias to a fully-qualified provider:model string.
 
@@ -138,14 +171,15 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
         return CopilotModel(model_id=bare_name)
 
     if model_name.startswith("foundry:"):
-        # Native JSON-schema output is not supported by the gpt-4.1 deployment
-        # (Phase 0 smoke Test 5 failed), so no ModelProfile override is needed —
-        # PydanticAI defaults to tool mode (P17), which works fine.
+        # Tool mode is the default (P17 portable structured output). Agents can
+        # opt in to native JSON-schema mode per-agent via `output_mode: native`
+        # in the AgentModelSchema dict form — see _build_profile for details.
         bare_name = model_name.split(":", 1)[1]
         from pydantic_ai.models.openai import OpenAIModel
         from modules.backend.core.model_providers import get_foundry_provider
         provider = get_foundry_provider()
-        return OpenAIModel(bare_name, provider=provider)
+        profile = _build_profile(config_model)
+        return OpenAIModel(bare_name, provider=provider, profile=profile)
 
     raise ValidationError(
         f"Unsupported model provider in '{model_name}'. "
