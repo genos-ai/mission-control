@@ -129,10 +129,12 @@ def _looks_like_error(result: Any) -> bool:
 def _summarise_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
     """Reduce a full workflow definition to a compact, model-friendly shape.
 
-    Returns identity + per-step skeleton (id, type, capability/resolver,
-    deps, output summary key). Strips the heavy fields — step `input`,
-    prompts, schemas, full edge labels — that bloat the architect's
-    context without helping it explain or modify the workflow.
+    Each step keeps id, node_type, capability/resolver/condition,
+    depends_on, and (when present) output_mapping in its exact schema
+    shape — so a round-trip through update_workflow preserves every
+    field. Strips only the heavy content fields (step `input`, prompts,
+    schemas, full edge labels) that bloat context without helping the
+    model explain or modify the workflow.
     """
     steps = workflow.get("steps") or []
     edges = workflow.get("edges") or []
@@ -147,21 +149,26 @@ def _summarise_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
         }
         if node_type == "agent_step" and step.get("capability"):
             entry["capability"] = step["capability"]
-        if node_type == "decision":
-            cfg = step.get("decision_config") or {}
-            entry["decision"] = {
-                "resolver": cfg.get("resolver"),
-                "options": [o.get("key") for o in (cfg.get("options") or [])],
-            }
-        if node_type == "condition":
-            cfg = step.get("condition_config") or {}
-            entry["condition"] = cfg.get("expression")
-        # Guard against output_mapping being explicitly None (vs missing) —
-        # dict.get(k, default) returns the stored value, not the default,
-        # when the key exists with value None.
+        # Pass decision/condition configs through whole — they carry
+        # required cross-field invariants (e.g. agent resolver needs
+        # model+prompt) that a partial copy would silently violate.
+        if node_type == "decision" and step.get("decision_config"):
+            entry["decision_config"] = step["decision_config"]
+        if node_type == "condition" and step.get("condition_config"):
+            entry["condition_config"] = step["condition_config"]
+        # Preserve output_mapping in its exact schema shape so the model
+        # can copy the step into an update_workflow payload without
+        # restructuring. (`step.output_mapping.summary_key` is the schema
+        # path — hoisting it broke round-trip updates in v2 of
+        # research.deep-research-pipeline.)
         output_mapping = step.get("output_mapping") or {}
-        if output_mapping.get("summary_key"):
-            entry["summary_key"] = output_mapping["summary_key"]
+        if output_mapping.get("summary_key") or output_mapping.get("field_mappings"):
+            preserved: dict[str, Any] = {}
+            if output_mapping.get("summary_key"):
+                preserved["summary_key"] = output_mapping["summary_key"]
+            if output_mapping.get("field_mappings"):
+                preserved["field_mappings"] = output_mapping["field_mappings"]
+            entry["output_mapping"] = preserved
         step_summaries.append(entry)
 
     return {
@@ -174,8 +181,10 @@ def _summarise_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
         "edge_count": len(edges),
         "steps": step_summaries,
         "hint": (
-            "Summary only. Call get_workflow(name, verbose=True) for full "
-            "step inputs, prompts, configs, and edges."
+            "Summary view: step fields use their exact schema shape so "
+            "you can copy them straight into an update_workflow payload. "
+            "Call get_workflow(name, verbose=True) when you need step "
+            "inputs, prompts, full configs, or edges."
         ),
     }
 
