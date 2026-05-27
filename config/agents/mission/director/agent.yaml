@@ -17,7 +17,9 @@ chat_enabled: true
 version: "1.0.0"
 
 model:
-  name: "copilot:claude-sonnet-4.6"
+  # Plan 82 Tier-1 batch flip 2026-05-27 — was copilot:claude-sonnet-4.6.
+  # Rollback: revert and `python admin.py admin seed-catalog --force`.
+  name: "foundry:gpt-4.1"
   temperature: 0.0
   max_tokens: 16384
 

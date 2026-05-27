@@ -34,7 +34,7 @@ agent_type: vertical
 description: "Audits the codebase for compliance violations (read-only)"
 enabled: true
 chat_enabled: true
-model: copilot:claude-sonnet-4.6
+model: foundry:gpt-4.1
 max_input_length: 2000
 max_budget_usd: 2.00
 max_tokens: 2000000
