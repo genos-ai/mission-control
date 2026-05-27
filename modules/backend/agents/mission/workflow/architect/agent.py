@@ -48,39 +48,47 @@ def _observed(tool_name: str) -> Callable:
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         async def wrapper(ctx: RunContext[ArchitectAgentDeps], *args, **kwargs):
+            sid = _session_uuid(ctx.deps.session_id)
+            # Skip emission when there is no listener or no valid session.
+            # Session_id is None for stateless HTTP architect calls; the
+            # endpoint still captures events via on_event regardless.
+            should_emit = ctx.deps.on_event is not None
             call_id = str(uuid.uuid4())
-            await _emit(ctx, AgentToolCallEvent(
-                session_id=_session_uuid(ctx.deps.session_id),
-                source="workflow_architect",
-                agent_id=_ARCHITECT_AGENT_ID,
-                tool_name=tool_name,
-                tool_args=kwargs or {},
-                tool_call_id=call_id,
-            ))
+            if should_emit and sid is not None:
+                await _emit(ctx, AgentToolCallEvent(
+                    session_id=sid,
+                    source="workflow_architect",
+                    agent_id=_ARCHITECT_AGENT_ID,
+                    tool_name=tool_name,
+                    tool_args=kwargs or {},
+                    tool_call_id=call_id,
+                ))
             try:
                 result = await fn(ctx, *args, **kwargs)
             except Exception as e:
+                if should_emit and sid is not None:
+                    await _emit(ctx, AgentToolResultEvent(
+                        session_id=sid,
+                        source="workflow_architect",
+                        agent_id=_ARCHITECT_AGENT_ID,
+                        tool_name=tool_name,
+                        tool_call_id=call_id,
+                        result=None,
+                        status="error",
+                        error_detail=str(e)[:500],
+                    ))
+                raise
+            if should_emit and sid is not None:
+                status = "error" if _looks_like_error(result) else "success"
                 await _emit(ctx, AgentToolResultEvent(
-                    session_id=_session_uuid(ctx.deps.session_id),
+                    session_id=sid,
                     source="workflow_architect",
                     agent_id=_ARCHITECT_AGENT_ID,
                     tool_name=tool_name,
                     tool_call_id=call_id,
-                    result=None,
-                    status="error",
-                    error_detail=str(e)[:500],
+                    result=str(result)[:500],
+                    status=status,
                 ))
-                raise
-            status = "error" if _looks_like_error(result) else "success"
-            await _emit(ctx, AgentToolResultEvent(
-                session_id=_session_uuid(ctx.deps.session_id),
-                source="workflow_architect",
-                agent_id=_ARCHITECT_AGENT_ID,
-                tool_name=tool_name,
-                tool_call_id=call_id,
-                result=str(result)[:500],
-                status=status,
-            ))
             return result
 
         return wrapper
@@ -90,18 +98,23 @@ def _observed(tool_name: str) -> Callable:
 
 async def _emit(ctx: RunContext[ArchitectAgentDeps], event: Any) -> None:
     """Best-effort event emission — never blocks the tool."""
-    if not ctx.deps.on_event or not ctx.deps.session_id:
-        return
     try:
         await ctx.deps.on_event(event)
     except Exception:
         logger.debug("Failed to emit architect tool event", exc_info=True)
 
 
-def _session_uuid(session_id: Any) -> uuid.UUID:
+def _session_uuid(session_id: Any) -> uuid.UUID | None:
+    """Coerce a session id to UUID, returning None for missing/invalid input
+    so the caller can skip event emission gracefully."""
+    if session_id is None:
+        return None
     if isinstance(session_id, uuid.UUID):
         return session_id
-    return uuid.UUID(str(session_id))
+    try:
+        return uuid.UUID(str(session_id))
+    except (ValueError, TypeError):
+        return None
 
 
 def _looks_like_error(result: Any) -> bool:
@@ -143,8 +156,12 @@ def _summarise_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
         if node_type == "condition":
             cfg = step.get("condition_config") or {}
             entry["condition"] = cfg.get("expression")
-        if step.get("output_mapping", {}).get("summary_key"):
-            entry["summary_key"] = step["output_mapping"]["summary_key"]
+        # Guard against output_mapping being explicitly None (vs missing) —
+        # dict.get(k, default) returns the stored value, not the default,
+        # when the key exists with value None.
+        output_mapping = step.get("output_mapping") or {}
+        if output_mapping.get("summary_key"):
+            entry["summary_key"] = output_mapping["summary_key"]
         step_summaries.append(entry)
 
     return {

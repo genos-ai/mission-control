@@ -718,12 +718,17 @@ async def architect_chat(
                 "error_detail": event.error_detail,
             })
 
+    # Synthesise an ephemeral session id for stateless calls so tool events
+    # can carry a valid UUID. Real session_id wins when the client passes one.
+    import uuid as _uuid
+    effective_session_id = session_id or str(_uuid.uuid4())
+
     service = WorkflowArchitectService(db)
     try:
         result = await service.chat(
             mission_id=mission_id,
             message=message,
-            session_id=session_id,
+            session_id=effective_session_id,
             on_event=capture_event,
         )
     except ModelHTTPError as e:
