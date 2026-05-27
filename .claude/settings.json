@@ -149,7 +149,20 @@
       "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider; print\\('aio entra OK'\\); from modules.backend.core.model_providers import get_foundry_provider; print\\('foundry factory import OK'\\)\")",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python scripts/foundry_smoke.py --verbose)",
       "Bash(/opt/anaconda3/envs/mission-control/bin/python -c ' *)",
-      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py credits)"
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py credits)",
+      "Bash(tvly search *)",
+      "Bash(az cognitiveservices *)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python scripts/foundry_claude_recon.py --verbose)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python scripts/foundry_claude_recon.py)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py admin seed-catalog)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py admin seed-catalog --help)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py catalog detail system.summarization.agent)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop run system.summarization.agent --help)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop cached-inputs system.summarization.agent --limit 1)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop run system.summarization.agent --inputs '{\"mission_outcomes\":[\"Plan 82 Phase 0 shipped: Foundry provider factory + smoke test passing on Azure OpenAI v1 endpoint\",\"Plan 82 Phase 1 shipped: _build_model branch + credits Entra preflight\",\"Plan 82 Phase 2 canary: switched system.summarization.agent to foundry:gpt-4.1\"],\"target_length\":80}')",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py db query llm_calls --limit 5)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop run system.summarization.agent --inputs '{\"mission_outcomes\":[\"Plan 82 Phase 0 shipped: Foundry provider factory + smoke test passing\",\"Plan 82 Phase 1 shipped: _build_model branch + credits Entra preflight\",\"Plan 82 Phase 2 canary: switched system.summarization.agent to foundry:gpt-4.1\"],\"target_length\":80}')",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python admin.py workshop run system.summarization.agent --inputs '{\"mission_outcomes\":[\"Plan 82 Phase 0 shipped: Foundry provider factory\",\"Plan 82 Phase 1 shipped: _build_model branch + credits Entra preflight\",\"Plan 82 Phase 2 canary: switched system.summarization.agent to foundry:gpt-4.1\"],\"target_length\":80}')"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
