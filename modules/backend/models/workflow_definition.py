@@ -84,6 +84,7 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
         comment="architect:<agent_id> or user:<user_id>",
     )
     locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
         comment="Timestamp when the user confirmed the workflow",
     )
