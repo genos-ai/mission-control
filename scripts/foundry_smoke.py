@@ -117,11 +117,11 @@ async def _run(deployment: str) -> int:
     )
     logger.info("PASS Test 4 cost attribution: $%.6f for %s", cost, model_key)
 
-    # Test 5 (ADVISORY): native structured output mode via ModelProfile override.
-    # This is the EXACT production path — _build_model() will construct the
-    # Model the same way when an agent sets output_mode: native. Failure here
-    # does not fail the smoke; it just dictates that §4.4 _build_profile and
-    # §4.5 output_mode are dropped from Phase 1.
+    # Test 5 (ADVISORY): native structured output via PydanticAI's default profile.
+    # This is the EXACT production path — _build_model() would construct the Model
+    # the same way when an agent sets output_mode: native. Originally failed because
+    # PydanticAI's built-in profile for gpt-4.1 sets supports_json_schema_output=False.
+    # Tests 6 and 7 (below) probe whether that gate is correct.
     try:
         native_model = OpenAIModel(
             deployment,
@@ -132,13 +132,71 @@ async def _run(deployment: str) -> int:
         r5 = await native_agent.run("Bob Lee is a 29-year-old chef.")
         assert r5.output.name == "Bob Lee", f"got {r5.output.name!r}"
         assert r5.output.age == 29, f"got {r5.output.age}"
-        logger.info("PASS Test 5 (advisory) structured output (native mode): %s", r5.output)
+        logger.info("PASS Test 5 (advisory) native via default profile: %s", r5.output)
     except Exception as exc:
-        advisory_failures.append(f"Test 5 (native mode): {exc}")
-        logger.warning(
-            "ADVISORY FAIL Test 5 native mode: %s — drop §4.4/§4.5 native wiring from Phase 1",
-            exc,
+        advisory_failures.append(f"Test 5 (PydanticAI default profile): {exc}")
+        logger.warning("ADVISORY FAIL Test 5: %s", exc)
+
+    # Test 6 (DIAGNOSTIC): bypass PydanticAI entirely. Hit Azure's chat.completions
+    # directly with response_format json_schema strict=true. This isolates the
+    # question: does the deployment ACCEPT native JSON-schema mode at the wire
+    # level, or is the limit purely PydanticAI's profile classification?
+    sdk_client = provider.client  # AsyncOpenAI built by get_foundry_provider()
+    person_schema = {
+        "name": "PersonInfo",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"},
+                "occupation": {"type": "string"},
+            },
+            "required": ["name", "age", "occupation"],
+            "additionalProperties": False,
+        },
+    }
+    try:
+        raw = await sdk_client.chat.completions.create(
+            model=deployment,
+            messages=[
+                {"role": "system", "content": "Extract structured fields from the user text."},
+                {"role": "user", "content": "Carol Ng is a 35-year-old data engineer."},
+            ],
+            response_format={"type": "json_schema", "json_schema": person_schema},
         )
+        import json
+        payload = json.loads(raw.choices[0].message.content)
+        person = PersonInfo.model_validate(payload)
+        assert person.name == "Carol Ng", f"got {person.name!r}"
+        assert person.age == 35, f"got {person.age}"
+        logger.info("PASS Test 6 (diagnostic) wire-level native JSON: %s", person)
+        wire_native_ok = True
+    except Exception as exc:
+        advisory_failures.append(f"Test 6 (wire-level native): {exc}")
+        logger.warning("ADVISORY FAIL Test 6 wire-level: %s", exc)
+        wire_native_ok = False
+
+    # Test 7 (DIAGNOSTIC): if Test 6 worked, the deployment supports native JSON
+    # at the wire level — so PydanticAI's gate is wrong. Override the profile's
+    # supports_json_schema_output and try the same path Test 5 took.
+    if wire_native_ok:
+        try:
+            override_profile = ModelProfile(
+                default_structured_output_mode="native",
+                supports_json_schema_output=True,
+            )
+            override_model = OpenAIModel(deployment, provider=provider, profile=override_profile)
+            override_agent = Agent(override_model, output_type=PersonInfo)
+            r7 = await override_agent.run("Dave Patel is a 51-year-old surgeon.")
+            assert r7.output.name == "Dave Patel", f"got {r7.output.name!r}"
+            assert r7.output.age == 51, f"got {r7.output.age}"
+            logger.info("PASS Test 7 (diagnostic) native via overridden profile: %s", r7.output)
+        except Exception as exc:
+            advisory_failures.append(f"Test 7 (forced PydanticAI native): {exc}")
+            logger.warning("ADVISORY FAIL Test 7 overridden profile: %s", exc)
+    else:
+        logger.info("SKIP Test 7 (wire-level didn't work — no point trying PydanticAI override)")
 
     if advisory_failures:
         logger.warning("Advisory failures: %s", advisory_failures)
