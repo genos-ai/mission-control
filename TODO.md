@@ -5,6 +5,53 @@ Each item references the actual code and the specific issue.
 
 ---
 
+## Reliability — Provider error taxonomy (2026-06-05)
+
+Implemented `modules/backend/core/provider_errors.py` with a
+provider-neutral hierarchy: `ProviderError` base + `QuotaExhaustedError`,
+`RateLimitedError`, `TransientProviderError`, `ContractViolationError`
+subclasses. Each subclass owns its `log_event`, `remediation`, and
+`retry_policy` as class-level constants. Catch sites use the
+`log_provider_error(logger, exc, **context)` helper so the structured-log
+shape (provider, model, request_id, raw, remediation) is uniform across
+the codebase.
+
+Copilot-specific errors (`CopilotQuotaExhaustedError`,
+`EmptyCopilotSessionError`) now inherit from the taxonomy so the retry
+handler catches the abstract bases (`QuotaExhaustedError`,
+`TransientProviderError`) — adding a new provider is now subclassing the
+right base, not editing the retry handler.
+
+Open follow-ups:
+
+- [ ] **Wire Anthropic / OpenAI / Foundry adapters into the taxonomy.**
+  Each provider's adapter should catch its native SDK exceptions
+  (`anthropic.RateLimitError`, `openai.APIStatusError`, etc.) and
+  re-raise as the matching `ProviderError` subclass. Today only Copilot
+  is wired up; an Anthropic 429 still propagates as a generic exception.
+
+- [ ] **Audit the ~22 `agent.run()` call sites** outside the retry
+  handler that have generic `except Exception` blocks (workflow_architect,
+  gate_post_run, mission_control, software/quality, software/architecture,
+  knowledge/officer, summarization, etc.). Most should adopt the
+  `except ProviderError as exc: log_provider_error(...); <degrade>`
+  pattern so quota / rate-limit / transient signals are visible
+  everywhere, not just on the workflow path.
+
+- [ ] **Implement actual backoff for `RateLimitedError`.** The retry
+  handler currently treats it the same as `TransientProviderError`
+  (immediate retry). When a provider adapter starts raising
+  `RateLimitedError`, the handler should use the `retry_policy="backoff"`
+  marker to apply exponential delay.
+
+- [ ] **Investigate why Copilot sessions sometimes produce 0 tokens
+  even when the account has quota.** First observed during rapid retries
+  of the verify step (3 attempts in <5s, 2 produced empty responses).
+  Now classified as `EmptyCopilotSessionError` and retried correctly,
+  but the underlying GitHub Copilot SDK behavior is worth understanding.
+
+---
+
 ## Code Size Violations
 
 Files exceeding the 1,000-line hard limit (AGENTS.md rule: target ~400-500, max 1,000).

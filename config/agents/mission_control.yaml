@@ -76,6 +76,23 @@ model_pricing:
     input: 2.50
     output: 10.00
     cache_read: 0.625
+  # gpt-5.4 family — Foundry pricing confirmed 2026-06-05 from
+  # techcommunity.microsoft.com/blog/azure-ai-foundry-blog/introducing-gpt-5-4-in-microsoft-foundry/
+  # and Azure rate sheets. Rates are for context ≤272K tokens (the >272K tier
+  # is roughly 2x and is not currently used by any agent). cache_write omitted
+  # for the same reason as gpt-4.1.
+  "foundry:gpt-5.4":
+    input: 2.50
+    output: 15.00
+    cache_read: 0.25
+  "foundry:gpt-5-mini":
+    input: 0.25
+    output: 2.00
+    cache_read: 0.025
+  "foundry:gpt-5-nano":
+    input: 0.05
+    output: 0.40
+    cache_read: 0.005
   default:
     input: 3.00
     output: 15.00

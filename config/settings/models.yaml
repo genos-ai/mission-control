@@ -42,3 +42,8 @@ registry:
     - claude-opus-4.6
     - claude-sonnet-4.6
     - claude-haiku-4.5
+  foundry:
+    - gpt-4.1
+    - gpt-5.4
+    - gpt-5-mini
+    - gpt-5-nano

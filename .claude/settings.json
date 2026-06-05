@@ -183,7 +183,10 @@
       "Bash(PGPASSWORD=\"\" psql -h localhost -U mission_control -d mission_control -t -c \"SELECT jsonb_pretty\\(jsonb_agg\\(jsonb_build_object\\('id', \\(s->>'id'\\), 'depends_on', s->'depends_on', 'summary_key', s->'output_mapping'->'summary_key'\\)\\)\\) FROM workflow_definitions wd, jsonb_array_elements\\(wd.steps::jsonb\\) s WHERE wd.id='019e363c-08f5-71ed-bca3-fff052883b63';\")",
       "Bash(PGPASSWORD=\"\" psql -h localhost -U mission_control -d mission_control -t -c \"SELECT s->>'id' AS step, s->'output_mapping'->>'summary_key' AS summary_key FROM workflow_definitions wd, jsonb_array_elements\\(wd.steps::jsonb\\) s WHERE wd.id='019e641c-5638-71dd-90b3-0a616b869280';\")",
       "Bash(PGPASSWORD=\"\" psql -h localhost -U mission_control -d mission_control -c \"SELECT name, version, jsonb_array_length\\(steps::jsonb\\) AS step_count FROM workflow_definitions WHERE name='research.deep-research-pipeline' AND mission_id='019e3584-3f67-755b-878d-5237a4a26c24' ORDER BY version;\")",
-      "Bash(PGPASSWORD=\"\" psql -h localhost -U mission_control -d mission_control -t -c \"SELECT s->>'id' AS step, s->'output_mapping'->>'summary_key' AS summary_key FROM workflow_definitions wd, jsonb_array_elements\\(wd.steps::jsonb\\) s WHERE wd.name='research.deep-research-pipeline' AND wd.mission_id='019e3584-3f67-755b-878d-5237a4a26c24' AND wd.version=3;\")"
+      "Bash(PGPASSWORD=\"\" psql -h localhost -U mission_control -d mission_control -t -c \"SELECT s->>'id' AS step, s->'output_mapping'->>'summary_key' AS summary_key FROM workflow_definitions wd, jsonb_array_elements\\(wd.steps::jsonb\\) s WHERE wd.name='research.deep-research-pipeline' AND wd.mission_id='019e3584-3f67-755b-878d-5237a4a26c24' AND wd.version=3;\")",
+      "Skill(tavily-dynamic-search)",
+      "Skill(tavily-dynamic-search:*)",
+      "Bash(set -e)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
