@@ -20,3 +20,25 @@ aliases:
   quick: "copilot:claude-haiku-4.5"
   moderate: "copilot:claude-sonnet-4.6"
   comprehensive: "copilot:claude-opus-4.6"
+
+# =============================================================================
+# Provider → Models Registry
+# =============================================================================
+# Authoritative list of valid {provider: [models]} combinations.
+# Source of truth for the model picker in /admin/catalog and for backend
+# validation on PATCH /admin/catalog/{agent_name}.
+#
+# To add a model: list it under its provider here.
+# To remove a model: ensure no agent_catalog row references it first.
+# Validation only runs when model_config_json.name is being CHANGED, so
+# removed-but-still-referenced models won't break running agents.
+
+registry:
+  anthropic:
+    - claude-opus-4-6
+    - claude-sonnet-4-6
+    - claude-haiku-4-5
+  copilot:
+    - claude-opus-4.6
+    - claude-sonnet-4.6
+    - claude-haiku-4.5

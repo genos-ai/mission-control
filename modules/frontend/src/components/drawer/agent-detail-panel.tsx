@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCatalog, useCatalogAgent } from '@/hooks/use-catalog'
-import { useAddToTeam } from '@/hooks/use-team'
+import { useAddToTeam, useTeam } from '@/hooks/use-team'
 import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
@@ -134,6 +134,7 @@ function AgentDetail({
 
 function AddFromCatalog({ missionId }: { missionId: string }) {
   const { data: agents, isLoading } = useCatalog()
+  const { data: team } = useTeam(missionId)
   const { open: openDrawer } = useDrawerStore()
   const [query, setQuery] = useState('')
 
@@ -146,6 +147,8 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
       </p>
     )
   }
+
+  const addedIds = new Set((team ?? []).map((m) => m.agent_catalog_id))
 
   const q = query.toLowerCase().trim()
   const filtered = agents.filter((a) => {
@@ -179,6 +182,7 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
           <CatalogPickCard
             key={agent.id}
             agent={agent}
+            alreadyAdded={addedIds.has(agent.id)}
             onClick={() =>
               openDrawer('agent-detail', {
                 agentName: agent.agent_name,
@@ -223,20 +227,35 @@ function SystemPromptSection({ prompt }: { prompt: string }) {
 function CatalogPickCard({
   agent,
   onClick,
+  alreadyAdded = false,
 }: {
   agent: AgentCatalogItem
   onClick: () => void
+  alreadyAdded?: boolean
 }) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent"
+      disabled={alreadyAdded}
+      title={alreadyAdded ? 'Already on this team' : undefined}
+      className={
+        alreadyAdded
+          ? 'w-full cursor-not-allowed rounded-lg border bg-muted/30 p-3 text-left opacity-50'
+          : 'w-full rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent'
+      }
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{agent.agent_name}</span>
-        <Badge variant="secondary" className="text-[10px]">
-          {agent.agent_type}
-        </Badge>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {alreadyAdded && (
+            <Badge variant="outline" className="text-[10px]">
+              Added
+            </Badge>
+          )}
+          <Badge variant="secondary" className="text-[10px]">
+            {agent.agent_type}
+          </Badge>
+        </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
         {agent.description}

@@ -9,6 +9,29 @@ from modules.clients.common.display import build_table, get_console
 from modules.clients.common.gate_helpers import filter_catalog_agents
 
 
+def _split_model(model_str: str) -> tuple[str, str]:
+    """Split a 'provider:model' string into its parts.
+
+    Returns ('—', '—') if empty, or ('—', raw) if no provider prefix.
+    """
+    if not model_str:
+        return "—", "—"
+    if ":" not in model_str:
+        return "—", model_str
+    provider, model_name = model_str.split(":", 1)
+    return provider, model_name
+
+
+def _short_description(desc: str, limit: int = 70) -> str:
+    """First line of the description, truncated for table display."""
+    if not desc:
+        return "—"
+    first_line = desc.strip().split("\n", 1)[0]
+    if len(first_line) <= limit:
+        return first_line
+    return first_line[: limit - 1].rstrip() + "…"
+
+
 async def list_team(api: CliApiClient, mission_id: str) -> None:
     """List agents on the current mission's team."""
     console = get_console()
@@ -22,17 +45,20 @@ async def list_team(api: CliApiClient, mission_id: str) -> None:
         return
 
     table = build_table(f"Team ({len(members)} agents)", columns=[
-        ("Agent", {"style": "cyan", "width": 30}),
-        ("Enabled", {"width": 10}),
-        ("Added", {"width": 14, "style": "dim"}),
+        ("Agent", {"style": "cyan", "width": 32}),
+        ("Provider", {"style": "magenta", "width": 10}),
+        ("Model", {"style": "green", "width": 22}),
+        ("Description", {"ratio": 1, "style": "dim"}),
+        ("On", {"width": 4, "justify": "center"}),
     ])
 
     for m in members:
-        agent = m.get("agent", {})
+        agent = m.get("agent") or {}
         name = agent.get("agent_name", m.get("agent_catalog_id", ""))
-        enabled = "[green]yes[/green]" if m.get("enabled", True) else "[red]no[/red]"
-        when = (m.get("created_at") or "")[:16].replace("T", " ")
-        table.add_row(name, enabled, when)
+        provider, model_name = _split_model((agent.get("model") or {}).get("name", ""))
+        desc = _short_description(agent.get("description", ""))
+        enabled = "[green]✓[/green]" if m.get("enabled", True) else "[red]✗[/red]"
+        table.add_row(name, provider, model_name, desc, enabled)
 
     console.print(table)
 

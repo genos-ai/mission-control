@@ -9,6 +9,26 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
 
+const MISSION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
+
+function validateMissionName(value: string): string | null {
+  if (!value) return 'Name is required'
+  if (value.length > 200) return 'Name must be 200 characters or fewer'
+  if (!/^[a-z]/.test(value)) return 'Must start with a lowercase letter (a–z)'
+  if (!MISSION_NAME_PATTERN.test(value)) {
+    return 'Only lowercase letters, numbers, hyphens, and underscores are allowed'
+  }
+  return null
+}
+
+function suggestSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-')
+}
+
 export default function NewMissionPage() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
@@ -20,12 +40,21 @@ export default function NewMissionPage() {
   const [budgetCeiling, setBudgetCeiling] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [error, setError] = useState('')
+  const [nameTouched, setNameTouched] = useState(false)
+
+  const nameError = validateMissionName(name)
+  const showNameError = nameTouched && nameError !== null
+  const suggestion =
+    showNameError && name ? suggestSlug(name) : ''
+  const canSuggest = suggestion && suggestion !== name && validateMissionName(suggestion) === null
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    setNameTouched(true)
 
     if (!user) return
+    if (nameError) return
 
     try {
       const mission = await createMission.mutateAsync({
@@ -56,14 +85,37 @@ export default function NewMissionPage() {
                 placeholder="daily-cti-brief"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                pattern="^[a-z][a-z0-9_-]*$"
-                title="Lowercase letters, numbers, hyphens, underscores. Must start with a letter."
+                onBlur={() => setNameTouched(true)}
+                aria-invalid={showNameError}
+                aria-describedby="mission-name-help"
                 required
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground">
-                Lowercase slug — letters, numbers, hyphens, underscores
-              </p>
+              {showNameError ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-destructive" id="mission-name-help">
+                    {nameError}
+                  </p>
+                  {canSuggest && (
+                    <button
+                      type="button"
+                      className="text-xs underline text-muted-foreground hover:text-foreground"
+                      onClick={() => setName(suggestion)}
+                    >
+                      Use “{suggestion}” instead
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p
+                  className="text-xs text-muted-foreground"
+                  id="mission-name-help"
+                >
+                  Lowercase slug — must start with a letter, then letters,
+                  numbers, hyphens, or underscores. No spaces or other
+                  characters.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -120,7 +172,10 @@ export default function NewMissionPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={createMission.isPending}>
+              <Button
+                type="submit"
+                disabled={createMission.isPending || nameError !== null}
+              >
                 {createMission.isPending ? <Spinner className="mr-2" /> : null}
                 Create & Assemble Team
               </Button>

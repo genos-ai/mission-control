@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
 import {
   useAdminCatalog,
+  useAdminModels,
   useCreateAgent,
   useUpdateAgent,
   useDeleteAgent,
@@ -342,17 +343,15 @@ export default function AdminCatalogPage() {
   )
 }
 
-const AVAILABLE_MODELS = [
-  'anthropic:claude-sonnet-4-6',
-  'anthropic:claude-opus-4-6',
-  'anthropic:claude-haiku-4-5-20251001',
-]
-
 /** Models that support extended thinking (all Claude 4.5+ models). */
 const THINKING_CAPABLE_MODELS = new Set([
   'anthropic:claude-sonnet-4-6',
   'anthropic:claude-opus-4-6',
   'anthropic:claude-haiku-4-5-20251001',
+  'anthropic:claude-haiku-4-5',
+  'copilot:claude-opus-4.6',
+  'copilot:claude-sonnet-4.6',
+  'copilot:claude-haiku-4.5',
 ])
 
 function AgentEditor({
@@ -366,7 +365,24 @@ function AgentEditor({
   saving: boolean
   onClose: () => void
 }) {
+  const isSysadmin = useAuthStore((s) => s.isSysadmin)
+  const { data: modelsRegistry = {} } = useAdminModels()
+
   const [model, setModel] = useState(agent.model_config_json?.name ?? '')
+  const [provider, model_name] = model.includes(':')
+    ? model.split(':', 2) as [string, string]
+    : ['', '']
+  const providerList = Object.keys(modelsRegistry).sort()
+  const modelList = provider ? (modelsRegistry[provider] ?? []) : []
+
+  const setProvider = (newProvider: string) => {
+    // Switching provider clears the model selection (since model lists differ)
+    setModel(newProvider ? `${newProvider}:` : '')
+  }
+  const setModelName = (newModelName: string) => {
+    setModel(provider && newModelName ? `${provider}:${newModelName}` : '')
+  }
+
   const [temperature, setTemperature] = useState(
     String(agent.model_config_json?.temperature ?? ''),
   )
@@ -398,6 +414,11 @@ function AgentEditor({
             <Button
               size="sm"
               onClick={() => {
+                if (provider && !model_name) {
+                  toast.error('Pick a model for the selected provider, or clear the provider.')
+                  return
+                }
+                const effectiveName = provider && model_name ? `${provider}:${model_name}` : ''
                 const effectiveThinking = modelSupportsThinking ? thinkingMode : 'off'
                 const effectiveTemp = effectiveThinking !== 'off' ? 1.0 : (temperature ? parseFloat(temperature) : undefined)
                 const thinkingBudget = effectiveThinking === 'off'
@@ -413,13 +434,13 @@ function AgentEditor({
                   thinking_budget_json: thinkingBudget,
                   model_config_json: {
                     ...agent.model_config_json,
-                    name: model || undefined,
+                    name: effectiveName || undefined,
                     temperature: effectiveTemp,
                     max_tokens: maxTokens ? parseInt(maxTokens, 10) : undefined,
                   },
                 })
               }}
-              disabled={saving}
+              disabled={saving || (!!provider && !model_name)}
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
               Save
@@ -431,19 +452,47 @@ function AgentEditor({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Model</label>
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
-          >
-            <option value="">— select model —</option>
-            {AVAILABLE_MODELS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Provider</label>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              disabled={!isSysadmin}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1 disabled:opacity-50"
+            >
+              <option value="">— select provider —</option>
+              {providerList.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+              {provider && !providerList.includes(provider) && (
+                <option value={provider}>{provider} (unregistered)</option>
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Model</label>
+            <select
+              value={model_name}
+              onChange={(e) => setModelName(e.target.value)}
+              disabled={!isSysadmin || !provider}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1 disabled:opacity-50"
+            >
+              <option value="">— select model —</option>
+              {modelList.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+              {model_name && !modelList.includes(model_name) && (
+                <option value={model_name}>{model_name} (unregistered)</option>
+              )}
+            </select>
+          </div>
         </div>
+        {!isSysadmin && (
+          <p className="text-[10px] text-muted-foreground/60 -mt-2">
+            Provider and model can only be changed by sysadmins.
+          </p>
+        )}
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Temperature</label>

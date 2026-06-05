@@ -11,11 +11,18 @@ interface AuthState {
 
   isAuthenticated: boolean
   isAdmin: boolean
+  isSysadmin: boolean
 
   setTokens: (accessToken: string, refreshToken: string) => void
   setUser: (user: UserResponse) => void
   login: (accessToken: string, refreshToken: string, user: UserResponse) => void
   logout: () => void
+}
+
+// Role hierarchy mirrors backend: viewer < user < admin < sysadmin.
+// `isAdmin` means "has admin tier or higher" — sysadmins count as admins.
+function adminFromRole(role: string | undefined): boolean {
+  return role === 'admin' || role === 'sysadmin'
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -25,6 +32,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   isAuthenticated: false,
   isAdmin: false,
+  isSysadmin: false,
 
   setTokens: (accessToken, refreshToken) => {
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
@@ -38,7 +46,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) =>
     set({
       user,
-      isAdmin: user.system_role === 'admin',
+      isAdmin: adminFromRole(user.system_role),
+      isSysadmin: user.system_role === 'sysadmin',
     }),
 
   login: (accessToken, refreshToken, user) => {
@@ -48,7 +57,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       refreshToken,
       user,
       isAuthenticated: true,
-      isAdmin: user.system_role === 'admin',
+      isAdmin: adminFromRole(user.system_role),
+      isSysadmin: user.system_role === 'sysadmin',
     })
   },
 
@@ -61,6 +71,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       isAuthenticated: false,
       isAdmin: false,
+      isSysadmin: false,
     })
   },
 }))

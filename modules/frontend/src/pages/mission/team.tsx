@@ -28,6 +28,12 @@ import { Spinner } from '@/components/ui/spinner'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { MissionTeamMember } from '@/types'
 
+/** Extract provider from full model string, e.g. "anthropic:claude-opus-4-20250514" → "anthropic" */
+function modelProvider(name: string | undefined): string | null {
+  if (!name || !name.includes(':')) return null
+  return name.split(':')[0]
+}
+
 /** Extract short model label from full model string, e.g. "anthropic:claude-opus-4-20250514" → "Opus 4" */
 function modelLabel(name: string | undefined): string {
   if (!name) return 'Unknown'
@@ -194,8 +200,13 @@ function TeamMemberCard({
               >
                 {member.enabled ? 'Active' : 'Disabled'}
               </Badge>
+              {agent?.model?.name && modelProvider(agent.model.name) && (
+                <Badge variant="outline" className="text-[11px]" title={agent.model.name}>
+                  {modelProvider(agent.model.name)}
+                </Badge>
+              )}
               {agent?.model?.name && (
-                <Badge variant="outline" className="text-[11px] gap-1">
+                <Badge variant="outline" className="text-[11px] gap-1" title={agent.model.name}>
                   <Cpu className="h-2.5 w-2.5" />
                   {modelLabel(agent.model.name)}
                 </Badge>

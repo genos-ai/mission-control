@@ -563,6 +563,10 @@ class ModelsSchema(_StrictBase):
     Aliases map short names (quick, moderate, comprehensive) to
     fully-qualified provider:model strings. Workflow steps reference
     aliases so changing provider in one place propagates everywhere.
+
+    Registry enumerates which model names are valid per provider —
+    used by admin catalog writes to reject `provider:model` strings
+    that don't correspond to a deployed model.
     """
 
     aliases: dict[str, str] = Field(
@@ -571,6 +575,10 @@ class ModelsSchema(_StrictBase):
             "moderate": "copilot:claude-sonnet-4.6",
             "comprehensive": "copilot:claude-opus-4.6",
         },
+    )
+    registry: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Valid {provider: [model, ...]} combinations.",
     )
 
 

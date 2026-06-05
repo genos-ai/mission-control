@@ -998,22 +998,18 @@ def catalog_set_model(ctx, agent_name, model):
     import asyncio
 
     async def _run():
-        from modules.backend.core.database import get_async_session
-        from modules.backend.services.agent_catalog import AgentCatalogService
+        from modules.clients.cli.api_client import api_client
 
-        async with get_async_session() as db:
-            svc = AgentCatalogService(db)
-            entry = await svc.get_by_name_or_none(agent_name)
-            if not entry:
-                click.echo(f"Agent '{agent_name}' not found in catalog", err=True)
-                raise SystemExit(1)
-
-            old_model = (entry.model_config_json or {}).get("name", "N/A")
-            new_config = dict(entry.model_config_json or {})
+        async with api_client() as api:
+            entry = await api.get(f"/catalog/agents/{agent_name}")
+            old_config = entry.get("model_config_json") or {}
+            old_model = old_config.get("name", "N/A")
+            new_config = dict(old_config)
             new_config["name"] = model
-            await svc.update_entry(agent_name, model_config_json=new_config)
-            await db.commit()
-
+            await api.patch(
+                f"/admin/catalog/{agent_name}",
+                body={"model_config_json": new_config},
+            )
             click.echo(f"{agent_name}: {old_model} -> {model}")
 
     asyncio.run(_run())
@@ -1063,16 +1059,15 @@ def catalog_set_provider(ctx, provider, model_map, dry_run):
             mapping[old.strip()] = new.strip()
 
     async def _run():
-        from modules.backend.core.database import get_async_session
-        from modules.backend.services.agent_catalog import AgentCatalogService
+        from modules.clients.cli.api_client import api_client
 
-        async with get_async_session() as db:
-            svc = AgentCatalogService(db)
-            entries = await svc.list_catalog(enabled_only=False)
+        async with api_client() as api:
+            listing = await api.get("/admin/catalog", params={"enabled_only": False})
+            entries = listing.get("agents", [])
 
             changed = 0
             for entry in entries:
-                config = entry.model_config_json or {}
+                config = entry.get("model_config_json") or {}
                 current = config.get("name", "")
                 if not current:
                     continue
@@ -1083,7 +1078,6 @@ def catalog_set_provider(ctx, provider, model_map, dry_run):
 
                 # Extract model name from current provider
                 parts = current.split(":", 1)
-                old_provider = parts[0]
                 old_model = parts[1] if len(parts) > 1 else current
 
                 # Map model name
@@ -1091,17 +1085,17 @@ def catalog_set_provider(ctx, provider, model_map, dry_run):
                 new_full = f"{provider}:{new_model}"
 
                 if dry_run:
-                    click.echo(f"  {entry.agent_name}: {current} -> {new_full}")
+                    click.echo(f"  {entry['agent_name']}: {current} -> {new_full}")
                 else:
                     new_config = dict(config)
                     new_config["name"] = new_full
-                    await svc.update_entry(entry.agent_name, model_config_json=new_config)
-                    click.echo(f"  {entry.agent_name}: {current} -> {new_full}")
+                    await api.patch(
+                        f"/admin/catalog/{entry['agent_name']}",
+                        body={"model_config_json": new_config},
+                    )
+                    click.echo(f"  {entry['agent_name']}: {current} -> {new_full}")
 
                 changed += 1
-
-            if not dry_run:
-                await db.commit()
 
             label = "Would change" if dry_run else "Changed"
             click.echo(f"\n{label} {changed} agent(s)")

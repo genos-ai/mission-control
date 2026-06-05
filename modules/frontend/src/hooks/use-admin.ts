@@ -21,6 +21,7 @@ import type {
 
 export const adminKeys = {
   catalog: ['admin', 'catalog'] as const,
+  models: ['admin', 'models'] as const,
   metrics: ['admin', 'metrics'] as const,
   costs: ['admin', 'costs'] as const,
   agents: ['admin', 'agents'] as const,
@@ -46,6 +47,17 @@ export function useAdminCatalog() {
         '/admin/catalog',
       ),
     select: (data) => data.agents,
+  })
+}
+
+/** Valid provider → models registry for the model picker. */
+export function useAdminModels() {
+  return useQuery({
+    queryKey: adminKeys.models,
+    queryFn: () =>
+      api.get<{ models: Record<string, string[]> }>('/admin/models'),
+    select: (data) => data.models,
+    staleTime: 5 * 60 * 1000,
   })
 }
 

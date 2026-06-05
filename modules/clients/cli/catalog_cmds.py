@@ -100,13 +100,19 @@ async def _action_detail(cli_logger, *, agent_name, **_):
 
 
 async def _action_seed_catalog(cli_logger, *, force, reset_prompts=False, **_):
-    """Seed the agent catalog from YAML config files."""
-    from modules.backend.services.agent_catalog import AgentCatalogService
-    from modules.backend.services.catalog_seeder import seed_catalog
+    """Seed the agent catalog from YAML config files via the admin API.
+
+    Routed through the API so the backend's in-memory registry is
+    invalidated atomically with the catalog write — a direct DB write
+    here would leave the running backend serving stale model bindings.
+    """
+    from urllib.parse import urlencode
+    from modules.clients.cli.api_client import api_client
 
     console = get_console()
-    async with AgentCatalogService.factory() as svc:
-        counts = await seed_catalog(svc, force=force, reset_prompts=reset_prompts)
+    query = urlencode({"force": str(force).lower(), "reset_prompts": str(reset_prompts).lower()})
+    async with api_client() as api:
+        counts = await api.post(f"/admin/seed-catalog?{query}")
 
     console.print("[bold]Catalog seeding complete[/bold]")
     console.print(f"  Seeded:  {counts['seeded']}")

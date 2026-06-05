@@ -185,7 +185,17 @@ async def require_admin(user: CurrentUser) -> User:
     return user
 
 
+async def require_sysadmin(user: CurrentUser) -> User:
+    """Require that the current user has sysadmin role."""
+    if not user.has_role("sysadmin"):
+        raise AuthorizationError(
+            f"Requires 'sysadmin' role. Current role: '{user.system_role}'."
+        )
+    return user
+
+
 AdminRole = Annotated[User, Depends(require_admin)]
+SysadminRole = Annotated[User, Depends(require_sysadmin)]
 
 
 # ---------------------------------------------------------------------------

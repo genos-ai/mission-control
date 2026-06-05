@@ -8,15 +8,38 @@ Protected by admin role (X-API-Key header). Provides:
 - User/role management
 """
 
+from functools import lru_cache
 from typing import Any
 
+import yaml
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from modules.backend.core.config import find_project_root
 from modules.backend.core.dependencies import AdminRole, DbSession, RequestId
+from modules.backend.core.exceptions import AuthorizationError, ValidationError
 from modules.backend.schemas.base import ApiResponse
 
 router = APIRouter()
+
+
+@lru_cache(maxsize=1)
+def _load_models_registry() -> dict[str, list[str]]:
+    """Load valid {provider: [models]} from config/settings/models.yaml."""
+    path = find_project_root() / "config" / "settings" / "models.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    registry = data.get("registry", {})
+    if not isinstance(registry, dict):
+        return {}
+    return registry
+
+
+def _model_is_valid(name: str, registry: dict[str, list[str]]) -> bool:
+    """Check that `name` is a known provider:model combination."""
+    if ":" not in name:
+        return False
+    provider, model = name.split(":", 1)
+    return model in registry.get(provider, [])
 
 
 # ---- Schemas ----
@@ -141,6 +164,23 @@ async def admin_catalog_create(
     )
 
 
+@router.get(
+    "/models",
+    response_model=ApiResponse,
+    summary="List valid provider/model combinations",
+)
+async def admin_models_list(
+    request_id: RequestId,
+    _role: AdminRole,
+) -> ApiResponse:
+    """Return the valid {provider: [models]} registry."""
+    return ApiResponse(
+        success=True,
+        data={"models": _load_models_registry()},
+        metadata={"request_id": request_id},
+    )
+
+
 @router.patch(
     "/catalog/{agent_name}",
     response_model=ApiResponse,
@@ -153,11 +193,33 @@ async def admin_catalog_update(
     request_id: RequestId,
     _role: AdminRole,
 ) -> ApiResponse:
-    """Update fields on an existing agent catalog entry."""
+    """Update fields on an existing agent catalog entry.
+
+    Changing the agent's model/provider (`model_config_json.name`) is
+    restricted to sysadmins and validated against the model registry.
+    """
     from modules.backend.services.agent_catalog import AgentCatalogService
 
     service = AgentCatalogService(db)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+
+    # Sysadmin gate + registry validation for model/provider changes.
+    new_cfg = updates.get("model_config_json")
+    if isinstance(new_cfg, dict) and "name" in new_cfg:
+        new_name = new_cfg.get("name")
+        existing = await service.get_by_name(agent_name)
+        existing_name = (existing.model_config_json or {}).get("name")
+        if new_name != existing_name:
+            if not _role.has_role("sysadmin"):
+                raise AuthorizationError(
+                    "Changing the agent's model/provider requires sysadmin role."
+                )
+            if new_name and not _model_is_valid(new_name, _load_models_registry()):
+                raise ValidationError(
+                    f"Model '{new_name}' is not in the registry. "
+                    f"See GET /admin/models for valid combinations."
+                )
+
     entry = await service.update_entry(agent_name, **updates)
 
     # Reload registry so running agents pick up changes immediately
@@ -290,6 +352,9 @@ async def admin_seed_catalog(
 
     service = AgentCatalogService(db)
     result = await seed_catalog(service, force=force, reset_prompts=reset_prompts)
+
+    from modules.backend.agents.mission_control.registry import get_registry
+    get_registry().reload()
 
     return ApiResponse(
         success=True,
