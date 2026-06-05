@@ -444,14 +444,10 @@ def workflow_detail(ctx, name):
     default=None,
     help="Gate review mode. Overrides config/settings/gate.yaml.",
 )
-@click.option("--step", is_flag=True, help="Alias for --gate interactive.")
 @click.pass_obj
-def workflow_run(ctx, name, triggered_by, mission, gate, step):
+def workflow_run(ctx, name, triggered_by, mission, gate):
     """Execute a workflow."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
-
-    if step and gate is None:
-        gate = "interactive"
 
     gate_obj = None
     if gate and gate != "off":
