@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight, Search, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCatalog, useCatalogAgent } from '@/hooks/use-catalog'
 import { useAddToTeam, useTeam } from '@/hooks/use-team'
@@ -136,7 +136,9 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
   const { data: agents, isLoading } = useCatalog()
   const { data: team } = useTeam(missionId)
   const { open: openDrawer } = useDrawerStore()
+  const addToTeam = useAddToTeam(missionId)
   const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   if (isLoading) return <Spinner />
 
@@ -162,8 +164,40 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
     )
   })
 
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkAdd = async () => {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    const results = await Promise.allSettled(
+      ids.map((agent_catalog_id) =>
+        addToTeam.mutateAsync({ agent_catalog_id }),
+      ),
+    )
+    const failures = results.filter((r) => r.status === 'rejected').length
+    const successes = results.length - failures
+    if (successes > 0) {
+      toast.success(
+        `${successes} agent${successes !== 1 ? 's' : ''} added`,
+      )
+    }
+    if (failures > 0) {
+      toast.error(
+        `${failures} agent${failures !== 1 ? 's' : ''} failed to add`,
+      )
+    }
+    setSelected(new Set())
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-12">
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
         <Input
@@ -183,6 +217,8 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
             key={agent.id}
             agent={agent}
             alreadyAdded={addedIds.has(agent.id)}
+            selected={selected.has(agent.id)}
+            onToggleSelect={() => toggleSelected(agent.id)}
             onClick={() =>
               openDrawer('agent-detail', {
                 agentName: agent.agent_name,
@@ -191,6 +227,36 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
             }
           />
         ))
+      )}
+
+      {selected.size > 0 && (
+        <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-2 border-t bg-card px-3 py-2 shadow-md">
+          <span className="text-xs text-muted-foreground">
+            {selected.size} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelected(new Set())}
+              disabled={addToTeam.isPending}
+            >
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleBulkAdd}
+              disabled={addToTeam.isPending}
+            >
+              {addToTeam.isPending ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <Plus className="mr-1 h-3 w-3" />
+              )}
+              Add {selected.size}
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -228,38 +294,64 @@ function CatalogPickCard({
   agent,
   onClick,
   alreadyAdded = false,
+  selected = false,
+  onToggleSelect,
 }: {
   agent: AgentCatalogItem
   onClick: () => void
   alreadyAdded?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
 }) {
+  const wrapperClass = alreadyAdded
+    ? 'flex items-stretch rounded-lg border bg-muted/30 opacity-50'
+    : selected
+      ? 'flex items-stretch rounded-lg border border-primary/60 bg-primary/5 transition-colors'
+      : 'flex items-stretch rounded-lg border bg-card transition-colors hover:bg-accent'
+
   return (
-    <button
-      onClick={onClick}
-      disabled={alreadyAdded}
-      title={alreadyAdded ? 'Already on this team' : undefined}
-      className={
-        alreadyAdded
-          ? 'w-full cursor-not-allowed rounded-lg border bg-muted/30 p-3 text-left opacity-50'
-          : 'w-full rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent'
-      }
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{agent.agent_name}</span>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {alreadyAdded && (
-            <Badge variant="outline" className="text-[10px]">
-              Added
+    <div className={wrapperClass}>
+      {!alreadyAdded && onToggleSelect && (
+        <label
+          className="flex cursor-pointer items-center pl-3 pr-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label={`Select ${agent.agent_name}`}
+            className="h-4 w-4 cursor-pointer"
+          />
+        </label>
+      )}
+      <button
+        onClick={onClick}
+        disabled={alreadyAdded}
+        title={alreadyAdded ? 'Already on this team' : undefined}
+        className={
+          alreadyAdded
+            ? 'flex-1 cursor-not-allowed p-3 text-left'
+            : 'flex-1 p-3 text-left'
+        }
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium">{agent.agent_name}</span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {alreadyAdded && (
+              <Badge variant="outline" className="text-[10px]">
+                Added
+              </Badge>
+            )}
+            <Badge variant="secondary" className="text-[10px]">
+              {agent.agent_type}
             </Badge>
-          )}
-          <Badge variant="secondary" className="text-[10px]">
-            {agent.agent_type}
-          </Badge>
+          </div>
         </div>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-        {agent.description}
-      </p>
-    </button>
+        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+          {agent.description}
+        </p>
+      </button>
+    </div>
   )
 }

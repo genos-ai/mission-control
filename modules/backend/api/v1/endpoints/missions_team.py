@@ -96,6 +96,56 @@ async def add_agent_to_team(
 
 
 @router.post(
+    "/{mission_id}/team/ping",
+    response_model=ApiResponse,
+    summary="Ping every agent on a mission's team",
+)
+async def ping_mission_team(
+    mission_id: str,
+    db: DbSession,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Send a trivial probe to every agent on the team to verify it's live.
+
+    For each agent: build the model from its catalog row, send "Reply with OK",
+    measure latency + tokens + cost. Skips system prompts and tools — this
+    exercises the model + provider + auth chain, not the full agent machinery.
+    """
+    from modules.backend.agents.preflight import ping_agents
+
+    service = MissionTeamService(db)
+    members = await service.list_team(mission_id, enabled_only=True)
+    agent_names = [
+        m.agent_catalog.agent_name
+        for m in members
+        if m.agent_catalog is not None
+    ]
+    results = await ping_agents(agent_names)
+    payload = [
+        {
+            "agent_name": r.agent_name,
+            "model_name": r.model_name,
+            "ok": r.ok,
+            "elapsed_ms": round(r.elapsed_ms, 1),
+            "input_tokens": r.input_tokens,
+            "output_tokens": r.output_tokens,
+            "cost_usd": r.cost_usd,
+            "error": r.error,
+        }
+        for r in results
+    ]
+    return ApiResponse(
+        success=True,
+        data={
+            "pings": payload,
+            "total": len(payload),
+            "failures": sum(1 for r in results if not r.ok),
+        },
+        metadata={"request_id": request_id},
+    )
+
+
+@router.post(
     "/{mission_id}/team/seed",
     response_model=ApiResponse,
     summary="Seed team from catalog",

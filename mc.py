@@ -871,6 +871,25 @@ def team_list(ctx):
     asyncio.run(_run())
 
 
+@team.command("ping")
+@click.pass_obj
+def team_ping(ctx):
+    """Ping every agent on the current mission's team with a trivial LLM call.
+
+    Probes each agent's catalog row → builds the model → sends "Reply with OK"
+    in parallel (bounded). Reports per-agent latency, tokens, cost, and status.
+    Health check for the full provider/auth/model chain.
+    """
+    from modules.clients.cli.mc_team import ping_team
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await ping_team(api, mid)
+
+    asyncio.run(_run())
+
+
 @team.command("available")
 @click.option("--search", "-s", default=None, help="Search query.")
 def team_available(search):

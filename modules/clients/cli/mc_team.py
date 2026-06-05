@@ -63,6 +63,61 @@ async def list_team(api: CliApiClient, mission_id: str) -> None:
     console.print(table)
 
 
+async def ping_team(api: CliApiClient, mission_id: str) -> None:
+    """Probe every agent on the mission's team with a trivial LLM call."""
+    console = get_console()
+
+    console.print("[dim]Pinging team... (this exercises the live LLM path)[/dim]")
+    data = await api.post(f"/missions/{mission_id}/team/ping", body={})
+    pings = data.get("pings", []) if isinstance(data, dict) else []
+    total = data.get("total", len(pings)) if isinstance(data, dict) else len(pings)
+    failures = data.get("failures", 0) if isinstance(data, dict) else 0
+
+    if not pings:
+        console.print("[dim]No agents on this mission to ping.[/dim]")
+        return
+
+    title = f"Team Ping ({total} agents, {failures} failed)"
+    table = build_table(title, columns=[
+        ("Agent", {"style": "cyan", "width": 32}),
+        ("Provider", {"style": "magenta", "width": 10}),
+        ("Model", {"style": "green", "width": 22}),
+        ("Latency", {"justify": "right", "width": 9}),
+        ("In/Out", {"justify": "right", "width": 12}),
+        ("Cost", {"justify": "right", "width": 11}),
+        ("Status", {"width": 12}),
+    ])
+
+    for p in pings:
+        provider, model_name = _split_model(p.get("model_name") or "")
+        latency_ms = p.get("elapsed_ms", 0.0)
+        latency = f"{latency_ms / 1000:.2f}s" if latency_ms else "—"
+        in_tok = p.get("input_tokens", 0)
+        out_tok = p.get("output_tokens", 0)
+        toks = f"{in_tok}/{out_tok}" if in_tok or out_tok else "—"
+        cost_val = p.get("cost_usd", 0.0)
+        cost = f"${cost_val:.6f}" if cost_val else "—"
+        if p.get("ok"):
+            status = "[green]✓ OK[/green]"
+        else:
+            err = (p.get("error") or "").strip().split("\n", 1)[0]
+            status = f"[red]✗ {err[:40]}[/red]" if err else "[red]✗ FAIL[/red]"
+        table.add_row(
+            p.get("agent_name", ""),
+            provider,
+            model_name,
+            latency,
+            toks,
+            cost,
+            status,
+        )
+
+    console.print(table)
+    if failures:
+        console.print(f"\n[red]{failures} agent(s) failed.[/red] Use `mc team list` to see the catalog rows; "
+                      f"`python admin.py catalog set-model <agent> <model>` to repoint.")
+
+
 async def list_available(api: CliApiClient, search: str | None = None) -> None:
     """Browse the global agent catalog."""
     console = get_console()
