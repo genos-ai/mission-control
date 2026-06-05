@@ -22,10 +22,14 @@ from modules.backend.core.exceptions import (
     AuthenticationError,
     AuthorizationError,
     ConflictError,
+    ContractViolationError,
     DatabaseError,
     ExternalServiceError,
     NotFoundError,
+    QuotaExhaustedError,
+    RateLimitedError,
     RateLimitError,
+    TransientProviderError,
     ValidationError,
 )
 from modules.backend.core.logging import get_logger
@@ -33,7 +37,9 @@ from modules.backend.schemas.base import ErrorDetail, ErrorResponse, ResponseMet
 
 logger = get_logger(__name__)
 
-# Map exception types to HTTP status codes
+# Map exception types to HTTP status codes. The handler uses exact-type
+# lookup (`type(exc)` not `isinstance`), so each concrete subclass that
+# can reach an API boundary must be registered here.
 EXCEPTION_STATUS_MAP: dict[type[ApplicationError], int] = {
     NotFoundError: 404,
     ValidationError: 400,
@@ -43,6 +49,11 @@ EXCEPTION_STATUS_MAP: dict[type[ApplicationError], int] = {
     RateLimitError: 429,
     ExternalServiceError: 502,
     DatabaseError: 503,
+    # Provider error taxonomy
+    QuotaExhaustedError: 429,
+    RateLimitedError: 429,
+    TransientProviderError: 502,
+    ContractViolationError: 502,
 }
 
 

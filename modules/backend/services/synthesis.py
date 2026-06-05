@@ -87,9 +87,17 @@ def _build_prompt(outcome: ExecutionOutcome) -> str:
 async def summarize_outcome(outcome: ExecutionOutcome) -> str:
     """Generate a human-readable summary of an execution outcome.
 
-    Returns empty string on failure — synthesis is best-effort,
-    never blocks or fails the execution.
+    Returns empty string on failure — synthesis is best-effort and
+    never blocks the workflow. Failure severity is classified:
+    typed provider errors log at ERROR via the shared helper so the
+    operational signal (quota / rate limit / transient) is visible;
+    untyped exceptions log at WARNING because their cause is unclear.
     """
+    from modules.backend.core.exceptions import (
+        ProviderError,
+        log_provider_error,
+    )
+
     try:
         agent = _create_agent()
         prompt = _build_prompt(outcome)
@@ -100,6 +108,14 @@ async def summarize_outcome(outcome: ExecutionOutcome) -> str:
             extra={"chars": len(summary), "status": outcome.status.value},
         )
         return summary
+    except ProviderError as exc:
+        log_provider_error(
+            logger, exc,
+            event="Synthesis skipped: provider error",
+            surface="synthesis",
+            outcome_status=outcome.status.value,
+        )
+        return ""
     except Exception:
         logger.warning("Synthesis failed — returning empty summary", exc_info=True)
         return ""

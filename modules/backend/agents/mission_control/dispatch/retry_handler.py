@@ -11,7 +11,30 @@ import asyncio
 import time
 from typing import Any
 
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic import ValidationError as PydanticValidationError
+from pydantic_ai.exceptions import (
+    IncompleteToolCall,
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+)
+
+from modules.backend.core.exceptions import (
+    QuotaExhaustedError,
+    RateLimitedError,
+    TransientProviderError,
+    log_provider_error,
+)
+
+# PydanticAI-native validation failures — the model responded but with
+# wrong-shape output. PydanticAI has already retried internally before
+# surfacing these. We keep catching them as the original exception
+# types (not wrapped) because PydanticAI raises them; wrapping would
+# require boundary code in every provider adapter.
+_CONTRACT_FAILURE_EXCEPTIONS = (
+    PydanticValidationError,
+    UnexpectedModelBehavior,
+    IncompleteToolCall,
+)
 
 from modules.backend.agents.mission_control.dispatch.result_builders import (
     append_feedback,
@@ -73,31 +96,122 @@ async def execute_with_retry(
                 execute_agent_fn=execute_agent_fn,
                 instructions=instructions,
             )
-        except asyncio.TimeoutError:
+        except QuotaExhaustedError as e:
+            # Provider quota exhausted — no retry. Log via the helper
+            # so the structured-log shape (provider, model, request_id,
+            # remediation) matches every other quota log site in the
+            # codebase. Catch sites add their situational context.
             duration = time.monotonic() - task_start
+            log_provider_error(
+                logger, e,
+                event="Task failed (no retry): provider quota exhausted",
+                task_id=task.task_id,
+                agent=task.agent,
+                mission_id=mission_id,
+                attempt=attempt,
+            )
+            retry_history.append(RetryHistoryEntry(
+                attempt=attempt + 1,
+                failure_tier=0,
+                failure_reason=f"{type(e).__name__}: {str(e)[:400]}",
+                feedback_provided="",
+            ))
+            return failed_result(
+                task,
+                f"{type(e).__name__}: {str(e)[:300]}",
+                retry_count=attempt,
+                retry_history=retry_history,
+                execution_id=execution_id,
+            )
+        except (TransientProviderError, RateLimitedError, asyncio.TimeoutError) as e:
+            # Transient infrastructure failure: SDK session loss,
+            # rate-limit hiccup, or wall-clock timeout. Retry with
+            # feedback if budget remains. RateLimitedError SHOULD use
+            # exponential backoff once we have any provider that
+            # actually raises it — current implementation retries
+            # immediately like other transients.
+            duration = time.monotonic() - task_start
+            is_timeout = isinstance(e, asyncio.TimeoutError)
+            failure_label = "Timeout" if is_timeout else type(e).__name__
+            feedback_msg = (
+                "Previous attempt timed out. Complete the task more efficiently."
+                if is_timeout
+                else "Previous attempt produced no response (infrastructure hiccup). Retry."
+            )
+            if is_timeout:
+                logger.warning(
+                    "Task execution: timeout, will retry",
+                    extra={
+                        "task_id": task.task_id,
+                        "agent": task.agent,
+                        "attempt": attempt,
+                        "attempts_remaining": retry_budget - attempt,
+                        "mission_id": mission_id,
+                    },
+                )
+            else:
+                # Transient ProviderError — use the helper so the
+                # provider/model/request_id make it into the log.
+                log_provider_error(
+                    logger, e,
+                    event="Task execution: transient provider failure, will retry",
+                    task_id=task.task_id,
+                    agent=task.agent,
+                    attempt=attempt,
+                    attempts_remaining=retry_budget - attempt,
+                    mission_id=mission_id,
+                )
             if attempt < retry_budget:
                 retry_history.append(RetryHistoryEntry(
                     attempt=attempt + 1,
                     failure_tier=0,
-                    failure_reason="Timeout",
-                    feedback_provided="Previous attempt timed out. Work more efficiently.",
+                    failure_reason=failure_label,
+                    feedback_provided=feedback_msg,
                 ))
-                instructions = append_feedback(
-                    task.instructions,
-                    "Previous attempt timed out. Complete the task more efficiently.",
-                )
+                instructions = append_feedback(task.instructions, feedback_msg)
                 continue
 
+            status = TaskStatus.TIMEOUT if is_timeout else TaskStatus.FAILED
             return TaskResult(
                 task_id=task.task_id,
                 agent_name=task.agent,
-                status=TaskStatus.TIMEOUT,
+                status=status,
                 output_reference={},
                 token_usage=TaskTokenUsage(),
                 cost_usd=0.0,
                 duration_seconds=round(duration, 2),
                 retry_count=attempt,
                 retry_history=retry_history,
+                execution_id=execution_id,
+            )
+        except _CONTRACT_FAILURE_EXCEPTIONS as e:
+            # The model responded but its output doesn't satisfy the
+            # contract (wrong shape, missing required fields, didn't
+            # call the output tool). PydanticAI has already retried
+            # internally; another full retry here will almost always
+            # produce the same wrong shape. Fail fast so the operator
+            # sees the actual schema delta instead of three identical
+            # errors in a row.
+            duration = time.monotonic() - task_start
+            logger.error(
+                "Task failed: output contract violation (no retry)",
+                extra={
+                    "task_id": task.task_id,
+                    "agent": task.agent,
+                    "exception_type": type(e).__name__,
+                    "error": str(e)[:2000],
+                    "attempt": attempt,
+                    "mission_id": mission_id,
+                },
+            )
+            retry_history.append(RetryHistoryEntry(
+                attempt=attempt + 1,
+                failure_tier=0,
+                failure_reason=f"{type(e).__name__}: {str(e)[:500]}",
+                feedback_provided="",
+            ))
+            return failed_result(
+                task, str(e), retry_count=attempt, retry_history=retry_history,
                 execution_id=execution_id,
             )
         except Exception as e:

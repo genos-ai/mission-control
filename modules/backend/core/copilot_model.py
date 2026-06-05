@@ -19,11 +19,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, NoReturn
 
 from pydantic_ai.messages import (
     ModelMessage,
@@ -149,6 +150,45 @@ def _has_tool_returns(messages: list[ModelMessage]) -> list[ToolReturnPart]:
 
 
 # ---------------------------------------------------------------------------
+# Typed errors raised by CopilotModel — let callers classify transient
+# infrastructure failures distinctly from logical contract failures.
+# ---------------------------------------------------------------------------
+
+
+from modules.backend.core.exceptions import (
+    QuotaExhaustedError,
+    TransientProviderError,
+    log_provider_error,
+)
+
+
+class EmptyCopilotSessionError(TransientProviderError):
+    """The Copilot session ended without the model engaging.
+
+    Symptoms: 0 input tokens, 0 output tokens, no assistant message,
+    no tool calls. Observed when GitHub Copilot rate-limits a rapid
+    retry burst or when the SDK's session lifecycle hiccups. Inherits
+    `retry_policy = "immediate"` from `TransientProviderError`.
+    """
+
+
+class CopilotQuotaExhaustedError(QuotaExhaustedError):
+    """GitHub Copilot returned 402 — account's monthly quota exhausted.
+
+    Inherits `retry_policy = "none"` from `QuotaExhaustedError` —
+    operators must wait for the window to reset, upgrade the plan, or
+    switch agents to a provider with remaining capacity.
+    """
+
+
+_QUOTA_PATTERN = re.compile(
+    r"402.*(?:quota|monthly quota|exceeded)",
+    re.IGNORECASE | re.DOTALL,
+)
+_REQUEST_ID_PATTERN = re.compile(r"Request ID:\s*([A-Za-z0-9:.\-]+)")
+
+
+# ---------------------------------------------------------------------------
 # Tool bridge — async handlers that await PydanticAI tool results
 # ---------------------------------------------------------------------------
 
@@ -172,39 +212,57 @@ class _ToolBridge:
 
 def _make_copilot_tools(
     function_tools: list[ToolDefinition],
+    output_tool_names: set[str],
     bridge: _ToolBridge,
 ) -> list[Any]:
     """Convert PydanticAI ToolDefinitions to native Copilot Tools.
 
-    Each tool gets an async handler that bridges to PydanticAI's tool loop.
-    The handler runs as an ensure_future task (Copilot v3 protocol) —
-    the event loop stays free while awaiting.
+    Function tools round-trip: handler waits for PydanticAI to execute
+    and resolve the Future. Output tools (PydanticAI's structured-output
+    sentinels like final_result) do NOT round-trip — PydanticAI captures
+    the call args as the typed output and ends the agent run, so the
+    Future is never resolved. For output tools the handler returns
+    success immediately after queueing the invocation.
     """
     from copilot.tools import Tool, ToolInvocation, ToolResult
 
     tools: list[Tool] = []
 
     for tool_def in function_tools:
+        is_output_tool = tool_def.name in output_tool_names
+
         async def handler(
             invocation: ToolInvocation,
             _bridge: _ToolBridge = bridge,
+            _is_output: bool = is_output_tool,
         ) -> ToolResult:
             logger.info(
                 "Copilot tool call → PydanticAI",
                 extra={
                     "tool": invocation.tool_name,
                     "call_id": invocation.tool_call_id,
+                    "output_tool": _is_output,
                 },
             )
-            # Create a Future for PydanticAI to resolve
+
+            if _is_output:
+                # Output sentinel — push to queue so CopilotModel.request
+                # returns the ToolCallPart to PydanticAI (which captures
+                # args as typed output and terminates). No tool return
+                # will come back; do not create or await a Future.
+                await _bridge.pending_calls.put(invocation)
+                return ToolResult(
+                    text_result_for_llm="OK",
+                    result_type="success",
+                    error=None,
+                )
+
+            # Function tool — round-trip via PydanticAI execution.
             loop = asyncio.get_running_loop()
             future: asyncio.Future[str] = loop.create_future()
             _bridge.results[invocation.tool_call_id] = future
-
-            # Signal PydanticAI that a tool call is needed
             await _bridge.pending_calls.put(invocation)
 
-            # Wait for PydanticAI to execute the tool and provide the result
             try:
                 from modules.backend.core.config import get_app_config
                 tool_timeout = get_app_config().application.timeouts.tool_bridge
@@ -333,6 +391,10 @@ class CopilotModel(Model):
         self._response_text: str = ""
         self._response_ready: asyncio.Event | None = None
         self._usage_data: dict[str, int] = {}
+        # Captured when a SESSION_ERROR event fires — lets the tool path
+        # detect quota/auth/etc. failures that arrive as events rather
+        # than as exceptions from send().
+        self._session_error_text: str | None = None
 
     @property
     def model_name(self) -> str:
@@ -358,6 +420,48 @@ class CopilotModel(Model):
             if not CopilotModel._started:
                 await CopilotModel._client.start()
                 CopilotModel._started = True
+
+    # ---- Error classification helpers --------------------------------
+    #
+    # The Copilot SDK raises a plain `Exception` whose message embeds
+    # the HTTP status code and the GitHub Copilot Request ID. We
+    # string-match here because the SDK doesn't expose typed quota /
+    # rate-limit exceptions. As provider classifications get added
+    # (auth failure, transient connection, etc.) they go here.
+
+    def _classify_session_error(self, exc: BaseException) -> BaseException:
+        """Return a typed `ProviderError` subclass if the raw SDK
+        exception matches a known pattern; otherwise return `exc`
+        unchanged so the caller can re-raise as-is.
+        """
+        msg = str(exc)
+        if _QUOTA_PATTERN.search(msg):
+            rid_match = _REQUEST_ID_PATTERN.search(msg)
+            return CopilotQuotaExhaustedError(
+                msg,
+                provider="copilot",
+                model=self._model_id,
+                request_id=rid_match.group(1) if rid_match else None,
+                raw=msg,
+            )
+        return exc
+
+    def _raise_empty_session(
+        self, message: str, *, raw: str | None = None,
+    ) -> NoReturn:
+        """Raise an `EmptyCopilotSessionError` populated with this
+        adapter's provider/model context, and emit the canonical
+        ERROR log entry. Used everywhere we detect that the Copilot
+        session ended without the model engaging.
+        """
+        empty = EmptyCopilotSessionError(
+            message,
+            provider="copilot",
+            model=self._model_id,
+            raw=raw,
+        )
+        log_provider_error(logger, empty)
+        raise empty
 
     # ---- Main entry ----
 
@@ -430,17 +534,43 @@ class CopilotModel(Model):
         self._response_text = ""
         self._response_ready = asyncio.Event()
         self._usage_data = {}
+        self._session_error_text = None
         # Merge function tools + output tools (e.g. final_result for
         # structured output in 'tool' mode). Without output_tools, the
         # model never sees final_result and falls back to prompted text.
+        # Output tools terminate the run — the bridge handler must not
+        # await a result for them (see _make_copilot_tools).
         all_tools = list(params.function_tools or [])
+        output_tool_names: set[str] = set()
         if params.output_tools:
             all_tools.extend(params.output_tools)
+            output_tool_names = {t.name for t in params.output_tools}
         has_tools = bool(all_tools)
+
+        # Output-contract hardening: when output_tools are present, the
+        # only valid termination is a call to the output sentinel
+        # (final_result). Empirically the model occasionally writes a
+        # text reply instead, which then fails Pydantic validation
+        # downstream. Append an explicit contract to the system prompt.
+        if output_tool_names:
+            tool_list = ", ".join(f"`{n}`" for n in sorted(output_tool_names))
+            system_prompt = (
+                system_prompt.rstrip()
+                + "\n\n## OUTPUT CONTRACT (non-negotiable)\n\n"
+                + f"You MUST conclude your response by calling the {tool_list} "
+                + "tool with arguments that satisfy its schema in full. "
+                + "Do NOT write a text reply, summary, or acknowledgement as "
+                + "your final response — the tool call is the only valid "
+                + "termination. If you cannot complete the task, still call "
+                + "the tool with the closest valid empty/error shape permitted "
+                + "by the schema, never with free-form text.\n"
+            )
 
         if has_tools:
             self._tool_bridge = _ToolBridge()
-            copilot_tools = _make_copilot_tools(all_tools, self._tool_bridge)
+            copilot_tools = _make_copilot_tools(
+                all_tools, output_tool_names, self._tool_bridge,
+            )
         else:
             self._tool_bridge = None
             copilot_tools = None
@@ -478,14 +608,29 @@ class CopilotModel(Model):
             return await self._simple_request(user_message)
 
         # Has tools — use send + wait for tool calls or completion
-        await self._active_session.send(user_message)
+        try:
+            await self._active_session.send(user_message)
+        except Exception as exc:
+            classified = self._classify_session_error(exc)
+            if isinstance(classified, CopilotQuotaExhaustedError):
+                await self._cleanup_session()
+                log_provider_error(logger, classified)
+                raise classified from exc
+            raise
         return await self._wait_for_response()
 
     # ---- Simple request (no tools) ----
 
     async def _simple_request(self, user_message: str) -> ModelResponse:
         try:
-            await self._active_session.send_and_wait(user_message, timeout=300.0)
+            try:
+                await self._active_session.send_and_wait(user_message, timeout=300.0)
+            except Exception as exc:
+                classified = self._classify_session_error(exc)
+                if isinstance(classified, CopilotQuotaExhaustedError):
+                    log_provider_error(logger, classified)
+                    raise classified from exc
+                raise
             return self._extract_final_response()
         finally:
             await self._cleanup_session()
@@ -523,7 +668,23 @@ class CopilotModel(Model):
             if text:
                 self._response_text = str(text)
 
-        elif "SESSION_IDLE" in etype or "SESSION_ERROR" in etype:
+        elif "SESSION_ERROR" in etype:
+            # Capture the error message so _wait_for_response can
+            # classify it (quota / auth / transient) instead of just
+            # seeing "no response".
+            data = getattr(event, "data", None)
+            err_text = (
+                getattr(data, "message", None)
+                or getattr(data, "error", None)
+                or getattr(data, "content", None)
+                or str(data) if data is not None else None
+            )
+            if err_text:
+                self._session_error_text = str(err_text)
+            if self._response_ready:
+                self._response_ready.set()
+
+        elif "SESSION_IDLE" in etype:
             if self._response_ready:
                 self._response_ready.set()
 
@@ -549,9 +710,13 @@ class CopilotModel(Model):
             t.cancel()
 
         if not done:
+            # 300s elapsed with NO events at all — session never produced
+            # a tool call, an assistant message, or an idle/error signal.
+            # That's an infrastructure timeout, not a logical failure.
             await self._cleanup_session()
-            logger.error("Copilot request timed out", extra={"model": self._model_id})
-            return self._empty_response()
+            self._raise_empty_session(
+                "Copilot session timed out at 300s without events"
+            )
 
         if tool_task in done:
             # Tool call — return to PydanticAI for execution
@@ -579,7 +744,36 @@ class CopilotModel(Model):
                 timestamp=datetime.now(timezone.utc),
             )
 
-        # Session idle — final response
+        # Session idle — classify what kind of "no response" this is.
+        # 1. SESSION_ERROR with a 402-quota signature → quota
+        # 2. SESSION_ERROR without a known signature → transient
+        # 3. Idle + 0 tokens + no text/tools → transient (empty session)
+        # 4. Idle with text or tokens → return whatever was captured
+        if self._session_error_text:
+            classified = self._classify_session_error(
+                Exception(self._session_error_text),
+            )
+            await self._cleanup_session()
+            if isinstance(classified, CopilotQuotaExhaustedError):
+                log_provider_error(logger, classified)
+                raise classified
+            # Unknown SESSION_ERROR — surface as a transient provider
+            # failure so the retry handler retries while the operator
+            # still sees the underlying message in the structured log.
+            self._raise_empty_session(
+                f"Copilot session error: {self._session_error_text[:200]}",
+                raw=self._session_error_text,
+            )
+
+        input_tokens = self._usage_data.get("input", 0)
+        output_tokens = self._usage_data.get("output", 0)
+        if not self._response_text and input_tokens == 0 and output_tokens == 0:
+            await self._cleanup_session()
+            self._raise_empty_session(
+                "Copilot session ended without model engagement "
+                "(input_tokens=0, output_tokens=0)"
+            )
+
         response = self._extract_final_response()
         await self._cleanup_session()
         return response
