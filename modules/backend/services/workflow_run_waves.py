@@ -730,8 +730,18 @@ class WorkflowRunWavesMixin:
         )
 
         if not success:
+            # Surface the real underlying failure (e.g. "Copilot quota
+            # exhausted (402): ...") that the retry handler captured.
+            # Without this, every step failure presents as a generic
+            # "Step 'X' execution failed", hiding root-cause signals
+            # from logs, SSE events, and the run-detail UI.
+            reason = (
+                getattr(outcome, "abort_reason", None)
+                or self._extract_first_task_failure(outcome)
+            )
+            detail = f": {reason}" if reason else ""
             raise RuntimeError(
-                f"Step '{step.id}' execution failed"
+                f"Step '{step.id}' execution failed{detail}"
             )
 
         result = VirtualExecution(

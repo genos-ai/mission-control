@@ -453,7 +453,14 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             tasks = []
             for step in workflow.steps:
                 task_id = step_uuid_map[step.id]
-                agent = step.capability or f"workflow:{step.node_type}"
+                # capability is the short form (e.g. "research.synthesizer");
+                # the roster keys agents by full name "<capability>.agent".
+                # Must match the dispatch path in workflow_run_waves.py
+                # so retry/redispatch validates against the same name.
+                agent = (
+                    f"{step.capability}.agent" if step.capability
+                    else f"workflow:{step.node_type}"
+                )
                 tasks.append(TaskDefinition(
                     task_id=task_id,
                     agent=agent,
