@@ -2,19 +2,15 @@
 # Summarization Agent Configuration
 # =============================================================================
 # Compresses mission outcomes into concise milestone summaries for the
-# fractal summarization pipeline.
-#
-# Plan 82 Phase 2 canary: switched from copilot:claude-haiku-4.5 to
-# foundry:gpt-4.1 on 2026-05-27. Low blast radius (failures only affect
-# knowledge extraction, not dispatch). Roll back by changing the model
-# back and re-seeding.
+# fractal summarization pipeline. Uses Haiku for cost efficiency —
+# input is already structured data, output is compressed narrative.
 # =============================================================================
 
 agent_name: system.summarization.agent
 agent_type: horizontal
 description: "Compresses mission outcomes into concise milestone summaries"
 enabled: true
-model: foundry:gpt-4.1
+model: copilot:claude-haiku-4.5
 max_input_length: 32000
 max_budget_usd: 0.05
 
