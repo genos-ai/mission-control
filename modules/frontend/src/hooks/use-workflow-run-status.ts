@@ -1,10 +1,16 @@
 /**
- * Hook that consumes mission SSE events and tracks per-node execution status
- * for the workflow editor overlay.
+ * Hook that derives per-node workflow execution state from the mission's
+ * event log (historical narrative + live SSE). State is computed by a
+ * pure reducer over the event list, so opening the editor mid-run
+ * reconstructs the overlay correctly — no replay logic, no live-only blind
+ * spot.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useMissionStreamContext } from '@/context/mission-stream'
+import { useCallback, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useParams } from 'react-router-dom'
+import { api } from '@/lib/api'
+import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 
 export type NodeStatus =
   | 'idle'
@@ -64,143 +70,171 @@ const WORKFLOW_EVENT_TYPES = new Set([
   'workflow.run.failed',
 ])
 
+// ── Pure reducer ──────────────────────────────────────────────────────────
+
+interface ReducerState {
+  nodeStatuses: Record<string, NodeStatus>
+  nodeMetrics: Record<string, NodeMetrics>
+  pendingHumanInputs: Record<string, PendingHumanInput>
+  activeRunId: string | null
+  progress: [number, number]
+}
+
+const EMPTY_STATE: ReducerState = {
+  nodeStatuses: {},
+  nodeMetrics: {},
+  pendingHumanInputs: {},
+  activeRunId: null,
+  progress: [0, 0],
+}
+
+function withStatus(state: ReducerState, stepId: string, status: NodeStatus): ReducerState {
+  return { ...state, nodeStatuses: { ...state.nodeStatuses, [stepId]: status } }
+}
+
+function withMetrics(
+  state: ReducerState,
+  stepId: string,
+  d: Record<string, unknown>,
+): ReducerState {
+  const m: NodeMetrics = {}
+  if (typeof d.cost_usd === 'number') m.cost_usd = d.cost_usd
+  if (typeof d.duration_seconds === 'number') m.duration_seconds = d.duration_seconds
+  if (typeof d.child_cost_usd === 'number') m.cost_usd = d.child_cost_usd
+  if (m.cost_usd === undefined && m.duration_seconds === undefined) return state
+  return { ...state, nodeMetrics: { ...state.nodeMetrics, [stepId]: m } }
+}
+
+function incProgress(state: ReducerState): ReducerState {
+  return { ...state, progress: [state.progress[0] + 1, state.progress[1]] }
+}
+
+function applyEvent(state: ReducerState, ev: ConsoleEvent): ReducerState {
+  if (!WORKFLOW_EVENT_TYPES.has(ev.event_type)) return state
+  const d = ev.data as Record<string, unknown>
+  const stepId = String(d.step_id ?? '')
+
+  switch (ev.event_type) {
+    case 'workflow.run.started':
+      return {
+        ...EMPTY_STATE,
+        activeRunId: String(d.workflow_run_id ?? ''),
+        progress: [0, Number(d.step_count ?? 0)],
+      }
+
+    case 'workflow.execution.started':
+      return withStatus(state, stepId, 'running')
+
+    case 'workflow.execution.completed':
+    case 'workflow.notification.sent':
+    case 'workflow.tool_call.completed':
+    case 'workflow.llm_call.completed':
+    case 'workflow.sub_workflow.completed': {
+      const next = withStatus(state, stepId, d.success ? 'completed' : 'failed')
+      return incProgress(withMetrics(next, stepId, d))
+    }
+
+    case 'workflow.step.skipped':
+      return incProgress(withStatus(state, stepId, 'skipped'))
+
+    case 'workflow.condition.evaluated':
+    case 'workflow.decision.resolved':
+    case 'workflow.branch.passed':
+    case 'workflow.merge.completed':
+      return incProgress(withStatus(state, stepId, 'completed'))
+
+    case 'workflow.human_input.requested': {
+      const next = withStatus(state, stepId, 'awaiting_input')
+      return {
+        ...next,
+        pendingHumanInputs: {
+          ...next.pendingHumanInputs,
+          [stepId]: {
+            requestId: String(d.request_id ?? ''),
+            stepId,
+            promptMessage: String(d.prompt_message ?? ''),
+            choices: Array.isArray(d.choices) ? (d.choices as unknown[]).map(String) : [],
+            timeoutAt: d.timeout_at ? String(d.timeout_at) : null,
+          },
+        },
+      }
+    }
+
+    case 'workflow.human_input.responded': {
+      const { [stepId]: _omit, ...rest } = state.pendingHumanInputs
+      const next = withStatus(state, stepId, 'completed')
+      return incProgress({ ...next, pendingHumanInputs: rest })
+    }
+
+    case 'workflow.run.completed':
+    case 'workflow.run.failed':
+      return { ...state, activeRunId: null }
+
+    default:
+      return state
+  }
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────────
+
 export function useWorkflowRunStatus(): WorkflowRunOverlay {
-  const stream = useMissionStreamContext()
-  const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
-  const [nodeMetrics, setNodeMetrics] = useState<Record<string, NodeMetrics>>({})
-  const [pendingHumanInputs, setPendingHumanInputs] = useState<Record<string, PendingHumanInput>>({})
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const [progress, setProgress] = useState<[number, number]>([0, 0])
-  const processedRef = useRef(0)
+  const { id: missionId } = useParams<{ id: string }>()
+  // Live events come from the console store, which is fed by the mission
+  // SSE stream in MissionLayout and normalizes events to ConsoleEvent shape.
+  const liveEvents = useConsoleStore((s) => s.events)
+  // Reset cursor — events with timestamp older than this are ignored. Set
+  // by reset() before starting a new run so the previous run's overlay
+  // clears immediately instead of waiting for the next workflow.run.started.
+  const [resetAt, setResetAt] = useState<number>(0)
 
-  useEffect(() => {
-    if (!stream) return
-    const events = stream.events
-    if (events.length <= processedRef.current) return
+  // Historical narrative events for this mission. Shares the same query
+  // key as the chat narrative consumer — only one request per mission.
+  const { data: narrativeData } = useQuery({
+    queryKey: ['narrative', missionId],
+    queryFn: () =>
+      api.get<{ events: ConsoleEvent[]; count: number }>(
+        `/missions/${missionId}/narrative`,
+      ),
+    enabled: !!missionId,
+    staleTime: 30_000,
+  })
 
-    const newEvents = events.slice(processedRef.current)
-    processedRef.current = events.length
-
-    const captureMetrics = (stepId: string, d: Record<string, unknown>) => {
-      const m: NodeMetrics = {}
-      if (typeof d.cost_usd === 'number') m.cost_usd = d.cost_usd
-      if (typeof d.duration_seconds === 'number') m.duration_seconds = d.duration_seconds
-      if (typeof d.child_cost_usd === 'number') m.cost_usd = d.child_cost_usd
-      if (m.cost_usd !== undefined || m.duration_seconds !== undefined) {
-        setNodeMetrics((prev) => ({ ...prev, [stepId]: m }))
-      }
-    }
-
-    for (const ev of newEvents) {
+  // Combined, deduplicated, chronologically sorted workflow event list.
+  const events = useMemo(() => {
+    const all = [
+      ...(narrativeData?.events ?? []),
+      ...liveEvents,
+    ]
+    const seen = new Set<string>()
+    const out: ConsoleEvent[] = []
+    for (const ev of all) {
       if (!WORKFLOW_EVENT_TYPES.has(ev.event_type)) continue
-      // SSE wire format: event_type at top level, event-specific fields in ev.data
-      const d = ev.data as Record<string, unknown>
-
-      switch (ev.event_type) {
-        case 'workflow.run.started':
-          setActiveRunId(String(d.workflow_run_id ?? ''))
-          setProgress([0, Number(d.step_count ?? 0)])
-          setNodeStatuses({})
-          setNodeMetrics({})
-          setPendingHumanInputs({})
-          break
-
-        case 'workflow.execution.started':
-          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'running' }))
-          break
-
-        case 'workflow.execution.completed':
-          setNodeStatuses((prev) => ({
-            ...prev,
-            [String(d.step_id)]: d.success ? 'completed' : 'failed',
-          }))
-          captureMetrics(String(d.step_id), d)
-          setProgress((prev) => [prev[0] + 1, prev[1]])
-          break
-
-        case 'workflow.step.skipped':
-          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'skipped' }))
-          setProgress((prev) => [prev[0] + 1, prev[1]])
-          break
-
-        case 'workflow.condition.evaluated':
-        case 'workflow.decision.resolved':
-          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'completed' }))
-          setProgress((prev) => [prev[0] + 1, prev[1]])
-          break
-
-        case 'workflow.notification.sent':
-        case 'workflow.tool_call.completed':
-        case 'workflow.llm_call.completed':
-          setNodeStatuses((prev) => ({
-            ...prev,
-            [String(d.step_id)]: d.success ? 'completed' : 'failed',
-          }))
-          captureMetrics(String(d.step_id), d)
-          setProgress((prev) => [prev[0] + 1, prev[1]])
-          break
-
-        case 'workflow.branch.passed':
-        case 'workflow.merge.completed':
-          setNodeStatuses((prev) => ({ ...prev, [String(d.step_id)]: 'completed' }))
-          setProgress((prev) => [prev[0] + 1, prev[1]])
-          break
-
-        case 'workflow.sub_workflow.completed':
-          setNodeStatuses((prev) => ({
-            ...prev,
-            [String(d.step_id)]: d.success ? 'completed' : 'failed',
-          }))
-          captureMetrics(String(d.step_id), d)
-          setProgress((prev) => [prev[0] + 1, prev[1]])
-          break
-
-        case 'workflow.human_input.requested': {
-          const stepId = String(d.step_id ?? '')
-          setNodeStatuses((prev) => ({ ...prev, [stepId]: 'awaiting_input' }))
-          setPendingHumanInputs((prev) => ({
-            ...prev,
-            [stepId]: {
-              requestId: String(d.request_id ?? ''),
-              stepId,
-              promptMessage: String(d.prompt_message ?? ''),
-              choices: Array.isArray(d.choices) ? (d.choices as unknown[]).map(String) : [],
-              timeoutAt: d.timeout_at ? String(d.timeout_at) : null,
-            },
-          }))
-          break
-        }
-
-        case 'workflow.human_input.responded': {
-          const stepId = String(d.step_id ?? '')
-          setNodeStatuses((prev) => ({ ...prev, [stepId]: 'completed' }))
-          setPendingHumanInputs((prev) => {
-            const next = { ...prev }
-            delete next[stepId]
-            return next
-          })
-          setProgress((prev) => [prev[0] + 1, prev[1]])
-          break
-        }
-
-        case 'workflow.run.completed':
-        case 'workflow.run.failed':
-          setActiveRunId(null)
-          break
-      }
+      if (seen.has(ev.event_id)) continue
+      const tsMs = new Date(ev.timestamp).getTime()
+      if (resetAt > 0 && tsMs < resetAt) continue
+      seen.add(ev.event_id)
+      out.push(ev)
     }
-  }, [stream?.events.length]) // eslint-disable-line react-hooks/exhaustive-deps
+    out.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    return out
+  }, [narrativeData, liveEvents, resetAt])
+
+  // Replay through the pure reducer — same code path for historical and live.
+  const state = useMemo(() => events.reduce(applyEvent, EMPTY_STATE), [events])
 
   const reset = useCallback(() => {
-    setNodeStatuses({})
-    setNodeMetrics({})
-    setPendingHumanInputs({})
-    setActiveRunId(null)
-    setProgress([0, 0])
-    processedRef.current = stream?.events.length ?? 0
-  }, [stream?.events.length]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Drop everything older than now; the next workflow.run.started event
+    // will land after this cursor and rebuild the overlay from scratch.
+    setResetAt(Date.now())
+  }, [])
 
-  const isActive = activeRunId !== null
-
-  return { nodeStatuses, nodeMetrics, pendingHumanInputs, isActive, activeRunId, progress, reset }
+  return {
+    nodeStatuses: state.nodeStatuses,
+    nodeMetrics: state.nodeMetrics,
+    pendingHumanInputs: state.pendingHumanInputs,
+    activeRunId: state.activeRunId,
+    progress: state.progress,
+    isActive: state.activeRunId !== null,
+    reset,
+  }
 }
