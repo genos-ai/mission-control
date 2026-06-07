@@ -40,3 +40,17 @@ foundry:
   auth_mode: entra
   base_url: https://gis-mission-control-resource.openai.azure.com
   scope: https://ai.azure.com/.default
+
+# Foundry Project — project-scoped Foundry endpoint, used by Agent Service
+# features that need project-level connections (e.g. Bing Grounding for the
+# `web_search` tool on the Responses API). Different host + path shape from
+# the OpenAI-compatible `foundry:` endpoint above.
+#
+# base_url format: https://<account>.services.ai.azure.com/api/projects/<project>
+# Same Entra auth as `foundry:`. The Responses API lives under
+# /openai/v1/responses relative to the project root, so the SDK base_url
+# is composed as `<base_url>/openai/v1/` by get_foundry_project_provider().
+foundry_project:
+  auth_mode: entra
+  base_url: https://gis-mission-control-resource.services.ai.azure.com/api/projects/gis-mission-control
+  scope: https://ai.azure.com/.default

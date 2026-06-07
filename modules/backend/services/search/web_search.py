@@ -2,27 +2,37 @@
 Web search service (Plan 40 §4.1).
 
 Provides web search with automatic fallback chain:
-  perplexity → tavily → brave
+  foundry → perplexity → tavily → brave
 
-Each provider returns SearchResult objects. Perplexity and Tavily include
-content directly; Brave returns URLs only (use ContentExtractService
-separately for full content).
+Each provider returns SearchResult objects. Foundry, Perplexity, and
+Tavily include content directly; Brave returns URLs only (use
+ContentExtractService separately for full content).
+
+Foundry is the Azure-billed path: it calls Microsoft Foundry's
+Responses API with the web_search tool (Grounding with Bing Search).
+It is preferred when configured because billing flows through the
+Azure subscription rather than a third-party API key.
 """
 
 from __future__ import annotations
 
 import httpx
 
-from modules.backend.core.config import get_settings
+from modules.backend.core.config import get_app_config, get_settings
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import SearchResult
+from modules.backend.services.search.bing_grounding_search import (
+    FoundryBingGroundingSearch,
+)
 
 logger = get_logger(__name__)
 
 _TAVILY_DEPTHS = {"basic", "advanced"}
 
-# Provider priority — first available key wins
-_PROVIDER_CHAIN = ["perplexity", "tavily", "brave"]
+# Provider priority — first configured provider wins.
+# Foundry is preferred so Azure-subscription billing takes precedence
+# over personal third-party API keys when both are present.
+_PROVIDER_CHAIN = ["foundry", "perplexity", "tavily", "brave"]
 
 
 class WebSearchService:
@@ -34,8 +44,20 @@ class WebSearchService:
         self._perplexity_key = settings.perplexity_api_key
         self._tavily_key = settings.tavily_api_key
         self._brave_key = settings.brave_api_key
+        # Foundry has no key — the project-scoped endpoint in providers.yaml
+        # (loaded via get_app_config().providers.foundry_project) is the
+        # "configured" signal. AAD auth is handled inside the provider
+        # factory in modules.backend.core.model_providers.
+        try:
+            self._foundry_configured = bool(
+                get_app_config().providers.foundry_project.base_url
+            )
+        except Exception:
+            self._foundry_configured = False
 
     def _get_key(self, provider: str) -> str:
+        if provider == "foundry":
+            return "configured" if self._foundry_configured else ""
         return {
             "perplexity": self._perplexity_key,
             "tavily": self._tavily_key,
@@ -121,7 +143,12 @@ class WebSearchService:
             # Raise the last error
             raise errors[-1][1]
 
-        logger.error("No search provider available (set PERPLEXITY_API_KEY, TAVILY_API_KEY, or BRAVE_API_KEY)")
+        logger.error(
+            "No search provider available "
+            "(set providers.foundry_project.base_url in providers.yaml for "
+            "Azure-billed Bing Grounding, or PERPLEXITY_API_KEY / TAVILY_API_KEY "
+            "/ BRAVE_API_KEY for third-party providers)"
+        )
         return []
 
     async def _search_provider(
@@ -132,6 +159,7 @@ class WebSearchService:
     ) -> list[SearchResult]:
         """Route to the correct provider method."""
         dispatch = {
+            "foundry": self._search_foundry,
             "perplexity": self._search_perplexity,
             "tavily": self._search_tavily,
             "brave": self._search_brave,
@@ -140,6 +168,33 @@ class WebSearchService:
         if not fn:
             raise ValueError(f"Unknown search provider: {provider}")
         return await fn(query, **kwargs)
+
+    # ── Foundry (Bing Grounding via Responses API) ────────────────────
+
+    async def _search_foundry(
+        self,
+        query: str,
+        *,
+        max_results: int = 10,
+        search_depth: str = "advanced",
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
+    ) -> list[SearchResult]:
+        """Search via Microsoft Foundry Responses API + web_search tool.
+
+        Billed against the Azure subscription (Bing Grounding +
+        synthesising model tokens). The web_search tool ignores
+        include/exclude domain filters; use bing_custom_search if
+        domain restriction is required.
+        """
+        svc = FoundryBingGroundingSearch()
+        return await svc.search(
+            query,
+            max_results=max_results,
+            search_depth=search_depth,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+        )
 
     # ── Perplexity ────────────────────────────────────────────────────
 

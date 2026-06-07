@@ -29,7 +29,9 @@ async def search_web(
 
     Returns ranked results with url, title, snippet, content,
     relevance_score, and provider. Provider is selected from config
-    (perplexity > tavily > brave fallback chain).
+    (foundry > perplexity > tavily > brave fallback chain). Foundry
+    is the Azure-billed path (Bing Grounding via the Foundry Responses
+    API); the others are third-party and require their own API keys.
     """
     svc = WebSearchService(http_client)
     results = await svc.search(
@@ -67,7 +69,7 @@ def register(agent):
         """Search the web for information on a topic.
 
         Returns results with url, title, snippet, content, and relevance_score.
-        Provider is selected from config (perplexity > tavily > brave).
+        Provider is selected from config (foundry > perplexity > tavily > brave).
         For results with empty content, use fetch_url to get the page content.
         """
         http_client = getattr(ctx.deps, "http_client", None)

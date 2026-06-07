@@ -555,6 +555,14 @@ class ProvidersSchema(_StrictBase):
             scope="https://ai.azure.com/.default",
         ),
     )
+    foundry_project: ProviderAuthSchema = Field(
+        default_factory=lambda: ProviderAuthSchema(
+            auth_mode="entra",
+            env_var=None,
+            base_url=None,
+            scope="https://ai.azure.com/.default",
+        ),
+    )
 
 
 class ModelsSchema(_StrictBase):

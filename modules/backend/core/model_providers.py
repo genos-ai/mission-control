@@ -26,6 +26,52 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+# Shared Azure Entra credential for the Foundry providers.
+#
+# Each `DefaultAzureCredential()` instance opens an internal aiohttp session
+# for IMDS / token endpoints; if a new instance is created per factory call,
+# those sessions leak and surface as "Unclosed client session" warnings at
+# process exit (a real problem for CLI smoke tests, harmless for the API
+# server which holds the credential for process lifetime).
+#
+# A single module-level instance is created on first use and reused by both
+# get_foundry_provider() and get_foundry_project_provider() — they both use
+# the same auth chain and the credential is scope-agnostic (scope is passed
+# per-call to get_bearer_token_provider()). Short-lived contexts call
+# close_foundry_credentials() before exit to clean up the aiohttp session.
+_foundry_credential = None
+
+
+def _get_foundry_credential():
+    """Return the shared DefaultAzureCredential, creating it on first use."""
+    global _foundry_credential
+    if _foundry_credential is None:
+        from azure.identity.aio import DefaultAzureCredential
+        _foundry_credential = DefaultAzureCredential()
+    return _foundry_credential
+
+
+async def close_foundry_credentials() -> None:
+    """Close the shared Foundry credential and its aiohttp transport.
+
+    Idempotent. Safe to call when nothing was created. After this returns,
+    the next factory call re-creates the credential.
+
+    Only needed for short-lived contexts (CLI scripts, smoke tests). The
+    API server doesn't need to call this — process exit handles cleanup
+    and the credential is reused across the whole process lifetime.
+
+    IMPORTANT: any AsyncOpenAI clients previously returned by the factory
+    functions become unusable after this call, because the bearer-token
+    provider they captured still references this (now-closed) credential.
+    Only call this when no further LLM calls are expected.
+    """
+    global _foundry_credential
+    if _foundry_credential is not None:
+        await _foundry_credential.close()
+        _foundry_credential = None
+
+
 def _read_credential(config) -> str | None:
     """Read a credential from the configured source (env var)."""
     if config.env_var:
@@ -155,14 +201,16 @@ def get_foundry_provider():
         # openai 2.x AsyncOpenAI expects api_key as Callable[[], Awaitable[str]] —
         # use azure.identity.aio (NOT the sync azure.identity) so the returned
         # bearer-token provider is awaitable. Token is fetched and cached on
-        # each request; refresh is handled by the credential.
-        from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider
+        # each request; refresh is handled by the credential. The credential
+        # itself is a module-level singleton (see _get_foundry_credential)
+        # to avoid leaking aiohttp sessions on repeated factory calls.
+        from azure.identity.aio import get_bearer_token_provider
         if not config.scope:
             raise ValueError(
                 "Foundry entra auth requires scope in providers.yaml "
                 "(e.g. https://ai.azure.com/.default)."
             )
-        token_provider = get_bearer_token_provider(DefaultAzureCredential(), config.scope)
+        token_provider = get_bearer_token_provider(_get_foundry_credential(), config.scope)
         client = AsyncOpenAI(base_url=sdk_base_url, api_key=token_provider)
         logger.info("Foundry provider: entra mode (scope=%s)", config.scope)
         return OpenAIProvider(openai_client=client)
@@ -180,6 +228,67 @@ def get_foundry_provider():
     raise ValueError(
         f"Foundry auth_mode '{config.auth_mode}' not supported. "
         "Expected one of: entra, api_key, bearer_token."
+    )
+
+
+def get_foundry_project_provider():
+    """Create an AsyncOpenAI client pointed at a Foundry **project** endpoint.
+
+    Unlike get_foundry_provider() (which targets the OpenAI-compatible
+    `<resource>.openai.azure.com` host), this targets the project-scoped
+    Foundry host `<account>.services.ai.azure.com/api/projects/<project>`.
+
+    This endpoint is required for Foundry Agent Service features that rely
+    on project-level connections — most notably the `web_search` tool
+    (Grounding with Bing Search) on the Responses API. The Bing connection
+    is attached at the project level, and only the project-scoped Responses
+    endpoint can resolve it.
+
+    Returns the bare AsyncOpenAI client (not a PydanticAI provider) because
+    the only consumer right now is non-PydanticAI code that calls
+    `client.responses.create(...)` directly. Wrap in OpenAIProvider at the
+    callsite if a PydanticAI Model is needed later.
+    """
+    from openai import AsyncOpenAI
+
+    config = _get_provider_config().foundry_project
+
+    if not config.base_url:
+        raise ValueError(
+            "foundry_project provider requires base_url in providers.yaml "
+            "(format: https://<account>.services.ai.azure.com/api/projects/<project>)."
+        )
+
+    sdk_base_url = f"{config.base_url.rstrip('/')}/openai/v1/"
+
+    if config.auth_mode == "entra":
+        # Shares the module-level credential singleton with get_foundry_provider()
+        # — see _get_foundry_credential() for the lifecycle rationale.
+        from azure.identity.aio import get_bearer_token_provider
+        if not config.scope:
+            raise ValueError(
+                "foundry_project entra auth requires scope in providers.yaml "
+                "(e.g. https://ai.azure.com/.default).",
+            )
+        token_provider = get_bearer_token_provider(_get_foundry_credential(), config.scope)
+        client = AsyncOpenAI(base_url=sdk_base_url, api_key=token_provider)
+        logger.info("foundry_project provider: entra mode (scope=%s)", config.scope)
+        return client
+
+    if config.auth_mode in ("api_key", "bearer_token"):
+        credential = _read_credential(config)
+        if not credential:
+            raise ValueError(
+                f"foundry_project {config.auth_mode} mode requires "
+                f"{config.env_var} env var to be set.",
+            )
+        client = AsyncOpenAI(base_url=sdk_base_url, api_key=credential)
+        logger.info("foundry_project provider: %s mode", config.auth_mode)
+        return client
+
+    raise ValueError(
+        f"foundry_project auth_mode '{config.auth_mode}' not supported. "
+        "Expected one of: entra, api_key, bearer_token.",
     )
 
 
