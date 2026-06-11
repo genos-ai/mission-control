@@ -19,6 +19,7 @@ from modules.backend.core.exceptions import NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.workflow import WorkflowSchema
 from modules.backend.services.workflow_definition import WorkflowDefinitionService
+from modules.backend.services.workflow_validator import validate_output_mappings
 
 logger = get_logger(__name__)
 
@@ -94,6 +95,26 @@ async def seed_workflows(
 
             # Validate against WorkflowSchema
             schema = WorkflowSchema(**raw)
+
+            # Output-mapping schema check: refuse to seed a template
+            # whose source_field references don't match the live agent
+            # output_type schemas. Prevents the silent-degradation
+            # class of bug where the workflow appears to run but
+            # downstream agents are fed missing inputs and fabricate
+            # output to fill the void.
+            violations = validate_output_mappings(schema)
+            if violations:
+                logger.error(
+                    "Workflow template rejected: output_mapping violations",
+                    extra={
+                        "path": str(yaml_path),
+                        "workflow": schema.workflow_name,
+                        "violation_count": len(violations),
+                        "violations": [str(v) for v in violations],
+                    },
+                )
+                counts["errors"] += 1
+                continue
 
             # Derive a clean name from the workflow_name
             name = schema.workflow_name

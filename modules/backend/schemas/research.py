@@ -8,7 +8,7 @@ verification, and search infrastructure types.
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 # =============================================================================
@@ -48,15 +48,27 @@ class CoveredQuestion(BaseModel):
 
 
 class CoverageAnalysisData(BaseModel):
-    """Output from analyst agent. Score computed by code, not LLM.
-
-    The analyst only classifies: which questions are covered (with >= 2
-    sources), which are not. The strategist takes the uncovered IDs and
-    generates refined queries for the next iteration.
+    """Output from analyst agent. The analyst classifies sub-questions
+    as covered or uncovered; numeric metrics are derived in code so the
+    LLM doesn't have to do arithmetic.
     """
 
     covered_questions: list[CoveredQuestion]
     uncovered_question_ids: list[str]
+
+    @computed_field
+    @property
+    def coverage_ratio(self) -> float:
+        """Fraction of sub-questions classified as covered.
+
+        Used by the deep-research workflow's loop-continuation
+        condition (`@node.analyze-rN.coverage_ratio < min_coverage_ratio`).
+        Returns 0.0 if the analyst returned no questions at all.
+        """
+        total = len(self.covered_questions) + len(self.uncovered_question_ids)
+        if total == 0:
+            return 0.0
+        return len(self.covered_questions) / total
 
 
 # =============================================================================
@@ -101,6 +113,17 @@ class ResearchReportOutput(BaseModel):
     methodology: str = ""
     limitations: str = ""
     context_updates: list[dict] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def total_sources(self) -> int:
+        """Count of citation sources in the synthesized report.
+
+        Surfaced as a workflow target_key so downstream notification
+        templates can reference it (e.g. "X sources synthesized")
+        without traversing the sources list at template-eval time.
+        """
+        return len(self.sources)
 
 
 # =============================================================================

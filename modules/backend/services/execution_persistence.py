@@ -650,25 +650,39 @@ class ExecutionPersistenceService(BaseService):
                 if isinstance(task_output, dict) and source_field in task_output:
                     extracted[target_key] = task_output[source_field]
                 else:
-                    logger.warning(
-                        "Output mapping source field not found",
-                        extra={
-                            "source_task": source_task,
-                            "source_field": source_field,
-                            "available_fields": (
-                                list(task_output.keys())
-                                if isinstance(task_output, dict) else None
-                            ),
-                        },
+                    # Promoted from WARNING to a hard step failure: a
+                    # workflow that declares it needs a field but
+                    # silently degrades when it isn't there lets the
+                    # downstream agent fabricate output from nothing,
+                    # which is exactly how a run can "complete" with
+                    # a fabricated deliverable. Seed-time validation
+                    # (workflow_validator) catches most cases; this
+                    # is the runtime backstop.
+                    from modules.backend.core.exceptions import (
+                        WorkflowOutputMappingError,
+                    )
+                    available = (
+                        list(task_output.keys())
+                        if isinstance(task_output, dict) else []
+                    )
+                    raise WorkflowOutputMappingError(
+                        f"Output mapping source field '{source_field}' "
+                        f"not found on '{source_task}' output. "
+                        f"Available: {sorted(available)}",
+                        source_task=source_task,
+                        source_field=source_field,
+                        available_fields=sorted(available),
                     )
             else:
-                logger.warning(
-                    "Output mapping source task not found",
-                    extra={
-                        "source_task": source_task,
-                        "available_task_ids": list(by_task_id.keys()),
-                        "available_agents": list(by_agent.keys()),
-                    },
+                from modules.backend.core.exceptions import (
+                    WorkflowOutputMappingError,
+                )
+                raise WorkflowOutputMappingError(
+                    f"Output mapping source task '{source_task}' not "
+                    f"found in execution outcome",
+                    source_task=source_task,
+                    source_field=source_field,
+                    available_fields=[],
                 )
 
         return extracted

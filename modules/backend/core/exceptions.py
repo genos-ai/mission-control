@@ -253,6 +253,47 @@ class ContractViolationError(ProviderError):
     retry_policy = "none"
 
 
+# ---------------------------------------------------------------------------
+# Workflow contract errors
+# ---------------------------------------------------------------------------
+
+
+class WorkflowOutputMappingError(ValidationError):
+    """A workflow step's output_mapping references a field that the
+    source agent doesn't actually emit.
+
+    Raised at workflow runtime by `extract_outputs` when a declared
+    `source_field` isn't present on the agent's actual output. Seed-
+    time validation in `workflow_validator.validate_output_mappings`
+    catches most cases earlier; this is defense-in-depth for workflows
+    that bypass the seeder (e.g. designed at runtime by the Workflow
+    Architect) or agent schemas that change after seed.
+
+    Promoted from a silent warning to a step failure because the
+    workflow's downstream contract is broken — letting the step
+    transition to `completed` with missing data causes downstream
+    agents to fabricate output, masquerading a degraded run as a
+    success.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        step_id: str | None = None,
+        source_task: str | None = None,
+        source_field: str | None = None,
+        available_fields: list[str] | None = None,
+    ) -> None:
+        details = {
+            "step_id": step_id,
+            "source_task": source_task,
+            "source_field": source_field,
+            "available_fields": available_fields or [],
+        }
+        super().__init__(message, details=details)
+
+
 def log_provider_error(
     log: Any,
     exc: ProviderError,

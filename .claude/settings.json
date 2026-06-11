@@ -186,7 +186,9 @@
       "Bash(PGPASSWORD=\"\" psql -h localhost -U mission_control -d mission_control -t -c \"SELECT s->>'id' AS step, s->'output_mapping'->>'summary_key' AS summary_key FROM workflow_definitions wd, jsonb_array_elements\\(wd.steps::jsonb\\) s WHERE wd.name='research.deep-research-pipeline' AND wd.mission_id='019e3584-3f67-755b-878d-5237a4a26c24' AND wd.version=3;\")",
       "Skill(tavily-dynamic-search)",
       "Skill(tavily-dynamic-search:*)",
-      "Bash(set -e)"
+      "Bash(set -e)",
+      "Bash(kill 29296)",
+      "Bash(kill 75401)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",

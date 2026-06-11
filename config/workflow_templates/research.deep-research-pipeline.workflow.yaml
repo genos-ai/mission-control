@@ -112,8 +112,8 @@ steps:
           source_field: sub_questions
           target_key: sub_questions
         - source_task: research.strategist.agent
-          source_field: search_strategies
-          target_key: search_strategies
+          source_field: source_strategy
+          target_key: source_strategy
     timeout_seconds: 120
     depends_on: []
 
@@ -138,7 +138,7 @@ steps:
           source_field: findings
           target_key: findings_r1
         - source_task: research.searcher.agent
-          source_field: sources_found
+          source_field: urls_extracted
           target_key: sources_found_r1
     timeout_seconds: 600
     depends_on:
@@ -193,7 +193,7 @@ steps:
     output_mapping:
       field_mappings:
         - source_task: research.strategist.agent
-          source_field: refined_sub_questions
+          source_field: sub_questions
           target_key: refined_questions
     timeout_seconds: 120
     depends_on:
@@ -221,7 +221,7 @@ steps:
           source_field: findings
           target_key: findings_r2
         - source_task: research.searcher.agent
-          source_field: sources_found
+          source_field: urls_extracted
           target_key: sources_found_r2
     timeout_seconds: 600
     depends_on:
@@ -349,17 +349,20 @@ steps:
     input:
       type: "research_compress"
       max_findings: "@context.max_findings_for_synthesis"
+    # NB: the analyst's CoverageAnalysisData has no compression metadata
+    # — it classifies covered vs uncovered, full stop. The "compress"
+    # step is another coverage pass against the merged finding set; we
+    # carry forward what the schema actually emits, and the downstream
+    # source-count metric is sourced from the synthesizer's computed
+    # `total_sources` (see notification template below).
     output_mapping:
       field_mappings:
         - source_task: research.analyst.agent
-          source_field: compressed_findings
-          target_key: compressed_findings
+          source_field: covered_questions
+          target_key: compress_covered_questions
         - source_task: research.analyst.agent
-          source_field: total_before
-          target_key: total_findings_before
-        - source_task: research.analyst.agent
-          source_field: total_after
-          target_key: total_findings_after
+          source_field: coverage_ratio
+          target_key: compress_coverage_ratio
     timeout_seconds: 120
     depends_on:
       - merge-findings
@@ -383,7 +386,7 @@ steps:
       summary_key: research_report_summary
       field_mappings:
         - source_task: research.synthesizer.agent
-          source_field: report
+          source_field: report_markdown
           target_key: research_report
         - source_task: research.synthesizer.agent
           source_field: title
@@ -391,6 +394,9 @@ steps:
         - source_task: research.synthesizer.agent
           source_field: sources
           target_key: report_sources
+        - source_task: research.synthesizer.agent
+          source_field: total_sources
+          target_key: total_sources
     timeout_seconds: 600
     depends_on:
       - compress
@@ -422,8 +428,8 @@ steps:
           source_field: total_citations
           target_key: verified_citations_total
         - source_task: research.verifier.agent
-          source_field: flagged_claims
-          target_key: flagged_claims
+          source_field: unsupported_count
+          target_key: verified_citations_unsupported
     timeout_seconds: 300
     depends_on:
       - synthesize
@@ -438,6 +444,6 @@ steps:
     node_type: notification
     notification_config:
       channel: sse
-      message_template: "Research complete: {{@node.synthesize.report_title}} -- {{@node.compress.total_findings_after}} sources synthesized"
+      message_template: "Research complete: {{@node.synthesize.report_title}} -- {{@node.synthesize.total_sources}} sources synthesized"
     depends_on:
       - synthesize

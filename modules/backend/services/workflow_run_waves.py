@@ -714,9 +714,31 @@ class WorkflowRunWavesMixin:
             else None
         )
         if output_mapping:
-            extracted.update(
-                ctx.persistence.extract_outputs(outcome_dict, output_mapping),
-            )
+            try:
+                extracted.update(
+                    ctx.persistence.extract_outputs(
+                        outcome_dict, output_mapping,
+                    ),
+                )
+            except Exception as e:
+                # Output-mapping contract failure (WorkflowOutputMappingError
+                # or a structural issue) — surface as a step failure with
+                # the full schema delta in the message. The agent's run
+                # succeeded; we're refusing to silently degrade the
+                # downstream context by accepting a partial output.
+                logger.error(
+                    "Step output mapping failed",
+                    extra={
+                        "run_id": run.id,
+                        "step_id": step.id,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                )
+                raise RuntimeError(
+                    f"Step '{step.id}' output mapping failed: "
+                    f"{type(e).__name__}: {e}"
+                ) from e
 
         logger.info(
             "Step completed",
