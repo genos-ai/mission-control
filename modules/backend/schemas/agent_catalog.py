@@ -21,6 +21,7 @@ class AgentCatalogResponse(BaseModel):
     version: str
     description: str
     enabled: bool
+    chat_enabled: bool = False
     visibility: str
     keywords: list[str]
     tools: list[str]
@@ -48,6 +49,7 @@ class AgentCatalogDetailResponse(BaseModel):
     constraints: dict[str, Any]
     keywords: list[str]
     enabled: bool
+    chat_enabled: bool = False
     visibility: str
     engine: str = "pydantic_ai"
     effort: str | None = None

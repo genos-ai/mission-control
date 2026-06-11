@@ -393,6 +393,7 @@ function AgentEditor({
   const [version, setVersion] = useState(agent.version)
   const [engine, setEngine] = useState(agent.engine ?? 'pydantic_ai')
   const [effort, setEffort] = useState(agent.effort ?? '')
+  const [chatEnabled, setChatEnabled] = useState(agent.chat_enabled ?? false)
 
   // Thinking mode: 'off' | 'adaptive' | 'fixed'
   const initialThinking = agent.thinking_budget_json
@@ -431,6 +432,7 @@ function AgentEditor({
                   version,
                   engine,
                   effort: (effort || null) as AgentCatalogItem['effort'],
+                  chat_enabled: chatEnabled,
                   thinking_budget_json: thinkingBudget,
                   model_config_json: {
                     ...agent.model_config_json,
@@ -598,6 +600,23 @@ function AgentEditor({
             </select>
           </div>
         </div>
+        <label className="flex cursor-pointer items-start gap-2">
+          <input
+            type="checkbox"
+            checked={chatEnabled}
+            onChange={(e) => setChatEnabled(e.target.checked)}
+            className="mt-0.5 h-4 w-4 cursor-pointer"
+          />
+          <div>
+            <span className="text-xs font-medium">Chat-enabled</span>
+            <p className="text-[10px] text-muted-foreground/70">
+              When on, this agent appears as a clickable conversation target on
+              mission Team and Chat pages. The agent's <code>create_agent()</code>{' '}
+              must accept a <code>chat_mode</code> parameter to behave correctly
+              in conversation; otherwise it runs its default path.
+            </p>
+          </div>
+        </label>
       </CardContent>
     </Card>
   )

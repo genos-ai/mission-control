@@ -10,6 +10,7 @@ export interface AgentCatalogItem {
   version: string
   description: string
   enabled: boolean
+  chat_enabled: boolean
   visibility: string
   keywords: string[]
   tools: string[]

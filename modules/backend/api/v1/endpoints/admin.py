@@ -54,6 +54,7 @@ class CatalogCreateRequest(BaseModel):
     tools: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     enabled: bool = True
+    chat_enabled: bool = False
     visibility: str = "public"
     model_config_json: dict[str, Any] | None = None
     scope: dict[str, Any] | None = None
@@ -66,6 +67,7 @@ class CatalogCreateRequest(BaseModel):
 class CatalogUpdateRequest(BaseModel):
     description: str | None = None
     enabled: bool | None = None
+    chat_enabled: bool | None = None
     visibility: str | None = None
     version: str | None = None
     tools: list[str] | None = None
@@ -148,6 +150,7 @@ async def admin_catalog_create(
         tools=body.tools,
         keywords=body.keywords,
         enabled=body.enabled,
+        chat_enabled=body.chat_enabled,
         visibility=body.visibility,
         model_config_json=body.model_config_json,
         scope=body.scope,
