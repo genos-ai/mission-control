@@ -11,8 +11,14 @@ the temporal.enabled feature flag.
 
 from fastapi import APIRouter
 
-from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
-from modules.backend.core.exceptions import NotFoundError
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    Idempotency,
+    RequestId,
+    require_mission_access,
+)
+from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -29,9 +35,20 @@ from modules.backend.services.execution_persistence import ExecutionPersistenceS
 router = APIRouter()
 
 
+async def _require_execution_access(db, mission_id, user) -> None:
+    """Gate an execution by its mission. Execution records inherit their
+    mission's access rules; records with no mission_id are admin-only.
+    """
+    if mission_id:
+        await require_mission_access(db, mission_id, user)
+    elif not user.has_role("admin"):
+        raise AuthorizationError("You don't have access to this execution")
+
+
 @router.get("", response_model=ApiResponse, summary="List execution records")
 async def list_executions(
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     status: str | None = None,
     roster_name: str | None = None,
@@ -45,6 +62,13 @@ async def list_executions(
     Reads from execution_records only — the single source of truth
     for all runs (Plan 71).
     """
+    # Non-admins may only list executions within a mission they can
+    # access; an unscoped listing would expose every tenant's runs.
+    if not current_user.has_role("admin"):
+        if not mission_id:
+            raise AuthorizationError("mission_id is required to list executions")
+        await require_mission_access(db, mission_id, current_user)
+
     service = ExecutionPersistenceService(db)
     executions, total = await service.list_executions(
         status=status,
@@ -82,6 +106,7 @@ async def list_executions(
 async def get_execution(
     execution_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get an execution record with full details.
@@ -93,6 +118,8 @@ async def get_execution(
 
     if not execution:
         raise NotFoundError(f"Execution '{execution_id}' not found")
+
+    await _require_execution_access(db, execution.mission_id, current_user)
 
     response = ExecutionRecordDetailResponse.model_validate(execution)
     return ApiResponse(
@@ -110,6 +137,7 @@ async def get_execution(
 async def get_execution_decisions(
     execution_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get the decision audit trail for an execution."""
@@ -119,11 +147,10 @@ async def get_execution_decisions(
     if not execution:
         raise NotFoundError(f"Execution '{execution_id}' not found")
 
+    await _require_execution_access(db, execution.mission_id, current_user)
+
     decisions = await service.get_decisions(execution_id)
-    items = [
-        ExecutionDecisionResponse.model_validate(d).model_dump()
-        for d in decisions
-    ]
+    items = [ExecutionDecisionResponse.model_validate(d).model_dump() for d in decisions]
 
     return ApiResponse(
         success=True,
@@ -140,10 +167,15 @@ async def get_execution_decisions(
 async def get_execution_cost(
     execution_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get detailed cost breakdown for an execution."""
     service = ExecutionPersistenceService(db)
+    execution = await service.get_execution(execution_id)
+    if not execution:
+        raise NotFoundError(f"Execution '{execution_id}' not found")
+    await _require_execution_access(db, execution.mission_id, current_user)
     breakdown = await service.get_cost_breakdown(execution_id)
 
     return ApiResponse(
@@ -166,6 +198,7 @@ async def get_execution_cost(
 async def execute_execution(
     execution_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     idempotency: Idempotency,
 ) -> ApiResponse:
@@ -193,9 +226,11 @@ async def execute_execution(
     if not record:
         raise NotFoundError(f"Execution '{execution_id}' not found")
 
+    await _require_execution_access(db, record.mission_id, current_user)
+
     if config.temporal.enabled:
-        from modules.backend.core.exceptions import ApplicationError
         from modules.backend.core.config import get_default_budget_usd
+        from modules.backend.core.exceptions import ApplicationError
         from modules.backend.temporal.client import get_temporal_client
         from modules.backend.temporal.models import MissionWorkflowInput
         from modules.backend.temporal.workflow import AgentMissionWorkflow
@@ -241,16 +276,18 @@ async def execute_execution(
     _bg_mission_id = record.mission_id
 
     async def _run_in_background(exec_id: str) -> None:
+        from redis.asyncio import Redis as AsyncRedis
+
         from modules.backend.agents.mission_control.mission_dispatch import handle_mission
         from modules.backend.agents.mission_control.models import NoOpEventBus
         from modules.backend.core.config import get_default_budget_usd, get_redis_url
         from modules.backend.core.database import get_async_session
         from modules.backend.services.session import SessionService
-        from redis.asyncio import Redis as AsyncRedis
 
         try:
             redis = AsyncRedis.from_url(get_redis_url())
             from modules.backend.events.bus import SessionEventBus
+
             event_bus = SessionEventBus(redis, mission_id=_bg_mission_id)
 
             async with get_async_session() as bg_db:
@@ -300,6 +337,7 @@ async def execute_execution(
 async def cancel_execution(
     execution_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     reason: str = "Cancelled by user",
 ) -> ApiResponse:
@@ -308,6 +346,8 @@ async def cancel_execution(
     record = await service.get_execution(execution_id)
     if not record:
         raise NotFoundError(f"Execution '{execution_id}' not found")
+
+    await _require_execution_access(db, record.mission_id, current_user)
 
     status = record.status.value if hasattr(record.status, "value") else str(record.status)
     if status.lower() in ("completed", "failed", "cancelled", "timed_out"):
@@ -337,7 +377,8 @@ async def cancel_execution(
 async def submit_approval(
     execution_id: str,
     decision: str,
-    responder_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     reason: str | None = None,
 ) -> ApiResponse:
@@ -355,6 +396,13 @@ async def submit_approval(
             metadata={"request_id": request_id},
         )
 
+    # Authorize against the execution's mission before signalling.
+    service = ExecutionPersistenceService(db)
+    record = await service.get_execution(execution_id)
+    if not record:
+        raise NotFoundError(f"Execution '{execution_id}' not found")
+    await _require_execution_access(db, record.mission_id, current_user)
+
     from modules.backend.temporal.client import get_temporal_client
     from modules.backend.temporal.models import ApprovalDecision
     from modules.backend.temporal.workflow import AgentMissionWorkflow
@@ -367,7 +415,9 @@ async def submit_approval(
         ApprovalDecision(
             decision=decision,
             responder_type="human",
-            responder_id=responder_id,
+            # Derived from the authenticated user — never trust a
+            # client-supplied responder identity.
+            responder_id=str(current_user.id),
             reason=reason,
         ),
     )
@@ -391,12 +441,19 @@ async def submit_approval(
 async def get_execution_status(
     execution_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get execution status — Temporal Query or DB fallback."""
     from modules.backend.core.config import get_app_config
 
     config = get_app_config()
+
+    # Authorize against the execution's mission first.
+    record = await ExecutionPersistenceService(db).get_execution(execution_id)
+    if not record:
+        raise NotFoundError(f"Execution '{execution_id}' not found")
+    await _require_execution_access(db, record.mission_id, current_user)
 
     if config.temporal.enabled:
         try:

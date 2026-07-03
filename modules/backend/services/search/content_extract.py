@@ -7,8 +7,12 @@ Each extractor is tried in order; the first to return non-empty text wins.
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import json
 import re
+import socket
+from urllib.parse import urljoin, urlparse
 
 import httpx
 import trafilatura
@@ -18,6 +22,60 @@ from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import ExtractedContent
 
 logger = get_logger(__name__)
+
+# SSRF guard. fetch_url targets are chosen by LLM agents and can be steered
+# by untrusted input (user prompts, fetched web content), so a target may
+# point at internal infrastructure. We allow only http(s) and refuse any
+# host that resolves to a non-public address.
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+_MAX_REDIRECTS = 5
+
+
+def _ip_is_blocked(ip_str: str) -> bool:
+    """True if the address is private/loopback/link-local/reserved etc."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True  # unparseable — refuse
+    # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:10.0.0.1) so the checks apply.
+    if ip.version == 6 and getattr(ip, "ipv4_mapped", None):
+        ip = ip.ipv4_mapped
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+async def _assert_url_allowed(url: str) -> None:
+    """Raise ValueError if the URL is non-http(s) or resolves to a
+    non-public address. Resolution closes DNS-based SSRF; redirects are
+    validated per hop by the caller. (A determined DNS-rebinding attacker
+    could still race the resolve/connect window — out of scope here.)
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        raise ValueError(f"Blocked URL scheme: {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL has no host")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    loop = asyncio.get_event_loop()
+    try:
+        infos = await loop.getaddrinfo(
+            host,
+            port,
+            proto=socket.IPPROTO_TCP,
+        )
+    except socket.gaierror as e:
+        raise ValueError(f"DNS resolution failed for host {host!r}") from e
+    for info in infos:
+        ip_str = info[4][0]
+        if _ip_is_blocked(ip_str):
+            raise ValueError(f"Blocked non-public address {ip_str} for host {host!r}")
 
 
 class ContentExtractService:
@@ -45,6 +103,17 @@ class ContentExtractService:
         Returns:
             ExtractedContent with extracted text and metadata.
         """
+        # SSRF guard: refuse non-public targets before any network call
+        # (covers the Jina relay fallback too).
+        try:
+            await _assert_url_allowed(url)
+        except ValueError as e:
+            logger.warning(
+                "Blocked content extraction for unsafe URL",
+                extra={"url": url[:120], "reason": str(e)},
+            )
+            return ExtractedContent(url=url, text="", extraction_method="blocked")
+
         html = await self._fetch_html(url, timeout_seconds=timeout_seconds)
         if not html:
             return ExtractedContent(url=url, text="", extraction_method="failed")
@@ -69,16 +138,29 @@ class ContentExtractService:
         return self._build_result(url, best, title, max_length, "partial")
 
     async def _fetch_html(self, url: str, *, timeout_seconds: float = 15.0) -> str:
-        """Fetch raw HTML from URL."""
+        """Fetch raw HTML from URL.
+
+        Follows redirects manually so each hop is SSRF-validated before we
+        connect — a public URL that 30x-redirects to an internal address
+        (e.g. cloud metadata) is otherwise a classic bypass.
+        """
         try:
-            resp = await self._client.get(
-                url,
-                timeout=timeout_seconds,
-                follow_redirects=True,
-                headers={"User-Agent": "MissionControl-Research/1.0"},
-            )
-            resp.raise_for_status()
-            return resp.text
+            current = url
+            for _ in range(_MAX_REDIRECTS + 1):
+                await _assert_url_allowed(current)
+                resp = await self._client.get(
+                    current,
+                    timeout=timeout_seconds,
+                    follow_redirects=False,
+                    headers={"User-Agent": "MissionControl-Research/1.0"},
+                )
+                if resp.is_redirect and "location" in resp.headers:
+                    current = urljoin(current, resp.headers["location"])
+                    continue
+                resp.raise_for_status()
+                return resp.text
+            logger.warning("Too many redirects", extra={"url": url[:120]})
+            return ""
         except Exception:
             logger.warning("Failed to fetch HTML", extra={"url": url[:120]}, exc_info=True)
             return ""

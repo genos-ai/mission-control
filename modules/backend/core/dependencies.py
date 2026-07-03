@@ -153,9 +153,7 @@ async def get_current_user_sse(
 
             from modules.backend.models.user import User as UserModel
 
-            result = await db.execute(
-                select(UserModel).where(UserModel.id == user_id)
-            )
+            result = await db.execute(select(UserModel).where(UserModel.id == user_id))
             user = result.scalar_one_or_none()
             if user:
                 return user
@@ -179,23 +177,90 @@ SseUser = Annotated[User, Depends(get_current_user_sse)]
 async def require_admin(user: CurrentUser) -> User:
     """Require that the current user has admin role."""
     if not user.has_role("admin"):
-        raise AuthorizationError(
-            f"Requires 'admin' role. Current role: '{user.system_role}'."
-        )
+        raise AuthorizationError(f"Requires 'admin' role. Current role: '{user.system_role}'.")
     return user
 
 
 async def require_sysadmin(user: CurrentUser) -> User:
     """Require that the current user has sysadmin role."""
     if not user.has_role("sysadmin"):
-        raise AuthorizationError(
-            f"Requires 'sysadmin' role. Current role: '{user.system_role}'."
-        )
+        raise AuthorizationError(f"Requires 'sysadmin' role. Current role: '{user.system_role}'.")
     return user
 
 
 AdminRole = Annotated[User, Depends(require_admin)]
 SysadminRole = Annotated[User, Depends(require_sysadmin)]
+
+
+# ---------------------------------------------------------------------------
+# Resource access checks
+# ---------------------------------------------------------------------------
+#
+# Shared mission/session authorization. Previously copy-pasted into each
+# mission sub-router (artifacts, plan, costs, streams); centralised here so
+# every endpoint gates the same way. Call from inside a handler after the
+# user/db dependencies have resolved — these are plain coroutines, not
+# FastAPI dependencies, because they need the path's resource id.
+
+
+async def require_mission_access(db, mission_id: str, user) -> None:
+    """Allow admin, the mission owner, or any mission member.
+
+    Raises AuthorizationError otherwise. NotFoundError from the service
+    propagates as-is (handled by the global exception handlers).
+    """
+    from modules.backend.services.mission import MissionService
+
+    if user.has_role("admin"):
+        return
+    mission = await MissionService(db).get_mission(mission_id)
+    if mission.owner_id == user.id:
+        return
+    if any(m.user_id == user.id for m in mission.members):
+        return
+    raise AuthorizationError("You don't have access to this mission")
+
+
+async def require_mission_owner(db, mission_id: str, user) -> None:
+    """Allow only admin or the mission owner (not ordinary members).
+
+    Use for sensitive operations such as membership management, where a
+    mere member must not be able to escalate roles or remove others.
+    Raises AuthorizationError otherwise.
+    """
+    from modules.backend.services.mission import MissionService
+
+    if user.has_role("admin"):
+        return
+    mission = await MissionService(db).get_mission(mission_id)
+    if mission.owner_id == user.id:
+        return
+    raise AuthorizationError("Only the mission owner can perform this action")
+
+
+async def require_session_access(db, session_id: str, user) -> None:
+    """Allow admin, the session owner, or a member of the session's mission.
+
+    Raises AuthorizationError otherwise.
+    """
+    from modules.backend.core.exceptions import NotFoundError
+    from modules.backend.services.session import SessionService
+
+    if user.has_role("admin"):
+        return
+    try:
+        session = await SessionService(db).get_session(session_id)
+    except NotFoundError:
+        raise AuthorizationError("Session not found or access denied")
+    if session.user_id == user.id:
+        return
+    if session.mission_id:
+        try:
+            await require_mission_access(db, session.mission_id, user)
+            return
+        except AuthorizationError:
+            pass
+    raise AuthorizationError("You don't have access to this session")
 
 
 # ---------------------------------------------------------------------------

@@ -15,21 +15,24 @@ Endpoints:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 
 from modules.backend.agents.mission_control.gate_manual import fire_decision
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    get_event_bus,
+    require_mission_access,
+)
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.events.types import GateRequestDecidedEvent
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.schemas.base import ApiResponse
-from typing import Annotated
-from fastapi import Depends
-from modules.backend.core.dependencies import get_event_bus
 
 EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 
@@ -53,10 +56,16 @@ class GateDecisionSubmission(BaseModel):
     action: Literal[
         # Standard gate actions (pre_dispatch, pre_layer, post_task,
         # verification_failed, post_layer):
-        "continue", "skip", "retry", "abort",
+        "continue",
+        "skip",
+        "retry",
+        "abort",
         # post_run autonomy-loop actions:
-        "wait", "advance_approved", "advance_refine",
-        "propose_complete", "escalate",
+        "wait",
+        "advance_approved",
+        "advance_refine",
+        "propose_complete",
+        "escalate",
     ] = Field(
         ...,
         description=(
@@ -68,7 +77,8 @@ class GateDecisionSubmission(BaseModel):
         ),
     )
     reason: str | None = Field(
-        None, max_length=2000,
+        None,
+        max_length=2000,
         description="Optional reviewer note attached to the decision.",
     )
 
@@ -110,6 +120,7 @@ async def list_pending_gates(
     request_id: RequestId,
 ) -> ApiResponse:
     """Return all gate requests in PENDING status, oldest first."""
+    await require_mission_access(db, mission_id, current_user)
     result = await db.execute(
         select(GateRequest)
         .where(
@@ -151,6 +162,7 @@ async def get_gate_request(
     request_id: RequestId,
 ) -> ApiResponse:
     """Read one gate request including its serialised GateContext."""
+    await require_mission_access(db, mission_id, current_user)
     row = await _load_gate(db, mission_id, request_id_path)
     detail = GateRequestDetail(
         id=str(row.id),
@@ -191,6 +203,7 @@ async def decide_gate(
     / cancelled). The dispatcher's `await event.wait()` was scoped before the
     DB row was written; firing the event here is what wakes it up.
     """
+    await require_mission_access(db, mission_id, current_user)
     row = await _load_gate(db, mission_id, request_id_path)
 
     current_status = row.status.value if hasattr(row.status, "value") else row.status
@@ -228,23 +241,27 @@ async def decide_gate(
 
     # Emit lifecycle event so watchers (TUI / console) see the resolution.
     try:
-        await event_bus.publish(GateRequestDecidedEvent(
-            session_id=row.session_id or row.mission_id,
-            source=f"manual_gate:{request_id_path}",
-            request_id=request_id_path,
-            mission_id=row.mission_id,
-            gate_type=row.gate_type,
-            action=body.action,
-            reason=body.reason,
-            reviewer=f"user:{current_user.id}",
-        ))
+        await event_bus.publish(
+            GateRequestDecidedEvent(
+                session_id=row.session_id or row.mission_id,
+                source=f"manual_gate:{request_id_path}",
+                request_id=request_id_path,
+                mission_id=row.mission_id,
+                gate_type=row.gate_type,
+                action=body.action,
+                reason=body.reason,
+                reviewer=f"user:{current_user.id}",
+            )
+        )
     except Exception:
         # Event-bus failures must not fail the decision response — the
         # decision is already committed. Log and continue.
         from modules.backend.core.logging import get_logger
+
         get_logger(__name__).warning(
             "Failed to emit GateRequestDecidedEvent",
-            exc_info=True, extra={"request_id": request_id_path},
+            exc_info=True,
+            extra={"request_id": request_id_path},
         )
 
     return ApiResponse(

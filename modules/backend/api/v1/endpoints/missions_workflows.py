@@ -11,7 +11,12 @@ from typing import Any
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    require_mission_access,
+)
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.workflow import WorkflowEdgeSchema
@@ -35,10 +40,12 @@ router = APIRouter()
 async def list_mission_workflows(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     enabled_only: bool = True,
 ) -> ApiResponse:
     """List DB-stored workflow definitions for a mission."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     service = WorkflowDefinitionService(db)
@@ -73,6 +80,7 @@ async def list_mission_workflows(
 async def list_workflow_runs(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     workflow_name: str | None = Query(None),
     status: str | None = Query(None),
@@ -80,6 +88,7 @@ async def list_workflow_runs(
     offset: int = Query(0, ge=0),
 ) -> ApiResponse:
     """List past and in-flight workflow runs for a mission."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.models.workflow_run import WorkflowRunState
     from modules.backend.repositories.workflow_run import WorkflowRunRepository
 
@@ -123,6 +132,7 @@ async def list_workflow_runs(
 
 class CreateWorkflowRequest(BaseModel):
     """Request body for creating a new blank workflow."""
+
     name: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_-]+$")
     description: str = Field(default="", max_length=500)
 
@@ -136,9 +146,11 @@ async def create_workflow(
     mission_id: str,
     data: CreateWorkflowRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Create a new blank workflow definition for a mission."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     service = WorkflowDefinitionService(db)
@@ -146,7 +158,12 @@ async def create_workflow(
         mission_id=mission_id,
         name=data.name,
         description=data.description,
-        objective={"statement": data.description or data.name, "category": "general", "owner": "user", "priority": "medium"},
+        objective={
+            "statement": data.description or data.name,
+            "category": "general",
+            "owner": "user",
+            "priority": "medium",
+        },
         steps=[],
     )
     return ApiResponse(
@@ -169,11 +186,13 @@ async def create_workflow(
 async def import_workflow_template(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     template_name: str = "",
     name_override: str | None = None,
 ) -> ApiResponse:
     """Import a YAML workflow template as a DB-stored workflow for a mission."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     service = WorkflowDefinitionService(db)
@@ -203,9 +222,11 @@ async def get_mission_workflow(
     mission_id: str,
     workflow_name: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get a mission workflow with full step definitions."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     service = WorkflowDefinitionService(db)
@@ -244,6 +265,7 @@ async def run_mission_workflow(
     mission_id: str,
     workflow_name: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     body: dict | None = None,
 ) -> ApiResponse:
@@ -257,12 +279,13 @@ async def run_mission_workflow(
         gate_mode: str — gate override (off, interactive, etc.)
         context_overrides: dict — merge into workflow context before execution
     """
+    await require_mission_access(db, mission_id, current_user)
+    from fastapi import HTTPException
+    from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.core.config import get_redis_url
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.services.workflow_run import WorkflowRunService
-    from redis.asyncio import Redis as AsyncRedis
-
-    from fastapi import HTTPException
 
     body = body or {}
     triggered_by = body.get("triggered_by", "user:api")
@@ -274,11 +297,10 @@ async def run_mission_workflow(
     # the endpoint immediately (Plan 80h) — synchronous blocking is
     # meaningless when the workflow is waiting on operator approval.
     from modules.backend.repositories.mission_plan import MissionPlanRepository
+
     plan_repo = MissionPlanRepository(db)
     existing_plan = await plan_repo.get_by_mission_id(mission_id)
-    effective_gate_mode = gate_mode_override or (
-        existing_plan.gate_mode if existing_plan else None
-    )
+    effective_gate_mode = gate_mode_override or (existing_plan.gate_mode if existing_plan else None)
     interactive = effective_gate_mode in ("manual", "interactive", "ai_assisted")
 
     redis = AsyncRedis.from_url(get_redis_url())
@@ -290,6 +312,7 @@ async def run_mission_workflow(
         # backend process exits — for production resilience this should
         # eventually move to a Temporal workflow (follow-up).
         import asyncio
+
         async def _run_in_background() -> None:
             try:
                 async with WorkflowRunService.factory(event_bus=event_bus) as svc:
@@ -301,6 +324,7 @@ async def run_mission_workflow(
                     )
             finally:
                 await redis.aclose()
+
         asyncio.create_task(_run_in_background())
         return ApiResponse(
             success=True,
@@ -309,8 +333,8 @@ async def run_mission_workflow(
                 "workflow_name": workflow_name,
                 "gate_mode": effective_gate_mode,
                 "next": "Approve tasks via `mc plan approve <task_id>` or "
-                        "`mc plan approve --next`. View pending tasks with "
-                        "`mc plan show --status proposed`.",
+                "`mc plan approve --next`. View pending tasks with "
+                "`mc plan show --status proposed`.",
             },
             metadata={"request_id": request_id},
         )
@@ -373,6 +397,7 @@ async def delete_mission_workflow(
 
 class SaveGraphRequest(BaseModel):
     """Request body for saving workflow canvas state, edges, and optionally steps."""
+
     canvas_state: dict[str, Any] = Field(default_factory=dict)
     edges_json: list[WorkflowEdgeSchema] | None = None
     steps: list[dict[str, Any]] | None = None
@@ -388,16 +413,16 @@ async def save_workflow_graph(
     workflow_id: str,
     data: SaveGraphRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Save canvas viewport, node positions, and optionally edges for the visual editor."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_definition import WorkflowDefinitionService
 
     service = WorkflowDefinitionService(db)
     edges_payload = (
-        [e.model_dump() for e in data.edges_json]
-        if data.edges_json is not None
-        else None
+        [e.model_dump() for e in data.edges_json] if data.edges_json is not None else None
     )
     workflow, warnings = await service.save_graph(
         workflow_id=workflow_id,
@@ -421,6 +446,7 @@ async def save_workflow_graph(
 
 class ValidateGraphRequest(BaseModel):
     """Request body for validating a workflow graph."""
+
     steps: list[dict[str, Any]]
     edges_json: list[WorkflowEdgeSchema] = Field(default_factory=list)
 
@@ -435,9 +461,11 @@ async def validate_workflow_graph_endpoint(
     workflow_id: str,
     data: ValidateGraphRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Validate a workflow graph without saving. Returns validation errors/warnings."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_validator import validate_workflow_graph
 
     errors = validate_workflow_graph(
@@ -465,9 +493,11 @@ async def get_workflow_run(
     mission_id: str,
     run_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get a single workflow run by ID."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.repositories.workflow_run import WorkflowRunRepository
 
     repo = WorkflowRunRepository(db)
@@ -504,6 +534,7 @@ async def cancel_workflow_run(
     mission_id: str,
     run_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Mark a workflow run as CANCELLED.
@@ -515,6 +546,7 @@ async def cancel_workflow_run(
 
     Idempotent: no-op when the run is already in a terminal state.
     """
+    await require_mission_access(db, mission_id, current_user)
     from datetime import datetime, timezone
 
     from modules.backend.models.workflow_run import WorkflowRunState
@@ -534,8 +566,11 @@ async def cancel_workflow_run(
     if str(current).lower() in terminal:
         return ApiResponse(
             success=True,
-            data={"id": run.id, "status": str(current),
-                  "message": "Already in terminal state — no-op."},
+            data={
+                "id": run.id,
+                "status": str(current),
+                "message": "Already in terminal state — no-op.",
+            },
             metadata={"request_id": request_id},
         )
 
@@ -561,18 +596,17 @@ async def cancel_workflow_run(
 async def list_mission_schedules(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     enabled_only: bool = True,
 ) -> ApiResponse:
     """List workflow schedules for a mission."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     service = WorkflowScheduleService(db)
     schedules = await service.list_by_mission(mission_id, enabled_only=enabled_only)
-    items = [
-        WorkflowScheduleResponse.model_validate(s).model_dump()
-        for s in schedules
-    ]
+    items = [WorkflowScheduleResponse.model_validate(s).model_dump() for s in schedules]
     return ApiResponse(
         success=True,
         data={"schedules": items, "total": len(items)},
@@ -589,9 +623,11 @@ async def create_mission_schedule(
     mission_id: str,
     data: WorkflowScheduleCreateRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Create a cron-based schedule for a workflow."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     service = WorkflowScheduleService(db)
@@ -624,9 +660,11 @@ async def update_mission_schedule(
     schedule_id: str,
     data: WorkflowScheduleUpdateRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Update a workflow schedule's configuration."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     service = WorkflowScheduleService(db)
@@ -649,9 +687,11 @@ async def delete_mission_schedule(
     mission_id: str,
     schedule_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Delete a workflow schedule."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     service = WorkflowScheduleService(db)
@@ -674,6 +714,7 @@ async def delete_mission_schedule(
 async def architect_chat(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     message: str = Query(..., min_length=1, description="Message for the Workflow Architect"),
     session_id: str | None = None,
@@ -683,8 +724,8 @@ async def architect_chat(
     The architect browses the agent catalog, proposes workflows,
     validates them, and saves confirmed designs.
     """
+    await require_mission_access(db, mission_id, current_user)
     from pydantic_ai.exceptions import ModelHTTPError
-    from modules.backend.services.workflow_architect import WorkflowArchitectService
 
     # Capture graph events emitted by the render_graph tool, plus every
     # AgentToolCall/Result event so the client can verify which tools
@@ -694,6 +735,7 @@ async def architect_chat(
         AgentToolResultEvent,
         WorkflowGraphEvent,
     )
+    from modules.backend.services.workflow_architect import WorkflowArchitectService
 
     captured_graphs: list[dict] = []
     tool_trace: list[dict] = []
@@ -702,25 +744,30 @@ async def architect_chat(
         if isinstance(event, WorkflowGraphEvent):
             captured_graphs.append(event.graph_data)
         elif isinstance(event, AgentToolCallEvent):
-            tool_trace.append({
-                "phase": "call",
-                "tool": event.tool_name,
-                "tool_call_id": event.tool_call_id,
-                "args": event.tool_args,
-            })
+            tool_trace.append(
+                {
+                    "phase": "call",
+                    "tool": event.tool_name,
+                    "tool_call_id": event.tool_call_id,
+                    "args": event.tool_args,
+                }
+            )
         elif isinstance(event, AgentToolResultEvent):
-            tool_trace.append({
-                "phase": "result",
-                "tool": event.tool_name,
-                "tool_call_id": event.tool_call_id,
-                "status": event.status,
-                "result": event.result,
-                "error_detail": event.error_detail,
-            })
+            tool_trace.append(
+                {
+                    "phase": "result",
+                    "tool": event.tool_name,
+                    "tool_call_id": event.tool_call_id,
+                    "status": event.status,
+                    "result": event.result,
+                    "error_detail": event.error_detail,
+                }
+            )
 
     # Synthesise an ephemeral session id for stateless calls so tool events
     # can carry a valid UUID. Real session_id wins when the client passes one.
     import uuid as _uuid
+
     effective_session_id = session_id or str(_uuid.uuid4())
 
     service = WorkflowArchitectService(db)
@@ -734,8 +781,11 @@ async def architect_chat(
     except ModelHTTPError as e:
         body = e.body if isinstance(e.body, dict) else {}
         error_detail = body.get("error", {})
-        api_message = error_detail.get("message", str(e)) if isinstance(error_detail, dict) else str(e)
+        api_message = (
+            error_detail.get("message", str(e)) if isinstance(error_detail, dict) else str(e)
+        )
         from fastapi.responses import JSONResponse
+
         return JSONResponse(
             status_code=502,
             content=ApiResponse(
@@ -766,6 +816,7 @@ async def architect_chat(
 
 class HumanInputSubmission(BaseModel):
     """Request body for responding to a human input request."""
+
     response: str = Field(..., min_length=1, max_length=5000)
     responder_id: str = ""
 
@@ -778,9 +829,11 @@ class HumanInputSubmission(BaseModel):
 async def list_pending_human_input(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """List pending human input requests for a mission."""
+    await require_mission_access(db, mission_id, current_user)
     from sqlalchemy import select
 
     from modules.backend.models.human_input_request import (
@@ -827,6 +880,7 @@ async def respond_to_human_input(
     input_request_id: str,
     data: HumanInputSubmission,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Submit a response to a pending human input request.
@@ -841,14 +895,25 @@ async def respond_to_human_input(
         HumanInputRequestStatus,
     )
 
+    await require_mission_access(db, mission_id, current_user)
+
     result = await db.execute(
         select(HumanInputRequest).where(HumanInputRequest.id == input_request_id)
     )
     req = result.scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Human input request not found")
-    if req.status != HumanInputRequestStatus.PENDING.value and req.status != HumanInputRequestStatus.PENDING:
-        raise HTTPException(status_code=409, detail=f"Request is not pending (status: {req.status})")
+    # Scope the request to the path's mission — the id lookup alone would
+    # otherwise let a caller signal another mission's pending request.
+    if req.mission_id != mission_id:
+        raise HTTPException(status_code=404, detail="Human input request not found")
+    if (
+        req.status != HumanInputRequestStatus.PENDING.value
+        and req.status != HumanInputRequestStatus.PENDING
+    ):
+        raise HTTPException(
+            status_code=409, detail=f"Request is not pending (status: {req.status})"
+        )
 
     # Validate response against choices if constrained
     if req.choices_json and data.response not in req.choices_json:
@@ -868,7 +933,8 @@ async def respond_to_human_input(
         HumanInputWorkflow.submit_human_input,
         HumanInputResponse(
             response=data.response,
-            responder_id=data.responder_id,
+            # Identity comes from the authenticated user, not the body.
+            responder_id=str(current_user.id),
         ),
     )
 

@@ -19,6 +19,8 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from modules.backend.core.config import find_project_root
+from modules.backend.core.logging import get_logger
 from modules.backend.schemas.agent_config import (
     AgentConfigSchema,
     AgentModelSchema,
@@ -26,8 +28,6 @@ from modules.backend.schemas.agent_config import (
     FileScopeConfigSchema,
     InvocationSchema,
 )
-from modules.backend.core.config import find_project_root
-from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -69,7 +69,8 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
         keywords=row.keywords or [],
         tools=row.tools or [],
         max_input_length=getattr(row, "max_input_length", 32000) or 32000,
-        max_budget_usd=getattr(row, "max_budget_usd", 1.0) or constraints.get("cost_ceiling_usd", 1.0),
+        max_budget_usd=getattr(row, "max_budget_usd", 1.0)
+        or constraints.get("cost_ceiling_usd", 1.0),
         execution=ExecutionSchema(
             mode=getattr(row, "execution_mode", "standard") or "standard",
         ),
@@ -121,9 +122,10 @@ class AgentRegistry:
 
     def _load_from_db(self) -> None:
         """Load agent configs from the DB catalog (source of truth)."""
+        from sqlalchemy import select
+
         from modules.backend.core.database import get_sync_session
         from modules.backend.models.agent_catalog import AgentCatalog
-        from sqlalchemy import select
 
         with get_sync_session() as session:
             result = session.execute(select(AgentCatalog))
@@ -157,7 +159,9 @@ class AgentRegistry:
                 with open(path) as f:
                     raw = yaml.safe_load(f)
             except yaml.YAMLError as e:
-                logger.error("Failed to parse agent config", extra={"path": str(path), "error": str(e)})
+                logger.error(
+                    "Failed to parse agent config", extra={"path": str(path), "error": str(e)}
+                )
                 continue
 
             if raw is None or not raw.get("agent_name"):
@@ -174,7 +178,9 @@ class AgentRegistry:
 
             self._agents[config.agent_name] = config
 
-        logger.debug("Agent registry loaded from YAML (fallback)", extra={"agent_count": len(self._agents)})
+        logger.debug(
+            "Agent registry loaded from YAML (fallback)", extra={"agent_count": len(self._agents)}
+        )
 
     def reload(self) -> None:
         """Reload the registry from DB. Call after admin config changes."""
@@ -207,18 +213,20 @@ class AgentRegistry:
                 continue
             if tier == "user" and agent_tier == "platform":
                 continue
-            result.append({
-                "agent_name": config.agent_name,
-                "agent_type": config.agent_type,
-                "description": config.description,
-                "keywords": config.keywords,
-                "tools": config.tools,
-                "invocation_tier": agent_tier,
-                "scope": {
-                    "read": config.scope.read,
-                    "write": config.scope.write,
-                },
-            })
+            result.append(
+                {
+                    "agent_name": config.agent_name,
+                    "agent_type": config.agent_type,
+                    "description": config.description,
+                    "keywords": config.keywords,
+                    "tools": config.tools,
+                    "invocation_tier": agent_tier,
+                    "scope": {
+                        "read": config.scope.read,
+                        "write": config.scope.write,
+                    },
+                }
+            )
         return result
 
     def list_system(self) -> list[dict[str, Any]]:
@@ -244,13 +252,19 @@ class AgentRegistry:
                     return agent_name
         return None
 
-    def resolve_module_path(self, agent_name: str) -> str:
+    @staticmethod
+    def resolve_module_path(agent_name: str) -> str:
         """Derive the Python import path from agent name.
 
         Supports any depth: security.webapp.scanner.agent resolves to
         modules.backend.agents.security.webapp.scanner.agent. Backward-
         compatible — 2-segment names (mission.director.agent) produce
         the same path as before.
+
+        Static because the mapping uses no instance state — callable
+        without spinning up the registry (which needs an async DB
+        session). Used by workflow_validator's seed-time check before
+        the registry is initialised.
         """
         parts = agent_name.replace(".agent", "").split(".")
         return f"modules.backend.agents.{'.'.join(parts)}.agent"
@@ -278,7 +292,9 @@ class AgentRegistry:
 
         self._instances[agent_name] = agent
 
-        logger.info("Agent instance created", extra={"agent_name": agent_name, "chat_mode": chat_enabled})
+        logger.info(
+            "Agent instance created", extra={"agent_name": agent_name, "chat_mode": chat_enabled}
+        )
         return agent
 
     def reset(self) -> None:

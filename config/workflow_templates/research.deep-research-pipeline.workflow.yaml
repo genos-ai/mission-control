@@ -349,20 +349,12 @@ steps:
     input:
       type: "research_compress"
       max_findings: "@context.max_findings_for_synthesis"
-    # NB: the analyst's CoverageAnalysisData has no compression metadata
+    # The analyst's CoverageAnalysisData has no compression metadata
     # — it classifies covered vs uncovered, full stop. The "compress"
-    # step is another coverage pass against the merged finding set; we
-    # carry forward what the schema actually emits, and the downstream
-    # source-count metric is sourced from the synthesizer's computed
-    # `total_sources` (see notification template below).
-    output_mapping:
-      field_mappings:
-        - source_task: research.analyst.agent
-          source_field: covered_questions
-          target_key: compress_covered_questions
-        - source_task: research.analyst.agent
-          source_field: coverage_ratio
-          target_key: compress_coverage_ratio
+    # step is another coverage pass against the merged finding set;
+    # nothing downstream reads its output (the source-count metric
+    # comes from the synthesizer's computed `total_sources`), so no
+    # output_mapping needed.
     timeout_seconds: 120
     depends_on:
       - merge-findings

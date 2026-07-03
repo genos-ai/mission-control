@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config
+from modules.backend.core.exceptions import WorkflowOutputMappingError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 
@@ -30,12 +31,14 @@ def _to_datetime(value: str | datetime | None) -> datetime | None:
     if isinstance(value, str) and value:
         return datetime.fromisoformat(value)
     return None
+
+
 from modules.backend.models.execution_record import (
     DecisionType,
-    FailureTier,
     ExecutionDecision,
     ExecutionRecord,
     ExecutionRecordStatus,
+    FailureTier,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,
@@ -101,8 +104,7 @@ class ExecutionPersistenceService(BaseService):
         if planning_thinking_trace and config.persist_thinking_trace:
             if len(planning_thinking_trace) > config.max_thinking_trace_length:
                 planning_thinking_trace = (
-                    planning_thinking_trace[: config.max_thinking_trace_length]
-                    + "\n\n[TRUNCATED]"
+                    planning_thinking_trace[: config.max_thinking_trace_length] + "\n\n[TRUNCATED]"
                 )
         elif not config.persist_thinking_trace:
             planning_thinking_trace = None
@@ -175,8 +177,7 @@ class ExecutionPersistenceService(BaseService):
         if planning_thinking_trace and config.persist_thinking_trace:
             if len(planning_thinking_trace) > config.max_thinking_trace_length:
                 planning_thinking_trace = (
-                    planning_thinking_trace[: config.max_thinking_trace_length]
-                    + "\n\n[TRUNCATED]"
+                    planning_thinking_trace[: config.max_thinking_trace_length] + "\n\n[TRUNCATED]"
                 )
         elif not config.persist_thinking_trace:
             planning_thinking_trace = None
@@ -242,6 +243,7 @@ class ExecutionPersistenceService(BaseService):
         # Validate domain tags (Plan 57 §4.2 — log and drop invalid, never block)
         if domain_tags:
             from modules.backend.core.domain_tags import validate_tags
+
             domain_tags, _ = validate_tags(domain_tags)
 
         execution = TaskExecution(
@@ -389,6 +391,7 @@ class ExecutionPersistenceService(BaseService):
         record = await self._repo.get_by_id_or_none(execution_id)
         if not record:
             from modules.backend.core.exceptions import NotFoundError
+
             raise NotFoundError(f"Execution '{execution_id}' not found")
 
         executions = await self._repo.get_task_executions(execution_id)
@@ -440,29 +443,23 @@ class ExecutionPersistenceService(BaseService):
         record = await self._repo.get_by_id_or_none(execution_id)
         if not record:
             from modules.backend.core.exceptions import NotFoundError
+
             raise NotFoundError(f"Execution '{execution_id}' not found")
 
         executions = await self._repo.get_task_executions(execution_id)
 
         total = len(executions)
-        completed = sum(
-            1 for e in executions
-            if e.status == TaskExecutionStatus.COMPLETED
-        )
-        failed = sum(
-            1 for e in executions
-            if e.status == TaskExecutionStatus.FAILED
-        )
-        skipped = sum(
-            1 for e in executions
-            if e.status == TaskExecutionStatus.SKIPPED
-        )
+        completed = sum(1 for e in executions if e.status == TaskExecutionStatus.COMPLETED)
+        failed = sum(1 for e in executions if e.status == TaskExecutionStatus.FAILED)
+        skipped = sum(1 for e in executions if e.status == TaskExecutionStatus.SKIPPED)
 
         progress_pct = (completed / total * 100.0) if total > 0 else 0.0
 
         return {
             "execution_id": execution_id,
-            "status": record.status.value if hasattr(record.status, "value") else str(record.status),
+            "status": (
+                record.status.value if hasattr(record.status, "value") else str(record.status)
+            ),
             "objective": record.objective_statement,
             "roster_name": record.roster_name,
             "total_tasks": total,
@@ -474,7 +471,8 @@ class ExecutionPersistenceService(BaseService):
         }
 
     async def get_executions_by_session(
-        self, session_id: str,
+        self,
+        session_id: str,
     ) -> list[ExecutionRecord]:
         """Get all execution records for a session."""
         return await self._repo.get_by_session(session_id)
@@ -551,19 +549,21 @@ class ExecutionPersistenceService(BaseService):
         runs: list[dict] = []
         for r in records:
             r_status = r.status.value if hasattr(r.status, "value") else str(r.status)
-            runs.append({
-                "id": str(r.id),
-                "objective": r.objective_statement,
-                "status": r_status,
-                "roster_name": r.roster_name,
-                "total_cost_usd": float(r.total_cost_usd or 0),
-                "started_at": str(r.started_at) if r.started_at else None,
-                "completed_at": str(r.completed_at) if r.completed_at else None,
-                "created_at": str(r.created_at) if r.created_at else None,
-                "task_type": r.task_type,
-                "task_count": len(r.task_executions or []),
-                "execution_record_id": str(r.id),
-            })
+            runs.append(
+                {
+                    "id": str(r.id),
+                    "objective": r.objective_statement,
+                    "status": r_status,
+                    "roster_name": r.roster_name,
+                    "total_cost_usd": float(r.total_cost_usd or 0),
+                    "started_at": str(r.started_at) if r.started_at else None,
+                    "completed_at": str(r.completed_at) if r.completed_at else None,
+                    "created_at": str(r.created_at) if r.created_at else None,
+                    "task_type": r.task_type,
+                    "task_count": len(r.task_executions or []),
+                    "execution_record_id": str(r.id),
+                }
+            )
 
         return runs, total
 
@@ -583,10 +583,12 @@ class ExecutionPersistenceService(BaseService):
             select(func.count())
             .select_from(ExecutionRecord)
             .where(
-                ExecutionRecord.status.in_([
-                    ExecutionRecordStatus.PENDING,
-                    ExecutionRecordStatus.RUNNING,
-                ])
+                ExecutionRecord.status.in_(
+                    [
+                        ExecutionRecordStatus.PENDING,
+                        ExecutionRecordStatus.RUNNING,
+                    ]
+                )
             )
         )
         result = await self._session.execute(stmt)
@@ -622,7 +624,8 @@ class ExecutionPersistenceService(BaseService):
             for tr in raw_results:
                 if isinstance(tr, dict):
                     by_task_id[tr.get("task_id", "")] = tr.get(
-                        "output_reference", {},
+                        "output_reference",
+                        {},
                     )
                     agent = tr.get("agent_name", "")
                     by_agent.setdefault(agent, []).append(
@@ -658,13 +661,7 @@ class ExecutionPersistenceService(BaseService):
                     # a fabricated deliverable. Seed-time validation
                     # (workflow_validator) catches most cases; this
                     # is the runtime backstop.
-                    from modules.backend.core.exceptions import (
-                        WorkflowOutputMappingError,
-                    )
-                    available = (
-                        list(task_output.keys())
-                        if isinstance(task_output, dict) else []
-                    )
+                    available = list(task_output.keys()) if isinstance(task_output, dict) else []
                     raise WorkflowOutputMappingError(
                         f"Output mapping source field '{source_field}' "
                         f"not found on '{source_task}' output. "
@@ -674,9 +671,6 @@ class ExecutionPersistenceService(BaseService):
                         available_fields=sorted(available),
                     )
             else:
-                from modules.backend.core.exceptions import (
-                    WorkflowOutputMappingError,
-                )
                 raise WorkflowOutputMappingError(
                     f"Output mapping source task '{source_task}' not "
                     f"found in execution outcome",

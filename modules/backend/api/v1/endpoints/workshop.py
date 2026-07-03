@@ -10,8 +10,8 @@ from typing import Any
 from fastapi import APIRouter, Body
 from pydantic import BaseModel, Field
 
+from modules.backend.core.dependencies import AdminRole, DbSession, RequestId
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.core.dependencies import DbSession, RequestId
 
 router = APIRouter()
 
@@ -20,16 +20,20 @@ class WorkshopRunRequest(BaseModel):
     """Request body for a workshop agent run."""
 
     inputs: dict[str, Any] | None = Field(
-        None, description="Input data to pass to the agent",
+        None,
+        description="Input data to pass to the agent",
     )
     prompt_override: str | None = Field(
-        None, description="Temporary system prompt override (not persisted)",
+        None,
+        description="Temporary system prompt override (not persisted)",
     )
     session_id: str | None = Field(
-        None, description="Optional session ID for tracking",
+        None,
+        description="Optional session ID for tracking",
     )
     budget_usd: float | None = Field(
-        None, description="Per-run budget override",
+        None,
+        description="Per-run budget override",
     )
 
 
@@ -42,6 +46,7 @@ async def workshop_run(
     agent_name: str,
     body: WorkshopRunRequest,
     db: DbSession,
+    admin: AdminRole,
     request_id: RequestId,
 ) -> ApiResponse:
     """Run a single agent in isolation for testing.
@@ -75,6 +80,7 @@ async def workshop_run(
 async def workshop_cached_inputs(
     agent_name: str,
     db: DbSession,
+    admin: AdminRole,
     request_id: RequestId,
     mission_id: str | None = None,
     limit: int | None = None,
@@ -106,6 +112,7 @@ async def workshop_cached_inputs(
 )
 async def workshop_list_runs(
     db: DbSession,
+    admin: AdminRole,
     request_id: RequestId,
     agent_name: str | None = None,
     limit: int = 20,

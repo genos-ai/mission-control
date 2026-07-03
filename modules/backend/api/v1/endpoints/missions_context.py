@@ -7,7 +7,12 @@ Split from missions.py for file size compliance.
 
 from fastapi import APIRouter, Query
 
-from modules.backend.core.dependencies import DbSession, RequestId
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    require_mission_access,
+)
 from modules.backend.schemas.base import ApiResponse
 
 router = APIRouter()
@@ -24,9 +29,11 @@ router = APIRouter()
 async def get_mission_context(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get the full MCD content with version and size metrics."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.mission_context import MissionContextManager
 
     manager = MissionContextManager(db)
@@ -51,10 +58,12 @@ async def get_mission_context(
 async def get_context_history(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     limit: int = Query(30, ge=1, le=100),
 ) -> ApiResponse:
     """Get recent changes to the Mission Context Document."""
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.schemas.mission_context import ContextChangeResponse
     from modules.backend.services.mission_context import MissionContextManager
 
@@ -79,6 +88,7 @@ async def get_context_history(
 async def get_console_history(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     limit: int = Query(200, ge=1, le=1000),
 ) -> ApiResponse:
@@ -90,6 +100,7 @@ async def get_console_history(
 
     Each item has: event_id, event_type, category, timestamp, source, data.
     """
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.console import get_console_history
 
     timeline = await get_console_history(db, mission_id, limit=limit)

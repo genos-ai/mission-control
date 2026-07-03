@@ -31,6 +31,7 @@ from modules.backend.core.exceptions import (
     RateLimitError,
     TransientProviderError,
     ValidationError,
+    WorkflowOutputMappingError,
 )
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.base import ErrorDetail, ErrorResponse, ResponseMetadata
@@ -54,6 +55,8 @@ EXCEPTION_STATUS_MAP: dict[type[ApplicationError], int] = {
     RateLimitedError: 429,
     TransientProviderError: 502,
     ContractViolationError: 502,
+    # Workflow contract errors
+    WorkflowOutputMappingError: 400,
 }
 
 
@@ -204,6 +207,7 @@ async def http_exception_handler(
 def _get_model_http_error() -> type:
     """Lazy import to avoid hard dependency on pydantic_ai at module level."""
     from pydantic_ai.exceptions import ModelHTTPError
+
     return ModelHTTPError
 
 

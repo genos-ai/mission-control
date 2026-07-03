@@ -36,12 +36,11 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from modules.backend.core.agent_registry import AgentRegistry
 from modules.backend.core.logging import get_logger
 
 if TYPE_CHECKING:
-    from modules.backend.schemas.workflow import (
-        WorkflowSchema, WorkflowStepSchema,
-    )
+    from modules.backend.schemas.workflow import WorkflowSchema, WorkflowStepSchema
 
 logger = get_logger(__name__)
 
@@ -103,8 +102,12 @@ def _check_duplicate_edges(edges: list[dict]) -> list[str]:
     seen: set[tuple[str, str, str, str]] = set()
     dupes = []
     for e in edges:
-        key = (e.get("source", ""), e.get("target", ""),
-               e.get("source_handle", "output"), e.get("target_handle", "input"))
+        key = (
+            e.get("source", ""),
+            e.get("target", ""),
+            e.get("source_handle", "output"),
+            e.get("target_handle", "input"),
+        )
         if key in seen:
             dupes.append(f"{key[0]} -> {key[1]}")
         seen.add(key)
@@ -165,7 +168,8 @@ def _check_orphan_nodes(step_ids: set[str], edges: list[dict]) -> list[str]:
 
 
 def _check_condition_outputs(
-    step_types: dict[str, str], edges: list[dict],
+    step_types: dict[str, str],
+    edges: list[dict],
 ) -> list[str]:
     """Condition nodes should have exactly 2 outgoing edges (yes/no)."""
     errors = []
@@ -182,18 +186,19 @@ def _check_condition_outputs(
         if len(handles) < 1:
             errors.append(f"Condition '{sid}' has no outgoing edges (needs yes/no branches)")
         elif len(handles) == 1:
-            errors.append(f"Condition '{sid}' has only 1 outgoing edge (needs both yes and no branches)")
+            errors.append(
+                f"Condition '{sid}' has only 1 outgoing edge (needs both yes and no branches)"
+            )
     return errors
 
 
 def _check_decision_edges(
-    steps: list[dict], edges: list[dict],
+    steps: list[dict],
+    edges: list[dict],
 ) -> list[str]:
     """Decision nodes: outgoing edges must have labels covering all options."""
     errors = []
-    decision_ids = {
-        s["id"] for s in steps if s.get("node_type") == "decision"
-    }
+    decision_ids = {s["id"] for s in steps if s.get("node_type") == "decision"}
     if not decision_ids:
         return []
 
@@ -212,8 +217,7 @@ def _check_decision_edges(
         config = s.get("decision_config") or {}
         option_keys = {o["key"] for o in config.get("options", [])}
         outgoing_labels = {
-            e.get("label") for e in edges
-            if e.get("source") == s["id"] and e.get("label")
+            e.get("label") for e in edges if e.get("source") == s["id"] and e.get("label")
         }
         missing = option_keys - outgoing_labels
         if missing:
@@ -225,7 +229,8 @@ def _check_decision_edges(
 
 
 def _check_branch_outputs(
-    step_types: dict[str, str], edges: list[dict],
+    step_types: dict[str, str],
+    edges: list[dict],
 ) -> list[str]:
     """Branch (fork) nodes should have ≥2 outgoing edges."""
     errors = []
@@ -236,12 +241,15 @@ def _check_branch_outputs(
         if ntype != "branch":
             continue
         if out_count.get(sid, 0) < 2:
-            errors.append(f"Branch '{sid}' needs at least 2 outgoing edges (has {out_count.get(sid, 0)})")
+            errors.append(
+                f"Branch '{sid}' needs at least 2 outgoing edges (has {out_count.get(sid, 0)})"
+            )
     return errors
 
 
 def _check_merge_inputs(
-    step_types: dict[str, str], edges: list[dict],
+    step_types: dict[str, str],
+    edges: list[dict],
 ) -> list[str]:
     """Merge (join) nodes should have ≥2 incoming edges."""
     errors = []
@@ -252,12 +260,15 @@ def _check_merge_inputs(
         if ntype != "merge":
             continue
         if in_count.get(sid, 0) < 2:
-            errors.append(f"Merge '{sid}' needs at least 2 incoming edges (has {in_count.get(sid, 0)})")
+            errors.append(
+                f"Merge '{sid}' needs at least 2 incoming edges (has {in_count.get(sid, 0)})"
+            )
     return errors
 
 
 def _check_sub_workflow_self_reference(
-    steps: list[dict], current_workflow_id: str,
+    steps: list[dict],
+    current_workflow_id: str,
 ) -> list[str]:
     """Sub-workflow nodes must not reference the current workflow (direct recursion)."""
     errors = []
@@ -300,19 +311,9 @@ class OutputMappingViolation:
 _FieldCache = dict[str, "set[str] | None"]
 
 
-def _resolve_module_path(agent_name: str) -> str:
-    """Derive the Python module import path from an agent name.
-
-    Mirrors AgentRegistry.resolve_module_path so the validator works
-    without spinning up the full registry (which needs a DB session).
-    `mission.director.agent` → `modules.backend.agents.mission.director.agent`.
-    """
-    parts = agent_name.replace(".agent", "").split(".")
-    return f"modules.backend.agents.{'.'.join(parts)}.agent"
-
-
 def _agent_output_fields(
-    agent_name: str, cache: _FieldCache,
+    agent_name: str,
+    cache: _FieldCache,
 ) -> set[str] | None:
     """Return the set of valid output-schema field names for an agent.
 
@@ -331,7 +332,7 @@ def _agent_output_fields(
     try:
         from pydantic_ai.models.test import TestModel
 
-        module_path = _resolve_module_path(agent_name)
+        module_path = AgentRegistry.resolve_module_path(agent_name)
         module = importlib.import_module(module_path)
         if not hasattr(module, "create_agent"):
             cache[agent_name] = None
@@ -342,9 +343,8 @@ def _agent_output_fields(
             # `model_dump()` (used by extract_outputs) includes both
             # declared fields and @computed_field properties, so the
             # validator must accept both as valid source_field values.
-            fields = (
-                set(output_type.model_fields.keys())
-                | set(output_type.model_computed_fields.keys())
+            fields = set(output_type.model_fields.keys()) | set(
+                output_type.model_computed_fields.keys()
             )
     except Exception as exc:
         # Agent introspection failed — log but don't block. Runtime
@@ -360,7 +360,8 @@ def _agent_output_fields(
 
 
 def _resolve_source_agent(
-    source_task: str, steps: "list[WorkflowStepSchema]",
+    source_task: str,
+    steps: "list[WorkflowStepSchema]",
 ) -> str | None:
     """Map a workflow `source_task` reference to an agent name.
 
@@ -394,15 +395,18 @@ def validate_output_mappings(
 
         for mapping in step.output_mapping.field_mappings:
             agent_name = _resolve_source_agent(
-                mapping.source_task, workflow.steps,
+                mapping.source_task,
+                workflow.steps,
             )
             if agent_name is None:
-                violations.append(OutputMappingViolation(
-                    step_id=step.id,
-                    source_task=mapping.source_task,
-                    source_field=mapping.source_field,
-                    reason="source_task could not be resolved to an agent",
-                ))
+                violations.append(
+                    OutputMappingViolation(
+                        step_id=step.id,
+                        source_task=mapping.source_task,
+                        source_field=mapping.source_field,
+                        reason="source_task could not be resolved to an agent",
+                    )
+                )
                 continue
 
             valid_fields = _agent_output_fields(agent_name, cache)
@@ -412,29 +416,30 @@ def validate_output_mappings(
                 continue
 
             if mapping.source_field not in valid_fields:
-                violations.append(OutputMappingViolation(
-                    step_id=step.id,
-                    source_task=mapping.source_task,
-                    source_field=mapping.source_field,
-                    available_fields=sorted(valid_fields),
-                    reason=(
-                        f"field '{mapping.source_field}' is not on "
-                        f"{agent_name}.output_type"
-                    ),
-                ))
+                violations.append(
+                    OutputMappingViolation(
+                        step_id=step.id,
+                        source_task=mapping.source_task,
+                        source_field=mapping.source_field,
+                        available_fields=sorted(valid_fields),
+                        reason=(
+                            f"field '{mapping.source_field}' is not on " f"{agent_name}.output_type"
+                        ),
+                    )
+                )
 
     return violations
 
 
 def format_violations(
-    workflow_name: str, violations: list[OutputMappingViolation],
+    workflow_name: str,
+    violations: list[OutputMappingViolation],
 ) -> str:
     """Human-readable summary for log lines and CLI output."""
     if not violations:
         return f"workflow '{workflow_name}': output_mappings OK"
     lines = [
-        f"workflow '{workflow_name}': "
-        f"{len(violations)} output_mapping violation(s):",
+        f"workflow '{workflow_name}': " f"{len(violations)} output_mapping violation(s):",
     ]
     for v in violations:
         lines.append(f"  - {v}")

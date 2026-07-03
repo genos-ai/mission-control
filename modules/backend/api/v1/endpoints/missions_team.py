@@ -7,7 +7,13 @@ Split from missions.py for file size compliance.
 
 from fastapi import APIRouter
 
-from modules.backend.core.dependencies import DbSession, RequestId
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    require_mission_access,
+    require_mission_owner,
+)
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission import (
     MissionMemberAddRequest,
@@ -37,10 +43,12 @@ router = APIRouter()
 async def list_mission_team(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     enabled_only: bool = True,
 ) -> ApiResponse:
     """List agents on a mission's team with catalog configuration."""
+    await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
     members = await service.list_team(mission_id, enabled_only=enabled_only)
     items = []
@@ -76,9 +84,11 @@ async def add_agent_to_team(
     mission_id: str,
     data: MissionTeamAddRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Add an agent from the catalog to a mission's team."""
+    await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
     member = await service.add_agent(
         mission_id=mission_id,
@@ -103,6 +113,7 @@ async def add_agent_to_team(
 async def ping_mission_team(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Send a trivial probe to every agent on the team to verify it's live.
@@ -111,15 +122,12 @@ async def ping_mission_team(
     measure latency + tokens + cost. Skips system prompts and tools — this
     exercises the model + provider + auth chain, not the full agent machinery.
     """
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.agents.preflight import ping_agents
 
     service = MissionTeamService(db)
     members = await service.list_team(mission_id, enabled_only=True)
-    agent_names = [
-        m.agent_catalog.agent_name
-        for m in members
-        if m.agent_catalog is not None
-    ]
+    agent_names = [m.agent_catalog.agent_name for m in members if m.agent_catalog is not None]
     results = await ping_agents(agent_names)
     payload = [
         {
@@ -153,19 +161,18 @@ async def ping_mission_team(
 async def seed_team_from_catalog(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Populate mission team from all enabled catalog agents.
 
     Adds any catalog agents not already on the team. Idempotent.
     """
+    await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
     added = await service.seed_from_catalog(mission_id)
     await db.commit()
-    items = [
-        MissionTeamMemberResponse.model_validate(m).model_dump()
-        for m in added
-    ]
+    items = [MissionTeamMemberResponse.model_validate(m).model_dump() for m in added]
     return ApiResponse(
         success=True,
         data={"added": items, "added_count": len(items)},
@@ -182,9 +189,11 @@ async def remove_agent_from_team(
     mission_id: str,
     member_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Remove an agent from a mission's team."""
+    await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
     await service.remove_agent(member_id)
     return ApiResponse(
@@ -204,9 +213,11 @@ async def update_team_member_prompt(
     member_id: str,
     data: UserPromptUpdateRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Update a team member's user prompt with version tracking."""
+    await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
     member = await service.update_user_prompt(
         member_id=member_id,
@@ -232,6 +243,7 @@ async def update_team_member_constraints(
     member_id: str,
     data: dict,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Update a team member's custom_constraints JSON.
@@ -240,6 +252,7 @@ async def update_team_member_constraints(
     if the existing value is None). Used by the Team tab to configure
     per-agent settings like research_depth, include_domains, etc.
     """
+    await require_mission_access(db, mission_id, current_user)
     from modules.backend.repositories.mission_team import MissionTeamRepository
 
     repo = MissionTeamRepository(db)
@@ -267,9 +280,11 @@ async def get_team_member_prompt_history(
     mission_id: str,
     member_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Get the user prompt version history for a team member."""
+    await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
     versions = await service.get_prompt_history(member_id)
     items = [
@@ -300,15 +315,14 @@ async def get_team_member_prompt_history(
 async def list_mission_members(
     mission_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """List human members of a mission."""
+    await require_mission_access(db, mission_id, current_user)
     service = MissionService(db)
     members = await service.list_members(mission_id)
-    items = [
-        MissionMemberResponse.model_validate(m).model_dump()
-        for m in members
-    ]
+    items = [MissionMemberResponse.model_validate(m).model_dump() for m in members]
     return ApiResponse(
         success=True,
         data={"members": items, "total": len(items)},
@@ -325,9 +339,11 @@ async def add_mission_member(
     mission_id: str,
     data: MissionMemberAddRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Add a human user to a mission with a specified role."""
+    await require_mission_owner(db, mission_id, current_user)
     service = MissionService(db)
     member = await service.add_member(
         mission_id=mission_id,
@@ -352,9 +368,11 @@ async def update_mission_member(
     user_id: str,
     data: MissionMemberUpdateRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Update a mission member's role."""
+    await require_mission_owner(db, mission_id, current_user)
     service = MissionService(db)
     member = await service.update_member_role(
         mission_id=mission_id,
@@ -378,9 +396,11 @@ async def remove_mission_member(
     mission_id: str,
     user_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
     """Remove a human user from a mission."""
+    await require_mission_owner(db, mission_id, current_user)
     service = MissionService(db)
     await service.remove_member(mission_id=mission_id, user_id=user_id)
     return ApiResponse(

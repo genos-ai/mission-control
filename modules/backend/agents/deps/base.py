@@ -6,6 +6,7 @@ access control), and agent-specific deps dataclasses. Deps are constructed
 from YAML config at invocation time and injected into PydanticAI RunContext.
 """
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -39,13 +40,25 @@ class FileScope:
         return self._matches(rel_path, self.read_paths)
 
     def _matches(self, rel_path: str, allowed: list[str]) -> bool:
+        # Reject absolute paths and traversal before any pattern match.
+        # Patterns are repo-relative prefixes, so a naive prefix check
+        # would accept paths that escape the scope: "modules/../../etc/
+        # passwd" starts with "modules/" yet resolves outside the repo.
+        # Normalising collapses the "..", and we refuse anything that
+        # still climbs above the root.
+        if os.path.isabs(rel_path):
+            return False
+        normalized_path = os.path.normpath(rel_path)
+        if normalized_path == ".." or normalized_path.startswith(".." + os.sep):
+            return False
+
         for pattern in allowed:
             if pattern == "*":
                 return True
-            if pattern.startswith("*.") and rel_path.endswith(pattern[1:]):
+            if pattern.startswith("*.") and normalized_path.endswith(pattern[1:]):
                 return True
             normalized = pattern.rstrip("/")
-            if rel_path == normalized or rel_path.startswith(normalized + "/"):
+            if normalized_path == normalized or normalized_path.startswith(normalized + "/"):
                 return True
         return False
 
@@ -57,11 +70,11 @@ class BaseAgentDeps:
     project_root: Path
     scope: FileScope
     config: AgentConfigSchema | None = None
-    session_id: str | None = None       # Set when running within a session
-    mission_id: str | None = None       # Mission context — available to all agents
-    db_session: Any = None              # AsyncSession — available to all agents
-    on_event: Any = None                # Callable[[SessionEvent], Awaitable[None]] | None
-    environment_handle: Any = None      # EnvironmentHandle when running in container/worktree mode
+    session_id: str | None = None  # Set when running within a session
+    mission_id: str | None = None  # Mission context — available to all agents
+    db_session: Any = None  # AsyncSession — available to all agents
+    on_event: Any = None  # Callable[[SessionEvent], Awaitable[None]] | None
+    environment_handle: Any = None  # EnvironmentHandle when running in container/worktree mode
 
 
 @dataclass

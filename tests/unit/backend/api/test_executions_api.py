@@ -28,14 +28,29 @@ def mock_db_session():
     return AsyncMock()
 
 
+class _StubAdminUser:
+    """Minimal authenticated user — admin so execution access checks pass."""
+
+    id = "admin-user"
+    system_role = "admin"
+
+    def has_role(self, role: str) -> bool:
+        return True
+
+
 @pytest.fixture
 async def client(app, mock_db_session):
     from modules.backend.core.database import get_db_session
+    from modules.backend.core.dependencies import get_current_user
 
     async def override_db():
         yield mock_db_session
 
+    async def override_user():
+        return _StubAdminUser()
+
     app.dependency_overrides[get_db_session] = override_db
+    app.dependency_overrides[get_current_user] = override_user
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -73,16 +88,9 @@ class TestListExecutions:
 class TestGetExecution:
     @pytest.mark.asyncio
     async def test_get_execution_not_found(self, client):
-        with (
-            patch(
-                "modules.backend.api.v1.endpoints.executions.ExecutionPersistenceService",
-            ) as MockService,
-            patch(
-                "modules.backend.services.execution.ExecutionService.get_execution_or_none",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-        ):
+        with patch(
+            "modules.backend.api.v1.endpoints.executions.ExecutionPersistenceService",
+        ) as MockService:
             instance = MockService.return_value
             instance.get_execution = AsyncMock(return_value=None)
 
@@ -145,6 +153,9 @@ class TestGetExecutionCost:
             "modules.backend.api.v1.endpoints.executions.ExecutionPersistenceService",
         ) as MockService:
             instance = MockService.return_value
+            instance.get_execution = AsyncMock(
+                return_value=MagicMock(mission_id=None),
+            )
             instance.get_cost_breakdown = AsyncMock(return_value=breakdown)
 
             response = await client.get("/executions/m-123/cost")

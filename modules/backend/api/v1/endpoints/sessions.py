@@ -2,7 +2,13 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    Idempotency,
+    RequestId,
+    require_session_access,
+)
 from modules.backend.core.pagination import (
     PaginationParams,
     create_paginated_response,
@@ -37,9 +43,9 @@ router = APIRouter()
 async def create_session(
     data: SessionCreate,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     idempotency: Idempotency,
-    user_id: str | None = Query(default=None, description="Owner user ID (temporary — will come from auth context)"),
 ) -> ApiResponse[SessionResponse]:
     """Supports Idempotency-Key header — safe to retry on network timeout."""
     if idempotency:
@@ -48,7 +54,7 @@ async def create_session(
             return ApiResponse(**cached)
 
     service = SessionService(db)
-    session = await service.create_session(data, user_id=user_id)
+    session = await service.create_session(data, user_id=current_user.id)
     result = ApiResponse(data=SessionResponse.model_validate(session))
     if idempotency:
         await idempotency.cache_response(result.model_dump())
@@ -64,8 +70,10 @@ async def create_session(
 async def get_session(
     session_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse[SessionResponse]:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     session = await service.get_session(session_id)
     return ApiResponse(data=SessionResponse.model_validate(session))
@@ -81,8 +89,10 @@ async def update_session(
     session_id: str,
     data: SessionUpdate,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse[SessionResponse]:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     session = await service.update_session(session_id, data)
     return ApiResponse(data=SessionResponse.model_validate(session))
@@ -95,12 +105,20 @@ async def update_session(
 )
 async def list_sessions(
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     pagination: PaginationParams = Depends(get_pagination_params),
-    user_id: str | None = Query(default=None, description="Filter by user ID"),
+    user_id: str | None = Query(
+        default=None,
+        description="Filter by user ID (admin only; non-admins are scoped to themselves)",
+    ),
     mission_id: str | None = Query(default=None, description="Filter by mission ID"),
     status: str | None = Query(default=None, description="Filter by status"),
 ) -> dict:
+    # Non-admins may only list their own sessions, regardless of the
+    # requested user_id filter.
+    if not current_user.has_role("admin"):
+        user_id = current_user.id
     service = SessionService(db)
     sessions, total = await service.list_sessions(
         user_id=user_id,
@@ -131,9 +149,11 @@ async def list_sessions(
 async def suspend_session(
     session_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     reason: str = Query(..., description="Reason for suspension"),
 ) -> ApiResponse[SessionResponse]:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     session = await service.suspend_session(session_id, reason)
     return ApiResponse(data=SessionResponse.model_validate(session))
@@ -148,8 +168,10 @@ async def suspend_session(
 async def resume_session(
     session_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse[SessionResponse]:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     session = await service.resume_session(session_id)
     return ApiResponse(data=SessionResponse.model_validate(session))
@@ -164,8 +186,10 @@ async def resume_session(
 async def complete_session(
     session_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse[SessionResponse]:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     session = await service.complete_session(session_id)
     return ApiResponse(data=SessionResponse.model_validate(session))
@@ -185,8 +209,10 @@ async def bind_channel(
     session_id: str,
     data: ChannelBindRequest,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse[ChannelResponse]:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     binding = await service.bind_channel(session_id, data.channel_type, data.channel_id)
     return ApiResponse(data=ChannelResponse.model_validate(binding))
@@ -203,8 +229,10 @@ async def unbind_channel(
     channel_type: str,
     channel_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> None:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     await service.unbind_channel(session_id, channel_type, channel_id)
 
@@ -219,10 +247,12 @@ async def get_session_by_channel(
     channel_type: str,
     channel_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse[SessionResponse]:
     service = SessionService(db)
     session = await service.get_session_by_channel(channel_type, channel_id)
+    await require_session_access(db, str(session.id), current_user)
     return ApiResponse(data=SessionResponse.model_validate(session))
 
 
@@ -237,13 +267,20 @@ async def get_session_by_channel(
 async def get_messages(
     session_id: str,
     db: DbSession,
+    current_user: CurrentUser,
     request_id: RequestId,
     pagination: PaginationParams = Depends(get_pagination_params),
-    sender_id: str | None = Query(default=None, description="Filter to messages from this sender (plus user/system messages). Used for agent-scoped views in shared sessions."),
+    sender_id: str | None = Query(
+        default=None,
+        description="Filter to messages from this sender (plus user/system messages). Used for agent-scoped views in shared sessions.",
+    ),
 ) -> dict:
+    await require_session_access(db, session_id, current_user)
     service = SessionService(db)
     messages, total = await service.get_messages(
-        session_id, limit=pagination.limit, offset=pagination.offset,
+        session_id,
+        limit=pagination.limit,
+        offset=pagination.offset,
         sender_ids=[sender_id] if sender_id else None,
     )
     return create_paginated_response(
@@ -272,6 +309,7 @@ async def send_message(
     mission_id: str,
     data: SessionMessageCreate,
     db: DbSession,
+    current_user: CurrentUser,
     target_agent: str | None = Query(default=None, description="Route to a specific agent"),
 ):
     """Send a message and stream agent events.
@@ -286,8 +324,11 @@ async def send_message(
     handle() completes, persists the response, and publishes
     to Redis. When the user comes back, the response is in the DB.
     """
+    await require_session_access(db, session_id, current_user)
+
     if target_agent:
         from modules.backend.agents.mission_control.registry import get_registry
+
         if not get_registry().has(target_agent):
             raise HTTPException(status_code=422, detail=f"Unknown agent: {target_agent}")
 
@@ -354,6 +395,7 @@ async def send_message(
     #    the background task continues independently.
     async def generate():
         from modules.backend.core.config import get_app_config
+
         keepalive_sec = get_app_config().application.timeouts.sse_keepalive
         try:
             while True:

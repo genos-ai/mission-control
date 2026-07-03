@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.config import get_app_config
+from modules.backend.core.exceptions import WorkflowOutputMappingError
 from modules.backend.core.logging import get_logger
-from modules.backend.models.task import TaskStatus
 from modules.backend.events.types import (
     WorkflowBranchPassedEvent,
     WorkflowConditionEvaluatedEvent,
@@ -37,6 +37,7 @@ from modules.backend.events.types import (
     WorkflowSubWorkflowCompletedEvent,
     WorkflowToolCallCompletedEvent,
 )
+from modules.backend.models.task import TaskStatus
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,8 +108,7 @@ def _extract_default_agent_output(
             extra={
                 "expected_agent": expected_agent,
                 "available_agent_names": [
-                    tr.get("agent_name") for tr in task_results
-                    if isinstance(tr, dict)
+                    tr.get("agent_name") for tr in task_results if isinstance(tr, dict)
                 ],
             },
         )
@@ -281,20 +281,33 @@ class WorkflowRunWavesMixin:
 
         # Build edge map: (source, target) → label (for condition routing)
         edges_map: dict[tuple[str, str], str | None] = {}
-        for e in (edges or []):
+        for e in edges or []:
             edges_map[(e.get("source", ""), e.get("target", ""))] = e.get("label")
 
         def _emit(event: dict) -> None:
             if on_progress:
                 on_progress(event)
 
-        _emit({"type": "workflow_start", "workflow": workflow.workflow_name, "total_steps": total_steps})
-        await self._publish_workflow_event(run.mission_id, WorkflowRunStartedEvent(
-            session_id=_uuid.UUID(session_id), source="workflow_run_service",
-            workflow_run_id=run.id, workflow_name=workflow.workflow_name,
-            workflow_version=run.workflow_version or 1, step_count=total_steps,
-            trigger_type=run.trigger_type or "on_demand", triggered_by=run.triggered_by or "",
-        ))
+        _emit(
+            {
+                "type": "workflow_start",
+                "workflow": workflow.workflow_name,
+                "total_steps": total_steps,
+            }
+        )
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowRunStartedEvent(
+                session_id=_uuid.UUID(session_id),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                workflow_name=workflow.workflow_name,
+                workflow_version=run.workflow_version or 1,
+                step_count=total_steps,
+                trigger_type=run.trigger_type or "on_demand",
+                triggered_by=run.triggered_by or "",
+            ),
+        )
 
         for wave_num, wave_step_ids in enumerate(waves):
             logger.info(
@@ -309,8 +322,7 @@ class WorkflowRunWavesMixin:
             # Check budget before each wave
             if run.budget_usd and run.total_cost_usd >= run.budget_usd:
                 raise RuntimeError(
-                    f"Budget exceeded: ${run.total_cost_usd:.4f} >= "
-                    f"${run.budget_usd:.2f}"
+                    f"Budget exceeded: ${run.total_cost_usd:.4f} >= " f"${run.budget_usd:.2f}"
                 )
 
             # Partition wave into skipped and executable steps
@@ -324,44 +336,66 @@ class WorkflowRunWavesMixin:
                         if step_obj.condition
                         else "condition branch not taken"
                     )
-                    _emit({
-                        "type": "step_skipped",
-                        "step_id": step_id,
-                        "reason": reason,
-                    })
-                    await self._publish_workflow_event(run.mission_id, WorkflowStepSkippedEvent(
-                        session_id=_uuid.UUID(session_id), source="workflow_run_service",
-                        workflow_run_id=run.id, step_id=step_id, reason=reason,
-                    ))
-                    logger.info("Skipping step", extra={"step_id": step_id, "run_id": run.id, "reason": reason})
+                    _emit(
+                        {
+                            "type": "step_skipped",
+                            "step_id": step_id,
+                            "reason": reason,
+                        }
+                    )
+                    await self._publish_workflow_event(
+                        run.mission_id,
+                        WorkflowStepSkippedEvent(
+                            session_id=_uuid.UUID(session_id),
+                            source="workflow_run_service",
+                            workflow_run_id=run.id,
+                            step_id=step_id,
+                            reason=reason,
+                        ),
+                    )
+                    logger.info(
+                        "Skipping step",
+                        extra={"step_id": step_id, "run_id": run.id, "reason": reason},
+                    )
                 else:
                     executable_ids.append(step_id)
 
             # Emit step_start for executable steps
             for step_id in executable_ids:
                 step = step_map[step_id]
-                _emit({
-                    "type": "step_start",
-                    "step_id": step_id,
-                    "capability": step.capability,
-                    "description": step.description or step_id,
-                })
-                await self._publish_workflow_event(run.mission_id, WorkflowExecutionStartedEvent(
-                    session_id=_uuid.UUID(session_id), source="workflow_run_service",
-                    workflow_run_id=run.id, mission_id=run.mission_id or "",
-                    step_id=step_id, roster_ref=step.roster or "",
-                    complexity_tier=step.complexity_tier or "standard",
-                ))
+                _emit(
+                    {
+                        "type": "step_start",
+                        "step_id": step_id,
+                        "capability": step.capability,
+                        "description": step.description or step_id,
+                    }
+                )
+                await self._publish_workflow_event(
+                    run.mission_id,
+                    WorkflowExecutionStartedEvent(
+                        session_id=_uuid.UUID(session_id),
+                        source="workflow_run_service",
+                        workflow_run_id=run.id,
+                        mission_id=run.mission_id or "",
+                        step_id=step_id,
+                        roster_ref=step.roster or "",
+                        complexity_tier=step.complexity_tier or "standard",
+                    ),
+                )
 
             # Kanban: mark skipped steps as SKIPPED, executable as RUNNING
             if _plan_id:
                 _wave_skipped = [sid for sid in wave_step_ids if sid not in set(executable_ids)]
-                _state_updates: list[tuple[str, TaskStatus]] = (
-                    [(sid, TaskStatus.SKIPPED) for sid in _wave_skipped]
-                )
+                _state_updates: list[tuple[str, TaskStatus]] = [
+                    (sid, TaskStatus.SKIPPED) for sid in _wave_skipped
+                ]
                 if _state_updates:
                     await self._sync_plan_task_states(
-                        _plan_id, run.mission_id, _state_updates, session_id,
+                        _plan_id,
+                        run.mission_id,
+                        _state_updates,
+                        session_id,
                         step_task_map=_step_task_map,
                     )
 
@@ -373,10 +407,9 @@ class WorkflowRunWavesMixin:
             # operator to approve via `mc plan approve <task_id>`. The
             # waits run in parallel — operator can approve in any order.
             if _step_task_map and executable_ids:
-                from modules.backend.agents.mission_control.task_approval import (
-                    wait_until_approved,
-                )
+                from modules.backend.agents.mission_control.task_approval import wait_until_approved
                 from modules.backend.core.database import get_session_factory
+
                 factory = get_session_factory()
                 waiters = [
                     wait_until_approved(
@@ -392,9 +425,11 @@ class WorkflowRunWavesMixin:
             # Now transition approved tasks to RUNNING.
             if _plan_id and executable_ids:
                 await self._sync_plan_task_states(
-                    _plan_id, run.mission_id,
+                    _plan_id,
+                    run.mission_id,
                     [(sid, TaskStatus.RUNNING) for sid in executable_ids],
-                    session_id, step_task_map=_step_task_map,
+                    session_id,
+                    step_task_map=_step_task_map,
                 )
 
             # Execute all steps in this wave concurrently
@@ -402,7 +437,11 @@ class WorkflowRunWavesMixin:
             if not wave_steps:
                 continue
             results = await self._execute_wave(
-                run, wave_steps, session_id, completed_outcomes, gate=gate,
+                run,
+                wave_steps,
+                session_id,
+                completed_outcomes,
+                gate=gate,
                 step_task_map=_step_task_map,
             )
 
@@ -410,21 +449,33 @@ class WorkflowRunWavesMixin:
             for step, (execution, extracted_outputs) in zip(wave_steps, results):
                 completed_outcomes[step.id] = extracted_outputs
                 run.total_cost_usd += execution.total_cost_usd
-                status_str = execution.status if isinstance(execution.status, str) else execution.status.value
-                _emit({
-                    "type": "step_done",
-                    "step_id": step.id,
-                    "status": status_str,
-                    "cost_usd": execution.total_cost_usd,
-                    "completed_steps": len(completed_outcomes),
-                    "total_steps": total_steps,
-                })
-                await self._publish_workflow_event(run.mission_id, WorkflowExecutionCompletedEvent(
-                    session_id=_uuid.UUID(session_id), source="workflow_run_service",
-                    workflow_run_id=run.id, mission_id=run.mission_id or "",
-                    step_id=step.id, success=(status_str != "FAILED"),
-                    cost_usd=execution.total_cost_usd,
-                ))
+                status_str = (
+                    execution.status
+                    if isinstance(execution.status, str)
+                    else execution.status.value
+                )
+                _emit(
+                    {
+                        "type": "step_done",
+                        "step_id": step.id,
+                        "status": status_str,
+                        "cost_usd": execution.total_cost_usd,
+                        "completed_steps": len(completed_outcomes),
+                        "total_steps": total_steps,
+                    }
+                )
+                await self._publish_workflow_event(
+                    run.mission_id,
+                    WorkflowExecutionCompletedEvent(
+                        session_id=_uuid.UUID(session_id),
+                        source="workflow_run_service",
+                        workflow_run_id=run.id,
+                        mission_id=run.mission_id or "",
+                        step_id=step.id,
+                        success=(status_str != "FAILED"),
+                        cost_usd=execution.total_cost_usd,
+                    ),
+                )
 
             # Kanban: per-step terminal status reflects the inner execution
             # outcome (Plan 80h fix). Previously every step was force-written
@@ -432,7 +483,7 @@ class WorkflowRunWavesMixin:
             # actually failed — the Kanban lied while the trace told the truth.
             if _plan_id and wave_steps:
                 _cost_map = {
-                    s.id: getattr(ex, 'total_cost_usd', 0.0)
+                    s.id: getattr(ex, "total_cost_usd", 0.0)
                     for s, (ex, _) in zip(wave_steps, results)
                 }
                 _step_statuses: list[tuple[str, TaskStatus]] = []
@@ -467,7 +518,10 @@ class WorkflowRunWavesMixin:
                         _failure_reasons[step.id] = str(reason)
                     _step_statuses.append((step.id, ts))
                 await self._sync_plan_task_states(
-                    _plan_id, run.mission_id, _step_statuses, session_id,
+                    _plan_id,
+                    run.mission_id,
+                    _step_statuses,
+                    session_id,
                     cost_map=_cost_map,
                     step_task_map=_step_task_map,
                     failure_reasons=_failure_reasons or None,
@@ -493,17 +547,19 @@ class WorkflowRunWavesMixin:
         Planning Agent.
         """
         if self._step_context_factory is None:
-            raise RuntimeError(
-                "step_context_factory is required to execute workflows"
-            )
+            raise RuntimeError("step_context_factory is required to execute workflows")
 
         _step_task_map = step_task_map or {}
 
         async def _run_step(step: WorkflowStepSchema) -> tuple[Any, dict]:
             async with self._step_context_factory() as ctx:
                 return await self._execute_step(
-                    run, step, session_id, completed_outcomes,
-                    ctx, gate=gate,
+                    run,
+                    step,
+                    session_id,
+                    completed_outcomes,
+                    ctx,
+                    gate=gate,
                     step_task_id=_step_task_map.get(step.id),
                 )
 
@@ -554,12 +610,16 @@ class WorkflowRunWavesMixin:
         if node_type == "decision":
             return await self._execute_decision_step(run, step, completed_outcomes)
         if node_type == "sub_workflow":
-            return await self._execute_sub_workflow_step(run, step, session_id, completed_outcomes, ctx)
+            return await self._execute_sub_workflow_step(
+                run, step, session_id, completed_outcomes, ctx
+            )
 
         # Default: agent_step — dispatch via handle_mission (Plan 71)
         # Resolve upstream context from dependencies
         upstream = self._workflow_service.resolve_upstream_context(
-            step, completed_outcomes, run.context,
+            step,
+            completed_outcomes,
+            run.context,
         )
 
         # Build the objective from step description + input context
@@ -567,15 +627,13 @@ class WorkflowRunWavesMixin:
         objective = self._build_step_objective(step, step_input)
 
         app_config = get_app_config()
-        cost_ceiling = (
-            step.cost_ceiling_usd
-            or app_config.workflows.default_budget_usd
-        )
+        cost_ceiling = step.cost_ceiling_usd or app_config.workflows.default_budget_usd
 
         # Concurrency check
         active_count = await ctx.persistence.count_active()
         if active_count >= app_config.workflows.max_concurrent_missions:
             from modules.backend.core.exceptions import ValidationError
+
             raise ValidationError(
                 message=(
                     f"Maximum concurrent executions "
@@ -615,7 +673,9 @@ class WorkflowRunWavesMixin:
         from modules.backend.services.session import SessionService
 
         resolved_mode, roster_name = await self._resolve_dispatch_params(
-            ctx.db, run.mission_id, step,
+            ctx.db,
+            run.mission_id,
+            step,
         )
 
         session_svc = SessionService(ctx.db)
@@ -626,15 +686,13 @@ class WorkflowRunWavesMixin:
         # (Plan 80h). Without this, handle_mission runs its Planning Agent
         # and produces a competing plan whose task IDs don't match the
         # workflow's, breaking the unified task-lifecycle approval.
-        from modules.backend.schemas.task_plan import (
-            TaskDefinition, TaskInputs, TaskPlan,
-        )
+        from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
+
         # Agent name in roster is `<capability>.agent` (see ExecutionRecord
         # logging above and the elsewhere-used convention). Workflow YAML
         # exposes only the capability prefix.
         precomputed_plan_agent = (
-            f"{step.capability}.agent" if step.capability
-            else f"workflow:{step.node_type}"
+            f"{step.capability}.agent" if step.capability else f"workflow:{step.node_type}"
         )
         precomputed_plan: TaskPlan | None = None
         if step_task_id:
@@ -684,6 +742,7 @@ class WorkflowRunWavesMixin:
             total_cost = outcome.total_cost_usd
         except Exception as e:
             import traceback
+
             tb_str = traceback.format_exception(e)
             logger.error(
                 "Step execution failed",
@@ -695,9 +754,7 @@ class WorkflowRunWavesMixin:
                     "traceback": "".join(tb_str)[-500:],
                 },
             )
-            raise RuntimeError(
-                f"Step '{step.id}' execution failed: {type(e).__name__}: {e}"
-            ) from e
+            raise RuntimeError(f"Step '{step.id}' execution failed: {type(e).__name__}: {e}") from e
 
         # 3. Extract outputs from the outcome.
         # Plan 79 §8.3 — default-populate completed_outcomes[step.id] with the
@@ -706,39 +763,35 @@ class WorkflowRunWavesMixin:
         # to take precedence and merges on top.
         expected_agent = f"{step.capability}.agent" if step.capability else None
         extracted = _extract_default_agent_output(
-            outcome_dict, expected_agent=expected_agent,
+            outcome_dict,
+            expected_agent=expected_agent,
         )
-        output_mapping = (
-            step.output_mapping.model_dump()
-            if step.output_mapping
-            else None
-        )
+        output_mapping = step.output_mapping.model_dump() if step.output_mapping else None
         if output_mapping:
             try:
                 extracted.update(
                     ctx.persistence.extract_outputs(
-                        outcome_dict, output_mapping,
+                        outcome_dict,
+                        output_mapping,
                     ),
                 )
-            except Exception as e:
-                # Output-mapping contract failure (WorkflowOutputMappingError
-                # or a structural issue) — surface as a step failure with
-                # the full schema delta in the message. The agent's run
-                # succeeded; we're refusing to silently degrade the
-                # downstream context by accepting a partial output.
+            except WorkflowOutputMappingError as e:
+                # Output-mapping contract failure — surface as a step
+                # failure with the full schema delta in the message.
+                # The agent's run succeeded; we're refusing to silently
+                # degrade the downstream context by accepting a partial
+                # output. Any other exception types are bugs we
+                # shouldn't mask — let them propagate.
                 logger.error(
                     "Step output mapping failed",
                     extra={
                         "run_id": run.id,
                         "step_id": step.id,
                         "error": str(e),
-                        "error_type": type(e).__name__,
+                        "details": e.details,
                     },
                 )
-                raise RuntimeError(
-                    f"Step '{step.id}' output mapping failed: "
-                    f"{type(e).__name__}: {e}"
-                ) from e
+                raise RuntimeError(f"Step '{step.id}' output mapping failed: {e}") from e
 
         logger.info(
             "Step completed",
@@ -757,14 +810,11 @@ class WorkflowRunWavesMixin:
             # Without this, every step failure presents as a generic
             # "Step 'X' execution failed", hiding root-cause signals
             # from logs, SSE events, and the run-detail UI.
-            reason = (
-                getattr(outcome, "abort_reason", None)
-                or self._extract_first_task_failure(outcome)
+            reason = getattr(outcome, "abort_reason", None) or self._extract_first_task_failure(
+                outcome
             )
             detail = f": {reason}" if reason else ""
-            raise RuntimeError(
-                f"Step '{step.id}' execution failed{detail}"
-            )
+            raise RuntimeError(f"Step '{step.id}' execution failed{detail}")
 
         result = VirtualExecution(
             id=record.id,
@@ -794,19 +844,35 @@ class WorkflowRunWavesMixin:
             logger.error("Condition evaluation failed", extra={"step_id": step.id, "error": str(e)})
             raise RuntimeError(f"Condition '{step.id}' failed: {e}") from e
 
-        branch = (config.true_label if result else config.false_label) if config else ("Yes" if result else "No")
+        branch = (
+            (config.true_label if result else config.false_label)
+            if config
+            else ("Yes" if result else "No")
+        )
 
         logger.info(
             "Condition evaluated",
-            extra={"step_id": step.id, "expression": expression, "result": result, "branch": branch},
+            extra={
+                "step_id": step.id,
+                "expression": expression,
+                "result": result,
+                "branch": branch,
+            },
         )
 
         outputs = {"result": result, "branch": branch, "_branch": branch}
-        await self._publish_workflow_event(run.mission_id, WorkflowConditionEvaluatedEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id,
-            expression=expression, result=result, branch=branch,
-        ))
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowConditionEvaluatedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                expression=expression,
+                result=result,
+                branch=branch,
+            ),
+        )
         return VirtualExecution(id=step.id), outputs
 
     async def _execute_decision_step(
@@ -831,15 +897,21 @@ class WorkflowRunWavesMixin:
 
         if config.resolver == "agent":
             chosen = await self._resolve_agent_decision(
-                step, completed_outcomes, run.context or {},
+                step,
+                completed_outcomes,
+                run.context or {},
             )
         elif config.resolver == "human":
             chosen = await self._resolve_human_decision(
-                run, step, completed_outcomes,
+                run,
+                step,
+                completed_outcomes,
             )
         elif config.resolver == "rule":
             chosen = await self._resolve_rule_decision(
-                step, completed_outcomes, run.context or {},
+                step,
+                completed_outcomes,
+                run.context or {},
             )
         else:
             raise RuntimeError(f"Unknown resolver '{config.resolver}' in step '{step.id}'")
@@ -903,12 +975,14 @@ class WorkflowRunWavesMixin:
             f"Respond with ONLY the option key. No explanation."
         )
 
-        from modules.backend.core.model_builder import _build_model
         from pydantic_ai import Agent as PydanticAgent
+
+        from modules.backend.core.model_builder import _build_model
 
         model = _build_model(model_name)
         agent = PydanticAgent(
-            model, output_type=str,
+            model,
+            output_type=str,
             instructions="You are a routing decision agent. Return only the option key.",
         )
         result = await agent.run(full_prompt)
@@ -917,6 +991,7 @@ class WorkflowRunWavesMixin:
         self._last_decision_cost = _extract_run_cost(result, model_name)
 
         import re
+
         chosen = re.sub(r"[^a-z0-9_]", "", result.output.strip().lower())
         return chosen
 
@@ -936,7 +1011,8 @@ class WorkflowRunWavesMixin:
         config = step.decision_config
         choices = [o.key for o in config.options]
 
-        from modules.backend.schemas.workflow import HumanInputConfig, WorkflowStepSchema as StepSchema
+        from modules.backend.schemas.workflow import HumanInputConfig
+        from modules.backend.schemas.workflow import WorkflowStepSchema as StepSchema
 
         hi_config = HumanInputConfig(
             prompt_message=config.prompt_message,
@@ -954,7 +1030,9 @@ class WorkflowRunWavesMixin:
         )
 
         _, outputs = await self._execute_human_input_step(
-            run, temp_step, completed_outcomes,
+            run,
+            temp_step,
+            completed_outcomes,
         )
 
         response = outputs.get("response", "")
@@ -964,8 +1042,7 @@ class WorkflowRunWavesMixin:
             return config.default_option
 
         raise RuntimeError(
-            f"Decision '{step.id}' human response '{response}' "
-            f"does not match any option key"
+            f"Decision '{step.id}' human response '{response}' " f"does not match any option key"
         )
 
     async def _resolve_rule_decision(
@@ -984,12 +1061,12 @@ class WorkflowRunWavesMixin:
 
         try:
             return evaluate_expression(
-                config.expression, completed_outcomes, workflow_context,
+                config.expression,
+                completed_outcomes,
+                workflow_context,
             )
         except ConditionEvaluationError as e:
-            raise RuntimeError(
-                f"Decision '{step.id}' rule evaluation failed: {e}"
-            ) from e
+            raise RuntimeError(f"Decision '{step.id}' rule evaluation failed: {e}") from e
 
     async def _execute_notification_step(
         self,
@@ -1010,7 +1087,10 @@ class WorkflowRunWavesMixin:
 
         try:
             await _dispatch_to_channels(
-                [channel], title, message, "info",
+                [channel],
+                title,
+                message,
+                "info",
                 {"mission_id": run.mission_id, "run_id": run.id},
             )
             success = True
@@ -1018,11 +1098,20 @@ class WorkflowRunWavesMixin:
             logger.warning("Notification step failed", extra={"step_id": step.id}, exc_info=True)
             success = False
 
-        logger.info("Notification sent", extra={"step_id": step.id, "channel": channel, "success": success})
-        await self._publish_workflow_event(run.mission_id, WorkflowNotificationSentEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, channel=channel, success=success,
-        ))
+        logger.info(
+            "Notification sent", extra={"step_id": step.id, "channel": channel, "success": success}
+        )
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowNotificationSentEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                channel=channel,
+                success=success,
+            ),
+        )
         outputs = {"sent": success, "channel": channel}
         return VirtualExecution(id=step.id), outputs
 
@@ -1033,9 +1122,7 @@ class WorkflowRunWavesMixin:
         completed_outcomes: dict[str, dict],
     ) -> tuple[VirtualExecution, dict]:
         """Invoke a registered tool directly without an agent wrapper."""
-        from modules.backend.services.condition_evaluator import (
-            resolve_template, walk_refs,
-        )
+        from modules.backend.services.condition_evaluator import resolve_template, walk_refs
         from modules.backend.tools.registry import get_tool_registry
 
         config = step.tool_call_config
@@ -1057,9 +1144,13 @@ class WorkflowRunWavesMixin:
         # previous_round: {systems: "{{@node.X.output}}", ...}) get their
         # inner refs resolved. Standalone refs preserve Python type per §8.6.
         resolved_args = walk_refs(
-            tool_args, completed_outcomes, run.context,
+            tool_args,
+            completed_outcomes,
+            run.context,
             leaf_resolver=lambda s: resolve_template(
-                s, completed_outcomes, run.context,
+                s,
+                completed_outcomes,
+                run.context,
             ),
         )
 
@@ -1071,6 +1162,7 @@ class WorkflowRunWavesMixin:
 
         try:
             import httpx
+
             if "http_client" in deps:
                 async with httpx.AsyncClient(timeout=60) as client:
                     resolved_args["http_client"] = client
@@ -1086,15 +1178,28 @@ class WorkflowRunWavesMixin:
         except RuntimeError:
             raise
         except Exception as e:
-            logger.warning("Tool call step failed", extra={"step_id": step.id, "tool": tool_name}, exc_info=True)
+            logger.warning(
+                "Tool call step failed",
+                extra={"step_id": step.id, "tool": tool_name},
+                exc_info=True,
+            )
             result = {"error": str(e)}
             success = False
 
-        logger.info("Tool call completed", extra={"step_id": step.id, "tool": tool_name, "success": success})
-        await self._publish_workflow_event(run.mission_id, WorkflowToolCallCompletedEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, tool_name=tool_name, success=success,
-        ))
+        logger.info(
+            "Tool call completed", extra={"step_id": step.id, "tool": tool_name, "success": success}
+        )
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowToolCallCompletedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                tool_name=tool_name,
+                success=success,
+            ),
+        )
         outputs = {"output": result, "tool_name": tool_name}
         return VirtualExecution(id=step.id), outputs
 
@@ -1113,11 +1218,16 @@ class WorkflowRunWavesMixin:
 
         # Resolve templates
         prompt = resolve_template(config.prompt_template, completed_outcomes, run.context)
-        system = resolve_template(config.system_prompt, completed_outcomes, run.context) if config.system_prompt else None
+        system = (
+            resolve_template(config.system_prompt, completed_outcomes, run.context)
+            if config.system_prompt
+            else None
+        )
 
         try:
-            from modules.backend.core.model_builder import _build_model
             from pydantic_ai import Agent as PydanticAgent
+
+            from modules.backend.core.model_builder import _build_model
 
             model = _build_model(config.model)
             agent = PydanticAgent(model, output_type=str, instructions=system or "")
@@ -1126,16 +1236,30 @@ class WorkflowRunWavesMixin:
             cost = _extract_run_cost(result, config.model)
             success = True
         except Exception as e:
-            logger.warning("LLM call step failed", extra={"step_id": step.id, "model": config.model}, exc_info=True)
+            logger.warning(
+                "LLM call step failed",
+                extra={"step_id": step.id, "model": config.model},
+                exc_info=True,
+            )
             text = f"Error: {e}"
             cost = 0.0
             success = False
 
-        logger.info("LLM call completed", extra={"step_id": step.id, "model": config.model, "success": success, "cost": cost})
-        await self._publish_workflow_event(run.mission_id, WorkflowLlmCallCompletedEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, model=config.model, success=success,
-        ))
+        logger.info(
+            "LLM call completed",
+            extra={"step_id": step.id, "model": config.model, "success": success, "cost": cost},
+        )
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowLlmCallCompletedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                model=config.model,
+                success=success,
+            ),
+        )
         outputs = {"output": text, "model": config.model}
         return VirtualExecution(id=step.id, total_cost_usd=cost), outputs
 
@@ -1154,10 +1278,16 @@ class WorkflowRunWavesMixin:
 
         # Count outgoing edges (fork_count) — not available here, use 0 as placeholder
         logger.info("Branch passed", extra={"step_id": step.id, "run_id": run.id})
-        await self._publish_workflow_event(run.mission_id, WorkflowBranchPassedEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, fork_count=0,
-        ))
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowBranchPassedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                fork_count=0,
+            ),
+        )
         outputs = {"_passthrough": True, **upstream_data}
         return VirtualExecution(id=step.id), outputs
 
@@ -1191,13 +1321,29 @@ class WorkflowRunWavesMixin:
 
         logger.info(
             "Merge completed",
-            extra={"step_id": step.id, "run_id": run.id, "strategy": strategy, "inputs": len(merged_by_dep)},
+            extra={
+                "step_id": step.id,
+                "run_id": run.id,
+                "strategy": strategy,
+                "inputs": len(merged_by_dep),
+            },
         )
-        await self._publish_workflow_event(run.mission_id, WorkflowMergeCompletedEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, strategy=strategy, inputs_merged=len(merged_by_dep),
-        ))
-        outputs = {**flat, "_merged_deps": list(merged_by_dep.keys()), "_input_count": len(merged_by_dep)}
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowMergeCompletedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                strategy=strategy,
+                inputs_merged=len(merged_by_dep),
+            ),
+        )
+        outputs = {
+            **flat,
+            "_merged_deps": list(merged_by_dep.keys()),
+            "_input_count": len(merged_by_dep),
+        }
         return VirtualExecution(id=step.id), outputs
 
     async def _execute_sub_workflow_step(
@@ -1243,15 +1389,23 @@ class WorkflowRunWavesMixin:
             context_overrides=child_context,
         )
 
-        child_status = child_run.status if isinstance(child_run.status, str) else child_run.status.value
+        child_status = (
+            child_run.status if isinstance(child_run.status, str) else child_run.status.value
+        )
         success = child_status.upper() != "FAILED"
 
-        await self._publish_workflow_event(run.mission_id, WorkflowSubWorkflowCompletedEvent(
-            session_id=_uuid.UUID(session_id), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id,
-            child_run_id=child_run.id, success=success,
-            child_cost_usd=child_run.total_cost_usd,
-        ))
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowSubWorkflowCompletedEvent(
+                session_id=_uuid.UUID(session_id),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                child_run_id=child_run.id,
+                success=success,
+                child_cost_usd=child_run.total_cost_usd,
+            ),
+        )
 
         outputs = {
             "child_run_id": child_run.id,
@@ -1293,9 +1447,7 @@ class WorkflowRunWavesMixin:
             timeout_seconds = int(config.timeout_hours * 3600)
         else:
             app_config = get_app_config()
-            timeout_seconds = getattr(
-                app_config.temporal, "approval_timeout_seconds", 14400
-            )
+            timeout_seconds = getattr(app_config.temporal, "approval_timeout_seconds", 14400)
 
         request_id = str(uuid4())
         temporal_wf_id = f"human-input-{run.id}-{step.id}"
@@ -1331,26 +1483,37 @@ class WorkflowRunWavesMixin:
 
         logger.info(
             "HumanInputWorkflow started, awaiting response",
-            extra={"step_id": step.id, "temporal_wf_id": temporal_wf_id, "timeout_s": timeout_seconds},
+            extra={
+                "step_id": step.id,
+                "temporal_wf_id": temporal_wf_id,
+                "timeout_s": timeout_seconds,
+            },
         )
 
         # Notify frontend that we're waiting for human input
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
+
         timeout_at = (datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)).isoformat()
-        await self._publish_workflow_event(run.mission_id, WorkflowHumanInputRequestedEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, request_id=request_id,
-            prompt_message=prompt, channel=wf_input.channel,
-            choices=wf_input.choices, timeout_at=timeout_at,
-        ))
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowHumanInputRequestedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                request_id=request_id,
+                prompt_message=prompt,
+                channel=wf_input.channel,
+                choices=wf_input.choices,
+                timeout_at=timeout_at,
+            ),
+        )
 
         # Block until human responds or timeout
         result: HumanInputResult = await handle.result()
 
         if result.timed_out and not (config and config.default_response):
-            raise RuntimeError(
-                f"Human input step '{step.id}' timed out with no default response"
-            )
+            raise RuntimeError(f"Human input step '{step.id}' timed out with no default response")
 
         logger.info(
             "Human input received",
@@ -1362,12 +1525,19 @@ class WorkflowRunWavesMixin:
         )
 
         # Notify frontend that human has responded
-        await self._publish_workflow_event(run.mission_id, WorkflowHumanInputRespondedEvent(
-            session_id=_uuid.UUID(str(run.session_id)), source="workflow_run_service",
-            workflow_run_id=run.id, step_id=step.id, request_id=request_id,
-            response=result.response, responder_id=result.responder_id or "",
-            timed_out=result.timed_out,
-        ))
+        await self._publish_workflow_event(
+            run.mission_id,
+            WorkflowHumanInputRespondedEvent(
+                session_id=_uuid.UUID(str(run.session_id)),
+                source="workflow_run_service",
+                workflow_run_id=run.id,
+                step_id=step.id,
+                request_id=request_id,
+                response=result.response,
+                responder_id=result.responder_id or "",
+                timed_out=result.timed_out,
+            ),
+        )
 
         outputs = {
             "response": result.response,
@@ -1416,7 +1586,9 @@ class WorkflowRunWavesMixin:
         if step.complexity_tier and step.complexity_tier != "simple":
             tier_roster = (
                 find_project_root()
-                / "config" / "mission_control" / "rosters"
+                / "config"
+                / "mission_control"
+                / "rosters"
                 / f"{step.roster}-{step.complexity_tier}.yaml"
             )
             if os.path.exists(tier_roster):
@@ -1494,7 +1666,9 @@ class WorkflowRunWavesMixin:
 
             try:
                 result = evaluate_condition(
-                    step.condition, completed_outcomes, workflow_context or {},
+                    step.condition,
+                    completed_outcomes,
+                    workflow_context or {},
                 )
                 if not result:
                     logger.info(
@@ -1611,10 +1785,7 @@ class WorkflowRunWavesMixin:
 
         while remaining:
             # Find all steps with no unmet dependencies
-            wave = [
-                sid for sid in remaining
-                if in_degree[sid] == 0
-            ]
+            wave = [sid for sid in remaining if in_degree[sid] == 0]
 
             if not wave:
                 raise RuntimeError("Dependency cycle detected in workflow steps")
