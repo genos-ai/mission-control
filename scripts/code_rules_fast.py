@@ -39,10 +39,15 @@ def check_file_size(path: Path, rel: str) -> list[Violation]:
         return []
     lines = path.read_text().splitlines()
     if len(lines) > 1000:
-        return [Violation(
-            "002.2", "error", rel, 1,
-            f"File has {len(lines)} lines (limit: 1000)",
-        )]
+        return [
+            Violation(
+                "002.2",
+                "error",
+                rel,
+                1,
+                f"File has {len(lines)} lines (limit: 1000)",
+            )
+        ]
     return []
 
 
@@ -54,10 +59,15 @@ def check_relative_imports(path: Path, rel: str) -> list[Violation]:
     pattern = re.compile(r"^\s*from\s+\.")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if pattern.match(line):
-            violations.append(Violation(
-                "001.1", "error", rel, i,
-                "Relative import — use absolute: from modules.backend.xxx import ...",
-            ))
+            violations.append(
+                Violation(
+                    "001.1",
+                    "error",
+                    rel,
+                    i,
+                    "Relative import — use absolute: from modules.backend.xxx import ...",
+                )
+            )
     return violations
 
 
@@ -71,10 +81,16 @@ def check_direct_logging(path: Path, rel: str) -> list[Violation]:
     pattern = re.compile(r"^import logging\s*$")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if pattern.match(line):
-            violations.append(Violation(
-                "001.2", "error", rel, i,
-                "Direct import logging — use: from modules.backend.core.logging import get_logger",
-            ))
+            violations.append(
+                Violation(
+                    "001.2",
+                    "error",
+                    rel,
+                    i,
+                    "Direct import logging — use: "
+                    "from modules.backend.core.logging import get_logger",
+                )
+            )
     return violations
 
 
@@ -83,9 +99,15 @@ def check_bare_except(path: Path, rel: str) -> list[Violation]:
     violations = []
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if re.match(r"^\s*except\s*:", line):
-            violations.append(Violation(
-                "002.3", "warning", rel, i, "Bare except: clause",
-            ))
+            violations.append(
+                Violation(
+                    "002.3",
+                    "warning",
+                    rel,
+                    i,
+                    "Bare except: clause",
+                )
+            )
     return violations
 
 
@@ -119,20 +141,30 @@ def check_swallowed_exception(path: Path, rel: str) -> list[Violation]:
             continue
 
         # Inline: except Exception: pass [# comment]
-        rest = line[m.end():]
+        rest = line[m.end() :]
         if re.match(r"\s*pass\s*(#.*)?$", rest):
-            violations.append(Violation(
-                "002.3", "error", rel, i + 1,
-                "Swallowed exception: except Exception/BaseException with pass",
-            ))
+            violations.append(
+                Violation(
+                    "002.3",
+                    "error",
+                    rel,
+                    i + 1,
+                    "Swallowed exception: except Exception/BaseException with pass",
+                )
+            )
             continue
 
         # Next-line: except Exception:\n    pass
         if i + 1 < len(lines) and lines[i + 1].strip() == "pass":
-            violations.append(Violation(
-                "002.3", "error", rel, i + 1,
-                "Swallowed exception: except Exception/BaseException with pass",
-            ))
+            violations.append(
+                Violation(
+                    "002.3",
+                    "error",
+                    rel,
+                    i + 1,
+                    "Swallowed exception: except Exception/BaseException with pass",
+                )
+            )
 
     return violations
 
@@ -153,30 +185,44 @@ def check_datetime_violations(path: Path, rel: str) -> list[Violation]:
         if skip_line.search(line):
             continue
         if now_pattern.search(line):
-            violations.append(Violation(
-                "004.3", "error", rel, i,
-                "datetime.now()/utcnow() — use utc_now() from core.utils",
-            ))
+            violations.append(
+                Violation(
+                    "004.3",
+                    "error",
+                    rel,
+                    i,
+                    "datetime.now()/utcnow() — use utc_now() from core.utils",
+                )
+            )
         elif tz_pattern.search(line):
-            violations.append(Violation(
-                "004.1", "error", rel, i,
-                "Timezone-aware datetime — use naive UTC via utc_now()",
-            ))
+            violations.append(
+                Violation(
+                    "004.1",
+                    "error",
+                    rel,
+                    i,
+                    "Timezone-aware datetime — use naive UTC via utc_now()",
+                )
+            )
     return violations
 
 
 def check_hardcoded_secrets(path: Path, rel: str) -> list[Violation]:
     """003.1 — No hardcoded secrets in source code."""
     violations = []
-    pattern = re.compile(
-        r"""(api_key|password|token|secret)\s*=\s*['"][^'"]{10,}['"]""", re.I
-    )
+    pattern = re.compile(r"""(api_key|password|token|secret)\s*=\s*['"][^'"]{10,}['"]""", re.I)
     skip = re.compile(r"(os\.getenv|\.env|env\.example|your_|settings\.|Field\(|test_|conftest)")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if pattern.search(line) and not skip.search(line):
-            violations.append(Violation(
-                "003.1", "error", rel, i, "Possible hardcoded secret",
-            ))
+            violations.append(
+                Violation(
+                    "003.1",
+                    "error",
+                    rel,
+                    i,
+                    "Possible hardcoded secret",
+                )
+            )
     return violations
 
 
@@ -187,21 +233,29 @@ def check_api_imports_repositories(path: Path, rel: str) -> list[Violation]:
     violations = []
     repo_pattern = re.compile(r"from modules\.backend\.repositories\.")
     model_pattern = re.compile(r"from modules\.backend\.models\.")
-    # Schemas may re-export model enums — importing from schemas is fine.
-    schema_pattern = re.compile(r"from modules\.backend\.schemas\.")
     # models.base is allowed (type hints only, per check_layer_violations.py)
     base_pattern = re.compile(r"from modules\.backend\.models\.base\b")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if repo_pattern.search(line):
-            violations.append(Violation(
-                "001.6", "error", rel, i,
-                "API endpoint imports repository directly — use a service",
-            ))
+            violations.append(
+                Violation(
+                    "001.6",
+                    "error",
+                    rel,
+                    i,
+                    "API endpoint imports repository directly — use a service",
+                )
+            )
         elif model_pattern.search(line) and not base_pattern.search(line):
-            violations.append(Violation(
-                "001.6", "error", rel, i,
-                "API endpoint imports model directly — use a schema or service",
-            ))
+            violations.append(
+                Violation(
+                    "001.6",
+                    "error",
+                    rel,
+                    i,
+                    "API endpoint imports model directly — use a schema or service",
+                )
+            )
     return violations
 
 
@@ -215,10 +269,15 @@ def check_cli_imports_models(path: Path, rel: str) -> list[Violation]:
     pattern = re.compile(r"from modules\.backend\.(models|repositories)\.")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if pattern.search(line):
-            violations.append(Violation(
-                "001.7", "error", rel, i,
-                "CLI handler imports models/repositories — use a service",
-            ))
+            violations.append(
+                Violation(
+                    "001.7",
+                    "error",
+                    rel,
+                    i,
+                    "CLI handler imports models/repositories — use a service",
+                )
+            )
     return violations
 
 
@@ -255,10 +314,15 @@ def check_telegram_imports_models(path: Path, rel: str) -> list[Violation]:
     pattern = re.compile(r"from modules\.backend\.(models|repositories)\.")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if pattern.search(line):
-            violations.append(Violation(
-                "008.1", "error", rel, i,
-                "Telegram handler imports models/repositories — use a service",
-            ))
+            violations.append(
+                Violation(
+                    "008.1",
+                    "error",
+                    rel,
+                    i,
+                    "Telegram handler imports models/repositories — use a service",
+                )
+            )
     return violations
 
 
@@ -270,10 +334,15 @@ def check_tui_imports_models(path: Path, rel: str) -> list[Violation]:
     pattern = re.compile(r"from modules\.backend\.(models|repositories)\.")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if pattern.search(line):
-            violations.append(Violation(
-                "008.5", "error", rel, i,
-                "TUI handler imports models/repositories — use a service",
-            ))
+            violations.append(
+                Violation(
+                    "008.5",
+                    "error",
+                    rel,
+                    i,
+                    "TUI handler imports models/repositories — use a service",
+                )
+            )
     return violations
 
 
@@ -285,15 +354,23 @@ def check_client_http_calls(path: Path, rel: str) -> list[Violation]:
     if "api_client" in rel or "http_client" in rel:
         return []
     violations = []
-    pattern = re.compile(r"(httpx\.(get|post|put|patch|delete|AsyncClient)|aiohttp\.ClientSession|requests\.(get|post))")
+    pattern = re.compile(
+        r"(httpx\.(get|post|put|patch|delete|AsyncClient)"
+        r"|aiohttp\.ClientSession|requests\.(get|post))"
+    )
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if line.strip().startswith("#"):
             continue
         if pattern.search(line):
-            violations.append(Violation(
-                "008.2", "error", rel, i,
-                "Direct HTTP call in client — use a backend service",
-            ))
+            violations.append(
+                Violation(
+                    "008.2",
+                    "error",
+                    rel,
+                    i,
+                    "Direct HTTP call in client — use a backend service",
+                )
+            )
     return violations
 
 
@@ -309,10 +386,15 @@ def check_endpoint_orchestration(path: Path, rel: str) -> list[Violation]:
         if stripped.startswith(("#", "from ", "import ", '"""', "'''")):
             continue
         if "asyncio.gather(" in line:
-            violations.append(Violation(
-                "008.3", "warning", rel, i,
-                "asyncio.gather in endpoint — move orchestration to a service",
-            ))
+            violations.append(
+                Violation(
+                    "008.3",
+                    "warning",
+                    rel,
+                    i,
+                    "asyncio.gather in endpoint — move orchestration to a service",
+                )
+            )
     return violations
 
 
@@ -336,10 +418,15 @@ def check_endpoint_inline_transforms(path: Path, rel: str) -> list[Violation]:
         if stripped.startswith(("#", "from ", "import ", '"""', "'''")):
             continue
         if compute_pattern.search(line):
-            violations.append(Violation(
-                "008.4", "warning", rel, i,
-                "Computed field in endpoint response — move to model property or service",
-            ))
+            violations.append(
+                Violation(
+                    "008.4",
+                    "warning",
+                    rel,
+                    i,
+                    "Computed field in endpoint response — move to model property or service",
+                )
+            )
     return violations
 
 
@@ -353,10 +440,15 @@ def check_os_getenv_fallback(path: Path, rel: str) -> list[Violation]:
     pattern = re.compile(r"os\.(getenv|environ\.get)\s*\(.+,\s*['\"]")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if pattern.search(line):
-            violations.append(Violation(
-                "003.5", "error", rel, i,
-                "os.getenv() with hardcoded fallback — use get_settings() or get_app_config()",
-            ))
+            violations.append(
+                Violation(
+                    "003.5",
+                    "error",
+                    rel,
+                    i,
+                    "os.getenv() with hardcoded fallback — use get_settings() or get_app_config()",
+                )
+            )
     return violations
 
 
@@ -380,15 +472,21 @@ def check_isoformat_to_db_column(path: Path, rel: str) -> list[Violation]:
         if stripped.startswith(("#", "//", '"""', "'''")):
             continue
         if pattern.search(line):
-            violations.append(Violation(
-                "004.5", "warning", rel, i,
-                ".isoformat() on a timestamp field — verify the column accepts strings; DateTime columns need datetime objects",
-            ))
+            violations.append(
+                Violation(
+                    "004.5",
+                    "warning",
+                    rel,
+                    i,
+                    ".isoformat() on a timestamp field — verify the column "
+                    "accepts strings; DateTime columns need datetime objects",
+                )
+            )
     return violations
 
 
 def check_logger_error_needs_mission_id(path: Path, rel: str) -> list[Violation]:
-    """010.1 — logger.error/warning should include mission_id when available.
+    """014.2 — logger.error/warning should include mission_id when available.
 
     The MissionEventHandler bridges WARNING+ logs with mission_id to the
     SSE stream. Without mission_id, errors are invisible to the user.
@@ -401,13 +499,26 @@ def check_logger_error_needs_mission_id(path: Path, rel: str) -> list[Violation]
         return []
     if not any(s in rel for s in ("services/", "agents/", "temporal/")):
         return []
-    if any(s in rel for s in ("core/logging.py", "test_", "conftest",
-                               "seeder", "catalog_seeder", "registry.py",
-                               "code_map", "config_schema",
-                               # Infrastructure without mission context:
-                               "branch_manager", "container_backend",
-                               "gate_prompt", "run_notifier",
-                               "mission_plan_daemon", "workshop.py")):
+    if any(
+        s in rel
+        for s in (
+            "core/logging.py",
+            "test_",
+            "conftest",
+            "seeder",
+            "catalog_seeder",
+            "registry.py",
+            "code_map",
+            "config_schema",
+            # Infrastructure without mission context:
+            "branch_manager",
+            "container_backend",
+            "gate_prompt",
+            "run_notifier",
+            "mission_plan_daemon",
+            "workshop.py",
+        )
+    ):
         return []
 
     source = path.read_text()
@@ -425,12 +536,18 @@ def check_logger_error_needs_mission_id(path: Path, rel: str) -> list[Violation]
         if error_pattern.search(line):
             # Check the logger call and next 12 lines for mission_id
             # (extra dicts can span many lines in multi-key calls)
-            context = "\n".join(lines[i - 1:min(i + 12, len(lines))])
+            context = "\n".join(lines[i - 1 : min(i + 12, len(lines))])
             if not mission_id_in_extra.search(context):
-                violations.append(Violation(
-                    "010.1", "error", rel, i,
-                    "logger.error/warning without mission_id — error will be invisible in stream",
-                ))
+                violations.append(
+                    Violation(
+                        "014.2",
+                        "error",
+                        rel,
+                        i,
+                        "logger.error/warning without mission_id — "
+                        "error will be invisible in stream",
+                    )
+                )
     return violations
 
 
@@ -467,11 +584,17 @@ def check_execution_triggers_need_idempotency(path: Path, rel: str) -> list[Viol
             if in_func and func_body:
                 body = "\n".join(func_body)
                 if trigger_pattern.search(body) and not idempotency_pattern.search(body):
-                    violations.append(Violation(
-                        "009.1", "error", rel, func_start,
-                        f"'{func_name}' fires background execution but lacks "
-                        "`idempotency: Idempotency` — add it to prevent duplicate runs on retry",
-                    ))
+                    violations.append(
+                        Violation(
+                            "009.1",
+                            "error",
+                            rel,
+                            func_start,
+                            f"'{func_name}' fires background execution but lacks "
+                            "`idempotency: Idempotency` — "
+                            "add it to prevent duplicate runs on retry",
+                        )
+                    )
             in_func = True
             func_start = i + 1
             func_name = m.group(1)
@@ -488,11 +611,16 @@ def check_execution_triggers_need_idempotency(path: Path, rel: str) -> list[Viol
     if in_func and func_body:
         body = "\n".join(func_body)
         if trigger_pattern.search(body) and not idempotency_pattern.search(body):
-            violations.append(Violation(
-                "009.1", "error", rel, func_start,
-                f"'{func_name}' fires background execution but lacks "
-                "`idempotency: Idempotency` — add it to prevent duplicate runs on retry",
-            ))
+            violations.append(
+                Violation(
+                    "009.1",
+                    "error",
+                    rel,
+                    func_start,
+                    f"'{func_name}' fires background execution but lacks "
+                    "`idempotency: Idempotency` — add it to prevent duplicate runs on retry",
+                )
+            )
 
     return violations
 
@@ -521,10 +649,15 @@ def check_agent_imports_models_repos(path: Path, rel: str) -> list[Violation]:
             continue
         for pat, kind in patterns:
             if pat.search(line):
-                violations.append(Violation(
-                    "011.1", "warning", rel, i,
-                    f"Agent imports {kind} directly — use a service",
-                ))
+                violations.append(
+                    Violation(
+                        "011.1",
+                        "warning",
+                        rel,
+                        i,
+                        f"Agent imports {kind} directly — use a service",
+                    )
+                )
     return violations
 
 
@@ -571,10 +704,15 @@ def check_temporal_determinism(path: Path, rel: str) -> list[Violation]:
             continue
         for pat, label in nondeterministic:
             if pat.search(line):
-                violations.append(Violation(
-                    "013.1", "error", rel, i,
-                    f"Non-deterministic in workflow: {label} — move to an Activity",
-                ))
+                violations.append(
+                    Violation(
+                        "013.1",
+                        "error",
+                        rel,
+                        i,
+                        f"Non-deterministic in workflow: {label} — move to an Activity",
+                    )
+                )
     return violations
 
 
@@ -591,11 +729,23 @@ def check_silent_error_swallow(path: Path, rel: str) -> list[Violation]:
     """
     if not rel.startswith("modules/backend/"):
         return []
-    if any(s in rel for s in ("test_", "conftest", "core/logging.py",
-                               "seeder", "catalog_seeder", "registry.py",
-                               "code_map", "config_schema", "bootstrap",
-                               "run_notifier", "synthesis.py",
-                               "knowledge.py")):
+    if any(
+        s in rel
+        for s in (
+            "test_",
+            "conftest",
+            "core/logging.py",
+            "seeder",
+            "catalog_seeder",
+            "registry.py",
+            "code_map",
+            "config_schema",
+            "bootstrap",
+            "run_notifier",
+            "synthesis.py",
+            "knowledge.py",
+        )
+    ):
         return []
 
     source = path.read_text()
@@ -639,18 +789,28 @@ def check_silent_error_swallow(path: Path, rel: str) -> list[Violation]:
             # Only flag if block has logger.error/warning AND no event emission
             has_error_log = bool(re.search(r"logger\.(error|warning|exception)\(", block_text))
             has_event_emit = bool(emit_patterns.search(block_text))
-            is_best_effort = any(s in block_text for s in (
-                "best-effort", "non-fatal", "falling back", "# non-critical",
-                '_phase("error', "_phase('error",
-            ))
-            is_pass_only = block_text.strip() == "pass"
-
+            is_best_effort = any(
+                s in block_text
+                for s in (
+                    "best-effort",
+                    "non-fatal",
+                    "falling back",
+                    "# non-critical",
+                    '_phase("error',
+                    "_phase('error",
+                )
+            )
             if has_error_log and not has_event_emit and not is_best_effort:
-                violations.append(Violation(
-                    "014.1", "warning", rel, except_line,
-                    "except block logs error/warning but does not emit a mission event — "
-                    "error will be invisible in Console",
-                ))
+                violations.append(
+                    Violation(
+                        "014.1",
+                        "warning",
+                        rel,
+                        except_line,
+                        "except block logs error/warning but does not emit a mission event — "
+                        "error will be invisible in Console",
+                    )
+                )
             i = j
         else:
             i += 1
@@ -679,10 +839,16 @@ def check_noopbus_in_production(path: Path, rel: str) -> list[Violation]:
         if stripped.startswith(("#", '"""', "'''")):
             continue
         if pattern.search(line):
-            violations.append(Violation(
-                "012.1", "warning", rel, i,
-                "NoOpEventBus() — events will be silently dropped. Pass a real SessionEventBus.",
-            ))
+            violations.append(
+                Violation(
+                    "012.1",
+                    "warning",
+                    rel,
+                    i,
+                    "NoOpEventBus() — events will be silently dropped. "
+                    "Pass a real SessionEventBus.",
+                )
+            )
     return violations
 
 
@@ -720,13 +886,11 @@ def get_staged_py_files() -> list[Path]:
     """Get staged Python files from git."""
     result = subprocess.run(
         ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        cwd=str(PROJECT_ROOT),
     )
-    return [
-        PROJECT_ROOT / f
-        for f in result.stdout.strip().splitlines()
-        if f.endswith(".py")
-    ]
+    return [PROJECT_ROOT / f for f in result.stdout.strip().splitlines() if f.endswith(".py")]
 
 
 def get_all_module_files() -> list[Path]:
