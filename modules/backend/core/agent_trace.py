@@ -18,9 +18,9 @@ Enable tracing:
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING, Any
 
+from modules.backend.core.config import get_settings
 from modules.backend.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -30,13 +30,14 @@ logger = get_logger(__name__)
 
 
 def is_trace_enabled() -> bool:
-    """Check if agent tracing is enabled via environment variable.
+    """Check if agent tracing is enabled via settings.
 
     DEBUG log level always captures traces to the log file.
-    MC_AGENT_TRACE=1 additionally emits trace events to the mission
-    event bus so the frontend console can display them.
+    MC_AGENT_TRACE=1 (read into Settings.mc_agent_trace) additionally
+    emits trace events to the mission event bus so the frontend
+    console can display them.
     """
-    return os.environ.get("MC_AGENT_TRACE", "").strip() in ("1", "true")
+    return get_settings().mc_agent_trace
 
 
 def trace_agent_run(
@@ -106,8 +107,11 @@ async def trace_and_emit(
     Call sites use this single function instead of the two-step pattern.
     """
     entries = trace_agent_run(
-        agent_name, result,
-        mission_id=mission_id, session_id=session_id, model=model,
+        agent_name,
+        result,
+        mission_id=mission_id,
+        session_id=session_id,
+        model=model,
     )
     if is_trace_enabled() and entries and event_bus and mission_id:
         await emit_trace_events(
@@ -170,11 +174,11 @@ def _extract_trace(messages: list) -> list[dict]:
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
+        SystemPromptPart,
         TextPart,
         ToolCallPart,
         ToolReturnPart,
         UserPromptPart,
-        SystemPromptPart,
     )
 
     entries: list[dict] = []
@@ -183,44 +187,56 @@ def _extract_trace(messages: list) -> list[dict]:
         if isinstance(msg, ModelRequest):
             # Instructions (system prompt)
             if msg.instructions:
-                entries.append({
-                    "role": "system",
-                    "content_preview": msg.instructions[:500],
-                })
+                entries.append(
+                    {
+                        "role": "system",
+                        "content_preview": msg.instructions[:500],
+                    }
+                )
 
             for part in msg.parts:
                 if isinstance(part, SystemPromptPart):
-                    entries.append({
-                        "role": "system",
-                        "content_preview": part.content[:500],
-                    })
+                    entries.append(
+                        {
+                            "role": "system",
+                            "content_preview": part.content[:500],
+                        }
+                    )
                 elif isinstance(part, UserPromptPart):
                     content = part.content if isinstance(part.content, str) else str(part.content)
-                    entries.append({
-                        "role": "user",
-                        "content_preview": content[:500],
-                    })
+                    entries.append(
+                        {
+                            "role": "user",
+                            "content_preview": content[:500],
+                        }
+                    )
                 elif isinstance(part, ToolReturnPart):
                     content = part.model_response_str()
-                    entries.append({
-                        "role": "tool_result",
-                        "tool_name": part.tool_name,
-                        "content_preview": content[:500],
-                    })
+                    entries.append(
+                        {
+                            "role": "tool_result",
+                            "tool_name": part.tool_name,
+                            "content_preview": content[:500],
+                        }
+                    )
 
         elif isinstance(msg, ModelResponse):
             for part in msg.parts:
                 if isinstance(part, TextPart):
-                    entries.append({
-                        "role": "assistant",
-                        "content_preview": part.content[:500],
-                    })
+                    entries.append(
+                        {
+                            "role": "assistant",
+                            "content_preview": part.content[:500],
+                        }
+                    )
                 elif isinstance(part, ToolCallPart):
                     args_str = str(part.args)[:300] if part.args else ""
-                    entries.append({
-                        "role": "tool_call",
-                        "tool_name": part.tool_name,
-                        "tool_args_preview": args_str,
-                    })
+                    entries.append(
+                        {
+                            "role": "tool_call",
+                            "tool_name": part.tool_name,
+                            "tool_args_preview": args_str,
+                        }
+                    )
 
     return entries

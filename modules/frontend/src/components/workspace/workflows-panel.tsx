@@ -30,6 +30,9 @@ import {
   Plus,
   CheckCircle2,
   Circle,
+  Clock,
+  Power,
+  PowerOff,
   Loader2,
   Trash2,
 } from 'lucide-react'
@@ -44,10 +47,16 @@ import {
   useCreateWorkflow,
   useRunWorkflow,
   useDeleteWorkflow,
+  useSchedules,
+  useUpdateSchedule,
+  useDeleteSchedule,
 } from '@/hooks/use-workflows'
+import { ScheduleModal } from '@/components/workflow/schedule-modal'
+import { describeCronExpression } from '@/lib/cron'
+import { formatUtc } from '@/lib/format-date'
 import { useAuthStore } from '@/stores/auth'
 import { ROUTES } from '@/lib/constants'
-import type { MissionWorkflow, WorkflowListItem } from '@/types'
+import type { MissionWorkflow, WorkflowListItem, WorkflowSchedule } from '@/types'
 
 // ── Root ────────────────────────────────────────────────────────────────
 
@@ -55,6 +64,7 @@ export function WorkflowsPanel({ missionId }: { missionId: string }) {
   const navigate = useNavigate()
   const { data: missionWorkflows, isLoading: loadingMission } = useMissionWorkflows(missionId)
   const { data: templates, isLoading: loadingTemplates } = useWorkflowTemplates()
+  const { data: schedules, isLoading: loadingSchedules } = useSchedules(missionId)
   const createWorkflow = useCreateWorkflow(missionId)
 
   const handleCreate = () => {
@@ -97,6 +107,12 @@ export function WorkflowsPanel({ missionId }: { missionId: string }) {
             missionId={missionId}
             workflows={missionWorkflows}
             loading={loadingMission}
+          />
+          <SchedulesSection
+            missionId={missionId}
+            schedules={schedules}
+            workflows={missionWorkflows}
+            loading={loadingSchedules}
           />
           <TemplatesSection
             missionId={missionId}
@@ -176,6 +192,7 @@ function MissionWorkflowRow({
   const deleteMutation = useDeleteWorkflow(missionId)
   const isAdmin = useAuthStore((s) => s.isAdmin)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
 
   async function handleRun() {
     try {
@@ -200,6 +217,7 @@ function MissionWorkflowRow({
   }
 
   return (
+    <>
     <div
       className="group flex items-center gap-3 rounded-md border bg-card px-3 py-2.5"
       onMouseLeave={() => setConfirmDelete(false)}
@@ -255,6 +273,12 @@ function MissionWorkflowRow({
           }}
           tone="muted"
         />
+        <IconButton
+          icon={<Clock className="h-3 w-3" />}
+          title="Schedule this workflow"
+          onClick={() => setShowSchedule(true)}
+          tone="muted"
+        />
         {isAdmin && (
           <IconButton
             icon={
@@ -270,6 +294,188 @@ function MissionWorkflowRow({
         )}
       </div>
     </div>
+    {showSchedule && (
+      <ScheduleModal
+        missionId={missionId}
+        workflowDefinitionId={workflow.id}
+        onClose={() => setShowSchedule(false)}
+      />
+    )}
+    </>
+  )
+}
+
+// ── Schedules section ───────────────────────────────────────────────────
+
+function SchedulesSection({
+  missionId,
+  schedules,
+  workflows,
+  loading,
+}: {
+  missionId: string
+  schedules: WorkflowSchedule[] | undefined
+  workflows: MissionWorkflow[] | undefined
+  loading: boolean
+}) {
+  const nameById = new Map((workflows ?? []).map((w) => [w.id, w.name]))
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Schedules
+        </span>
+        {schedules && (
+          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+            {schedules.length}
+          </Badge>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-6">
+          <Spinner className="h-4 w-4" />
+        </div>
+      ) : !schedules || schedules.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center">
+          <Clock className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground/70">
+            No schedules. Use the clock icon on a workflow to create one.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {schedules.map((s) => (
+            <ScheduleRow
+              key={s.id}
+              schedule={s}
+              missionId={missionId}
+              workflowName={nameById.get(s.workflow_definition_id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ScheduleRow({
+  schedule,
+  missionId,
+  workflowName,
+}: {
+  schedule: WorkflowSchedule
+  missionId: string
+  workflowName: string | undefined
+}) {
+  const updateMutation = useUpdateSchedule(missionId, schedule.id)
+  const deleteMutation = useDeleteSchedule(missionId)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
+
+  function handleToggle() {
+    updateMutation.mutate(
+      { enabled: !schedule.enabled },
+      {
+        onSuccess: () =>
+          toast.success(schedule.enabled ? 'Schedule disabled' : 'Schedule enabled'),
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : 'Toggle failed'),
+      },
+    )
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    try {
+      await deleteMutation.mutateAsync(schedule.id)
+      toast.success('Schedule deleted')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed')
+    }
+    setConfirmDelete(false)
+  }
+
+  const iterations = schedule.max_iterations
+    ? `${schedule.iteration_count}/${schedule.max_iterations}`
+    : `${schedule.iteration_count}`
+
+  return (
+    <>
+    <div
+      className="group flex items-center gap-3 rounded-md border bg-card px-3 py-2.5"
+      onMouseLeave={() => setConfirmDelete(false)}
+    >
+      {schedule.enabled ? (
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+      ) : (
+        <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-[13px] font-medium">
+            {workflowName ?? schedule.workflow_definition_id}
+          </p>
+          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+            {describeCronExpression(schedule.cron_expression)}
+          </Badge>
+        </div>
+        {schedule.description && (
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">
+            {schedule.description}
+          </p>
+        )}
+        <p className="mt-0.5 text-[10px] text-muted-foreground/50">
+          next {formatUtc(schedule.next_fire_at)} · last {formatUtc(schedule.last_fired_at)}
+          {' · '}runs {iterations} · {schedule.timezone}
+          {' · '}<span className="font-mono">{schedule.cron_expression}</span>
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <IconButton
+          icon={
+            updateMutation.isPending
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : schedule.enabled
+                ? <PowerOff className="h-3 w-3" />
+                : <Power className="h-3 w-3" />
+          }
+          title={schedule.enabled ? 'Disable schedule' : 'Enable schedule'}
+          onClick={handleToggle}
+          disabled={updateMutation.isPending}
+          tone={schedule.enabled ? 'muted' : 'emerald'}
+        />
+        <IconButton
+          icon={<Pencil className="h-3 w-3" />}
+          title="Edit schedule"
+          onClick={() => setShowEdit(true)}
+          tone="muted"
+        />
+        <IconButton
+          icon={
+            deleteMutation.isPending
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <Trash2 className="h-3 w-3" />
+          }
+          title={confirmDelete ? 'Click again to confirm delete' : 'Delete schedule'}
+          onClick={handleDelete}
+          disabled={deleteMutation.isPending}
+          tone={confirmDelete ? 'red' : 'muted'}
+        />
+      </div>
+    </div>
+    {showEdit && (
+      <ScheduleModal
+        missionId={missionId}
+        workflowDefinitionId={schedule.workflow_definition_id}
+        schedule={schedule}
+        onClose={() => setShowEdit(false)}
+      />
+    )}
+    </>
   )
 }
 

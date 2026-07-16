@@ -8,12 +8,7 @@ from typing import Any
 from pydantic_ai import UsageLimits
 
 from modules.backend.agents.config_schema import AgentConfigSchema
-from modules.backend.agents.deps.base import (
-    BaseAgentDeps,
-    FileScope,
-    HealthAgentDeps,
-    QaAgentDeps,
-)
+from modules.backend.agents.deps.base import BaseAgentDeps, FileScope, HealthAgentDeps, QaAgentDeps
 from modules.backend.agents.mission_control.middleware import _load_mission_control_config
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.config import find_project_root, get_app_config
@@ -32,6 +27,7 @@ def _get_research_http_client():
     global _research_http_client
     if _research_http_client is None:
         import httpx
+
         _research_http_client = httpx.AsyncClient(
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             timeout=30.0,
@@ -67,9 +63,13 @@ def _build_agent_deps(
 
     if "mission.director" in agent_name:
         from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-        return MissionDirectorDeps(**common, mission_id=mission_id, db_session=db_session, event_bus=event_bus)
+
+        return MissionDirectorDeps(
+            **common, mission_id=mission_id, db_session=db_session, event_bus=event_bus
+        )
     if "platform.director" in agent_name:
         from modules.backend.agents.platform.director.deps import PlatformDirectorDeps
+
         return PlatformDirectorDeps(**common, db_session=db_session)
     if category == "platform" and "health" in agent_name:
         return HealthAgentDeps(**common, app_config=get_app_config())
@@ -77,20 +77,25 @@ def _build_agent_deps(
         return QaAgentDeps(**common)
     if "mission.workflow.architect" in agent_name:
         from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
+
         return ArchitectAgentDeps(**common, mission_id=mission_id, db_session=db_session)
     if "mission.supervisor" in agent_name:
         from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
+
         return MissionSupervisorDeps(**common, mission_id=mission_id, db_session=db_session)
     if "mission.planning" in agent_name:
         from modules.backend.agents.mission.planning.agent import PlanningAgentDeps
+
         return PlanningAgentDeps(
-            **common, mission_id=mission_id, db_session=db_session,
+            **common,
+            mission_id=mission_id,
+            db_session=db_session,
             event_bus=event_bus,
         )
     if "security.webapp.scanner" in agent_name:
+        from modules.backend.agents.security.config import get_security_assessment_config
         from modules.backend.agents.security.deps import ScanDeps
         from modules.backend.agents.security.tool_registry import SecurityToolRegistry
-        from modules.backend.agents.security.config import get_security_assessment_config
 
         try:
             sec_config = get_security_assessment_config()
@@ -100,7 +105,7 @@ def _build_agent_deps(
         except Exception:
             logger.warning(
                 "Failed to load security tool registry — scanner tools will be unavailable",
-                extra={"agent_name": agent_name},
+                extra={"agent_name": agent_name, "mission_id": mission_id},
                 exc_info=True,
             )
             tool_registry = None
@@ -127,6 +132,7 @@ def _build_agent_deps(
     }
     if category == "research" or agent_name in _HTTP_DEPS_AGENT_NAMES:
         from modules.backend.agents.research.deps import ResearchAgentDeps
+
         return ResearchAgentDeps(**common, http_client=_get_research_http_client())
 
     return BaseAgentDeps(**common)

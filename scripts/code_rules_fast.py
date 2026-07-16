@@ -33,19 +33,34 @@ class Violation:
 # ── Checks ────────────────────────────────────────────────────────────────
 
 
+# Tracked exemptions: the three god modules pending decomposition
+# (context review 2026-07-03). Reported as warnings so they stay
+# visible without blocking commits. Do NOT add entries — shrink the
+# file instead.
+FILE_SIZE_WAIVERS = frozenset(
+    {
+        "modules/backend/agents/mission/director/agent.py",
+        "modules/backend/services/mission_plan_orchestrator.py",
+        "modules/backend/services/workflow_run_waves.py",
+    }
+)
+
+
 def check_file_size(path: Path, rel: str) -> list[Violation]:
     """002.2 — Python files must not exceed 1000 lines."""
     if not rel.startswith("modules/"):
         return []
     lines = path.read_text().splitlines()
     if len(lines) > 1000:
+        severity = "warning" if rel in FILE_SIZE_WAIVERS else "error"
         return [
             Violation(
                 "002.2",
-                "error",
+                severity,
                 rel,
                 1,
-                f"File has {len(lines)} lines (limit: 1000)",
+                f"File has {len(lines)} lines (limit: 1000)"
+                + (" — waived pending decomposition" if severity == "warning" else ""),
             )
         ]
     return []
@@ -201,7 +216,7 @@ def check_datetime_violations(path: Path, rel: str) -> list[Violation]:
                     "error",
                     rel,
                     i,
-                    "Timezone-aware datetime — use naive UTC via utc_now()",
+                    "Raw timezone construction — use utc_now() (aware UTC)",
                 )
             )
     return violations

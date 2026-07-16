@@ -7,8 +7,8 @@ Thin renderer over WorkflowScheduleService. Handles list, create, toggle, delete
 import asyncio
 import sys
 
-from modules.backend.models.base import SYSTEM_CLI_ID
-from modules.clients.cli.report import get_console, build_table, styled_status
+from modules.backend.services.user import SYSTEM_CLI_ID
+from modules.clients.cli.report import build_table, get_console
 
 
 def run_schedule(
@@ -39,19 +39,21 @@ def run_schedule(
         get_console().print(f"[red]Unknown action: {action}[/red]")
         sys.exit(1)
 
-    asyncio.run(fn(
-        cli_logger,
-        mission_id=mission_id,
-        schedule_id=schedule_id,
-        workflow_definition_id=workflow_definition_id,
-        cron=cron,
-        description=description,
-        budget=budget,
-        max_iterations=max_iterations,
-        cooldown=cooldown,
-        enabled=True if action == "enable" else False if action == "disable" else enabled,
-        output_format=output_format,
-    ))
+    asyncio.run(
+        fn(
+            cli_logger,
+            mission_id=mission_id,
+            schedule_id=schedule_id,
+            workflow_definition_id=workflow_definition_id,
+            cron=cron,
+            description=description,
+            budget=budget,
+            max_iterations=max_iterations,
+            cooldown=cooldown,
+            enabled=True if action == "enable" else False if action == "disable" else enabled,
+            output_format=output_format,
+        )
+    )
 
 
 async def _action_list(cli_logger, *, mission_id, output_format, **_):
@@ -70,14 +72,17 @@ async def _action_list(cli_logger, *, mission_id, output_format, **_):
         console.print("[dim]No schedules found.[/dim]")
         return
 
-    table = build_table("Workflow Schedules", columns=[
-        ("Enabled", {"width": 9}),
-        ("Cron", {"width": 20}),
-        ("Workflow Def ID", {"width": 38}),
-        ("Iterations", {"width": 12}),
-        ("Next Fire", {"width": 22}),
-        ("Description", {"ratio": 1}),
-    ])
+    table = build_table(
+        "Workflow Schedules",
+        columns=[
+            ("Enabled", {"width": 9}),
+            ("Cron", {"width": 20}),
+            ("Workflow Def ID", {"width": 38}),
+            ("Iterations", {"width": 12}),
+            ("Next Fire", {"width": 22}),
+            ("Description", {"ratio": 1}),
+        ],
+    )
     for s in schedules:
         enabled = "[green]yes[/green]" if s.enabled else "[red]no[/red]"
         iters = f"{s.iteration_count}"
@@ -97,8 +102,16 @@ async def _action_list(cli_logger, *, mission_id, output_format, **_):
 
 
 async def _action_create(
-    cli_logger, *, mission_id, workflow_definition_id, cron, description,
-    budget, max_iterations, cooldown, **_,
+    cli_logger,
+    *,
+    mission_id,
+    workflow_definition_id,
+    cron,
+    description,
+    budget,
+    max_iterations,
+    cooldown,
+    **_,
 ):
     """Create a new schedule."""
     from modules.backend.services.workflow_schedule import WorkflowScheduleService

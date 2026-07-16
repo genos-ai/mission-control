@@ -11,20 +11,11 @@ from typing import Any
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import (
-    Button,
-    DataTable,
-    Footer,
-    Header,
-    Input,
-    Label,
-    Static,
-)
+from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
 
 from modules.backend.core.logging import get_logger
-from modules.backend.models.base import SYSTEM_CLI_ID
 
 logger = get_logger(__name__)
 
@@ -39,7 +30,6 @@ class ProfileScreen(Screen):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._is_service_account = True
-        self._user_id = SYSTEM_CLI_ID
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -129,14 +119,15 @@ class ProfileScreen(Screen):
         try:
             profile = await self.app.bridge.get_profile()
             self._is_service_account = profile.get(
-                "is_service_account", True,
+                "is_service_account",
+                True,
             )
-            self._user_id = profile.get("id", SYSTEM_CLI_ID)
 
             # Populate display name
             try:
                 name_input = self.query_one(
-                    "#profile-name-input", Input,
+                    "#profile-name-input",
+                    Input,
                 )
                 name_input.value = profile.get("display_name", "")
             except Exception:
@@ -159,14 +150,14 @@ class ProfileScreen(Screen):
             if self._is_service_account:
                 self._hide_password_section()
 
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load profile", exc_info=True)
 
         # Load API keys
         try:
             keys = await self.app.bridge.list_api_keys()
             self._render_keys(keys)
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load API keys", exc_info=True)
 
     def _hide_password_section(self) -> None:
@@ -224,23 +215,28 @@ class ProfileScreen(Screen):
     async def _change_password(self) -> None:
         try:
             current = self.query_one(
-                "#profile-pw-current", Input,
+                "#profile-pw-current",
+                Input,
             ).value
             new_pw = self.query_one(
-                "#profile-pw-new", Input,
+                "#profile-pw-new",
+                Input,
             ).value
             confirm = self.query_one(
-                "#profile-pw-confirm", Input,
+                "#profile-pw-confirm",
+                Input,
             ).value
 
             if not current or not new_pw:
                 self.app.notify(
-                    "All password fields required", severity="warning",
+                    "All password fields required",
+                    severity="warning",
                 )
                 return
             if new_pw != confirm:
                 self.app.notify(
-                    "New passwords do not match", severity="warning",
+                    "New passwords do not match",
+                    severity="warning",
                 )
                 return
             if len(new_pw) < 12:
@@ -255,7 +251,8 @@ class ProfileScreen(Screen):
                 new_password=new_pw,
             )
             self.app.notify(
-                "Password changed successfully", severity="information",
+                "Password changed successfully",
+                severity="information",
             )
 
             # Clear inputs
@@ -278,7 +275,8 @@ class ProfileScreen(Screen):
             name = name_input.value.strip()
             if not name:
                 self.app.notify(
-                    "Enter a key name first", severity="warning",
+                    "Enter a key name first",
+                    severity="warning",
                 )
                 return
 
@@ -287,8 +285,7 @@ class ProfileScreen(Screen):
             name_input.value = ""
 
             self.app.notify(
-                f"Key created: {full_key[:20]}...\n"
-                f"Copy this key — it won't be shown again!",
+                f"Key created: {full_key[:20]}...\n" f"Copy this key — it won't be shown again!",
                 severity="warning",
             )
 

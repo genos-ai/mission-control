@@ -35,8 +35,7 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
             select(ExecutionRecord)
             .where(ExecutionRecord.id == execution_id)
             .options(
-                selectinload(ExecutionRecord.task_executions)
-                .selectinload(TaskExecution.attempts),
+                selectinload(ExecutionRecord.task_executions).selectinload(TaskExecution.attempts),
                 selectinload(ExecutionRecord.decisions),
             )
         )
@@ -49,6 +48,16 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
             select(ExecutionRecord)
             .where(ExecutionRecord.session_id == session_id)
             .order_by(ExecutionRecord.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_workflow_run(self, workflow_run_id: str) -> list[ExecutionRecord]:
+        """Get all step execution records for a workflow run, in creation order."""
+        stmt = (
+            select(ExecutionRecord)
+            .where(ExecutionRecord.workflow_run_id == workflow_run_id)
+            .order_by(ExecutionRecord.created_at)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -107,7 +116,8 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
         return list(result.scalars().all())
 
     async def get_task_executions(
-        self, execution_id: str,
+        self,
+        execution_id: str,
     ) -> list[TaskExecution]:
         """Get all task executions for an execution with attempts loaded."""
         stmt = (

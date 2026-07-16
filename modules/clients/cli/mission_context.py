@@ -11,10 +11,9 @@ import functools
 import click
 
 from modules.backend.core.logging import get_logger
+from modules.backend.services.user import SYSTEM_CLI_ID as CLI_SERVICE_ACCOUNT_ID
 
 logger = get_logger(__name__)
-
-from modules.backend.models.base import SYSTEM_CLI_ID as CLI_SERVICE_ACCOUNT_ID
 
 
 async def _async_resolve_current_mission_id() -> str | None:
@@ -46,9 +45,7 @@ async def async_require_mission_id(mission_id: str | None) -> str:
         except Exception:
             logger.debug("Could not resolve current mission from DB", exc_info=True)
     if not mission_id:
-        raise click.UsageError(
-            "No mission specified. Use 'mission use <id>' to set a default."
-        )
+        raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
     return mission_id
 
 
@@ -62,9 +59,7 @@ def require_mission_id(mission_id: str | None) -> str:
     if not mission_id:
         mission_id = _resolve_current_mission_id()
     if not mission_id:
-        raise click.UsageError(
-            "No mission specified. Use 'mission use <id>' to set a default."
-        )
+        raise click.UsageError("No mission specified. Use 'mission use <id>' to set a default.")
     return mission_id
 
 
@@ -77,8 +72,11 @@ def with_mission(f):
 
     The decorated function receives ``mission_id: str`` as a keyword argument.
     """
+
     @click.option(
-        "--mission", "-m", "mission_id",
+        "--mission",
+        "-m",
+        "mission_id",
         default=None,
         help="Mission ID (uses current mission if not specified).",
     )

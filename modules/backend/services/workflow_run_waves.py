@@ -73,6 +73,7 @@ def _extract_default_agent_output(
     outcome_dict: dict | None,
     *,
     expected_agent: str | None = None,
+    mission_id: str | None = None,
 ) -> dict[str, Any]:
     """Default-populate completed_outcomes for an agent_step (Plan 79 §8.3).
 
@@ -106,6 +107,7 @@ def _extract_default_agent_output(
             "Agent name match failed for default-output extraction; "
             "falling back to last task_result",
             extra={
+                "mission_id": mission_id,
                 "expected_agent": expected_agent,
                 "available_agent_names": [
                     tr.get("agent_name") for tr in task_results if isinstance(tr, dict)
@@ -120,7 +122,7 @@ def _extract_default_agent_output(
 
 @dataclass
 class VirtualExecution:
-    """Lightweight stand-in for condition/notification nodes that don't create DB Execution records."""
+    """Stand-in for condition/notification nodes that don't create DB Execution records."""
 
     id: str
     status: str = "COMPLETED"
@@ -328,7 +330,14 @@ class WorkflowRunWavesMixin:
             # Partition wave into skipped and executable steps
             executable_ids: list[str] = []
             for step_id in wave_step_ids:
-                if self._should_skip(step_id, step_map, completed_outcomes, edges_map, run.context):
+                if self._should_skip(
+                    step_id,
+                    step_map,
+                    completed_outcomes,
+                    edges_map,
+                    run.context,
+                    mission_id=run.mission_id,
+                ):
                     completed_outcomes[step_id] = {"_skipped": True}
                     step_obj = step_map[step_id]
                     reason = (
@@ -747,6 +756,7 @@ class WorkflowRunWavesMixin:
             logger.error(
                 "Step execution failed",
                 extra={
+                    "mission_id": run.mission_id,
                     "run_id": run.id,
                     "step_id": step.id,
                     "error": str(e),
@@ -765,6 +775,7 @@ class WorkflowRunWavesMixin:
         extracted = _extract_default_agent_output(
             outcome_dict,
             expected_agent=expected_agent,
+            mission_id=run.mission_id,
         )
         output_mapping = step.output_mapping.model_dump() if step.output_mapping else None
         if output_mapping:
@@ -785,6 +796,7 @@ class WorkflowRunWavesMixin:
                 logger.error(
                     "Step output mapping failed",
                     extra={
+                        "mission_id": run.mission_id,
                         "run_id": run.id,
                         "step_id": step.id,
                         "error": str(e),
@@ -841,7 +853,14 @@ class WorkflowRunWavesMixin:
         try:
             result = evaluate_condition(expression, completed_outcomes, run.context)
         except ConditionEvaluationError as e:
-            logger.error("Condition evaluation failed", extra={"step_id": step.id, "error": str(e)})
+            logger.error(
+                "Condition evaluation failed",
+                extra={
+                    "mission_id": run.mission_id,
+                    "step_id": step.id,
+                    "error": str(e),
+                },
+            )
             raise RuntimeError(f"Condition '{step.id}' failed: {e}") from e
 
         branch = (
@@ -1171,7 +1190,8 @@ class WorkflowRunWavesMixin:
                 unsupported = [d for d in deps if d not in _HANDLED_DEPS]
                 if unsupported:
                     raise RuntimeError(
-                        f"Tool '{tool_name}' requires unsupported deps: {unsupported} (step '{step.id}')"
+                        f"Tool '{tool_name}' requires unsupported deps: "
+                        f"{unsupported} (step '{step.id}')"
                     )
                 result = await impl(**resolved_args)
             success = True
@@ -1238,7 +1258,11 @@ class WorkflowRunWavesMixin:
         except Exception as e:
             logger.warning(
                 "LLM call step failed",
-                extra={"step_id": step.id, "model": config.model},
+                extra={
+                    "mission_id": run.mission_id,
+                    "step_id": step.id,
+                    "model": config.model,
+                },
                 exc_info=True,
             )
             text = f"Error: {e}"
@@ -1491,9 +1515,11 @@ class WorkflowRunWavesMixin:
         )
 
         # Notify frontend that we're waiting for human input
-        from datetime import datetime, timedelta, timezone
+        from datetime import timedelta
 
-        timeout_at = (datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)).isoformat()
+        from modules.backend.core.utils import utc_now
+
+        timeout_at = (utc_now() + timedelta(seconds=timeout_seconds)).isoformat()
         await self._publish_workflow_event(
             run.mission_id,
             WorkflowHumanInputRequestedEvent(
@@ -1639,6 +1665,7 @@ class WorkflowRunWavesMixin:
         completed_outcomes: dict[str, dict],
         edges_map: dict[tuple[str, str], str | None],
         workflow_context: dict[str, Any] | None = None,
+        mission_id: str | None = None,
     ) -> bool:
         """Check if a step should be skipped.
 
@@ -1679,7 +1706,11 @@ class WorkflowRunWavesMixin:
             except ConditionEvaluationError:
                 logger.error(
                     "Inline condition evaluation failed — skipping step",
-                    extra={"step_id": step_id, "condition": step.condition},
+                    extra={
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "condition": step.condition,
+                    },
                     exc_info=True,
                 )
                 return True

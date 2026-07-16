@@ -29,11 +29,7 @@ from modules.backend.agents.mission_control.models import (
     ExecuteAgentFn,
     NoOpEventBus,
 )
-from modules.backend.agents.mission_control.outcome import (
-    TaskResult,
-    TaskStatus,
-    TaskTokenUsage,
-)
+from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus, TaskTokenUsage
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import (
     CoverageAnalysisData,
@@ -125,19 +121,13 @@ class SearchRound:
 # =============================================================================
 
 
-def compute_coverage_ratio(
-    analysis: CoverageAnalysisData, total_questions: int
-) -> float:
+def compute_coverage_ratio(analysis: CoverageAnalysisData, total_questions: int) -> float:
     """Fraction of sub-questions with >= 2 independent sources."""
-    well_covered = sum(
-        1 for q in analysis.covered_questions if len(q.source_ids) >= 2
-    )
+    well_covered = sum(1 for q in analysis.covered_questions if len(q.source_ids) >= 2)
     return well_covered / total_questions if total_questions > 0 else 0.0
 
 
-def should_stop(
-    rounds: list[SearchRound], config: ResearchConfig
-) -> tuple[bool, str]:
+def should_stop(rounds: list[SearchRound], config: ResearchConfig) -> tuple[bool, str]:
     """Evaluate deterministic stopping conditions."""
     if not rounds:
         return False, ""
@@ -160,9 +150,7 @@ def should_stop(
 # =============================================================================
 
 
-def compress_findings(
-    all_findings: list[ResearchFinding], max_count: int
-) -> list[ResearchFinding]:
+def compress_findings(all_findings: list[ResearchFinding], max_count: int) -> list[ResearchFinding]:
     """Deduplicate, rank, and take top-K findings for synthesis."""
     # Deduplicate by source_url (keep highest relevance_score)
     by_url: dict[str, ResearchFinding] = {}
@@ -201,11 +189,17 @@ async def execute_research_loop(
     Phase 5: Verify — NLI citation verification
     Phase 6: Build result
     """
-    logger.info("TRACE >>> execute_research_loop entered",
-                 extra={"task_id": task_id, "query": query[:80],
-                        "depth": config.depth, "budget": config.budget_usd,
-                        "event_bus_type": type(event_bus).__name__ if event_bus else "None",
-                        "session_id": session_id})
+    logger.info(
+        "TRACE >>> execute_research_loop entered",
+        extra={
+            "task_id": task_id,
+            "query": query[:80],
+            "depth": config.depth,
+            "budget": config.budget_usd,
+            "event_bus_type": type(event_bus).__name__ if event_bus else "None",
+            "session_id": session_id,
+        },
+    )
     _gate = gate or NoOpGate()
     _bus = event_bus or NoOpEventBus()
     _sid = session_id or ""
@@ -231,7 +225,9 @@ async def execute_research_loop(
     )
 
     async def _narrative(phase: str, message: str, iteration: int | None = None) -> None:
-        await _emit(_bus, MissionNarrativeEvent,
+        await _emit(
+            _bus,
+            MissionNarrativeEvent,
             session_id=_sid,
             source=f"research:{task_id}",
             mission_id=mission_id,
@@ -243,7 +239,9 @@ async def execute_research_loop(
 
     try:
         # ── Phase 0: Started ────────────────────────────────────────
-        await _emit(_bus, ResearchStartedEvent,
+        await _emit(
+            _bus,
+            ResearchStartedEvent,
             session_id=_sid,
             source=f"research:{task_id}",
             research_id=task_id,
@@ -251,7 +249,7 @@ async def execute_research_loop(
             depth=config.depth,
             max_iterations=config.max_iterations,
         )
-        await _narrative("decompose", f"Starting deep research: \"{query}\"")
+        await _narrative("decompose", f'Starting deep research: "{query}"')
 
         # ── Phase 1: Decompose ──────────────────────────────────────
         await _narrative("decompose", "Breaking your question into sub-questions...")
@@ -268,13 +266,20 @@ async def execute_research_loop(
         decomposition = _parse_output(decompose_result, ResearchDecomposition)
         if decomposition is None:
             await _narrative("error", "Failed to decompose research query")
-            return _failed_result(task_id, "Strategist failed to decompose query",
-                                  total_cost, total_tokens, start_time)
+            return _failed_result(
+                task_id,
+                "Strategist failed to decompose query",
+                total_cost,
+                total_tokens,
+                start_time,
+            )
 
         sub_questions = decomposition.sub_questions
         total_questions = len(sub_questions)
 
-        await _emit(_bus, ResearchDecomposedEvent,
+        await _emit(
+            _bus,
+            ResearchDecomposedEvent,
             session_id=_sid,
             source=f"research:{task_id}",
             research_id=task_id,
@@ -294,22 +299,28 @@ async def execute_research_loop(
         for iteration in range(1, config.max_iterations + 1):
             # Budget check before starting batch
             if total_cost >= config.budget_usd:
-                logger.info("Budget exhausted before search round",
-                            extra={"cost": total_cost, "budget": config.budget_usd})
+                logger.info(
+                    "Budget exhausted before search round",
+                    extra={"cost": total_cost, "budget": config.budget_usd},
+                )
                 break
 
             gap_questions = [sq for sq in sub_questions if sq.id in gap_question_ids]
             if not gap_questions:
                 break
 
-            await _narrative("search",
+            await _narrative(
+                "search",
                 f"Search round {iteration} — investigating {len(gap_questions)} "
                 f"sub-question{'s' if len(gap_questions) != 1 else ''} in parallel...",
-                iteration=iteration)
+                iteration=iteration,
+            )
 
             # Mark sub-questions as searching
             for sq in gap_questions:
-                await _emit(_bus, ResearchSubQuestionUpdatedEvent,
+                await _emit(
+                    _bus,
+                    ResearchSubQuestionUpdatedEvent,
                     session_id=_sid,
                     source=f"research:{task_id}",
                     research_id=task_id,
@@ -332,9 +343,7 @@ async def execute_research_loop(
                     f"Pass include_domains={config.include_domains} to search_web."
                 )
 
-            async def _search_one(
-                sq_id: str, sq_text: str
-            ) -> tuple[list[ResearchFinding], float]:
+            async def _search_one(sq_id: str, sq_text: str) -> tuple[list[ResearchFinding], float]:
                 async with semaphore:
                     result = await execute_agent_fn(
                         agent_name=config.searcher_agent,
@@ -351,18 +360,21 @@ async def execute_research_loop(
                     _accumulate_tokens(total_tokens, result)
                     return _extract_findings(result, sq_id), cost
 
-            search_tasks = [
-                _search_one(sq.id, sq.text) for sq in gap_questions
-            ]
+            search_tasks = [_search_one(sq.id, sq.text) for sq in gap_questions]
             search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
             for sq, result in zip(gap_questions, search_results):
                 if isinstance(result, Exception):
                     error_msg = str(result)[:200]
-                    logger.warning("Searcher failed for sub-question",
-                                   extra={"sq_id": sq.id, "error": error_msg})
-                    await _emit(_bus, SystemEvent,
-                        session_id=_sid, source=f"research:{mission_id}",
+                    logger.warning(
+                        "Searcher failed for sub-question",
+                        extra={"sq_id": sq.id, "error": error_msg},
+                    )
+                    await _emit(
+                        _bus,
+                        SystemEvent,
+                        session_id=_sid,
+                        source=f"research:{mission_id}",
                         level="warning",
                         message=f"Search failed for '{sq.text[:60]}': {error_msg}",
                         mission_id=mission_id,
@@ -376,7 +388,9 @@ async def execute_research_loop(
 
             all_findings.extend(round_findings)
 
-            await _emit(_bus, ResearchSearchCompletedEvent,
+            await _emit(
+                _bus,
+                ResearchSearchCompletedEvent,
                 session_id=_sid,
                 source=f"research:{task_id}",
                 research_id=task_id,
@@ -385,9 +399,11 @@ async def execute_research_loop(
                 new_findings=len(round_findings),
                 cost_usd=round_cost,
             )
-            await _narrative("search",
+            await _narrative(
+                "search",
                 f"Found {len(round_findings)} findings from "
-                f"{len({f.source_url for f in round_findings})} sources")
+                f"{len({f.source_url for f in round_findings})} sources",
+            )
 
             # ── Analyze coverage ────────────────────────────────────
             analyst_input = {
@@ -406,7 +422,10 @@ async def execute_research_loop(
 
             coverage = _parse_output(analyst_result, CoverageAnalysisData)
             if coverage is None:
-                logger.warning("Analyst failed — continuing with previous coverage")
+                logger.warning(
+                    "Analyst failed — continuing with previous coverage",
+                    extra={"task_id": task_id, "mission_id": mission_id},
+                )
                 coverage = previous_coverage or CoverageAnalysisData(
                     covered_questions=[], uncovered_question_ids=gap_question_ids
                 )
@@ -424,7 +443,9 @@ async def execute_research_loop(
                     if cq.sub_question_id == sq.id:
                         source_count = len(cq.source_ids)
                         break
-                await _emit(_bus, ResearchSubQuestionUpdatedEvent,
+                await _emit(
+                    _bus,
+                    ResearchSubQuestionUpdatedEvent,
                     session_id=_sid,
                     source=f"research:{task_id}",
                     research_id=task_id,
@@ -447,7 +468,9 @@ async def execute_research_loop(
             rounds.append(search_round)
 
             stop, stop_reason = should_stop(rounds, config)
-            await _emit(_bus, ResearchCoverageEvent,
+            await _emit(
+                _bus,
+                ResearchCoverageEvent,
                 session_id=_sid,
                 source=f"research:{task_id}",
                 research_id=task_id,
@@ -456,36 +479,41 @@ async def execute_research_loop(
                 gaps_remaining=len(gap_question_ids),
                 stop_reason=stop_reason,
             )
-            await _narrative("analyze",
+            await _narrative(
+                "analyze",
                 f"Coverage: {len(covered_ids)}/{total_questions} sub-questions "
                 f"answered ({coverage_ratio:.0%}). "
                 f"{len(gap_question_ids)} gaps remaining.",
-                iteration=iteration)
+                iteration=iteration,
+            )
 
             if stop:
-                await _narrative("analyze",
-                    f"Stopping search: {stop_reason}", iteration=iteration)
+                await _narrative("analyze", f"Stopping search: {stop_reason}", iteration=iteration)
                 break
 
             # Gate check: should we continue?
-            decision = await _gate.review(GateContext(
-                gate_type="research_iteration",
-                mission_id=mission_id,
-                session_id=_sid,
-                layer_index=iteration,
-                total_layers=config.max_iterations,
-                total_cost_usd=total_cost,
-                budget_usd=config.budget_usd,
-            ))
+            decision = await _gate.review(
+                GateContext(
+                    gate_type="research_iteration",
+                    mission_id=mission_id,
+                    session_id=_sid,
+                    layer_index=iteration,
+                    total_layers=config.max_iterations,
+                    total_cost_usd=total_cost,
+                    budget_usd=config.budget_usd,
+                )
+            )
             if decision.action == GateAction.ABORT:
                 await _narrative("analyze", "Research aborted by gate reviewer")
                 break
 
             # Refine queries for remaining gaps
             if gap_question_ids:
-                await _narrative("search",
+                await _narrative(
+                    "search",
                     f"Refining queries for {len(gap_question_ids)} remaining gaps...",
-                    iteration=iteration)
+                    iteration=iteration,
+                )
                 refine_result = await execute_agent_fn(
                     agent_name=config.strategist_agent,
                     instructions=(
@@ -515,16 +543,20 @@ async def execute_research_loop(
 
         # ── Phase 3: Compress ───────────────────────────────────────
         compressed = compress_findings(all_findings, config.max_findings_for_synthesis)
-        await _emit(_bus, ResearchSynthesizingEvent,
+        await _emit(
+            _bus,
+            ResearchSynthesizingEvent,
             session_id=_sid,
             source=f"research:{task_id}",
             research_id=task_id,
             total_findings=len(all_findings),
             findings_after_compression=len(compressed),
         )
-        await _narrative("synthesize",
+        await _narrative(
+            "synthesize",
             f"Compressing {len(all_findings)} findings to top "
-            f"{len(compressed)} for synthesis...")
+            f"{len(compressed)} for synthesis...",
+        )
 
         # ── Phase 4: Synthesize ─────────────────────────────────────
         await _narrative("synthesize", "Writing research report...")
@@ -573,15 +605,19 @@ async def execute_research_loop(
             if verification_score is not None:
                 supported = verify_output.get("supported_count", 0)
                 total_cites = verify_output.get("total_citations", 0)
-                await _narrative("verify",
+                await _narrative(
+                    "verify",
                     f"Verified {supported}/{total_cites} citations "
-                    f"({verification_score:.0%} supported)")
+                    f"({verification_score:.0%} supported)",
+                )
 
         # ── Phase 6: Complete ───────────────────────────────────────
         duration = time.monotonic() - start_time
         final_coverage = rounds[-1].coverage_ratio if rounds else 0.0
 
-        await _emit(_bus, ResearchCompletedEvent,
+        await _emit(
+            _bus,
+            ResearchCompletedEvent,
             session_id=_sid,
             source=f"research:{task_id}",
             research_id=task_id,
@@ -593,10 +629,12 @@ async def execute_research_loop(
             cost_usd=total_cost,
             duration_seconds=duration,
         )
-        await _narrative("complete",
+        await _narrative(
+            "complete",
             f"Research complete. {len({f.source_url for f in all_findings})} sources, "
             f"{len(rounds)} iterations, ${total_cost:.2f}, "
-            f"{duration:.0f}s.")
+            f"{duration:.0f}s.",
+        )
 
         # Build context_updates from synthesizer output
         context_updates = report_output.get("context_updates", [])
@@ -622,8 +660,14 @@ async def execute_research_loop(
 
     except Exception as e:
         duration = time.monotonic() - start_time
-        logger.error("Research loop failed", extra={"task_id": task_id}, exc_info=True)
-        await _emit(_bus, ResearchFailedEvent,
+        logger.error(
+            "Research loop failed",
+            extra={"task_id": task_id, "mission_id": mission_id},
+            exc_info=True,
+        )
+        await _emit(
+            _bus,
+            ResearchFailedEvent,
             session_id=_sid,
             source=f"research:{task_id}",
             research_id=task_id,
@@ -700,11 +744,13 @@ def _extract_citations_for_verification(
     for f in findings:
         if f.source_url in source_urls:
             citation_id += 1
-            citations.append({
-                "citation_id": citation_id,
-                "claim": f.claim,
-                "source_url": f.source_url,
-            })
+            citations.append(
+                {
+                    "citation_id": citation_id,
+                    "claim": f.claim,
+                    "source_url": f.source_url,
+                }
+            )
     return citations
 
 

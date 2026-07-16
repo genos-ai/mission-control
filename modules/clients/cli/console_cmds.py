@@ -18,11 +18,15 @@ from rich import box
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
-from rich.table import Table
 
 from modules.backend.core.logging import get_logger
-from modules.clients.common.display import get_console, status_color
-from modules.clients.common.gate_helpers import STATUS_ICONS
+from modules.clients.common.display import (
+    build_table,
+    get_console,
+    info_panel,
+    output_panel,
+    primary_panel,
+)
 
 logger = get_logger(__name__)
 
@@ -53,8 +57,12 @@ async def _fetch_recent_runs(limit: int = 10) -> list[dict]:
         return [
             {
                 "id": str(getattr(r, "id", "")),
-                "objective": getattr(r, "objective_statement", "") or getattr(r, "objective", "") or "(no objective)",
-                "status": r.status.value if hasattr(r.status, "value") else str(getattr(r, "status", "?")),
+                "objective": getattr(r, "objective_statement", "")
+                or getattr(r, "objective", "")
+                or "(no objective)",
+                "status": (
+                    r.status.value if hasattr(r.status, "value") else str(getattr(r, "status", "?"))
+                ),
                 "cost": getattr(r, "total_cost_usd", 0.0) or 0.0,
                 "roster": getattr(r, "roster_name", "") or "",
                 "created_at": str(getattr(r, "created_at", "")),
@@ -126,13 +134,17 @@ def _create_user_display(
     # ── Header ─────────────────────────────────────────────
     now = datetime.now(tz=timezone.utc).strftime("%H:%M:%S UTC")
     total_cost = sum(r.get("cost", 0) for r in runs)
-    layout["header"].update(Panel(
-        f"[bold cyan]Mission Control[/bold cyan]  |  "
-        f"{now}  |  "
-        f"[green]{len(missions)} missions[/green]  |  "
-        f"[yellow]{len(runs)} recent runs[/yellow]  |  "
-        f"Cost: [bold]${total_cost:.2f}[/bold]",
-    ))
+    layout["header"].update(
+        primary_panel(
+            content=(
+                f"[bold cyan]Mission Control[/bold cyan]  |  "
+                f"{now}  |  "
+                f"[green]{len(missions)} missions[/green]  |  "
+                f"[yellow]{len(runs)} recent runs[/yellow]  |  "
+                f"Cost: [bold]${total_cost:.2f}[/bold]"
+            ),
+        )
+    )
 
     # ── Main: activity (left) + status (right) ─────────────
     layout["main"].split_row(
@@ -141,32 +153,34 @@ def _create_user_display(
     )
 
     # Activity: recent runs table
-    table = Table(
-        show_header=True, header_style="bold blue",
-        box=box.SIMPLE_HEAVY, expand=True,
+    table = build_table(
+        columns=[
+            ("Status", {"width": 3}),
+            ("Objective", {"ratio": 1, "no_wrap": False}),
+            ("Roster", {"width": 12, "style": "dim"}),
+            ("Cost", {"width": 8, "justify": "right"}),
+            ("When", {"width": 16, "style": "dim"}),
+        ],
+        table_box=box.SIMPLE_HEAVY,
     )
-    table.add_column("Status", width=3, no_wrap=True)
-    table.add_column("Objective", ratio=1)
-    table.add_column("Roster", width=12, style="dim")
-    table.add_column("Cost", width=8, justify="right")
-    table.add_column("When", width=16, style="dim")
 
     for r in runs[:12]:
         status = r.get("status", "?")
-        icon = STATUS_ICONS.get(status, "?").replace("[", "\\[") if "[" not in STATUS_ICONS.get(status, "?") else STATUS_ICONS.get(status, "?")
         # Plain icons for Rich table (no Textual markup)
-        status_sym = {"completed": "[green]✓[/green]", "success": "[green]✓[/green]",
-                      "failed": "[red]✗[/red]", "running": "[cyan]●[/cyan]",
-                      "pending": "[dim]○[/dim]"}.get(status, status)
+        status_sym = {
+            "completed": "[green]✓[/green]",
+            "success": "[green]✓[/green]",
+            "failed": "[red]✗[/red]",
+            "running": "[cyan]●[/cyan]",
+            "pending": "[dim]○[/dim]",
+        }.get(status, status)
         obj = (r.get("objective", "") or "")[:50]
         cost = f"${r.get('cost', 0):.2f}"
         when = r.get("created_at", "")[:16]
         roster = r.get("roster", "")
         table.add_row(status_sym, obj, roster, cost, when)
 
-    layout["activity"].update(Panel(
-        table, title="Recent Runs", border_style="blue",
-    ))
+    layout["activity"].update(output_panel(table, title="Recent Runs"))
 
     # Status panel
     lines: list[str] = []
@@ -179,7 +193,10 @@ def _create_user_display(
     lines.append("")
 
     # Agents
-    lines.append(f"[bold cyan]Agents[/bold cyan]  ({catalog.get('enabled', 0)}/{catalog.get('total', 0)} enabled)")
+    lines.append(
+        f"[bold cyan]Agents[/bold cyan]  "
+        f"({catalog.get('enabled', 0)}/{catalog.get('total', 0)} enabled)"
+    )
     for a in catalog.get("agents", [])[:6]:
         indicator = "[green]●[/green]" if a["enabled"] else "[dim]○[/dim]"
         lines.append(f"  {indicator} {a['name']}  [dim]{a['type']}[/dim]")
@@ -194,16 +211,18 @@ def _create_user_display(
         latency = f"  {c['latency_ms']}ms" if c.get("latency_ms") else ""
         lines.append(f"  [{c_color}]●[/{c_color}] {c['name']}{latency}")
 
-    layout["status"].update(Panel(
-        "\n".join(lines), title="System Status", border_style="green",
-    ))
+    layout["status"].update(info_panel(content="\n".join(lines), title="System Status"))
 
     # ── Footer ─────────────────────────────────────────────
-    layout["footer"].update(Panel(
-        "[dim]Press Ctrl+C to exit  |  "
-        "Use --view developer for technical details  |  "
-        "Use python tui.py for the full interactive TUI[/dim]",
-    ))
+    layout["footer"].update(
+        info_panel(
+            content=(
+                "[dim]Press Ctrl+C to exit  |  "
+                "Use --view developer for technical details  |  "
+                "Use python tui.py for the full interactive TUI[/dim]"
+            ),
+        )
+    )
 
     return layout
 
@@ -214,23 +233,28 @@ def _create_developer_display(
     catalog: dict,
 ) -> Panel:
     """Build the developer-focused table with technical details."""
-    table = Table(
-        show_header=True, header_style="bold blue",
-        box=box.SIMPLE_HEAVY, expand=True,
+    table = build_table(
+        columns=[
+            ("Status", {"width": 3}),
+            ("ID", {"width": 8, "style": "dim"}),
+            ("Objective", {"ratio": 1, "no_wrap": False}),
+            ("Roster", {"width": 12, "style": "dim"}),
+            ("Tokens", {"width": 20, "style": "green"}),
+            ("Cost", {"width": 8, "justify": "right"}),
+            ("Created", {"width": 16, "style": "dim"}),
+        ],
+        table_box=box.SIMPLE_HEAVY,
     )
-    table.add_column("Status", width=3, no_wrap=True)
-    table.add_column("ID", width=8, style="dim")
-    table.add_column("Objective", ratio=1)
-    table.add_column("Roster", width=12, style="dim")
-    table.add_column("Tokens", width=20, style="green")
-    table.add_column("Cost", width=8, justify="right")
-    table.add_column("Created", width=16, style="dim")
 
     for r in runs[:15]:
         status = r.get("status", "?")
-        status_sym = {"completed": "[green]✓[/green]", "success": "[green]✓[/green]",
-                      "failed": "[red]✗[/red]", "running": "[cyan]●[/cyan]",
-                      "pending": "[dim]○[/dim]"}.get(status, status)
+        status_sym = {
+            "completed": "[green]✓[/green]",
+            "success": "[green]✓[/green]",
+            "failed": "[red]✗[/red]",
+            "running": "[cyan]●[/cyan]",
+            "pending": "[dim]○[/dim]",
+        }.get(status, status)
         rid = r.get("id", "")[:8]
         obj = (r.get("objective", "") or "")[:40]
         cost = f"${r.get('cost', 0):.4f}"
@@ -249,11 +273,10 @@ def _create_developer_display(
         f"Total: ${total_cost:.4f}"
     )
 
-    return Panel(
+    return output_panel(
         table,
         title="Mission Control — Developer Console",
-        subtitle=f"[dim]{subtitle}[/dim]",
-        border_style="blue",
+        subtitle=subtitle,
     )
 
 

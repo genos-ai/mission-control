@@ -29,20 +29,20 @@ from modules.backend.core.config_schema import (
     CostSchema,
     DatabaseSchema,
     EventsSchema,
+    ExecutionsSchema,
     FeaturesSchema,
     GateSchema,
     GatewaySchema,
     LoggingSchema,
-    ExecutionsSchema,
+    MissionsSchema,
     ModelsSchema,
     NotificationsSchema,
     ProvidersSchema,
-    WorkflowsSchema,
-    MissionsSchema,
-    SecuritySchema,
     SecurityAssessmentSchema,
+    SecuritySchema,
     SessionsSchema,
     TemporalSchema,
+    WorkflowsSchema,
 )
 
 
@@ -82,7 +82,7 @@ def load_yaml_config(filename: str) -> dict[str, Any]:
 
 
 class Settings(BaseSettings):
-    """Secrets loaded from config/.env. Only passwords, tokens, and keys."""
+    """Secrets and env-only runtime toggles loaded from config/.env / environment."""
 
     db_password: str
     redis_password: str
@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     perplexity_api_key: str = ""
     tavily_api_key: str = ""
     brave_api_key: str = ""
+
+    # Runtime toggles (set via environment, e.g. by services.py --trace).
+    # MC_AGENT_TRACE=1 emits agent trace events to the mission event bus.
+    mc_agent_trace: bool = False
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -109,9 +113,7 @@ def _load_validated(schema_cls: type, filename: str) -> Any:
     try:
         return schema_cls(**raw)
     except ValidationError as e:
-        raise ValueError(
-            f"Invalid configuration in {filename}:\n{e}"
-        ) from e
+        raise ValueError(f"Invalid configuration in {filename}:\n{e}") from e
 
 
 def _load_validated_optional(schema_cls: type, filename: str) -> Any:
@@ -152,7 +154,8 @@ class AppConfig:
         self._models = _load_validated_optional(ModelsSchema, "models.yaml")
         self._cost = _load_validated_optional(CostSchema, "cost.yaml")
         self._security_assessment = _load_validated_optional(
-            SecurityAssessmentSchema, "security_assessment.yaml",
+            SecurityAssessmentSchema,
+            "security_assessment.yaml",
         )
 
     @property
@@ -270,6 +273,7 @@ def get_mission_control_config():
 
     config_path = find_project_root() / "config" / "agents" / "mission_control.yaml"
     import yaml
+
     with open(config_path) as f:
         raw = yaml.safe_load(f)
     return MissionControlConfigSchema(**raw)
@@ -332,7 +336,9 @@ def get_sanitized_config_view() -> dict:
             "max_budget_usd": config.workflows.max_budget_usd,
             "max_concurrent_missions": config.workflows.max_concurrent_missions,
             "max_scheduled_runs_per_day": config.workflows.max_scheduled_runs_per_day,
-            "schedule_evaluation_interval_seconds": config.workflows.schedule_evaluation_interval_seconds,
+            "schedule_evaluation_interval_seconds": (
+                config.workflows.schedule_evaluation_interval_seconds
+            ),
         },
         "sessions": {
             "default_ttl_hours": config.sessions.default_ttl_hours,

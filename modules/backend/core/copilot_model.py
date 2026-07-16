@@ -23,25 +23,29 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, NoReturn
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, NoReturn
+
+if TYPE_CHECKING:
+    from pydantic_ai.profiles import ModelProfile
 
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    ModelResponseStreamEvent,
     TextPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
 )
-from pydantic_ai.messages import ModelResponseStreamEvent
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RequestUsage
 
 from modules.backend.core.logging import get_logger
+from modules.backend.core.utils import utc_now
 
 # ---------------------------------------------------------------------------
 # JSON repair for prompted structured output
@@ -72,23 +76,24 @@ def _repair_json_in_text(text: str) -> str:
         raw_json = json_match.group(1).strip()
         repaired = repair_json(raw_json)
         if repaired != raw_json:
-            return text[:json_match.start(1)] + repaired + text[json_match.end(1):]
+            return text[: json_match.start(1)] + repaired + text[json_match.end(1) :]
         return text
 
     # Try to find a top-level JSON object or array
     first_brace = text.find("{")
     last_brace = text.rfind("}")
     if first_brace >= 0 and last_brace > first_brace:
-        raw_json = text[first_brace:last_brace + 1]
+        raw_json = text[first_brace : last_brace + 1]
         try:
             json.loads(raw_json)
             return text  # Already valid
         except json.JSONDecodeError:
             repaired = repair_json(raw_json)
             if repaired and repaired != raw_json:
-                return text[:first_brace] + repaired + text[last_brace + 1:]
+                return text[:first_brace] + repaired + text[last_brace + 1 :]
 
     return text
+
 
 logger = get_logger(__name__)
 
@@ -96,6 +101,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Message extraction
 # ---------------------------------------------------------------------------
+
 
 def _extract_messages(messages: list[ModelMessage]) -> tuple[str, str]:
     """Extract system prompt and user message from PydanticAI messages."""
@@ -122,7 +128,9 @@ def _extract_messages(messages: list[ModelMessage]) -> tuple[str, str]:
                     truncated = part.content[:2000] + ("..." if len(part.content) > 2000 else "")
                     history_parts.append(f"Assistant: {truncated}")
                 elif isinstance(part, ToolCallPart):
-                    args_str = json.dumps(part.args) if isinstance(part.args, dict) else str(part.args)
+                    args_str = (
+                        json.dumps(part.args) if isinstance(part.args, dict) else str(part.args)
+                    )
                     history_parts.append(f"Tool call: {part.tool_name}({args_str})")
 
     if len(history_parts) > 1:
@@ -155,7 +163,7 @@ def _has_tool_returns(messages: list[ModelMessage]) -> list[ToolReturnPart]:
 # ---------------------------------------------------------------------------
 
 
-from modules.backend.core.exceptions import (
+from modules.backend.core.exceptions import (  # noqa: E402
     QuotaExhaustedError,
     TransientProviderError,
     log_provider_error,
@@ -192,6 +200,7 @@ _REQUEST_ID_PATTERN = re.compile(r"Request ID:\s*([A-Za-z0-9:.\-]+)")
 # Tool bridge — async handlers that await PydanticAI tool results
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _ToolBridge:
     """Bridges tool calls between Copilot and PydanticAI.
@@ -206,6 +215,7 @@ class _ToolBridge:
       7. Handler unblocks → returns ToolResult to Copilot
       8. LLM gets the result and continues
     """
+
     pending_calls: asyncio.Queue = field(default_factory=asyncio.Queue)
     results: dict[str, asyncio.Future] = field(default_factory=dict)
 
@@ -265,6 +275,7 @@ def _make_copilot_tools(
 
             try:
                 from modules.backend.core.config import get_app_config
+
                 tool_timeout = get_app_config().application.timeouts.tool_bridge
                 result_text = await asyncio.wait_for(future, timeout=tool_timeout)
             except asyncio.TimeoutError:
@@ -284,13 +295,15 @@ def _make_copilot_tools(
                 error=None,
             )
 
-        tools.append(Tool(
-            name=tool_def.name,
-            description=tool_def.description or "",
-            handler=handler,
-            parameters=tool_def.parameters_json_schema,
-            skip_permission=True,
-        ))
+        tools.append(
+            Tool(
+                name=tool_def.name,
+                description=tool_def.description or "",
+                handler=handler,
+                parameters=tool_def.parameters_json_schema,
+                skip_permission=True,
+            )
+        )
 
     return tools
 
@@ -298,6 +311,7 @@ def _make_copilot_tools(
 # ---------------------------------------------------------------------------
 # Streamed response wrapper (converts request() result to a stream)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CopilotStreamedResponse(StreamedResponse):
@@ -311,7 +325,7 @@ class CopilotStreamedResponse(StreamedResponse):
 
     _model_response: ModelResponse = field(default=None)
     _model_id: str = ""
-    _timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    _timestamp: datetime = field(default_factory=utc_now)
 
     @property
     def model_name(self) -> str:
@@ -343,6 +357,7 @@ class CopilotStreamedResponse(StreamedResponse):
 # ---------------------------------------------------------------------------
 # CopilotModel
 # ---------------------------------------------------------------------------
+
 
 class CopilotModel(Model):
     """PydanticAI Model backed by GitHub Copilot SDK.
@@ -380,7 +395,7 @@ class CopilotModel(Model):
         # supports_json_schema_output=True so this fallback is never consulted.
         self._profile = profile or ModelProfile(
             supports_json_schema_output=False,
-            default_structured_output_mode='tool',
+            default_structured_output_mode="tool",
         )
         self._model_id = model_id
         self._reasoning_effort = reasoning_effort
@@ -447,7 +462,10 @@ class CopilotModel(Model):
         return exc
 
     def _raise_empty_session(
-        self, message: str, *, raw: str | None = None,
+        self,
+        message: str,
+        *,
+        raw: str | None = None,
     ) -> NoReturn:
         """Raise an `EmptyCopilotSessionError` populated with this
         adapter's provider/model context, and emit the canonical
@@ -476,7 +494,8 @@ class CopilotModel(Model):
         # reads the messages — the prompted output schema is appended to
         # the instructions field by PydanticAI's base prepare_request.
         model_settings, model_request_parameters = self.prepare_request(
-            model_settings, model_request_parameters,
+            model_settings,
+            model_request_parameters,
         )
 
         await self._ensure_client()
@@ -569,7 +588,9 @@ class CopilotModel(Model):
         if has_tools:
             self._tool_bridge = _ToolBridge()
             copilot_tools = _make_copilot_tools(
-                all_tools, output_tool_names, self._tool_bridge,
+                all_tools,
+                output_tool_names,
+                self._tool_bridge,
             )
         else:
             self._tool_bridge = None
@@ -677,7 +698,9 @@ class CopilotModel(Model):
                 getattr(data, "message", None)
                 or getattr(data, "error", None)
                 or getattr(data, "content", None)
-                or str(data) if data is not None else None
+                or str(data)
+                if data is not None
+                else None
             )
             if err_text:
                 self._session_error_text = str(err_text)
@@ -714,9 +737,7 @@ class CopilotModel(Model):
             # a tool call, an assistant message, or an idle/error signal.
             # That's an infrastructure timeout, not a logical failure.
             await self._cleanup_session()
-            self._raise_empty_session(
-                "Copilot session timed out at 300s without events"
-            )
+            self._raise_empty_session("Copilot session timed out at 300s without events")
 
         if tool_task in done:
             # Tool call — return to PydanticAI for execution
@@ -734,14 +755,16 @@ class CopilotModel(Model):
             )
 
             return ModelResponse(
-                parts=[ToolCallPart(
-                    tool_name=invocation.tool_name,
-                    args=args,
-                    tool_call_id=invocation.tool_call_id,
-                )],
+                parts=[
+                    ToolCallPart(
+                        tool_name=invocation.tool_name,
+                        args=args,
+                        tool_call_id=invocation.tool_call_id,
+                    )
+                ],
                 usage=RequestUsage(),
                 model_name=self._model_id,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=utc_now(),
             )
 
         # Session idle — classify what kind of "no response" this is.
@@ -786,6 +809,7 @@ class CopilotModel(Model):
             if self._active_session:
                 try:
                     import asyncio
+
                     msgs = asyncio.get_event_loop().run_until_complete(
                         self._active_session.get_messages()
                     )
@@ -829,7 +853,7 @@ class CopilotModel(Model):
             parts=[TextPart(content=text)],
             usage=usage,
             model_name=self._model_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=utc_now(),
         )
 
     async def _cleanup_session(self) -> None:
@@ -847,5 +871,5 @@ class CopilotModel(Model):
             parts=[TextPart(content="")],
             usage=RequestUsage(),
             model_name=self._model_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=utc_now(),
         )

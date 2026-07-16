@@ -9,12 +9,9 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from pydantic_ai import UserError
 from sqlalchemy.exc import SQLAlchemyError
 
 from modules.backend.agents.mission_control.cost import compute_cost_usd, estimate_cost
-from modules.backend.core.exceptions import ApplicationError, BudgetExceededError
-from modules.backend.agents.mission_control.mission_dispatch import handle_mission  # noqa: F401
 from modules.backend.agents.mission_control.helpers import (
     _build_agent_deps,
     _build_model,
@@ -24,17 +21,21 @@ from modules.backend.agents.mission_control.helpers import (
     _publish,
     _resolve_agent,
     assemble_instructions,
-    build_model_settings,
     build_deps_from_config,
+    build_model_settings,
 )
-from modules.backend.agents.mission_control.history import (
-    session_messages_to_model_history,
-)
+from modules.backend.agents.mission_control.history import session_messages_to_model_history
 from modules.backend.agents.mission_control.middleware import check_guardrails
-from modules.backend.agents.mission_control.models import CollectResult, EventBusProtocol, NoOpEventBus
-from modules.backend.core.protocols import SessionServiceProtocol
+from modules.backend.agents.mission_control.mission_dispatch import handle_mission  # noqa: F401
+from modules.backend.agents.mission_control.models import (
+    CollectResult,
+    EventBusProtocol,
+    NoOpEventBus,
+)
 from modules.backend.agents.mission_control.registry import get_registry
+from modules.backend.core.exceptions import ApplicationError, BudgetExceededError
 from modules.backend.core.logging import get_logger
+from modules.backend.core.protocols import SessionServiceProtocol
 from modules.backend.events.types import (
     AgentResponseChunkEvent,
     AgentResponseCompleteEvent,
@@ -218,8 +219,10 @@ async def handle(
         engine = getattr(agent_config, "engine", "pydantic_ai")
         if engine != "pydantic_ai":
             from modules.backend.agents.mission_control.chat_cli_handler import handle_cli_chat
+
             async for event in handle_cli_chat(
-                session_id, message,
+                session_id,
+                message,
                 agent_name=agent_name,
                 agent_config=agent_config,
                 mission_id=mission_id,
@@ -260,7 +263,14 @@ async def handle(
         registry = get_registry()
         model = _build_model(agent_config.model)
         agent = registry.get_instance(agent_name, model)
-        deps = _build_agent_deps(agent_name, agent_config, session_id, mission_id=mission_id, db_session=db_session, event_bus=event_bus)
+        deps = _build_agent_deps(
+            agent_name,
+            agent_config,
+            session_id,
+            mission_id=mission_id,
+            db_session=db_session,
+            event_bus=event_bus,
+        )
         limits = _get_usage_limits(agent_name)
 
         # Build model settings (enables thinking when agent config supports it)
@@ -268,7 +278,9 @@ async def handle(
 
         # Load conversation history (agent-filtered for shared sessions)
         history_messages, _ = await session_service.get_messages(
-            session_id, limit=100, sender_ids=[agent_name],
+            session_id,
+            limit=100,
+            sender_ids=[agent_name],
         )
         model_history = session_messages_to_model_history(history_messages)
 
@@ -284,12 +296,13 @@ async def handle(
         # Mission Director) complete the full tool→LLM→response
         # cycle. run_stream stops at the first text output.
         import asyncio as _asyncio
+
         from pydantic_ai.messages import (
+            FunctionToolCallEvent,
+            FunctionToolResultEvent,
             PartDeltaEvent,
             PartStartEvent,
             TextPart,
-            FunctionToolCallEvent,
-            FunctionToolResultEvent,
             TextPartDelta,
             ThinkingPartDelta,
         )
@@ -308,7 +321,8 @@ async def handle(
         _FLUSH_INTERVAL = 500  # flush every 500 chars
         try:
             streaming_msg_id = await session_service.create_streaming_message(
-                session_id, sender_id=agent_name,
+                session_id,
+                sender_id=agent_name,
             )
         except Exception:
             logger.debug("Failed to create streaming message placeholder", exc_info=True)
@@ -399,13 +413,11 @@ async def handle(
             if isinstance(event, AgentResponseChunkEvent) and not event.metadata.get("thinking"):
                 full_content += event.content
                 # Incremental flush — persist every _FLUSH_INTERVAL chars
-                if (
-                    streaming_msg_id
-                    and len(full_content) - _last_flush_len >= _FLUSH_INTERVAL
-                ):
+                if streaming_msg_id and len(full_content) - _last_flush_len >= _FLUSH_INTERVAL:
                     try:
                         await session_service.update_streaming_content(
-                            streaming_msg_id, full_content,
+                            streaming_msg_id,
+                            full_content,
                         )
                         _last_flush_len = len(full_content)
                     except Exception:
@@ -418,17 +430,27 @@ async def handle(
 
         # Trace — log full message history at DEBUG level
         from modules.backend.core.agent_trace import trace_and_emit
+
         await trace_and_emit(
-            agent_name, result,
-            mission_id=mission_id, session_id=str(sid),
-            model=model_str, event_bus=event_bus,
+            agent_name,
+            result,
+            mission_id=mission_id,
+            session_id=str(sid),
+            model=model_str,
+            event_bus=event_bus,
         )
 
         usage = result.usage()
-        from modules.backend.agents.mission_control.helpers.cost_recorder import extract_usage, record_llm_call
+        from modules.backend.agents.mission_control.helpers.cost_recorder import (
+            extract_usage,
+            record_llm_call,
+        )
+
         fields = extract_usage(usage)
         cost_usd = compute_cost_usd(
-            fields["input_tokens"], fields["output_tokens"], model_str,
+            fields["input_tokens"],
+            fields["output_tokens"],
+            model_str,
             cache_read_tokens=fields["cache_read_tokens"],
             cache_write_1h_tokens=fields["cache_write_tokens"],
             thinking_tokens=fields["thinking_tokens"],
@@ -437,15 +459,21 @@ async def handle(
         # Record to llm_calls table (Plan 60 §0.7)
         try:
             await record_llm_call(
-                session_id=str(sid), mission_id=mission_id,
-                agent_name=agent_name, agent_role=agent_config.agent_type,
-                model=model_str, usage=usage, cost_usd=cost_usd,
+                session_id=str(sid),
+                mission_id=mission_id,
+                agent_name=agent_name,
+                agent_role=agent_config.agent_type,
+                model=model_str,
+                usage=usage,
+                cost_usd=cost_usd,
                 tool_count=len(agent_config.tools),
             )
         except Exception:
             logger.warning(
                 "Failed to record LLM call for %s — cost data will be missing",
-                agent_name, exc_info=True,
+                agent_name,
+                exc_info=True,
+                extra={"mission_id": mission_id},
             )
 
         # Chunks are authoritative — they capture all text across all
@@ -489,13 +517,17 @@ async def handle(
                 cost_usd=cost_usd,
             )
         except (SQLAlchemyError, ApplicationError):
-            logger.warning("Failed to update session cost", extra={"mission_id": mission_id}, exc_info=True)
+            logger.warning(
+                "Failed to update session cost", extra={"mission_id": mission_id}, exc_info=True
+            )
 
         # 10. Yield cost update event
         updated_session = await session_service.get_session(session_id)
         budget_remaining = None
         if updated_session.cost_budget_usd is not None:
-            budget_remaining = max(0.0, updated_session.cost_budget_usd - updated_session.total_cost_usd)
+            budget_remaining = max(
+                0.0, updated_session.cost_budget_usd - updated_session.total_cost_usd
+            )
 
         cost_event = CostUpdateEvent(
             session_id=sid,
@@ -532,20 +564,27 @@ async def handle(
                     thinking="\n\n".join(thinking_parts) if thinking_parts else None,
                 )
             except Exception:
-                logger.warning("Failed to finalize streaming message", extra={"mission_id": mission_id}, exc_info=True)
+                logger.warning(
+                    "Failed to finalize streaming message",
+                    extra={"mission_id": mission_id},
+                    exc_info=True,
+                )
         else:
             await _persist_messages(
-                session_service, session_id,
-                [SessionMessageCreate(
-                    role="assistant",
-                    content=full_content,
-                    sender_id=agent_name,
-                    model=model_str,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost_usd=cost_usd,
-                    thinking="\n\n".join(thinking_parts) if thinking_parts else None,
-                )],
+                session_service,
+                session_id,
+                [
+                    SessionMessageCreate(
+                        role="assistant",
+                        content=full_content,
+                        sender_id=agent_name,
+                        model=model_str,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cost_usd=cost_usd,
+                        thinking="\n\n".join(thinking_parts) if thinking_parts else None,
+                    )
+                ],
             )
 
         # 11b. Persist artifact + emit SSE event (Plan 43 chat path)
@@ -581,6 +620,7 @@ async def handle(
             if db_session is not None:
                 try:
                     from modules.backend.services.mission_artifact import MissionArtifactService
+
                     artifact_svc = MissionArtifactService(db_session)
                     await artifact_svc.create_artifact(
                         mission_id=mission_id,
@@ -602,6 +642,7 @@ async def handle(
         # 13. Session memory compression (Plan 57 Phase C)
         try:
             from modules.backend.services.session_memory import SessionMemoryService
+
             mem_svc = SessionMemoryService(session_service._session)
             await mem_svc.compress_if_needed(session_id)
         except Exception:
@@ -610,7 +651,12 @@ async def handle(
     except Exception as exc:
         logger.error(
             "Agent execution error",
-            extra={"session_id": session_id, "agent_id": agent_name, "error": str(exc), "mission_id": mission_id},
+            extra={
+                "session_id": session_id,
+                "agent_id": agent_name,
+                "error": str(exc),
+                "mission_id": mission_id,
+            },
             exc_info=True,
         )
         # Yield error event so the stream terminates cleanly
@@ -642,21 +688,28 @@ async def handle(
         # Emit system error event to mission channel
         if mission_id:
             from modules.backend.events.types import SystemEvent
-            await _publish(event_bus, SystemEvent(
-                session_id=sid,
-                source=agent_name,
-                level="error",
-                message=f"Agent error: {str(exc)[:200]}",
-                mission_id=mission_id,
-            ))
-            try:
-                await event_bus.publish_to_mission(mission_id, SystemEvent(
+
+            await _publish(
+                event_bus,
+                SystemEvent(
                     session_id=sid,
                     source=agent_name,
                     level="error",
                     message=f"Agent error: {str(exc)[:200]}",
                     mission_id=mission_id,
-                ))
+                ),
+            )
+            try:
+                await event_bus.publish_to_mission(
+                    mission_id,
+                    SystemEvent(
+                        session_id=sid,
+                        source=agent_name,
+                        level="error",
+                        message=f"Agent error: {str(exc)[:200]}",
+                        mission_id=mission_id,
+                    ),
+                )
             except Exception:
                 logger.debug("error event publish failed (best-effort)", exc_info=True)
 

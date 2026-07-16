@@ -39,8 +39,7 @@ def run_workflow_cli(
     if not handler:
         click.echo(
             click.style(
-                f"Unknown workflow action: {action}. "
-                f"Valid: {', '.join(actions.keys())}",
+                f"Unknown workflow action: {action}. " f"Valid: {', '.join(actions.keys())}",
                 fg="red",
             ),
             err=True,
@@ -48,15 +47,17 @@ def run_workflow_cli(
         sys.exit(1)
 
     try:
-        asyncio.run(handler(
-            cli_logger,
-            workflow_name=workflow_name,
-            run_id=run_id,
-            triggered_by=triggered_by,
-            output_format=output_format,
-            mission_name=mission_name,
-            gate=gate,
-        ))
+        asyncio.run(
+            handler(
+                cli_logger,
+                workflow_name=workflow_name,
+                run_id=run_id,
+                triggered_by=triggered_by,
+                output_format=output_format,
+                mission_name=mission_name,
+                gate=gate,
+            )
+        )
     except (OSError, RuntimeError, ValueError) as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
         cli_logger.error(
@@ -73,8 +74,8 @@ def run_workflow_cli(
 
 async def _action_list(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
     """List available workflows."""
-    from modules.clients.cli.report import get_console, build_table
     from modules.backend.services.workflow import WorkflowService
+    from modules.clients.cli.report import build_table, get_console
 
     service = WorkflowService()
     workflows = service.list_workflows(enabled_only=False)
@@ -84,14 +85,17 @@ async def _action_list(cli_logger, *, workflow_name, run_id, triggered_by, outpu
         return
 
     console = get_console()
-    table = build_table(f"Workflows ({len(workflows)} available)", columns=[
-        ("Name",        {"style": "cyan", "width": 36}),
-        ("Ver",         {"justify": "right", "width": 4}),
-        ("Enabled",     {"width": 8}),
-        ("Budget",      {"justify": "right", "width": 8}),
-        ("Steps",       {"justify": "right", "width": 6}),
-        ("Description", {"ratio": 1}),
-    ])
+    table = build_table(
+        f"Workflows ({len(workflows)} available)",
+        columns=[
+            ("Name", {"style": "cyan", "width": 36}),
+            ("Ver", {"justify": "right", "width": 4}),
+            ("Enabled", {"width": 8}),
+            ("Budget", {"justify": "right", "width": 8}),
+            ("Steps", {"justify": "right", "width": 6}),
+            ("Description", {"ratio": 1}),
+        ],
+    )
 
     for w in workflows:
         enabled = "[green]yes[/green]" if w.enabled else "[red]no[/red]"
@@ -113,8 +117,8 @@ async def _action_detail(cli_logger, *, workflow_name, run_id, triggered_by, out
         click.echo(click.style("Error: workflow name is required for detail.", fg="red"), err=True)
         sys.exit(1)
 
-    from modules.clients.cli.report import get_console, build_table, primary_panel, info_panel
     from modules.backend.services.workflow import WorkflowService
+    from modules.clients.cli.report import build_table, get_console, info_panel, primary_panel
 
     service = WorkflowService()
     workflow = service.get_workflow(workflow_name)
@@ -150,14 +154,18 @@ async def _action_detail(cli_logger, *, workflow_name, run_id, triggered_by, out
         ctx_lines = [f"[bold]{k}:[/bold] {v}" for k, v in workflow.context.items()]
         console.print(info_panel(content="\n".join(ctx_lines), title="Context"))
 
-    table = build_table("Steps", columns=[
-        ("ID",          {"style": "cyan", "width": 20}),
-        ("Capability",  {"width": 28}),
-        ("Budget",      {"justify": "right", "width": 8}),
-        ("Env",         {"width": 10}),
-        ("Depends On",  {"style": "dim", "width": 20}),
-        ("Description", {"ratio": 1}),
-    ], show_lines=True)
+    table = build_table(
+        "Steps",
+        columns=[
+            ("ID", {"style": "cyan", "width": 20}),
+            ("Capability", {"width": 28}),
+            ("Budget", {"justify": "right", "width": 8}),
+            ("Env", {"width": 10}),
+            ("Depends On", {"style": "dim", "width": 20}),
+            ("Description", {"ratio": 1}),
+        ],
+        show_lines=True,
+    )
 
     for step in workflow.steps:
         ceiling = f"${step.cost_ceiling_usd:.2f}" if step.cost_ceiling_usd else "default"
@@ -174,7 +182,18 @@ async def _action_detail(cli_logger, *, workflow_name, run_id, triggered_by, out
     console.print(table)
 
 
-async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output_format, mission_name=None, gate=None, context_overrides=None, **_):
+async def _action_run(
+    cli_logger,
+    *,
+    workflow_name,
+    run_id,
+    triggered_by,
+    output_format,
+    mission_name=None,
+    gate=None,
+    context_overrides=None,
+    **_,
+):
     """Execute a workflow."""
     if not workflow_name:
         click.echo(click.style("Error: --workflow-name is required for run.", fg="red"), err=True)
@@ -182,9 +201,9 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
 
     await _preflight_gate(workflow_name)
 
+    from modules.backend.services.workflow_run import WorkflowRunService
     from modules.clients.cli.live_display import LiveExecutionDisplay
     from modules.clients.cli.report import get_console, render_workflow_completion
-    from modules.backend.services.workflow_run import WorkflowRunService
 
     console = get_console()
     console.print(f"[bold]Running workflow:[/bold] {workflow_name}\n")
@@ -196,8 +215,8 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
     # Resolve mission name → ID
     mission_id = None
     if mission_name:
-        from modules.backend.services.mission import MissionService
         from modules.backend.core.database import get_async_session
+        from modules.backend.services.mission import MissionService
 
         async with get_async_session() as db:
             mission_svc = MissionService(db)
@@ -216,25 +235,16 @@ async def _action_run(cli_logger, *, workflow_name, run_id, triggered_by, output
                 gate=gate,
             )
 
-    from modules.backend.core.database import get_async_session
-    from modules.backend.models.execution_record import ExecutionRecord
-    from sqlalchemy import select
-
-    async with get_async_session() as db:
-        result = await db.execute(
-            select(ExecutionRecord)
-            .where(ExecutionRecord.workflow_run_id == run.id)
-            .order_by(ExecutionRecord.created_at)
-        )
-        step_records = list(result.scalars().all())
+    async with WorkflowRunService.factory() as run_service:
+        step_records = await run_service.get_run_executions(run.id)
 
     await render_workflow_completion(console, run, step_records)
 
 
 async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
     """List workflow runs."""
-    from modules.clients.cli.report import get_console, build_table, styled_status, DOTTED_ROWS
     from modules.backend.services.workflow_run import WorkflowRunService
+    from modules.clients.cli.report import DOTTED_ROWS, build_table, get_console, styled_status
 
     async with WorkflowRunService.factory() as run_service:
         runs, total = await run_service.list_runs(
@@ -247,15 +257,20 @@ async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, outpu
         return
 
     console = get_console()
-    table = build_table(f"Workflow Runs ({total} total)", columns=[
-        ("Date/Time", {"style": "dim", "width": 16}),
-        ("ID",        {"style": "cyan", "width": 36}),
-        ("Workflow",  {"width": 24}),
-        ("Status",    {"width": 10}),
-        ("Cost",      {"justify": "right", "width": 8}),
-        ("Trigger",   {"style": "dim", "width": 10}),
-        ("Summary",   {"ratio": 1}),
-    ], show_lines=True, table_box=DOTTED_ROWS)
+    table = build_table(
+        f"Workflow Runs ({total} total)",
+        columns=[
+            ("Date/Time", {"style": "dim", "width": 16}),
+            ("ID", {"style": "cyan", "width": 36}),
+            ("Workflow", {"width": 24}),
+            ("Status", {"width": 10}),
+            ("Cost", {"justify": "right", "width": 8}),
+            ("Trigger", {"style": "dim", "width": 10}),
+            ("Summary", {"ratio": 1}),
+        ],
+        show_lines=True,
+        table_box=DOTTED_ROWS,
+    )
 
     for r in runs:
         dt_str = r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—"
@@ -274,7 +289,9 @@ async def _action_runs(cli_logger, *, workflow_name, run_id, triggered_by, outpu
     console.print(table)
 
 
-async def _action_run_detail(cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_):
+async def _action_run_detail(
+    cli_logger, *, workflow_name, run_id, triggered_by, output_format, **_
+):
     """Show workflow run detail with missions — uses the report renderer."""
     if not run_id:
         click.echo(click.style("Error: --run-id is required for run-detail.", fg="red"), err=True)
@@ -282,6 +299,7 @@ async def _action_run_detail(cli_logger, *, workflow_name, run_id, triggered_by,
 
     run, executions = await _load_run_with_executions(run_id)
     from modules.clients.cli.report import render_workflow_run
+
     await render_workflow_run(run, executions, "human")
 
 
@@ -293,6 +311,7 @@ async def _action_report(cli_logger, *, workflow_name, run_id, triggered_by, out
 
     run, executions = await _load_run_with_executions(run_id)
     from modules.clients.cli.report import render_workflow_run
+
     await render_workflow_run(run, executions, output_format)
 
 
@@ -322,17 +341,22 @@ async def _preflight_gate(workflow_name: str) -> None:
             click.echo(click.style(f"  All models OK (roster: {roster_name})", fg="green"))
         else:
             for check in result.failed:
-                label = "insufficient credits" if check.error_type == "insufficient_credits" else check.error
+                label = (
+                    "insufficient credits"
+                    if check.error_type == "insufficient_credits"
+                    else check.error
+                )
                 click.echo(click.style(f"  ✗ {check.model_name}: {label}", fg="red"))
             click.echo()
-            click.echo(click.style("Aborting — fix credit issues before running.", fg="red"), err=True)
+            click.echo(
+                click.style("Aborting — fix credit issues before running.", fg="red"), err=True
+            )
             sys.exit(1)
     click.echo()
 
 
 async def _load_run_with_executions(run_id: str):
-    """Load a workflow run and its step execution records from the database."""
-    from modules.backend.core.database import get_async_session
+    """Load a workflow run and its step execution records via the run service."""
     from modules.backend.services.workflow_run import WorkflowRunService
 
     async with WorkflowRunService.factory() as run_service:
@@ -340,16 +364,6 @@ async def _load_run_with_executions(run_id: str):
         if not run:
             click.echo(click.style(f"Workflow run '{run_id}' not found.", fg="red"), err=True)
             sys.exit(1)
-
-    from modules.backend.models.execution_record import ExecutionRecord
-    from sqlalchemy import select
-
-    async with get_async_session() as db:
-        result = await db.execute(
-            select(ExecutionRecord)
-            .where(ExecutionRecord.workflow_run_id == run.id)
-            .order_by(ExecutionRecord.created_at)
-        )
-        step_records = list(result.scalars().all())
+        step_records = await run_service.get_run_executions(run.id)
 
     return run, step_records

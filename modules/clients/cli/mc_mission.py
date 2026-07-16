@@ -61,12 +61,16 @@ async def list_missions(api: CliApiClient) -> None:
         console.print("[dim]No missions found.[/dim]")
         return
 
-    table = build_table("Missions", columns=[
-        ("Status", {"width": 10}),
-        ("Name", {"style": "cyan", "width": 28}),
-        ("ID", {"width": 38}),
-        ("Description", {"ratio": 1}),
-    ], show_lines=True)
+    table = build_table(
+        "Missions",
+        columns=[
+            ("Status", {"width": 10}),
+            ("Name", {"style": "cyan", "width": 28}),
+            ("ID", {"width": 38}),
+            ("Description", {"ratio": 1}),
+        ],
+        show_lines=True,
+    )
 
     for m in missions:
         name = m["name"]
@@ -84,9 +88,7 @@ async def list_missions(api: CliApiClient) -> None:
                 f"\n\U0001f449 Current mission: [bold]{current['name']}[/bold] ({current['id']})"
             )
     else:
-        console.print(
-            "\n[dim]No current mission set. Use 'mc mission use --name <name>'.[/dim]"
-        )
+        console.print("\n[dim]No current mission set. Use 'mc mission use --name <name>'.[/dim]")
 
 
 async def use(api: CliApiClient, name_or_id: str) -> None:
@@ -102,9 +104,7 @@ async def use(api: CliApiClient, name_or_id: str) -> None:
         "/auth/me/current-mission",
         body={"mission_id": mission["id"]},
     )
-    console.print(
-        f"\U0001f449 Current mission: [bold]{mission['name']}[/bold] ({mission['id']})"
-    )
+    console.print(f"\U0001f449 Current mission: [bold]{mission['name']}[/bold] ({mission['id']})")
 
 
 async def info(api: CliApiClient, mission_id: str) -> None:
@@ -150,9 +150,7 @@ async def archive(api: CliApiClient, mission_id: str) -> None:
         f"/missions/{mission_id}",
         body={"status": "archived"},
     )
-    console.print(
-        f"[yellow]Archived:[/yellow] {mission.get('name', mission_id)}"
-    )
+    console.print(f"[yellow]Archived:[/yellow] {mission.get('name', mission_id)}")
 
 
 async def unarchive(api: CliApiClient, name_or_id: str) -> None:
@@ -210,14 +208,16 @@ async def list_artifacts(api: CliApiClient, mission_id: str) -> None:
         console.print("[dim]No artifacts found.[/dim]")
         return
 
-    from rich.table import Table
-
-    table = Table(title=f"Artifacts ({len(artifacts)})")
-    table.add_column("#", style="dim", width=4)
-    table.add_column("Type", width=10)
-    table.add_column("Agent", width=30)
-    table.add_column("Title", width=50)
-    table.add_column("Created", width=16)
+    table = build_table(
+        f"Artifacts ({len(artifacts)})",
+        columns=[
+            ("#", {"style": "dim", "width": 4}),
+            ("Type", {"width": 10}),
+            ("Agent", {"width": 30}),
+            ("Title", {"width": 50}),
+            ("Created", {"width": 16}),
+        ],
+    )
 
     for i, a in enumerate(artifacts, 1):
         table.add_row(
@@ -258,6 +258,7 @@ async def show_artifact(api: CliApiClient, mission_id: str, num: int) -> None:
     if content:
         if a.get("content_type") == "markdown":
             from rich.markdown import Markdown
+
             console.print(Markdown(content))
         else:
             console.print(content)
@@ -275,7 +276,8 @@ async def list_reports(api: CliApiClient, mission_id: str) -> None:
     execs = await api.get("/executions", params={"limit": 50})
     all_records = execs.get("executions", [])
     completed = [
-        r for r in all_records
+        r
+        for r in all_records
         if r.get("status") == "completed" and r.get("mission_id") == mission_id
     ]
 
@@ -283,13 +285,15 @@ async def list_reports(api: CliApiClient, mission_id: str) -> None:
         console.print("[dim]No completed runs found.[/dim]")
         return
 
-    from rich.table import Table
-
-    table = Table(title=f"Reports ({len(completed)} completed runs)")
-    table.add_column("#", style="dim", width=4)
-    table.add_column("When", width=16)
-    table.add_column("Cost", width=10)
-    table.add_column("Objective", width=70)
+    table = build_table(
+        f"Reports ({len(completed)} completed runs)",
+        columns=[
+            ("#", {"style": "dim", "width": 4}),
+            ("When", {"width": 16}),
+            ("Cost", {"width": 10}),
+            ("Objective", {"width": 70}),
+        ],
+    )
 
     for i, r in enumerate(completed, 1):
         table.add_row(
@@ -311,7 +315,8 @@ async def show_report(api: CliApiClient, mission_id: str, run: int | None) -> No
     execs = await api.get("/executions", params={"limit": 50})
     all_records = execs.get("executions", [])
     completed = [
-        r for r in all_records
+        r
+        for r in all_records
         if r.get("status") == "completed" and r.get("mission_id") == mission_id
     ]
 
@@ -361,6 +366,7 @@ async def show_report(api: CliApiClient, mission_id: str, run: int | None) -> No
 
         if report_md:
             from rich.markdown import Markdown
+
             console.print(Markdown(report_md))
         elif sections:
             for sec in sections:
@@ -413,13 +419,16 @@ async def context_history(api: CliApiClient, mission_id: str) -> None:
 
     changes = extract_list(data, "changes") or extract_list(data, "items")
 
-    table = build_table("MCD Changes", columns=[
-        ("Version", {"width": 8}),
-        ("Type", {"width": 10}),
-        ("Path", {"style": "cyan", "width": 40}),
-        ("Agent", {"width": 25}),
-        ("Reason", {"ratio": 1}),
-    ])
+    table = build_table(
+        "MCD Changes",
+        columns=[
+            ("Version", {"width": 8}),
+            ("Type", {"width": 10}),
+            ("Path", {"style": "cyan", "width": 40}),
+            ("Agent", {"width": 25}),
+            ("Reason", {"ratio": 1}),
+        ],
+    )
 
     for c in changes:
         table.add_row(

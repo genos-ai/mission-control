@@ -20,14 +20,17 @@ from collections.abc import AsyncGenerator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, Callable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
+from modules.backend.models.base import SYSTEM_CLI_ID
+from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
 from modules.backend.schemas.workflow import WorkflowParameterSchema, WorkflowSchema
-from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.backend.services.base import BaseService
 from modules.backend.services.workflow import WorkflowService
 from modules.backend.services.workflow_run_waves import StepContext, WorkflowRunWavesMixin
@@ -50,9 +53,7 @@ def validate_workflow_parameters(
 
         # Required check
         if param.required and value is None and param.default is None:
-            errors.append(
-                f"'{param.label}' ({param.key}) is required"
-            )
+            errors.append(f"'{param.label}' ({param.key}) is required")
             continue
 
         # Skip further validation if no value provided (will use default)
@@ -65,9 +66,7 @@ def validate_workflow_parameters(
         elif param.type == "boolean" and not isinstance(value, bool):
             errors.append(f"'{param.label}' must be a boolean")
         elif param.type == "enum" and param.options and value not in param.options:
-            errors.append(
-                f"'{param.label}' must be one of: {', '.join(param.options)}"
-            )
+            errors.append(f"'{param.label}' must be one of: {', '.join(param.options)}")
         elif param.type in ("string", "text") and not isinstance(value, str):
             errors.append(f"'{param.label}' must be a string")
 
@@ -79,6 +78,7 @@ def validate_workflow_parameters(
                 errors.append(f"'{param.label}' must be <= {param.max}")
 
     return errors
+
 
 logger = get_logger(__name__)
 
@@ -143,8 +143,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
 
         if not mission_id:
             raise ValueError(
-                "mission_id is required. Use --mission <name> to specify "
-                "the target mission."
+                "mission_id is required. Use --mission <name> to specify " "the target mission."
             )
 
         defn_svc = WorkflowDefinitionService(self._session)
@@ -187,17 +186,13 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         Loads the WorkflowDefinition, converts it to a WorkflowSchema,
         and runs it through the same execution pipeline as YAML workflows.
         """
-        from modules.backend.repositories.workflow_definition import (
-            WorkflowDefinitionRepository,
-        )
+        from modules.backend.repositories.workflow_definition import WorkflowDefinitionRepository
 
         defn_repo = WorkflowDefinitionRepository(self._session)
         defn = await defn_repo.get_by_id(workflow_definition_id)
 
         if not defn.enabled:
-            raise ValueError(
-                f"Workflow definition '{defn.name}' is disabled"
-            )
+            raise ValueError(f"Workflow definition '{defn.name}' is disabled")
 
         workflow = self._definition_to_schema(defn)
         effective_budget = budget_usd or workflow.budget.max_cost_usd
@@ -210,14 +205,15 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
 
         # Validate required parameters are provided
         param_errors = validate_workflow_parameters(
-            workflow.parameters, context_overrides or {},
+            workflow.parameters,
+            context_overrides or {},
         )
         if param_errors:
             msg = f"Missing required parameters: {'; '.join(param_errors)}"
             raise ValueError(msg)
 
-        from modules.backend.services.session import SessionService
         from modules.backend.schemas.session import SessionCreate
+        from modules.backend.services.session import SessionService
 
         session_service = SessionService(self._session)
         session = await session_service.create_session(
@@ -244,7 +240,8 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             roster_name=f"workflow:{defn.name}",
             objective_statement=defn.description[:500] if defn.description else defn.name,
             objective_category=defn.objective.get("category") if defn.objective else None,
-            status=ExecutionRecordStatus.FAILED,  # safe default if process crashes; updated on completion
+            # Safe default if the process crashes; updated on completion.
+            status=ExecutionRecordStatus.FAILED,
             total_cost_usd=0.0,
             started_at=now,
         )
@@ -292,23 +289,32 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
 
         try:
             await self._execute_steps(
-                run, workflow, session.id, on_progress, gate=gate,
+                run,
+                workflow,
+                session.id,
+                on_progress,
+                gate=gate,
                 edges=defn.edges_json if hasattr(defn, "edges_json") else None,
                 step_task_map=step_task_map,
             )
             run.status = WorkflowRunState.COMPLETED
             run.completed_at = utc_now()
             run.result_summary = (
-                f"Workflow completed: {len(workflow.steps)} steps, "
-                f"${run.total_cost_usd:.4f}"
+                f"Workflow completed: {len(workflow.steps)} steps, " f"${run.total_cost_usd:.4f}"
             )
             exec_record.status = ExecutionRecordStatus.COMPLETED
             # Publish completion event to SSE stream
             if self._event_bus and mission_id:
                 try:
                     import uuid as _uuid
+
                     from modules.backend.events.types import WorkflowRunCompletedEvent
-                    elapsed = (run.completed_at - run.started_at).total_seconds() if run.completed_at and run.started_at else None
+
+                    elapsed = (
+                        (run.completed_at - run.started_at).total_seconds()
+                        if run.completed_at and run.started_at
+                        else None
+                    )
                     await self._event_bus.publish_to_mission(
                         mission_id,
                         WorkflowRunCompletedEvent(
@@ -323,7 +329,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                         ),
                     )
                 except Exception:
-                    logger.debug("workflow run completed event publish failed (best-effort)", exc_info=True)
+                    logger.debug(
+                        "workflow run completed event publish failed (best-effort)", exc_info=True
+                    )
         except (RuntimeError, ValueError, OSError) as e:
             run.status = WorkflowRunState.FAILED
             run.completed_at = utc_now()
@@ -338,7 +346,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             if self._event_bus and mission_id:
                 try:
                     import uuid as _uuid
+
                     from modules.backend.events.types import SystemEvent, WorkflowRunFailedEvent
+
                     _sid = _uuid.UUID(session.id) if session else _uuid.uuid4()
                     await self._event_bus.publish_to_mission(
                         mission_id,
@@ -362,7 +372,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                         ),
                     )
                 except Exception:
-                    logger.debug("workflow run failed event publish failed (best-effort)", exc_info=True)
+                    logger.debug(
+                        "workflow run failed event publish failed (best-effort)", exc_info=True
+                    )
 
             # Mark remaining plan tasks as FAILED for Kanban board
             await self._fail_remaining_plan_tasks(mission_id, session.id, str(e))
@@ -441,11 +453,11 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         Empty dict on failure.
         """
         try:
+            import uuid as _uuid
+
             from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
             from modules.backend.services.mission_plan import MissionPlanService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
-
-            import uuid as _uuid
 
             # Map step IDs to UUIDs so Task rows get valid PKs
             step_uuid_map = {step.id: str(_uuid.uuid4()) for step in workflow.steps}
@@ -458,17 +470,20 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 # Must match the dispatch path in workflow_run_waves.py
                 # so retry/redispatch validates against the same name.
                 agent = (
-                    f"{step.capability}.agent" if step.capability
-                    else f"workflow:{step.node_type}"
+                    f"{step.capability}.agent" if step.capability else f"workflow:{step.node_type}"
                 )
-                tasks.append(TaskDefinition(
-                    task_id=task_id,
-                    agent=agent,
-                    description=step.description or step.label or step.id,
-                    instructions=step.description or f"Workflow step: {step.id}",
-                    dependencies=[step_uuid_map[d] for d in step.depends_on if d in step_uuid_map],
-                    inputs=TaskInputs(static=step.input or {}),
-                ))
+                tasks.append(
+                    TaskDefinition(
+                        task_id=task_id,
+                        agent=agent,
+                        description=step.description or step.label or step.id,
+                        instructions=step.description or f"Workflow step: {step.id}",
+                        dependencies=[
+                            step_uuid_map[d] for d in step.depends_on if d in step_uuid_map
+                        ],
+                        inputs=TaskInputs(static=step.input or {}),
+                    )
+                )
 
             task_plan = TaskPlan(
                 version="1.0.0",
@@ -501,12 +516,14 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             #   - autonomous: auto-approver below transitions immediately
             #   - manual / interactive / ai_assisted: operator approves
             #     via `mc plan approve <task_id>` (or TTY prompt etc.)
-            from modules.backend.models.task import TaskStatus
             from modules.backend.core.utils import utc_now
+            from modules.backend.models.task import TaskStatus
             from modules.backend.repositories.task import TaskRepository
+
             task_repo = TaskRepository(self._session)
             tasks = await task_repo.get_by_plan_id(
-                plan.id, status=TaskStatus.PROPOSED,
+                plan.id,
+                status=TaskStatus.PROPOSED,
             )
             if plan.gate_mode in ("workflow_managed", "autonomous"):
                 # Autonomous-mode auto-approver: transition immediately at
@@ -526,8 +543,11 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 logger.info(
                     "Interactive gate mode — %d tasks left PROPOSED for operator approval",
                     len(tasks),
-                    extra={"mission_id": mission_id, "plan_id": plan.id,
-                           "gate_mode": plan.gate_mode},
+                    extra={
+                        "mission_id": mission_id,
+                        "plan_id": plan.id,
+                        "gate_mode": plan.gate_mode,
+                    },
                 )
             await self._session.commit()
 
@@ -574,6 +594,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
 
                 task_repo = TaskRepository(db)
                 import uuid as _uuid
+
                 for task in await task_repo.get_by_plan_id(plan.id):
                     if task.status in (TaskStatus.RUNNING, TaskStatus.APPROVED):
                         from_status = task.status
@@ -596,7 +617,10 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                                     ),
                                 )
                             except Exception:
-                                logger.debug("task status update event publish failed (best-effort)", exc_info=True)
+                                logger.debug(
+                                    "task status update event publish failed (best-effort)",
+                                    exc_info=True,
+                                )
 
                 await db.commit()
         except Exception:
@@ -606,16 +630,130 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         self,
         workflow_name: str | None = None,
         limit: int = 20,
+        *,
+        mission_id: str | None = None,
+        status: str | None = None,
+        offset: int = 0,
     ) -> tuple[list[WorkflowRun], int]:
-        """List workflow runs."""
+        """List workflow runs with optional filters.
+
+        Args:
+            workflow_name: Filter to one workflow.
+            limit: Page size.
+            mission_id: Filter to one mission.
+            status: Case-insensitive WorkflowRunState name (e.g. "running").
+            offset: Pagination offset.
+
+        Raises:
+            ValidationError: `status` is not a valid WorkflowRunState name.
+        """
+        status_filter: WorkflowRunState | None = None
+        if status:
+            try:
+                status_filter = WorkflowRunState[status.upper()]
+            except KeyError:
+                raise ValidationError(
+                    f"Unknown workflow run status {status!r}. "
+                    f"Valid: {sorted(s.name.lower() for s in WorkflowRunState)}"
+                )
         return await self._run_repo.list_runs(
             workflow_name=workflow_name,
+            status=status_filter,
+            mission_id=mission_id,
             limit=limit,
+            offset=offset,
         )
 
     async def get_run(self, run_id: str) -> WorkflowRun | None:
         """Get a workflow run by ID."""
         return await self._run_repo.get_by_id_or_none(run_id)
+
+    async def get_run_executions(self, run_id: str) -> list:
+        """Get the step execution records for a workflow run, in creation order."""
+        from modules.backend.repositories.execution_record import ExecutionRecordRepository
+
+        exec_repo = ExecutionRecordRepository(self._session)
+        return await exec_repo.get_by_workflow_run(run_id)
+
+    async def cancel_run(
+        self,
+        run_id: str,
+        mission_id: str | None = None,
+    ) -> tuple[WorkflowRun, bool]:
+        """Mark a workflow run CANCELLED unless it is already terminal.
+
+        Args:
+            run_id: The run to cancel.
+            mission_id: When given, the run must belong to this mission.
+
+        Returns:
+            (run, changed) — `changed` is False when the run was already
+            in a terminal state (idempotent no-op). Caller commits.
+
+        Raises:
+            NotFoundError: unknown run, or run not in `mission_id`.
+        """
+        run = await self._run_repo.get_by_id(run_id)
+        if mission_id is not None and run.mission_id != mission_id:
+            raise NotFoundError(f"Workflow run {run_id} not found in mission {mission_id}")
+
+        current = run.status.value if hasattr(run.status, "value") else str(run.status)
+        terminal = {
+            WorkflowRunState.COMPLETED.value,
+            WorkflowRunState.FAILED.value,
+            WorkflowRunState.CANCELLED.value,
+        }
+        if str(current).lower() in terminal:
+            return run, False
+
+        run.status = WorkflowRunState.CANCELLED
+        run.completed_at = utc_now()
+        await self._session.flush()
+        logger.info(
+            "Workflow run cancelled",
+            extra={"run_id": run_id, "previous_status": str(current)},
+        )
+        return run, True
+
+    # ── Human input requests (Plan 45) ──────────────────────────────────
+
+    async def list_pending_human_input(self, mission_id: str) -> list[HumanInputRequest]:
+        """List a mission's PENDING human input requests, newest first."""
+        result = await self._session.execute(
+            select(HumanInputRequest)
+            .where(
+                HumanInputRequest.mission_id == mission_id,
+                HumanInputRequest.status == HumanInputRequestStatus.PENDING,
+            )
+            .order_by(HumanInputRequest.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def get_pending_human_input_request(
+        self,
+        mission_id: str,
+        input_request_id: str,
+    ) -> HumanInputRequest:
+        """Return a pending human input request scoped to the mission.
+
+        Raises:
+            NotFoundError: unknown id, or the request belongs to another
+                mission (scoping — the id alone must not let a caller
+                signal another mission's pending request).
+            ConflictError: the request is no longer pending.
+        """
+        result = await self._session.execute(
+            select(HumanInputRequest).where(HumanInputRequest.id == input_request_id)
+        )
+        req = result.scalar_one_or_none()
+        if req is None or req.mission_id != mission_id:
+            raise NotFoundError("Human input request not found")
+        if (
+            req.status != HumanInputRequestStatus.PENDING.value
+            and req.status != HumanInputRequestStatus.PENDING
+        ):
+            raise ConflictError(f"Request is not pending (status: {req.status})")
+        return req
 
     @staticmethod
     async def _notify_run_outcome(run: "WorkflowRun", step_count: int) -> None:
@@ -656,4 +794,3 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 )
         except Exception:
             logger.debug("Run notification failed", exc_info=True)
-

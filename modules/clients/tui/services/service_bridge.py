@@ -14,13 +14,12 @@ from modules.backend.agents.mission_control.gate import GateReviewer
 from modules.backend.agents.mission_control.mission_control import handle_mission
 from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
 from modules.backend.agents.mission_control.outcome import ExecutionOutcome
-from modules.backend.agents.mission_control.roster import derive_roster_from_team, Roster
+from modules.backend.agents.mission_control.roster import Roster, derive_roster_from_team
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
+from modules.backend.services.user import SYSTEM_CLI_ID as CLI_USER_ID
 
 logger = get_logger(__name__)
-
-from modules.backend.models.base import SYSTEM_CLI_ID as CLI_USER_ID
 
 
 @asynccontextmanager
@@ -187,12 +186,11 @@ class ServiceBridge:
 
         async with ExecutionPersistenceService.factory() as svc:
             records, _total = await svc.list_executions(
-                status=status, limit=limit, offset=offset,
+                status=status,
+                limit=limit,
+                offset=offset,
             )
-            return [
-                self._execution_to_dict(r)
-                for r in records
-            ]
+            return [self._execution_to_dict(r) for r in records]
 
     async def list_executions_paginated(
         self,
@@ -206,7 +204,9 @@ class ServiceBridge:
 
         async with ExecutionPersistenceService.factory() as svc:
             records, total = await svc.list_executions(
-                status=status, limit=limit, offset=offset,
+                status=status,
+                limit=limit,
+                offset=offset,
             )
             return [self._execution_to_dict(r) for r in records], total
 
@@ -225,7 +225,8 @@ class ServiceBridge:
         }
 
     async def get_execution_decisions(
-        self, execution_id: str,
+        self,
+        execution_id: str,
     ) -> list[dict[str, Any]]:
         """Wraps ExecutionPersistenceService.get_decisions()."""
         from modules.backend.services.execution_persistence import ExecutionPersistenceService
@@ -235,7 +236,11 @@ class ServiceBridge:
             return [
                 {
                     "id": str(d.id),
-                    "decision_type": d.decision_type.value if hasattr(d.decision_type, "value") else str(d.decision_type),
+                    "decision_type": (
+                        d.decision_type.value
+                        if hasattr(d.decision_type, "value")
+                        else str(d.decision_type)
+                    ),
                     "task_id": d.task_id,
                     "reasoning": d.reasoning,
                     "created_at": str(getattr(d, "created_at", "")),
@@ -274,7 +279,8 @@ class ServiceBridge:
             }
 
     async def get_execution_cost_breakdown(
-        self, execution_id: str,
+        self,
+        execution_id: str,
     ) -> dict[str, Any] | None:
         """Return cost breakdown for an execution."""
         from modules.backend.services.execution_persistence import ExecutionPersistenceService
@@ -307,7 +313,10 @@ class ServiceBridge:
             ]
 
     async def add_team_member(
-        self, mission_id: str, *, agent_name: str,
+        self,
+        mission_id: str,
+        *,
+        agent_name: str,
     ) -> dict[str, Any]:
         """Add an agent to the team by name.
 
@@ -333,7 +342,10 @@ class ServiceBridge:
             }
 
     async def remove_team_member(
-        self, mission_id: str, *, member_id: str,
+        self,
+        mission_id: str,
+        *,
+        member_id: str,
     ) -> None:
         """Wraps MissionTeamService.remove_agent(member_id)."""
         from modules.backend.services.mission_team import MissionTeamService
@@ -342,14 +354,20 @@ class ServiceBridge:
             await svc.remove_agent(member_id)
 
     async def update_team_member_prompt(
-        self, mission_id: str, *, member_id: str, user_prompt: str,
+        self,
+        mission_id: str,
+        *,
+        member_id: str,
+        user_prompt: str,
     ) -> dict[str, Any]:
         """Wraps MissionTeamService.update_user_prompt()."""
         from modules.backend.services.mission_team import MissionTeamService
 
         async with MissionTeamService.factory() as svc:
             member = await svc.update_user_prompt(
-                member_id, user_prompt, changed_by=CLI_USER_ID,
+                member_id,
+                user_prompt,
+                changed_by=CLI_USER_ID,
             )
             return {"id": str(member.id), "user_prompt": member.user_prompt}
 
@@ -407,14 +425,18 @@ class ServiceBridge:
     # ── Chat/Session operations (Plan 32 Phase T5) ──────────────────────
 
     async def create_session(
-        self, *, mission_id: str, agent_name: str,
+        self,
+        *,
+        mission_id: str,
+        agent_name: str,
     ) -> dict[str, Any]:
         """Create a new chat session."""
         from modules.backend.services.session import SessionService
 
         async with SessionService.factory() as svc:
             session = await svc.create_session(
-                mission_id=mission_id, agent_name=agent_name,
+                mission_id=mission_id,
+                agent_name=agent_name,
             )
             return {
                 "session_id": str(session.id),
@@ -422,7 +444,10 @@ class ServiceBridge:
             }
 
     async def send_message(
-        self, *, session_id: str, content: str,
+        self,
+        *,
+        session_id: str,
+        content: str,
     ) -> None:
         """Wraps SessionService.send_message(). Backend handles dispatch."""
         from modules.backend.services.session import SessionService
@@ -431,7 +456,9 @@ class ServiceBridge:
             await svc.send_message(session_id, content)
 
     async def list_sessions(
-        self, *, mission_id: str,
+        self,
+        *,
+        mission_id: str,
     ) -> list[dict[str, Any]]:
         """List chat sessions for a mission."""
         from modules.backend.services.session import SessionService
@@ -449,7 +476,9 @@ class ServiceBridge:
             ]
 
     async def get_session_messages(
-        self, *, session_id: str,
+        self,
+        *,
+        session_id: str,
     ) -> list[dict[str, Any]]:
         """Get message history for a session."""
         from modules.backend.services.session import SessionService
@@ -481,7 +510,8 @@ class ServiceBridge:
         return [svc.to_list_item(w) for w in workflows]
 
     async def get_workflow_detail(
-        self, workflow_name: str,
+        self,
+        workflow_name: str,
     ) -> dict[str, Any] | None:
         """Wraps WorkflowService.get_workflow() + to_detail().
 
@@ -496,7 +526,10 @@ class ServiceBridge:
         return svc.to_detail(workflow)
 
     async def architect_chat(
-        self, mission_id: str, *, message: str,
+        self,
+        mission_id: str,
+        *,
+        message: str,
         session_id: str | None = None,
         message_history: list | None = None,
     ) -> dict[str, Any]:
@@ -505,7 +538,8 @@ class ServiceBridge:
 
         async with WorkflowArchitectService.factory() as svc:
             return await svc.chat(
-                mission_id, message,
+                mission_id,
+                message,
                 session_id=session_id,
                 message_history=message_history,
             )
@@ -513,14 +547,18 @@ class ServiceBridge:
     # ── Workshop operations (Plan 32 Phase T6) ──────────────────────────
 
     async def get_cached_inputs(
-        self, *, agent_name: str, mission_id: str,
+        self,
+        *,
+        agent_name: str,
+        mission_id: str,
     ) -> list[dict[str, Any]]:
         """Wraps WorkshopService.get_cached_inputs()."""
         from modules.backend.services.workshop import WorkshopService
 
         async with WorkshopService.factory() as svc:
             return await svc.get_cached_inputs(
-                agent_name, mission_id=mission_id,
+                agent_name,
+                mission_id=mission_id,
             )
 
     async def run_workshop_test(
@@ -557,7 +595,8 @@ class ServiceBridge:
     # ── Context operations (Plan 32 Phase T6) ──────────────────────────
 
     async def get_mission_context(
-        self, mission_id: str,
+        self,
+        mission_id: str,
     ) -> dict[str, Any]:
         """Wraps MissionContextManager.get_context()."""
         from modules.backend.services.mission_context import MissionContextManager
@@ -566,7 +605,10 @@ class ServiceBridge:
             return await svc.get_context(mission_id)
 
     async def get_context_history(
-        self, mission_id: str, *, limit: int = 50,
+        self,
+        mission_id: str,
+        *,
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Wraps MissionContextManager.get_history()."""
         from modules.backend.services.mission_context import MissionContextManager
@@ -585,7 +627,8 @@ class ServiceBridge:
             ]
 
     async def get_context_size(
-        self, mission_id: str,
+        self,
+        mission_id: str,
     ) -> dict[str, Any]:
         """Wraps MissionContextManager.get_context_size()."""
         from modules.backend.services.mission_context import MissionContextManager
@@ -617,7 +660,9 @@ class ServiceBridge:
     # ── Admin operations (Plan 32 Phase T7) ────────────────────────────
 
     async def admin_create_agent(
-        self, *, data: dict[str, Any],
+        self,
+        *,
+        data: dict[str, Any],
     ) -> dict[str, Any]:
         """Wraps AgentCatalogService.create_entry()."""
         from modules.backend.services.agent_catalog import AgentCatalogService
@@ -630,7 +675,10 @@ class ServiceBridge:
             }
 
     async def admin_update_agent(
-        self, agent_name: str, *, data: dict[str, Any],
+        self,
+        agent_name: str,
+        *,
+        data: dict[str, Any],
     ) -> dict[str, Any]:
         """Wraps AgentCatalogService.update_entry()."""
         from modules.backend.services.agent_catalog import AgentCatalogService
@@ -672,7 +720,10 @@ class ServiceBridge:
             }
 
     async def admin_get_prompt_history(
-        self, agent_name: str, *, limit: int = 50,
+        self,
+        agent_name: str,
+        *,
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Wraps AgentCatalogService.get_prompt_history()."""
         from modules.backend.services.agent_catalog import AgentCatalogService
@@ -713,7 +764,9 @@ class ServiceBridge:
             return await svc.get_agent_utilisation()
 
     async def admin_get_activity(
-        self, *, limit: int = 10,
+        self,
+        *,
+        limit: int = 10,
     ) -> dict[str, Any]:
         """Wraps PlatformMetricsService.get_recent_activity()."""
         from modules.backend.services.platform_metrics import PlatformMetricsService
@@ -737,7 +790,10 @@ class ServiceBridge:
         }
 
     async def admin_list_users(
-        self, *, limit: int = 50, offset: int = 0,
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Wraps UserService.list_users()."""
         from modules.backend.services.user import UserService
@@ -745,7 +801,9 @@ class ServiceBridge:
         async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             users = await svc.list_users(
-                requesting_user, limit=limit, offset=offset,
+                requesting_user,
+                limit=limit,
+                offset=offset,
             )
             return [
                 {
@@ -760,7 +818,9 @@ class ServiceBridge:
             ]
 
     async def admin_create_user(
-        self, *, data: dict[str, Any],
+        self,
+        *,
+        data: dict[str, Any],
     ) -> dict[str, Any]:
         """Wraps UserService.create_user()."""
         from modules.backend.services.user import UserService
@@ -788,7 +848,10 @@ class ServiceBridge:
             await db.commit()
 
     async def admin_reset_password(
-        self, user_id: str, *, new_password: str,
+        self,
+        user_id: str,
+        *,
+        new_password: str,
     ) -> None:
         """Wraps UserService.admin_reset_password()."""
         from modules.backend.services.user import UserService
@@ -796,7 +859,9 @@ class ServiceBridge:
         async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.admin_reset_password(
-                user_id, new_password, requesting_user,
+                user_id,
+                new_password,
+                requesting_user,
             )
             await db.commit()
 
@@ -819,7 +884,9 @@ class ServiceBridge:
             }
 
     async def update_display_name(
-        self, *, display_name: str,
+        self,
+        *,
+        display_name: str,
     ) -> None:
         """Update current user's display name."""
         from modules.backend.services.user import UserService
@@ -827,13 +894,17 @@ class ServiceBridge:
         async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.update_user(
-                CLI_USER_ID, requesting_user,
+                CLI_USER_ID,
+                requesting_user,
                 display_name=display_name,
             )
             await db.commit()
 
     async def change_password(
-        self, *, current_password: str, new_password: str,
+        self,
+        *,
+        current_password: str,
+        new_password: str,
     ) -> None:
         """Change current user's password."""
         from modules.backend.services.user import UserService
@@ -841,8 +912,10 @@ class ServiceBridge:
         async with _cli_user_session() as (db, requesting_user):
             svc = UserService(db)
             await svc.change_password(
-                CLI_USER_ID, current_password,
-                new_password, requesting_user,
+                CLI_USER_ID,
+                current_password,
+                new_password,
+                requesting_user,
             )
             await db.commit()
 
@@ -865,7 +938,10 @@ class ServiceBridge:
             ]
 
     async def create_api_key(
-        self, *, name: str, expires_in_days: int | None = None,
+        self,
+        *,
+        name: str,
+        expires_in_days: int | None = None,
     ) -> dict[str, Any]:
         """Create an API key for the current user."""
         from modules.backend.services.auth import AuthService
@@ -873,7 +949,10 @@ class ServiceBridge:
         async with _cli_user_session() as (db, requesting_user):
             svc = AuthService(db)
             full_key, api_key = await svc.create_api_key(
-                CLI_USER_ID, name, expires_in_days, requesting_user,
+                CLI_USER_ID,
+                name,
+                expires_in_days,
+                requesting_user,
             )
             await db.commit()
             return {

@@ -33,7 +33,6 @@ loud when called for an unknown id so this fails visibly.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Any
 
 from modules.backend.core.logging import get_logger
@@ -182,7 +181,3 @@ class TaskApprovalCancelled(Exception):
 
 class TaskApprovalTimeout(Exception):
     """Raised when an approval doesn't arrive within the timeout window."""
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)

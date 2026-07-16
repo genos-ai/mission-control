@@ -57,12 +57,11 @@ class MissionTeamService(BaseService):
         await self._catalog_repo.get_by_id(agent_catalog_id)
 
         existing = await self._team_repo.get_by_mission_and_agent(
-            mission_id, agent_catalog_id,
+            mission_id,
+            agent_catalog_id,
         )
         if existing:
-            raise ConflictError(
-                "Agent is already on this mission's team"
-            )
+            raise ConflictError("Agent is already on this mission's team")
 
         member = await self._team_repo.create(
             mission_id=mission_id,
@@ -113,14 +112,11 @@ class MissionTeamService(BaseService):
         """Remove an agent from a mission's team by agent name."""
         members = await self.list_team(mission_id, enabled_only=False)
         match = next(
-            (m for m in members
-             if m.agent_catalog and m.agent_catalog.agent_name == agent_name),
+            (m for m in members if m.agent_catalog and m.agent_catalog.agent_name == agent_name),
             None,
         )
         if not match:
-            raise NotFoundError(
-                f"Agent '{agent_name}' not found on this mission's team"
-            )
+            raise NotFoundError(f"Agent '{agent_name}' not found on this mission's team")
         await self.remove_agent(str(match.id))
 
     async def update_user_prompt(
@@ -166,7 +162,8 @@ class MissionTeamService(BaseService):
         added: list[MissionTeamMember] = []
         for catalog_agent in all_agents:
             existing = await self._team_repo.get_by_mission_and_agent(
-                mission_id, catalog_agent.id,
+                mission_id,
+                catalog_agent.id,
             )
             if existing:
                 continue
@@ -191,7 +188,8 @@ class MissionTeamService(BaseService):
     ) -> list[MissionTeamMember]:
         """List team members for a mission."""
         return await self._team_repo.list_by_mission(
-            mission_id, enabled_only=enabled_only,
+            mission_id,
+            enabled_only=enabled_only,
         )
 
     async def list_team_with_names(
@@ -207,16 +205,15 @@ class MissionTeamService(BaseService):
         members = await self.list_team(mission_id, enabled_only=enabled_only)
         result = []
         for m in members:
-            agent_name = (
-                m.agent_catalog.agent_name
-                if m.agent_catalog else str(m.agent_catalog_id)
+            agent_name = m.agent_catalog.agent_name if m.agent_catalog else str(m.agent_catalog_id)
+            result.append(
+                {
+                    "agent_catalog_id": str(m.agent_catalog_id),
+                    "agent_name": agent_name,
+                    "enabled": m.enabled,
+                    "created_at": m.created_at,
+                }
             )
-            result.append({
-                "agent_catalog_id": str(m.agent_catalog_id),
-                "agent_name": agent_name,
-                "enabled": m.enabled,
-                "created_at": m.created_at,
-            })
         return result
 
     async def get_member(self, member_id: str) -> MissionTeamMember:
@@ -224,6 +221,32 @@ class MissionTeamService(BaseService):
         member = await self._team_repo.get_by_id_or_none(member_id)
         if not member:
             raise NotFoundError(f"Team member '{member_id}' not found")
+        return member
+
+    async def update_member_constraints(
+        self,
+        member_id: str,
+        constraints: dict,
+    ) -> MissionTeamMember:
+        """Merge `constraints` into the member's custom_constraints JSON.
+
+        Replaces outright when the existing value is None. Used by the
+        Team tab to configure per-agent settings like research_depth,
+        include_domains, etc. Caller commits.
+
+        Raises:
+            NotFoundError: unknown member_id.
+        """
+        member = await self.get_member(member_id)
+        existing = member.custom_constraints or {}
+        member.custom_constraints = {**existing, **constraints}
+        await self._session.flush()
+        await self._session.refresh(member)
+        self._log_operation(
+            "Member constraints updated",
+            member_id=member_id,
+            keys=sorted(constraints),
+        )
         return member
 
     async def toggle_enabled(
@@ -252,16 +275,18 @@ class MissionTeamService(BaseService):
             if not entry:
                 continue
             scope = entry.scope or {}
-            result.append({
-                "agent_name": entry.agent_name,
-                "description": entry.description or "",
-                "tools": list(entry.tools or []),
-                "scope": {
-                    "read": scope.get("read", []),
-                    "write": scope.get("write", []),
-                },
-                "keywords": list(entry.keywords or []),
-            })
+            result.append(
+                {
+                    "agent_name": entry.agent_name,
+                    "description": entry.description or "",
+                    "tools": list(entry.tools or []),
+                    "scope": {
+                        "read": scope.get("read", []),
+                        "write": scope.get("write", []),
+                    },
+                    "keywords": list(entry.keywords or []),
+                }
+            )
         return result
 
     async def get_prompt_history(

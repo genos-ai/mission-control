@@ -18,33 +18,28 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from modules.backend.core.config import get_app_config, get_default_budget_usd
-from modules.backend.core.logging import get_logger
-
-from modules.backend.core.dependencies import (
-    CurrentUser,
-    DbSession,
-    RequestId,
-    get_event_bus,
-)
-from modules.backend.events.bus import SessionEventBus
-
-# Plan 42 §3.5: every mutating endpoint gets an event bus so
-# MissionPlanService can publish mission_plan.* events.
-EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
+from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId, get_event_bus
 from modules.backend.core.exceptions import AuthorizationError
+from modules.backend.core.logging import get_logger
+from modules.backend.events.bus import SessionEventBus
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_plan import (
     AddPlanTaskRequest,
     DispatchApprovedResponse,
     MissionPlanRefineRequest,
     MissionPlanResponse,
+    MissionPlanStatus,
     MissionPlanUpdate,
     RunObjectiveRequest,
+    TaskStatus,
     TaskTransitionResponse,
 )
-from modules.backend.models.task import TaskStatus
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
+
+# Plan 42 §3.5: every mutating endpoint gets an event bus so
+# MissionPlanService can publish mission_plan.* events.
+EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 
 logger = get_logger(__name__)
 
@@ -55,7 +50,9 @@ router = APIRouter()
 
 
 async def _require_mission_access(
-    db, mission_id: str, current_user,
+    db,
+    mission_id: str,
+    current_user,
 ) -> None:
     """Admin, mission owner, or any mission member can access the plan.
 
@@ -134,7 +131,8 @@ async def update_plan(
         plan = await service.set_gate_mode(plan.id, data.gate_mode)
     if data.status is not None:
         plan = await service.set_plan_status(
-            plan.id, MissionPlanStatus(data.status),
+            plan.id,
+            MissionPlanStatus(data.status),
         )
     if data.budget_usd_ceiling is not None:
         plan.budget_usd_ceiling = data.budget_usd_ceiling
@@ -182,6 +180,7 @@ async def refine_plan(
     hand-editing tasks.
     """
     import uuid as _uuid
+
     from modules.backend.temporal.client import get_temporal_client
     from modules.backend.temporal.plan_refine_models import PlanRefineInput
     from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
@@ -245,6 +244,7 @@ async def run_objective(
     RUNNING state — wait for completion or cancel before starting a new run.
     """
     import uuid as _uuid
+
     from modules.backend.temporal.client import get_temporal_client
     from modules.backend.temporal.run_objective_models import RunObjectiveInput
     from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
@@ -316,7 +316,8 @@ async def dispatch_approved(
 
     orchestrator = MissionPlanOrchestrator(db, event_bus=event_bus)
     result = await orchestrator.dispatch_autonomous(
-        plan.id, session_id=str(request_id),
+        plan.id,
+        session_id=str(request_id),
     )
     response = DispatchApprovedResponse(**result)
     return ApiResponse(
@@ -399,6 +400,7 @@ async def approve_task(
     # a no-op when no waiter is registered, so it's safe to call for every
     # transitioned task including transitive dependencies.
     from modules.backend.agents.mission_control.task_approval import notify_approved
+
     for t in transitioned:
         await notify_approved(t.id)
 
@@ -477,6 +479,7 @@ async def retry_task(
 
     # Wake any dispatcher blocked on this task (Plan 80h).
     from modules.backend.agents.mission_control.task_approval import notify_approved
+
     await notify_approved(task.id)
 
     response = TaskTransitionResponse(

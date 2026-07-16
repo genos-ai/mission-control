@@ -23,11 +23,11 @@ async def notify_human_input_needed(input: HumanInputWorkflowInput) -> None:
     from modules.backend.core.utils import utc_now
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.events.types import WorkflowHumanInputRequestedEvent
-    from modules.backend.models.workflow_run import WorkflowRunState
     from modules.backend.models.human_input_request import (
         HumanInputRequest,
         HumanInputRequestStatus,
     )
+    from modules.backend.models.workflow_run import WorkflowRunState
 
     activity.logger.info(
         "notify_human_input_needed",
@@ -58,6 +58,7 @@ async def notify_human_input_needed(input: HumanInputWorkflowInput) -> None:
 
         # Update workflow run status to AWAITING_INPUT
         from sqlalchemy import update
+
         from modules.backend.models.workflow_run import WorkflowRun
 
         await db.execute(
@@ -94,13 +95,16 @@ async def notify_human_input_needed(input: HumanInputWorkflowInput) -> None:
         choices_str = f"\n\nChoices: {', '.join(input.choices)}" if input.choices else ""
         body = f"{input.prompt_message}{choices_str}"
         await _dispatch_to_channels(
-            [input.channel], title, body, "warning",
+            [input.channel],
+            title,
+            body,
+            "warning",
             {"mission_id": input.mission_id, "request_id": input.request_id},
         )
     except Exception:
         activity.logger.warning(
             "Failed to dispatch notification for human input",
-            extra={"request_id": input.request_id},
+            extra={"request_id": input.request_id, "mission_id": input.mission_id},
             exc_info=True,
         )
 
@@ -120,11 +124,11 @@ async def mark_human_input_resolved(
     from modules.backend.core.utils import utc_now
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.events.types import WorkflowHumanInputRespondedEvent
-    from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
     from modules.backend.models.human_input_request import (
         HumanInputRequest,
         HumanInputRequestStatus,
     )
+    from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 
     activity.logger.info(
         "mark_human_input_resolved",
@@ -132,7 +136,9 @@ async def mark_human_input_resolved(
     )
 
     now = utc_now()
-    new_status = HumanInputRequestStatus.TIMED_OUT if timed_out else HumanInputRequestStatus.COMPLETED
+    new_status = (
+        HumanInputRequestStatus.TIMED_OUT if timed_out else HumanInputRequestStatus.COMPLETED
+    )
 
     async with get_async_session() as db:
         # Fetch the request to get related IDs

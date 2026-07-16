@@ -25,13 +25,11 @@ import click
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from modules.clients.cli.api_client import (
-    CliApiClient,
+from modules.clients.cli.api_client import (  # noqa: E402 — after sys.path bootstrap
     api_client,
     require_mission,
     setup_cli_logging,
 )
-
 
 # =============================================================================
 # Click utilities (no backend imports)
@@ -44,10 +42,7 @@ class ShowHelpOnMissingArgs(click.Group):
     def resolve_command(self, ctx, args):
         cmd_name, cmd, remaining = super().resolve_command(ctx, args)
         if cmd is not None and not isinstance(cmd, click.Group):
-            required_args = [
-                p for p in cmd.params
-                if isinstance(p, click.Argument) and p.required
-            ]
+            required_args = [p for p in cmd.params if isinstance(p, click.Argument) and p.required]
             if required_args and len(remaining) < len(required_args):
                 with click.Context(cmd, info_name=cmd_name, parent=ctx) as sub_ctx:
                     click.echo(cmd.get_help(sub_ctx))
@@ -87,7 +82,8 @@ def _show_quickstart():
     """Formatted quick-start guide."""
     from modules.clients.common.display import get_console
 
-    get_console().print("""
+    get_console().print(
+        """
 [bold cyan]Mission Control[/bold cyan]
 
   [bold]Quick Start:[/bold]
@@ -109,7 +105,8 @@ def _show_quickstart():
     mc context show              Mission Context Document
 
   [dim]Use mc <command> --help for details.[/dim]
-""")
+"""
+    )
 
 
 # =============================================================================
@@ -122,6 +119,7 @@ def _show_quickstart():
 @click.option("--password", "-p", default=None, help="Password (prompted if omitted).")
 def login(email, password):
     """Authenticate with the Mission Control API."""
+
     async def _run():
         async with api_client() as api:
             if not email:
@@ -134,9 +132,12 @@ def login(email, password):
                 _pw = password
             data = await api.login(_email, _pw)
             user = data.get("user", {})
-            click.echo(click.style(
-                f"Logged in as {user.get('email', _email)}", fg="green",
-            ))
+            click.echo(
+                click.style(
+                    f"Logged in as {user.get('email', _email)}",
+                    fg="green",
+                )
+            )
 
     asyncio.run(_run())
 
@@ -144,6 +145,7 @@ def login(email, password):
 @mc.command()
 def logout():
     """Clear stored authentication."""
+
     async def _run():
         async with api_client() as api:
             await api.logout()
@@ -169,9 +171,13 @@ def mission(ctx):
 @click.option("--name", required=True, help="Mission name.")
 @click.option("--description", required=True, help="Mission description.")
 @click.option("--brief", default=None, help="Strategic brief for agents.")
-@click.option("--gate", "gate_mode",
-              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
-              default=None, help="Default gate mode.")
+@click.option(
+    "--gate",
+    "gate_mode",
+    type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
+    default=None,
+    help="Default gate mode.",
+)
 @click.option("--budget", type=float, default=None, help="Budget ceiling in USD.")
 def mission_create(name, description, brief, gate_mode, budget):
     """Create a new mission."""
@@ -179,8 +185,14 @@ def mission_create(name, description, brief, gate_mode, budget):
 
     async def _run():
         async with api_client() as api:
-            await create(api, name=name, description=description,
-                         brief=brief, gate_mode=gate_mode, budget=budget)
+            await create(
+                api,
+                name=name,
+                description=description,
+                brief=brief,
+                gate_mode=gate_mode,
+                budget=budget,
+            )
 
     asyncio.run(_run())
 
@@ -225,9 +237,12 @@ def mission_info(ctx):
 
 
 @mission.command("set-gate")
-@click.option("--mode", required=True,
-              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
-              help="Gate mode.")
+@click.option(
+    "--mode",
+    required=True,
+    type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
+    help="Gate mode.",
+)
 @click.pass_obj
 def mission_set_gate(ctx, mode):
     """Set the default gate mode for the current mission."""
@@ -312,9 +327,13 @@ def mission_unarchive(name_or_id):
 @mc.command()
 @click.option("--objective", "-o", required=True, help="Objective text or workflow name.")
 @click.option("--budget", type=float, default=None, help="Cost ceiling override.")
-@click.option("--gate", "gate_override",
-              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
-              default=None, help="Gate mode override.")
+@click.option(
+    "--gate",
+    "gate_override",
+    type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
+    default=None,
+    help="Gate mode override.",
+)
 @click.option("--step", is_flag=True, help="Alias for --gate interactive.")
 @click.option("--dry-run", is_flag=True, help="Show plan + estimated cost, don't execute.")
 @click.option("--context", "-c", multiple=True, help="Context overrides as key=value (repeatable).")
@@ -328,7 +347,9 @@ def run(ctx, objective, budget, gate_override, step, dry_run, context):
     context_overrides = {}
     for item in context:
         if "=" not in item:
-            click.echo(click.style(f"Invalid --context: '{item}' (expected key=value)", fg="red"), err=True)
+            click.echo(
+                click.style(f"Invalid --context: '{item}' (expected key=value)", fg="red"), err=True
+            )
             raise SystemExit(1)
         key, value = item.split("=", 1)
         context_overrides[key] = value
@@ -339,11 +360,14 @@ def run(ctx, objective, budget, gate_override, step, dry_run, context):
         async with api_client() as api:
             mid = await require_mission(api)
             await mc_run(
-                api, objective,
-                mission_id=mid, budget=budget,
+                api,
+                objective,
+                mission_id=mid,
+                budget=budget,
                 gate_override=gate_override,
                 dry_run=dry_run,
-                quiet=ctx.quiet, verbose=ctx.verbose,
+                quiet=ctx.quiet,
+                verbose=ctx.verbose,
                 context_overrides=context_overrides or None,
             )
 
@@ -371,8 +395,12 @@ def runs(ctx):
 
 
 @runs.command("list")
-@click.option("--all", "include_terminal", is_flag=True,
-              help="Include completed / failed / cancelled runs (default: active only).")
+@click.option(
+    "--all",
+    "include_terminal",
+    is_flag=True,
+    help="Include completed / failed / cancelled runs (default: active only).",
+)
 @click.pass_obj
 def runs_list(ctx, include_terminal):
     """List workflow runs for the current mission (active by default)."""
@@ -423,9 +451,13 @@ def runs_cancel(ctx, run_id):
 
 @mc.command()
 @click.option("--run", "n", type=int, required=True, help="Nth most recent execution to retry.")
-@click.option("--gate", "gate_override",
-              type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
-              default=None, help="Gate mode override.")
+@click.option(
+    "--gate",
+    "gate_override",
+    type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
+    default=None,
+    help="Gate mode override.",
+)
 @click.pass_obj
 def retry(ctx, n, gate_override):
     """Retry failed plan tasks, or re-run a past execution."""
@@ -435,8 +467,12 @@ def retry(ctx, n, gate_override):
         async with api_client() as api:
             mid = await require_mission(api)
             await mc_retry(
-                api, n, mission_id=mid, gate_override=gate_override,
-                quiet=ctx.quiet, verbose=ctx.verbose,
+                api,
+                n,
+                mission_id=mid,
+                gate_override=gate_override,
+                quiet=ctx.quiet,
+                verbose=ctx.verbose,
             )
 
     asyncio.run(_run())
@@ -456,10 +492,15 @@ def plan(ctx):
 
 
 @plan.command("show")
-@click.option("--status", "status_filter",
-              type=click.Choice(["proposed", "approved", "queued", "running",
-                                 "completed", "failed", "skipped", "cancelled"]),
-              default=None, help="Only show tasks with this status.")
+@click.option(
+    "--status",
+    "status_filter",
+    type=click.Choice(
+        ["proposed", "approved", "queued", "running", "completed", "failed", "skipped", "cancelled"]
+    ),
+    default=None,
+    help="Only show tasks with this status.",
+)
 @click.option("--deps", "show_deps", is_flag=True, help="Include dependency column.")
 @click.pass_obj
 def plan_show(ctx, status_filter, show_deps):
@@ -469,8 +510,9 @@ def plan_show(ctx, status_filter, show_deps):
     async def _run():
         async with api_client() as api:
             mid = await require_mission(api)
-            await plan_show_fn(api, mission_id=mid,
-                               status_filter=status_filter, show_deps=show_deps)
+            await plan_show_fn(
+                api, mission_id=mid, status_filter=status_filter, show_deps=show_deps
+            )
 
     asyncio.run(_run())
 
@@ -492,8 +534,12 @@ def plan_task(ctx, task_id):
 
 @plan.command("approve")
 @click.argument("task_id", required=False)
-@click.option("--next", "pick_next", is_flag=True,
-              help="Pick the topologically next PROPOSED task whose deps are all COMPLETED.")
+@click.option(
+    "--next",
+    "pick_next",
+    is_flag=True,
+    help="Pick the topologically next PROPOSED task whose deps are all COMPLETED.",
+)
 @click.pass_obj
 def plan_approve(ctx, task_id, pick_next):
     """Approve one task (also approves PROPOSED transitive dependencies)."""
@@ -509,11 +555,12 @@ def plan_approve(ctx, task_id, pick_next):
 
 @plan.command("reject")
 @click.argument("task_id", required=False)
-@click.option("--all", "reject_all", is_flag=True,
-              help="Cancel ALL non-terminal tasks in the plan.")
+@click.option(
+    "--all", "reject_all", is_flag=True, help="Cancel ALL non-terminal tasks in the plan."
+)
 @click.pass_obj
 def plan_reject(ctx, task_id, reject_all):
-    """Reject one task (also cancels transitive dependents); --all cancels everything non-terminal."""
+    """Reject one task (cancels transitive dependents); --all cancels all non-terminal."""
     from modules.clients.cli.mc_plan import reject as plan_reject_fn
 
     async def _run():
@@ -594,8 +641,7 @@ def gate_show(ctx):
 
 
 @gate.command("set")
-@click.argument("mode",
-    type=click.Choice(["autonomous", "manual", "interactive", "ai_assisted"]))
+@click.argument("mode", type=click.Choice(["autonomous", "manual", "interactive", "ai_assisted"]))
 @click.pass_obj
 def gate_set(ctx, mode):
     """Set the gate mode for the current mission's plan."""
@@ -656,8 +702,132 @@ def gate_decide(ctx, gate_id, action, reason):
     async def _run():
         async with api_client() as api:
             mid = await require_mission(api)
-            await decide(api, mission_id=mid, gate_id=gate_id,
-                         action=action, reason=reason)
+            await decide(api, mission_id=mid, gate_id=gate_id, action=action, reason=reason)
+
+    asyncio.run(_run())
+
+
+# =============================================================================
+# Schedule — recurring workflow runs (cron)
+# =============================================================================
+
+
+@mc.group("schedule", cls=ShowHelpOnMissingArgs, invoke_without_command=True)
+@click.pass_context
+def schedule(ctx):
+    """Recurring workflow runs (cron) for the current mission.
+
+    Schedules a *defined workflow* to run on a cron cadence. Scheduling a
+    free-form objective is not supported (Plan 83 §8).
+
+    Examples:
+        mc schedule list
+        mc schedule create --workflow <id> --cron "0 9 * * *"   # daily 09:00
+        mc schedule create --workflow <id> --cron "0 9 * * 1"   # weekly Mon
+        mc schedule enable <schedule_id>
+        mc schedule disable <schedule_id>
+        mc schedule delete <schedule_id>
+    """
+    if ctx.invoked_subcommand is None:
+        from modules.clients.cli.mc_schedule import list_schedules
+
+        async def _run():
+            async with api_client() as api:
+                mid = await require_mission(api)
+                await list_schedules(api, mission_id=mid)
+
+        asyncio.run(_run())
+
+
+@schedule.command("list")
+@click.option("--json", "as_json", is_flag=True, help="Raw JSON output.")
+@click.pass_obj
+def schedule_list(ctx, as_json):
+    """List schedules for the current mission."""
+    from modules.clients.cli.mc_schedule import list_schedules
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await list_schedules(
+                api,
+                mission_id=mid,
+                output_format="json" if as_json else "human",
+            )
+
+    asyncio.run(_run())
+
+
+@schedule.command("create")
+@click.option("--workflow", required=True, help="Workflow definition id to schedule.")
+@click.option("--cron", required=True, help='5-field cron: "min hour day month weekday".')
+@click.option("--description", default="", help="Optional description.")
+@click.option("--budget", type=float, default=None, help="USD ceiling per run.")
+@click.option("--max-iterations", type=int, default=None, help="Total runs (unlimited if omitted).")
+@click.option("--cooldown", type=int, default=0, help="Min seconds between runs.")
+@click.pass_obj
+def schedule_create(ctx, workflow, cron, description, budget, max_iterations, cooldown):
+    """Create a cron schedule for a workflow."""
+    from modules.clients.cli.mc_schedule import create_schedule
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await create_schedule(
+                api,
+                mission_id=mid,
+                workflow=workflow,
+                cron=cron,
+                description=description,
+                budget=budget,
+                max_iterations=max_iterations,
+                cooldown=cooldown,
+            )
+
+    asyncio.run(_run())
+
+
+@schedule.command("enable")
+@click.argument("schedule_id")
+@click.pass_obj
+def schedule_enable(ctx, schedule_id):
+    """Enable a schedule so it fires on its cron cadence."""
+    from modules.clients.cli.mc_schedule import set_enabled
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await set_enabled(api, mission_id=mid, schedule_id=schedule_id, enabled=True)
+
+    asyncio.run(_run())
+
+
+@schedule.command("disable")
+@click.argument("schedule_id")
+@click.pass_obj
+def schedule_disable(ctx, schedule_id):
+    """Disable a schedule so it stops firing (without deleting it)."""
+    from modules.clients.cli.mc_schedule import set_enabled
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await set_enabled(api, mission_id=mid, schedule_id=schedule_id, enabled=False)
+
+    asyncio.run(_run())
+
+
+@schedule.command("delete")
+@click.argument("schedule_id")
+@click.pass_obj
+def schedule_delete(ctx, schedule_id):
+    """Delete a schedule permanently."""
+    from modules.clients.cli.mc_schedule import delete_schedule
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await delete_schedule(api, mission_id=mid, schedule_id=schedule_id)
 
     asyncio.run(_run())
 
@@ -754,7 +924,9 @@ def report_list(ctx):
 
 
 @report.command("show")
-@click.option("--run", "n", type=int, default=None, help="Show report from run #N (default: latest).")
+@click.option(
+    "--run", "n", type=int, default=None, help="Show report from run #N (default: latest)."
+)
 @click.pass_obj
 def report_show(ctx, n):
     """View the research report from a completed run."""
@@ -771,8 +943,15 @@ def report_show(ctx, n):
 @mc.command()
 @click.argument("workflow_id")
 @click.option("--verbose", "-v", is_flag=True, help="Show all event types.")
-@click.option("--detail", "-d", is_flag=True, help="Show research phase breakdown from mission events.")
-@click.option("--mission", "-m", default=None, help="Mission ID for --detail (auto-detected if set via mc mission use).")
+@click.option(
+    "--detail", "-d", is_flag=True, help="Show research phase breakdown from mission events."
+)
+@click.option(
+    "--mission",
+    "-m",
+    default=None,
+    help="Mission ID for --detail (auto-detected if set via mc mission use).",
+)
 @click.pass_obj
 def trace(ctx, workflow_id, verbose, detail, mission):
     """Trace a Temporal workflow execution — shows activity timeline.
@@ -802,10 +981,16 @@ def trace(ctx, workflow_id, verbose, detail, mission):
 
 @mc.command()
 @click.option("--message", "-m", default=None, help="Single-shot message (skips REPL).")
-@click.option("--agent", "-a", "agent_name", default=None,
-              help="Target a specific agent (default: mission director).")
-@click.option("--new", "new_thread", is_flag=True,
-              help="Start a new conversation thread instead of resuming.")
+@click.option(
+    "--agent",
+    "-a",
+    "agent_name",
+    default=None,
+    help="Target a specific agent (default: mission director).",
+)
+@click.option(
+    "--new", "new_thread", is_flag=True, help="Start a new conversation thread instead of resuming."
+)
 @click.pass_obj
 def chat(ctx, message, agent_name, new_thread):
     """Talk to your AI team. Interactive REPL or single-shot.
@@ -820,8 +1005,11 @@ def chat(ctx, message, agent_name, new_thread):
         async with api_client() as api:
             mid = await require_mission(api)
             await chat_repl(
-                api, agent_name=agent_name, initial_message=message,
-                mission_id=mid, verbose=ctx.verbose,
+                api,
+                agent_name=agent_name,
+                initial_message=message,
+                mission_id=mid,
+                verbose=ctx.verbose,
                 new_thread=new_thread,
             )
 
@@ -838,8 +1026,7 @@ def design(ctx, description):
     async def _run():
         async with api_client() as api:
             mid = await require_mission(api)
-            await design_repl(api, description=description,
-                              mission_id=mid, verbose=ctx.verbose)
+            await design_repl(api, description=description, mission_id=mid, verbose=ctx.verbose)
 
     asyncio.run(_run())
 
@@ -1093,8 +1280,7 @@ def knowledge(ctx):
 @click.option("--query", "-q", required=True, help="Search query.")
 @click.option("--tags", "-t", default=None, help="Comma-separated domain tags")
 @click.option("--kinds", "-k", default=None, help="Comma-separated kinds")
-@click.option("--mode", default="hybrid",
-              type=click.Choice(["structured", "hybrid", "semantic"]))
+@click.option("--mode", default="hybrid", type=click.Choice(["structured", "hybrid", "semantic"]))
 @click.option("--mission", default=None, help="Mission ID (uses current if omitted)")
 @click.option("--platform-only", is_flag=True, help="Only platform-promoted entries")
 @click.pass_obj
@@ -1111,8 +1297,12 @@ def knowledge_search(ctx, query, tags, kinds, mode, mission, platform_only):
                 except SystemExit:
                     mid = None
             await _search(
-                api, query, mission_id=mid,
-                tags=tags, kinds=kinds, mode=mode,
+                api,
+                query,
+                mission_id=mid,
+                tags=tags,
+                kinds=kinds,
+                mode=mode,
                 platform_only=platform_only,
             )
 
@@ -1128,6 +1318,7 @@ def knowledge_search(ctx, query, tags, kinds, mode, mission, platform_only):
 def tree():
     """Show all commands in a tree structure."""
     from rich.tree import Tree
+
     from modules.clients.common.display import get_console
 
     console_obj = get_console()
@@ -1162,8 +1353,12 @@ def console(ctx):
 
 
 @console.command("monitor")
-@click.option("--view", type=click.Choice(["user", "developer"]), default="user",
-              help="Display mode: user (default) or developer.")
+@click.option(
+    "--view",
+    type=click.Choice(["user", "developer"]),
+    default="user",
+    help="Display mode: user (default) or developer.",
+)
 @click.option("--refresh", default=2.0, type=float, help="Refresh interval in seconds.")
 @click.pass_obj
 def console_monitor(ctx, view, refresh):

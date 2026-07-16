@@ -17,6 +17,10 @@ from modules.backend.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
+
+# Re-exported for thin clients (rules 001.7 / 008.4): CLI and TUI obtain the
+# CLI service-account id from the service layer, never from the models layer.
+from modules.backend.models.base import SYSTEM_CLI_ID as SYSTEM_CLI_ID  # noqa: F401
 from modules.backend.models.user import User
 from modules.backend.repositories.api_key import ApiKeyRepository
 from modules.backend.repositories.user import UserRepository
@@ -154,7 +158,9 @@ class UserService(BaseService):
         return user
 
     async def deactivate_user(
-        self, user_id: str, requesting_user: User,
+        self,
+        user_id: str,
+        requesting_user: User,
     ) -> User:
         """Deactivate a user and revoke all their API keys. Admin only."""
         if not requesting_user.has_role("admin"):
@@ -192,7 +198,9 @@ class UserService(BaseService):
             raise ValidationError("Password login not configured for this account")
 
         valid = await asyncio.to_thread(
-            security.verify_password, old_password, user.hashed_password,
+            security.verify_password,
+            old_password,
+            user.hashed_password,
         )
         if not valid:
             raise ValidationError("Current password is incorrect")
@@ -242,6 +250,7 @@ class UserService(BaseService):
             if mission is None:
                 raise NotFoundError("Mission not found")
             from modules.backend.models.mission import MissionStatus
+
             if mission.status not in (MissionStatus.ACTIVE, MissionStatus.ACTIVE):
                 raise ValidationError("Cannot select a non-active mission")
 

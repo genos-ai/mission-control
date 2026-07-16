@@ -253,17 +253,11 @@ async def update_team_member_constraints(
     per-agent settings like research_depth, include_domains, etc.
     """
     await require_mission_access(db, mission_id, current_user)
-    from modules.backend.repositories.mission_team import MissionTeamRepository
-
-    repo = MissionTeamRepository(db)
-    member = await repo.get_by_id(member_id)
-    existing = member.custom_constraints or {}
-    member.custom_constraints = {**existing, **data}
-    await db.flush()
-    await db.refresh(member)
+    service = MissionTeamService(db)
+    member = await service.update_member_constraints(member_id, data)
+    response = MissionTeamMemberResponse.model_validate(member)
     await db.commit()
 
-    response = MissionTeamMemberResponse.model_validate(member)
     return ApiResponse(
         success=True,
         data=response.model_dump(),

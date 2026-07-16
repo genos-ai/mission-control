@@ -89,21 +89,13 @@ async def list_workflow_runs(
 ) -> ApiResponse:
     """List past and in-flight workflow runs for a mission."""
     await require_mission_access(db, mission_id, current_user)
-    from modules.backend.models.workflow_run import WorkflowRunState
-    from modules.backend.repositories.workflow_run import WorkflowRunRepository
+    from modules.backend.services.workflow_run import WorkflowRunService
 
-    repo = WorkflowRunRepository(db)
-    status_filter = None
-    if status:
-        try:
-            status_filter = WorkflowRunState[status.upper()]
-        except KeyError:
-            logger.warning("Unknown workflow status filter %r, ignoring", status)
-
-    runs, total = await repo.list_runs(
+    service = WorkflowRunService(db)
+    runs, total = await service.list_runs(
         mission_id=mission_id,
         workflow_name=workflow_name,
-        status=status_filter,
+        status=status,
         limit=limit,
         offset=offset,
     )
@@ -296,10 +288,9 @@ async def run_mission_workflow(
     # back to the plan's persisted gate_mode. Interactive modes return
     # the endpoint immediately (Plan 80h) — synchronous blocking is
     # meaningless when the workflow is waiting on operator approval.
-    from modules.backend.repositories.mission_plan import MissionPlanRepository
+    from modules.backend.services.mission_plan import MissionPlanService
 
-    plan_repo = MissionPlanRepository(db)
-    existing_plan = await plan_repo.get_by_mission_id(mission_id)
+    existing_plan = await MissionPlanService(db).get_plan(mission_id)
     effective_gate_mode = gate_mode_override or (existing_plan.gate_mode if existing_plan else None)
     interactive = effective_gate_mode in ("manual", "interactive", "ai_assisted")
 
@@ -498,11 +489,10 @@ async def get_workflow_run(
 ) -> ApiResponse:
     """Get a single workflow run by ID."""
     await require_mission_access(db, mission_id, current_user)
-    from modules.backend.repositories.workflow_run import WorkflowRunRepository
+    from modules.backend.services.workflow_run import WorkflowRunService
 
-    repo = WorkflowRunRepository(db)
-    run = await repo.get_by_id(run_id)
-    if run.mission_id != mission_id:
+    run = await WorkflowRunService(db).get_run(run_id)
+    if run is None or run.mission_id != mission_id:
         raise NotFoundError(f"Workflow run {run_id} not found in mission {mission_id}")
 
     return ApiResponse(
@@ -547,23 +537,12 @@ async def cancel_workflow_run(
     Idempotent: no-op when the run is already in a terminal state.
     """
     await require_mission_access(db, mission_id, current_user)
-    from datetime import datetime, timezone
+    from modules.backend.services.workflow_run import WorkflowRunService
 
-    from modules.backend.models.workflow_run import WorkflowRunState
-    from modules.backend.repositories.workflow_run import WorkflowRunRepository
-
-    repo = WorkflowRunRepository(db)
-    run = await repo.get_by_id(run_id)
-    if run.mission_id != mission_id:
-        raise NotFoundError(f"Workflow run {run_id} not found in mission {mission_id}")
-
-    current = run.status.value if hasattr(run.status, "value") else str(run.status)
-    terminal = {
-        WorkflowRunState.COMPLETED.value,
-        WorkflowRunState.FAILED.value,
-        WorkflowRunState.CANCELLED.value,
-    }
-    if str(current).lower() in terminal:
+    service = WorkflowRunService(db)
+    run, changed = await service.cancel_run(run_id, mission_id=mission_id)
+    if not changed:
+        current = run.status.value if hasattr(run.status, "value") else str(run.status)
         return ApiResponse(
             success=True,
             data={
@@ -574,13 +553,12 @@ async def cancel_workflow_run(
             metadata={"request_id": request_id},
         )
 
-    run.status = WorkflowRunState.CANCELLED
-    run.completed_at = datetime.now(timezone.utc)
+    run_id_value = run.id
     await db.commit()
 
     return ApiResponse(
         success=True,
-        data={"id": run.id, "status": "CANCELLED"},
+        data={"id": run_id_value, "status": "CANCELLED"},
         metadata={"request_id": request_id},
     )
 
@@ -834,22 +812,9 @@ async def list_pending_human_input(
 ) -> ApiResponse:
     """List pending human input requests for a mission."""
     await require_mission_access(db, mission_id, current_user)
-    from sqlalchemy import select
+    from modules.backend.services.workflow_run import WorkflowRunService
 
-    from modules.backend.models.human_input_request import (
-        HumanInputRequest,
-        HumanInputRequestStatus,
-    )
-
-    result = await db.execute(
-        select(HumanInputRequest)
-        .where(
-            HumanInputRequest.mission_id == mission_id,
-            HumanInputRequest.status == HumanInputRequestStatus.PENDING,
-        )
-        .order_by(HumanInputRequest.created_at.desc())
-    )
-    requests = result.scalars().all()
+    requests = await WorkflowRunService(db).list_pending_human_input(mission_id)
     items = [
         {
             "id": r.id,
@@ -888,32 +853,14 @@ async def respond_to_human_input(
     Sends a Temporal Signal to the HumanInputWorkflow.
     """
     from fastapi import HTTPException
-    from sqlalchemy import select
 
-    from modules.backend.models.human_input_request import (
-        HumanInputRequest,
-        HumanInputRequestStatus,
-    )
+    from modules.backend.services.workflow_run import WorkflowRunService
 
     await require_mission_access(db, mission_id, current_user)
 
-    result = await db.execute(
-        select(HumanInputRequest).where(HumanInputRequest.id == input_request_id)
-    )
-    req = result.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=404, detail="Human input request not found")
-    # Scope the request to the path's mission — the id lookup alone would
-    # otherwise let a caller signal another mission's pending request.
-    if req.mission_id != mission_id:
-        raise HTTPException(status_code=404, detail="Human input request not found")
-    if (
-        req.status != HumanInputRequestStatus.PENDING.value
-        and req.status != HumanInputRequestStatus.PENDING
-    ):
-        raise HTTPException(
-            status_code=409, detail=f"Request is not pending (status: {req.status})"
-        )
+    # Mission scoping + pending check live in the service — it raises
+    # NotFoundError (404) / ConflictError (409) accordingly.
+    req = await WorkflowRunService(db).get_pending_human_input_request(mission_id, input_request_id)
 
     # Validate response against choices if constrained
     if req.choices_json and data.response not in req.choices_json:

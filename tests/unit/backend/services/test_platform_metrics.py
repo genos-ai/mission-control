@@ -3,9 +3,6 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.agent_catalog import AgentCatalog
-from modules.backend.models.execution import Execution
-from modules.backend.models.workflow_run import WorkflowRun
 from modules.backend.models.execution_record import ExecutionRecord, TaskExecution
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
 from modules.backend.models.session import Session
@@ -136,7 +133,9 @@ class TestGetCostSummary:
     async def test_cost_by_status(self, service, db_session):
         mission = await _seed_mission(db_session)
         session = await _seed_session(db_session)
-        await _seed_execution_record(db_session, mission.id, session.id, status="completed", cost=1.0)
+        await _seed_execution_record(
+            db_session, mission.id, session.id, status="completed", cost=1.0
+        )
         await _seed_execution_record(db_session, mission.id, session.id, status="failed", cost=0.5)
 
         costs = await service.get_cost_summary()

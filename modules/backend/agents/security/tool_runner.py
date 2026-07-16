@@ -22,14 +22,10 @@ import re
 import shutil
 import subprocess
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from modules.backend.agents.security.errors import (
-    SecurityAssessmentError,
-    SecurityErrorCode,
-)
+from modules.backend.agents.security.errors import SecurityAssessmentError, SecurityErrorCode
 from modules.backend.agents.security.sarif import SARIF_LEVEL_TO_SEVERITY
 from modules.backend.agents.security.tool_registry import (
     CapabilityInput,
@@ -40,17 +36,18 @@ from modules.backend.agents.security.tool_registry import (
     ToolCapability,
 )
 from modules.backend.core.logging import get_logger
+from modules.backend.core.utils import utc_now
 
 logger = get_logger(__name__)
 
 
 # Use the platform's CommandResult — single definition, no duplication.
-from modules.backend.services.execution_environment import CommandResult
-
+from modules.backend.services.execution_environment import CommandResult  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Async subprocess helper
 # ---------------------------------------------------------------------------
+
 
 async def _run_tool_subprocess(
     cmd: list[str],
@@ -74,7 +71,9 @@ async def _run_tool_subprocess(
             },
         )
         return await _run_via_environment_service(
-            cmd, environment_handle, timeout,
+            cmd,
+            environment_handle,
+            timeout,
         )
 
     start = time.monotonic()
@@ -86,7 +85,8 @@ async def _run_tool_subprocess(
             cwd=cwd,
         )
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout,
+            proc.communicate(),
+            timeout=timeout,
         )
         return CommandResult(
             exit_code=proc.returncode or 0,
@@ -117,10 +117,8 @@ def _get_env_service():
     """Get or create a cached ExecutionEnvironmentService with container backend."""
     global _env_service
     if _env_service is None:
-        from modules.backend.services.execution_environment import (
-            ExecutionEnvironmentService,
-        )
         from modules.backend.services.container_backend import ContainerBackend
+        from modules.backend.services.execution_environment import ExecutionEnvironmentService
 
         _env_service = ExecutionEnvironmentService()
         _env_service.register_backend("container", ContainerBackend())
@@ -144,6 +142,7 @@ async def _run_via_environment_service(
 # ---------------------------------------------------------------------------
 # SARIF helpers
 # ---------------------------------------------------------------------------
+
 
 def count_severities(sarif: dict) -> dict[str, int]:
     """Count findings by severity level from a SARIF document."""
@@ -203,9 +202,9 @@ def _redact_secrets_in_text(text: str) -> str:
     # Common secret patterns
     patterns = [
         r'(?:api[_-]?key|secret|token|password|passwd|credential)\s*[:=]\s*["\']?([^\s"\']{8,})',
-        r'(?:sk|pk|ak|rk)[-_](?:live|test|prod)[-_][a-zA-Z0-9]{16,}',
-        r'ghp_[a-zA-Z0-9]{20,}',
-        r'eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}',
+        r"(?:sk|pk|ak|rk)[-_](?:live|test|prod)[-_][a-zA-Z0-9]{16,}",
+        r"ghp_[a-zA-Z0-9]{20,}",
+        r"eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}",
     ]
     for pattern in patterns:
         text = re.sub(pattern, "<<REDACTED>>", text, flags=re.IGNORECASE)
@@ -215,6 +214,7 @@ def _redact_secrets_in_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
+
 
 async def run_security_tool(
     spec: SecurityToolSpec,
@@ -243,11 +243,13 @@ async def run_security_tool(
     cmd_str = spec.run_template.format(**args).strip()
     cmd = cmd_str.split()
 
-    started = datetime.now()
+    started = utc_now()
     result = await _run_tool_subprocess(
-        cmd, timeout=spec.timeout_seconds, environment_handle=environment_handle,
+        cmd,
+        timeout=spec.timeout_seconds,
+        environment_handle=environment_handle,
     )
-    duration = (datetime.now() - started).total_seconds()
+    duration = (utc_now() - started).total_seconds()
 
     # Validate exit code
     if result.exit_code not in spec.success_exit_codes:
@@ -291,9 +293,7 @@ async def run_security_tool(
     if output_path.exists():
         try:
             sarif = json.loads(output_path.read_text())
-            finding_count = sum(
-                len(run.get("results", [])) for run in sarif.get("runs", [])
-            )
+            finding_count = sum(len(run.get("results", [])) for run in sarif.get("runs", []))
             severity_counts = count_severities(sarif)
         except json.JSONDecodeError:
             logger.warning(
@@ -355,7 +355,9 @@ async def run_capability(
             continue
         try:
             result = await run_security_tool(
-                spec, capability_input, environment_handle=environment_handle,
+                spec,
+                capability_input,
+                environment_handle=environment_handle,
             )
             return [result]
         except SecurityAssessmentError as exc:

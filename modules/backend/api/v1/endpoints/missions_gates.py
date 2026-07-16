@@ -14,12 +14,10 @@ Endpoints:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
 
 from modules.backend.agents.mission_control.gate_manual import fire_decision
 from modules.backend.core.dependencies import (
@@ -31,8 +29,8 @@ from modules.backend.core.dependencies import (
 )
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.events.types import GateRequestDecidedEvent
-from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.schemas.base import ApiResponse
+from modules.backend.services.mission_plan import MissionPlanService
 
 EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 
@@ -121,15 +119,7 @@ async def list_pending_gates(
 ) -> ApiResponse:
     """Return all gate requests in PENDING status, oldest first."""
     await require_mission_access(db, mission_id, current_user)
-    result = await db.execute(
-        select(GateRequest)
-        .where(
-            GateRequest.mission_id == mission_id,
-            GateRequest.status == GateRequestStatus.PENDING,
-        )
-        .order_by(GateRequest.created_at.asc()),
-    )
-    rows = result.scalars().all()
+    rows = await MissionPlanService(db).list_pending_gate_requests(mission_id)
     items = [
         GateRequestSummary(
             id=str(r.id),
@@ -163,7 +153,7 @@ async def get_gate_request(
 ) -> ApiResponse:
     """Read one gate request including its serialised GateContext."""
     await require_mission_access(db, mission_id, current_user)
-    row = await _load_gate(db, mission_id, request_id_path)
+    row = await MissionPlanService(db).get_gate_request(mission_id, request_id_path)
     detail = GateRequestDetail(
         id=str(row.id),
         mission_id=str(row.mission_id),
@@ -204,17 +194,8 @@ async def decide_gate(
     DB row was written; firing the event here is what wakes it up.
     """
     await require_mission_access(db, mission_id, current_user)
-    row = await _load_gate(db, mission_id, request_id_path)
-
-    current_status = row.status.value if hasattr(row.status, "value") else row.status
-    if str(current_status) != GateRequestStatus.PENDING.value:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Gate request {request_id_path} is not pending "
-                f"(current status: {current_status})."
-            ),
-        )
+    service = MissionPlanService(db)
+    row = await service.get_pending_gate_request(mission_id, request_id_path)
 
     _validate_action_for_gate_type(row.gate_type, body.action)
 
@@ -224,15 +205,15 @@ async def decide_gate(
         "reviewer": f"user:{current_user.id}",
     }
 
-    await db.execute(
-        update(GateRequest)
-        .where(GateRequest.id == request_id_path)
-        .values(
-            status=GateRequestStatus.DECIDED,
-            decision_json=decision_payload,
-            decided_by_user_id=current_user.id,
-            decided_at=datetime.now(timezone.utc),
-        ),
+    # Save event fields as locals BEFORE commit — ORM attributes expire.
+    event_session_id = row.session_id or row.mission_id
+    event_mission_id = row.mission_id
+    event_gate_type = row.gate_type
+
+    await service.record_gate_decision(
+        request_id_path,
+        decision=decision_payload,
+        decided_by_user_id=current_user.id,
     )
     await db.commit()
 
@@ -243,11 +224,11 @@ async def decide_gate(
     try:
         await event_bus.publish(
             GateRequestDecidedEvent(
-                session_id=row.session_id or row.mission_id,
+                session_id=event_session_id,
                 source=f"manual_gate:{request_id_path}",
                 request_id=request_id_path,
-                mission_id=row.mission_id,
-                gate_type=row.gate_type,
+                mission_id=event_mission_id,
+                gate_type=event_gate_type,
                 action=body.action,
                 reason=body.reason,
                 reviewer=f"user:{current_user.id}",
@@ -304,19 +285,3 @@ def _validate_action_for_gate_type(gate_type: str, action: str) -> None:
                 f"Valid actions: {sorted(valid)}."
             ),
         )
-
-
-async def _load_gate(db: Any, mission_id: str, request_id: str) -> GateRequest:
-    result = await db.execute(
-        select(GateRequest).where(
-            GateRequest.id == request_id,
-            GateRequest.mission_id == mission_id,
-        ),
-    )
-    row = result.scalar_one_or_none()
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Gate request {request_id} not found for mission {mission_id}.",
-        )
-    return row

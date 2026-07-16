@@ -49,9 +49,10 @@ async def hourly_health_check() -> dict[str, Any]:
     """
     logger.info("Starting hourly health check")
 
+    import asyncio
+
     from modules.backend.api.health import check_database, check_redis
 
-    import asyncio
     db_check, redis_check = await asyncio.gather(
         check_database(),
         check_redis(),
@@ -64,10 +65,7 @@ async def hourly_health_check() -> dict[str, Any]:
         redis_check = {"status": "error", "error": str(redis_check)}
 
     checks = {"database": db_check, "redis": redis_check}
-    all_healthy = all(
-        c.get("status") in ("healthy", "not_configured")
-        for c in checks.values()
-    )
+    all_healthy = all(c.get("status") in ("healthy", "not_configured") for c in checks.values())
 
     result = {
         "status": "healthy" if all_healthy else "degraded",
@@ -144,11 +142,12 @@ async def cleanup_stale_environments(
     idle_stopped = []
 
     try:
+        from datetime import datetime, timedelta
+
         import docker
-        from datetime import datetime, timedelta, timezone
 
         client = docker.from_env()
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         idle_cutoff = now - timedelta(minutes=idle_timeout_minutes)
         lifetime_cutoff = now - timedelta(hours=max_lifetime_hours)
 
@@ -227,5 +226,3 @@ def _container_has_recent_activity(container: Any) -> bool:
         return len(top.get("Processes", [])) > 1
     except Exception:
         return False
-
-

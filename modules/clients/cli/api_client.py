@@ -17,7 +17,6 @@ Usage:
 """
 
 import json
-import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -28,7 +27,9 @@ import click
 import httpx
 import yaml
 
-logger = logging.getLogger(__name__)
+from modules.backend.core.logging import get_logger, setup_logging
+
+logger = get_logger(__name__)
 
 _AUTH_DIR = Path.home() / ".config" / "mission-control"
 _AUTH_FILE = _AUTH_DIR / "auth.json"
@@ -129,7 +130,11 @@ class CliApiClient:
         assert self._client is not None
         try:
             async with self._client.stream(
-                method, path, json=body, params=params, headers=headers,
+                method,
+                path,
+                json=body,
+                params=params,
+                headers=headers,
             ) as response:
                 if response.status_code != 200:
                     raw = await response.aread()
@@ -209,7 +214,11 @@ class CliApiClient:
 
         try:
             resp = await self._client.request(
-                method, path, json=body, params=params, headers=headers,
+                method,
+                path,
+                json=body,
+                params=params,
+                headers=headers,
             )
         except httpx.ConnectError as exc:
             raise ApiConnectionError(self._base_url, str(exc)) from exc
@@ -219,13 +228,21 @@ class CliApiClient:
             if await self._try_refresh():
                 headers = self._auth_headers()
                 resp = await self._client.request(
-                    method, path, json=body, params=params, headers=headers,
+                    method,
+                    path,
+                    json=body,
+                    params=params,
+                    headers=headers,
                 )
             else:
                 await self._interactive_login()
                 headers = self._auth_headers()
                 resp = await self._client.request(
-                    method, path, json=body, params=params, headers=headers,
+                    method,
+                    path,
+                    json=body,
+                    params=params,
+                    headers=headers,
                 )
 
         if resp.status_code >= 400:
@@ -276,7 +293,8 @@ class CliApiClient:
                 data = envelope.get("data", envelope)
                 self._access_token = data["access_token"]
                 self._refresh_token_str = data.get(
-                    "refresh_token", self._refresh_token_str,
+                    "refresh_token",
+                    self._refresh_token_str,
                 )
                 self._save_token()
                 return True
@@ -363,9 +381,7 @@ def _find_project_root() -> Path:
     for parent in [current, *current.parents]:
         if (parent / ".project_root").exists():
             return parent
-    raise click.ClickException(
-        "Cannot find .project_root marker. Run from the project directory."
-    )
+    raise click.ClickException("Cannot find .project_root marker. Run from the project directory.")
 
 
 def _raise_for_error(status: int, body: bytes) -> None:
@@ -391,12 +407,14 @@ async def require_mission(api: CliApiClient) -> str:
     """Get the current user's selected mission ID, or exit with guidance."""
     mission_id = await api.get_current_mission_id()
     if not mission_id:
-        click.echo(click.style(
-            "No mission selected.\n\n"
-            "  Set one with:  mc mission use --name <name>\n"
-            "  Or create:     mc mission create --name my-project --description '...'\n",
-            fg="yellow",
-        ))
+        click.echo(
+            click.style(
+                "No mission selected.\n\n"
+                "  Set one with:  mc mission use --name <name>\n"
+                "  Or create:     mc mission create --name my-project --description '...'\n",
+                fg="yellow",
+            )
+        )
         raise SystemExit(1)
     return mission_id
 
@@ -447,6 +465,7 @@ async def resolve_short_id(
         return prefix
     if len(prefix) < min_prefix_len:
         import click
+
         click.echo(
             f"Id prefix {prefix!r} too short (need >= {min_prefix_len} chars).",
             err=True,
@@ -457,6 +476,7 @@ async def resolve_short_id(
     matches = [item["id"] for item in items if item.get("id", "").startswith(prefix)]
     if not matches:
         import click
+
         msg = f"No id starts with {prefix!r}."
         if not_found_hint:
             msg += f" {not_found_hint}"
@@ -464,9 +484,9 @@ async def resolve_short_id(
         sys.exit(1)
     if len(matches) > 1:
         import click
+
         click.echo(
-            f"Ambiguous prefix {prefix!r} matches {len(matches)} items:\n  "
-            + "\n  ".join(matches),
+            f"Ambiguous prefix {prefix!r} matches {len(matches)} items:\n  " + "\n  ".join(matches),
             err=True,
         )
         sys.exit(1)
@@ -476,11 +496,9 @@ async def resolve_short_id(
 def setup_cli_logging(verbose: bool, debug: bool) -> None:
     """Configure logging for the thin CLI client.
 
-    Only logs HTTP-level diagnostics — business logging stays on the server.
+    Routes through the centralized logging setup (rule 001.2), matching
+    the admin CLI's CliContext. Only HTTP-level diagnostics are logged —
+    business logging stays on the server.
     """
-    level = logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(levelname)s %(message)s",
-        stream=sys.stderr,
-    )
+    level = "DEBUG" if debug else "INFO" if verbose else "WARNING"
+    setup_logging(level=level, format_type="console")

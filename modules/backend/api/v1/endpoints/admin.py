@@ -78,7 +78,9 @@ class CatalogUpdateRequest(BaseModel):
     constraints: dict[str, Any] | None = None
     engine: str | None = None
     effort: str | None = None
-    thinking_budget_json: dict[str, Any] | None = Field(None, description="Extended thinking config, e.g. {max_thinking_tokens: 10000}")
+    thinking_budget_json: dict[str, Any] | None = Field(
+        None, description="Extended thinking config, e.g. {max_thinking_tokens: 10000}"
+    )
 
 
 class SystemPromptUpdateRequest(BaseModel):
@@ -106,9 +108,8 @@ async def admin_catalog_list(
     enabled_only: bool = False,
 ) -> ApiResponse:
     """List all agent catalog entries, including disabled ones."""
-    from modules.backend.services.agent_catalog import AgentCatalogService
-
     from modules.backend.schemas.agent_catalog import AgentCatalogResponse
+    from modules.backend.services.agent_catalog import AgentCatalogService
 
     service = AgentCatalogService(db)
     entries = await service.list_catalog(enabled_only=enabled_only)
@@ -116,10 +117,7 @@ async def admin_catalog_list(
     return ApiResponse(
         success=True,
         data={
-            "agents": [
-                AgentCatalogResponse.model_validate(e).model_dump()
-                for e in entries
-            ],
+            "agents": [AgentCatalogResponse.model_validate(e).model_dump() for e in entries],
             "count": len(entries),
         },
         metadata={"request_id": request_id},
@@ -227,11 +225,16 @@ async def admin_catalog_update(
 
     # Reload registry so running agents pick up changes immediately
     from modules.backend.agents.mission_control.registry import get_registry
+
     get_registry().reload()
 
     return ApiResponse(
         success=True,
-        data={"id": entry.id, "agent_name": entry.agent_name, "updated_fields": list(updates.keys())},
+        data={
+            "id": entry.id,
+            "agent_name": entry.agent_name,
+            "updated_fields": list(updates.keys()),
+        },
         metadata={"request_id": request_id},
     )
 
@@ -286,6 +289,7 @@ async def admin_catalog_update_prompt(
     # Invalidate the registry cache so the next agent.run() picks up
     # the new prompt without a server restart.
     from modules.backend.agents.mission_control.registry import get_registry
+
     get_registry().reload()
 
     return ApiResponse(
@@ -357,6 +361,7 @@ async def admin_seed_catalog(
     result = await seed_catalog(service, force=force, reset_prompts=reset_prompts)
 
     from modules.backend.agents.mission_control.registry import get_registry
+
     get_registry().reload()
 
     return ApiResponse(
@@ -632,8 +637,7 @@ async def admin_cost_alerts(
         success=True,
         data={
             "alerts": [
-                {"rule": a.rule, "message": a.message, "severity": a.severity}
-                for a in alerts
+                {"rule": a.rule, "message": a.message, "severity": a.severity} for a in alerts
             ],
             "count": len(alerts),
         },
@@ -823,26 +827,12 @@ async def admin_emergency_stop(
     cancelled via the Temporal CLI if needed. This endpoint prevents
     NEW dispatch cycles from starting.
     """
-    from sqlalchemy import update
-
     from modules.backend.core.logging import get_logger
-    from modules.backend.models.mission_plan import (
-        MissionPlan,
-        MissionPlanStatus,
-    )
+    from modules.backend.services.mission_plan import MissionPlanService
 
     logger = get_logger(__name__)
 
-    stmt = (
-        update(MissionPlan)
-        .where(
-            MissionPlan.status == MissionPlanStatus.ACTIVE,
-            MissionPlan.gate_mode == "autonomous",
-        )
-        .values(status=MissionPlanStatus.PAUSED)
-    )
-    result = await db.execute(stmt)
-    paused_count = result.rowcount
+    paused_count = await MissionPlanService(db).pause_all_autonomous_plans()
     await db.commit()
 
     logger.warning(
@@ -862,4 +852,3 @@ async def admin_emergency_stop(
         },
         metadata={"request_id": request_id},
     )
-

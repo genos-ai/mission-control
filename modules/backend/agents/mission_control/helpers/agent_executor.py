@@ -3,17 +3,34 @@
 from __future__ import annotations
 
 import json
-import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    pass
+    from modules.backend.agents.mission_control.roster import Roster
 
 from pydantic_ai import UsageLimits, UserError
 
+from modules.backend.agents.mission_control.cost import compute_cost_usd
+from modules.backend.agents.mission_control.helpers.agent_setup import (
+    _build_agent_deps,
+    _import_agent_module,
+)
+from modules.backend.agents.mission_control.helpers.cost_recorder import (
+    extract_usage,
+    record_llm_call,
+)
+from modules.backend.agents.mission_control.helpers.event_emitter import _emit, _emit_tool_events
+from modules.backend.agents.mission_control.helpers.model_builder import (
+    _build_model,
+    _get_model_name,
+    build_model_settings,
+)
+from modules.backend.agents.mission_control.helpers.prompt_builder import (
+    _build_planning_prompt,
+    _build_roster_prompt,
+)
 from modules.backend.agents.mission_control.models import EventBusProtocol, ExecuteAgentFn
 from modules.backend.agents.mission_control.registry import get_registry
-from modules.backend.agents.mission_control.cost import compute_cost_usd
 from modules.backend.core.config import find_project_root
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
@@ -27,12 +44,6 @@ from modules.backend.events.types import (
     MissionArtifactFoundEvent,
     SystemEvent,
 )
-
-from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps, _import_agent_module
-from modules.backend.agents.mission_control.helpers.event_emitter import _emit, _emit_tool_events
-from modules.backend.agents.mission_control.helpers.cost_recorder import extract_usage, record_llm_call
-from modules.backend.agents.mission_control.helpers.model_builder import _build_model, _get_model_name, build_model_settings
-from modules.backend.agents.mission_control.helpers.prompt_builder import _build_planning_prompt, _build_roster_prompt
 
 logger = get_logger(__name__)
 
@@ -74,9 +85,7 @@ def _make_agent_executor(
         # entered.  The explicit tier check below is a second line of defence.
         agent_tier = agent_config.invocation.tier  # "user", "platform", "system"
         effective_handle = (
-            environment_handle
-            if environment_handle is not None and agent_tier == "user"
-            else None
+            environment_handle if environment_handle is not None and agent_tier == "user" else None
         )
 
         # ── Engine routing (Plan 55) ────────────────────────────────
@@ -140,10 +149,11 @@ def _make_agent_executor(
             # in the project root.
             if hasattr(deps, "evidence_path") and deps.evidence_path.startswith("@workspace"):
                 deps.evidence_path = deps.evidence_path.replace(
-                    "@workspace", str(effective_handle.working_dir),
+                    "@workspace",
+                    str(effective_handle.working_dir),
                 )
 
-        if hasattr(deps, 'on_progress') and event_bus is not None:
+        if hasattr(deps, "on_progress") and event_bus is not None:
             import asyncio as _asyncio
 
             def _on_progress(evt: dict) -> None:
@@ -151,28 +161,36 @@ def _make_agent_executor(
                 detail = evt.get("detail", "")
                 evt_type = evt.get("type", "")
                 if evt_type == "tool_start":
-                    _asyncio.ensure_future(_emit(
-                        event_bus, AgentToolCallEvent,
-                        session_id=session_id,
-                        source=f"dispatch:{mission_id}",
-                        agent_id=agent_name,
-                        tool_name=tool,
-                        tool_args={"detail": detail} if detail else {},
-                    ))
+                    _asyncio.ensure_future(
+                        _emit(
+                            event_bus,
+                            AgentToolCallEvent,
+                            session_id=session_id,
+                            source=f"dispatch:{mission_id}",
+                            agent_id=agent_name,
+                            tool_name=tool,
+                            tool_args={"detail": detail} if detail else {},
+                        )
+                    )
                 elif evt_type == "tool_done":
-                    _asyncio.ensure_future(_emit(
-                        event_bus, AgentToolResultEvent,
-                        session_id=session_id,
-                        source=f"dispatch:{mission_id}",
-                        agent_id=agent_name,
-                        tool_name=tool,
-                        tool_call_id="",
-                        result=detail or None,
-                    ))
+                    _asyncio.ensure_future(
+                        _emit(
+                            event_bus,
+                            AgentToolResultEvent,
+                            session_id=session_id,
+                            source=f"dispatch:{mission_id}",
+                            agent_id=agent_name,
+                            tool_name=tool,
+                            tool_call_id="",
+                            result=detail or None,
+                        )
+                    )
 
             deps.on_progress = _on_progress
 
-        await _emit(event_bus, AgentThinkingEvent,
+        await _emit(
+            event_bus,
+            AgentThinkingEvent,
             session_id=session_id,
             source=f"dispatch:{mission_id}",
             agent_id=agent_name,
@@ -197,12 +215,16 @@ def _make_agent_executor(
 
         try:
             async with agent.run_stream(
-                user_message, deps=deps, usage_limits=usage_limits,
+                user_message,
+                deps=deps,
+                usage_limits=usage_limits,
                 model_settings=model_settings,
             ) as stream:
                 try:
                     async for text in stream.stream_text(delta=True):
-                        await _emit(event_bus, AgentResponseChunkEvent,
+                        await _emit(
+                            event_bus,
+                            AgentResponseChunkEvent,
                             session_id=session_id,
                             source=source,
                             agent_id=agent_name,
@@ -213,14 +235,17 @@ def _make_agent_executor(
 
                 output = await stream.get_output()
                 await _emit_tool_events(
-                    event_bus, stream,
+                    event_bus,
+                    stream,
                     session_id=session_id,
                     source=source,
                     agent_id=agent_name,
                 )
                 usage = stream.usage()
         except Exception as exc:
-            await _emit(event_bus, SystemEvent,
+            await _emit(
+                event_bus,
+                SystemEvent,
                 session_id=session_id,
                 source=source,
                 level="error",
@@ -232,9 +257,12 @@ def _make_agent_executor(
         # Trace — log full message history at DEBUG level and optionally
         # emit to the mission event bus for frontend console visibility.
         from modules.backend.core.agent_trace import trace_and_emit
+
         await trace_and_emit(
-            agent_name, stream,
-            mission_id=mission_id, session_id=session_id,
+            agent_name,
+            stream,
+            mission_id=mission_id,
+            session_id=session_id,
             model=_get_model_name(agent_config.model),
             event_bus=event_bus,
         )
@@ -243,7 +271,12 @@ def _make_agent_executor(
             try:
                 module.post_execute(output, hook_data)
             except Exception:
-                logger.warning("post_execute hook failed for %s", agent_name, extra={"mission_id": mission_id}, exc_info=True)
+                logger.warning(
+                    "post_execute hook failed for %s",
+                    agent_name,
+                    extra={"mission_id": mission_id},
+                    exc_info=True,
+                )
 
         if hasattr(output, "model_dump"):
             output_dict = {"output": output.model_dump()}
@@ -259,15 +292,11 @@ def _make_agent_executor(
             _inner = output_dict.get("output", {})
             _inner = _inner if isinstance(_inner, dict) else {}
             _artifact_content = (
-                _inner.get("report_markdown")
-                or _inner.get("summary")
-                or _inner.get("result")
+                _inner.get("report_markdown") or _inner.get("summary") or _inner.get("result")
             )
             if isinstance(_artifact_content, str) and _artifact_content.strip():
                 _title = (
-                    _inner.get("title")
-                    or _inner.get("report_title")
-                    or f"{agent_name} — output"
+                    _inner.get("title") or _inner.get("report_title") or f"{agent_name} — output"
                 )
                 await _emit(
                     event_bus,
@@ -285,7 +314,9 @@ def _make_agent_executor(
         fields = extract_usage(usage)
         model_name = _get_model_name(agent_config.model)
         cost_usd = compute_cost_usd(
-            fields["input_tokens"], fields["output_tokens"], model_name,
+            fields["input_tokens"],
+            fields["output_tokens"],
+            model_name,
             cache_read_tokens=fields["cache_read_tokens"],
             cache_write_1h_tokens=fields["cache_write_tokens"],
             thinking_tokens=fields["thinking_tokens"],
@@ -295,15 +326,22 @@ def _make_agent_executor(
         # Record to llm_calls table (Plan 60 §0.7)
         try:
             await record_llm_call(
-                session_id=session_id, mission_id=mission_id,
-                agent_name=agent_name, agent_role=agent_config.agent_type,
-                model=model_name, usage=usage, cost_usd=cost_usd,
-                latency_ms=0, tool_count=len(agent_config.tools),
+                session_id=session_id,
+                mission_id=mission_id,
+                agent_name=agent_name,
+                agent_role=agent_config.agent_type,
+                model=model_name,
+                usage=usage,
+                cost_usd=cost_usd,
+                latency_ms=0,
+                tool_count=len(agent_config.tools),
             )
         except Exception:
             logger.warning(
                 "Failed to record LLM call for %s — cost data will be missing",
-                agent_name, exc_info=True,
+                agent_name,
+                exc_info=True,
+                extra={"mission_id": mission_id},
             )
 
         output_dict["_meta"] = {
@@ -317,7 +355,9 @@ def _make_agent_executor(
         if len(full_content) > 2000:
             full_content = full_content[:2000] + "…"
 
-        await _emit(event_bus, AgentResponseCompleteEvent,
+        await _emit(
+            event_bus,
+            AgentResponseCompleteEvent,
             session_id=session_id,
             source=f"dispatch:{mission_id}",
             agent_id=agent_name,
@@ -328,7 +368,9 @@ def _make_agent_executor(
             model=model_name,
         )
 
-        await _emit(event_bus, CostUpdateEvent,
+        await _emit(
+            event_bus,
+            CostUpdateEvent,
             session_id=session_id,
             source=f"dispatch:{mission_id}",
             input_tokens=fields["input_tokens"],
@@ -395,13 +437,8 @@ async def _call_planning_agent(
     from pydantic_ai import UsageLimits
 
     from modules.backend.agents.deps.base import FileScope
-    from modules.backend.agents.mission.planning.agent import (
-        PlanningAgentDeps,
-        create_agent,
-    )
-    from modules.backend.agents.mission.planning.build_session import (
-        PlanBuildingSession,
-    )
+    from modules.backend.agents.mission.planning.agent import PlanningAgentDeps, create_agent
+    from modules.backend.agents.mission.planning.build_session import PlanBuildingSession
     from modules.backend.core.config import get_default_budget_usd
 
     project_root = find_project_root()
@@ -464,24 +501,32 @@ async def _call_planning_agent(
         )
 
     if event_bus:
-        await _emit(event_bus, AgentThinkingEvent,
-            session_id=str(sid), source="mission_control",
+        await _emit(
+            event_bus,
+            AgentThinkingEvent,
+            session_id=str(sid),
+            source="mission_control",
             agent_id=planning_agent_id,
         )
 
     # Tool-based flow: agent.run() — the plan builds via tool calls,
     # not via text output.
     result = await agent.run(
-        planning_prompt, deps=deps, model_settings=planning_model_settings,
+        planning_prompt,
+        deps=deps,
+        model_settings=planning_model_settings,
         usage_limits=UsageLimits(request_limit=50),
     )
     usage = result.usage()
 
     # Trace — log full message history at DEBUG level
     from modules.backend.core.agent_trace import trace_and_emit
+
     await trace_and_emit(
-        planning_agent_id, result,
-        mission_id=mission_id, session_id=session_id,
+        planning_agent_id,
+        result,
+        mission_id=mission_id,
+        session_id=session_id,
         model=_get_model_name(planning_cfg.model),
         event_bus=event_bus,
     )
@@ -522,32 +567,40 @@ async def _call_planning_agent(
     )
 
     if event_bus:
-        await _emit(event_bus, AgentResponseCompleteEvent,
-            session_id=str(sid), source="mission_control",
+        await _emit(
+            event_bus,
+            AgentResponseCompleteEvent,
+            session_id=str(sid),
+            source="mission_control",
             agent_id=planning_agent_id,
             full_content=f"Plan generated ({len(plan_dict.get('tasks', []))} tasks)",
         )
 
         if plan_dict.get("tasks"):
             from modules.backend.events.types import PlanCreatedEvent
-            await event_bus.publish(PlanCreatedEvent(
-                session_id=sid,
-                source="mission_control",
-                plan_id=mission_id or "pending",
-                goal=plan_dict.get("summary", ""),
-                step_count=len(plan_dict["tasks"]),
-                metadata={
-                    "plan_markdown": _format_plan_summary(plan_dict),
-                    "task_plan": plan_dict,
-                },
-            ))
+
+            await event_bus.publish(
+                PlanCreatedEvent(
+                    session_id=sid,
+                    source="mission_control",
+                    plan_id=mission_id or "pending",
+                    goal=plan_dict.get("summary", ""),
+                    step_count=len(plan_dict["tasks"]),
+                    metadata={
+                        "plan_markdown": _format_plan_summary(plan_dict),
+                        "task_plan": plan_dict,
+                    },
+                )
+            )
 
     # Record planning agent cost
     try:
         fields = extract_usage(usage)
         model_name = _get_model_name(planning_cfg.model)
         planning_cost = compute_cost_usd(
-            fields["input_tokens"], fields["output_tokens"], model_name,
+            fields["input_tokens"],
+            fields["output_tokens"],
+            model_name,
             cache_read_tokens=fields["cache_read_tokens"],
             cache_write_1h_tokens=fields["cache_write_tokens"],
             thinking_tokens=fields["thinking_tokens"],
@@ -557,11 +610,18 @@ async def _call_planning_agent(
             mission_id=mission_id,
             agent_name=planning_agent_id,
             agent_role=planning_cfg.agent_type,
-            model=model_name, usage=usage, cost_usd=planning_cost,
-            latency_ms=0, tool_count=len(build_session.tasks),
+            model=model_name,
+            usage=usage,
+            cost_usd=planning_cost,
+            latency_ms=0,
+            tool_count=len(build_session.tasks),
         )
     except Exception:
-        logger.warning("Failed to record planning agent LLM call", exc_info=True)
+        logger.warning(
+            "Failed to record planning agent LLM call",
+            exc_info=True,
+            extra={"mission_id": mission_id},
+        )
 
     return {
         "task_plan": plan_dict,
