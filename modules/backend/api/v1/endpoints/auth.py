@@ -20,7 +20,11 @@ from modules.backend.schemas.auth import (
     build_api_key_create_response,
 )
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.user import SetCurrentMissionRequest, UpdateProfileRequest, UserResponse
+from modules.backend.schemas.user import (
+    SetCurrentMissionRequest,
+    UpdateProfileRequest,
+    UserResponse,
+)
 
 router = APIRouter()
 
@@ -70,7 +74,9 @@ async def refresh_token(
     )
 
 
-@router.post("/sse-token", response_model=ApiResponse, summary="Exchange JWT for short-lived SSE token")
+@router.post(
+    "/sse-token", response_model=ApiResponse, summary="Exchange JWT for short-lived SSE token"
+)
 async def create_sse_token(
     current_user: CurrentUser,
     request_id: RequestId,
@@ -88,7 +94,9 @@ async def create_sse_token(
 
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.exceptions import ExternalServiceError
+    from modules.backend.core.logging import get_logger
 
+    logger = get_logger(__name__)
     sse_token = str(uuid.uuid4())
     ttl = 30
 
