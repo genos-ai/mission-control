@@ -46,8 +46,10 @@ See [Architecture Standards](docs/99-reference-architecture/00-overview.md) for 
 - Node.js 20+
 - PostgreSQL 16+
 - Redis 7+
+- Temporal CLI (`brew install temporal`) — `services.py` launches the dev server
+- Docker — required by the preflight checks and container-backed agents
 
-### Backend Setup
+### Install
 
 Using **uv** (recommended for web apps - see [environment management](docs/99-reference-architecture/13-development-workflow.md#python-environment-management)):
 
@@ -60,20 +62,56 @@ uv venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 uv pip install -r requirements.txt
 
+# Frontend dependencies
+(cd modules/frontend && npm install)
+
 # Configure environment
 cp config/.env.example config/.env
 # Edit config/.env with your settings
-
-# Run backend
-uvicorn modules.backend.main:app --reload --port 8000
 ```
 
-### Frontend Setup
+### Start everything
+
+`services.py` is the canonical dev launcher. One command runs preflight checks
+(PostgreSQL, Redis, Docker, ports), applies Alembic migrations, seeds dev users
+and the agent catalog, and starts the Temporal dev server, the backend, the
+Temporal worker, and the frontend:
 
 ```bash
-cd modules/frontend
-npm install
-npm run dev
+python services.py start
+
+# Related:
+python services.py check    # preflight checks only
+python services.py status   # what's running
+python services.py stop     # stop services
+```
+
+### First mission (prove the install works)
+
+```bash
+# Log in with a seeded dev user (dev credentials: admin@missioncontrol.dev / admin123)
+python mc.py login --email admin@missioncontrol.dev
+
+# Create a mission (becomes the active mission)
+python mc.py mission create --name "First mission" --description "Smoke test"
+
+# Run an objective against it
+python mc.py run --objective "run a system health check" --budget 1.00
+```
+
+See [USAGE.md](USAGE.md) for the full CLI reference (`python mc.py tree` and
+`python admin.py tree` list every command).
+
+**Production / non-dev setups:** skip dev seeding and create the first admin
+explicitly with `python admin.py admin bootstrap-user --email you@example.com --name "You"`.
+
+### Manual startup (advanced)
+
+Running the backend directly skips migrations, seeding, Temporal, and the worker
+— missions will not execute until those are provided some other way:
+
+```bash
+uvicorn modules.backend.main:app --reload --port 8000
 ```
 
 ### Access Points
@@ -83,6 +121,7 @@ npm run dev
 | Backend API | http://localhost:8000 |
 | API Docs | http://localhost:8000/docs |
 | Frontend | http://localhost:5173 |
+| Temporal UI | http://localhost:8233 |
 
 ## Development
 
