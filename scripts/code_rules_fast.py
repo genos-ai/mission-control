@@ -526,7 +526,6 @@ def check_logger_error_needs_mission_id(path: Path, rel: str) -> list[Violation]
             "code_map",
             "config_schema",
             # Infrastructure without mission context:
-            "branch_manager",
             "container_backend",
             "gate_prompt",
             "run_notifier",

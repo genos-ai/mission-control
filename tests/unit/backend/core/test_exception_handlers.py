@@ -4,28 +4,28 @@ Unit Tests for Exception Handlers.
 Tests the exception handler functions in isolation.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 
 from modules.backend.core.exception_handlers import (
-    application_error_handler,
-    validation_error_handler,
-    unhandled_exception_handler,
     EXCEPTION_STATUS_MAP,
     _get_request_id,
+    application_error_handler,
+    unhandled_exception_handler,
+    validation_error_handler,
 )
 from modules.backend.core.exceptions import (
     ApplicationError,
-    NotFoundError,
-    ValidationError,
     AuthenticationError,
     AuthorizationError,
     ConflictError,
-    RateLimitError,
     DatabaseError,
     ExternalServiceError,
+    NotFoundError,
+    ValidationError,
 )
 
 
@@ -51,10 +51,6 @@ class TestExceptionStatusMapping:
     def test_conflict_maps_to_409(self):
         """ConflictError should map to 409."""
         assert EXCEPTION_STATUS_MAP[ConflictError] == 409
-
-    def test_rate_limit_maps_to_429(self):
-        """RateLimitError should map to 429."""
-        assert EXCEPTION_STATUS_MAP[RateLimitError] == 429
 
     def test_external_service_maps_to_502(self):
         """ExternalServiceError should map to 502."""

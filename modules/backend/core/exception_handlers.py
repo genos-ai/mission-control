@@ -15,7 +15,6 @@ Usage:
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError as PydanticValidationError
 
 from modules.backend.core.exceptions import (
     ApplicationError,
@@ -28,7 +27,6 @@ from modules.backend.core.exceptions import (
     NotFoundError,
     QuotaExhaustedError,
     RateLimitedError,
-    RateLimitError,
     TransientProviderError,
     ValidationError,
     WorkflowOutputMappingError,
@@ -47,7 +45,6 @@ EXCEPTION_STATUS_MAP: dict[type[ApplicationError], int] = {
     AuthenticationError: 401,
     AuthorizationError: 403,
     ConflictError: 409,
-    RateLimitError: 429,
     ExternalServiceError: 502,
     DatabaseError: 503,
     # Provider error taxonomy
