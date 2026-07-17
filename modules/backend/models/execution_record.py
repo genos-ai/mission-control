@@ -13,7 +13,7 @@ are persisted here.
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -205,7 +205,15 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     # Plan 71: workflow step tracking columns (converge execution tables)
     workflow_run_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
-        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        # use_alter breaks the FK cycle with workflow_runs.execution_record_id
+        # so create_all/drop_all can sort the tables (emitted as ALTER/DROP
+        # CONSTRAINT under an explicit name).
+        ForeignKey(
+            "workflow_runs.id",
+            ondelete="SET NULL",
+            name="fk_execution_records_workflow_run_id",
+            use_alter=True,
+        ),
         nullable=True,
         index=True,
         comment="Parent workflow run (null for non-workflow executions)",
@@ -414,8 +422,7 @@ class TaskAttempt(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<TaskAttempt(id={self.id}, attempt={self.attempt_number}, "
-            f"status={self.status})>"
+            f"<TaskAttempt(id={self.id}, attempt={self.attempt_number}, " f"status={self.status})>"
         )
 
 

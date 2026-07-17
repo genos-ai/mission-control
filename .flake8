@@ -17,3 +17,6 @@ exclude =
 per-file-ignores =
     # Allow unused imports in __init__.py (re-exports)
     __init__.py:F401
+    # conftest.py must set ALLOW_MODEL_REQUESTS=False (P11) before any
+    # model-importing module loads, so later imports are E402 by design
+    tests/conftest.py:E402

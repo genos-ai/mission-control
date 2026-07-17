@@ -15,7 +15,7 @@ pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 
 from collections.abc import AsyncGenerator
 from typing import Any
-from uuid import uuid5, UUID
+from uuid import UUID, uuid5
 
 # Deterministic test UUIDs — use these instead of arbitrary strings in tests.
 # Generated via uuid5 from a fixed namespace so they're stable across runs.
@@ -29,6 +29,8 @@ TEST_MISSION_ID = str(uuid5(_TEST_NS, "mission:test"))
 TEST_SESSION_ID = str(uuid5(_TEST_NS, "session:test"))
 
 import pytest
+from redis.asyncio import Redis as AsyncRedis
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -37,9 +39,6 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from redis.asyncio import Redis as AsyncRedis
-
-from modules.backend.models.base import Base
 import modules.backend.models.agent_catalog  # noqa: F401 — register tables
 import modules.backend.models.api_key  # noqa: F401 — register tables
 import modules.backend.models.execution_environment  # noqa: F401 — register tables
@@ -47,19 +46,18 @@ import modules.backend.models.execution_record  # noqa: F401 — register tables
 import modules.backend.models.mission  # noqa: F401 — register tables
 import modules.backend.models.mission_context  # noqa: F401 — register tables
 import modules.backend.models.mission_history  # noqa: F401 — register tables
+import modules.backend.models.mission_intent  # noqa: F401 — register tables (Plan 57)
+import modules.backend.models.mission_learning  # noqa: F401 — register tables (Plan 57)
 import modules.backend.models.mission_team  # noqa: F401 — register tables
 import modules.backend.models.prompt_version  # noqa: F401 — register tables
 import modules.backend.models.session  # noqa: F401 — register tables
+import modules.backend.models.session_followup  # noqa: F401 — register tables (Plan 51)
 import modules.backend.models.user  # noqa: F401 — register tables
 import modules.backend.models.workflow_definition  # noqa: F401 — register tables
 import modules.backend.models.workflow_schedule  # noqa: F401 — register tables
-import modules.backend.models.mission_intent  # noqa: F401 — register tables (Plan 57)
-import modules.backend.models.mission_learning  # noqa: F401 — register tables (Plan 57)
-import modules.backend.models.session_followup  # noqa: F401 — register tables (Plan 51)
+from modules.backend.models.base import Base
 from tests.test_config import get_test_database_url as _get_test_database_url
 from tests.test_config import get_test_redis_url as _get_test_redis_url
-
-
 
 # Event loop scope is set to "session" in pyproject.toml via
 # asyncio_default_fixture_loop_scope. No manual event_loop fixture needed.
@@ -114,17 +112,20 @@ async def db_engine() -> AsyncGenerator[AsyncEngine, None]:
             max_overflow=10,
         )
 
-    # Drop and recreate all tables for a clean slate.
-    # Prevents stale data from prior runs contaminating tests.
+    # Reset to a clean slate. For PostgreSQL, drop the whole schema rather
+    # than metadata-scoped drop_all: the long-lived test DB accumulates
+    # legacy tables from removed models (e.g. plan_task_states) whose FKs
+    # block DROP TABLE on current ones. Schema-level reset guarantees the
+    # clean-slate contract regardless of model history.
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        if is_sqlite():
+            await conn.run_sync(Base.metadata.drop_all)
+        else:
+            await conn.execute(sa_text("DROP SCHEMA public CASCADE"))
+            await conn.execute(sa_text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
-
-    # Drop all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
 
     await engine.dispose()
 
