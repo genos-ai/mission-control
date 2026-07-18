@@ -3,8 +3,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
 
 
@@ -35,7 +33,7 @@ class TestCreateAgent:
 
         create_agent(mock_model)
 
-        mock_assemble.assert_called_once_with("mission", "workflow")
+        mock_assemble.assert_called_once_with("mission.workflow.architect")
 
 
 class TestArchitectAgentDeps:

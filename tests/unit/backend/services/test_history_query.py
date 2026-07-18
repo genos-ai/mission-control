@@ -4,36 +4,65 @@ Per P12: tests run against the live platform. Uses real db_session fixture
 with transaction rollback for isolation.
 """
 
+from datetime import datetime as _dt
+from datetime import timezone as _tz
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.execution_record import (
-    FailureTier,
     ExecutionRecord,
     ExecutionRecordStatus,
+    FailureTier,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,
     TaskExecutionStatus,
 )
 from modules.backend.models.mission import Mission
-from modules.backend.models.session import Session
+from modules.backend.models.session import Session, SessionStatus
 from modules.backend.services.history_query import HistoryQueryService
-from uuid import uuid5, UUID
-from datetime import datetime as _dt, timezone as _tz
 from tests.conftest import TEST_USER_ID
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
-_MID = lambda tag: str(uuid5(_NS, f"mission:hist-{tag}"))
 _NIL_UUID = "00000000-0000-0000-0000-000000000000"
 _SESS_HIST = "5714117c-eaed-5ce3-9c56-73949f03aa3d"
 
+
+def _MID(tag: str) -> str:
+    """Deterministic mission UUID for a readable slug (stable across runs)."""
+    return str(uuid5(_NS, f"mission:hist-{tag}"))
+
+
+def _uid(tag: str) -> str:
+    """Deterministic task UUID for a readable name.
+
+    task_executions.task_id is a native UUID column (Plan 72), so tests
+    must bind real UUIDs while staying readable via named slugs.
+    """
+    return str(uuid5(_NS, f"task:hist-{tag}"))
+
+
 # All mission_id slugs used in this file.
 _MISSION_SLUGS = [
-    "proj-1", "proj-exec", "proj-tags", "proj-limit", "proj-a", "proj-b",
-    "proj-fail", "proj-fail-tag", "proj-fail-lim", "proj-ok",
-    "proj-sum", "proj-sum-lim",
-    "proj-sf", "proj-sf2", "proj-sf3", "proj-sf4", "proj-sf5",
+    "proj-1",
+    "proj-exec",
+    "proj-tags",
+    "proj-limit",
+    "proj-a",
+    "proj-b",
+    "proj-fail",
+    "proj-fail-tag",
+    "proj-fail-lim",
+    "proj-ok",
+    "proj-sum",
+    "proj-sum-lim",
+    "proj-sf",
+    "proj-sf2",
+    "proj-sf3",
+    "proj-sf4",
+    "proj-sf5",
 ]
 
 
@@ -45,11 +74,9 @@ def history_service(db_session: AsyncSession) -> HistoryQueryService:
 @pytest.fixture(autouse=True)
 async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     """Create Session + Mission rows that child tables FK to."""
-    db_session.add(Session(id=_SESS_HIST, status="ACTIVE"))
+    db_session.add(Session(id=_SESS_HIST, status=SessionStatus.ACTIVE))
     for slug in _MISSION_SLUGS:
-        db_session.add(
-            Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID)
-        )
+        db_session.add(Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID))
     await db_session.flush()
 
 
@@ -79,7 +106,7 @@ async def _create_mission(
 async def _create_execution(
     db: AsyncSession,
     execution_record_id: str,
-    task_id: str = "task-1",
+    task_id: str = _uid("task-1"),
     agent_name: str = "analyzer",
     status: TaskExecutionStatus = TaskExecutionStatus.COMPLETED,
     domain_tags: list[str] | None = None,
@@ -127,14 +154,22 @@ async def _create_failed_attempt(
 class TestGetRecentTaskExecutions:
     @pytest.mark.asyncio
     async def test_returns_executions_for_project(
-        self, history_service, db_session,
+        self,
+        history_service,
+        db_session,
     ):
         mission = await _create_mission(db_session, mission_id=_MID("proj-exec"))
         await _create_execution(
-            db_session, mission.id, task_id="t1", domain_tags=["api"],
+            db_session,
+            mission.id,
+            task_id=_uid("t1"),
+            domain_tags=["api"],
         )
         await _create_execution(
-            db_session, mission.id, task_id="t2", domain_tags=["auth"],
+            db_session,
+            mission.id,
+            task_id=_uid("t2"),
+            domain_tags=["auth"],
         )
 
         results = await history_service.get_recent_task_executions(_MID("proj-exec"))
@@ -145,28 +180,38 @@ class TestGetRecentTaskExecutions:
     async def test_filters_by_domain_tags(self, history_service, db_session):
         mission = await _create_mission(db_session, mission_id=_MID("proj-tags"))
         await _create_execution(
-            db_session, mission.id, task_id="t1", domain_tags=["api", "auth"],
+            db_session,
+            mission.id,
+            task_id=_uid("t1"),
+            domain_tags=["api", "auth"],
         )
         await _create_execution(
-            db_session, mission.id, task_id="t2", domain_tags=["frontend"],
+            db_session,
+            mission.id,
+            task_id=_uid("t2"),
+            domain_tags=["frontend"],
         )
 
         results = await history_service.get_recent_task_executions(
-            _MID("proj-tags"), domain_tags=["auth"],
+            _MID("proj-tags"),
+            domain_tags=["auth"],
         )
         assert len(results) == 1
-        assert results[0]["task_id"] == "t1"
+        assert results[0]["task_id"] == _uid("t1")
 
     @pytest.mark.asyncio
     async def test_respects_limit(self, history_service, db_session):
         mission = await _create_mission(db_session, mission_id=_MID("proj-limit"))
         for i in range(5):
             await _create_execution(
-                db_session, mission.id, task_id=f"t{i}",
+                db_session,
+                mission.id,
+                task_id=_uid(f"t{i}"),
             )
 
         results = await history_service.get_recent_task_executions(
-            _MID("proj-limit"), limit=2,
+            _MID("proj-limit"),
+            limit=2,
         )
         assert len(results) == 2
 
@@ -179,12 +224,12 @@ class TestGetRecentTaskExecutions:
     async def test_excludes_other_projects(self, history_service, db_session):
         m1 = await _create_mission(db_session, mission_id=_MID("proj-a"))
         m2 = await _create_mission(db_session, mission_id=_MID("proj-b"))
-        await _create_execution(db_session, m1.id, task_id="a-task")
-        await _create_execution(db_session, m2.id, task_id="b-task")
+        await _create_execution(db_session, m1.id, task_id=_uid("a-task"))
+        await _create_execution(db_session, m2.id, task_id=_uid("b-task"))
 
         results = await history_service.get_recent_task_executions(_MID("proj-a"))
         assert len(results) == 1
-        assert results[0]["task_id"] == "a-task"
+        assert results[0]["task_id"] == _uid("a-task")
 
 
 class TestGetRecentFailures:
@@ -192,10 +237,14 @@ class TestGetRecentFailures:
     async def test_returns_failed_attempts(self, history_service, db_session):
         mission = await _create_mission(db_session, mission_id=_MID("proj-fail"))
         execution = await _create_execution(
-            db_session, mission.id, domain_tags=["api"],
+            db_session,
+            mission.id,
+            domain_tags=["api"],
         )
         await _create_failed_attempt(
-            db_session, execution.id, failure_reason="Missing required field",
+            db_session,
+            execution.id,
+            failure_reason="Missing required field",
         )
 
         failures = await history_service.get_recent_failures(_MID("proj-fail"))
@@ -207,19 +256,26 @@ class TestGetRecentFailures:
     async def test_filters_by_domain_tags(self, history_service, db_session):
         mission = await _create_mission(db_session, mission_id=_MID("proj-fail-tag"))
         exec_api = await _create_execution(
-            db_session, mission.id, task_id="api-task", domain_tags=["api"],
+            db_session,
+            mission.id,
+            task_id=_uid("api-task"),
+            domain_tags=["api"],
         )
         exec_ui = await _create_execution(
-            db_session, mission.id, task_id="ui-task", domain_tags=["frontend"],
+            db_session,
+            mission.id,
+            task_id=_uid("ui-task"),
+            domain_tags=["frontend"],
         )
         await _create_failed_attempt(db_session, exec_api.id)
         await _create_failed_attempt(db_session, exec_ui.id)
 
         failures = await history_service.get_recent_failures(
-            _MID("proj-fail-tag"), domain_tags=["api"],
+            _MID("proj-fail-tag"),
+            domain_tags=["api"],
         )
         assert len(failures) == 1
-        assert failures[0]["task_id"] == "api-task"
+        assert failures[0]["task_id"] == _uid("api-task")
 
     @pytest.mark.asyncio
     async def test_respects_limit(self, history_service, db_session):
@@ -227,11 +283,14 @@ class TestGetRecentFailures:
         execution = await _create_execution(db_session, mission.id)
         for i in range(5):
             await _create_failed_attempt(
-                db_session, execution.id, attempt_number=i + 1,
+                db_session,
+                execution.id,
+                attempt_number=i + 1,
             )
 
         failures = await history_service.get_recent_failures(
-            _MID("proj-fail-lim"), limit=2,
+            _MID("proj-fail-lim"),
+            limit=2,
         )
         assert len(failures) == 2
 
@@ -248,10 +307,14 @@ class TestGetMissionSummaries:
     @pytest.mark.asyncio
     async def test_returns_summaries(self, history_service, db_session):
         await _create_mission(
-            db_session, mission_id=_MID("proj-sum"), objective="Build API",
+            db_session,
+            mission_id=_MID("proj-sum"),
+            objective="Build API",
         )
         await _create_mission(
-            db_session, mission_id=_MID("proj-sum"), objective="Fix auth",
+            db_session,
+            mission_id=_MID("proj-sum"),
+            objective="Fix auth",
             status=ExecutionRecordStatus.FAILED,
         )
 
@@ -264,11 +327,14 @@ class TestGetMissionSummaries:
     async def test_respects_limit(self, history_service, db_session):
         for i in range(5):
             await _create_mission(
-                db_session, mission_id=_MID("proj-sum-lim"), objective=f"Mission {i}",
+                db_session,
+                mission_id=_MID("proj-sum-lim"),
+                objective=f"Mission {i}",
             )
 
         summaries = await history_service.get_mission_summaries(
-            _MID("proj-sum-lim"), limit=3,
+            _MID("proj-sum-lim"),
+            limit=3,
         )
         assert len(summaries) == 3
 
@@ -283,64 +349,77 @@ class TestSummarizedFiltering:
 
     @pytest.mark.asyncio
     async def test_executions_exclude_summarized_by_default(
-        self, history_service, db_session,
+        self,
+        history_service,
+        db_session,
     ):
         m1 = await _create_mission(db_session, mission_id=_MID("proj-sf"))
         m2 = await _create_mission(db_session, mission_id=_MID("proj-sf"))
         m2.summarized = True
         await db_session.flush()
 
-        await _create_execution(db_session, m1.id, task_id="active-task")
-        await _create_execution(db_session, m2.id, task_id="summarized-task")
+        await _create_execution(db_session, m1.id, task_id=_uid("active-task"))
+        await _create_execution(db_session, m2.id, task_id=_uid("summarized-task"))
 
         results = await history_service.get_recent_task_executions(_MID("proj-sf"))
         assert len(results) == 1
-        assert results[0]["task_id"] == "active-task"
+        assert results[0]["task_id"] == _uid("active-task")
 
     @pytest.mark.asyncio
     async def test_executions_include_summarized_when_requested(
-        self, history_service, db_session,
+        self,
+        history_service,
+        db_session,
     ):
         m1 = await _create_mission(db_session, mission_id=_MID("proj-sf2"))
         m2 = await _create_mission(db_session, mission_id=_MID("proj-sf2"))
         m2.summarized = True
         await db_session.flush()
 
-        await _create_execution(db_session, m1.id, task_id="active")
-        await _create_execution(db_session, m2.id, task_id="old")
+        await _create_execution(db_session, m1.id, task_id=_uid("active"))
+        await _create_execution(db_session, m2.id, task_id=_uid("old"))
 
         results = await history_service.get_recent_task_executions(
-            _MID("proj-sf2"), include_summarized=True,
+            _MID("proj-sf2"),
+            include_summarized=True,
         )
         assert len(results) == 2
 
     @pytest.mark.asyncio
     async def test_failures_exclude_summarized_by_default(
-        self, history_service, db_session,
+        self,
+        history_service,
+        db_session,
     ):
         m1 = await _create_mission(db_session, mission_id=_MID("proj-sf3"))
         m2 = await _create_mission(db_session, mission_id=_MID("proj-sf3"))
         m2.summarized = True
         await db_session.flush()
 
-        e1 = await _create_execution(db_session, m1.id, task_id="active")
-        e2 = await _create_execution(db_session, m2.id, task_id="old")
+        e1 = await _create_execution(db_session, m1.id, task_id=_uid("active"))
+        e2 = await _create_execution(db_session, m2.id, task_id=_uid("old"))
         await _create_failed_attempt(db_session, e1.id)
         await _create_failed_attempt(db_session, e2.id)
 
         failures = await history_service.get_recent_failures(_MID("proj-sf3"))
         assert len(failures) == 1
-        assert failures[0]["task_id"] == "active"
+        assert failures[0]["task_id"] == _uid("active")
 
     @pytest.mark.asyncio
     async def test_mission_summaries_exclude_summarized_by_default(
-        self, history_service, db_session,
+        self,
+        history_service,
+        db_session,
     ):
-        m1 = await _create_mission(
-            db_session, mission_id=_MID("proj-sf4"), objective="Active",
+        await _create_mission(
+            db_session,
+            mission_id=_MID("proj-sf4"),
+            objective="Active",
         )
         m2 = await _create_mission(
-            db_session, mission_id=_MID("proj-sf4"), objective="Old",
+            db_session,
+            mission_id=_MID("proj-sf4"),
+            objective="Old",
         )
         m2.summarized = True
         await db_session.flush()
@@ -351,18 +430,25 @@ class TestSummarizedFiltering:
 
     @pytest.mark.asyncio
     async def test_mission_summaries_include_summarized_when_requested(
-        self, history_service, db_session,
+        self,
+        history_service,
+        db_session,
     ):
-        m1 = await _create_mission(
-            db_session, mission_id=_MID("proj-sf5"), objective="Active",
+        await _create_mission(
+            db_session,
+            mission_id=_MID("proj-sf5"),
+            objective="Active",
         )
         m2 = await _create_mission(
-            db_session, mission_id=_MID("proj-sf5"), objective="Old",
+            db_session,
+            mission_id=_MID("proj-sf5"),
+            objective="Old",
         )
         m2.summarized = True
         await db_session.flush()
 
         summaries = await history_service.get_mission_summaries(
-            _MID("proj-sf5"), include_summarized=True,
+            _MID("proj-sf5"),
+            include_summarized=True,
         )
         assert len(summaries) == 2

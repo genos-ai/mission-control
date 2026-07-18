@@ -1,18 +1,24 @@
-"""Tests for MissionPlanService.run_objective() — Plan 62 unified execution path.
+"""Tests for MissionPlanOrchestrator.run_objective() — Plan 62 unified execution path.
 
-Tests concurrency guard, gate mode handling, async/sync dispatch, budget
+Tests concurrency guard, gate mode handling, async dispatch, budget
 propagation, and approve_all_proposed. Uses real db_session per project
 testing principles.
+
+Plan 72 contract: tasks are first-class rows in the `tasks` table with
+native UUID ids, created via TaskRepository. plan_task_states and
+MissionPlan.task_plan_json no longer exist.
 """
 
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ConflictError
-from modules.backend.models.task import TaskStatus
+from modules.backend.models.mission_plan import MissionPlan
+from modules.backend.models.task import Task, TaskStatus
+from modules.backend.repositories.task import TaskRepository
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
@@ -22,32 +28,21 @@ from modules.backend.services.mission_plan_orchestrator import MissionPlanOrches
 
 
 @pytest.fixture
-async def mission_context(db_session: AsyncSession) -> dict:
-    """Create a real user + mission and return both IDs."""
+async def mission_context(db_session: AsyncSession, test_user) -> dict:
+    """Create a real mission owned by the shared test user."""
     from modules.backend.models.mission import Mission
-    from modules.backend.models.user import User
-
-    user_id = str(uuid.uuid4())
-    user = User(
-        id=user_id,
-        email=f"test-{uuid.uuid4().hex[:6]}@test.com",
-        display_name="Test User",
-        hashed_password="x",
-    )
-    db_session.add(user)
-    await db_session.flush()
 
     m = Mission(
         id=str(uuid.uuid4()),
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Test mission for run_objective",
-        owner_id=user_id,
+        owner_id=test_user.id,
         gate_mode="autonomous",
         budget_ceiling_usd=10.0,
     )
     db_session.add(m)
     await db_session.flush()
-    return {"mission_id": m.id, "user_id": user_id}
+    return {"mission_id": m.id, "user_id": test_user.id}
 
 
 @pytest.fixture
@@ -70,35 +65,61 @@ def orchestrator(db_session: AsyncSession) -> MissionPlanOrchestrator:
     return MissionPlanOrchestrator(db_session)
 
 
-def _mock_planning_agent_result(task_count: int = 1, plan_version: int = 1) -> dict:
-    """Build a mock planning agent result with N tasks."""
-    tasks = []
-    for i in range(task_count):
-        tasks.append(
-            {
-                "task_id": f"v{plan_version}-task-{i+1:03d}",
-                "agent": "system.summarization.agent",
-                "agent_version": "1.0.0",
-                "description": f"Test task {i+1}",
-                "instructions": f"Do thing {i+1}",
-                "dependencies": [f"v{plan_version}-task-{i:03d}"] if i > 0 else [],
-                "verification": {
-                    "tier_1": {"schema_validation": False, "required_output_fields": []},
-                    "tier_2": {"deterministic_checks": []},
-                    "tier_3": {"requires_ai_evaluation": False},
-                },
-            }
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _create_tasks(
+    db_session: AsyncSession,
+    plan: MissionPlan,
+    count: int,
+    *,
+    status: TaskStatus = TaskStatus.PROPOSED,
+    chain: bool = True,
+) -> list[Task]:
+    """Create N Task rows for the plan (Plan 72: real rows, UUID ids).
+
+    When chain=True each task depends on the previous one.
+    """
+    repo = TaskRepository(db_session)
+    tasks: list[Task] = []
+    for i in range(count):
+        task = await repo.create_task(
+            plan_id=plan.id,
+            mission_id=plan.mission_id,
+            agent="system.summarization.agent",
+            description=f"Test task {i + 1}",
+            instructions=f"Do thing {i + 1}",
+            status=status,
         )
-    return {
-        "task_plan": {
-            "version": "1.0.0",
-            "mission_id": "test",
-            "summary": "Test plan",
-            "estimated_cost_usd": 1.0,
-            "estimated_duration_seconds": 60,
-            "tasks": tasks,
-        },
-    }
+        if chain and tasks:
+            await repo.set_dependencies(task.id, [tasks[-1].id])
+        tasks.append(task)
+    return tasks
+
+
+def _mock_refine(orchestrator, db_session, task_count, created_tasks=None):
+    """Build a refine() replacement that creates real Task rows.
+
+    Mirrors the documented refine() contract: persist PROPOSED tasks,
+    bump the plan version, and return the plan with its tasks
+    relationship freshly loaded. The explicit relationship refresh is
+    needed because the identity-mapped plan was loaded (with an empty
+    tasks collection) by get_or_create_plan earlier in the same session.
+    """
+
+    async def mock_refine(plan_id, instructions, uid, **kwargs):
+        plan = await orchestrator._repo.get_by_id(plan_id)
+        tasks = await _create_tasks(db_session, plan, task_count)
+        if created_tasks is not None:
+            created_tasks.extend(tasks)
+        plan.version += 1
+        await db_session.flush()
+        await db_session.refresh(plan, ["tasks"])
+        return plan
+
+    return mock_refine
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +137,7 @@ class TestConcurrencyGuard:
     ):
         """ConflictError raised when plan has tasks in QUEUED state."""
         plan = await service.get_or_create_plan(mission_id)
-
-        # Manually insert a task plan + queued state
-        from modules.backend.repositories.mission_plan import MissionPlanRepository
-
-        repo = MissionPlanRepository(db_session)
-        await repo.create_task_state(plan.id, "v1-task-001")
-        state = await repo.get_task_state_required(plan.id, "v1-task-001")
-        state.status = TaskStatus.QUEUED.value
-        await db_session.flush()
+        await _create_tasks(db_session, plan, 1, status=TaskStatus.QUEUED)
 
         with pytest.raises(ConflictError, match="in-progress"):
             await service.check_no_active_tasks(plan.id)
@@ -138,14 +151,7 @@ class TestConcurrencyGuard:
     ):
         """ConflictError raised when plan has tasks in RUNNING state."""
         plan = await service.get_or_create_plan(mission_id)
-
-        from modules.backend.repositories.mission_plan import MissionPlanRepository
-
-        repo = MissionPlanRepository(db_session)
-        await repo.create_task_state(plan.id, "v1-task-001")
-        state = await repo.get_task_state_required(plan.id, "v1-task-001")
-        state.status = TaskStatus.RUNNING.value
-        await db_session.flush()
+        await _create_tasks(db_session, plan, 1, status=TaskStatus.RUNNING)
 
         with pytest.raises(ConflictError, match="in-progress"):
             await service.check_no_active_tasks(plan.id)
@@ -159,14 +165,7 @@ class TestConcurrencyGuard:
     ):
         """No error when all tasks are in terminal states."""
         plan = await service.get_or_create_plan(mission_id)
-
-        from modules.backend.repositories.mission_plan import MissionPlanRepository
-
-        repo = MissionPlanRepository(db_session)
-        await repo.create_task_state(plan.id, "v1-task-001")
-        state = await repo.get_task_state_required(plan.id, "v1-task-001")
-        state.status = TaskStatus.COMPLETED.value
-        await db_session.flush()
+        await _create_tasks(db_session, plan, 1, status=TaskStatus.COMPLETED)
 
         # Should not raise
         await service.check_no_active_tasks(plan.id)
@@ -197,25 +196,14 @@ class TestApproveAllProposed:
         db_session: AsyncSession,
     ):
         plan = await service.get_or_create_plan(mission_id)
-
-        # Create proposed tasks
-        from modules.backend.repositories.mission_plan import MissionPlanRepository
-
-        repo = MissionPlanRepository(db_session)
-
-        # Need a task_plan_json so approve_task can walk dependencies
-        plan.task_plan_json = _mock_planning_agent_result(2)["task_plan"]
-        await db_session.flush()
-
-        await repo.create_task_state(plan.id, "v1-task-001")
-        await repo.create_task_state(plan.id, "v1-task-002")
-        await db_session.flush()
+        tasks = await _create_tasks(db_session, plan, 2)
 
         approved = await service.approve_all_proposed(plan.id, user_id)
 
-        assert len(approved) >= 2
-        assert "v1-task-001" in approved
-        assert "v1-task-002" in approved
+        assert set(approved) == {t.id for t in tasks}
+        for task in tasks:
+            assert task.status == TaskStatus.APPROVED
+            assert task.approved_by_user_id == user_id
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_proposed(
@@ -234,41 +222,6 @@ class TestApproveAllProposed:
 # ---------------------------------------------------------------------------
 
 
-def _patch_planning():
-    """Context manager that patches the Planning Agent and roster derivation."""
-    from modules.backend.agents.mission_control.roster import (
-        Roster,
-        RosterAgentEntry,
-        RosterConstraintsSchema,
-        RosterInterfaceSchema,
-        RosterModelSchema,
-    )
-
-    mock_roster = Roster(
-        agents=[
-            RosterAgentEntry(
-                agent_name="system.summarization.agent",
-                agent_version="1.0.0",
-                description="Test agent",
-                model=RosterModelSchema(name="test"),
-                interface=RosterInterfaceSchema(input={}, output={}),
-                constraints=RosterConstraintsSchema(timeout_seconds=60),
-            ),
-        ]
-    )
-
-    return [
-        patch(
-            "modules.backend.services.mission_plan_orchestrator.MissionPlanOrchestrator.refine",
-        ),
-        patch(
-            "modules.backend.agents.mission_control.roster.derive_roster_from_team",
-            new_callable=AsyncMock,
-            return_value=mock_roster,
-        ),
-    ]
-
-
 class TestRunObjectiveInteractive:
     @pytest.mark.asyncio
     async def test_interactive_stops_after_refine(
@@ -279,20 +232,7 @@ class TestRunObjectiveInteractive:
         db_session: AsyncSession,
     ):
         """Interactive gate mode creates plan but does not dispatch."""
-        mock_result = _mock_planning_agent_result(2)
-
-        # Mock refine to set task_plan_json directly (avoids Planning Agent + roster)
-        async def mock_refine(plan_id, instructions, uid, **kwargs):
-            plan = await orchestrator._repo.get_by_id(plan_id)
-            plan.task_plan_json = mock_result["task_plan"]
-            plan.version += 1
-            from modules.backend.repositories.mission_plan import MissionPlanRepository
-
-            repo = MissionPlanRepository(db_session)
-            for t in mock_result["task_plan"]["tasks"]:
-                await repo.create_task_state(plan.id, t["task_id"])
-            await db_session.flush()
-            return plan
+        mock_refine = _mock_refine(orchestrator, db_session, task_count=2)
 
         with patch.object(orchestrator, "refine", side_effect=mock_refine):
             result = await orchestrator.run_objective(
@@ -306,6 +246,11 @@ class TestRunObjectiveInteractive:
         assert result["task_count"] == 2
         assert result["dispatched_task_ids"] == []
         assert result["total_cost_usd"] == 0.0
+
+        # Tasks stay PROPOSED — nothing was approved or dispatched
+        tasks = await TaskRepository(db_session).get_by_plan_id(result["plan_id"])
+        assert len(tasks) == 2
+        assert all(t.status == TaskStatus.PROPOSED for t in tasks)
 
 
 # ---------------------------------------------------------------------------
@@ -323,19 +268,8 @@ class TestRunObjectiveDispatch:
         db_session: AsyncSession,
     ):
         """run_objective approves tasks and dispatches via Temporal."""
-        mock_result = _mock_planning_agent_result(1)
-
-        async def mock_refine(plan_id, instructions, uid, **kwargs):
-            plan = await orchestrator._repo.get_by_id(plan_id)
-            plan.task_plan_json = mock_result["task_plan"]
-            plan.version += 1
-            from modules.backend.repositories.mission_plan import MissionPlanRepository
-
-            repo = MissionPlanRepository(db_session)
-            for t in mock_result["task_plan"]["tasks"]:
-                await repo.create_task_state(plan.id, t["task_id"])
-            await db_session.flush()
-            return plan
+        created: list[Task] = []
+        mock_refine = _mock_refine(orchestrator, db_session, task_count=1, created_tasks=created)
 
         async def mock_temporal(*args, **kwargs):
             return "mock-workflow-id"
@@ -351,8 +285,10 @@ class TestRunObjectiveDispatch:
             )
 
         assert result["outcome_status"] == "dispatching"
-        assert len(result["dispatched_task_ids"]) == 1
+        assert result["workflow_id"] == "mock-workflow-id"
         assert result["plan_id"] is not None
+        assert result["dispatched_task_ids"] == [created[0].id]
+        assert created[0].status == TaskStatus.APPROVED
 
 
 # ---------------------------------------------------------------------------
@@ -382,19 +318,7 @@ class TestRunObjectiveBudget:
         db_session: AsyncSession,
     ):
         """Explicit budget_ceiling_usd overrides mission default."""
-        mock_result = _mock_planning_agent_result(1)
-
-        async def mock_refine(plan_id, instructions, uid, **kwargs):
-            plan = await orchestrator._repo.get_by_id(plan_id)
-            plan.task_plan_json = mock_result["task_plan"]
-            plan.version += 1
-            from modules.backend.repositories.mission_plan import MissionPlanRepository
-
-            repo = MissionPlanRepository(db_session)
-            for t in mock_result["task_plan"]["tasks"]:
-                await repo.create_task_state(plan.id, t["task_id"])
-            await db_session.flush()
-            return plan
+        mock_refine = _mock_refine(orchestrator, db_session, task_count=1)
 
         async def mock_temporal(*args, **kwargs):
             return "mock-workflow-id"

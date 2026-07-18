@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from modules.backend.agents.deps.base import FileScope
 from modules.backend.services.workflow_architect import (
     ARCHITECT_AGENT_NAME,
     WorkflowArchitectService,
@@ -21,33 +22,43 @@ def service(mock_session):
     return WorkflowArchitectService(mock_session)
 
 
+def _mock_registry() -> MagicMock:
+    """Registry mock: .get() returns agent config, .get_instance() the agent."""
+    registry = MagicMock()
+    registry.get.return_value = MagicMock(model="copilot:test-model")
+    registry.get_instance.return_value = MagicMock()
+    return registry
+
+
+def _common_deps() -> dict:
+    """Stand-in for build_deps_from_config() output."""
+    return {
+        "project_root": Path("/project"),
+        "scope": FileScope(read_paths=[], write_paths=[]),
+        "config": None,
+    }
+
+
 class TestWorkflowArchitectService:
     """Tests for WorkflowArchitectService.chat()."""
 
     @pytest.mark.asyncio
     @patch("modules.backend.services.workflow_architect.run_conversational")
-    @patch("modules.backend.services.workflow_architect.create_agent")
+    @patch("modules.backend.services.workflow_architect.build_deps_from_config")
+    @patch("modules.backend.services.workflow_architect._build_model")
     @patch("modules.backend.services.workflow_architect.get_registry")
-    @patch("modules.backend.services.workflow_architect.find_project_root")
     async def test_chat_returns_response(
         self,
-        mock_find_root,
         mock_registry,
-        mock_create_agent,
+        mock_build_model,
+        mock_build_deps,
         mock_run_conv,
         service,
     ):
-        mock_find_root.return_value = Path("/project")
-        mock_reg = MagicMock()
-        mock_reg.has.return_value = False
-        mock_registry.return_value = mock_reg
-
-        mock_mission = MagicMock()
-        mock_mission.brief = "Review all modules"
-        mock_mission.description = "Full review"
-
-        mock_agent = MagicMock()
-        mock_create_agent.return_value = mock_agent
+        registry = _mock_registry()
+        mock_registry.return_value = registry
+        mock_build_model.return_value = MagicMock()
+        mock_build_deps.return_value = _common_deps()
 
         mock_run_conv.return_value = {
             "response": "I'll design a workflow for you.",
@@ -65,27 +76,28 @@ class TestWorkflowArchitectService:
 
         assert result["response"] == "I'll design a workflow for you."
         mock_run_conv.assert_called_once()
+        # Agent comes from the registry instance cache, built with the config model
+        registry.get_instance.assert_called_once_with(
+            ARCHITECT_AGENT_NAME,
+            mock_build_model.return_value,
+        )
 
     @pytest.mark.asyncio
     @patch("modules.backend.services.workflow_architect.run_conversational")
-    @patch("modules.backend.services.workflow_architect.create_agent")
+    @patch("modules.backend.services.workflow_architect.build_deps_from_config")
+    @patch("modules.backend.services.workflow_architect._build_model")
     @patch("modules.backend.services.workflow_architect.get_registry")
-    @patch("modules.backend.services.workflow_architect.find_project_root")
     async def test_chat_enriches_first_message(
         self,
-        mock_find_root,
         mock_registry,
-        mock_create_agent,
+        mock_build_model,
+        mock_build_deps,
         mock_run_conv,
         service,
     ):
-        mock_find_root.return_value = Path("/project")
-        mock_reg = MagicMock()
-        mock_reg.has.return_value = False
-        mock_registry.return_value = mock_reg
-
-        mock_agent = MagicMock()
-        mock_create_agent.return_value = mock_agent
+        mock_registry.return_value = _mock_registry()
+        mock_build_model.return_value = MagicMock()
+        mock_build_deps.return_value = _common_deps()
         mock_run_conv.return_value = {"response": "ok", "usage": None, "all_messages": []}
 
         with patch.object(service, "_load_mission_context", new_callable=AsyncMock) as mock_ctx:
@@ -104,24 +116,20 @@ class TestWorkflowArchitectService:
 
     @pytest.mark.asyncio
     @patch("modules.backend.services.workflow_architect.run_conversational")
-    @patch("modules.backend.services.workflow_architect.create_agent")
+    @patch("modules.backend.services.workflow_architect.build_deps_from_config")
+    @patch("modules.backend.services.workflow_architect._build_model")
     @patch("modules.backend.services.workflow_architect.get_registry")
-    @patch("modules.backend.services.workflow_architect.find_project_root")
     async def test_chat_with_history_skips_enrichment(
         self,
-        mock_find_root,
         mock_registry,
-        mock_create_agent,
+        mock_build_model,
+        mock_build_deps,
         mock_run_conv,
         service,
     ):
-        mock_find_root.return_value = Path("/project")
-        mock_reg = MagicMock()
-        mock_reg.has.return_value = False
-        mock_registry.return_value = mock_reg
-
-        mock_agent = MagicMock()
-        mock_create_agent.return_value = mock_agent
+        mock_registry.return_value = _mock_registry()
+        mock_build_model.return_value = MagicMock()
+        mock_build_deps.return_value = _common_deps()
         mock_run_conv.return_value = {"response": "revised", "usage": None, "all_messages": []}
 
         existing_history = [MagicMock()]

@@ -4,26 +4,35 @@ Per P12: tests run against the live platform. Uses real db_session fixture
 with transaction rollback for isolation.
 """
 
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission import Mission
 from modules.backend.services.context_curator import ContextCurator
-from modules.backend.services.mission_context import (
-    MissionContextManager,
-    _cache,
-)
-from uuid import uuid5, UUID
+from modules.backend.services.mission_context import MissionContextManager, _cache
 from tests.conftest import TEST_USER_ID
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
-_MID = lambda tag: str(uuid5(_NS, f"mission:curator-{tag}"))
-_MISSION_REF = str(uuid5(_NS, "mission:ref"))
 _NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
-# Mission slugs that need parent rows (exclude "nonexistent-project" — tests not-found path).
+
+def _MID(tag: str) -> str:
+    """Deterministic mission UUID for a readable slug (stable across runs)."""
+    return str(uuid5(_NS, f"mission:curator-{tag}"))
+
+
+# context_changes.task_id is a native UUID column — bind a real UUID, not a slug.
+_TASK_ID = str(uuid5(_NS, "task:curator-1"))
+
+# Mission slugs that need parent rows (exclude the nil UUID — tests not-found path).
 _MISSION_SLUGS = [
-    _MID("proj-curator"), _MID("proj-errors"), _MID("proj-restricted"), _MID("proj-guard"), _MID("proj-audit"),
+    _MID("proj-curator"),
+    _MID("proj-errors"),
+    _MID("proj-restricted"),
+    _MID("proj-guard"),
+    _MID("proj-audit"),
 ]
 
 
@@ -49,9 +58,7 @@ def _clear_cache():
 async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     """Create Mission rows that MissionContext.mission_id FKs to."""
     for mid in _MISSION_SLUGS:
-        db_session.add(
-            Mission(id=mid, name=mid, description="test", owner_id=TEST_USER_ID)
-        )
+        db_session.add(Mission(id=mid, name=mid, description="test", owner_id=TEST_USER_ID))
     await db_session.flush()
 
 
@@ -60,7 +67,8 @@ class TestApplyTaskUpdates:
     async def test_empty_updates_returns_early(self, curator):
         """Empty context_updates list returns (0, []) without touching DB."""
         version, errors = await curator.apply_task_updates(
-            "any-project", [],
+            "any-project",
+            [],
         )
         assert version == 0
         assert errors == []
@@ -72,11 +80,17 @@ class TestApplyTaskUpdates:
 
         version, errors = await curator.apply_task_updates(
             _MID("proj-curator"),
-            [{"op": "add", "path": "identity.tech_stack",
-              "value": ["python"], "reason": "agent discovered stack"}],
+            [
+                {
+                    "op": "add",
+                    "path": "identity.tech_stack",
+                    "value": ["python"],
+                    "reason": "agent discovered stack",
+                }
+            ],
             agent_id="code.analyzer",
             mission_id_ref=_MID("proj-curator"),
-            task_id="task-1",
+            task_id=_TASK_ID,
         )
         assert version == 2
         assert errors == []
@@ -92,8 +106,14 @@ class TestApplyTaskUpdates:
 
         version, errors = await curator.apply_task_updates(
             _MID("proj-errors"),
-            [{"op": "replace", "path": "nonexistent.deep.path",
-              "value": "val", "reason": "bad path"}],
+            [
+                {
+                    "op": "replace",
+                    "path": "nonexistent.deep.path",
+                    "value": "val",
+                    "reason": "bad path",
+                }
+            ],
             agent_id="some.agent",
         )
         assert len(errors) == 1
@@ -106,8 +126,7 @@ class TestApplyTaskUpdates:
 
         version, errors = await curator.apply_task_updates(
             _MID("proj-restricted"),
-            [{"op": "replace", "path": "version", "value": 999,
-              "reason": "hack"}],
+            [{"op": "replace", "path": "version", "value": 999, "reason": "hack"}],
             agent_id="bad.agent",
         )
         assert len(errors) == 1
@@ -120,14 +139,19 @@ class TestApplyTaskUpdates:
         # Replace guardrails with a dict for path-based access
         await manager.apply_updates(
             _MID("proj-guard"),
-            [{"op": "replace", "path": "guardrails",
-              "value": {"rule": "Never skip tests"}, "reason": "safety"}],
+            [
+                {
+                    "op": "replace",
+                    "path": "guardrails",
+                    "value": {"rule": "Never skip tests"},
+                    "reason": "safety",
+                }
+            ],
         )
 
         version, errors = await curator.apply_task_updates(
             _MID("proj-guard"),
-            [{"op": "remove", "path": "guardrails.rule",
-              "reason": "removing rule"}],
+            [{"op": "remove", "path": "guardrails.rule", "reason": "removing rule"}],
             agent_id="some.agent",
         )
         assert len(errors) == 1
@@ -150,11 +174,17 @@ class TestApplyTaskUpdates:
 
         await curator.apply_task_updates(
             _MID("proj-audit"),
-            [{"op": "add", "path": "architecture.components.api",
-              "value": {"type": "fastapi"}, "reason": "discovered API"}],
+            [
+                {
+                    "op": "add",
+                    "path": "architecture.components.api",
+                    "value": {"type": "fastapi"},
+                    "reason": "discovered API",
+                }
+            ],
             agent_id="code.analyzer",
             mission_id_ref=_MID("proj-audit"),
-            task_id="task-1",
+            task_id=_TASK_ID,
         )
 
         changes = await manager.get_history(_MID("proj-audit"))

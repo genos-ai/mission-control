@@ -16,14 +16,8 @@ from modules.backend.agents.mission_control.dispatch.dag import (
     resolve_upstream_inputs,
     topological_sort,
 )
-from modules.backend.agents.mission_control.dispatch.result_builders import (
-    aborted_outcome,
-    failed_result,
-    skipped_result,
-)
-from modules.backend.agents.mission_control.dispatch.step_executor import (
-    execute_with_step_events,
-)
+from modules.backend.agents.mission_control.dispatch.result_builders import failed_result
+from modules.backend.agents.mission_control.dispatch.step_executor import execute_with_step_events
 from modules.backend.agents.mission_control.gate import (
     GateAction,
     GateContext,
@@ -66,7 +60,8 @@ async def _emit_task_failure(
     if not mission_id:
         return
     await _emit(
-        bus, MissionNarrativeEvent,
+        bus,
+        MissionNarrativeEvent,
         session_id=session_id,
         source=f"dispatch:{mission_id}",
         mission_id=mission_id,
@@ -91,6 +86,7 @@ async def dispatch(
     session_id: str | None = None,
     execution_mode: str = "local",
     prior_outputs: dict[str, dict] | None = None,
+    session_factory: Any | None = None,
 ) -> ExecutionOutcome:
     """Execute the dispatch loop for a validated TaskPlan.
 
@@ -121,7 +117,9 @@ async def dispatch(
     # on their state. The user transitions them via `mc plan approve`.
     gate_decisions: list[GateDecisionRecord] = []
 
-    await _emit(_bus, PlanCreatedEvent,
+    await _emit(
+        _bus,
+        PlanCreatedEvent,
         session_id=_sid,
         source=f"dispatch:{plan.mission_id}",
         plan_id=plan.mission_id,
@@ -164,6 +162,7 @@ async def dispatch(
             project_context=project_context,
             event_bus=_bus,
             session_id=_sid,
+            session_factory=session_factory,
         )
 
         if layer_result is None:
@@ -243,6 +242,7 @@ async def _execute_layer(
     project_context: dict | None,
     event_bus: EventBusProtocol,
     session_id: str,
+    session_factory: Any | None = None,
 ) -> dict | None:
     """Execute a single layer of tasks. Returns accumulated metrics or abort signal."""
     from modules.backend.schemas.task_plan import TaskDefinition
@@ -267,7 +267,9 @@ async def _execute_layer(
                 resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
             except KeyError as e:
                 task_results.append(failed_result(task, str(e)))
-                await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(e))
+                await _emit_task_failure(
+                    event_bus, session_id, mission_id, task.task_id, task.agent, str(e)
+                )
                 continue
             resolved_inputs = dict(resolved_inputs)
             layer_tasks.append(task)
@@ -290,16 +292,23 @@ async def _execute_layer(
         # route to execute_research_loop() instead of the standard
         # single-agent path. Same pattern as convergence_loop above.
         task_type = task.inputs.static.get("type")
-        logger.info("TRACE     _execute_layer task routing",
-                     extra={"task_id": task.task_id, "agent": task.agent,
-                            "task_type": task_type,
-                            "static_keys": list(task.inputs.static.keys())})
+        logger.info(
+            "TRACE     _execute_layer task routing",
+            extra={
+                "task_id": task.task_id,
+                "agent": task.agent,
+                "task_type": task_type,
+                "static_keys": list(task.inputs.static.keys()),
+            },
+        )
         if task_type == "research_loop":
             try:
                 resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
             except KeyError as e:
                 task_results.append(failed_result(task, str(e)))
-                await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(e))
+                await _emit_task_failure(
+                    event_bus, session_id, mission_id, task.task_id, task.agent, str(e)
+                )
                 continue
             resolved_inputs = dict(resolved_inputs)
             layer_tasks.append(task)
@@ -339,14 +348,23 @@ async def _execute_layer(
         roster_entry = roster.get_agent_by_name(task.agent)
         if roster_entry is None:
             task_results.append(failed_result(task, "Agent not found in roster"))
-            await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, "Agent not found in roster")
+            await _emit_task_failure(
+                event_bus,
+                session_id,
+                mission_id,
+                task.task_id,
+                task.agent,
+                "Agent not found in roster",
+            )
             continue
 
         try:
             resolved_inputs = resolve_upstream_inputs(task, completed_outputs)
         except KeyError as e:
             task_results.append(failed_result(task, str(e)))
-            await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(e))
+            await _emit_task_failure(
+                event_bus, session_id, mission_id, task.task_id, task.agent, str(e)
+            )
             continue
 
         resolved_inputs = dict(resolved_inputs)
@@ -384,14 +402,14 @@ async def _execute_layer(
     # before dispatching. For autonomous mode the rule engine has
     # already transitioned them, so this is fast. For interactive modes
     # the operator approves each task via `mc plan approve <id>`.
-    from modules.backend.agents.mission_control.task_approval import (
-        wait_until_approved,
-    )
-    from modules.backend.core.database import get_session_factory
-    _factory = get_session_factory()
+    from modules.backend.agents.mission_control.task_approval import wait_until_approved
+
+    if session_factory is None:
+        from modules.backend.core.database import get_session_factory
+
+        session_factory = get_session_factory()
     waiters = [
-        wait_until_approved(task_id=t.task_id, session_factory=_factory)
-        for t in layer_tasks
+        wait_until_approved(task_id=t.task_id, session_factory=session_factory) for t in layer_tasks
     ]
     if waiters:
         await asyncio.gather(*waiters)
@@ -405,7 +423,9 @@ async def _execute_layer(
     for task, result in zip(layer_tasks, results):
         if isinstance(result, Exception):
             task_results.append(failed_result(task, str(result)))
-            await _emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, str(result))
+            await _emit_task_failure(
+                event_bus, session_id, mission_id, task.task_id, task.agent, str(result)
+            )
             continue
 
         task_result: TaskResult = result
@@ -435,21 +455,27 @@ async def _execute_layer(
         total_output_tokens += task_result.token_usage.output
         total_thinking_tokens += task_result.token_usage.thinking
 
-    decision = await gate.review(GateContext(
-        gate_type="post_layer",
-        mission_id=plan.mission_id,
-        session_id=session_id,
-        layer_index=layer_idx,
-        total_layers=len(layers),
-        completed_tasks=[r.model_dump() for r in task_results],
-        total_cost_usd=total_cost,
-        budget_usd=mission_budget_usd,
-    ))
-    gate_decisions.append(GateDecisionRecord(
-        gate_type="post_layer", layer_index=layer_idx,
-        action=decision.action.value, reason=decision.reason,
-        reviewer=decision.reviewer,
-    ))
+    decision = await gate.review(
+        GateContext(
+            gate_type="post_layer",
+            mission_id=plan.mission_id,
+            session_id=session_id,
+            layer_index=layer_idx,
+            total_layers=len(layers),
+            completed_tasks=[r.model_dump() for r in task_results],
+            total_cost_usd=total_cost,
+            budget_usd=mission_budget_usd,
+        )
+    )
+    gate_decisions.append(
+        GateDecisionRecord(
+            gate_type="post_layer",
+            layer_index=layer_idx,
+            action=decision.action.value,
+            reason=decision.reason,
+            reviewer=decision.reviewer,
+        )
+    )
     if decision.action == GateAction.ABORT:
         logger.info("Mission aborted at post_layer gate", extra={"layer": layer_idx})
         return {"aborted": True, "abort_reason": decision.reason}
@@ -630,7 +656,9 @@ async def _dispatch_workflow_task(
     from modules.backend.events.types import PlanStepCompletedEvent, PlanStepStartedEvent
     from modules.backend.services.workflow_run import WorkflowRunService
 
-    await _emit(event_bus, PlanStepStartedEvent,
+    await _emit(
+        event_bus,
+        PlanStepStartedEvent,
         session_id=session_id,
         source=f"dispatch:{mission_id}",
         plan_id=mission_id or "",
@@ -673,7 +701,12 @@ async def _dispatch_workflow_task(
     except Exception as e:
         logger.error(
             "Workflow task dispatch failed",
-            extra={"task_id": task.task_id, "workflow": workflow_name, "error": str(e), "mission_id": mission_id},
+            extra={
+                "task_id": task.task_id,
+                "workflow": workflow_name,
+                "error": str(e),
+                "mission_id": mission_id,
+            },
             exc_info=True,
         )
         result = TaskResult(
@@ -686,7 +719,9 @@ async def _dispatch_workflow_task(
         )
     finally:
         status_str = "success" if status == TaskStatus.SUCCESS else "failed"
-        await _emit(event_bus, PlanStepCompletedEvent,
+        await _emit(
+            event_bus,
+            PlanStepCompletedEvent,
             session_id=session_id,
             source=f"dispatch:{mission_id}",
             plan_id=mission_id or "",
@@ -714,9 +749,7 @@ async def _inject_context(
                 resolved_inputs=dict(resolved_inputs),
                 domain_tags=task.domain_tags or None,
             )
-            resolved_inputs["project_context"] = assembled.get(
-                "project_context", {}
-            )
+            resolved_inputs["project_context"] = assembled.get("project_context", {})
             code_map_content = assembled.get("code_map")
             if code_map_content:
                 resolved_inputs["code_map"] = code_map_content
@@ -751,19 +784,18 @@ def _build_outcome(
     """Determine execution status and build the final ExecutionOutcome."""
     budget_exceeded = bool(mission_budget_usd and total_cost > mission_budget_usd)
     total_tasks = len(plan.tasks)
-    successful_tasks = sum(
-        1 for r in task_results if r.status == TaskStatus.SUCCESS
-    )
+    successful_tasks = sum(1 for r in task_results if r.status == TaskStatus.SUCCESS)
     success_ratio = successful_tasks / total_tasks if total_tasks > 0 else 0.0
 
     critical_path_ids = set(plan.execution_hints.critical_path)
-    critical_path_success = all(
-        any(
-            r.task_id == cp_id and r.status == TaskStatus.SUCCESS
-            for r in task_results
+    critical_path_success = (
+        all(
+            any(r.task_id == cp_id and r.status == TaskStatus.SUCCESS for r in task_results)
+            for cp_id in critical_path_ids
         )
-        for cp_id in critical_path_ids
-    ) if critical_path_ids else True
+        if critical_path_ids
+        else True
+    )
 
     if aborted:
         status = ExecutionStatus.FAILED
@@ -771,10 +803,7 @@ def _build_outcome(
         status = ExecutionStatus.FAILED
     elif successful_tasks == total_tasks:
         status = ExecutionStatus.SUCCESS
-    elif (
-        success_ratio >= plan.execution_hints.min_success_threshold
-        and critical_path_success
-    ):
+    elif success_ratio >= plan.execution_hints.min_success_threshold and critical_path_success:
         status = ExecutionStatus.PARTIAL
     else:
         status = ExecutionStatus.FAILED

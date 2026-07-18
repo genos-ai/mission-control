@@ -8,14 +8,12 @@ in agent_executor.py.
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from pydantic_ai import UsageLimits
 
 from modules.backend.agents.mission_control.helpers.cli_executor import (
     _cli_result,
     _compose_user_message,
 )
-
 
 # =============================================================================
 # _cli_result
@@ -140,9 +138,7 @@ class TestEngineRoutingClaudeCode:
             patch(
                 "modules.backend.agents.mission_control.helpers.agent_executor._import_agent_module"
             ),
-            patch(
-                "modules.backend.agents.mission_control.helpers.agent_executor._build_model"
-            ),
+            patch("modules.backend.agents.mission_control.helpers.agent_executor._build_model"),
             patch(
                 "modules.backend.agents.mission_control.helpers.agent_executor._build_agent_deps"
             ),
@@ -152,7 +148,8 @@ class TestEngineRoutingClaudeCode:
                 return_value=fake_result,
             ) as mock_execute,
             patch(
-                "modules.backend.agents.mission_control.helpers.prompt_builder.load_agent_system_prompt",
+                "modules.backend.agents.mission_control.helpers.prompt_builder"
+                ".load_agent_system_prompt",
                 return_value="You are a test agent.",
             ),
         ):
@@ -177,7 +174,7 @@ class TestEngineRoutingClaudeCode:
 
             mock_execute.assert_called_once()
             call_kwargs = mock_execute.call_args
-            assert call_kwargs.kwargs["agent_name"] == "test.dummy.agent" or call_kwargs[1].get("agent_name") == "test.dummy.agent"
+            assert call_kwargs.kwargs["agent_name"] == "test.dummy.agent"
             assert result["output"] == "CLI agent output"
             assert result["_meta"]["cost_usd"] == 0.0
 
@@ -199,9 +196,7 @@ class TestEngineRoutingPydanticAI:
             patch(
                 "modules.backend.agents.mission_control.helpers.agent_executor._import_agent_module"
             ) as mock_import,
-            patch(
-                "modules.backend.agents.mission_control.helpers.agent_executor._build_model"
-            ) as mock_build_model,
+            patch("modules.backend.agents.mission_control.helpers.agent_executor._build_model"),
             patch(
                 "modules.backend.agents.mission_control.helpers.agent_executor._build_agent_deps"
             ) as mock_build_deps,
@@ -209,6 +204,10 @@ class TestEngineRoutingPydanticAI:
                 "modules.backend.agents.mission_control.helpers.cli_executor.execute_claude_code",
                 new_callable=AsyncMock,
             ) as mock_cli,
+            patch(
+                "modules.backend.agents.mission_control.helpers.agent_executor.record_llm_call",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_registry.return_value.get.return_value = fake_config
 
@@ -218,8 +217,19 @@ class TestEngineRoutingPydanticAI:
             mock_stream.stream_text = MagicMock(return_value=AsyncIterHelper([]))
             mock_stream.get_output = AsyncMock(return_value={"result": "done"})
             mock_stream.usage = MagicMock(
-                return_value=MagicMock(input_tokens=10, output_tokens=5)
+                return_value=MagicMock(
+                    input_tokens=10,
+                    output_tokens=5,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                    details={},
+                )
             )
+            # The executor reads message history off the stream synchronously:
+            # _emit_tool_events() calls new_messages(), trace_and_emit() calls
+            # all_messages(). AsyncMock would return coroutines here.
+            mock_stream.new_messages = MagicMock(return_value=[])
+            mock_stream.all_messages = MagicMock(return_value=[])
 
             # Mock run_stream context manager
             mock_agent.run_stream = MagicMock(return_value=AsyncContextHelper(mock_stream))

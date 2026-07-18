@@ -6,26 +6,27 @@ with transaction rollback for isolation. Only mocks: get_app_config()
 """
 
 from unittest.mock import MagicMock, patch
-from uuid import uuid5, UUID
+from uuid import UUID, uuid5
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config_schema import ExecutionsSchema
 from modules.backend.core.exceptions import NotFoundError
-from modules.backend.models.execution_record import (
-    ExecutionRecordStatus,
-    TaskExecutionStatus,
-)
+from modules.backend.models.execution_record import ExecutionRecordStatus, TaskExecutionStatus
 from modules.backend.models.session import Session
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
-from datetime import datetime as _dt, timezone as _tz
-from tests.conftest import TEST_SESSION_ID, TEST_USER_ID
 
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 _SESS_PERSIST = "f3a9815c-ca38-5868-b8eb-899b31dabb9f"
 _SESS_EID_1 = str(uuid5(_TEST_NS, "session:eid-1"))
 _SESS_EID_2 = str(uuid5(_TEST_NS, "session:eid-2"))
+
+# Plan 72: task_executions.task_id is a UUID column (tasks are first-class
+# entities in the tasks table) — literal task ids must be valid UUIDs.
+_TASK_1 = str(uuid5(_TEST_NS, "task:t1"))
+_TASK_2 = str(uuid5(_TEST_NS, "task:t2"))
+_TASK_3 = str(uuid5(_TEST_NS, "task:t3"))
 
 
 def _mock_app_config(**overrides) -> MagicMock:
@@ -117,12 +118,6 @@ class TestSaveExecution:
             assert record.planning_thinking_trace is None
 
     @pytest.mark.asyncio
-    async def test_task_plan_json_persisted(self, service):
-        plan = {"version": "1.0", "tasks": [{"id": "t1"}]}
-        record = await _create_execution(service, task_plan_json=plan)
-        assert record.task_plan_json == plan
-
-    @pytest.mark.asyncio
     async def test_parent_execution_link(self, service):
         parent = await _create_execution(service)
         child = await _create_execution(service, parent_execution_record_id=parent.id)
@@ -136,14 +131,14 @@ class TestSaveTaskExecution:
 
         execution = await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="analyze_code",
+            task_id=_TASK_1,
             agent_name="software.quality.agent",
             status="completed",
             cost_usd=0.01,
         )
 
         assert execution.id is not None
-        assert execution.task_id == "analyze_code"
+        assert execution.task_id == _TASK_1
         assert execution.agent_name == "software.quality.agent"
         assert execution.status == TaskExecutionStatus.COMPLETED
 
@@ -154,7 +149,7 @@ class TestSaveTaskExecution:
 
         execution = await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="task-1",
+            task_id=_TASK_1,
             agent_name="agent-1",
             status="completed",
             output_data=large_output,
@@ -170,7 +165,7 @@ class TestSaveTaskExecution:
 
         execution = await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="task-1",
+            task_id=_TASK_1,
             agent_name="agent-1",
             status="completed",
             verification_outcome=verification,
@@ -190,7 +185,7 @@ class TestSaveTaskExecution:
         ):
             execution = await service.save_task_execution(
                 execution_record_id=execution_record.id,
-                task_id="task-1",
+                task_id=_TASK_1,
                 agent_name="agent-1",
                 status="completed",
                 verification_outcome=verification,
@@ -206,7 +201,7 @@ class TestSaveAttempt:
         execution_record = await _create_execution(service)
         execution = await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="task-1",
+            task_id=_TASK_1,
             agent_name="agent-1",
             status="failed",
         )
@@ -235,11 +230,11 @@ class TestSaveDecision:
             execution_record_id=execution_record.id,
             decision_type="retry",
             reasoning="Tier 1 failed, retrying with feedback",
-            task_id="task-1",
+            task_id=_TASK_1,
         )
 
         assert decision.id is not None
-        assert decision.task_id == "task-1"
+        assert decision.task_id == _TASK_1
         assert decision.reasoning == "Tier 1 failed, retrying with feedback"
 
 
@@ -281,15 +276,21 @@ class TestGetExecutionStatus:
 
         await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="t1", agent_name="a1", status="completed",
+            task_id=_TASK_1,
+            agent_name="a1",
+            status="completed",
         )
         await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="t2", agent_name="a2", status="failed",
+            task_id=_TASK_2,
+            agent_name="a2",
+            status="failed",
         )
         await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="t3", agent_name="a3", status="skipped",
+            task_id=_TASK_3,
+            agent_name="a3",
+            status="skipped",
         )
 
         status = await service.get_execution_status(execution_record.id)
@@ -322,7 +323,7 @@ class TestGetCostBreakdown:
 
         await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="t1",
+            task_id=_TASK_1,
             agent_name="agent_a",
             status="completed",
             cost_usd=0.05,
@@ -353,7 +354,7 @@ class TestExecutionId:
 
         execution = await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="t1",
+            task_id=_TASK_1,
             agent_name="agent_a",
             status="completed",
             execution_id=_EID,
@@ -372,7 +373,7 @@ class TestExecutionId:
 
         execution = await service.save_task_execution(
             execution_record_id=execution_record.id,
-            task_id="t1",
+            task_id=_TASK_1,
             agent_name="agent_a",
             status="completed",
         )

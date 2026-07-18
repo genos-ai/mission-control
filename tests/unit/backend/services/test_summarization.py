@@ -4,6 +4,10 @@ Per P12: tests run against the live platform. Uses real db_session fixture
 with transaction rollback for isolation.
 """
 
+from datetime import datetime as _dt
+from datetime import timezone as _tz
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,36 +18,44 @@ from modules.backend.models.execution_record import (
     TaskExecutionStatus,
 )
 from modules.backend.models.mission import Mission
-from modules.backend.models.mission_history import (
-    DecisionStatus,
-    MissionDecision,
-    MilestoneSummary,
-)
-from modules.backend.models.session import Session
+from modules.backend.models.mission_history import DecisionStatus
+from modules.backend.models.session import Session, SessionStatus
 from modules.backend.repositories.mission_history import (
-    MissionDecisionRepository,
     MilestoneSummaryRepository,
+    MissionDecisionRepository,
 )
-from modules.backend.services.mission_context import (
-    MissionContextManager,
-    _cache,
-)
+from modules.backend.services.mission_context import MissionContextManager, _cache
 from modules.backend.services.summarization import SummarizationService
-from uuid import uuid5, UUID
-from datetime import datetime as _dt, timezone as _tz
 from tests.conftest import TEST_USER_ID
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
-_MID = lambda tag: str(uuid5(_NS, f"mission:summ-{tag}"))
 _NIL_UUID = "00000000-0000-0000-0000-000000000000"
 _SESS_SUMM = "5714117c-eaed-5ce3-9c56-73949f03aa3d"
 
+
+def _MID(tag: str) -> str:
+    """Deterministic mission UUID for a readable slug (stable across runs)."""
+    return str(uuid5(_NS, f"mission:summ-{tag}"))
+
+
 # All mission_id slugs used in this file — parent Mission rows are needed for FK.
 _MISSION_SLUGS = [
-    "proj-no-dec", "proj-prune", "proj-recent", "proj-few", "proj-mile",
-    "proj-full", "proj-smr", "proj-recent-m", "proj-already",
-    "proj-failed-m", "proj-tags-m", "proj-repo", "proj-sup", "proj-ms",
-    "proj-other", "proj-lim",
+    "proj-no-dec",
+    "proj-prune",
+    "proj-recent",
+    "proj-few",
+    "proj-mile",
+    "proj-full",
+    "proj-smr",
+    "proj-recent-m",
+    "proj-already",
+    "proj-failed-m",
+    "proj-tags-m",
+    "proj-repo",
+    "proj-sup",
+    "proj-ms",
+    "proj-other",
+    "proj-lim",
 ]
 
 
@@ -78,11 +90,9 @@ def _clear_cache():
 @pytest.fixture(autouse=True)
 async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     """Create Session + Mission rows that child tables FK to."""
-    db_session.add(Session(id=_SESS_SUMM, status="ACTIVE"))
+    db_session.add(Session(id=_SESS_SUMM, status=SessionStatus.ACTIVE))
     for slug in _MISSION_SLUGS:
-        db_session.add(
-            Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID)
-        )
+        db_session.add(Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID))
     await db_session.flush()
 
 
@@ -95,7 +105,9 @@ class TestPrunePcdDecisions:
 
     @pytest.mark.asyncio
     async def test_no_decisions_returns_zero(
-        self, summarization_service, manager,
+        self,
+        summarization_service,
+        manager,
     ):
         """Returns 0 when PCD has no decisions section."""
         await manager.create_context(_MID("proj-no-dec"), "test", "desc")
@@ -104,7 +116,10 @@ class TestPrunePcdDecisions:
 
     @pytest.mark.asyncio
     async def test_archives_old_decisions(
-        self, summarization_service, manager, decision_repo,
+        self,
+        summarization_service,
+        manager,
+        decision_repo,
     ):
         """Old decisions are archived to project_decisions table."""
         await manager.create_context(_MID("proj-prune"), "test", "desc")
@@ -112,30 +127,39 @@ class TestPrunePcdDecisions:
         # Add decisions to PCD — mix of old and recent
         decisions = [
             {
-                "id": "d1", "domain": "api", "decision": "Use REST",
-                "rationale": "Standard", "made_by": "architect",
+                "id": "d1",
+                "domain": "api",
+                "decision": "Use REST",
+                "rationale": "Standard",
+                "made_by": "architect",
                 "date": "2020-01-01",
             },
             {
-                "id": "d2", "domain": "auth", "decision": "Use JWT",
-                "rationale": "Stateless", "made_by": "architect",
+                "id": "d2",
+                "domain": "auth",
+                "decision": "Use JWT",
+                "rationale": "Stateless",
+                "made_by": "architect",
                 "date": "2020-06-01",
             },
             {
-                "id": "d3", "domain": "db", "decision": "Use PostgreSQL",
-                "rationale": "ACID", "made_by": "architect",
+                "id": "d3",
+                "domain": "db",
+                "decision": "Use PostgreSQL",
+                "rationale": "ACID",
+                "made_by": "architect",
                 "date": "2099-01-01",  # far future — should be kept
             },
         ]
         await manager.apply_updates(
             _MID("proj-prune"),
-            [{"op": "add", "path": "decisions", "value": decisions,
-              "reason": "seed decisions"}],
+            [{"op": "add", "path": "decisions", "value": decisions, "reason": "seed decisions"}],
             agent_id="test",
         )
 
         result = await summarization_service.prune_mcd_decisions(
-            _MID("proj-prune"), max_age_days=90,
+            _MID("proj-prune"),
+            max_age_days=90,
         )
         assert result == 2  # d1 and d2 archived
 
@@ -152,22 +176,26 @@ class TestPrunePcdDecisions:
 
     @pytest.mark.asyncio
     async def test_all_recent_decisions_kept(
-        self, summarization_service, manager,
+        self,
+        summarization_service,
+        manager,
     ):
         """All recent decisions stay in PCD, nothing archived."""
         await manager.create_context(_MID("proj-recent"), "test", "desc")
 
         decisions = [
             {
-                "id": "d1", "domain": "api", "decision": "Use REST",
-                "rationale": "Standard", "made_by": "architect",
+                "id": "d1",
+                "domain": "api",
+                "decision": "Use REST",
+                "rationale": "Standard",
+                "made_by": "architect",
                 "date": "2099-01-01",
             },
         ]
         await manager.apply_updates(
             _MID("proj-recent"),
-            [{"op": "add", "path": "decisions", "value": decisions,
-              "reason": "seed"}],
+            [{"op": "add", "path": "decisions", "value": decisions, "reason": "seed"}],
             agent_id="test",
         )
 
@@ -185,15 +213,22 @@ class TestPruneCompletedWorkstreams:
 
     @pytest.mark.asyncio
     async def test_few_milestones_not_pruned(
-        self, summarization_service, manager,
+        self,
+        summarization_service,
+        manager,
     ):
         """5 or fewer milestones are not pruned."""
         await manager.create_context(_MID("proj-few"), "test", "desc")
         await manager.apply_updates(
             _MID("proj-few"),
-            [{"op": "add", "path": "current_state",
-              "value": {"recent_milestones": ["m1", "m2", "m3"]},
-              "reason": "seed"}],
+            [
+                {
+                    "op": "add",
+                    "path": "current_state",
+                    "value": {"recent_milestones": ["m1", "m2", "m3"]},
+                    "reason": "seed",
+                }
+            ],
             agent_id="test",
         )
 
@@ -204,16 +239,24 @@ class TestPruneCompletedWorkstreams:
 
     @pytest.mark.asyncio
     async def test_archives_excess_milestones(
-        self, summarization_service, manager, milestone_repo,
+        self,
+        summarization_service,
+        manager,
+        milestone_repo,
     ):
         """Milestones beyond keep_recent are archived."""
         await manager.create_context(_MID("proj-mile"), "test", "desc")
         milestones = [f"milestone-{i}" for i in range(8)]
         await manager.apply_updates(
             _MID("proj-mile"),
-            [{"op": "add", "path": "current_state",
-              "value": {"recent_milestones": milestones},
-              "reason": "seed"}],
+            [
+                {
+                    "op": "add",
+                    "path": "current_state",
+                    "value": {"recent_milestones": milestones},
+                    "reason": "seed",
+                }
+            ],
             agent_id="test",
         )
 
@@ -236,7 +279,9 @@ class TestPruneCompletedWorkstreams:
 class TestRunFullPipeline:
     @pytest.mark.asyncio
     async def test_runs_both_operations(
-        self, summarization_service, manager,
+        self,
+        summarization_service,
+        manager,
     ):
         """Full pipeline runs both decision and milestone pruning."""
         await manager.create_context(_MID("proj-full"), "test", "desc")
@@ -245,13 +290,29 @@ class TestRunFullPipeline:
         await manager.apply_updates(
             _MID("proj-full"),
             [
-                {"op": "add", "path": "decisions", "value": [
-                    {"id": "d1", "domain": "api", "decision": "x",
-                     "rationale": "y", "made_by": "z", "date": "2020-01-01"},
-                ], "reason": "seed"},
-                {"op": "add", "path": "current_state", "value": {
-                    "recent_milestones": [f"m{i}" for i in range(7)],
-                }, "reason": "seed"},
+                {
+                    "op": "add",
+                    "path": "decisions",
+                    "value": [
+                        {
+                            "id": "d1",
+                            "domain": "api",
+                            "decision": "x",
+                            "rationale": "y",
+                            "made_by": "z",
+                            "date": "2020-01-01",
+                        },
+                    ],
+                    "reason": "seed",
+                },
+                {
+                    "op": "add",
+                    "path": "current_state",
+                    "value": {
+                        "recent_milestones": [f"m{i}" for i in range(7)],
+                    },
+                    "reason": "seed",
+                },
             ],
             agent_id="test",
         )
@@ -307,20 +368,30 @@ class TestSummarizeMissionRecords:
 
     @pytest.mark.asyncio
     async def test_summarizes_old_missions(
-        self, summarization_service, milestone_repo, db_session,
+        self,
+        summarization_service,
+        milestone_repo,
+        db_session,
     ):
         """Old completed missions are compressed into milestone summaries."""
         m1 = await _create_old_mission(
-            db_session, _MID("proj-smr"), objective="Build API",
-            cost=1.0, completed_at=_dt(2020, 1, 1, tzinfo=_tz.utc),
+            db_session,
+            _MID("proj-smr"),
+            objective="Build API",
+            cost=1.0,
+            completed_at=_dt(2020, 1, 1, tzinfo=_tz.utc),
         )
         m2 = await _create_old_mission(
-            db_session, _MID("proj-smr"), objective="Fix auth",
-            cost=0.5, completed_at=_dt(2020, 2, 1, tzinfo=_tz.utc),
+            db_session,
+            _MID("proj-smr"),
+            objective="Fix auth",
+            cost=0.5,
+            completed_at=_dt(2020, 2, 1, tzinfo=_tz.utc),
         )
 
         result = await summarization_service.summarize_execution_records(
-            _MID("proj-smr"), max_age_days=30,
+            _MID("proj-smr"),
+            max_age_days=30,
         )
         assert result == 2
 
@@ -338,12 +409,15 @@ class TestSummarizeMissionRecords:
 
     @pytest.mark.asyncio
     async def test_skips_recent_missions(
-        self, summarization_service, db_session,
+        self,
+        summarization_service,
+        db_session,
     ):
         """Missions newer than max_age_days are not summarized."""
         # Far future date — should not be summarized
         await _create_old_mission(
-            db_session, _MID("proj-recent-m"),
+            db_session,
+            _MID("proj-recent-m"),
             completed_at=_dt(2099, 1, 1, tzinfo=_tz.utc),
         )
 
@@ -354,7 +428,9 @@ class TestSummarizeMissionRecords:
 
     @pytest.mark.asyncio
     async def test_skips_already_summarized(
-        self, summarization_service, db_session,
+        self,
+        summarization_service,
+        db_session,
     ):
         """Already-summarized missions are not re-summarized."""
         m = await _create_old_mission(db_session, _MID("proj-already"))
@@ -368,11 +444,15 @@ class TestSummarizeMissionRecords:
 
     @pytest.mark.asyncio
     async def test_includes_failed_missions(
-        self, summarization_service, milestone_repo, db_session,
+        self,
+        summarization_service,
+        milestone_repo,
+        db_session,
     ):
         """Failed missions are also summarized."""
         await _create_old_mission(
-            db_session, _MID("proj-failed-m"),
+            db_session,
+            _MID("proj-failed-m"),
             status=ExecutionRecordStatus.FAILED,
         )
 
@@ -386,13 +466,17 @@ class TestSummarizeMissionRecords:
 
     @pytest.mark.asyncio
     async def test_collects_domain_tags_from_executions(
-        self, summarization_service, milestone_repo, db_session,
+        self,
+        summarization_service,
+        milestone_repo,
+        db_session,
     ):
         """Domain tags from task executions are included in milestone."""
         m = await _create_old_mission(db_session, _MID("proj-tags-m"))
         te = TaskExecution(
             execution_record_id=m.id,
-            task_id="t1",
+            # task_id is a native UUID column (Plan 72) — must be a real UUID.
+            task_id=str(uuid5(_NS, "task:summ-t1")),
             agent_name="analyzer",
             status=TaskExecutionStatus.COMPLETED,
             domain_tags=["api", "auth"],
@@ -434,7 +518,9 @@ class TestMissionDecisionRepository:
 
     @pytest.mark.asyncio
     async def test_list_active_excludes_superseded(
-        self, decision_repo, db_session,
+        self,
+        decision_repo,
+        db_session,
     ):
         """Only active decisions are returned."""
         await decision_repo.create(

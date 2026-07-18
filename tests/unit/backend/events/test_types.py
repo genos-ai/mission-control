@@ -7,8 +7,6 @@ and the deserialize_event function.
 
 import uuid
 
-import pytest
-
 from modules.backend.events.types import (
     EVENT_TYPE_MAP,
     AgentResponseChunkEvent,
@@ -36,29 +34,21 @@ class TestSessionEventDefaults:
     """Test that base SessionEvent auto-generates required fields."""
 
     def test_event_id_is_generated(self):
-        event = SessionEvent(
-            event_type="test", session_id=SESSION_ID, source="test"
-        )
+        event = SessionEvent(event_type="test", session_id=SESSION_ID, source="test")
         assert isinstance(event.event_id, uuid.UUID)
 
     def test_timestamp_is_populated(self):
-        event = SessionEvent(
-            event_type="test", session_id=SESSION_ID, source="test"
-        )
+        event = SessionEvent(event_type="test", session_id=SESSION_ID, source="test")
         assert event.timestamp is not None
 
     def test_tier4_fields_present(self):
-        event = SessionEvent(
-            event_type="test", session_id=SESSION_ID, source="test"
-        )
+        event = SessionEvent(event_type="test", session_id=SESSION_ID, source="test")
         assert event.correlation_id is None
         assert event.trace_id is None
         assert event.session_id == SESSION_ID
 
     def test_metadata_defaults_to_empty_dict(self):
-        event = SessionEvent(
-            event_type="test", session_id=SESSION_ID, source="test"
-        )
+        event = SessionEvent(event_type="test", session_id=SESSION_ID, source="test")
         assert event.metadata == {}
 
 
@@ -280,7 +270,38 @@ class TestEventTypeMap:
             assert EVENT_TYPE_MAP[event_type] is cls
 
     def test_registry_count_matches_event_classes(self):
-        assert len(EVENT_TYPE_MAP) == 59
+        """The registry stays in lockstep with the concrete event classes.
+
+        Derives the expected set from the module itself instead of a
+        hardcoded count, so adding an event class without registering it
+        (or without listing it below) fails loudly.
+        """
+        import modules.backend.events.types as types_module
+
+        # Published but deliberately not registered for deserialization yet.
+        known_unregistered = {
+            "GateRequestOpenedEvent",
+            "GateRequestDecidedEvent",
+            "SessionFollowupFiredEvent",
+        }
+        concrete = {
+            obj
+            for obj in vars(types_module).values()
+            if isinstance(obj, type) and issubclass(obj, SessionEvent) and obj is not SessionEvent
+        }
+        registered = set(EVENT_TYPE_MAP.values())
+
+        missing = {cls.__name__ for cls in concrete - registered} - known_unregistered
+        assert not missing, f"Event classes missing from EVENT_TYPE_MAP: {sorted(missing)}"
+
+        stale = known_unregistered - {cls.__name__ for cls in concrete - registered}
+        assert not stale, f"Now registered — remove from known_unregistered: {sorted(stale)}"
+
+        assert len(EVENT_TYPE_MAP) == len(concrete) - len(known_unregistered)
+
+        # Every registry key must match its class's event_type default.
+        for event_type, cls in EVENT_TYPE_MAP.items():
+            assert cls.model_fields["event_type"].default == event_type
 
 
 class TestDeserializeEvent:

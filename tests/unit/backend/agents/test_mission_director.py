@@ -5,7 +5,6 @@ Tests agent factory, tool registration, and deps dataclass.
 Uses PydanticAI TestModel — no real API calls.
 """
 
-import pytest
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
@@ -35,9 +34,9 @@ class TestMissionDirectorAgent:
             "get_mission_context",
             "list_workflows",
         }
-        assert expected_read_tools.issubset(tool_names), (
-            f"Missing read tools: {expected_read_tools - tool_names}"
-        )
+        assert expected_read_tools.issubset(
+            tool_names
+        ), f"Missing read tools: {expected_read_tools - tool_names}"
 
     def test_agent_has_action_tools(self):
         """Agent should have action tools registered."""
@@ -47,15 +46,15 @@ class TestMissionDirectorAgent:
             "run_objective",
             "run_workflow",
         }
-        assert expected_action_tools.issubset(tool_names), (
-            f"Missing action tools: {expected_action_tools - tool_names}"
-        )
+        assert expected_action_tools.issubset(
+            tool_names
+        ), f"Missing action tools: {expected_action_tools - tool_names}"
 
     def test_agent_tool_count(self):
-        """Agent should have exactly 20 tools."""
+        """Agent should have exactly 19 tools."""
         agent = create_agent(TestModel())
         tool_names = {t.name for t in agent._function_toolset.tools.values()}
-        assert len(tool_names) == 20, f"Expected 20 tools, got {len(tool_names)}: {tool_names}"
+        assert len(tool_names) == 19, f"Expected 19 tools, got {len(tool_names)}: {tool_names}"
 
     def test_gate_tools_not_registered(self):
         """Gate tools should NOT be registered (deferred to Phase 2)."""

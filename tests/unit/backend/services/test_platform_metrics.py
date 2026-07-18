@@ -1,11 +1,18 @@
 """Tests for PlatformMetricsService."""
 
+import uuid
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.execution_record import ExecutionRecord, TaskExecution
-from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
-from modules.backend.models.session import Session
+from modules.backend.models.execution_record import (
+    ExecutionRecord,
+    ExecutionRecordStatus,
+    TaskExecution,
+    TaskExecutionStatus,
+)
+from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
+from modules.backend.models.session import Session, SessionStatus
 from modules.backend.services.platform_metrics import PlatformMetricsService
 from tests.conftest import TEST_USER_ID
 
@@ -25,7 +32,7 @@ async def _seed_mission(db: AsyncSession) -> Mission:
         name="metrics-test",
         description="For metrics tests",
         owner_id=TEST_USER_ID,
-        status="active",
+        status=MissionStatus.ACTIVE,
         default_roster="default",
     )
     db.add(m)
@@ -41,7 +48,7 @@ async def _seed_mission(db: AsyncSession) -> Mission:
 
 
 async def _seed_session(db: AsyncSession) -> Session:
-    s = Session(status="active")
+    s = Session(status=SessionStatus.ACTIVE)
     db.add(s)
     await db.flush()
     return s
@@ -53,7 +60,7 @@ async def _seed_execution_record(
     session_id: str,
     *,
     cost: float = 0.01,
-    status: str = "completed",
+    status: ExecutionRecordStatus = ExecutionRecordStatus.COMPLETED,
 ) -> ExecutionRecord:
     er = ExecutionRecord(
         mission_id=mission_id,
@@ -76,13 +83,12 @@ async def _seed_task_execution(
     cost: float = 0.005,
     duration: float = 1.5,
 ) -> TaskExecution:
-    import uuid
-
     te = TaskExecution(
         execution_record_id=execution_record_id,
-        task_id=f"task-{uuid.uuid4().hex[:8]}",
+        # task_id is a native UUID column (Plan 72) — must be a real UUID.
+        task_id=str(uuid.uuid4()),
         agent_name=agent_name,
-        status="completed",
+        status=TaskExecutionStatus.COMPLETED,
         cost_usd=cost,
         duration_seconds=duration,
     )
@@ -134,9 +140,11 @@ class TestGetCostSummary:
         mission = await _seed_mission(db_session)
         session = await _seed_session(db_session)
         await _seed_execution_record(
-            db_session, mission.id, session.id, status="completed", cost=1.0
+            db_session, mission.id, session.id, status=ExecutionRecordStatus.COMPLETED, cost=1.0
         )
-        await _seed_execution_record(db_session, mission.id, session.id, status="failed", cost=0.5)
+        await _seed_execution_record(
+            db_session, mission.id, session.id, status=ExecutionRecordStatus.FAILED, cost=0.5
+        )
 
         costs = await service.get_cost_summary()
         statuses = {s["status"] for s in costs["by_status"]}

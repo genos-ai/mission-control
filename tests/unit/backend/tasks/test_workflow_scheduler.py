@@ -7,7 +7,6 @@ import pytest
 DB_SESSION_PATH = "modules.backend.core.database.get_async_session"
 SCHEDULE_SVC_PATH = "modules.backend.services.workflow_schedule.WorkflowScheduleService"
 RUN_SVC_PATH = "modules.backend.services.workflow_run.WorkflowRunService"
-EXEC_SVC_PATH = "modules.backend.services.execution.ExecutionService"
 NOTIFY_PATH = "modules.backend.tasks.workflow_scheduler._notify_schedule_failure"
 
 
@@ -28,8 +27,10 @@ class TestEvaluateWorkflowSchedules:
     async def test_no_due_schedules(self):
         from modules.backend.tasks.workflow_scheduler import evaluate_workflow_schedules
 
-        with patch(DB_SESSION_PATH, return_value=_mock_session_ctx()), \
-             patch(SCHEDULE_SVC_PATH) as mock_svc_cls:
+        with (
+            patch(DB_SESSION_PATH, return_value=_mock_session_ctx()),
+            patch(SCHEDULE_SVC_PATH) as mock_svc_cls,
+        ):
             mock_svc_cls.return_value.evaluate_due_schedules = AsyncMock(return_value=[])
 
             result = await evaluate_workflow_schedules()
@@ -42,22 +43,27 @@ class TestEvaluateWorkflowSchedules:
     async def test_fires_due_schedules(self):
         from modules.backend.tasks.workflow_scheduler import evaluate_workflow_schedules
 
-        fired = [{
-            "schedule_id": "s-1",
-            "workflow_definition_id": "wd-1",
-            "mission_id": "m-1",
-            "budget_per_run_usd": 5.0,
-            "fired_at": "2026-03-20T12:00:00",
-        }]
+        fired = [
+            {
+                "schedule_id": "s-1",
+                "workflow_definition_id": "wd-1",
+                "mission_id": "m-1",
+                "budget_per_run_usd": 5.0,
+                "fired_at": "2026-03-20T12:00:00",
+            }
+        ]
 
         mock_run = MagicMock(id="run-1", status="completed")
 
-        with patch(DB_SESSION_PATH, return_value=_mock_session_ctx()), \
-             patch(SCHEDULE_SVC_PATH) as mock_sch_cls, \
-             patch(RUN_SVC_PATH) as mock_run_cls, \
-             patch(EXEC_SVC_PATH):
+        with (
+            patch(DB_SESSION_PATH, return_value=_mock_session_ctx()),
+            patch(SCHEDULE_SVC_PATH) as mock_sch_cls,
+            patch(RUN_SVC_PATH) as mock_run_cls,
+        ):
             mock_sch_cls.return_value.evaluate_due_schedules = AsyncMock(return_value=fired)
-            mock_run_cls.return_value.run_workflow_from_definition = AsyncMock(return_value=mock_run)
+            mock_run_cls.return_value.run_workflow_from_definition = AsyncMock(
+                return_value=mock_run,
+            )
 
             result = await evaluate_workflow_schedules()
 
@@ -70,19 +76,22 @@ class TestEvaluateWorkflowSchedules:
     async def test_handles_run_failure(self):
         from modules.backend.tasks.workflow_scheduler import evaluate_workflow_schedules
 
-        fired = [{
-            "schedule_id": "s-1",
-            "workflow_definition_id": "wd-1",
-            "mission_id": "m-1",
-            "budget_per_run_usd": None,
-            "fired_at": "2026-03-20T12:00:00",
-        }]
+        fired = [
+            {
+                "schedule_id": "s-1",
+                "workflow_definition_id": "wd-1",
+                "mission_id": "m-1",
+                "budget_per_run_usd": None,
+                "fired_at": "2026-03-20T12:00:00",
+            }
+        ]
 
-        with patch(DB_SESSION_PATH, return_value=_mock_session_ctx()), \
-             patch(SCHEDULE_SVC_PATH) as mock_sch_cls, \
-             patch(RUN_SVC_PATH) as mock_run_cls, \
-             patch(EXEC_SVC_PATH), \
-             patch(NOTIFY_PATH, new_callable=AsyncMock) as mock_notify:
+        with (
+            patch(DB_SESSION_PATH, return_value=_mock_session_ctx()),
+            patch(SCHEDULE_SVC_PATH) as mock_sch_cls,
+            patch(RUN_SVC_PATH) as mock_run_cls,
+            patch(NOTIFY_PATH, new_callable=AsyncMock) as mock_notify,
+        ):
             mock_sch_cls.return_value.evaluate_due_schedules = AsyncMock(return_value=fired)
             mock_run_cls.return_value.run_workflow_from_definition = AsyncMock(
                 side_effect=ValueError("Workflow disabled"),
