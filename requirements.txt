@@ -47,7 +47,9 @@ structlog>=24.1.0
 langfuse>=2.40.0
 
 # AI Agents
-pydantic-ai>=1.63.0
+# Pinned exactly — the Agent/usage API moves between releases and CI must
+# test the same version the code was written against (uv.lock is untracked).
+pydantic-ai==1.70.0
 jsonschema>=4.20.0
 json-repair>=0.30.0
 import-linter>=2.0

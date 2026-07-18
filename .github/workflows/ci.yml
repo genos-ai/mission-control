@@ -85,7 +85,13 @@ jobs:
           pip install uv
           uv pip install --system -r requirements.txt
       - name: Bootstrap config
-        run: cp config/.env.example config/.env
+        # CI-only dummy secrets: get_settings() requires non-empty
+        # db_password/jwt_secret/api_key_salt (test_config enforces this).
+        run: |
+          cp config/.env.example config/.env
+          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=postgres/' config/.env
+          sed -i "s/^JWT_SECRET=$/JWT_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')/" config/.env
+          sed -i "s/^API_KEY_SALT=$/API_KEY_SALT=$(python -c 'import secrets; print(secrets.token_hex(16))')/" config/.env
       - name: Unit tests
         run: pytest tests/unit -q -p no:cacheprovider
       - name: Integration tests
