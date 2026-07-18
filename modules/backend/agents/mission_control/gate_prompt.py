@@ -50,8 +50,7 @@ def _build_gate_prompt(context: GateContext) -> str:
 
     parts.append(f"**Mission:** {context.mission_id}")
     parts.append(
-        f"**Budget:** ${context.total_cost_usd:.4f} spent "
-        f"/ ${context.budget_usd:.2f} total"
+        f"**Budget:** ${context.total_cost_usd:.4f} spent " f"/ ${context.budget_usd:.2f} total"
     )
 
     if context.budget_usd > 0:
@@ -75,9 +74,7 @@ def _build_gate_prompt(context: GateContext) -> str:
             parts.append(f"\n```json\n{task_summary}\n```")
 
     elif context.gate_type == "pre_layer":
-        parts.append(
-            f"\n**Layer:** {context.layer_index + 1}/{context.total_layers}"
-        )
+        parts.append(f"\n**Layer:** {context.layer_index + 1}/{context.total_layers}")
         parts.append(f"**Tasks in layer:** {len(context.pending_tasks)}")
         if context.pending_tasks:
             task_summary = json.dumps(
@@ -102,10 +99,7 @@ def _build_gate_prompt(context: GateContext) -> str:
                 f"Tokens: {meta.get('input_tokens', 0):,} in / "
                 f"{meta.get('output_tokens', 0):,} out"
             )
-            output_preview = {
-                k: v for k, v in context.task_output.items()
-                if k != "_meta"
-            }
+            output_preview = {k: v for k, v in context.task_output.items() if k != "_meta"}
             preview_str = json.dumps(output_preview, indent=2, default=str)
             if len(preview_str) > 1000:
                 preview_str = preview_str[:1000] + "\n... (truncated)"
@@ -125,14 +119,11 @@ def _build_gate_prompt(context: GateContext) -> str:
                 f"{json.dumps(context.verification, indent=2, default=str)}\n```"
             )
         parts.append(
-            "\nDecide: retry (with feedback), modify (accept despite failure), "
-            "skip, or abort."
+            "\nDecide: retry (with feedback), modify (accept despite failure), " "skip, or abort."
         )
 
     elif context.gate_type == "post_layer":
-        parts.append(
-            f"\n**Layer:** {context.layer_index + 1}/{context.total_layers} complete"
-        )
+        parts.append(f"\n**Layer:** {context.layer_index + 1}/{context.total_layers} complete")
         if context.completed_tasks:
             statuses: dict[str, int] = {}
             for t in context.completed_tasks:

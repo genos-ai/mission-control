@@ -110,12 +110,16 @@ async def backfill_embeddings(
 
     embedder = get_embedder()
     version = to_version or get_embedding_version()
-    tables = [source_table] if source_table else [
-        "mission_learnings",
-        "mission_intents",
-        "mission_decisions",
-        "milestone_summaries",
-    ]
+    tables = (
+        [source_table]
+        if source_table
+        else [
+            "mission_learnings",
+            "mission_intents",
+            "mission_decisions",
+            "milestone_summaries",
+        ]
+    )
 
     total_embedded = 0
     for table in tables:
@@ -157,18 +161,17 @@ async def extract_all_missions() -> dict:
     Called daily by KnowledgeExtractionWorkflow.
     Walks every active mission and runs the extractor.
     """
-    from modules.backend.core.database import get_async_session
-    from modules.backend.services.mission_learning import MissionLearningExtractor
     from sqlalchemy import select
+
+    from modules.backend.core.database import get_async_session
     from modules.backend.models.mission import Mission, MissionStatus
+    from modules.backend.services.mission_learning import MissionLearningExtractor
 
     total_created = 0
     missions_processed = 0
 
     async with get_async_session() as db:
-        result = await db.execute(
-            select(Mission.id).where(Mission.status == MissionStatus.ACTIVE)
-        )
+        result = await db.execute(select(Mission.id).where(Mission.status == MissionStatus.ACTIVE))
         mission_ids = [row[0] for row in result.all()]
 
     for mid in mission_ids:

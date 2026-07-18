@@ -6,9 +6,8 @@ All chat goes through sessions. Auto-creates ephemeral session when none provide
 Multi-agent missions go through the missions API, not here.
 """
 
-from pydantic import BaseModel, Field
-
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from modules.backend.core.dependencies import DbSession, Idempotency, RequestId
 from modules.backend.core.logging import get_logger
@@ -59,7 +58,10 @@ class AgentInfo(BaseModel):
 
 
 async def _resolve_shared_session(
-    service, session_id: str | None, mission_id: str, user_id: str | None = None,
+    service,
+    session_id: str | None,
+    mission_id: str,
+    user_id: str | None = None,
 ) -> str:
     """Resolve or create a shared mission session.
 
@@ -165,7 +167,8 @@ async def agent_chat_stream(
             async with get_async_session() as bg_db:
                 bg_service = SessionService(bg_db)
                 async for event in handle(
-                    session_id, data.message,
+                    session_id,
+                    data.message,
                     mission_id=data.mission_id,
                     target_agent=data.agent,
                     session_service=bg_service,
@@ -191,6 +194,7 @@ async def agent_chat_stream(
 
     async def generate():
         from modules.backend.core.config import get_app_config
+
         keepalive_sec = get_app_config().application.timeouts.sse_keepalive
         try:
             while True:

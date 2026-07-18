@@ -224,6 +224,10 @@ def check_datetime_violations(path: Path, rel: str) -> list[Violation]:
 
 def check_hardcoded_secrets(path: Path, rel: str) -> list[Violation]:
     """003.1 — No hardcoded secrets in source code."""
+    # Test files legitimately contain dummy credentials (fixtures, and
+    # tests/agents/security/ literally tests secret detection).
+    if rel.startswith("tests/"):
+        return []
     violations = []
     pattern = re.compile(r"""(api_key|password|token|secret)\s*=\s*['"][^'"]{10,}['"]""", re.I)
     skip = re.compile(r"(os\.getenv|\.env|env\.example|your_|settings\.|Field\(|test_|conftest)")

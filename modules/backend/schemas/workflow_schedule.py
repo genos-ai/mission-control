@@ -38,28 +38,37 @@ class WorkflowScheduleCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     workflow_definition_id: str = Field(
-        ..., min_length=1, max_length=36,
+        ...,
+        min_length=1,
+        max_length=36,
     )
     cron_expression: str = Field(
-        ..., min_length=9, max_length=100,
+        ...,
+        min_length=9,
+        max_length=100,
         description="Standard 5-field cron: minute hour day month weekday",
     )
     timezone: str = Field(
-        default="UTC", max_length=50,
+        default="UTC",
+        max_length=50,
     )
     description: str = Field(
-        default="", max_length=2000,
+        default="",
+        max_length=2000,
     )
     budget_per_run_usd: float | None = Field(
-        None, ge=0.01,
+        None,
+        ge=0.01,
         description="USD ceiling per individual run",
     )
     max_iterations: int | None = Field(
-        None, ge=1,
+        None,
+        ge=1,
         description="Total runs this schedule may create (NULL = unlimited)",
     )
     cooldown_seconds: int = Field(
-        default=0, ge=0,
+        default=0,
+        ge=0,
         description="Minimum seconds between consecutive runs",
     )
 
@@ -70,7 +79,9 @@ class WorkflowScheduleUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cron_expression: str | None = Field(
-        None, min_length=9, max_length=100,
+        None,
+        min_length=9,
+        max_length=100,
     )
     timezone: str | None = Field(None, max_length=50)
     enabled: bool | None = None

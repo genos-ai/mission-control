@@ -18,6 +18,7 @@ from pydantic_ai import UsageLimits, UserError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.agents.mission_control.cost import compute_cost_usd
 from modules.backend.agents.mission_control.helpers import (
     _build_agent_deps,
     _build_model,
@@ -26,7 +27,6 @@ from modules.backend.agents.mission_control.helpers import (
     _import_agent_module,
     assemble_instructions,
 )
-from modules.backend.agents.mission_control.cost import compute_cost_usd
 from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
@@ -92,6 +92,7 @@ class WorkshopService(BaseService):
         agent_config = registry.get(agent_name)
         if agent_config is None:
             from modules.backend.core.exceptions import NotFoundError
+
             raise NotFoundError(f"Agent '{agent_name}' not found in registry")
 
         module = _import_agent_module(agent_name)
@@ -121,7 +122,9 @@ class WorkshopService(BaseService):
 
         try:
             async with agent.run_stream(
-                user_message, deps=deps, usage_limits=usage_limits,
+                user_message,
+                deps=deps,
+                usage_limits=usage_limits,
             ) as stream:
                 try:
                     async for _ in stream.stream_text(delta=True):
@@ -237,14 +240,16 @@ class WorkshopService(BaseService):
 
         cached = []
         for task in tasks:
-            cached.append({
-                "task_execution_id": task.id,
-                "task_id": task.task_id,
-                "agent_name": task.agent_name,
-                "output_data": task.output_data,
-                "cost_usd": task.cost_usd,
-                "created_at": task.created_at,
-            })
+            cached.append(
+                {
+                    "task_execution_id": task.id,
+                    "task_id": task.task_id,
+                    "agent_name": task.agent_name,
+                    "output_data": task.output_data,
+                    "cost_usd": task.cost_usd,
+                    "created_at": task.created_at,
+                }
+            )
 
         return cached
 

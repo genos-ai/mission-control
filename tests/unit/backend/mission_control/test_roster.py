@@ -50,5 +50,3 @@ class TestRoster:
                 interface=RosterInterfaceSchema(),
                 unknown_field="bad",
             )
-
-

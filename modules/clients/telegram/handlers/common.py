@@ -137,7 +137,11 @@ async def cmd_status(message: Message) -> None:
         lines = ["<b>📊 System Status</b>\n", "🟢 <b>Bot:</b> Online"]
 
         for component in report.components:
-            icon = "🟢" if component.status == "healthy" else "🔴" if component.status == "unhealthy" else "🟡"
+            icon = (
+                "🟢"
+                if component.status == "healthy"
+                else "🔴" if component.status == "unhealthy" else "🟡"
+            )
             detail = f" ({component.latency_ms}ms)" if component.latency_ms else ""
             lines.append(f"{icon} <b>{component.name.title()}:</b> {component.status}{detail}")
 

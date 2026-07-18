@@ -20,11 +20,7 @@ from modules.backend.api.v1.endpoints import (
 from modules.backend.core.dependencies import CurrentUser, DbSession, Idempotency, RequestId
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.mission import (
-    MissionCreate,
-    MissionResponse,
-    MissionUpdate,
-)
+from modules.backend.schemas.mission import MissionCreate, MissionResponse, MissionUpdate
 from modules.backend.services.mission import MissionService
 
 router = APIRouter()
@@ -107,10 +103,12 @@ async def list_missions(
         missions = await service.list_missions(status=status, limit=limit)
     else:
         missions = await service.list_missions(
-            owner_id=current_user.id, status=status, limit=limit,
+            owner_id=current_user.id,
+            status=status,
+            limit=limit,
         )
         # Filter out platform missions for non-admin users
-        missions = [m for m in missions if getattr(m, 'tier', 'user') != 'platform']
+        missions = [m for m in missions if getattr(m, "tier", "user") != "platform"]
     items = [MissionResponse.model_validate(m).model_dump() for m in missions]
     return ApiResponse(
         success=True,

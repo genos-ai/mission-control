@@ -12,8 +12,8 @@ Revision ID: plan57_001
 Revises: 20260414_bg_task
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "plan57_001"
 down_revision = "20260414_bg_task"
@@ -34,7 +34,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime, nullable=True),
         sa.Column(
-            "mission_id", sa.String(36),
+            "mission_id",
+            sa.String(36),
             sa.ForeignKey("missions.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -43,14 +44,16 @@ def upgrade() -> None:
         sa.Column("scope", sa.JSON, nullable=False, server_default="{}"),
         sa.Column("source", sa.String(32), nullable=False),
         sa.Column(
-            "revised_from", sa.String(36),
+            "revised_from",
+            sa.String(36),
             sa.ForeignKey("mission_intents.id"),
             nullable=True,
         ),
         sa.Column("reason", sa.Text, nullable=False),
         sa.Column("agent_id", sa.String(200), nullable=True),
         sa.Column(
-            "session_id", sa.String(36),
+            "session_id",
+            sa.String(36),
             sa.ForeignKey("sessions.id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -68,7 +71,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
         sa.Column(
-            "mission_id", sa.String(36),
+            "mission_id",
+            sa.String(36),
             sa.ForeignKey("missions.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -85,7 +89,8 @@ def upgrade() -> None:
         sa.Column("promoted_at", sa.DateTime, nullable=True),
         sa.Column("promoted_by", sa.String(200), nullable=True),
         sa.Column(
-            "contradicts_id", sa.String(36),
+            "contradicts_id",
+            sa.String(36),
             sa.ForeignKey("mission_learnings.id"),
             nullable=True,
         ),
@@ -116,7 +121,8 @@ def upgrade() -> None:
         sa.Column("source_table", sa.String(64), nullable=False),
         sa.Column("source_id", sa.String(36), nullable=False),
         sa.Column(
-            "mission_id", sa.String(36),
+            "mission_id",
+            sa.String(36),
             sa.ForeignKey("missions.id", ondelete="CASCADE"),
             nullable=True,
         ),
@@ -129,6 +135,7 @@ def upgrade() -> None:
     # Add the vector column — pgvector required on Postgres, text on SQLite
     if conn.dialect.name == "postgresql":
         from pgvector.sqlalchemy import Vector
+
         embedding_columns.append(
             sa.Column("embedding_data", Vector(1536), nullable=True),
         )
@@ -149,9 +156,17 @@ def upgrade() -> None:
     # via: CREATE INDEX ix_embeddings_hnsw ON embeddings USING hnsw (embedding_data vector_cosine_ops);
 
     # ---- sessions: add rolling summary columns ----
-    op.add_column("sessions", sa.Column("rolling_summary", sa.Text, server_default="", nullable=False))
-    op.add_column("sessions", sa.Column("rolling_summary_anchor", sa.Integer, server_default="0", nullable=False))
-    op.add_column("sessions", sa.Column("rolling_summary_version", sa.Integer, server_default="0", nullable=False))
+    op.add_column(
+        "sessions", sa.Column("rolling_summary", sa.Text, server_default="", nullable=False)
+    )
+    op.add_column(
+        "sessions",
+        sa.Column("rolling_summary_anchor", sa.Integer, server_default="0", nullable=False),
+    )
+    op.add_column(
+        "sessions",
+        sa.Column("rolling_summary_version", sa.Integer, server_default="0", nullable=False),
+    )
 
     # ---- GIN indexes on existing JSONB columns (Postgres only) ----
     if conn.dialect.name == "postgresql":

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core import security
 from modules.backend.models.mission import Mission, MissionStatus
 from modules.backend.models.user import User
-from tests.conftest import TEST_USER_ID, TEST_USER_ID_2, TEST_MISSION_ID
+from tests.conftest import TEST_MISSION_ID, TEST_USER_ID, TEST_USER_ID_2
 
 
 @pytest.fixture
@@ -50,7 +50,8 @@ async def regular_user(db_session: AsyncSession) -> User:
 @pytest.fixture
 async def inactive_user(db_session: AsyncSession) -> User:
     """Create a deactivated user in the database."""
-    from uuid import uuid5, UUID
+    from uuid import UUID, uuid5
+
     inactive_id = str(uuid5(UUID("00000000-0000-0000-0000-000000000000"), "user:inactive"))
     hashed = security.hash_password("inactive-pass-123")
     user = User(
@@ -84,7 +85,8 @@ async def test_mission(db_session: AsyncSession, regular_user: User) -> Mission:
 @pytest.fixture
 async def archived_mission(db_session: AsyncSession, regular_user: User) -> Mission:
     """Create an archived mission."""
-    from uuid import uuid5, UUID
+    from uuid import UUID, uuid5
+
     archived_id = str(uuid5(UUID("00000000-0000-0000-0000-000000000000"), "mission:archived"))
     mission = Mission(
         id=archived_id,

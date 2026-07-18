@@ -28,7 +28,9 @@ class TestMissionWorkflowInput:
 
     def test_defaults(self):
         inp = MissionWorkflowInput(
-            mission_run_id="abc", session_id="def", mission_brief="x",
+            mission_run_id="abc",
+            session_id="def",
+            mission_brief="x",
         )
         assert inp.roster_name == "default"
         assert inp.mission_budget_usd == 10.0

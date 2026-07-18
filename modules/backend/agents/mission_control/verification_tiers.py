@@ -6,9 +6,12 @@ import time
 from typing import Any
 
 from modules.backend.agents.mission_control.models import ExecuteAgentFn
+from modules.backend.agents.mission_control.verification_models import (
+    Tier3Result,
+    TierResult,
+    TierStatus,
+)
 from modules.backend.core.logging import get_logger
-
-from modules.backend.agents.mission_control.verification_models import Tier3Result, TierResult, TierStatus
 
 logger = get_logger(__name__)
 
@@ -115,32 +118,38 @@ async def _run_tier_2(
 
         check_fn = get_check(check_name)
         if check_fn is None:
-            check_results.append({
-                "check": check_name,
-                "passed": False,
-                "details": f"Check '{check_name}' not found in registry",
-                "execution_time_ms": 0.0,
-            })
+            check_results.append(
+                {
+                    "check": check_name,
+                    "passed": False,
+                    "details": f"Check '{check_name}' not found in registry",
+                    "execution_time_ms": 0.0,
+                }
+            )
             failed_checks.append(check_name)
             continue
 
         try:
             cr = await check_fn(output, check_params)
-            check_results.append({
-                "check": check_name,
-                "passed": cr.passed,
-                "details": cr.details,
-                "execution_time_ms": cr.execution_time_ms,
-            })
+            check_results.append(
+                {
+                    "check": check_name,
+                    "passed": cr.passed,
+                    "details": cr.details,
+                    "execution_time_ms": cr.execution_time_ms,
+                }
+            )
             if not cr.passed:
                 failed_checks.append(check_name)
         except Exception as exc:
-            check_results.append({
-                "check": check_name,
-                "passed": False,
-                "details": f"Check raised exception: {exc}",
-                "execution_time_ms": _elapsed_ms(start),
-            })
+            check_results.append(
+                {
+                    "check": check_name,
+                    "passed": False,
+                    "details": f"Check raised exception: {exc}",
+                    "execution_time_ms": _elapsed_ms(start),
+                }
+            )
             failed_checks.append(check_name)
             logger.error(
                 "Tier 2 check raised exception",
@@ -155,8 +164,7 @@ async def _run_tier_2(
             tier=2,
             status=TierStatus.FAIL,
             details=(
-                f"{len(failed_checks)}/{checks_run} checks failed: "
-                f"{', '.join(failed_checks)}"
+                f"{len(failed_checks)}/{checks_run} checks failed: " f"{', '.join(failed_checks)}"
             ),
             execution_time_ms=_elapsed_ms(start),
             check_results=check_results,

@@ -72,6 +72,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         else:
             # Insert new
             from uuid import uuid4
+
             from modules.backend.core.utils import utc_now
 
             new_id = str(uuid4())
@@ -139,9 +140,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         params: dict = {"vec": vec_literal, "limit": limit}
 
         if source_tables:
-            placeholders = ", ".join(
-                f":st_{i}" for i in range(len(source_tables))
-            )
+            placeholders = ", ".join(f":st_{i}" for i in range(len(source_tables)))
             where_clauses.append(f"source_table IN ({placeholders})")
             for i, st in enumerate(source_tables):
                 params[f"st_{i}"] = st
@@ -199,9 +198,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         idx = 0
         for table, ids in filter_ids.items():
             for src_id in ids:
-                or_conditions.append(
-                    f"(source_table = :t_{idx} AND source_id = :s_{idx})"
-                )
+                or_conditions.append(f"(source_table = :t_{idx} AND source_id = :s_{idx})")
                 params[f"t_{idx}"] = table
                 params[f"s_{idx}"] = src_id
                 idx += 1
@@ -262,10 +259,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         )
         result = await self.session.execute(sql)
         rows = result.fetchall()
-        return [
-            {"source_table": row[0], "source_id": row[1]}
-            for row in rows
-        ]
+        return [{"source_table": row[0], "source_id": row[1]} for row in rows]
 
     async def delete_by_source(
         self,

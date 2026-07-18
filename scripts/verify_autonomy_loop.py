@@ -114,21 +114,24 @@ class AutonomyLoopVerifier:
 
     async def _make_reviewer(self, gate_mode: str = "autonomous"):
         """Create a reviewer with a real db session (for idempotency tests)."""
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
         from modules.backend.core.database import get_async_session
 
         session = get_async_session()
         db = await session.__aenter__()
-        return AutonomousPostRunReviewer(
-            session=db,
-            gate_mode=gate_mode,
-        ), db, session
+        return (
+            AutonomousPostRunReviewer(
+                session=db,
+                gate_mode=gate_mode,
+            ),
+            db,
+            session,
+        )
 
     async def setup(self) -> bool:
         """Find a host mission."""
         from sqlalchemy import select
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.mission import Mission
 
@@ -145,11 +148,9 @@ class AutonomyLoopVerifier:
     async def teardown(self) -> None:
         """Clean up created rows."""
         from sqlalchemy import delete
+
         from modules.backend.core.database import get_async_session
-        from modules.backend.models.execution_record import (
-            ExecutionDecision,
-            ExecutionRecord,
-        )
+        from modules.backend.models.execution_record import ExecutionDecision, ExecutionRecord
 
         async with get_async_session() as db:
             if self._created_decision_ids:
@@ -160,21 +161,19 @@ class AutonomyLoopVerifier:
                 )
             if self._created_er_ids:
                 await db.execute(
-                    delete(ExecutionRecord).where(
-                        ExecutionRecord.id.in_(self._created_er_ids)
-                    )
+                    delete(ExecutionRecord).where(ExecutionRecord.id.in_(self._created_er_ids))
                 )
             await db.commit()
-        self._log(f"Cleaned up {len(self._created_er_ids)} ERs + {len(self._created_decision_ids)} decisions")
+        self._log(
+            f"Cleaned up {len(self._created_er_ids)} ERs + {len(self._created_decision_ids)} decisions"
+        )
 
     # ── Checks ───────────────────────────────────────────────────────
 
     async def check_rule_1_budget_exhausted(self) -> None:
         """[A] Budget exhausted → ESCALATE."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         reviewer = AutonomousPostRunReviewer(session=None, gate_mode="autonomous")
         ctx = self._build_context(total_cost=100.0, budget=100.0)
@@ -187,9 +186,7 @@ class AutonomyLoopVerifier:
     async def check_rule_2_max_iterations(self) -> None:
         """[B] Max supervisor iterations → ESCALATE."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         reviewer = AutonomousPostRunReviewer(session=None, gate_mode="autonomous")
         ctx = self._build_context(supervisor_iterations=20, max_iterations=20)
@@ -202,9 +199,7 @@ class AutonomyLoopVerifier:
     async def check_rule_3_stall(self) -> None:
         """[C] Stall detection → ESCALATE."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         stall_outcomes = [
             {"completed_task_count": 0, "status": "failed"},
@@ -222,9 +217,7 @@ class AutonomyLoopVerifier:
     async def check_rule_4_approved_remaining(self) -> None:
         """[D] Approved tasks remaining → WAIT."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         reviewer = AutonomousPostRunReviewer(session=None, gate_mode="autonomous")
         ctx = self._build_context(approved=3)
@@ -237,9 +230,7 @@ class AutonomyLoopVerifier:
     async def check_rule_5_proposed_autonomous(self) -> None:
         """[E] Proposed + autonomous → ADVANCE_APPROVED."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         reviewer = AutonomousPostRunReviewer(session=None, gate_mode="autonomous")
         ctx = self._build_context(proposed=3)
@@ -252,9 +243,7 @@ class AutonomyLoopVerifier:
     async def check_rule_6_proposed_ai_assisted(self) -> None:
         """[F] Proposed + ai_assisted → ADVANCE_APPROVED."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         reviewer = AutonomousPostRunReviewer(session=None, gate_mode="ai_assisted")
         ctx = self._build_context(proposed=2)
@@ -267,9 +256,7 @@ class AutonomyLoopVerifier:
     async def check_rule_7_proposed_interactive(self) -> None:
         """[G] Proposed + interactive → ESCALATE."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         reviewer = AutonomousPostRunReviewer(session=None, gate_mode="interactive")
         ctx = self._build_context(proposed=2)
@@ -282,9 +269,7 @@ class AutonomyLoopVerifier:
     async def check_rule_8_plan_exhausted(self) -> None:
         """[H] Plan exhausted + outcomes → Haiku (stubs as ESCALATE without API)."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         # No proposed, no approved, but outcomes exist. Without a real
         # Haiku API key, the Haiku call fails and falls through to
@@ -306,9 +291,7 @@ class AutonomyLoopVerifier:
     async def check_fallthrough(self) -> None:
         """[I] No branch matches → ESCALATE."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         # No proposed, no approved, no outcomes → no rule matches.
         reviewer = AutonomousPostRunReviewer(session=None, gate_mode="autonomous")
@@ -322,9 +305,7 @@ class AutonomyLoopVerifier:
     async def check_budget_headroom(self) -> None:
         """[J] Budget headroom insufficient → ESCALATE."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         # Budget almost gone, proposed tasks would exceed headroom.
         # avg_cost = 99/5 = 19.8 per task. 3 proposed * 19.8 * 1.5 = 89.1.
@@ -341,10 +322,7 @@ class AutonomyLoopVerifier:
         """[K] Second reviewer call returns cached decision from audit trail."""
         from modules.backend.agents.mission_control.gate_models import GateAction
         from modules.backend.core.database import get_async_session
-        from modules.backend.models.execution_record import (
-            ExecutionDecision,
-            ExecutionRecord,
-        )
+        from modules.backend.models.execution_record import ExecutionDecision, ExecutionRecord
 
         # Create a real execution_record + decision row, then call
         # the reviewer with that execution_record_id and verify it
@@ -364,12 +342,15 @@ class AutonomyLoopVerifier:
 
             # Write a cached decision.
             import json
-            meta = json.dumps({
-                "action": "wait",
-                "reviewer": "config:rule_engine",
-                "rule": 4,
-                "model_metadata": None,
-            })
+
+            meta = json.dumps(
+                {
+                    "action": "wait",
+                    "reviewer": "config:rule_engine",
+                    "rule": 4,
+                    "model_metadata": None,
+                }
+            )
             dec = ExecutionDecision(
                 execution_record_id=er_id,
                 decision_type="post_run_supervisor",
@@ -385,6 +366,7 @@ class AutonomyLoopVerifier:
             from modules.backend.agents.mission_control.gate_post_run import (
                 AutonomousPostRunReviewer,
             )
+
             reviewer = AutonomousPostRunReviewer(session=db, gate_mode="autonomous")
             ctx = self._build_context(
                 # These values would normally trigger rule #5
@@ -406,9 +388,7 @@ class AutonomyLoopVerifier:
     async def check_gate_mode_interactive(self) -> None:
         """[L] Interactive mode never auto-advances even with proposed tasks."""
         from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import (
-            AutonomousPostRunReviewer,
-        )
+        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 
         # Same context that would ADVANCE_APPROVED in autonomous mode,
         # but interactive → ESCALATE.
@@ -438,12 +418,15 @@ class AutonomyLoopVerifier:
         if missing:
             self._fail("Event types registered", f"missing: {missing}")
             return
-        self._pass("Event types: run.completed + supervisor_decision + followup.fired all registered")
+        self._pass(
+            "Event types: run.completed + supervisor_decision + followup.fired all registered"
+        )
 
     async def check_schema_execution_records(self) -> None:
         """[N] execution_records has completed_task_count + failed_task_count columns."""
-        from modules.backend.core.database import get_async_session
         from sqlalchemy import inspect as sa_inspect
+
+        from modules.backend.core.database import get_async_session
 
         async with get_async_session() as db:
             bind = await db.connection()
@@ -460,8 +443,9 @@ class AutonomyLoopVerifier:
 
     async def check_schema_mission_plans(self) -> None:
         """[O] mission_plans has supervisor counters."""
-        from modules.backend.core.database import get_async_session
         from sqlalchemy import inspect as sa_inspect
+
+        from modules.backend.core.database import get_async_session
 
         async with get_async_session() as db:
             bind = await db.connection()
@@ -474,15 +458,14 @@ class AutonomyLoopVerifier:
         if missing:
             self._fail("mission_plans columns", f"missing: {missing}")
             return
-        self._pass("Schema: mission_plans has supervisor_iteration_count + max_supervisor_iterations")
+        self._pass(
+            "Schema: mission_plans has supervisor_iteration_count + max_supervisor_iterations"
+        )
 
     # ── Runner ───────────────────────────────────────────────────────
 
     async def run(self) -> bool:
-        print(
-            f"\nPlan 51 Phase F — Autonomy Loop Verification "
-            f"(run_tag={self._run_tag})"
-        )
+        print(f"\nPlan 51 Phase F — Autonomy Loop Verification " f"(run_tag={self._run_tag})")
         print("=" * 70)
 
         print("\n[Setup]")
@@ -552,7 +535,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Show debug details for each check",
     )
     args = parser.parse_args()

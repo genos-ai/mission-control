@@ -41,9 +41,7 @@ class BaseRepository(Generic[ModelType]):
         Raises:
             NotFoundError: If record not found
         """
-        result = await self.session.execute(
-            select(self.model).where(self.model.id == str(id))
-        )
+        result = await self.session.execute(select(self.model).where(self.model.id == str(id)))
         instance = result.scalar_one_or_none()
 
         if instance is None:
@@ -53,16 +51,12 @@ class BaseRepository(Generic[ModelType]):
 
     async def get_by_id_or_none(self, id: str | UUID) -> ModelType | None:
         """Get a single record by ID, returning None if not found."""
-        result = await self.session.execute(
-            select(self.model).where(self.model.id == str(id))
-        )
+        result = await self.session.execute(select(self.model).where(self.model.id == str(id)))
         return result.scalar_one_or_none()
 
     async def get_all(self, limit: int = 50, offset: int = 0) -> list[ModelType]:
         """Get all records with pagination."""
-        result = await self.session.execute(
-            select(self.model).limit(limit).offset(offset)
-        )
+        result = await self.session.execute(select(self.model).limit(limit).offset(offset))
         return list(result.scalars().all())
 
     async def create(self, **kwargs: Any) -> ModelType:
@@ -103,14 +97,10 @@ class BaseRepository(Generic[ModelType]):
 
     async def exists(self, id: str | UUID) -> bool:
         """Check if a record exists by ID."""
-        result = await self.session.execute(
-            select(self.model.id).where(self.model.id == str(id))
-        )
+        result = await self.session.execute(select(self.model.id).where(self.model.id == str(id)))
         return result.scalar_one_or_none() is not None
 
     async def count(self) -> int:
         """Get total count of records."""
-        result = await self.session.execute(
-            select(func.count()).select_from(self.model)
-        )
+        result = await self.session.execute(select(func.count()).select_from(self.model))
         return result.scalar_one()

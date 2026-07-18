@@ -65,11 +65,16 @@ class SessionServiceProtocol(Protocol):
     async def get_session(self, session_id: str) -> Any: ...
 
     async def enforce_budget(
-        self, session_id: str, estimated_cost: float = ...,
+        self,
+        session_id: str,
+        estimated_cost: float = ...,
     ) -> None: ...
 
     async def get_messages(
-        self, session_id: str, limit: int = ..., offset: int = ...,
+        self,
+        session_id: str,
+        limit: int = ...,
+        offset: int = ...,
         sender_ids: list[str] | None = ...,
     ) -> tuple[list, int]: ...
 
@@ -83,14 +88,20 @@ class SessionServiceProtocol(Protocol):
 
     async def touch_activity(self, session_id: str) -> None: ...
 
-    async def add_message(self, session_id: str, data: Any, *, target_agent: str | None = ...) -> None: ...
+    async def add_message(
+        self, session_id: str, data: Any, *, target_agent: str | None = ...
+    ) -> None: ...
 
     async def create_streaming_message(
-        self, session_id: str, sender_id: str | None = ...,
+        self,
+        session_id: str,
+        sender_id: str | None = ...,
     ) -> str: ...
 
     async def update_streaming_content(
-        self, message_id: str, content: str,
+        self,
+        message_id: str,
+        content: str,
     ) -> None: ...
 
     async def finalize_streaming_message(
@@ -105,5 +116,3 @@ class SessionServiceProtocol(Protocol):
         cost_usd: float | None = ...,
         thinking: str | None = ...,
     ) -> None: ...
-
-

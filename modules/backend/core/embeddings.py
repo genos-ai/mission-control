@@ -85,20 +85,18 @@ class OpenAIEmbedder(Embedder):
             )
             return response.data[0].embedding
         except Exception as e:
-            raise EmbeddingProviderError(
-                f"OpenAI embedding failed: {e}"
-            ) from e
+            raise EmbeddingProviderError(f"OpenAI embedding failed: {e}") from e
 
     def _get_client(self) -> object:
         """Lazy-init the async OpenAI client."""
         if self._client is None:
             try:
                 from openai import AsyncOpenAI
+
                 self._client = AsyncOpenAI()
             except ImportError as e:
                 raise EmbeddingProviderError(
-                    "openai package required for OpenAI embeddings: "
-                    "pip install openai"
+                    "openai package required for OpenAI embeddings: " "pip install openai"
                 ) from e
         return self._client
 
@@ -184,6 +182,7 @@ def get_embedder() -> Embedder:
     """
     try:
         from modules.backend.core.config import get_app_config
+
         cfg = get_app_config().missions
         embedding_cfg = getattr(cfg, "knowledge", None)
         if embedding_cfg is None:

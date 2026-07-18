@@ -12,13 +12,13 @@ Public API:
     CodeMapLoader           — reusable load/cache/refresh service
 """
 
-from modules.backend.services.code_map.generator import generate_code_map
 from modules.backend.services.code_map.assembler import (
     find_circular_deps,
     render_for_agent,
     render_markdown_tree,
     trim_by_rank,
 )
+from modules.backend.services.code_map.generator import generate_code_map
 from modules.backend.services.code_map.loader import CodeMapLoader
 
 __all__ = [

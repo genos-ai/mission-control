@@ -109,8 +109,10 @@ class TestAgentDetailWidget:
         async with TestApp().run_test() as pilot:
             detail = pilot.app.query_one("#agent-detail", AgentDetailWidget)
             detail.update_header(
-                status="running", cost=0.05,
-                input_tokens=1500, output_tokens=400,
+                status="running",
+                cost=0.05,
+                input_tokens=1500,
+                output_tokens=400,
             )
             await pilot.pause()
             assert detail.query_one("#agent-header-label")

@@ -3,7 +3,19 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,8 +25,9 @@ from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 class SessionStatus(str, enum.Enum):
     """Session lifecycle states."""
+
     ACTIVE = "active"
-    SUSPENDED = "suspended"       # Waiting for human/AI input or approval
+    SUSPENDED = "suspended"  # Waiting for human/AI input or approval
     COMPLETED = "completed"
     EXPIRED = "expired"
     FAILED = "failed"
@@ -73,21 +86,17 @@ class Session(UUIDMixin, TimestampMixin, Base):
     # Cost tracking
     total_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_cost_usd: Mapped[float] = mapped_column(Numeric(12, 6, asdecimal=False), nullable=False, default=0.0)
+    total_cost_usd: Mapped[float] = mapped_column(
+        Numeric(12, 6, asdecimal=False), nullable=False, default=0.0
+    )
     cost_budget_usd: Mapped[float | None] = mapped_column(
         Numeric(12, 6, asdecimal=False), nullable=True
     )  # None = unlimited
 
     # Rolling summary — anchored compression for long sessions (Plan 57 Phase C)
-    rolling_summary: Mapped[str] = mapped_column(
-        Text, nullable=False, default=""
-    )
-    rolling_summary_anchor: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    rolling_summary_version: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    rolling_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    rolling_summary_anchor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rolling_summary_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Activity tracking
     last_activity_at: Mapped[datetime] = mapped_column(
@@ -136,7 +145,9 @@ class SessionChannel(UUIDMixin, Base):
     channel_id: Mapped[str] = mapped_column(
         String(200), nullable=False
     )  # chat_id, connection_id, etc.
-    bound_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    bound_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Relationship
@@ -192,9 +203,7 @@ class SessionMessage(UUIDMixin, Base):
     # Streaming state — supports persist-first SSE (Plan 56 Phase A).
     # 'streaming' while the agent is generating, 'complete' when done,
     # 'failed' if the agent errored mid-stream.
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="complete"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="complete")
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -207,9 +216,7 @@ class SessionMessage(UUIDMixin, Base):
     # Relationship
     session: Mapped["Session"] = relationship("Session", back_populates="messages")
 
-    __table_args__ = (
-        Index("ix_session_messages_session_created", "session_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_session_messages_session_created", "session_id", "created_at"),)
 
     def __repr__(self) -> str:
         return f"<SessionMessage(session_id={self.session_id}, role={self.role})>"

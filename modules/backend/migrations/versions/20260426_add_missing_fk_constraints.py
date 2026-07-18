@@ -14,8 +14,8 @@ Create Date: 2026-04-26
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "add_missing_fk_constraints"
 down_revision: Union[str, None] = "plan45_workflow_graph"
@@ -77,15 +77,17 @@ def upgrade() -> None:
 
     # 2. Clean orphaned references before adding constraints.
     for fk in NEW_FKS:
-        conn.execute(sa.text(
-            f"UPDATE \"{fk['table']}\" SET \"{fk['column']}\" = NULL "
-            f"WHERE \"{fk['column']}\" IS NOT NULL "
-            f"AND NOT EXISTS ("
-            f"  SELECT 1 FROM \"{fk['target_table']}\" "
-            f"  WHERE \"{fk['target_table']}\".\"{fk['target_column']}\" = "
-            f"  \"{fk['table']}\".\"{fk['column']}\""
-            f")"
-        ))
+        conn.execute(
+            sa.text(
+                f"UPDATE \"{fk['table']}\" SET \"{fk['column']}\" = NULL "
+                f"WHERE \"{fk['column']}\" IS NOT NULL "
+                f"AND NOT EXISTS ("
+                f"  SELECT 1 FROM \"{fk['target_table']}\" "
+                f"  WHERE \"{fk['target_table']}\".\"{fk['target_column']}\" = "
+                f"  \"{fk['table']}\".\"{fk['column']}\""
+                f")"
+            )
+        )
 
     # 3. Add FK constraints
     for fk in NEW_FKS:

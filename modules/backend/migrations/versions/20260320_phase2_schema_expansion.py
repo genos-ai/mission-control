@@ -5,8 +5,8 @@ Revises: None
 Create Date: 2026-03-20
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "phase2_001"
 down_revision = None
@@ -18,8 +18,12 @@ def upgrade() -> None:
     # -- 1. Add brief column to missions table --
     op.add_column(
         "missions",
-        sa.Column("brief", sa.Text(), nullable=True,
-                  comment="Strategic directive that agents read to understand their purpose"),
+        sa.Column(
+            "brief",
+            sa.Text(),
+            nullable=True,
+            comment="Strategic directive that agents read to understand their purpose",
+        ),
     )
 
     # -- 2. Create agent_catalog table --
@@ -51,8 +55,18 @@ def upgrade() -> None:
     op.create_table(
         "mission_team_members",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("mission_id", sa.String(length=36), sa.ForeignKey("missions.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("agent_catalog_id", sa.String(length=36), sa.ForeignKey("agent_catalog.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "mission_id",
+            sa.String(length=36),
+            sa.ForeignKey("missions.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "agent_catalog_id",
+            sa.String(length=36),
+            sa.ForeignKey("agent_catalog.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("user_prompt", sa.Text(), nullable=True),
         sa.Column("user_prompt_version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("1")),
@@ -63,13 +77,20 @@ def upgrade() -> None:
         sa.UniqueConstraint("mission_id", "agent_catalog_id", name="uq_mission_team_mission_agent"),
     )
     op.create_index("ix_mission_team_members_mission_id", "mission_team_members", ["mission_id"])
-    op.create_index("ix_mission_team_members_agent_catalog_id", "mission_team_members", ["agent_catalog_id"])
+    op.create_index(
+        "ix_mission_team_members_agent_catalog_id", "mission_team_members", ["agent_catalog_id"]
+    )
 
     # -- 4. Create workflow_definitions table --
     op.create_table(
         "workflow_definitions",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("mission_id", sa.String(length=36), sa.ForeignKey("missions.id", ondelete="CASCADE"), nullable=True),
+        sa.Column(
+            "mission_id",
+            sa.String(length=36),
+            sa.ForeignKey("missions.id", ondelete="CASCADE"),
+            nullable=True,
+        ),
         sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("description", sa.Text(), nullable=False, server_default=""),
         sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),

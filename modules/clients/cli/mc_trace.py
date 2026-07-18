@@ -16,7 +16,9 @@ logger = get_logger(__name__)
 
 
 async def trace_workflow(
-    workflow_id: str, verbose: bool = False, detail: bool = False,
+    workflow_id: str,
+    verbose: bool = False,
+    detail: bool = False,
     mission_id: str | None = None,
 ) -> None:
     """Query Temporal workflow history and display activity timeline."""
@@ -95,9 +97,7 @@ async def trace_workflow(
             sched_id = str(attrs.get("scheduledEventId", ""))
             activity_type = activities.get(sched_id, "?")
             elapsed = _elapsed_from_str(start_ts, ts)
-            console.print(
-                f"  [dim]{elapsed}[/dim]  [green]COMPLETED[/green]  {activity_type}"
-            )
+            console.print(f"  [dim]{elapsed}[/dim]  [green]COMPLETED[/green]  {activity_type}")
 
         elif et == "EVENT_TYPE_ACTIVITY_TASK_FAILED":
             attrs = d.get("activityTaskFailedEventAttributes", {})
@@ -106,9 +106,7 @@ async def trace_workflow(
             failure = attrs.get("failure", {})
             msg = failure.get("message", "")[:200]
             elapsed = _elapsed_from_str(start_ts, ts)
-            console.print(
-                f"  [dim]{elapsed}[/dim]  [red]FAILED[/red]     {activity_type}"
-            )
+            console.print(f"  [dim]{elapsed}[/dim]  [red]FAILED[/red]     {activity_type}")
             if msg:
                 console.print(f"               [red]{msg}[/red]")
 
@@ -117,24 +115,18 @@ async def trace_workflow(
             sched_id = str(attrs.get("scheduledEventId", ""))
             activity_type = activities.get(sched_id, "?")
             elapsed = _elapsed_from_str(start_ts, ts)
-            console.print(
-                f"  [dim]{elapsed}[/dim]  [red]TIMED_OUT[/red]  {activity_type}"
-            )
+            console.print(f"  [dim]{elapsed}[/dim]  [red]TIMED_OUT[/red]  {activity_type}")
 
         elif et == "EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED":
             elapsed = _elapsed_from_str(start_ts, ts)
-            console.print(
-                f"  [dim]{elapsed}[/dim]  [bold green]WORKFLOW_COMPLETED[/bold green]"
-            )
+            console.print(f"  [dim]{elapsed}[/dim]  [bold green]WORKFLOW_COMPLETED[/bold green]")
 
         elif et == "EVENT_TYPE_WORKFLOW_EXECUTION_FAILED":
             attrs = d.get("workflowExecutionFailedEventAttributes", {})
             failure = attrs.get("failure", {})
             msg = failure.get("message", "")[:300]
             elapsed = _elapsed_from_str(start_ts, ts)
-            console.print(
-                f"  [dim]{elapsed}[/dim]  [bold red]WORKFLOW_FAILED[/bold red]"
-            )
+            console.print(f"  [dim]{elapsed}[/dim]  [bold red]WORKFLOW_FAILED[/bold red]")
             if msg:
                 console.print(f"               [red]{msg}[/red]")
 
@@ -144,7 +136,9 @@ async def trace_workflow(
 
     # Summary
     console.print()
-    still_running = [a for aid, a in activities.items() if activities[aid] in ("scheduled", "running")]
+    still_running = [
+        a for aid, a in activities.items() if activities[aid] in ("scheduled", "running")
+    ]
     # (activities dict stores type strings, not dicts — skip summary for now)
 
     # Research phase breakdown
@@ -156,15 +150,19 @@ async def _show_research_phases(console, mission_id: str) -> None:
     """Query mission_events for research phase timings."""
     from datetime import datetime
 
-    from modules.backend.core.database import get_async_session
     from sqlalchemy import text
 
+    from modules.backend.core.database import get_async_session
+
     async with get_async_session() as db:
-        result = await db.execute(text(
-            "SELECT event_type, timestamp FROM mission_events "
-            "WHERE mission_id = :mid AND event_type LIKE 'research.%' "
-            "ORDER BY timestamp ASC"
-        ), {"mid": mission_id})
+        result = await db.execute(
+            text(
+                "SELECT event_type, timestamp FROM mission_events "
+                "WHERE mission_id = :mid AND event_type LIKE 'research.%' "
+                "ORDER BY timestamp ASC"
+            ),
+            {"mid": mission_id},
+        )
         rows = result.fetchall()
 
     if not rows:
@@ -215,7 +213,11 @@ async def _show_research_phases(console, mission_id: str) -> None:
             label = PHASE_LABELS[event_type]
 
             if duration >= 1.0:
-                dur_str = f"{duration:.0f}s" if duration < 60 else f"{int(duration)//60}m{int(duration)%60}s"
+                dur_str = (
+                    f"{duration:.0f}s"
+                    if duration < 60
+                    else f"{int(duration)//60}m{int(duration)%60}s"
+                )
                 console.print(f"    [dim]{m:02d}:{s:02d}[/dim]  {label:20s}  [dim]+{dur_str}[/dim]")
             else:
                 console.print(f"    [dim]{m:02d}:{s:02d}[/dim]  {label}")
@@ -231,6 +233,7 @@ async def _show_research_phases(console, mission_id: str) -> None:
 def _parse_ts(ts):
     """Parse a timestamp that may be string or datetime."""
     from datetime import datetime
+
     if isinstance(ts, str):
         return datetime.fromisoformat(ts.replace("Z", "+00:00"))
     return ts

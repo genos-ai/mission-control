@@ -5,8 +5,8 @@ Revises: phase3_001
 Create Date: 2026-03-25
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "phase4_001"
 down_revision = "phase3_001"

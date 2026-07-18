@@ -34,7 +34,8 @@ class TestLogin:
 
     async def test_login_no_password_set(self, db_session: AsyncSession):
         """Service accounts have no password — login should fail."""
-        from uuid import uuid5, UUID
+        from uuid import UUID, uuid5
+
         svc_id = str(uuid5(UUID("00000000-0000-0000-0000-000000000000"), "user:svc-account"))
         user = User(
             id=svc_id,
@@ -65,7 +66,9 @@ class TestTokenRefresh:
         # New tokens should be different from original
         assert refresh_result["access_token"] != login_result["access_token"]
 
-    async def test_refresh_with_access_token_fails(self, db_session: AsyncSession, regular_user: User):
+    async def test_refresh_with_access_token_fails(
+        self, db_session: AsyncSession, regular_user: User
+    ):
         """Access tokens must not be usable as refresh tokens."""
         service = AuthService(db_session)
         login_result = await service.login("user@test.dev", "user-password-123")
@@ -84,7 +87,10 @@ class TestApiKeys:
         service = AuthService(db_session)
 
         full_key, api_key = await service.create_api_key(
-            regular_user.id, "test-key", None, regular_user,
+            regular_user.id,
+            "test-key",
+            None,
+            regular_user,
         )
 
         assert full_key.startswith("app_")
@@ -113,7 +119,10 @@ class TestApiKeys:
     async def test_revoke_api_key(self, db_session: AsyncSession, regular_user: User):
         service = AuthService(db_session)
         full_key, api_key = await service.create_api_key(
-            regular_user.id, "revoke-me", None, regular_user,
+            regular_user.id,
+            "revoke-me",
+            None,
+            regular_user,
         )
 
         await service.revoke_api_key(api_key.id, regular_user)

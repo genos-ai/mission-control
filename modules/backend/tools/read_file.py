@@ -49,6 +49,7 @@ _impl = read_file
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def read_file(ctx: RunContext, file_path: str) -> str:
         """Read a file and return its contents with line numbers."""

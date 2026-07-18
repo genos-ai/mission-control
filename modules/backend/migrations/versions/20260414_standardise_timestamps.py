@@ -10,8 +10,8 @@ Revision ID: standardise_timestamps
 Revises: workflow_run_exec_record
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "standardise_timestamps"
 down_revision = "workflow_run_exec_record"

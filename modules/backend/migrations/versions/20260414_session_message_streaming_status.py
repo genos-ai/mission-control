@@ -6,9 +6,8 @@ or errored ('failed'). The updated_at column records when content was last
 flushed during streaming.
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260414_msg_status"
 down_revision = "standardise_timestamps"

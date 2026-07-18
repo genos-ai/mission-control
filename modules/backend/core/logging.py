@@ -51,17 +51,19 @@ from structlog.typing import Processor
 
 from modules.backend.core.config import find_project_root, load_yaml_config
 
-VALID_SOURCES = frozenset({
-    "web",
-    "cli",
-    "tui",
-    "mobile",
-    "telegram",
-    "api",
-    "tasks",
-    "internal",
-    "events",
-})
+VALID_SOURCES = frozenset(
+    {
+        "web",
+        "cli",
+        "tui",
+        "mobile",
+        "telegram",
+        "api",
+        "tasks",
+        "internal",
+        "events",
+    }
+)
 """
 Recognized log source values — for documentation and validation.
 Source is always set explicitly by the caller. Never guessed from logger names.
@@ -116,7 +118,9 @@ _drain_task: asyncio.Task | None = None
 
 
 def mission_event_processor(
-    logger: Any, method_name: str, event_dict: dict[str, Any],
+    logger: Any,
+    method_name: str,
+    event_dict: dict[str, Any],
 ) -> dict[str, Any]:
     """Structlog processor that bridges WARNING+ logs to the mission event stream.
 
@@ -166,6 +170,7 @@ async def _drain_mission_event_queue(queue: asyncio.Queue) -> None:
     import uuid as _uuid
 
     from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.core.config import get_redis_url
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.events.types import SystemEvent
@@ -194,14 +199,17 @@ async def _drain_mission_event_queue(queue: asyncio.Queue) -> None:
             # Use stdlib logger (not structlog) to avoid re-entrant
             # processor calls that would loop back into this queue.
             logging.getLogger("mission_event_drain").debug(
-                "Mission event drain error: %s", drain_exc, exc_info=True,
+                "Mission event drain error: %s",
+                drain_exc,
+                exc_info=True,
             )
             try:
                 if redis is not None:
                     await redis.aclose()
             except Exception:
                 logging.getLogger("mission_event_drain").debug(
-                    "Redis close failed during drain error recovery", exc_info=True,
+                    "Redis close failed during drain error recovery",
+                    exc_info=True,
                 )
             redis = None
         finally:
@@ -263,12 +271,10 @@ def setup_logging(
     file_config = handlers_config["file"]
 
     effective_console_enabled = (
-        enable_console if enable_console is not None
-        else console_config["enabled"]
+        enable_console if enable_console is not None else console_config["enabled"]
     )
     effective_file_enabled = (
-        enable_file_logging if enable_file_logging is not None
-        else file_config["enabled"]
+        enable_file_logging if enable_file_logging is not None else file_config["enabled"]
     )
 
     log_level = getattr(logging, effective_level.upper())
@@ -296,7 +302,8 @@ def setup_logging(
     )
 
     structlog.configure(
-        processors=shared_processors + [
+        processors=shared_processors
+        + [
             mission_event_processor,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
@@ -323,10 +330,12 @@ def setup_logging(
     if effective_console_enabled:
         console_handler = logging.StreamHandler(sys.stdout)
         if console_format_override and console_format_override.lower() == "console":
-            console_handler.setFormatter(structlog.stdlib.ProcessorFormatter(
-                processor=structlog.dev.ConsoleRenderer(colors=True),
-                foreign_pre_chain=shared_processors,
-            ))
+            console_handler.setFormatter(
+                structlog.stdlib.ProcessorFormatter(
+                    processor=structlog.dev.ConsoleRenderer(colors=True),
+                    foreign_pre_chain=shared_processors,
+                )
+            )
         else:
             console_handler.setFormatter(console_formatter)
         if console_level_override:

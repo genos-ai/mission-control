@@ -41,10 +41,12 @@ class _ThreadItem(Static):
         )
 
     def on_click(self) -> None:
-        self.post_message(self.Selected(
-            session_id=self._session.get("session_id", ""),
-            agent_name=self._session.get("agent_name", ""),
-        ))
+        self.post_message(
+            self.Selected(
+                session_id=self._session.get("session_id", ""),
+                agent_name=self._session.get("agent_name", ""),
+            )
+        )
 
 
 class ChatTab(Static):
@@ -114,7 +116,8 @@ class ChatTab(Static):
         except Exception as exc:
             logger.warning("Could not load sessions", exc_info=True)
             scroll = self.query_one(
-                "#chat-threads-scroll", VerticalScroll,
+                "#chat-threads-scroll",
+                VerticalScroll,
             )
             scroll.remove_children()
             scroll.mount(
@@ -123,7 +126,8 @@ class ChatTab(Static):
 
     def _render_thread_list(self, sessions: list[dict]) -> None:
         scroll = self.query_one(
-            "#chat-threads-scroll", VerticalScroll,
+            "#chat-threads-scroll",
+            VerticalScroll,
         )
         scroll.remove_children()
 
@@ -145,7 +149,8 @@ class ChatTab(Static):
             )
 
     async def on__thread_item_selected(
-        self, event: _ThreadItem.Selected,
+        self,
+        event: _ThreadItem.Selected,
     ) -> None:
         """Load conversation when thread is clicked."""
         self.app.state.chat.active_session_id = event.session_id
@@ -156,7 +161,8 @@ class ChatTab(Static):
             logger.debug("chat agent label update failed", exc_info=True)
 
         self.run_worker(
-            self._load_messages(event.session_id), thread=False,
+            self._load_messages(event.session_id),
+            thread=False,
         )
 
     async def _load_messages(self, session_id: str) -> None:
@@ -217,7 +223,8 @@ class ChatTab(Static):
         agent_name = team[0].get("agent_name", "")
         try:
             result = await self.app.bridge.create_session(
-                mission_id=mission_id, agent_name=agent_name,
+                mission_id=mission_id,
+                agent_name=agent_name,
             )
             self.app.state.chat.active_session_id = result["session_id"]
             self.app.notify(
@@ -252,7 +259,8 @@ class ChatTab(Static):
                 logger.debug("chat user message display failed", exc_info=True)
 
             await self.app.bridge.send_message(
-                session_id=session_id, content=content,
+                session_id=session_id,
+                content=content,
             )
         except Exception as exc:
             logger.error("Failed to send message", exc_info=True)

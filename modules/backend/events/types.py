@@ -483,7 +483,7 @@ class MissionPlanRefinedEvent(SessionEvent):
     version: int
     task_count: int
     cancelled_count: int = 0  # Task states cancelled by reconciliation
-    new_count: int = 0         # New task states created
+    new_count: int = 0  # New task states created
 
 
 class MissionPlanTaskStatusChangedEvent(SessionEvent):

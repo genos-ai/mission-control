@@ -40,7 +40,7 @@ class EnvironmentHandle:
 
     environment_id: str
     mode: str  # "local", "worktree", "container"
-    working_dir: Path          # container-internal path (used by execute())
+    working_dir: Path  # container-internal path (used by execute())
     host_working_dir: Path | None = None  # host-side worktree (used by agent tools)
     branch_name: str | None = None
     container_id: str | None = None
@@ -139,7 +139,8 @@ class LocalBackend:
         )
         try:
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_seconds,
+                proc.communicate(),
+                timeout=timeout_seconds,
             )
         except asyncio.TimeoutError:
             proc.kill()
@@ -252,10 +253,7 @@ class ExecutionEnvironmentService:
         backend = self._backends.get(mode)
         if backend is None:
             available = ", ".join(self._backends.keys())
-            raise ValueError(
-                f"No backend registered for mode '{mode}'. "
-                f"Available: {available}"
-            )
+            raise ValueError(f"No backend registered for mode '{mode}'. " f"Available: {available}")
 
         handle = await backend.create(name, config or {})
         logger.info(
@@ -297,7 +295,8 @@ class ExecutionEnvironmentService:
         )
 
     async def list_environments_for_mission(
-        self, mission_id: str,
+        self,
+        mission_id: str,
     ) -> dict:
         """List execution environments for a mission.
 
@@ -311,27 +310,32 @@ class ExecutionEnvironmentService:
             }
 
         from sqlalchemy import select
+
         from modules.backend.models.execution_environment import ExecutionEnvironmentModel
 
         result = await self._db.execute(
-            select(ExecutionEnvironmentModel).where(
+            select(ExecutionEnvironmentModel)
+            .where(
                 ExecutionEnvironmentModel.mission_id == mission_id,
-            ).order_by(ExecutionEnvironmentModel.created_at.desc())
+            )
+            .order_by(ExecutionEnvironmentModel.created_at.desc())
         )
         envs = list(result.scalars().all())
 
         environments = []
         for env in envs:
-            environments.append({
-                "id": str(env.id),
-                "mode": env.mode,
-                "status": env.status,
-                "container_name": env.container_name,
-                "image": env.image,
-                "execution_count": env.execution_count,
-                "last_execution_at": env.last_execution_at,
-                "created_at": str(env.created_at),
-            })
+            environments.append(
+                {
+                    "id": str(env.id),
+                    "mode": env.mode,
+                    "status": env.status,
+                    "container_name": env.container_name,
+                    "image": env.image,
+                    "execution_count": env.execution_count,
+                    "last_execution_at": env.last_execution_at,
+                    "created_at": str(env.created_at),
+                }
+            )
 
         active = next(
             (e for e in environments if e["status"].lower() == "running"),
@@ -350,18 +354,21 @@ class ExecutionEnvironmentService:
             return 0
 
         from sqlalchemy import select, text
+
         from modules.backend.models.execution_environment import (
-            ExecutionEnvironmentModel,
             EnvironmentStatus,
+            ExecutionEnvironmentModel,
         )
 
         result = await self._db.execute(
             select(ExecutionEnvironmentModel).where(
                 ExecutionEnvironmentModel.mission_id == mission_id,
-                ExecutionEnvironmentModel.status.in_([
-                    EnvironmentStatus.RUNNING.value,
-                    EnvironmentStatus.CREATING.value,
-                ]),
+                ExecutionEnvironmentModel.status.in_(
+                    [
+                        EnvironmentStatus.RUNNING.value,
+                        EnvironmentStatus.CREATING.value,
+                    ]
+                ),
             )
         )
         envs = list(result.scalars().all())
@@ -385,26 +392,31 @@ class ExecutionEnvironmentService:
     # --- DB persistence helpers ---
 
     async def _find_running_environment(
-        self, mission_id: str, mode: str,
+        self,
+        mission_id: str,
+        mode: str,
     ) -> EnvironmentHandle | None:
         """Find a running environment for this mission+mode in the DB."""
         if not self._db:
             return None
 
         from sqlalchemy import select
+
         from modules.backend.models.execution_environment import (
-            ExecutionEnvironmentModel,
             EnvironmentStatus,
+            ExecutionEnvironmentModel,
         )
 
         result = await self._db.execute(
             select(ExecutionEnvironmentModel).where(
                 ExecutionEnvironmentModel.mission_id == mission_id,
                 ExecutionEnvironmentModel.mode == mode,
-                ExecutionEnvironmentModel.status.in_([
-                    EnvironmentStatus.RUNNING.value,
-                    "RUNNING",  # handle case mismatch from DB
-                ]),
+                ExecutionEnvironmentModel.status.in_(
+                    [
+                        EnvironmentStatus.RUNNING.value,
+                        "RUNNING",  # handle case mismatch from DB
+                    ]
+                ),
             )
         )
         env = result.scalar_one_or_none()
@@ -415,6 +427,7 @@ class ExecutionEnvironmentService:
         if mode == "container" and env.container_id:
             try:
                 import docker
+
                 client = docker.from_env()
                 container = client.containers.get(env.container_id)
 
@@ -505,17 +518,20 @@ class ExecutionEnvironmentService:
         )
 
     async def _persist_environment(
-        self, mission_id: str, handle: EnvironmentHandle, config: dict | None,
+        self,
+        mission_id: str,
+        handle: EnvironmentHandle,
+        config: dict | None,
     ) -> None:
         """Save a new environment record to the DB."""
         if not self._db:
             return
 
-        from modules.backend.models.execution_environment import (
-            ExecutionEnvironmentModel,
-            EnvironmentStatus,
-        )
         from modules.backend.core.utils import utc_now
+        from modules.backend.models.execution_environment import (
+            EnvironmentStatus,
+            ExecutionEnvironmentModel,
+        )
 
         # Merge host_working_dir into persisted config so it can be reconstructed
         # from the DB on backend restart (see _find_running_environment).
@@ -545,6 +561,7 @@ class ExecutionEnvironmentService:
             return
 
         from sqlalchemy import text
+
         from modules.backend.core.utils import utc_now
 
         await self._db.execute(

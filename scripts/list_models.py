@@ -17,6 +17,7 @@ Usage:
     python scripts/list_models.py --provider anthropic
 """
 
+import contextlib
 import sys
 from pathlib import Path
 from typing import Any
@@ -103,10 +104,7 @@ def fetch_anthropic_models(api_key: str, client: httpx.Client) -> list[ModelEntr
         response.raise_for_status()
         data = response.json()
 
-        models.extend(
-            (m["id"], m.get("display_name", m["id"]))
-            for m in data.get("data", [])
-        )
+        models.extend((m["id"], m.get("display_name", m["id"])) for m in data.get("data", []))
 
         if not data.get("has_more", False):
             break
@@ -191,9 +189,7 @@ FETCH_FUNCTIONS: dict[str, Any] = {
 ProviderResult = list[ModelEntry] | str
 
 
-def query_provider(
-    provider: str, api_key: str, client: httpx.Client
-) -> ProviderResult:
+def query_provider(provider: str, api_key: str, client: httpx.Client) -> ProviderResult:
     """Query a single provider for its available models.
 
     Args:
@@ -211,18 +207,16 @@ def query_provider(
     try:
         logger.info("Fetching models", extra={"provider": provider})
         models = fetch_fn(api_key, client)
-        logger.info(
-            "Models fetched", extra={"provider": provider, "count": len(models)}
-        )
+        logger.info("Models fetched", extra={"provider": provider, "count": len(models)})
         return models
     except httpx.HTTPStatusError as e:
         error_msg = f"HTTP {e.response.status_code}"
-        try:
+        # Enrich with the response body's error detail when parseable;
+        # a non-JSON body keeps the generic status-code message.
+        with contextlib.suppress(Exception):
             body = e.response.json()
             detail = body.get("error", {}).get("message", str(body))
             error_msg = f"{error_msg}: {detail}"
-        except Exception:
-            pass
         logger.error("API error", extra={"provider": provider, "error": error_msg})
         return error_msg
     except httpx.RequestError as e:
@@ -261,12 +255,8 @@ def display_results(results: dict[str, ProviderResult]) -> None:
 
 
 @click.command()
-@click.option(
-    "--verbose", "-v", is_flag=True, help="Enable verbose output (INFO level logging)."
-)
-@click.option(
-    "--debug", "-d", is_flag=True, help="Enable debug output (DEBUG level logging)."
-)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output (INFO level logging).")
+@click.option("--debug", "-d", is_flag=True, help="Enable debug output (DEBUG level logging).")
 @click.option(
     "--provider",
     "-p",
@@ -293,8 +283,7 @@ def main(verbose: bool, debug: bool, provider: str | None) -> None:
     if provider:
         if provider not in api_keys:
             click.secho(
-                f"\nNo API key configured for {provider} "
-                f"({PROVIDER_ENV_KEYS[provider]})",
+                f"\nNo API key configured for {provider} " f"({PROVIDER_ENV_KEYS[provider]})",
                 fg="red",
             )
             sys.exit(1)

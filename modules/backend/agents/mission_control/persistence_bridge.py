@@ -50,9 +50,7 @@ async def persist_mission_results(
         # survives page refresh and backend restart. Only instantiated
         # when mission_id is set — artifacts are mission-scoped by
         # definition (the mission_id FK is NOT NULL).
-        artifact_svc = (
-            MissionArtifactService(db_session) if mission_id else None
-        )
+        artifact_svc = MissionArtifactService(db_session) if mission_id else None
 
         status_map = {
             ExecutionStatus.SUCCESS: "completed",
@@ -83,13 +81,14 @@ async def persist_mission_results(
 
         # Batch-fetch domain_tags for all tasks in one query (Plan 72)
         from sqlalchemy import select
+
         from modules.backend.models.task import Task as TaskModel
+
         task_ids = [tr.task_id for tr in outcome.task_results if tr.task_id]
         domain_tags_map: dict[str, list | None] = {}
         if task_ids:
             rows = await db_session.execute(
-                select(TaskModel.id, TaskModel.domain_tags)
-                .where(TaskModel.id.in_(task_ids))
+                select(TaskModel.id, TaskModel.domain_tags).where(TaskModel.id.in_(task_ids))
             )
             for tid, tags in rows:
                 domain_tags_map[tid] = tags or None
@@ -203,8 +202,9 @@ async def _maybe_create_artifact(
     extracts content from the task output and writes an artifact row.
     No heuristics — the catalog flag is the single source of truth.
     """
-    from modules.backend.agents.mission_control.registry import get_registry
     import re
+
+    from modules.backend.agents.mission_control.registry import get_registry
 
     agent_name = task_result.agent_name or ""
     if not agent_name:
@@ -249,6 +249,7 @@ async def _maybe_create_artifact(
     )
     if not content and output:
         import json
+
         content = json.dumps(output, indent=2, default=str)
 
     if not content:
@@ -281,5 +282,3 @@ async def _maybe_create_artifact(
             "mission_id": mission_id,
         },
     )
-
-

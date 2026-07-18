@@ -10,7 +10,6 @@ from pathlib import Path
 
 from pydantic_ai import RunContext
 
-
 TOOL_DEF = {
     "name": "run_tests",
     "description": "Run the unit test suite and return results",
@@ -50,6 +49,7 @@ _impl = run_tests
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def run_tests(ctx: RunContext) -> dict:
         """Run the unit test suite and return results."""

@@ -7,7 +7,6 @@ Fetch a URL and extract readable text content from the HTML.
 from __future__ import annotations
 
 import httpx
-
 from pydantic_ai import RunContext
 
 from modules.backend.core.logging import get_logger
@@ -47,6 +46,7 @@ _impl = fetch_url
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def fetch_url(ctx: RunContext, url: str) -> dict:
         """Fetch a URL and extract readable text content.

@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from modules.backend.core.utils import utc_now
 
-
 DataT = TypeVar("DataT")
 
 

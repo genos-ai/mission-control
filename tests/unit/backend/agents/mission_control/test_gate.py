@@ -38,7 +38,6 @@ from modules.backend.core.config_schema import (
 )
 from modules.backend.schemas.task_plan import TaskPlan
 
-
 # ── Fixture helpers ───────────────────────────────────────────────
 
 
@@ -80,14 +79,16 @@ def _task(task_id: str, agent: str = "test.agent") -> dict:
 
 
 def _plan(mission_id: str = "test", tasks: list[dict] | None = None) -> TaskPlan:
-    return TaskPlan.model_validate({
-        "version": "1.0.0",
-        "mission_id": mission_id,
-        "summary": "Test",
-        "estimated_cost_usd": 1.0,
-        "estimated_duration_seconds": 60,
-        "tasks": tasks or [_task("t1")],
-    })
+    return TaskPlan.model_validate(
+        {
+            "version": "1.0.0",
+            "mission_id": mission_id,
+            "summary": "Test",
+            "estimated_cost_usd": 1.0,
+            "estimated_duration_seconds": 60,
+            "tasks": tasks or [_task("t1")],
+        }
+    )
 
 
 def _gate_config(mode: str = "autonomous", **overrides) -> GateSchema:
@@ -143,11 +144,19 @@ class TestNoOpGate:
     @pytest.mark.asyncio
     async def test_all_gate_types_continue(self):
         gate = NoOpGate()
-        for gate_type in ["pre_dispatch", "pre_layer", "post_task",
-                          "verification_failed", "post_layer"]:
-            decision = await gate.review(GateContext(
-                gate_type=gate_type, mission_id="test",
-            ))
+        for gate_type in [
+            "pre_dispatch",
+            "pre_layer",
+            "post_task",
+            "verification_failed",
+            "post_layer",
+        ]:
+            decision = await gate.review(
+                GateContext(
+                    gate_type=gate_type,
+                    mission_id="test",
+                )
+            )
             assert decision.action == GateAction.CONTINUE
 
 
@@ -374,69 +383,85 @@ class TestAutoRules:
     def test_pre_layer_auto_continues_few_tasks(self):
         gate = self._make_gate(max_tasks_per_layer=5)
         ctx = GateContext(
-            gate_type="pre_layer", mission_id="test",
+            gate_type="pre_layer",
+            mission_id="test",
             pending_tasks=[{"task_id": "t1"}],
-            budget_usd=10.0, total_cost_usd=1.0,
+            budget_usd=10.0,
+            total_cost_usd=1.0,
         )
         assert gate._should_auto_continue(ctx) is True
 
     def test_pre_layer_no_auto_continue_many_tasks(self):
         gate = self._make_gate(max_tasks_per_layer=2)
         ctx = GateContext(
-            gate_type="pre_layer", mission_id="test",
+            gate_type="pre_layer",
+            mission_id="test",
             pending_tasks=[{"task_id": f"t{i}"} for i in range(5)],
-            budget_usd=10.0, total_cost_usd=1.0,
+            budget_usd=10.0,
+            total_cost_usd=1.0,
         )
         assert gate._should_auto_continue(ctx) is False
 
     def test_post_task_auto_continues_on_pass(self):
         gate = self._make_gate(skip_post_task_on_pass=True)
         ctx = GateContext(
-            gate_type="post_task", mission_id="test",
+            gate_type="post_task",
+            mission_id="test",
             verification={"tier_1": {"status": "pass"}, "tier_2": {"status": "pass"}},
-            budget_usd=10.0, total_cost_usd=1.0,
+            budget_usd=10.0,
+            total_cost_usd=1.0,
         )
         assert gate._should_auto_continue(ctx) is True
 
     def test_post_task_no_auto_on_fail(self):
         gate = self._make_gate(skip_post_task_on_pass=True)
         ctx = GateContext(
-            gate_type="post_task", mission_id="test",
+            gate_type="post_task",
+            mission_id="test",
             verification={"tier_1": {"status": "fail"}, "tier_2": {"status": "pass"}},
-            budget_usd=10.0, total_cost_usd=1.0,
+            budget_usd=10.0,
+            total_cost_usd=1.0,
         )
         assert gate._should_auto_continue(ctx) is False
 
     def test_verification_failed_never_auto_continues(self):
         gate = self._make_gate()
         ctx = GateContext(
-            gate_type="verification_failed", mission_id="test",
-            budget_usd=10.0, total_cost_usd=0.1,
+            gate_type="verification_failed",
+            mission_id="test",
+            budget_usd=10.0,
+            total_cost_usd=0.1,
         )
         assert gate._should_auto_continue(ctx) is False
 
     def test_pre_dispatch_never_auto_continues(self):
         gate = self._make_gate()
         ctx = GateContext(
-            gate_type="pre_dispatch", mission_id="test",
-            budget_usd=10.0, total_cost_usd=0.1,
+            gate_type="pre_dispatch",
+            mission_id="test",
+            budget_usd=10.0,
+            total_cost_usd=0.1,
         )
         assert gate._should_auto_continue(ctx) is False
 
     def test_high_cost_blocks_auto_continue(self):
         gate = self._make_gate(cost_threshold_pct=80)
         ctx = GateContext(
-            gate_type="pre_layer", mission_id="test",
+            gate_type="pre_layer",
+            mission_id="test",
             pending_tasks=[{"task_id": "t1"}],
-            budget_usd=10.0, total_cost_usd=9.0,  # 90% > 80% threshold
+            budget_usd=10.0,
+            total_cost_usd=9.0,  # 90% > 80% threshold
         )
         assert gate._should_auto_continue(ctx) is False
 
     def test_post_layer_auto_continues_within_budget(self):
         gate = self._make_gate(cost_threshold_pct=80)
         ctx = GateContext(
-            gate_type="post_layer", mission_id="test",
-            budget_usd=10.0, total_cost_usd=5.0,  # 50% < 80%
+            gate_type="post_layer",
+            mission_id="test",
+            budget_usd=10.0,
+            total_cost_usd=5.0,  # 50% < 80%
         )
         assert gate._should_auto_continue(ctx) is True
 
@@ -508,7 +533,11 @@ class _TestGateDispatchIntegrationRemoved:
         roster = Roster(agents=[_entry("test.agent")])
 
         async def mock_executor(**kwargs):
-            return {"result": "ok", "confidence": 0.9, "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001}}
+            return {
+                "result": "ok",
+                "confidence": 0.9,
+                "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001},
+            }
 
         gate = RecordingGate()
 
@@ -535,7 +564,11 @@ class _TestGateDispatchIntegrationRemoved:
         roster = Roster(agents=[_entry("test.agent")])
 
         async def mock_executor(**kwargs):
-            return {"result": "ok", "confidence": 0.9, "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001}}
+            return {
+                "result": "ok",
+                "confidence": 0.9,
+                "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001},
+            }
 
         outcome = await dispatch(
             plan=_plan("test-no-gate"),
@@ -556,7 +589,11 @@ class _TestGateDispatchIntegrationRemoved:
         roster = Roster(agents=[_entry("test.agent")])
 
         async def mock_executor(**kwargs):
-            return {"result": "ok", "confidence": 0.9, "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001}}
+            return {
+                "result": "ok",
+                "confidence": 0.9,
+                "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001},
+            }
 
         outcome = await dispatch(
             plan=_plan("test-skip"),
@@ -613,7 +650,11 @@ class _TestGateDispatchIntegrationRemoved:
         roster = Roster(agents=[_entry("test.agent")])
 
         async def mock_executor(**kwargs):
-            return {"result": "ok", "confidence": 0.9, "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001}}
+            return {
+                "result": "ok",
+                "confidence": 0.9,
+                "_meta": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001},
+            }
 
         outcome = await dispatch(
             plan=_plan("test-post-abort"),

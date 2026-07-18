@@ -69,8 +69,7 @@ class AgentMissionWorkflow:
         temporal_config = get_app_config().temporal
         activity_timeout = timedelta(
             seconds=max(
-                input.mission_budget_usd
-                * temporal_config.budget_timeout_multiplier_seconds,
+                input.mission_budget_usd * temporal_config.budget_timeout_multiplier_seconds,
                 temporal_config.min_activity_timeout_seconds,
             ),
         )
@@ -141,7 +140,8 @@ class AgentMissionWorkflow:
 
             # Wait for approval with escalation
             await self._wait_for_approval_with_escalation(
-                input, notification_timeout,
+                input,
+                notification_timeout,
             )
 
             # If approved, retry the execution
@@ -179,9 +179,7 @@ class AgentMissionWorkflow:
 
         # Final status
         self._status.workflow_status = (
-            "completed"
-            if self._status.mission_status in ("success", "partial")
-            else "failed"
+            "completed" if self._status.mission_status in ("success", "partial") else "failed"
         )
 
         return self._status
@@ -200,8 +198,7 @@ class AgentMissionWorkflow:
             seconds=input.approval_timeout_seconds,
         )
         remaining_timeout = timedelta(
-            seconds=input.escalation_timeout_seconds
-            - input.approval_timeout_seconds,
+            seconds=input.escalation_timeout_seconds - input.approval_timeout_seconds,
         )
         total_timeout = timedelta(
             seconds=input.escalation_timeout_seconds,
@@ -245,6 +242,4 @@ class AgentMissionWorkflow:
             # Give up — mark as failed
             self._status.workflow_status = "failed"
             total_hours = total_timeout.total_seconds() / 3600
-            self._status.error = (
-                f"Approval timed out after {total_hours:.0f} hours"
-            )
+            self._status.error = f"Approval timed out after {total_hours:.0f} hours"

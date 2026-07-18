@@ -27,7 +27,9 @@ router = APIRouter()
 
 
 async def _require_mission_access(
-    db, mission_id: str, current_user,
+    db,
+    mission_id: str,
+    current_user,
 ) -> None:
     """Admin, mission owner, or any mission member can read artifacts.
 
@@ -56,7 +58,9 @@ async def list_mission_artifacts(
     request_id: RequestId,
     current_user: CurrentUser,
     limit: int = Query(
-        50, ge=1, le=500,
+        50,
+        ge=1,
+        le=500,
         description="Maximum artifacts to return (newest first). Caps at 500.",
     ),
     artifact_type: str | None = Query(
@@ -91,8 +95,7 @@ async def list_mission_artifacts(
         data={
             "mission_id": mission_id,
             "artifacts": [
-                MissionArtifactResponse.model_validate(a).model_dump(mode="json")
-                for a in artifacts
+                MissionArtifactResponse.model_validate(a).model_dump(mode="json") for a in artifacts
             ],
             "count": len(artifacts),
         },

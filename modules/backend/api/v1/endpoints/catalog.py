@@ -9,10 +9,7 @@ from fastapi import APIRouter
 
 from modules.backend.core.dependencies import DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
-from modules.backend.schemas.agent_catalog import (
-    AgentCatalogDetailResponse,
-    AgentCatalogResponse,
-)
+from modules.backend.schemas.agent_catalog import AgentCatalogDetailResponse, AgentCatalogResponse
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.services.agent_catalog import AgentCatalogService
 
@@ -29,13 +26,12 @@ async def list_catalog_agents(
     """List agents in the catalog, optionally filtered by type."""
     service = AgentCatalogService(db)
     agents = await service.list_catalog(
-        enabled_only=enabled_only, visibility="public", agent_type=agent_type,
+        enabled_only=enabled_only,
+        visibility="public",
+        agent_type=agent_type,
     )
 
-    items = [
-        AgentCatalogResponse.model_validate(a).model_dump()
-        for a in agents
-    ]
+    items = [AgentCatalogResponse.model_validate(a).model_dump() for a in agents]
     return ApiResponse(
         success=True,
         data={"agents": items, "total": len(items)},

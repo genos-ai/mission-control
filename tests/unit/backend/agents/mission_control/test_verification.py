@@ -14,8 +14,8 @@ from modules.backend.agents.mission_control.verification import (
     run_verification_pipeline,
 )
 
-
 # ---- Fixtures ----
+
 
 @pytest.fixture
 def basic_task():
@@ -85,6 +85,7 @@ def valid_output():
 @pytest.fixture
 def mock_verification_agent():
     """Mock execute_agent_fn that returns a passing evaluation."""
+
     async def _execute(agent_name, instructions, inputs, **kwargs):
         return {
             "overall_score": 0.92,
@@ -103,12 +104,14 @@ def mock_verification_agent():
             "_thinking_trace": "I evaluated the output...",
             "_cost_usd": 0.05,
         }
+
     return _execute
 
 
 @pytest.fixture
 def mock_failing_verification_agent():
     """Mock execute_agent_fn that returns a failing evaluation."""
+
     async def _execute(agent_name, instructions, inputs, **kwargs):
         return {
             "overall_score": 0.45,
@@ -119,6 +122,7 @@ def mock_failing_verification_agent():
             "_thinking_trace": "The output is insufficient...",
             "_cost_usd": 0.05,
         }
+
     return _execute
 
 
@@ -130,20 +134,25 @@ def _register_checks():
 
 # ---- Tier 1 Tests ----
 
+
 class TestTier1:
     """Tests for Tier 1 structural validation."""
 
     @pytest.mark.asyncio
     async def test_passes_with_valid_output(self, basic_task, valid_output):
         result = await run_verification_pipeline(
-            output=valid_output, task=basic_task, agent_interface=None,
+            output=valid_output,
+            task=basic_task,
+            agent_interface=None,
         )
         assert result.tier_1.status == TierStatus.PASS
 
     @pytest.mark.asyncio
     async def test_fails_on_non_dict_output(self, basic_task):
         result = await run_verification_pipeline(
-            output="not a dict", task=basic_task, agent_interface=None,
+            output="not a dict",
+            task=basic_task,
+            agent_interface=None,
         )
         assert result.passed is False
         assert result.failed_tier == 1
@@ -163,7 +172,9 @@ class TestTier1:
     @pytest.mark.asyncio
     async def test_fails_on_empty_dict(self, basic_task):
         result = await run_verification_pipeline(
-            output={}, task=basic_task, agent_interface=None,
+            output={},
+            task=basic_task,
+            agent_interface=None,
         )
         assert result.passed is False
         assert result.failed_tier == 1
@@ -190,12 +201,15 @@ class TestTier1:
             "verification": {"tier_1": {"schema_validation": False}},
         }
         result = await run_verification_pipeline(
-            output={"anything": True}, task=task, agent_interface=None,
+            output={"anything": True},
+            task=task,
+            agent_interface=None,
         )
         assert result.tier_1.status == TierStatus.SKIPPED
 
 
 # ---- Tier 2 Tests ----
+
 
 class TestTier2:
     """Tests for Tier 2 deterministic functional checks."""
@@ -203,7 +217,9 @@ class TestTier2:
     @pytest.mark.asyncio
     async def test_passes_with_valid_output(self, task_with_tier2, valid_output):
         result = await run_verification_pipeline(
-            output=valid_output, task=task_with_tier2, agent_interface=None,
+            output=valid_output,
+            task=task_with_tier2,
+            agent_interface=None,
         )
         assert result.tier_2.status == TierStatus.PASS
         assert len(result.tier_2.check_results) == 2
@@ -234,7 +250,9 @@ class TestTier2:
     @pytest.mark.asyncio
     async def test_skipped_when_no_checks(self, basic_task, valid_output):
         result = await run_verification_pipeline(
-            output=valid_output, task=basic_task, agent_interface=None,
+            output=valid_output,
+            task=basic_task,
+            agent_interface=None,
         )
         assert result.tier_2.status == TierStatus.SKIPPED
 
@@ -251,12 +269,16 @@ class TestTier2:
 
 # ---- Tier 3 Tests ----
 
+
 class TestTier3:
     """Tests for Tier 3 AI evaluation."""
 
     @pytest.mark.asyncio
     async def test_passes_with_high_score(
-        self, task_with_tier3, valid_output, mock_verification_agent,
+        self,
+        task_with_tier3,
+        valid_output,
+        mock_verification_agent,
     ):
         result = await run_verification_pipeline(
             output=valid_output,
@@ -269,7 +291,10 @@ class TestTier3:
 
     @pytest.mark.asyncio
     async def test_fails_with_low_score(
-        self, task_with_tier3, valid_output, mock_failing_verification_agent,
+        self,
+        task_with_tier3,
+        valid_output,
+        mock_failing_verification_agent,
     ):
         result = await run_verification_pipeline(
             output=valid_output,
@@ -284,7 +309,9 @@ class TestTier3:
     @pytest.mark.asyncio
     async def test_skipped_when_not_required(self, basic_task, valid_output):
         result = await run_verification_pipeline(
-            output=valid_output, task=basic_task, agent_interface=None,
+            output=valid_output,
+            task=basic_task,
+            agent_interface=None,
         )
         assert result.tier_3.status == TierStatus.SKIPPED
 
@@ -339,7 +366,9 @@ class TestTier3:
             },
         }
         result = await run_verification_pipeline(
-            output=valid_output, task=task, agent_interface=None,
+            output=valid_output,
+            task=task,
+            agent_interface=None,
         )
         assert result.passed is True
         assert result.tier_3.status == TierStatus.SKIPPED
@@ -362,7 +391,9 @@ class TestTier3:
             },
         }
         result = await run_verification_pipeline(
-            output=valid_output, task=task, agent_interface=None,
+            output=valid_output,
+            task=task,
+            agent_interface=None,
         )
         assert result.passed is True
         assert result.tier_3.status == TierStatus.SKIPPED
@@ -388,7 +419,9 @@ class TestTier3:
         }
         output = {"_meta": {"input_tokens": 100, "cost_usd": 0.01}}
         result = await run_verification_pipeline(
-            output=output, task=task, agent_interface=None,
+            output=output,
+            task=task,
+            agent_interface=None,
         )
         assert result.passed is True
         assert result.tier_3.status == TierStatus.SKIPPED
@@ -419,12 +452,16 @@ class TestTier3:
 
 # ---- Full Pipeline Tests ----
 
+
 class TestFullPipeline:
     """Tests for the complete 3-tier pipeline flow."""
 
     @pytest.mark.asyncio
     async def test_all_tiers_pass(
-        self, task_with_tier3, valid_output, mock_verification_agent,
+        self,
+        task_with_tier3,
+        valid_output,
+        mock_verification_agent,
     ):
         task_with_tier3["verification"]["tier_2"] = {
             "deterministic_checks": [
@@ -461,7 +498,9 @@ class TestFullPipeline:
     @pytest.mark.asyncio
     async def test_execution_time_tracked(self, basic_task, valid_output):
         result = await run_verification_pipeline(
-            output=valid_output, task=basic_task, agent_interface=None,
+            output=valid_output,
+            task=basic_task,
+            agent_interface=None,
         )
         assert result.total_execution_time_ms >= 0
         assert result.tier_1.execution_time_ms >= 0
@@ -469,11 +508,13 @@ class TestFullPipeline:
 
 # ---- Retry Feedback Tests ----
 
+
 class TestBuildRetryFeedback:
     """Tests for build_retry_feedback."""
 
     def test_tier_1_feedback(self):
         from modules.backend.agents.mission_control.verification import TierResult
+
         result = VerificationResult(
             passed=False,
             failed_tier=1,

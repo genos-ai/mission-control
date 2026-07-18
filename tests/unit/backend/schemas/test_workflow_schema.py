@@ -67,14 +67,16 @@ class TestWorkflowStepSchema:
     def test_invalid_complexity_tier(self):
         with pytest.raises(ValueError):
             WorkflowStepSchema(
-                id="step", capability="test.agent",
+                id="step",
+                capability="test.agent",
                 complexity_tier="medium",
             )
 
     def test_invalid_environment(self):
         with pytest.raises(ValueError):
             WorkflowStepSchema(
-                id="step", capability="test.agent",
+                id="step",
+                capability="test.agent",
                 environment="docker",
             )
 
@@ -89,7 +91,8 @@ class TestWorkflowStepSchema:
     def test_cost_ceiling_minimum(self):
         with pytest.raises(ValueError):
             WorkflowStepSchema(
-                id="step", capability="test.agent",
+                id="step",
+                capability="test.agent",
                 cost_ceiling_usd=0.001,
             )
 
@@ -116,7 +119,8 @@ class TestWorkflowOutputMapping:
     def test_invalid_target_key_pattern(self):
         with pytest.raises(ValueError):
             WorkflowOutputFieldMapping(
-                source_task="t", source_field="f",
+                source_task="t",
+                source_field="f",
                 target_key="Invalid-Key",
             )
 
@@ -179,14 +183,18 @@ class TestWorkflowObjectiveSchema:
     def test_invalid_priority(self):
         with pytest.raises(ValueError):
             WorkflowObjectiveSchema(
-                statement="X", category="x", owner="x",
+                statement="X",
+                category="x",
+                owner="x",
                 priority="urgent",
             )
 
     def test_invalid_category_pattern(self):
         with pytest.raises(ValueError):
             WorkflowObjectiveSchema(
-                statement="X", category="Bad Category", owner="x",
+                statement="X",
+                category="Bad Category",
+                owner="x",
                 priority="normal",
             )
 
@@ -205,77 +213,110 @@ class TestWorkflowSchema:
 
     def test_duplicate_step_ids(self):
         with pytest.raises(ValueError, match="Duplicate step IDs"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent"},
-                    {"id": "step-a", "capability": "test.other"},
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent"},
+                        {"id": "step-a", "capability": "test.other"},
+                    ],
+                )
+            )
 
     def test_missing_dependency(self):
         with pytest.raises(ValueError, match="does not exist"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent",
-                     "depends_on": ["step-z"]},
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent", "depends_on": ["step-z"]},
+                    ],
+                )
+            )
 
     def test_self_dependency(self):
         with pytest.raises(ValueError, match="depends on itself"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent",
-                     "depends_on": ["step-a"]},
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent", "depends_on": ["step-a"]},
+                    ],
+                )
+            )
 
     def test_cycle_detection(self):
         with pytest.raises(ValueError, match="dependency cycle"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent",
-                     "depends_on": ["step-b"]},
-                    {"id": "step-b", "capability": "test.agent",
-                     "depends_on": ["step-a"]},
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent", "depends_on": ["step-b"]},
+                        {"id": "step-b", "capability": "test.agent", "depends_on": ["step-a"]},
+                    ],
+                )
+            )
 
     def test_duplicate_output_mapping_keys(self):
         with pytest.raises(ValueError, match="Duplicate output mapping"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent",
-                     "output_mapping": {"summary_key": "result"}},
-                    {"id": "step-b", "capability": "test.agent",
-                     "output_mapping": {"summary_key": "result"}},
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {
+                            "id": "step-a",
+                            "capability": "test.agent",
+                            "output_mapping": {"summary_key": "result"},
+                        },
+                        {
+                            "id": "step-b",
+                            "capability": "test.agent",
+                            "output_mapping": {"summary_key": "result"},
+                        },
+                    ],
+                )
+            )
 
     def test_valid_dependency_chain(self):
-        workflow = WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {"id": "step-a", "capability": "test.agent",
-                 "output_mapping": {"summary_key": "a_result"}},
-                {"id": "step-b", "capability": "test.agent",
-                 "depends_on": ["step-a"],
-                 "output_mapping": {"summary_key": "b_result"}},
-                {"id": "step-c", "capability": "test.agent",
-                 "depends_on": ["step-a", "step-b"]},
-            ],
-        ))
+        workflow = WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {
+                        "id": "step-a",
+                        "capability": "test.agent",
+                        "output_mapping": {"summary_key": "a_result"},
+                    },
+                    {
+                        "id": "step-b",
+                        "capability": "test.agent",
+                        "depends_on": ["step-a"],
+                        "output_mapping": {"summary_key": "b_result"},
+                    },
+                    {
+                        "id": "step-c",
+                        "capability": "test.agent",
+                        "depends_on": ["step-a", "step-b"],
+                    },
+                ],
+            )
+        )
         assert len(workflow.steps) == 3
 
     def test_roster_and_complexity_per_step(self):
-        workflow = WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {"id": "research", "capability": "test.agent",
-                 "roster": "research_team", "complexity_tier": "complex"},
-                {"id": "content", "capability": "test.agent",
-                 "roster": "content_team", "complexity_tier": "simple",
-                 "depends_on": ["research"]},
-            ],
-        ))
+        workflow = WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {
+                        "id": "research",
+                        "capability": "test.agent",
+                        "roster": "research_team",
+                        "complexity_tier": "complex",
+                    },
+                    {
+                        "id": "content",
+                        "capability": "test.agent",
+                        "roster": "content_team",
+                        "complexity_tier": "simple",
+                        "depends_on": ["research"],
+                    },
+                ],
+            )
+        )
         assert workflow.steps[0].roster == "research_team"
         assert workflow.steps[0].complexity_tier == "complex"
         assert workflow.steps[1].roster == "content_team"
@@ -300,9 +341,9 @@ class TestStepConditionField:
         step = WorkflowStepSchema(
             id="step-one",
             capability="test.agent",
-            condition='@context.target_path != null',
+            condition="@context.target_path != null",
         )
-        assert step.condition == '@context.target_path != null'
+        assert step.condition == "@context.target_path != null"
 
     def test_condition_max_length(self):
         with pytest.raises(ValueError):
@@ -322,29 +363,35 @@ class TestStepConditionField:
         assert step.condition == ""
 
     def test_condition_in_full_workflow(self):
-        workflow = WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {"id": "step-a", "capability": "test.agent"},
-                {
-                    "id": "step-b",
-                    "capability": "test.agent",
-                    "depends_on": ["step-a"],
-                    "condition": '@context.mode == "full"',
-                },
-            ],
-        ))
+        workflow = WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {
+                        "id": "step-b",
+                        "capability": "test.agent",
+                        "depends_on": ["step-a"],
+                        "condition": '@context.mode == "full"',
+                    },
+                ],
+            )
+        )
         assert workflow.steps[1].condition == '@context.mode == "full"'
 
     def test_condition_does_not_break_existing_steps(self):
         """Existing steps without condition continue to work."""
-        workflow = WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {"id": "step-a", "capability": "test.agent",
-                 "output_mapping": {"summary_key": "a_result"}},
-                {"id": "step-b", "capability": "test.agent",
-                 "depends_on": ["step-a"]},
-            ],
-        ))
+        workflow = WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {
+                        "id": "step-a",
+                        "capability": "test.agent",
+                        "output_mapping": {"summary_key": "a_result"},
+                    },
+                    {"id": "step-b", "capability": "test.agent", "depends_on": ["step-a"]},
+                ],
+            )
+        )
         assert workflow.steps[0].condition is None
         assert workflow.steps[1].condition is None
 
@@ -363,143 +410,170 @@ class TestNodeRefLoadTimeValidation:
     workflow runs for hours and silently passes through the wrong values."""
 
     def test_valid_node_ref_accepted(self):
-        WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {"id": "step-a", "capability": "test.agent"},
-                {
-                    "id": "step-b", "capability": "test.agent",
-                    "depends_on": ["step-a"],
-                    "input": {"data": "@node.step-a.output"},
-                },
-            ],
-        ))
+        WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {
+                        "id": "step-b",
+                        "capability": "test.agent",
+                        "depends_on": ["step-a"],
+                        "input": {"data": "@node.step-a.output"},
+                    },
+                ],
+            )
+        )
 
     def test_typo_in_step_input_raises(self):
         # Classic typo: opem-systems instead of open-systems.
         with pytest.raises(ValueError, match="references unknown step IDs"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent"},
-                    {
-                        "id": "step-b", "capability": "test.agent",
-                        "depends_on": ["step-a"],
-                        "input": {"data": "@node.steo-a.output"},
-                    },
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent"},
+                        {
+                            "id": "step-b",
+                            "capability": "test.agent",
+                            "depends_on": ["step-a"],
+                            "input": {"data": "@node.steo-a.output"},
+                        },
+                    ],
+                )
+            )
 
     def test_typo_in_nested_dict_input_raises(self):
         # Deliberation sparse-topology pattern: ref nested inside a dict.
         with pytest.raises(ValueError, match="references unknown step IDs"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "open-systems", "capability": "test.agent"},
-                    {"id": "open-quant", "capability": "test.agent"},
-                    {
-                        "id": "round1-systems", "capability": "test.agent",
-                        "depends_on": ["open-systems", "open-quant"],
-                        "input": {
-                            "opponents_previous": {
-                                "quant": "@node.open-qaunt.output",  # typo
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "open-systems", "capability": "test.agent"},
+                        {"id": "open-quant", "capability": "test.agent"},
+                        {
+                            "id": "round1-systems",
+                            "capability": "test.agent",
+                            "depends_on": ["open-systems", "open-quant"],
+                            "input": {
+                                "opponents_previous": {
+                                    "quant": "@node.open-qaunt.output",  # typo
+                                },
                             },
                         },
-                    },
-                ],
-            ))
+                    ],
+                )
+            )
 
     def test_typo_in_tool_args_raises(self):
         with pytest.raises(ValueError, match="references unknown step IDs"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent"},
-                    {
-                        "id": "step-store", "node_type": "tool_call",
-                        "depends_on": ["step-a"],
-                        "tool_call_config": {
-                            "tool_name": "store_artifact",
-                            "tool_args": {
-                                "title": "X",
-                                "content": "{{@node.step-aa.output}}",
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent"},
+                        {
+                            "id": "step-store",
+                            "node_type": "tool_call",
+                            "depends_on": ["step-a"],
+                            "tool_call_config": {
+                                "tool_name": "store_artifact",
+                                "tool_args": {
+                                    "title": "X",
+                                    "content": "{{@node.step-aa.output}}",
+                                },
                             },
                         },
-                    },
-                ],
-            ))
+                    ],
+                )
+            )
 
     def test_typo_in_llm_call_prompt_template_raises(self):
         with pytest.raises(ValueError, match="references unknown step IDs"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent"},
-                    {
-                        "id": "step-render", "node_type": "llm_call",
-                        "depends_on": ["step-a"],
-                        "llm_call_config": {
-                            "model": "copilot:claude-haiku-4.5",
-                            "prompt_template": "Render {{@node.misspelt.output}}",
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent"},
+                        {
+                            "id": "step-render",
+                            "node_type": "llm_call",
+                            "depends_on": ["step-a"],
+                            "llm_call_config": {
+                                "model": "copilot:claude-haiku-4.5",
+                                "prompt_template": "Render {{@node.misspelt.output}}",
+                            },
                         },
-                    },
-                ],
-            ))
+                    ],
+                )
+            )
 
     def test_typo_in_decision_expression_raises(self):
         with pytest.raises(ValueError, match="references unknown step IDs"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent"},
-                    {
-                        "id": "step-decide", "node_type": "decision",
-                        "depends_on": ["step-a"],
-                        "decision_config": {
-                            "resolver": "rule",
-                            "expression": "@node.step-misspelt.output.passed == true",
-                            "options": [
-                                {"key": "yes", "label": "Yes"},
-                                {"key": "no", "label": "No"},
-                            ],
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent"},
+                        {
+                            "id": "step-decide",
+                            "node_type": "decision",
+                            "depends_on": ["step-a"],
+                            "decision_config": {
+                                "resolver": "rule",
+                                "expression": "@node.step-misspelt.output.passed == true",
+                                "options": [
+                                    {"key": "yes", "label": "Yes"},
+                                    {"key": "no", "label": "No"},
+                                ],
+                            },
                         },
-                    },
-                ],
-            ))
+                    ],
+                )
+            )
 
     def test_typo_in_condition_field_raises(self):
         with pytest.raises(ValueError, match="references unknown step IDs"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent"},
-                    {
-                        "id": "step-b", "capability": "test.agent",
-                        "depends_on": ["step-a"],
-                        "condition": "@node.step-aa.output is_not_empty",
-                    },
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent"},
+                        {
+                            "id": "step-b",
+                            "capability": "test.agent",
+                            "depends_on": ["step-a"],
+                            "condition": "@node.step-aa.output is_not_empty",
+                        },
+                    ],
+                )
+            )
 
     def test_context_refs_unaffected(self):
         # @context.X refs are not validated by §8.7 (no schema for workflow
         # parameters in WorkflowStepSchema). Only @node refs are checked.
-        WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {
-                    "id": "step-a", "capability": "test.agent",
-                    "input": {"q": "@context.question"},  # unknown context key is fine here
-                },
-            ],
-        ))
+        WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {
+                        "id": "step-a",
+                        "capability": "test.agent",
+                        "input": {"q": "@context.question"},  # unknown context key is fine here
+                    },
+                ],
+            )
+        )
 
     def test_error_lists_available_step_ids(self):
         with pytest.raises(ValueError, match="Available:"):
-            WorkflowSchema(**_minimal_workflow(
-                steps=[
-                    {"id": "step-a", "capability": "test.agent"},
-                    {"id": "step-b", "capability": "test.agent"},
-                    {
-                        "id": "step-c", "capability": "test.agent",
-                        "depends_on": ["step-a"],
-                        "input": {"data": "@node.step-z.output"},
-                    },
-                ],
-            ))
+            WorkflowSchema(
+                **_minimal_workflow(
+                    steps=[
+                        {"id": "step-a", "capability": "test.agent"},
+                        {"id": "step-b", "capability": "test.agent"},
+                        {
+                            "id": "step-c",
+                            "capability": "test.agent",
+                            "depends_on": ["step-a"],
+                            "input": {"data": "@node.step-z.output"},
+                        },
+                    ],
+                )
+            )
 
     def test_existing_workflows_still_parse(self):
         """Sanity: every existing workflow template still loads under §8.7."""
@@ -553,43 +627,49 @@ class TestWorkflowEdgeSchemaIdAutoFill:
         assert edge.id == "step-a->step-b"
 
     def test_workflow_loaded_with_idless_edges_validates(self):
-        workflow = WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {"id": "step-a", "capability": "test.agent"},
-                {"id": "step-b", "capability": "test.agent",
-                 "depends_on": ["step-a"]},
-            ],
-            edges=[
-                {"source": "step-a", "target": "step-b"},
-            ],
-        ))
+        workflow = WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {"id": "step-a", "capability": "test.agent"},
+                    {"id": "step-b", "capability": "test.agent", "depends_on": ["step-a"]},
+                ],
+                edges=[
+                    {"source": "step-a", "target": "step-b"},
+                ],
+            )
+        )
         assert len(workflow.edges) == 1
         assert workflow.edges[0].id == "step-a->step-b"
 
     def test_decision_node_fan_out_edges_get_unique_ids(self):
         """Decision-node siblings must not collide on edge id — the visual
         editor regression that motivated this contract."""
-        workflow = WorkflowSchema(**_minimal_workflow(
-            steps=[
-                {"id": "gate", "node_type": "decision",
-                 "decision_config": {
-                     "resolver": "rule",
-                     "expression": "@node.gate.output.passed == true",
-                     "options": [
-                         {"key": "passed", "label": "Passed"},
-                         {"key": "failed", "label": "Failed"},
-                     ],
-                 }},
-                {"id": "a", "capability": "test.agent", "depends_on": ["gate"]},
-                {"id": "b", "capability": "test.agent", "depends_on": ["gate"]},
-                {"id": "c", "capability": "test.agent", "depends_on": ["gate"]},
-            ],
-            edges=[
-                {"source": "gate", "target": "a", "source_handle": "passed"},
-                {"source": "gate", "target": "b", "source_handle": "passed"},
-                {"source": "gate", "target": "c", "source_handle": "passed"},
-            ],
-        ))
+        workflow = WorkflowSchema(
+            **_minimal_workflow(
+                steps=[
+                    {
+                        "id": "gate",
+                        "node_type": "decision",
+                        "decision_config": {
+                            "resolver": "rule",
+                            "expression": "@node.gate.output.passed == true",
+                            "options": [
+                                {"key": "passed", "label": "Passed"},
+                                {"key": "failed", "label": "Failed"},
+                            ],
+                        },
+                    },
+                    {"id": "a", "capability": "test.agent", "depends_on": ["gate"]},
+                    {"id": "b", "capability": "test.agent", "depends_on": ["gate"]},
+                    {"id": "c", "capability": "test.agent", "depends_on": ["gate"]},
+                ],
+                edges=[
+                    {"source": "gate", "target": "a", "source_handle": "passed"},
+                    {"source": "gate", "target": "b", "source_handle": "passed"},
+                    {"source": "gate", "target": "c", "source_handle": "passed"},
+                ],
+            )
+        )
         ids = [e.id for e in workflow.edges]
         assert ids == [
             "gate:passed->a",

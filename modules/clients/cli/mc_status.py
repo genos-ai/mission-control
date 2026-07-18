@@ -15,7 +15,9 @@ from modules.clients.common.gate_helpers import STATUS_ICONS
 
 
 async def show_status(
-    api: CliApiClient, mission_id: str, verbose: bool = False,
+    api: CliApiClient,
+    mission_id: str,
+    verbose: bool = False,
 ) -> None:
     """Show current mission snapshot: plan state, active runs, spend."""
     console = get_console()
@@ -36,7 +38,9 @@ async def show_status(
         params={"mission_id": mission_id, "limit": 10},
     )
     executions = extract_list(exec_data, "executions")
-    total = exec_data.get("total", len(executions)) if isinstance(exec_data, dict) else len(executions)
+    total = (
+        exec_data.get("total", len(executions)) if isinstance(exec_data, dict) else len(executions)
+    )
     total_cost = sum(e.get("total_cost_usd", 0) for e in executions)
 
     if verbose:
@@ -84,9 +88,7 @@ async def show_status(
             dur = f"{ts['duration_seconds']:.1f}s" if ts.get("duration_seconds") else ""
             meta = f"  [dim]{cost}  {dur}[/dim]" if cost or dur else ""
             fail = f"  [red]{ts['failure_reason'][:40]}[/red]" if ts.get("failure_reason") else ""
-            console.print(
-                f"  {icon} {ts.get('task_id', ''):12s} {status:12s}{meta}{fail}"
-            )
+            console.print(f"  {icon} {ts.get('task_id', ''):12s} {status:12s}{meta}{fail}")
         console.print()
 
     # ── Active runs ───────────────────────────────────────────────
@@ -101,17 +103,14 @@ async def show_status(
     # ── Recent ────────────────────────────────────────────────────
     recent = executions[:5]
     if recent:
-        console.print(
-            f"[bold]Recent ({total} total)  |  Spend: ${total_cost:.4f}[/bold]"
-        )
+        console.print(f"[bold]Recent ({total} total)  |  Spend: ${total_cost:.4f}[/bold]")
         for e in recent:
             status = e.get("status", "")
             icon = STATUS_ICONS.get(status, "\u00b7")
             when = (e.get("created_at") or "")[:16].replace("T", " ")
             obj = (e.get("objective") or e.get("objective_statement") or "")[:50]
             console.print(
-                f"  {icon} {obj}  "
-                f"[dim]${e.get('total_cost_usd', 0):.4f}  {when}[/dim]"
+                f"  {icon} {obj}  " f"[dim]${e.get('total_cost_usd', 0):.4f}  {when}[/dim]"
             )
     else:
         console.print("[dim]No runs yet.[/dim]")
@@ -133,10 +132,15 @@ async def show_history(
         params={"mission_id": mission_id, "limit": 20},
     )
     executions = extract_list(exec_data, "executions")
-    total = exec_data.get("total", len(executions)) if isinstance(exec_data, dict) else len(executions)
+    total = (
+        exec_data.get("total", len(executions)) if isinstance(exec_data, dict) else len(executions)
+    )
 
     if verbose:
-        print(json.dumps({"total": total, "executions": executions}, default=str, indent=2), flush=True)
+        print(
+            json.dumps({"total": total, "executions": executions}, default=str, indent=2),
+            flush=True,
+        )
         return
 
     console = get_console()
@@ -145,13 +149,16 @@ async def show_history(
         console.print("[dim]No runs yet.[/dim]")
         return
 
-    table = build_table(f"History ({total} total)", columns=[
-        ("#", {"width": 4, "justify": "right"}),
-        ("When", {"width": 14, "style": "dim"}),
-        ("Status", {"width": 10}),
-        ("Cost", {"width": 8, "justify": "right"}),
-        ("What", {"ratio": 1}),
-    ])
+    table = build_table(
+        f"History ({total} total)",
+        columns=[
+            ("#", {"width": 4, "justify": "right"}),
+            ("When", {"width": 14, "style": "dim"}),
+            ("Status", {"width": 10}),
+            ("Cost", {"width": 8, "justify": "right"}),
+            ("What", {"ratio": 1}),
+        ],
+    )
 
     for i, e in enumerate(executions, 1):
         when = (e.get("created_at") or "\u2014")[:16].replace("T", " ")
@@ -160,8 +167,11 @@ async def show_history(
             tc = e.get("task_count")
             what = f"{tc} task{'s' if tc != 1 else ''}" if tc else e.get("roster_name", "")
         table.add_row(
-            str(i), when, styled_status(e.get("status", "")),
-            f"${e.get('total_cost_usd', 0):.4f}", what[:60],
+            str(i),
+            when,
+            styled_status(e.get("status", "")),
+            f"${e.get('total_cost_usd', 0):.4f}",
+            what[:60],
         )
 
     console.print(table)
@@ -169,7 +179,10 @@ async def show_history(
 
 
 async def _show_detail(
-    api: CliApiClient, n: int, mission_id: str, verbose: bool = False,
+    api: CliApiClient,
+    n: int,
+    mission_id: str,
+    verbose: bool = False,
 ) -> None:
     """Show detail for the Nth most recent execution."""
     exec_data = await api.get(
@@ -208,6 +221,5 @@ async def _show_detail(
         for t in tasks:
             icon = STATUS_ICONS.get(t.get("status", ""), "\u00b7")
             console.print(
-                f"    {icon} {t.get('agent_name', '')} "
-                f"[dim]${t.get('cost_usd', 0):.4f}[/dim]"
+                f"    {icon} {t.get('agent_name', '')} " f"[dim]${t.get('cost_usd', 0):.4f}[/dim]"
             )

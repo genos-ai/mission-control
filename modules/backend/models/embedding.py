@@ -41,10 +41,13 @@ class Embedding(UUIDMixin, Base):
     __tablename__ = "embeddings"
 
     source_table: Mapped[str] = mapped_column(
-        String(64), nullable=False, index=True,
+        String(64),
+        nullable=False,
+        index=True,
     )
     source_id: Mapped[str] = mapped_column(
-        PgUUID(as_uuid=False), nullable=False,
+        PgUUID(as_uuid=False),
+        nullable=False,
     )
     mission_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
@@ -57,25 +60,33 @@ class Embedding(UUIDMixin, Base):
     # The Alembic migration creates this as vector(1536) on Postgres.
     # Application code uses EmbeddingRepository for all vector operations.
     embedding_data: Mapped[str | None] = mapped_column(
-        String, nullable=True,
+        String,
+        nullable=True,
     )
 
     model: Mapped[str] = mapped_column(
-        String(64), nullable=False,
+        String(64),
+        nullable=False,
     )
     version: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
     )
     content_hash: Mapped[str | None] = mapped_column(
-        String(64), nullable=True,
+        String(64),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now,
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
     )
 
     __table_args__ = (
         UniqueConstraint(
-            "source_table", "source_id", "version",
+            "source_table",
+            "source_id",
+            "version",
             name="uq_embeddings_source_version",
         ),
     )

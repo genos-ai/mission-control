@@ -164,10 +164,7 @@ class MissionPanel(Widget):
         total = len(self._plan.tasks)
         cost = sum(r.cost_usd for r in self._results.values())
         title = self.query_one("#mission-panel-title", Label)
-        title.update(
-            f"[bold]Mission Plan[/bold]  "
-            f"[dim]{done}/{total} tasks  ${cost:.3f}[/dim]"
-        )
+        title.update(f"[bold]Mission Plan[/bold]  " f"[dim]{done}/{total} tasks  ${cost:.3f}[/dim]")
 
     def _render_dag(self) -> None:
         """Render the full DAG — called once when plan is loaded."""

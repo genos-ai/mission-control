@@ -5,9 +5,9 @@ from __future__ import annotations
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
 
-from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 
 logger = get_logger(__name__)
 
@@ -85,6 +85,7 @@ def build_model_settings(
 def _get_default_cache_ttl() -> str:
     """Read default_cache_ttl from cost.yaml config."""
     from modules.backend.core.config import get_app_config
+
     return get_app_config().cost.default_cache_ttl
 
 
@@ -115,8 +116,12 @@ def _build_profile(config_model: str | AgentModelSchema):
     if config_model.output_mode == "tool":
         return None
     import dataclasses
+
     from pydantic_ai.profiles.openai import openai_model_profile
-    bare_name = config_model.name.split(":", 1)[1] if ":" in config_model.name else config_model.name
+
+    bare_name = (
+        config_model.name.split(":", 1)[1] if ":" in config_model.name else config_model.name
+    )
     base = openai_model_profile(bare_name)
     return dataclasses.replace(base, default_structured_output_mode=config_model.output_mode)
 
@@ -132,6 +137,7 @@ def _resolve_model_alias(model_name: str) -> str:
         return model_name
 
     from modules.backend.core.config import get_app_config
+
     aliases = get_app_config().models.aliases
     if model_name in aliases:
         return aliases[model_name]
@@ -155,19 +161,23 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
     if model_name.startswith("anthropic:"):
         bare_name = model_name.split(":", 1)[1]
         from modules.backend.core.model_providers import get_anthropic_provider
+
         provider = get_anthropic_provider()
         return AnthropicModel(bare_name, provider=provider)
 
     if model_name.startswith("openai:"):
         bare_name = model_name.split(":", 1)[1]
         from pydantic_ai.models.openai import OpenAIModel
+
         from modules.backend.core.model_providers import get_openai_provider
+
         provider = get_openai_provider()
         return OpenAIModel(bare_name, provider=provider)
 
     if model_name.startswith("copilot:"):
         bare_name = model_name.split(":", 1)[1]
         from modules.backend.core.copilot_model import CopilotModel
+
         return CopilotModel(model_id=bare_name)
 
     if model_name.startswith("foundry:"):
@@ -176,7 +186,9 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
         # in the AgentModelSchema dict form — see _build_profile for details.
         bare_name = model_name.split(":", 1)[1]
         from pydantic_ai.models.openai import OpenAIModel
+
         from modules.backend.core.model_providers import get_foundry_provider
+
         provider = get_foundry_provider()
         profile = _build_profile(config_model)
         return OpenAIModel(bare_name, provider=provider, profile=profile)

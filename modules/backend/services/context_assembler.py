@@ -27,14 +27,18 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+
 def _get_dispatch_config() -> tuple[int, int]:
     """Load context budget settings from mission_control config."""
     try:
         from modules.backend.core.config import get_mission_control_config
+
         cfg = get_mission_control_config()
         return cfg.dispatch.context_token_budget, cfg.dispatch.history_reserve_tokens
     except Exception as e:
-        logger.debug("Config unavailable for context budget, using defaults", extra={"error": str(e)})
+        logger.debug(
+            "Config unavailable for context budget, using defaults", extra={"error": str(e)}
+        )
         return 50_000, 1_500
 
 
@@ -46,6 +50,7 @@ def _get_learnings_config() -> dict:
     """Load knowledge.learnings config for assembler budget."""
     try:
         from modules.backend.core.config import get_app_config
+
         cfg = get_app_config().missions.knowledge.learnings
         return {
             "reserve_tokens": cfg.context_assembler_reserve_tokens,
@@ -54,11 +59,19 @@ def _get_learnings_config() -> dict:
     except Exception:
         return {"reserve_tokens": 1500, "max_entries": 5}
 
+
 # Domain tags that indicate a task needs codebase structural context
-_CODING_TAGS = frozenset({
-    "code", "implementation", "refactor", "bugfix",
-    "feature", "migration", "testing",
-})
+_CODING_TAGS = frozenset(
+    {
+        "code",
+        "implementation",
+        "refactor",
+        "bugfix",
+        "feature",
+        "migration",
+        "testing",
+    }
+)
 
 
 class ContextAssembler:
@@ -147,7 +160,9 @@ class ContextAssembler:
         # Layer 2.5: Learnings (Plan 57 — reusable strategy from past failures)
         if remaining_budget > 300 and domain_tags:
             learnings = await self._assemble_learnings(
-                mission_id, domain_tags, remaining_budget,
+                mission_id,
+                domain_tags,
+                remaining_budget,
             )
             if learnings:
                 learnings_tokens = estimate_tokens(learnings)
@@ -158,7 +173,9 @@ class ContextAssembler:
         # Layer 2: History (optional, trimmed first)
         if remaining_budget > 500 and domain_tags:
             history = await self._assemble_history(
-                mission_id, domain_tags, remaining_budget,
+                mission_id,
+                domain_tags,
+                remaining_budget,
             )
             if history:
                 packet["history"] = history
@@ -198,6 +215,7 @@ class ContextAssembler:
                 code_map_json = self._code_map_loader.get_json()
                 if code_map_json:
                     from modules.backend.services.code_map.assembler import render_for_agent
+
                     content = render_for_agent(code_map_json, max_tokens)
 
         return content
@@ -240,13 +258,15 @@ class ContextAssembler:
                 if l.id in seen:
                     continue
                 seen.add(l.id)
-                merged.append({
-                    "kind": l.kind,
-                    "title": l.title,
-                    "recommendation": l.recommendation,
-                    "confidence": l.confidence,
-                    "domain_tags": l.domain_tags,
-                })
+                merged.append(
+                    {
+                        "kind": l.kind,
+                        "title": l.title,
+                        "recommendation": l.recommendation,
+                        "confidence": l.confidence,
+                        "domain_tags": l.domain_tags,
+                    }
+                )
                 if len(merged) >= max_entries:
                     break
 
@@ -266,7 +286,9 @@ class ContextAssembler:
 
         # Recent failures first — agents must not repeat mistakes
         failures = await self._history_service.get_recent_failures(
-            mission_id, domain_tags=domain_tags, limit=3,
+            mission_id,
+            domain_tags=domain_tags,
+            limit=3,
         )
         if failures:
             failure_tokens = estimate_tokens(failures)
@@ -277,7 +299,9 @@ class ContextAssembler:
         # Recent executions in same domain
         if remaining_budget > 200:
             executions = await self._history_service.get_recent_task_executions(
-                mission_id, domain_tags=domain_tags, limit=5,
+                mission_id,
+                domain_tags=domain_tags,
+                limit=5,
             )
             if executions:
                 exec_tokens = estimate_tokens(executions)

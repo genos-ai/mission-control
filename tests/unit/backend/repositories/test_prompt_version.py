@@ -1,12 +1,13 @@
 """Tests for PromptVersionRepository."""
 
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.repositories.prompt_version import PromptVersionRepository
 from tests.conftest import TEST_USER_ID
 
-from uuid import uuid5, UUID
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 _AGENT_001 = str(uuid5(_TEST_NS, "entity:agent-001"))
 _AGENT_X = str(uuid5(_TEST_NS, "entity:agent-x"))
@@ -47,14 +48,26 @@ class TestCreateVersion:
     async def test_independent_version_streams(self, repo):
         """Different entities have independent version sequences."""
         await repo.create_version(
-            "agent_catalog", _AGENT_001, "system", "v1", "admin",
+            "agent_catalog",
+            _AGENT_001,
+            "system",
+            "v1",
+            "admin",
         )
         await repo.create_version(
-            "agent_catalog", _AGENT_001, "system", "v2", "admin",
+            "agent_catalog",
+            _AGENT_001,
+            "system",
+            "v2",
+            "admin",
         )
 
         v1_other = await repo.create_version(
-            "mission_team_member", _MEMBER_001, "user", "v1", "admin",
+            "mission_team_member",
+            _MEMBER_001,
+            "user",
+            "v1",
+            "admin",
         )
         assert v1_other.version == 1
 
@@ -63,10 +76,18 @@ class TestGetLatest:
     @pytest.mark.asyncio
     async def test_returns_latest(self, repo):
         await repo.create_version(
-            "agent_catalog", _AGENT_X, "system", "old", "admin",
+            "agent_catalog",
+            _AGENT_X,
+            "system",
+            "old",
+            "admin",
         )
         await repo.create_version(
-            "agent_catalog", _AGENT_X, "system", "new", "admin",
+            "agent_catalog",
+            _AGENT_X,
+            "system",
+            "new",
+            "admin",
         )
         latest = await repo.get_latest("agent_catalog", _AGENT_X)
         assert latest is not None
@@ -84,7 +105,11 @@ class TestListVersions:
     async def test_newest_first(self, repo):
         for i in range(3):
             await repo.create_version(
-                "agent_catalog", _AGENT_Y, "system", f"v{i+1}", "admin",
+                "agent_catalog",
+                _AGENT_Y,
+                "system",
+                f"v{i+1}",
+                "admin",
             )
         versions = await repo.list_versions("agent_catalog", _AGENT_Y)
         assert len(versions) == 3

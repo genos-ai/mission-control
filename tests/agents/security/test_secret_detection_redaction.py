@@ -17,22 +17,32 @@ class TestStripSecretValues:
 
     def test_api_key_redacted(self, tmp_path: Path):
         sarif = {
-            "runs": [{
-                "tool": {"driver": {"name": "betterleaks"}},
-                "results": [{
-                    "ruleId": "generic-api-key",
-                    "message": {"text": "Found API key: sk-live-abc123def456ghi789jkl012mno345pqr678"},
-                    "locations": [{
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": "config.py"},
-                            "region": {
-                                "startLine": 5,
-                                "snippet": {"text": 'API_KEY = "sk-live-abc123def456ghi789jkl012mno345pqr678"'},
+            "runs": [
+                {
+                    "tool": {"driver": {"name": "betterleaks"}},
+                    "results": [
+                        {
+                            "ruleId": "generic-api-key",
+                            "message": {
+                                "text": "Found API key: sk-live-abc123def456ghi789jkl012mno345pqr678"
                             },
-                        },
-                    }],
-                }],
-            }],
+                            "locations": [
+                                {
+                                    "physicalLocation": {
+                                        "artifactLocation": {"uri": "config.py"},
+                                        "region": {
+                                            "startLine": 5,
+                                            "snippet": {
+                                                "text": 'API_KEY = "sk-live-abc123def456ghi789jkl012mno345pqr678"'
+                                            },
+                                        },
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
         }
         sarif_path = tmp_path / "secrets.sarif"
         sarif_path.write_text(json.dumps(sarif))
@@ -41,7 +51,9 @@ class TestStripSecretValues:
 
         result = json.loads(sarif_path.read_text())
         msg = result["runs"][0]["results"][0]["message"]["text"]
-        snippet = result["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"]["snippet"]["text"]
+        snippet = result["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"][
+            "snippet"
+        ]["text"]
 
         assert "sk-live-abc123" not in msg
         assert "sk-live-abc123" not in snippet
@@ -49,14 +61,20 @@ class TestStripSecretValues:
 
     def test_github_pat_redacted(self, tmp_path: Path):
         sarif = {
-            "runs": [{
-                "tool": {"driver": {"name": "betterleaks"}},
-                "results": [{
-                    "ruleId": "github-pat",
-                    "message": {"text": "GitHub PAT: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh"},
-                    "locations": [],
-                }],
-            }],
+            "runs": [
+                {
+                    "tool": {"driver": {"name": "betterleaks"}},
+                    "results": [
+                        {
+                            "ruleId": "github-pat",
+                            "message": {
+                                "text": "GitHub PAT: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh"
+                            },
+                            "locations": [],
+                        }
+                    ],
+                }
+            ],
         }
         sarif_path = tmp_path / "github.sarif"
         sarif_path.write_text(json.dumps(sarif))
@@ -69,14 +87,20 @@ class TestStripSecretValues:
 
     def test_jwt_token_redacted(self, tmp_path: Path):
         sarif = {
-            "runs": [{
-                "tool": {"driver": {"name": "betterleaks"}},
-                "results": [{
-                    "ruleId": "jwt-token",
-                    "message": {"text": "JWT found: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjg"},
-                    "locations": [],
-                }],
-            }],
+            "runs": [
+                {
+                    "tool": {"driver": {"name": "betterleaks"}},
+                    "results": [
+                        {
+                            "ruleId": "jwt-token",
+                            "message": {
+                                "text": "JWT found: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjg"
+                            },
+                            "locations": [],
+                        }
+                    ],
+                }
+            ],
         }
         sarif_path = tmp_path / "jwt.sarif"
         sarif_path.write_text(json.dumps(sarif))
@@ -89,14 +113,18 @@ class TestStripSecretValues:
 
     def test_non_secret_text_unchanged(self, tmp_path: Path):
         sarif = {
-            "runs": [{
-                "tool": {"driver": {"name": "opengrep"}},
-                "results": [{
-                    "ruleId": "python.sqli",
-                    "message": {"text": "SQL injection via f-string interpolation"},
-                    "locations": [],
-                }],
-            }],
+            "runs": [
+                {
+                    "tool": {"driver": {"name": "opengrep"}},
+                    "results": [
+                        {
+                            "ruleId": "python.sqli",
+                            "message": {"text": "SQL injection via f-string interpolation"},
+                            "locations": [],
+                        }
+                    ],
+                }
+            ],
         }
         sarif_path = tmp_path / "clean.sarif"
         sarif_path.write_text(json.dumps(sarif))

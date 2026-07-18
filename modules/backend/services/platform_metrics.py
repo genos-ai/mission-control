@@ -17,13 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.agent_catalog import AgentCatalog
-from modules.backend.models.workflow_run import WorkflowRun
-from modules.backend.models.execution_record import (
-    ExecutionRecord,
-    TaskExecution,
-)
+from modules.backend.models.execution_record import ExecutionRecord, TaskExecution
 from modules.backend.models.mission import Mission
 from modules.backend.models.session import Session
+from modules.backend.models.workflow_run import WorkflowRun
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -100,18 +97,19 @@ class PlatformMetricsService(BaseService):
 
         agent_result = await self._session.execute(by_agent_stmt)
         by_agent = [
-            {"agent_name": row.agent_name, "runs": row.runs, "total_cost_usd": float(row.total_cost)}
+            {
+                "agent_name": row.agent_name,
+                "runs": row.runs,
+                "total_cost_usd": float(row.total_cost),
+            }
             for row in agent_result
         ]
 
-        by_status_stmt = (
-            select(
-                ExecutionRecord.status,
-                func.count().label("count"),
-                func.coalesce(func.sum(ExecutionRecord.total_cost_usd), 0.0).label("cost"),
-            )
-            .group_by(ExecutionRecord.status)
-        )
+        by_status_stmt = select(
+            ExecutionRecord.status,
+            func.count().label("count"),
+            func.coalesce(func.sum(ExecutionRecord.total_cost_usd), 0.0).label("cost"),
+        ).group_by(ExecutionRecord.status)
         if since is not None:
             by_status_stmt = by_status_stmt.where(ExecutionRecord.created_at >= since)
 
@@ -155,11 +153,7 @@ class PlatformMetricsService(BaseService):
 
     async def get_recent_activity(self, limit: int = 20) -> dict[str, Any]:
         """Get recent executions and workflow runs."""
-        exec_stmt = (
-            select(ExecutionRecord)
-            .order_by(ExecutionRecord.created_at.desc())
-            .limit(limit)
-        )
+        exec_stmt = select(ExecutionRecord).order_by(ExecutionRecord.created_at.desc()).limit(limit)
         exec_result = await self._session.execute(exec_stmt)
         executions = [
             {
@@ -173,11 +167,7 @@ class PlatformMetricsService(BaseService):
             for r in exec_result.scalars()
         ]
 
-        run_stmt = (
-            select(WorkflowRun)
-            .order_by(WorkflowRun.created_at.desc())
-            .limit(limit)
-        )
+        run_stmt = select(WorkflowRun).order_by(WorkflowRun.created_at.desc()).limit(limit)
         run_result = await self._session.execute(run_stmt)
         runs = [
             {

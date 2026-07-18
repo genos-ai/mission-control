@@ -11,8 +11,8 @@ Revises: plan71_001
 Create Date: 2026-05-03
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "plan71_002"

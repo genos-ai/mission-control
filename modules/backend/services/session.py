@@ -10,13 +10,9 @@ from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import BudgetExceededError, NotFoundError, ValidationError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-from modules.backend.models.session import Session, SessionChannel, SessionStatus, VALID_TRANSITIONS
+from modules.backend.models.session import VALID_TRANSITIONS, Session, SessionChannel, SessionStatus
 from modules.backend.repositories.session import SessionRepository
-from modules.backend.schemas.session import (
-    SessionCreate,
-    SessionMessageCreate,
-    SessionUpdate,
-)
+from modules.backend.schemas.session import SessionCreate, SessionMessageCreate, SessionUpdate
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -104,7 +100,9 @@ class SessionService(BaseService):
         return session.id
 
     async def find_active_for_mission(
-        self, mission_id: str, user_id: str | None = None,
+        self,
+        mission_id: str,
+        user_id: str | None = None,
     ) -> Session | None:
         """Find the most recently active session for a mission."""
         return await self.repo.find_active_for_mission(mission_id, user_id=user_id)
@@ -149,12 +147,17 @@ class SessionService(BaseService):
     ) -> tuple[list[Session], int]:
         """List sessions with optional user, mission, agent, and status filters."""
         sessions = await self.repo.get_by_user(
-            user_id=user_id, mission_id=mission_id,
-            status_filter=status_filter, agent_id=agent_id,
-            limit=limit, offset=offset,
+            user_id=user_id,
+            mission_id=mission_id,
+            status_filter=status_filter,
+            agent_id=agent_id,
+            limit=limit,
+            offset=offset,
         )
         total = await self.repo.count_by_user(
-            user_id=user_id, mission_id=mission_id, status_filter=status_filter,
+            user_id=user_id,
+            mission_id=mission_id,
+            status_filter=status_filter,
         )
         return sessions, total
 
@@ -181,10 +184,16 @@ class SessionService(BaseService):
             self.repo.update(
                 session_id,
                 status=target_status,
-                **({"session_metadata": {
-                    **(session.session_metadata or {}),
-                    f"{target_status.value}_reason": reason,
-                }} if reason else {}),
+                **(
+                    {
+                        "session_metadata": {
+                            **(session.session_metadata or {}),
+                            f"{target_status.value}_reason": reason,
+                        }
+                    }
+                    if reason
+                    else {}
+                ),
             ),
         )
 
@@ -338,9 +347,7 @@ class SessionService(BaseService):
         """Find the active session for a channel. Raises NotFoundError if not found."""
         session = await self.repo.get_session_by_channel(channel_type, channel_id)
         if session is None:
-            raise NotFoundError(
-                message=f"No active session for {channel_type}:{channel_id}"
-            )
+            raise NotFoundError(message=f"No active session for {channel_type}:{channel_id}")
         return session
 
     # --- Messages ---
@@ -442,7 +449,10 @@ class SessionService(BaseService):
         """Get messages for a session with pagination and optional sender filtering."""
         await self.repo.get_by_id(session_id)  # Verify session exists
         messages = await self.repo.get_messages(
-            session_id, limit=limit, offset=offset, sender_ids=sender_ids,
+            session_id,
+            limit=limit,
+            offset=offset,
+            sender_ids=sender_ids,
         )
         total = await self.repo.count_messages(session_id)
         return messages, total

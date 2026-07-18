@@ -19,13 +19,12 @@ Rules:
 
 from collections import deque
 
+# Ensure built-in checks are registered before validation
+import modules.backend.agents.mission_control.checks.builtin as _builtin  # noqa: F401
 from modules.backend.agents.mission_control.check_registry import check_exists, list_checks
 from modules.backend.agents.mission_control.roster import Roster
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.task_plan import TaskPlan
-
-# Ensure built-in checks are registered before validation
-import modules.backend.agents.mission_control.checks.builtin as _builtin  # noqa: F401
 
 logger = get_logger(__name__)
 
@@ -133,9 +132,7 @@ def _rule_3_dag_validation(plan: TaskPlan, result: ValidationResult) -> None:
                 adjacency[dep].append(task.task_id)
                 in_degree[task.task_id] += 1
 
-    queue: deque[str] = deque(
-        tid for tid, deg in in_degree.items() if deg == 0
-    )
+    queue: deque[str] = deque(tid for tid, deg in in_degree.items() if deg == 0)
     sorted_count = 0
 
     while queue:
@@ -165,7 +162,9 @@ def _rule_4_dependency_consistency(plan: TaskPlan, result: ValidationResult) -> 
 
 
 def _rule_5_input_compatibility(
-    plan: TaskPlan, roster: Roster, result: ValidationResult,
+    plan: TaskPlan,
+    roster: Roster,
+    result: ValidationResult,
 ) -> None:
     """Every from_upstream source_field must exist in the source agent's output contract."""
     task_agent_map = {t.task_id: t.agent for t in plan.tasks}
@@ -224,7 +223,9 @@ def _rule_7_budget_validation(
 
 
 def _rule_8_timeout_validation(
-    plan: TaskPlan, roster: Roster, result: ValidationResult,
+    plan: TaskPlan,
+    roster: Roster,
+    result: ValidationResult,
 ) -> None:
     """Timeout overrides must not exceed roster maximums."""
     for task in plan.tasks:
@@ -260,7 +261,9 @@ def _rule_9_critical_path_validation(plan: TaskPlan, result: ValidationResult) -
 
 
 def _rule_10_tier3_completeness(
-    plan: TaskPlan, roster: Roster, result: ValidationResult,
+    plan: TaskPlan,
+    roster: Roster,
+    result: ValidationResult,
 ) -> None:
     """When Tier 3 is required, criteria+evaluator+threshold must all be present."""
     for task in plan.tasks:
@@ -295,13 +298,13 @@ def _rule_10_tier3_completeness(
         ):
             result.add_error(
                 "tier3_completeness",
-                f"Task '{task.task_id}': evaluator_agent "
-                f"'{t3.evaluator_agent}' not in roster",
+                f"Task '{task.task_id}': evaluator_agent " f"'{t3.evaluator_agent}' not in roster",
             )
 
 
 def _rule_11_self_evaluation_prevention(
-    plan: TaskPlan, result: ValidationResult,
+    plan: TaskPlan,
+    result: ValidationResult,
 ) -> None:
     """No task may specify itself (its own agent) as the evaluator."""
     for task in plan.tasks:

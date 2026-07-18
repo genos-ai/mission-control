@@ -86,7 +86,9 @@ class TestGetMission:
     @pytest.mark.asyncio
     async def test_get_by_id(self, service):
         created = await service.create_mission(
-            name="get-test", description="Get test", owner_id=TEST_USER_ID,
+            name="get-test",
+            description="Get test",
+            owner_id=TEST_USER_ID,
         )
         result = await service.get_mission(created.id)
         assert result.name == "get-test"
@@ -99,7 +101,9 @@ class TestGetMission:
     @pytest.mark.asyncio
     async def test_get_by_name(self, service):
         await service.create_mission(
-            name="named-mission", description="Named", owner_id=TEST_USER_ID,
+            name="named-mission",
+            description="Named",
+            owner_id=TEST_USER_ID,
         )
         result = await service.get_mission_by_name("named-mission")
         assert result is not None
@@ -115,10 +119,14 @@ class TestListMissions:
     @pytest.mark.asyncio
     async def test_list_active(self, service):
         await service.create_mission(
-            name="active-one", description="Active", owner_id=TEST_USER_ID,
+            name="active-one",
+            description="Active",
+            owner_id=TEST_USER_ID,
         )
         await service.create_mission(
-            name="active-two", description="Active", owner_id=TEST_USER_ID,
+            name="active-two",
+            description="Active",
+            owner_id=TEST_USER_ID,
         )
         missions = await service.list_missions()
         assert len(missions) >= 2
@@ -126,10 +134,14 @@ class TestListMissions:
     @pytest.mark.asyncio
     async def test_list_by_owner(self, service):
         await service.create_mission(
-            name="owner-a", description="A", owner_id=TEST_USER_ID_2,
+            name="owner-a",
+            description="A",
+            owner_id=TEST_USER_ID_2,
         )
         await service.create_mission(
-            name="owner-b", description="B", owner_id=TEST_USER_ID,
+            name="owner-b",
+            description="B",
+            owner_id=TEST_USER_ID,
         )
         alice_missions = await service.list_missions(owner_id=TEST_USER_ID_2)
         assert all(m.owner_id == TEST_USER_ID_2 for m in alice_missions)
@@ -139,10 +151,13 @@ class TestUpdateMission:
     @pytest.mark.asyncio
     async def test_update_description(self, service):
         mission = await service.create_mission(
-            name="update-test", description="Original", owner_id=TEST_USER_ID,
+            name="update-test",
+            description="Original",
+            owner_id=TEST_USER_ID,
         )
         updated = await service.update_mission(
-            mission.id, description="Updated description",
+            mission.id,
+            description="Updated description",
         )
         assert updated.description == "Updated description"
 
@@ -151,7 +166,9 @@ class TestArchiveMission:
     @pytest.mark.asyncio
     async def test_archive(self, service):
         mission = await service.create_mission(
-            name="archive-test", description="To archive", owner_id=TEST_USER_ID,
+            name="archive-test",
+            description="To archive",
+            owner_id=TEST_USER_ID,
         )
         archived = await service.archive_mission(mission.id)
         assert archived.status == MissionStatus.ARCHIVED
@@ -159,7 +176,9 @@ class TestArchiveMission:
     @pytest.mark.asyncio
     async def test_archived_not_in_active_list(self, service):
         mission = await service.create_mission(
-            name="archived-hidden", description="Hidden", owner_id=TEST_USER_ID,
+            name="archived-hidden",
+            description="Hidden",
+            owner_id=TEST_USER_ID,
         )
         await service.archive_mission(mission.id)
         active = await service.list_missions(owner_id=TEST_USER_ID, status="active")

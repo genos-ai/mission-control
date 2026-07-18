@@ -41,7 +41,11 @@ class TestCompositeRiskScore:
         exploitability = 8.0
         business_impact = 7.0
 
-        score = (cvss * w.cvss) + (exploitability * w.exploitability) + (business_impact * w.business_impact)
+        score = (
+            (cvss * w.cvss)
+            + (exploitability * w.exploitability)
+            + (business_impact * w.business_impact)
+        )
         expected = (9.0 * 0.40) + (8.0 * 0.30) + (7.0 * 0.30)
         assert abs(score - expected) < 1e-9
         assert abs(score - 8.1) < 1e-9
@@ -64,17 +68,26 @@ class TestCompositeRiskScore:
 
         with pytest.raises(ValueError):
             SecurityAssessmentReport(
-                report_id="R", target_name="T", assessment_date="2026-04-29",
-                engagement_id="E", roe_sha256="h",
+                report_id="R",
+                target_name="T",
+                assessment_date="2026-04-29",
+                engagement_id="E",
+                roe_sha256="h",
                 overall_risk_score=11.0,  # out of range
                 overall_risk_posture="CRITICAL",
                 executive_summary="x" * 300,
-                finding_counts={}, owasp_coverage={},
-                confirmed_findings=[], remediation_roadmap=[],
-                phases_completed=["scan"], scanners_run=["opengrep"],
-                dast_performed=False, exploit_stage_reached=0,
-                total_tool_calls=1, total_cost_usd=1.0,
-                duration_hours=0.1, assessment_scope="SAST",
+                finding_counts={},
+                owasp_coverage={},
+                confirmed_findings=[],
+                remediation_roadmap=[],
+                phases_completed=["scan"],
+                scanners_run=["opengrep"],
+                dast_performed=False,
+                exploit_stage_reached=0,
+                total_tool_calls=1,
+                total_cost_usd=1.0,
+                duration_hours=0.1,
+                assessment_scope="SAST",
                 evidence_manifest_sha256="h",
                 known_limitations=["Phase 1"],
             )

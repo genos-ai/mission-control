@@ -59,16 +59,11 @@ def rank_symbols(
         new_scores = [0.0] * n
 
         # Accumulate dangling node mass (nodes with no outgoing edges)
-        dangling_sum = sum(
-            scores[i] for i in range(n) if not outgoing[i]
-        )
+        dangling_sum = sum(scores[i] for i in range(n) if not outgoing[i])
         dangling_contribution = damping * dangling_sum / n
 
         for i in range(n):
-            rank_sum = sum(
-                scores[src] / len(outgoing[src])
-                for src in incoming[i]
-            )
+            rank_sum = sum(scores[src] / len(outgoing[src]) for src in incoming[i])
             new_scores[i] = teleport + dangling_contribution + damping * rank_sum
 
         # Check convergence

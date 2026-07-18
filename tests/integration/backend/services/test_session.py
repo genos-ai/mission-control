@@ -13,7 +13,10 @@ from modules.backend.services.session import SessionService
 
 class TestCreateSession:
     async def test_create_basic_session(
-        self, db_session: AsyncSession, test_mission: Mission, regular_user: User,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
+        regular_user: User,
     ):
         service = SessionService(db_session)
         data = SessionCreate(mission_id=test_mission.id)
@@ -26,7 +29,9 @@ class TestCreateSession:
         assert session.expires_at is not None
 
     async def test_create_session_with_goal(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         data = SessionCreate(
@@ -40,7 +45,9 @@ class TestCreateSession:
         assert session.agent_id == "mission.director"
 
     async def test_create_session_with_cost_budget(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         data = SessionCreate(
@@ -55,7 +62,9 @@ class TestCreateSession:
 
 class TestGetSession:
     async def test_get_existing_session(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         created = await service.create_session(
@@ -73,7 +82,9 @@ class TestGetSession:
 
 class TestEnsureSession:
     async def test_returns_existing_session_id(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         created = await service.create_session(
@@ -86,7 +97,9 @@ class TestEnsureSession:
     async def test_creates_new_session_when_none(self, db_session: AsyncSession):
         service = SessionService(db_session)
         result_id = await service.ensure_session(
-            None, agent_id="mission.director", goal="auto-created",
+            None,
+            agent_id="mission.director",
+            goal="auto-created",
         )
 
         assert result_id is not None
@@ -97,7 +110,9 @@ class TestEnsureSession:
 
 class TestCostTracking:
     async def test_update_cost(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         session = await service.create_session(
@@ -117,7 +132,9 @@ class TestCostTracking:
         assert updated.total_cost_usd == pytest.approx(0.05, abs=1e-6)
 
     async def test_cost_accumulates(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         session = await service.create_session(
@@ -133,7 +150,9 @@ class TestCostTracking:
         assert updated.total_cost_usd == pytest.approx(0.03, abs=1e-6)
 
     async def test_enforce_budget_raises_when_exceeded(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         session = await service.create_session(
@@ -149,7 +168,9 @@ class TestCostTracking:
 
 class TestListSessions:
     async def test_list_by_mission(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = SessionService(db_session)
         await service.create_session(SessionCreate(mission_id=test_mission.id))
@@ -160,11 +181,15 @@ class TestListSessions:
         assert total >= 2
 
     async def test_list_by_user(
-        self, db_session: AsyncSession, test_mission: Mission, regular_user: User,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
+        regular_user: User,
     ):
         service = SessionService(db_session)
         await service.create_session(
-            SessionCreate(mission_id=test_mission.id), user_id=regular_user.id,
+            SessionCreate(mission_id=test_mission.id),
+            user_id=regular_user.id,
         )
 
         sessions, total = await service.list_sessions(user_id=regular_user.id)

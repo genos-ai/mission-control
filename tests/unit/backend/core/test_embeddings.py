@@ -7,13 +7,12 @@ No external API calls — tests FakeEmbedder, FailOpenEmbedder, and content_hash
 import pytest
 
 from modules.backend.core.embeddings import (
-    EmbeddingProviderError,
     Embedder,
+    EmbeddingProviderError,
     FailOpenEmbedder,
     FakeEmbedder,
     content_hash,
 )
-
 
 # ── FakeEmbedder ─────────────────────────────────────────────
 

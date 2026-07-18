@@ -7,8 +7,8 @@ Revision ID: workflow_run_exec_record
 Revises: workflow_system_unique
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "workflow_run_exec_record"
 down_revision = "workflow_system_unique"

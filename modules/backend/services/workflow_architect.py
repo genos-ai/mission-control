@@ -14,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.agents.mission.workflow.architect.agent import run_conversational
 from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
 from modules.backend.agents.mission_control.helpers.agent_setup import build_deps_from_config
-from modules.backend.core.model_builder import _build_model
 from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.logging import get_logger
+from modules.backend.core.model_builder import _build_model
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -76,11 +76,15 @@ class WorkflowArchitectService(BaseService):
         enriched_message = message
         if not message_history:
             enriched_message = self._build_initial_prompt(
-                message, mission_brief, team_summary,
+                message,
+                mission_brief,
+                team_summary,
             )
 
         result = await run_conversational(
-            agent, deps, enriched_message,
+            agent,
+            deps,
+            enriched_message,
             message_history=message_history,
         )
 
@@ -117,8 +121,7 @@ class WorkflowArchitectService(BaseService):
             return []
 
         catalog_text = "\n".join(
-            f"- {a.agent_name} ({a.agent_type}): {a.description}"
-            for a in agents
+            f"- {a.agent_name} ({a.agent_type}): {a.description}" for a in agents
         )
 
         prompt = (
@@ -142,6 +145,7 @@ class WorkflowArchitectService(BaseService):
         )
 
         import json
+
         result = await run_conversational(agent, deps, prompt)
         response_text = result.get("response", "[]")
 
@@ -155,10 +159,13 @@ class WorkflowArchitectService(BaseService):
         try:
             recommendations = json.loads(response_text)
         except json.JSONDecodeError:
-            logger.warning("Failed to parse recommendation response", extra={
-                "response": response_text[:200],
-                "mission_id": mission_id,
-            })
+            logger.warning(
+                "Failed to parse recommendation response",
+                extra={
+                    "response": response_text[:200],
+                    "mission_id": mission_id,
+                },
+            )
             recommendations = []
 
         self._log_operation(
@@ -199,7 +206,8 @@ class WorkflowArchitectService(BaseService):
         )
 
     async def _load_mission_context(
-        self, mission_id: str,
+        self,
+        mission_id: str,
     ) -> tuple[str, str]:
         """Load mission brief and team summary for the architect.
 
@@ -222,9 +230,7 @@ class WorkflowArchitectService(BaseService):
         for member in members:
             entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
             if entry:
-                team_lines.append(
-                    f"- {entry.agent_name} ({entry.agent_type}): {entry.description}"
-                )
+                team_lines.append(f"- {entry.agent_name} ({entry.agent_type}): {entry.description}")
 
         team_summary = "\n".join(team_lines) if team_lines else "No agents assigned to team yet."
 

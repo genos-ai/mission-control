@@ -26,14 +26,13 @@ from unittest.mock import AsyncMock
 import pytest
 
 from modules.backend.agents.mission_control.task_approval import (
+    _PENDING,
     TaskApprovalTimeout,
     TaskApprovalUnknown,
-    _PENDING,
     notify_approved,
     wait_until_approved,
 )
 from modules.backend.models.task import TaskStatus
-
 
 # ── Test scaffolding ──────────────────────────────────────────────
 
@@ -106,7 +105,9 @@ async def test_proposed_waits_until_notify():
     # Calls: initial check returns PROPOSED, after the wait re-check
     # returns APPROVED (status changed while we waited).
     factory, _state = _factory_returning(
-        TaskStatus.PROPOSED.value, TaskStatus.PROPOSED.value, TaskStatus.APPROVED.value,
+        TaskStatus.PROPOSED.value,
+        TaskStatus.PROPOSED.value,
+        TaskStatus.APPROVED.value,
     )
 
     async def _approve_after_delay():
@@ -128,7 +129,8 @@ async def test_proposed_waits_until_notify():
 async def test_timeout_raises_task_approval_timeout():
     """No notify within timeout → TaskApprovalTimeout."""
     factory, _state = _factory_returning(
-        TaskStatus.PROPOSED.value, TaskStatus.PROPOSED.value,
+        TaskStatus.PROPOSED.value,
+        TaskStatus.PROPOSED.value,
     )
     with pytest.raises(TaskApprovalTimeout):
         await wait_until_approved(task_id="abc", session_factory=factory, timeout_seconds=1)
@@ -139,7 +141,8 @@ async def test_timeout_raises_task_approval_timeout():
 async def test_cancellation_propagates_and_cleans_registry():
     """CancelledError propagates; registry cleaned in finally."""
     factory, _state = _factory_returning(
-        TaskStatus.PROPOSED.value, TaskStatus.PROPOSED.value,
+        TaskStatus.PROPOSED.value,
+        TaskStatus.PROPOSED.value,
     )
     task = asyncio.create_task(
         wait_until_approved(task_id="abc", session_factory=factory, timeout_seconds=30),
@@ -181,7 +184,9 @@ async def test_multiple_waiters_independent():
 
     async def _waiter(task_id: str) -> str:
         await wait_until_approved(
-            task_id=task_id, session_factory=factory, timeout_seconds=5,
+            task_id=task_id,
+            session_factory=factory,
+            timeout_seconds=5,
         )
         return task_id
 

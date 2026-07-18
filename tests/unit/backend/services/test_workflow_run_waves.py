@@ -60,12 +60,15 @@ class TestBuildStepObjectiveStructured:
         # Deliberation sparse-topology pattern: opponents_previous nested dict.
         svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(step, {
-            "opponents_previous": {
-                "quant": {"position": "Q1"},
-                "ethicist": {"position": "E1"},
+        obj = svc._build_step_objective(
+            step,
+            {
+                "opponents_previous": {
+                    "quant": {"position": "Q1"},
+                    "ethicist": {"position": "E1"},
+                },
             },
-        })
+        )
         # Both nested values must be present as parseable JSON.
         assert "Q1" in obj
         assert "E1" in obj
@@ -76,10 +79,13 @@ class TestBuildStepObjectiveStructured:
         # Skipped predecessors resolve to None; should NOT appear as "key: None".
         svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(step, {
-            "round_2_position": None,
-            "round_1_position": "held",
-        })
+        obj = svc._build_step_objective(
+            step,
+            {
+                "round_2_position": None,
+                "round_1_position": "held",
+            },
+        )
         assert "None" not in obj
         assert "round_1_position: held" in obj
         # The None key should be omitted entirely.
@@ -128,14 +134,17 @@ class TestBuildStepObjectiveStructured:
         # opponents_previous (dict) + skipped_field (None).
         svc = _make_service()
         step = _make_step(description="Debate")
-        obj = svc._build_step_objective(step, {
-            "question": "Will X happen?",
-            "round_index": 1,
-            "agreement_intensity": 0.2,
-            "research_packet": {"consensus": "yes"},
-            "opponents_previous": {"quant": {"position": "no"}},
-            "skipped_field": None,
-        })
+        obj = svc._build_step_objective(
+            step,
+            {
+                "question": "Will X happen?",
+                "round_index": 1,
+                "agreement_intensity": 0.2,
+                "research_packet": {"consensus": "yes"},
+                "opponents_previous": {"quant": {"position": "no"}},
+                "skipped_field": None,
+            },
+        )
         assert "question: Will X happen?" in obj
         assert "round_index: 1" in obj
         assert "agreement_intensity: 0.2" in obj
@@ -218,7 +227,8 @@ class TestExtractDefaultAgentOutput:
         }
         with caplog.at_level(logging.WARNING):
             result = _extract_default_agent_output(
-                outcome, expected_agent="agent.nonexistent",
+                outcome,
+                expected_agent="agent.nonexistent",
             )
         assert result == {"output": {"b": 2}}
         # The warning is fired through structlog; the log record carries the
@@ -263,11 +273,12 @@ class TestToolArgsDeepResolve:
 
     def _resolve(self, tool_args, outcomes, ctx):
         """Mirror the dispatcher's exact resolution call."""
-        from modules.backend.services.condition_evaluator import (
-            resolve_template, walk_refs,
-        )
+        from modules.backend.services.condition_evaluator import resolve_template, walk_refs
+
         return walk_refs(
-            tool_args, outcomes, ctx,
+            tool_args,
+            outcomes,
+            ctx,
             leaf_resolver=lambda s: resolve_template(s, outcomes, ctx),
         )
 
@@ -286,10 +297,12 @@ class TestToolArgsDeepResolve:
         }
         result = self._resolve(tool_args, outcomes, {})
         assert result["previous_round"]["systems"] == {
-            "position": "S1", "confidence": 0.8,
+            "position": "S1",
+            "confidence": 0.8,
         }
         assert result["previous_round"]["quant"] == {
-            "position": "Q1", "confidence": 0.7,
+            "position": "Q1",
+            "confidence": 0.7,
         }
         # Non-ref scalar passes through.
         assert result["threshold"] == 0.15
@@ -323,11 +336,14 @@ class TestToolArgsDeepResolve:
 
     def test_typo_in_ref_raises(self):
         import pytest
+
         from modules.backend.services.condition_evaluator import ConditionEvaluationError
 
         with pytest.raises(ConditionEvaluationError):
             self._resolve(
-                {"value": "{{@nodez.x.output}}"}, {}, {},
+                {"value": "{{@nodez.x.output}}"},
+                {},
+                {},
             )
 
     def test_deliberation_transcript_shape(self):

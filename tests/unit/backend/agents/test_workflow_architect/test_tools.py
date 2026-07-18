@@ -137,13 +137,15 @@ class TestBuildGraphStructure:
         assert len(graph["edges"]) == 2
 
     def test_node_attributes(self):
-        steps = [{
-            "id": "s1",
-            "description": "Do things",
-            "capability": "code.qa.agent",
-            "complexity_tier": "complex",
-            "environment": "sandbox",
-        }]
+        steps = [
+            {
+                "id": "s1",
+                "description": "Do things",
+                "capability": "code.qa.agent",
+                "complexity_tier": "complex",
+                "environment": "sandbox",
+            }
+        ]
         graph = build_graph_structure(steps)
         node = graph["nodes"][0]
         assert node["label"] == "Do things"

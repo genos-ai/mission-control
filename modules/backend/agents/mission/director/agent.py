@@ -16,10 +16,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 
 from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-from modules.backend.agents.mission_control.helpers import (
-    _build_model,
-    assemble_instructions,
-)
+from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -53,6 +50,7 @@ async def _create_background_record(
     class _Ref:
         def __init__(self, id: str):
             self.id = id
+
     return _Ref(record_id)
 
 
@@ -64,6 +62,7 @@ async def _start_tool_fork_workflow(
 ) -> str:
     """Start a Temporal workflow for a forked tool call. Returns workflow ID."""
     import uuid
+
     from modules.backend.temporal.client import get_temporal_client, get_temporal_config
     from modules.backend.temporal.tool_fork_workflow import (
         DesignWorkflowWorkflow,
@@ -133,8 +132,6 @@ async def _schedule_director_followup(
         )
 
 
-
-
 def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent:
     """Create the Mission Director agent with all tools registered."""
     if isinstance(model, str):
@@ -158,11 +155,14 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         # Tool names are collected after all @agent.tool registrations
         # and stored on the _tool_names class variable by create_agent.
         tools = getattr(list_tools, "_registered_tools", [])
-        return json.dumps({
-            "available_tools": len(tools),
-            "tools": tools,
-            "note": "You can ONLY call tools in this list. Do not invent tool names.",
-        }, indent=2)
+        return json.dumps(
+            {
+                "available_tools": len(tools),
+                "tools": tools,
+                "note": "You can ONLY call tools in this list. Do not invent tool names.",
+            },
+            indent=2,
+        )
 
     # ── Read Tools ────────────────────────────────────────
 
@@ -178,18 +178,26 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             svc = MissionService(ctx.deps.db_session)
             mission = await svc.get_mission(ctx.deps.mission_id)
 
-            return json.dumps({
-                "name": mission.name,
-                "description": mission.description,
-                "brief": mission.brief,
-                "status": mission.status if isinstance(mission.status, str) else mission.status.value,
-                "gate_mode": mission.gate_mode,
-                "budget_ceiling_usd": mission.budget_ceiling_usd,
-                "owner_id": mission.owner_id,
-                "created_at": str(mission.created_at),
-            }, indent=2, default=str)
+            return json.dumps(
+                {
+                    "name": mission.name,
+                    "description": mission.description,
+                    "brief": mission.brief,
+                    "status": (
+                        mission.status if isinstance(mission.status, str) else mission.status.value
+                    ),
+                    "gate_mode": mission.gate_mode,
+                    "budget_ceiling_usd": mission.budget_ceiling_usd,
+                    "owner_id": mission.owner_id,
+                    "created_at": str(mission.created_at),
+                },
+                indent=2,
+                default=str,
+            )
         except Exception as e:
-            logger.error("get_mission_info failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "get_mission_info failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -211,22 +219,26 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
                 if not entry:
                     continue
-                team_list.append({
-                    "agent_name": entry.agent_name,
-                    "description": entry.description,
-                    "agent_type": entry.agent_type,
-                    "tools": entry.tools or [],
-                    "keywords": entry.keywords or [],
-                    "scope": entry.scope or {},
-                    "interface": entry.interface,
-                    "constraints": entry.constraints or {},
-                    "enabled": entry.enabled,
-                    "chat_enabled": entry.chat_enabled,
-                })
+                team_list.append(
+                    {
+                        "agent_name": entry.agent_name,
+                        "description": entry.description,
+                        "agent_type": entry.agent_type,
+                        "tools": entry.tools or [],
+                        "keywords": entry.keywords or [],
+                        "scope": entry.scope or {},
+                        "interface": entry.interface,
+                        "constraints": entry.constraints or {},
+                        "enabled": entry.enabled,
+                        "chat_enabled": entry.chat_enabled,
+                    }
+                )
 
             return json.dumps(team_list, indent=2, default=str)
         except Exception as e:
-            logger.error("list_team failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "list_team failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -276,23 +288,27 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 )
                 if keyword and keyword.lower() not in searchable:
                     continue
-                results.append({
-                    "agent_name": agent.agent_name,
-                    "description": agent.description,
-                    "agent_type": agent.agent_type,
-                    "enabled": agent.enabled,
-                    "on_team": agent.agent_name in team_names,
-                    "keywords": agent.keywords or [],
-                    "tools": agent.tools or [],
-                    "scope": agent.scope or {},
-                    "interface": agent.interface,
-                    "constraints": agent.constraints or {},
-                    "chat_enabled": agent.chat_enabled,
-                })
+                results.append(
+                    {
+                        "agent_name": agent.agent_name,
+                        "description": agent.description,
+                        "agent_type": agent.agent_type,
+                        "enabled": agent.enabled,
+                        "on_team": agent.agent_name in team_names,
+                        "keywords": agent.keywords or [],
+                        "tools": agent.tools or [],
+                        "scope": agent.scope or {},
+                        "interface": agent.interface,
+                        "constraints": agent.constraints or {},
+                        "chat_enabled": agent.chat_enabled,
+                    }
+                )
 
             return json.dumps(results, indent=2, default=str)
         except Exception as e:
-            logger.error("browse_catalog failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "browse_catalog failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -320,12 +336,20 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 limit=limit,
             )
 
-            return json.dumps({
-                "executions": runs,
-                "total": total,
-            }, indent=2, default=str)
+            return json.dumps(
+                {
+                    "executions": runs,
+                    "total": total,
+                },
+                indent=2,
+                default=str,
+            )
         except Exception as e:
-            logger.error("get_execution_history failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "get_execution_history failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -347,24 +371,34 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             svc = ExecutionPersistenceService(ctx.deps.db_session)
             record = await svc.get_execution(execution_id)
             if record:
-                status = record.status.value if hasattr(record.status, "value") else str(record.status)
-                return json.dumps({
-                    "id": str(record.id),
-                    "objective": record.objective_statement,
-                    "status": status,
-                    "roster_name": record.roster_name,
-                    "total_cost_usd": record.total_cost_usd,
-                    "cost_ceiling_usd": record.cost_ceiling_usd,
-                    "started_at": str(record.started_at) if record.started_at else None,
-                    "completed_at": str(record.completed_at) if record.completed_at else None,
-                    "execution_outcome": record.execution_outcome_json,
-                    "workflow_run_id": record.workflow_run_id,
-                    "workflow_step_id": record.workflow_step_id,
-                }, indent=2, default=str)
+                status = (
+                    record.status.value if hasattr(record.status, "value") else str(record.status)
+                )
+                return json.dumps(
+                    {
+                        "id": str(record.id),
+                        "objective": record.objective_statement,
+                        "status": status,
+                        "roster_name": record.roster_name,
+                        "total_cost_usd": record.total_cost_usd,
+                        "cost_ceiling_usd": record.cost_ceiling_usd,
+                        "started_at": str(record.started_at) if record.started_at else None,
+                        "completed_at": str(record.completed_at) if record.completed_at else None,
+                        "execution_outcome": record.execution_outcome_json,
+                        "workflow_run_id": record.workflow_run_id,
+                        "workflow_step_id": record.workflow_step_id,
+                    },
+                    indent=2,
+                    default=str,
+                )
 
             return json.dumps({"error": f"Execution '{execution_id}' not found"})
         except Exception as e:
-            logger.error("get_execution_detail failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "get_execution_detail failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -384,7 +418,11 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             return json.dumps(context, indent=2, default=str)
         except Exception as e:
-            logger.error("get_mission_context failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "get_mission_context failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -408,30 +446,36 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             for wf in mission_wfs:
                 seen_names.add(wf.name)
-                results.append({
-                    "name": wf.name,
-                    "description": wf.description,
-                    "version": wf.version,
-                    "trigger_type": wf.trigger_type,
-                    "step_count": wf.step_count,
-                    "scope": "mission",
-                })
+                results.append(
+                    {
+                        "name": wf.name,
+                        "description": wf.description,
+                        "version": wf.version,
+                        "trigger_type": wf.trigger_type,
+                        "step_count": wf.step_count,
+                        "scope": "mission",
+                    }
+                )
 
             for wf in system_wfs:
                 if wf.name in seen_names:
                     continue  # Mission-scoped takes precedence
-                results.append({
-                    "name": wf.name,
-                    "description": wf.description,
-                    "version": wf.version,
-                    "trigger_type": wf.trigger_type,
-                    "step_count": wf.step_count,
-                    "scope": "system",
-                })
+                results.append(
+                    {
+                        "name": wf.name,
+                        "description": wf.description,
+                        "version": wf.version,
+                        "trigger_type": wf.trigger_type,
+                        "step_count": wf.step_count,
+                        "scope": "system",
+                    }
+                )
 
             return json.dumps(results, indent=2, default=str)
         except Exception as e:
-            logger.error("list_workflows failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "list_workflows failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     # ── Action Tools ──────────────────────────────────────
@@ -477,6 +521,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             )
 
             from modules.backend.temporal.tool_fork_models import RunWorkflowInput
+
             workflow_id = await _start_tool_fork_workflow(
                 workflow_name="RunWorkflowWorkflow",
                 input_data=RunWorkflowInput(
@@ -489,16 +534,22 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 record_id=record.id,
             )
 
-            return json.dumps({
-                "execution_record_id": record.id,
-                "temporal_workflow_id": workflow_id,
-                "workflow_name": clean_name,
-                "mission_id": mission_id,
-                "status": "started_in_background",
-                "message": "Workflow started in background. Check progress via check_background_tasks.",
-            }, indent=2, default=str)
+            return json.dumps(
+                {
+                    "execution_record_id": record.id,
+                    "temporal_workflow_id": workflow_id,
+                    "workflow_name": clean_name,
+                    "mission_id": mission_id,
+                    "status": "started_in_background",
+                    "message": "Workflow started in background. Check progress via check_background_tasks.",
+                },
+                indent=2,
+                default=str,
+            )
         except Exception as e:
-            logger.error("run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     # start_research removed (Plan 72): research goes through refine_plan
@@ -526,6 +577,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 return json.dumps({"error": "No database session available"})
 
             from sqlalchemy import select
+
             from modules.backend.models.mission_artifact import MissionArtifact
 
             query = (
@@ -541,24 +593,32 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             artifacts = result.scalars().all()
 
             if not artifacts:
-                return json.dumps({
-                    "status": "no_artifacts",
-                    "message": "No artifacts found for this mission.",
-                })
+                return json.dumps(
+                    {
+                        "status": "no_artifacts",
+                        "message": "No artifacts found for this mission.",
+                    }
+                )
 
-            return json.dumps([
-                {
-                    "id": a.id,
-                    "artifact_type": a.artifact_type,
-                    "title": a.title,
-                    "content_preview": (a.content_text or "")[:2000],
-                    "created_at": str(a.created_at),
-                }
-                for a in artifacts
-            ], indent=2, default=str)
+            return json.dumps(
+                [
+                    {
+                        "id": a.id,
+                        "artifact_type": a.artifact_type,
+                        "title": a.title,
+                        "content_preview": (a.content_text or "")[:2000],
+                        "created_at": str(a.created_at),
+                    }
+                    for a in artifacts
+                ],
+                indent=2,
+                default=str,
+            )
 
         except Exception as e:
-            logger.error("get_artifacts failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "get_artifacts failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -588,7 +648,10 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
-            acting_user_id = (await MissionService(ctx.deps.db_session).get_mission(mission_id)).owner_id
+
+            acting_user_id = (
+                await MissionService(ctx.deps.db_session).get_mission(mission_id)
+            ).owner_id
             svc = MissionPlanOrchestrator(ctx.deps.db_session, event_bus=ctx.deps.event_bus)
             result = await svc.run_objective(
                 mission_id=mission_id,
@@ -614,7 +677,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             return json.dumps(result, default=str)
 
         except Exception as e:
-            logger.error("run_objective failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "run_objective failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001
@@ -643,20 +708,26 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             tasks = []
             for r in records:
-                tasks.append({
-                    "execution_record_id": r.id,
-                    "task_type": r.task_type,
-                    "status": r.status if isinstance(r.status, str) else r.status.value,
-                    "objective": r.objective_statement,
-                    "temporal_workflow_id": r.temporal_workflow_id,
-                    "created_at": r.created_at.isoformat() if r.created_at else None,
-                    "started_at": r.started_at.isoformat() if r.started_at else None,
-                    "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-                })
+                tasks.append(
+                    {
+                        "execution_record_id": r.id,
+                        "task_type": r.task_type,
+                        "status": r.status if isinstance(r.status, str) else r.status.value,
+                        "objective": r.objective_statement,
+                        "temporal_workflow_id": r.temporal_workflow_id,
+                        "created_at": r.created_at.isoformat() if r.created_at else None,
+                        "started_at": r.started_at.isoformat() if r.started_at else None,
+                        "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                    }
+                )
 
             return json.dumps({"tasks": tasks, "count": len(tasks)}, indent=2, default=str)
         except Exception as e:
-            logger.error("check_background_tasks failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "check_background_tasks failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             return json.dumps({"error": str(e)})
 
     # ── Mission Plan Tools (Plan 42) ──────────────────────────────────
@@ -682,11 +753,14 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             from modules.backend.agents.adapters.plan_introspection import get_plan_state
 
             result = await get_plan_state(
-                ctx.deps.db_session, mission_id=ctx.deps.mission_id,
+                ctx.deps.db_session,
+                mission_id=ctx.deps.mission_id,
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("get_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "get_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -724,6 +798,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 return json.dumps({"error": "No database session available"})
 
             import uuid as _uuid
+
             from modules.backend.core.config import get_app_config, get_default_budget_usd
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
@@ -766,19 +841,25 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 },
             )
 
-            return json.dumps({
-                "status": "refining",
-                "plan_id": plan.id,
-                "workflow_id": workflow_id,
-                "message": (
-                    "Plan refinement started. The Planning Agent is building "
-                    "tasks now — progress is visible in the Console and Plan "
-                    "tab. Tell the user to watch the Plan tab for new tasks."
-                ),
-            }, indent=2, default=str)
+            return json.dumps(
+                {
+                    "status": "refining",
+                    "plan_id": plan.id,
+                    "workflow_id": workflow_id,
+                    "message": (
+                        "Plan refinement started. The Planning Agent is building "
+                        "tasks now — progress is visible in the Console and Plan "
+                        "tab. Tell the user to watch the Plan tab for new tasks."
+                    ),
+                },
+                indent=2,
+                default=str,
+            )
 
         except Exception as e:
-            logger.error("refine_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "refine_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -813,6 +894,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             )
 
             from modules.backend.temporal.tool_fork_models import DesignWorkflowInput
+
             workflow_id = await _start_tool_fork_workflow(
                 workflow_name="DesignWorkflowWorkflow",
                 input_data=DesignWorkflowInput(
@@ -826,17 +908,23 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 record_id=record.id,
             )
 
-            return json.dumps({
-                "execution_record_id": record.id,
-                "temporal_workflow_id": workflow_id,
-                "status": "started_in_background",
-                "workflow_name": name,
-                "message": f"The Workflow Architect is designing '{name}'. "
-                           "You'll see progress in the stream tab. "
-                           "Use check_background_tasks to check completion.",
-            }, indent=2, default=str)
+            return json.dumps(
+                {
+                    "execution_record_id": record.id,
+                    "temporal_workflow_id": workflow_id,
+                    "status": "started_in_background",
+                    "workflow_name": name,
+                    "message": f"The Workflow Architect is designing '{name}'. "
+                    "You'll see progress in the stream tab. "
+                    "Use check_background_tasks to check completion.",
+                },
+                indent=2,
+                default=str,
+            )
         except Exception as e:
-            logger.error("design_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "design_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -877,13 +965,17 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 return json.dumps({"error": "No database session available"})
 
             if not reason or not reason.strip():
-                return json.dumps({
-                    "error": "reason is required — explain why you are approving",
-                })
+                return json.dumps(
+                    {
+                        "error": "reason is required — explain why you are approving",
+                    }
+                )
             if len(reason) > 500:
-                return json.dumps({
-                    "error": f"reason too long ({len(reason)} chars, max 500)",
-                })
+                return json.dumps(
+                    {
+                        "error": f"reason too long ({len(reason)} chars, max 500)",
+                    }
+                )
 
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
@@ -896,20 +988,24 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             # Gate policy: refuse in interactive mode
             if plan.gate_mode == "interactive" or plan.gate_mode is None:
-                return json.dumps({
-                    "error": (
-                        "Plan is in interactive mode — the user approves "
-                        "tasks manually. Tell them to switch the plan to "
-                        "ai_assisted if they want you to auto-approve on "
-                        "their behalf."
-                    ),
-                    "gate_mode": plan.gate_mode,
-                })
+                return json.dumps(
+                    {
+                        "error": (
+                            "Plan is in interactive mode — the user approves "
+                            "tasks manually. Tell them to switch the plan to "
+                            "ai_assisted if they want you to auto-approve on "
+                            "their behalf."
+                        ),
+                        "gate_mode": plan.gate_mode,
+                    }
+                )
 
             if plan.gate_mode not in ("ai_assisted", "autonomous"):
-                return json.dumps({
-                    "error": f"Unsupported gate_mode for auto-approval: {plan.gate_mode}",
-                })
+                return json.dumps(
+                    {
+                        "error": f"Unsupported gate_mode for auto-approval: {plan.gate_mode}",
+                    }
+                )
 
             # The Director acts on behalf of the mission owner — use the
             # owner's user id so the tasks.approved_by_user_id
@@ -921,13 +1017,19 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             for task_id in task_ids:
                 try:
                     transitioned = await svc.approve_task(
-                        plan.id, task_id, user_id=acting_user_id,
+                        plan.id,
+                        task_id,
+                        user_id=acting_user_id,
                     )
                     all_transitioned.extend(s.id for s in transitioned)
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
                         "approve_plan_tasks: skipping task",
-                        extra={"task_id": task_id, "error": str(e), "mission_id": ctx.deps.mission_id},
+                        extra={
+                            "task_id": task_id,
+                            "error": str(e),
+                            "mission_id": ctx.deps.mission_id,
+                        },
                     )
 
             # Save plan attributes before commit — commit() expires all
@@ -938,10 +1040,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
             # Deduplicate while preserving order
             seen: set[str] = set()
-            unique_transitioned = [
-                t for t in all_transitioned
-                if not (t in seen or seen.add(t))
-            ]
+            unique_transitioned = [t for t in all_transitioned if not (t in seen or seen.add(t))]
 
             logger.info(
                 "Director auto-approved plan tasks",
@@ -970,20 +1069,28 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                     ),
                 )
 
-            return json.dumps({
-                "plan_id": _plan_id,
-                "gate_mode": _gate_mode,
-                "requested_task_ids": task_ids,
-                "transitioned_task_ids": unique_transitioned,
-                "reason": reason,
-                "message": (
-                    f"Auto-approved {len(unique_transitioned)} task(s) "
-                    f"(including transitive dependencies). The user can "
-                    f"still veto by rejecting any task in the Plan tab."
-                ),
-            }, indent=2, default=str)
+            return json.dumps(
+                {
+                    "plan_id": _plan_id,
+                    "gate_mode": _gate_mode,
+                    "requested_task_ids": task_ids,
+                    "transitioned_task_ids": unique_transitioned,
+                    "reason": reason,
+                    "message": (
+                        f"Auto-approved {len(unique_transitioned)} task(s) "
+                        f"(including transitive dependencies). The user can "
+                        f"still veto by rejecting any task in the Plan tab."
+                    ),
+                },
+                indent=2,
+                default=str,
+            )
         except Exception as e:
-            logger.error("approve_plan_tasks failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "approve_plan_tasks failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001
@@ -1022,6 +1129,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             reason: Why the intent changed.
         """
         from modules.backend.agents.adapters.intent import capture_intent
+
         scope = {}
         if scope_in:
             scope["in"] = scope_in
@@ -1041,6 +1149,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     ) -> str:
         """Retrieve the current mission intent and scope."""
         from modules.backend.agents.adapters.intent import restate_current_intent
+
         return await restate_current_intent(ctx.deps.mission_id)
 
     # ── Knowledge Query Tool (Plan 57 Phase D) ──────────────
@@ -1066,6 +1175,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             platform_only: Only search platform-promoted entries.
         """
         from modules.backend.tools.query_knowledge import query_knowledge
+
         return await query_knowledge(
             ctx.deps.mission_id,
             query=query,
@@ -1082,6 +1192,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     ) -> str:
         """Inject the current intent into every Director turn."""
         from modules.backend.agents.adapters.intent import restate_current_intent
+
         try:
             intent_text = await restate_current_intent(ctx.deps.mission_id)
             if intent_text and "No intent set" not in intent_text:
@@ -1182,11 +1293,17 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if counts:
                 parts.append("Status: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
             if plan.budget_usd_ceiling:
-                parts.append(f"Budget: ${plan.total_spent_usd:.2f} / ${plan.budget_usd_ceiling:.2f}")
+                parts.append(
+                    f"Budget: ${plan.total_spent_usd:.2f} / ${plan.budget_usd_ceiling:.2f}"
+                )
 
             # Active runs
-            from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
-            from sqlalchemy import select, func
+            from sqlalchemy import func, select
+
+            from modules.backend.models.execution_record import (
+                ExecutionRecord,
+                ExecutionRecordStatus,
+            )
 
             stmt = (
                 select(func.count())
@@ -1198,10 +1315,13 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             )
             active_count = (await ctx.deps.db_session.execute(stmt)).scalar() or 0
             if active_count:
-                parts.append(f"Active runs: {active_count} (agents are executing — do NOT start new work)")
+                parts.append(
+                    f"Active runs: {active_count} (agents are executing — do NOT start new work)"
+                )
 
             # Recent artifacts
             from modules.backend.models.mission_artifact import MissionArtifact
+
             stmt = (
                 select(MissionArtifact.title, MissionArtifact.artifact_type)
                 .where(MissionArtifact.mission_id == mission_id)
@@ -1224,10 +1344,12 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     # so the Director can introspect its own capabilities at runtime.
     tool_info = []
     for t in agent._function_toolset.tools.values():
-        tool_info.append({
-            "name": t.name,
-            "description": (t.description or "")[:120],
-        })
+        tool_info.append(
+            {
+                "name": t.name,
+                "description": (t.description or "")[:120],
+            }
+        )
     list_tools._registered_tools = sorted(tool_info, key=lambda x: x["name"])
 
     return agent

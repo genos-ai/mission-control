@@ -7,11 +7,7 @@ Data access for MCD and context change audit trail.
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.mission_context import (
-    ContextChange,
-    ContextMilestone,
-    MissionContext,
-)
+from modules.backend.models.mission_context import ContextChange, ContextMilestone, MissionContext
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -23,8 +19,7 @@ class MissionContextRepository(BaseRepository[MissionContext]):
     async def get_by_mission_id(self, mission_id: str) -> MissionContext | None:
         """Get MCD by mission ID."""
         result = await self.session.execute(
-            select(MissionContext)
-            .where(MissionContext.mission_id == mission_id)
+            select(MissionContext).where(MissionContext.mission_id == mission_id)
         )
         return result.scalar_one_or_none()
 

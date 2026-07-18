@@ -87,11 +87,10 @@ class AutonomousPostRunReviewer:
         # ManualGateReviewer. This stops the autonomy loop from spawning
         # new plans without explicit operator approval.
         if self._gate_mode == "manual":
-            from modules.backend.agents.mission_control.gate_manual import (
-                ManualGateReviewer,
-            )
+            from modules.backend.agents.mission_control.gate_manual import ManualGateReviewer
             from modules.backend.core.config import get_app_config
             from modules.backend.core.database import get_session_factory
+
             manual = ManualGateReviewer(
                 session_factory=get_session_factory(),
                 timeout_seconds=get_app_config().gate.manual.timeout_seconds,
@@ -161,8 +160,7 @@ class AutonomousPostRunReviewer:
         if approved_count > 0:
             return self._decide(
                 GateAction.WAIT,
-                f"{approved_count} approved task(s) remaining — "
-                "daemon will dispatch next tick.",
+                f"{approved_count} approved task(s) remaining — " "daemon will dispatch next tick.",
                 execution_record_id=execution_record_id,
                 rule=4,
             )
@@ -171,7 +169,8 @@ class AutonomousPostRunReviewer:
         if proposed_count > 0:
             # Breaker #4: Budget headroom before advancing
             headroom_ok = self._check_budget_headroom(
-                context, proposed_count,
+                context,
+                proposed_count,
             )
             if not headroom_ok:
                 return self._decide(
@@ -223,8 +222,7 @@ class AutonomousPostRunReviewer:
         # Fall-through: unknown situation → ESCALATE (safe default)
         return self._decide(
             GateAction.ESCALATE,
-            "No decision matrix branch matched — escalating "
-            "to Director as safe default.",
+            "No decision matrix branch matched — escalating " "to Director as safe default.",
             execution_record_id=execution_record_id,
             rule="fallthrough",
         )
@@ -241,12 +239,14 @@ class AutonomousPostRunReviewer:
     ) -> GateDecision:
         """Build a GateDecision and write the audit row."""
         # Build the structured JSON tail for the reasoning field
-        metadata_json = json.dumps({
-            "action": action.value,
-            "reviewer": "config:rule_engine",
-            "rule": rule,
-            "model_metadata": None,
-        })
+        metadata_json = json.dumps(
+            {
+                "action": action.value,
+                "reviewer": "config:rule_engine",
+                "rule": rule,
+                "model_metadata": None,
+            }
+        )
         full_reason = f"{reason}\n__META__{metadata_json}"
 
         decision = GateDecision(
@@ -260,7 +260,9 @@ class AutonomousPostRunReviewer:
         if execution_record_id:
             try:
                 self._write_audit_row(
-                    execution_record_id, action, full_reason,
+                    execution_record_id,
+                    action,
+                    full_reason,
                 )
             except Exception:
                 logger.warning(
@@ -296,10 +298,7 @@ class AutonomousPostRunReviewer:
         session.add() is a memory operation; the actual DB write
         happens at the next flush/commit by the caller.
         """
-        from modules.backend.models.execution_record import (
-            DecisionType,
-            ExecutionDecision,
-        )
+        from modules.backend.models.execution_record import DecisionType, ExecutionDecision
 
         row = ExecutionDecision(
             execution_record_id=execution_record_id,
@@ -310,24 +309,26 @@ class AutonomousPostRunReviewer:
         self._session.add(row)
 
     async def _get_cached_decision(
-        self, execution_record_id: str,
+        self,
+        execution_record_id: str,
     ) -> GateDecision | None:
         """Check for an existing post_run_supervisor decision.
 
         If found, reconstruct the GateDecision from the audit row's
         JSON tail in the reasoning field (see §4.5 encoding).
         """
-        from modules.backend.models.execution_record import (
-            DecisionType,
-            ExecutionDecision,
-        )
+        from modules.backend.models.execution_record import DecisionType, ExecutionDecision
 
-        stmt = select(ExecutionDecision).where(
-            and_(
-                ExecutionDecision.execution_record_id == execution_record_id,
-                ExecutionDecision.decision_type == DecisionType.POST_RUN_SUPERVISOR.value,
+        stmt = (
+            select(ExecutionDecision)
+            .where(
+                and_(
+                    ExecutionDecision.execution_record_id == execution_record_id,
+                    ExecutionDecision.decision_type == DecisionType.POST_RUN_SUPERVISOR.value,
+                )
             )
-        ).limit(1)
+            .limit(1)
+        )
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         if row is None:
@@ -376,12 +377,8 @@ class AutonomousPostRunReviewer:
         execution_record_id = context.plan_task_summary.get("execution_record_id")
 
         try:
-            from modules.backend.agents.mission.supervisor.agent import (
-                create_event_agent,
-            )
-            from modules.backend.agents.mission.supervisor.deps import (
-                MissionSupervisorDeps,
-            )
+            from modules.backend.agents.mission.supervisor.agent import create_event_agent
+            from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
 
             agent = create_event_agent("copilot:claude-haiku-4.5")
             deps = MissionSupervisorDeps(
@@ -405,6 +402,7 @@ class AutonomousPostRunReviewer:
             usage = result.usage()
             tokens_used = (usage.input_tokens or 0) + (usage.output_tokens or 0)
             from modules.backend.agents.mission_control.cost import compute_cost_usd
+
             cost_usd = compute_cost_usd(
                 usage.input_tokens or 0,
                 usage.output_tokens or 0,
@@ -436,19 +434,22 @@ class AutonomousPostRunReviewer:
                 "ESCALATE": GateAction.ESCALATE,
             }
             action = action_map.get(
-                decision.decision.upper(), GateAction.ESCALATE,
+                decision.decision.upper(),
+                GateAction.ESCALATE,
             )
 
-            metadata_json = json.dumps({
-                "action": action.value,
-                "reviewer": "ai:copilot:claude-haiku-4.5",
-                "rule": 8,
-                "model_metadata": {
-                    "confidence": decision.confidence,
-                    "tokens_used": tokens_used,
-                    "cost_usd": cost_usd,
-                },
-            })
+            metadata_json = json.dumps(
+                {
+                    "action": action.value,
+                    "reviewer": "ai:copilot:claude-haiku-4.5",
+                    "rule": 8,
+                    "model_metadata": {
+                        "confidence": decision.confidence,
+                        "tokens_used": tokens_used,
+                        "cost_usd": cost_usd,
+                    },
+                }
+            )
             full_reason = f"{decision.reason}\n{metadata_json}"
 
             gate_decision = GateDecision(
@@ -466,12 +467,17 @@ class AutonomousPostRunReviewer:
             if execution_record_id:
                 try:
                     self._write_audit_row(
-                        execution_record_id, action, full_reason,
+                        execution_record_id,
+                        action,
+                        full_reason,
                     )
                 except Exception:
                     logger.warning(
                         "Failed to write Haiku audit row",
-                        extra={"execution_record_id": execution_record_id, "mission_id": context.mission_id},
+                        extra={
+                            "execution_record_id": execution_record_id,
+                            "mission_id": context.mission_id,
+                        },
                         exc_info=True,
                     )
 

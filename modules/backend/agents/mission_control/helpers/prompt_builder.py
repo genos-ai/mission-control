@@ -77,6 +77,7 @@ def _load_prompt_from_registry(agent_name: str) -> str:
     """
     try:
         from modules.backend.agents.mission_control.registry import get_registry
+
         registry = get_registry()
         config = registry.get(agent_name)
         if config and config.system_prompt:
@@ -226,8 +227,7 @@ def _build_planning_prompt(
 
     if upstream_context:
         parts.append(
-            f"## Upstream Context\n\n```json\n"
-            f"{json.dumps(upstream_context, indent=2)}\n```\n"
+            f"## Upstream Context\n\n```json\n" f"{json.dumps(upstream_context, indent=2)}\n```\n"
         )
 
     return "\n".join(parts)

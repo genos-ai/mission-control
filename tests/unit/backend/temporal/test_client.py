@@ -4,8 +4,9 @@ Mocks only get_app_config (config loading, not infra we operate).
 Uses real TemporalSchema instances.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from modules.backend.core.config_schema import TemporalSchema
 from modules.backend.temporal.client import get_temporal_config

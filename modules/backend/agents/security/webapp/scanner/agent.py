@@ -35,8 +35,11 @@ def _make_scan_tool(capability_name: str, tool_name: str, doc: str):
 
     async def tool_fn(ctx: RunContext[ScanDeps], target_path: str) -> str:
         return await run_scan(
-            capability, target_path, ctx.deps.evidence_path,
-            ctx.deps.tool_registry, environment_handle=ctx.deps.environment_handle,
+            capability,
+            target_path,
+            ctx.deps.evidence_path,
+            ctx.deps.tool_registry,
+            environment_handle=ctx.deps.environment_handle,
         )
 
     tool_fn.__name__ = tool_name
@@ -73,7 +76,9 @@ def create_agent(
         return await run_detect_surface(target_path)
 
     @agent.tool
-    async def security_merge_sarif(ctx: RunContext[ScanDeps], sarif_paths: list[str], output_path: str) -> str:
+    async def security_merge_sarif(
+        ctx: RunContext[ScanDeps], sarif_paths: list[str], output_path: str
+    ) -> str:
         """Merge multiple SARIF files, deduplicating by (cwe_id, file_path, line_number)."""
         return await run_merge_sarif(sarif_paths, output_path)
 

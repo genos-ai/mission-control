@@ -49,11 +49,14 @@ class MissionTeamAddRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent_catalog_id: str = Field(
-        ..., min_length=1, max_length=36,
+        ...,
+        min_length=1,
+        max_length=36,
         description="UUID of the agent from the catalog",
     )
     user_prompt: str | None = Field(
-        None, max_length=10000,
+        None,
+        max_length=10000,
         description="Mission-specific instructions for this agent",
     )
     display_order: int = Field(default=0, ge=0)

@@ -14,19 +14,9 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static, TextArea
 
-from modules.backend.agents.mission_control.gate import (
-    GateAction,
-    GateContext,
-    GateDecision,
-)
-from modules.clients.common.gate_helpers import (
-    ACTION_COLORS,
-    cost_color,
-    gate_header,
-    status_icon,
-)
+from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
+from modules.clients.common.gate_helpers import ACTION_COLORS, cost_color, gate_header, status_icon
 from modules.clients.tui.messages import GateReviewCompleted
-
 
 # ── Gate type display names ──────────────────────────────────────────
 
@@ -55,15 +45,12 @@ def _render_context_body(ctx: GateContext) -> str:
 
     # Cost line
     lines.append(
-        f"[bold]Cost:[/bold] [{cc}]${ctx.total_cost_usd:.4f}[/{cc}]"
-        f" / ${ctx.budget_usd:.2f}"
+        f"[bold]Cost:[/bold] [{cc}]${ctx.total_cost_usd:.4f}[/{cc}]" f" / ${ctx.budget_usd:.2f}"
     )
 
     # Layer info
     if ctx.total_layers > 0:
-        lines.append(
-            f"[bold]Layer:[/bold] {ctx.layer_index + 1} / {ctx.total_layers}"
-        )
+        lines.append(f"[bold]Layer:[/bold] {ctx.layer_index + 1} / {ctx.total_layers}")
 
     # Pending tasks
     if ctx.pending_tasks:
@@ -236,8 +223,7 @@ class GateReviewModal(ModalScreen[GateDecision]):
 
             # Keyboard hint
             shortcuts = "  ".join(
-                f"[bold]{a.value[0]}[/bold]={a.value}"
-                for a in self._available_actions
+                f"[bold]{a.value[0]}[/bold]={a.value}" for a in self._available_actions
             )
             yield Label(
                 f"[dim]{shortcuts}  esc=continue[/dim]",

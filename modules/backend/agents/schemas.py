@@ -53,7 +53,7 @@ class QaAuditResult(BaseModel):
 class ArchitectureFinding(BaseModel):
     """A single architectural principle violation found during review."""
 
-    principle: str         # unnecessary_complexity, unsafe_concurrency, etc.
+    principle: str  # unnecessary_complexity, unsafe_concurrency, etc.
     file: str
     line: int | None = None
     message: str
@@ -68,15 +68,15 @@ class ArchitectureReviewResult(BaseModel):
     total_findings: int
     findings: list[ArchitectureFinding]
     files_reviewed: int
-    new_findings: int      # findings not in baseline
+    new_findings: int  # findings not in baseline
     baseline_findings: int  # known findings from baseline
 
 
 class HealthFinding(BaseModel):
     """A single issue found during health check."""
 
-    category: str          # log_errors, config, dependencies, file_structure
-    severity: str          # error, warning, info
+    category: str  # log_errors, config, dependencies, file_structure
+    severity: str  # error, warning, info
     message: str
     details: str | None = None
 
@@ -85,7 +85,7 @@ class HealthCheckResult(BaseModel):
     """Structured output from the system health agent (read-only)."""
 
     summary: str
-    overall_status: str    # healthy, degraded, unhealthy
+    overall_status: str  # healthy, degraded, unhealthy
     findings: list[HealthFinding]
     error_count: int
     warning_count: int

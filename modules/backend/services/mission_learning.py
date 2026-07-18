@@ -23,11 +23,7 @@ from modules.backend.models.execution_record import (
     TaskAttemptStatus,
     TaskExecution,
 )
-from modules.backend.models.mission_learning import (
-    LearningKind,
-    LearningStatus,
-    MissionLearning,
-)
+from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
 from modules.backend.repositories.mission_learning import MissionLearningRepository
 from modules.backend.services.base import BaseService
 
@@ -41,10 +37,12 @@ def _schedule_embed(source_table: str, source_id: str) -> None:
     async def _fire():
         try:
             from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+
             client = await get_temporal_client()
             config = get_temporal_config()
 
             from modules.backend.temporal.knowledge_activities import embed_source
+
             await client.execute_workflow(
                 "no-op",  # Not a workflow — use start_activity pattern
                 task_queue=config.task_queue,
@@ -65,10 +63,14 @@ def _schedule_embed(source_table: str, source_id: str) -> None:
 async def _fire_embed_direct(source_table: str, source_id: str) -> None:
     """Directly embed a source row. Called from create_task."""
     try:
-        from modules.backend.services.knowledge_helpers import get_embed_text, get_embedding_version, get_source_mission_id
-        from modules.backend.core.embeddings import get_embedder, content_hash
         from modules.backend.core.database import get_async_session
+        from modules.backend.core.embeddings import content_hash, get_embedder
         from modules.backend.repositories.embedding import EmbeddingRepository
+        from modules.backend.services.knowledge_helpers import (
+            get_embed_text,
+            get_embedding_version,
+            get_source_mission_id,
+        )
 
         embed_text = await get_embed_text(source_table, source_id)
         if not embed_text:
@@ -102,6 +104,7 @@ def _load_learning_config() -> dict:
     """Load knowledge.learnings config with safe defaults."""
     try:
         from modules.backend.core.config import get_app_config
+
         cfg = get_app_config().missions.knowledge.learnings
         return {
             "min_occurrence": cfg.min_occurrence_for_extraction,
@@ -188,7 +191,8 @@ class MissionLearningService(BaseService):
     ) -> int:
         """Count learnings for a mission."""
         return await self._learning_repo.count_by_mission(
-            mission_id, status=status,
+            mission_id,
+            status=status,
         )
 
     async def list_by_mission(
@@ -249,10 +253,7 @@ class MissionLearningService(BaseService):
         Looks for active learnings with overlapping domain_tags + agent_names
         and opposing recommendation verbs.
         """
-        query = (
-            select(MissionLearning)
-            .where(MissionLearning.status == LearningStatus.ACTIVE.value)
-        )
+        query = select(MissionLearning).where(MissionLearning.status == LearningStatus.ACTIVE.value)
         if mission_id:
             query = query.where(MissionLearning.mission_id == mission_id)
 
@@ -267,7 +268,7 @@ class MissionLearningService(BaseService):
 
         candidates: list[tuple[MissionLearning, MissionLearning]] = []
         for i, a in enumerate(learnings):
-            for b in learnings[i + 1:]:
+            for b in learnings[i + 1 :]:
                 # Must share at least one domain tag or agent
                 shared_tags = set(a.domain_tags or []) & set(b.domain_tags or [])
                 shared_agents = set(a.agent_names or []) & set(b.agent_names or [])
@@ -341,17 +342,20 @@ class MissionLearningExtractor:
             # Collect evidence
             attempt_ids = [a.id for a, _ in items]
             execution_ids = list({e.id for _, e in items})
-            domain_tags = list({
-                t for _, e in items
-                for t in (e.domain_tags or [])
-            })
+            domain_tags = list({t for _, e in items for t in (e.domain_tags or [])})
 
             # Check for retry strategy: same agent+domain succeeded after failures
             has_success = await self._check_success_after_failures(
-                mission_id, agent_name, domain_tags,
+                mission_id,
+                agent_name,
+                domain_tags,
             )
 
-            kind = LearningKind.RETRY_STRATEGY.value if has_success else LearningKind.FAILURE_PATTERN.value
+            kind = (
+                LearningKind.RETRY_STRATEGY.value
+                if has_success
+                else LearningKind.FAILURE_PATTERN.value
+            )
             title = f"{agent_name} — {failure_tier} failures ({len(items)}x)"
             body = self._build_body(items)
             recommendation = self._build_recommendation(items, has_success)
@@ -359,7 +363,9 @@ class MissionLearningExtractor:
 
             # Dedup: check for existing learning with same agent + kind
             existing = await self._learning_repo.find_by_agent_and_kind(
-                mission_id, agent_name, kind,
+                mission_id,
+                agent_name,
+                kind,
             )
             if existing:
                 # Increment occurrence instead of creating duplicate
@@ -372,7 +378,10 @@ class MissionLearningExtractor:
                 )
                 logger.debug(
                     "Learning dedup: incremented occurrence",
-                    extra={"learning_id": existing[0].id, "new_count": existing[0].occurrence_count + 1},
+                    extra={
+                        "learning_id": existing[0].id,
+                        "new_count": existing[0].occurrence_count + 1,
+                    },
                 )
                 continue
 
@@ -444,9 +453,7 @@ class MissionLearningExtractor:
             # Find what feedback led to success
             for attempt, execution in items:
                 if attempt.feedback_provided:
-                    return (
-                        f"Retry with feedback: {attempt.feedback_provided[:300]}"
-                    )
+                    return f"Retry with feedback: {attempt.feedback_provided[:300]}"
             return "Agent eventually succeeded — review the successful attempt for the working approach."
         return "Recurring failure pattern — consider a different agent or approach."
 

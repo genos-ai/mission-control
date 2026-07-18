@@ -41,8 +41,7 @@ class _CatalogAgentRow(Static):
 
         with Horizontal(classes="catalog-row"):
             yield Static(
-                f"[bold]{name}[/bold]  {agent_type}  v{version}\n"
-                f"[dim]{description}[/dim]",
+                f"[bold]{name}[/bold]  {agent_type}  v{version}\n" f"[dim]{description}[/dim]",
                 markup=True,
                 classes="catalog-row-info",
             )
@@ -99,7 +98,8 @@ class CatalogBrowseModal(ModalScreen[None]):
         except Exception as exc:
             logger.warning("Could not load catalog", exc_info=True)
             scroll = self.query_one(
-                "#catalog-modal-list", VerticalScroll,
+                "#catalog-modal-list",
+                VerticalScroll,
             )
             scroll.remove_children()
             scroll.mount(
@@ -126,7 +126,8 @@ class CatalogBrowseModal(ModalScreen[None]):
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Filter catalog list as user types."""
         filtered = filter_catalog_agents(
-            getattr(self, "_all_agents", []), event.value,
+            getattr(self, "_all_agents", []),
+            event.value,
         )
         self._render_agents(filtered)
 
@@ -138,7 +139,8 @@ class CatalogBrowseModal(ModalScreen[None]):
 
         try:
             await self.app.bridge.add_team_member(
-                mission_id, agent_name=event.agent_name,
+                mission_id,
+                agent_name=event.agent_name,
             )
             self.app.notify(
                 f"Added {event.agent_name} to team",

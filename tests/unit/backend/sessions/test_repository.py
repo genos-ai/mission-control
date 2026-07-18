@@ -4,8 +4,9 @@ These tests run against the real database (P12) using the db_session fixture
 with transaction rollback for isolation.
 """
 
-import pytest
 from datetime import timedelta
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.utils import utc_now
@@ -45,8 +46,12 @@ class TestGetActiveByUser:
     async def test_returns_active_and_suspended(self, repo, db_session):
         """Should return only ACTIVE and SUSPENDED sessions for the user."""
         await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.ACTIVE.value)
-        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.SUSPENDED.value)
-        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.COMPLETED.value)
+        await _create_session(
+            db_session, user_id=TEST_USER_ID, status=SessionStatus.SUSPENDED.value
+        )
+        await _create_session(
+            db_session, user_id=TEST_USER_ID, status=SessionStatus.COMPLETED.value
+        )
         await _create_session(db_session, user_id=TEST_USER_ID_2, status=SessionStatus.ACTIVE.value)
 
         results = await repo.get_active_by_user(TEST_USER_ID)
@@ -62,9 +67,13 @@ class TestGetByUser:
     async def test_filter_by_status(self, repo, db_session):
         """Should filter sessions by status."""
         await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.ACTIVE.value)
-        await _create_session(db_session, user_id=TEST_USER_ID, status=SessionStatus.COMPLETED.value)
+        await _create_session(
+            db_session, user_id=TEST_USER_ID, status=SessionStatus.COMPLETED.value
+        )
 
-        results = await repo.get_by_user(user_id=TEST_USER_ID, status_filter=SessionStatus.ACTIVE.value)
+        results = await repo.get_by_user(
+            user_id=TEST_USER_ID, status_filter=SessionStatus.ACTIVE.value
+        )
         assert len(results) == 1
         assert results[0].status == SessionStatus.ACTIVE.value
 

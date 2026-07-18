@@ -92,6 +92,7 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
         return await _do_evaluate_post_run(input)
     except Exception as e:
         from modules.backend.temporal.activities import _format_activity_error
+
         clean_msg = _format_activity_error(e)
         activity.logger.error(
             "evaluate_post_run failed",
@@ -104,29 +105,29 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             exc_info=True,
         )
         await _emit_supervisor_error(
-            input.mission_id, f"Post-run evaluation failed: {clean_msg}",
+            input.mission_id,
+            f"Post-run evaluation failed: {clean_msg}",
         )
         raise
 
 
 async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     """Inner logic for evaluate_post_run — separated for error wrapping."""
-    from modules.backend.agents.mission_control.gate_post_run import (
-        AutonomousPostRunReviewer,
-    )
-    from modules.backend.agents.adapters.supervisor_introspection import (
-        get_recent_run_outcomes,
-    )
+    from modules.backend.agents.adapters.supervisor_introspection import get_recent_run_outcomes
+    from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
     from modules.backend.core.database import get_async_session
     from modules.backend.models.task import TaskStatus
 
     async with get_async_session() as db:
         recent = await get_recent_run_outcomes(
-            db, mission_id=input.mission_id, limit=5,
+            db,
+            mission_id=input.mission_id,
+            limit=5,
         )
 
         # Build task summary from the DB
         from modules.backend.services.mission_plan import MissionPlanService
+
         svc = MissionPlanService(db)
         plan = await svc.get_or_create_plan(input.mission_id)
         task_states = await svc.get_tasks(plan.id)
@@ -187,8 +188,8 @@ async def approve_proposed_tasks(mission_id: str) -> int:
     approved (from a replay), returns 0 without error.
     """
     from modules.backend.core.database import get_async_session
-    from modules.backend.services.mission_plan import MissionPlanService
     from modules.backend.models.task import TaskStatus
+    from modules.backend.services.mission_plan import MissionPlanService
 
     activity.logger.info("Approving proposed tasks", extra={"mission_id": mission_id})
 
@@ -199,6 +200,7 @@ async def approve_proposed_tasks(mission_id: str) -> int:
         # Use mission owner as the approving user — approved_by_user_id
         # is a UUID FK to users.id, not a free-form string.
         from modules.backend.services.mission import MissionService
+
         mission = await MissionService(db).get_mission(mission_id)
         acting_user_id = mission.owner_id
 
@@ -259,6 +261,7 @@ async def check_plan_active(mission_id: str) -> bool:
         svc = MissionPlanService(db)
         plan = await svc.get_or_create_plan(mission_id)
         from modules.backend.models.mission_plan import MissionPlanStatus
+
         return plan.status == MissionPlanStatus.ACTIVE
 
 
@@ -303,10 +306,13 @@ async def fire_supervisor_followups(
 
         # Emit run completed event
         run_event = MissionPlanRunCompletedEvent(
-            session_id=sid, source="temporal_supervisor",
-            mission_id=mission_id, plan_id=plan_id,
+            session_id=sid,
+            source="temporal_supervisor",
+            mission_id=mission_id,
+            plan_id=plan_id,
             execution_record_id=execution_record_id,
-            run_status=run_status, run_cost_usd=run_cost_usd,
+            run_status=run_status,
+            run_cost_usd=run_cost_usd,
             total_spent_usd=total_spent_usd,
             failure_reason=failure_reason,
         )
@@ -314,10 +320,14 @@ async def fire_supervisor_followups(
 
         # Emit supervisor decision event
         decision_event = SupervisorDecisionEmittedEvent(
-            session_id=sid, source="temporal_supervisor",
-            mission_id=mission_id, plan_id=plan_id,
+            session_id=sid,
+            source="temporal_supervisor",
+            mission_id=mission_id,
+            plan_id=plan_id,
             execution_record_id=execution_record_id,
-            action=action, reason=reason[:500], reviewer=reviewer,
+            action=action,
+            reason=reason[:500],
+            reviewer=reviewer,
         )
         await event_bus.publish_to_mission(mission_id, decision_event)
 
@@ -334,7 +344,8 @@ async def fire_supervisor_followups(
             fired = []
             for event in (run_event, decision_event):
                 result = await followup_svc.fire_matching(
-                    event, agent_turn_runner=_noop_runner,
+                    event,
+                    agent_turn_runner=_noop_runner,
                 )
                 fired.extend(result)
             await db.commit()
@@ -365,12 +376,12 @@ async def start_director_turn(
     to ChatTurnWorkflow so it can signal the parent when done — replacing
     polling with an instant wake-up.
     """
+    import uuid
+
     from modules.backend.core.config import get_app_config
     from modules.backend.temporal.chat_models import ChatTurnInput
     from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
     from modules.backend.temporal.client import get_temporal_client
-
-    import uuid
 
     client = await get_temporal_client()
     config = get_app_config().temporal

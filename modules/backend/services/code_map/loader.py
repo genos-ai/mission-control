@@ -109,8 +109,8 @@ class CodeMapLoader:
 
     def regenerate(self) -> dict | None:
         """Regenerate both JSON and Markdown from the current codebase."""
-        from modules.backend.services.code_map.generator import generate_code_map
         from modules.backend.services.code_map.assembler import render_markdown_tree
+        from modules.backend.services.code_map.generator import generate_code_map
 
         try:
             code_map = generate_code_map(
@@ -122,7 +122,8 @@ class CodeMapLoader:
             # Write JSON
             self._json_path.parent.mkdir(parents=True, exist_ok=True)
             self._json_path.write_text(
-                json.dumps(code_map, indent=2), encoding="utf-8",
+                json.dumps(code_map, indent=2),
+                encoding="utf-8",
             )
 
             # Write Markdown

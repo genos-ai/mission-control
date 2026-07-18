@@ -26,10 +26,9 @@ Create Date: 2026-04-11
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import inspect
-
 
 # Revision identifiers
 revision: str = "plan51_001"
@@ -129,8 +128,7 @@ def upgrade() -> None:
             sa.DateTime,
             nullable=True,
             comment=(
-                "Set when the followup has fired max_fires times. "
-                "Row stays as audit trail."
+                "Set when the followup has fired max_fires times. " "Row stays as audit trail."
             ),
         ),
         sa.Column(

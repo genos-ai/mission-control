@@ -100,11 +100,12 @@ class SessionEventBus:
                         "mid": mission_id,
                         "sid": str(event.session_id),
                         "etype": event.event_type,
-                        "ts": event.timestamp
+                        "ts": (
+                            event.timestamp
                             if hasattr(event.timestamp, "isoformat")
-                            else datetime.fromisoformat(str(event.timestamp)),
-                        "src": getattr(event, "agent_id", None)
-                            or getattr(event, "source", ""),
+                            else datetime.fromisoformat(str(event.timestamp))
+                        ),
+                        "src": getattr(event, "agent_id", None) or getattr(event, "source", ""),
                         "data": event.model_dump_json(),
                     },
                 )
@@ -147,7 +148,9 @@ class SessionEventBus:
             logger.debug("Unsubscribed from mission channel", extra={"channel": channel})
 
     async def subscribe_mission_filtered(
-        self, mission_id: str, session_id: uuid.UUID,
+        self,
+        mission_id: str,
+        session_id: uuid.UUID,
     ) -> AsyncIterator[SessionEvent]:
         """Subscribe to a mission channel, yielding only events for one session."""
         target = str(session_id)

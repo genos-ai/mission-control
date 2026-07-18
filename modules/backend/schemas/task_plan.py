@@ -150,8 +150,7 @@ class TaskInputs(BaseModel):
         if not isinstance(upstream, dict):
             return data
         data["from_upstream"] = {
-            key: _normalize_upstream_value(val)
-            for key, val in upstream.items()
+            key: _normalize_upstream_value(val) for key, val in upstream.items()
         }
         return data
 
@@ -239,8 +238,12 @@ class TaskVerification(BaseModel):
         # Route each misplaced field into the correct tier.
         _tier1_fields = {"schema_validation", "required_output_fields"}
         _tier2_fields = {"deterministic_checks"}
-        _tier3_fields = {"requires_ai_evaluation", "evaluation_criteria",
-                         "evaluator_agent", "min_evaluation_score"}
+        _tier3_fields = {
+            "requires_ai_evaluation",
+            "evaluation_criteria",
+            "evaluator_agent",
+            "min_evaluation_score",
+        }
 
         for fields, tier_key in [
             (_tier1_fields, "tier_1"),
@@ -345,9 +348,13 @@ class TaskDefinition(BaseModel):
 
         # Strip fields not in the schema that LLMs commonly invent
         _task_aliases = {
-            "id", "task_name", "agent_name", "title", "name",
+            "id",
+            "task_name",
+            "agent_name",
+            "title",
+            "name",
             "depends_on",  # consumed above
-            "outputs",     # not in schema — outputs are implicit
+            "outputs",  # not in schema — outputs are implicit
         }
         for alias in _task_aliases:
             data.pop(alias, None)
@@ -388,7 +395,9 @@ class TaskPlan(BaseModel):
     version: str = "1.0.0"
     mission_id: str
     summary: str = ""
-    estimated_cost_usd: float = 0.0  # ge=0.0 enforced in output_validator (grammar strips Field constraints)
+    estimated_cost_usd: float = (
+        0.0  # ge=0.0 enforced in output_validator (grammar strips Field constraints)
+    )
     estimated_duration_seconds: int = 0  # ge=0 enforced in output_validator
     tasks: list[TaskDefinition]
     execution_hints: ExecutionHints = Field(default_factory=ExecutionHints)
@@ -424,11 +433,19 @@ class TaskPlan(BaseModel):
         # Genuinely unknown fields pass through to extra="forbid" so
         # Pydantic produces clear error messages.
         _plan_aliases = {
-            "plan_version", "objective", "approach", "description",
-            "total_cost_estimate_usd", "cost_estimate_usd", "total_cost_usd",
+            "plan_version",
+            "objective",
+            "approach",
+            "description",
+            "total_cost_estimate_usd",
+            "cost_estimate_usd",
+            "total_cost_usd",
             "plan_id",  # LLMs sometimes echo the plan_id from context
-            "scope",    # LLMs add scope metadata (phase, exclusions, etc.)
-            "target", "target_path", "evidence_dir", "evidence_path",  # context echoed back
+            "scope",  # LLMs add scope metadata (phase, exclusions, etc.)
+            "target",
+            "target_path",
+            "evidence_dir",
+            "evidence_path",  # context echoed back
         }
         for alias in _plan_aliases:
             data.pop(alias, None)

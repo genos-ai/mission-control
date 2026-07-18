@@ -4,8 +4,9 @@ Mocks only get_app_config (config loading).
 Uses real TemporalSchema for accurate feature flag testing.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from modules.backend.core.config_schema import TemporalSchema
 
@@ -22,9 +23,7 @@ def _mock_app_config(temporal_enabled: bool) -> MagicMock:
 class TestRequestApproval:
     @pytest.mark.asyncio
     async def test_tier3_auto_approves_in_dev_mode(self):
-        from modules.backend.agents.mission_control.approval import (
-            request_approval,
-        )
+        from modules.backend.agents.mission_control.approval import request_approval
 
         with patch(
             "modules.backend.agents.mission_control.approval.get_app_config",
@@ -41,9 +40,7 @@ class TestRequestApproval:
 
     @pytest.mark.asyncio
     async def test_raises_in_tier4(self):
-        from modules.backend.agents.mission_control.approval import (
-            request_approval,
-        )
+        from modules.backend.agents.mission_control.approval import request_approval
 
         with patch(
             "modules.backend.agents.mission_control.approval.get_app_config",
@@ -51,5 +48,8 @@ class TestRequestApproval:
         ):
             with pytest.raises(RuntimeError, match="Tier 4"):
                 await request_approval(
-                    mission_id="m", task_id="t", action="a", context={},
+                    mission_id="m",
+                    task_id="t",
+                    action="a",
+                    context={},
                 )

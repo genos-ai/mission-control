@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 
 class _AbortExecution(Exception):
     """Raised by async actions to signal a clean exit (output already printed)."""
+
     pass
 
 
@@ -46,8 +47,7 @@ def run_execution(
     if not handler:
         click.echo(
             click.style(
-                f"Unknown execution action: {action}. "
-                f"Valid: {', '.join(actions.keys())}",
+                f"Unknown execution action: {action}. " f"Valid: {', '.join(actions.keys())}",
                 fg="red",
             ),
             err=True,
@@ -55,16 +55,18 @@ def run_execution(
         sys.exit(1)
 
     try:
-        asyncio.run(handler(
-            cli_logger,
-            objective=objective,
-            execution_id=execution_id,
-            roster=roster,
-            budget=budget,
-            triggered_by=triggered_by,
-            output_format=output_format,
-            mission_id=mission_id,
-        ))
+        asyncio.run(
+            handler(
+                cli_logger,
+                objective=objective,
+                execution_id=execution_id,
+                roster=roster,
+                budget=budget,
+                triggered_by=triggered_by,
+                output_format=output_format,
+                mission_id=mission_id,
+            )
+        )
     except _AbortExecution:
         sys.exit(1)
     except Exception as e:
@@ -78,7 +80,9 @@ def run_execution(
 # =============================================================================
 
 
-async def _action_create(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
+async def _action_create(
+    cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id
+):
     """Create an execution record (PENDING state)."""
     if not objective:
         click.echo(click.style("Error: --objective is required for create.", fg="red"), err=True)
@@ -115,10 +119,14 @@ async def _action_create(cli_logger, *, objective, execution_id, roster, budget,
     click.echo(f"Execute with: python admin.py execution execute {record.id}")
 
 
-async def _action_execute(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
+async def _action_execute(
+    cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id
+):
     """Execute an existing execution record via handle_mission."""
     if not execution_id:
-        click.echo(click.style("Error: --execution-id is required for execute.", fg="red"), err=True)
+        click.echo(
+            click.style("Error: --execution-id is required for execute.", fg="red"), err=True
+        )
         raise _AbortExecution("execution-id required")
 
     await _preflight_gate(roster)
@@ -156,12 +164,16 @@ async def _action_execute(cli_logger, *, objective, execution_id, roster, budget
         await db.commit()
 
     status = outcome.status
-    click.echo(click.style(f"Execution {status}", fg="green" if status == "success" else "red", bold=True))
+    click.echo(
+        click.style(f"Execution {status}", fg="green" if status == "success" else "red", bold=True)
+    )
     click.echo(f"  Cost: ${outcome.total_cost_usd:.4f}")
     click.echo(f"  Tasks: {len(outcome.task_results)}")
 
 
-async def _action_run(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
+async def _action_run(
+    cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id
+):
     """Create + execute in one step (convenience)."""
     if not objective:
         click.echo(click.style("Error: --objective is required for run.", fg="red"), err=True)
@@ -215,16 +227,20 @@ async def _action_run(cli_logger, *, objective, execution_id, roster, budget, tr
         await db.commit()
 
     status = outcome.status
-    click.echo(click.style(f"Execution {status}", fg="green" if status == "success" else "red", bold=True))
+    click.echo(
+        click.style(f"Execution {status}", fg="green" if status == "success" else "red", bold=True)
+    )
     click.echo(f"  Cost: ${outcome.total_cost_usd:.4f}")
     click.echo(f"  Tasks: {len(outcome.task_results)}")
 
 
-async def _action_list(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
+async def _action_list(
+    cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id
+):
     """List execution records."""
-    from modules.clients.cli.report import get_console, build_table, styled_status
     from modules.backend.core.database import get_async_session
     from modules.backend.services.execution_persistence import ExecutionPersistenceService
+    from modules.clients.cli.report import build_table, get_console, styled_status
 
     async with get_async_session() as db:
         service = ExecutionPersistenceService(db)
@@ -235,40 +251,52 @@ async def _action_list(cli_logger, *, objective, execution_id, roster, budget, t
         return
 
     console = get_console()
-    table = build_table(f"Executions ({total} total)", columns=[
-        ("Date/Time",  {"style": "dim", "width": 16}),
-        ("ID",         {"style": "cyan", "width": 36}),
-        ("Status",     {"width": 10}),
-        ("Cost",       {"justify": "right", "width": 8}),
-        ("Roster",     {"style": "dim", "width": 12}),
-        ("Objective",  {"ratio": 1}),
-    ])
+    table = build_table(
+        f"Executions ({total} total)",
+        columns=[
+            ("Date/Time", {"style": "dim", "width": 16}),
+            ("ID", {"style": "cyan", "width": 36}),
+            ("Status", {"width": 10}),
+            ("Cost", {"justify": "right", "width": 8}),
+            ("Roster", {"style": "dim", "width": 12}),
+            ("Objective", {"ratio": 1}),
+        ],
+    )
 
     for e in records:
         obj = e.objective_statement or "—"
         obj_preview = obj[:60] + "..." if len(obj) > 60 else obj
         dt_str = e.created_at.strftime("%Y-%m-%d %H:%M") if e.created_at else "—"
         table.add_row(
-            dt_str, str(e.id), styled_status(e.status),
-            f"${e.total_cost_usd:.4f}", e.roster_name or "—", obj_preview,
+            dt_str,
+            str(e.id),
+            styled_status(e.status),
+            f"${e.total_cost_usd:.4f}",
+            e.roster_name or "—",
+            obj_preview,
         )
 
     console.print(table)
 
 
-async def _action_detail(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
+async def _action_detail(
+    cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id
+):
     """Show execution record detail."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for detail.", fg="red"), err=True)
         raise _AbortExecution("execution-id required")
 
-    from modules.clients.cli.report import (
-        get_console, styled_status,
-        primary_panel, info_panel, status_panel,
-        render_task_outputs,
-    )
     from modules.backend.core.database import get_async_session
     from modules.backend.services.execution_persistence import ExecutionPersistenceService
+    from modules.clients.cli.report import (
+        get_console,
+        info_panel,
+        primary_panel,
+        render_task_outputs,
+        status_panel,
+        styled_status,
+    )
 
     async with get_async_session() as db:
         service = ExecutionPersistenceService(db)
@@ -288,7 +316,8 @@ async def _action_detail(cli_logger, *, objective, execution_id, roster, budget,
         f"[bold]Started:[/bold]   {record.started_at or '—'}",
         f"[bold]Finished:[/bold]  {record.completed_at or '—'}",
         f"[bold]Roster:[/bold]    {record.roster_name or '—'}",
-        f"[bold]Cost:[/bold]      ${record.total_cost_usd:.4f}" + (f"  (ceiling: ${record.cost_ceiling_usd:.2f})" if record.cost_ceiling_usd else ""),
+        f"[bold]Cost:[/bold]      ${record.total_cost_usd:.4f}"
+        + (f"  (ceiling: ${record.cost_ceiling_usd:.2f})" if record.cost_ceiling_usd else ""),
         f"[bold]Session:[/bold]   {record.session_id}",
     ]
     console.print(primary_panel(content="\n".join(info_lines), title="Execution Detail"))
@@ -306,7 +335,9 @@ async def _action_detail(cli_logger, *, objective, execution_id, roster, budget,
             render_task_outputs(console, tasks)
 
 
-async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
+async def _action_plan(
+    cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id
+):
     """Show the TaskPlan DAG for an execution record."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for plan.", fg="red"), err=True)
@@ -314,11 +345,15 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
 
     import json as _json
 
-    from modules.clients.cli.report import (
-        get_console, build_table, primary_panel, info_panel, styled_status,
-    )
     from modules.backend.core.database import get_async_session
     from modules.backend.services.execution_persistence import ExecutionPersistenceService
+    from modules.clients.cli.report import (
+        build_table,
+        get_console,
+        info_panel,
+        primary_panel,
+        styled_status,
+    )
 
     async with get_async_session() as db:
         service = ExecutionPersistenceService(db)
@@ -365,6 +400,7 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
 
     tasks = plan.get("tasks", [])
     if tasks:
+
         def _tier_icon(verification_outcome: dict, tier: str) -> str:
             tier_data = verification_outcome.get(tier, {})
             status = tier_data.get("status", "skipped")
@@ -374,18 +410,22 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
                 return "[red]\u2717[/red]"
             return "[dim]\u2014[/dim]"
 
-        table = build_table(f"Tasks ({len(tasks)})", columns=[
-            ("Task ID",      {"style": "cyan", "width": 20}),
-            ("Agent",        {"width": 28}),
-            ("Status",       {"width": 10}),
-            ("Cost",         {"justify": "right", "width": 10}),
-            ("Duration",     {"justify": "right", "width": 10}),
-            ("Retries",      {"justify": "right", "width": 8}),
-            ("T1",           {"justify": "center", "width": 4}),
-            ("T2",           {"justify": "center", "width": 4}),
-            ("T3",           {"justify": "center", "width": 4}),
-            ("Dependencies", {"style": "dim", "width": 20}),
-        ], show_lines=True)
+        table = build_table(
+            f"Tasks ({len(tasks)})",
+            columns=[
+                ("Task ID", {"style": "cyan", "width": 20}),
+                ("Agent", {"width": 28}),
+                ("Status", {"width": 10}),
+                ("Cost", {"justify": "right", "width": 10}),
+                ("Duration", {"justify": "right", "width": 10}),
+                ("Retries", {"justify": "right", "width": 8}),
+                ("T1", {"justify": "center", "width": 4}),
+                ("T2", {"justify": "center", "width": 4}),
+                ("T3", {"justify": "center", "width": 4}),
+                ("Dependencies", {"style": "dim", "width": 20}),
+            ],
+            show_lines=True,
+        )
 
         for t in tasks:
             tid = t.get("task_id", "—")
@@ -423,19 +463,26 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
 
         upstream = inputs.get("from_upstream", {})
         if upstream:
-            refs = [f"{k} \u2190 {v.get('source_task', '?')}.{v.get('source_field', '?')}" for k, v in upstream.items()]
+            refs = [
+                f"{k} \u2190 {v.get('source_task', '?')}.{v.get('source_field', '?')}"
+                for k, v in upstream.items()
+            ]
             detail_lines.append(f"[bold]Upstream:[/bold] {', '.join(refs)}")
 
         t1 = plan_verification.get("tier_1", {})
         t2 = plan_verification.get("tier_2", {})
         t3 = plan_verification.get("tier_3", {})
         if t1.get("required_output_fields"):
-            detail_lines.append(f"[bold]T1 Fields:[/bold] {', '.join(t1['required_output_fields'])}")
+            detail_lines.append(
+                f"[bold]T1 Fields:[/bold] {', '.join(t1['required_output_fields'])}"
+            )
         if t2.get("deterministic_checks"):
             checks = [c.get("check") for c in t2["deterministic_checks"]]
             detail_lines.append(f"[bold]T2 Checks:[/bold] {', '.join(checks)}")
         if t3.get("requires_ai_evaluation"):
-            detail_lines.append(f"[bold]T3 Eval:[/bold]  {t3.get('evaluator_agent', '—')} (min: {t3.get('min_evaluation_score', '—')})")
+            detail_lines.append(
+                f"[bold]T3 Eval:[/bold]  {t3.get('evaluator_agent', '—')} (min: {t3.get('min_evaluation_score', '—')})"
+            )
 
         retry_history = result.get("retry_history", [])
         if retry_history:
@@ -444,14 +491,18 @@ async def _action_plan(cli_logger, *, objective, execution_id, roster, budget, t
             for entry in retry_history:
                 tier = entry.get("failure_tier", "?")
                 reason = entry.get("failure_reason", "")[:80]
-                detail_lines.append(f"  Attempt {entry.get('attempt', '?')} \u2014 Tier {tier}: {reason}")
+                detail_lines.append(
+                    f"  Attempt {entry.get('attempt', '?')} \u2014 Tier {tier}: {reason}"
+                )
 
         console.print(info_panel(content="\n".join(detail_lines), title=tid))
 
     console.print()
 
 
-async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id):
+async def _action_cost(
+    cli_logger, *, objective, execution_id, roster, budget, triggered_by, output_format, mission_id
+):
     """Show execution cost breakdown."""
     if not execution_id:
         click.echo(click.style("Error: --execution-id is required for cost.", fg="red"), err=True)
@@ -473,7 +524,7 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
         click.echo(click.style("No cost data — execution may not have been run.", fg="yellow"))
         return
 
-    from modules.clients.cli.report import get_console, build_table, primary_panel
+    from modules.clients.cli.report import build_table, get_console, primary_panel
 
     console = get_console()
 
@@ -494,20 +545,26 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
     console.print(primary_panel(content="\n".join(info_lines), title="Cost Breakdown"))
 
     if task_results:
-        table = build_table("Task Costs", columns=[
-            ("Task",     {"style": "cyan", "width": 12}),
-            ("Agent",    {"width": 28}),
-            ("Cost",     {"justify": "right", "width": 10}),
-            ("Tokens",   {"justify": "right", "width": 14}),
-            ("Duration", {"justify": "right", "width": 10}),
-        ])
+        table = build_table(
+            "Task Costs",
+            columns=[
+                ("Task", {"style": "cyan", "width": 12}),
+                ("Agent", {"width": 28}),
+                ("Cost", {"justify": "right", "width": 10}),
+                ("Tokens", {"justify": "right", "width": 14}),
+                ("Duration", {"justify": "right", "width": 10}),
+            ],
+        )
         for tr in task_results:
             usage = tr.get("token_usage", {})
             tokens = f"{usage.get('input', 0) + usage.get('output', 0):,}"
-            dur = f"{tr.get('duration_seconds', 0):.1f}s" if tr.get('duration_seconds') else "—"
+            dur = f"{tr.get('duration_seconds', 0):.1f}s" if tr.get("duration_seconds") else "—"
             table.add_row(
-                tr.get("task_id", "—"), tr.get("agent_name", "—"),
-                f"${tr.get('cost_usd', 0):.4f}", tokens, dur,
+                tr.get("task_id", "—"),
+                tr.get("agent_name", "—"),
+                f"${tr.get('cost_usd', 0):.4f}",
+                tokens,
+                dur,
             )
         console.print(table)
 
@@ -520,6 +577,7 @@ async def _action_cost(cli_logger, *, objective, execution_id, roster, budget, t
 def _generate_session_id() -> str:
     """Generate a session ID for CLI executions."""
     from uuid import uuid4
+
     return str(uuid4())
 
 
@@ -535,7 +593,9 @@ async def _preflight_gate(roster: str) -> None:
         return
 
     for check in result.failed:
-        label = "insufficient credits" if check.error_type == "insufficient_credits" else check.error
+        label = (
+            "insufficient credits" if check.error_type == "insufficient_credits" else check.error
+        )
         click.echo(click.style(f"  \u2717 {check.model_name}: {label}", fg="red"))
     click.echo()
     click.echo(click.style("Aborting — fix credit issues before running.", fg="red"), err=True)

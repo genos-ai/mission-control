@@ -14,10 +14,7 @@ from pydantic_ai import UsageLimits
 
 from modules.backend.agents.mission_control.helpers import _emit
 from modules.backend.agents.mission_control.middleware import _load_mission_control_config
-from modules.backend.agents.mission_control.models import (
-    EventBusProtocol,
-    ExecuteAgentFn,
-)
+from modules.backend.agents.mission_control.models import EventBusProtocol, ExecuteAgentFn
 from modules.backend.agents.mission_control.outcome import TaskResult
 from modules.backend.agents.mission_control.roster import RosterAgentEntry
 from modules.backend.agents.mission_control.verification import (
@@ -44,10 +41,7 @@ async def execute_task(
     Args:
         instructions: Override for task.instructions (used to deliver retry feedback).
     """
-    timeout = (
-        task.constraints.timeout_override_seconds
-        or roster_entry.constraints.timeout_seconds
-    )
+    timeout = task.constraints.timeout_override_seconds or roster_entry.constraints.timeout_seconds
     cost_ceiling = roster_entry.constraints.cost_ceiling_usd
 
     mc_config = _load_mission_control_config()
@@ -105,11 +99,11 @@ async def execute_with_step_events(
     session_id: str,
 ) -> TaskResult:
     """Wrap the retry handler with PlanStep lifecycle events."""
-    from modules.backend.agents.mission_control.dispatch.retry_handler import (
-        execute_with_retry,
-    )
+    from modules.backend.agents.mission_control.dispatch.retry_handler import execute_with_retry
 
-    await _emit(event_bus, PlanStepStartedEvent,
+    await _emit(
+        event_bus,
+        PlanStepStartedEvent,
         session_id=session_id,
         source=f"dispatch:{mission_id}",
         plan_id=mission_id,
@@ -117,7 +111,9 @@ async def execute_with_step_events(
         step_name=task.description or task.task_id,
         assigned_agent=task.agent,
     )
-    await _emit(event_bus, MissionNarrativeEvent,
+    await _emit(
+        event_bus,
+        MissionNarrativeEvent,
         session_id=session_id,
         source=f"dispatch:{mission_id}",
         mission_id=mission_id,
@@ -139,7 +135,9 @@ async def execute_with_step_events(
         session_id=session_id,
     )
 
-    await _emit(event_bus, PlanStepCompletedEvent,
+    await _emit(
+        event_bus,
+        PlanStepCompletedEvent,
         session_id=session_id,
         source=f"dispatch:{mission_id}",
         plan_id=mission_id,
@@ -148,7 +146,9 @@ async def execute_with_step_events(
         status=result.status.value,
     )
     _is_success = result.status.value in ("success",)
-    await _emit(event_bus, MissionNarrativeEvent,
+    await _emit(
+        event_bus,
+        MissionNarrativeEvent,
         session_id=session_id,
         source=f"dispatch:{mission_id}",
         mission_id=mission_id,

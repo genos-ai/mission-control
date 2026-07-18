@@ -56,22 +56,20 @@ def run_startup_checks() -> None:
     )
 
 
-def _check_secret_strength(settings: Settings, security_config: SecuritySchema, features: FeaturesSchema, errors: list[str]) -> None:
+def _check_secret_strength(
+    settings: Settings, security_config: SecuritySchema, features: FeaturesSchema, errors: list[str]
+) -> None:
     """Validate that secrets meet minimum length requirements."""
     validation = security_config.secrets_validation
 
     jwt_min = validation.jwt_secret_min_length
     if len(settings.jwt_secret) < jwt_min:
-        errors.append(
-            f"JWT_SECRET is {len(settings.jwt_secret)} chars, "
-            f"minimum is {jwt_min}"
-        )
+        errors.append(f"JWT_SECRET is {len(settings.jwt_secret)} chars, " f"minimum is {jwt_min}")
 
     salt_min = validation.api_key_salt_min_length
     if len(settings.api_key_salt) < salt_min:
         errors.append(
-            f"API_KEY_SALT is {len(settings.api_key_salt)} chars, "
-            f"minimum is {salt_min}"
+            f"API_KEY_SALT is {len(settings.api_key_salt)} chars, " f"minimum is {salt_min}"
         )
 
     webhook_min = validation.webhook_secret_min_length
@@ -86,13 +84,9 @@ def _check_channel_secrets(settings: Settings, features: FeaturesSchema, errors:
     """Validate that enabled channels have required secrets configured."""
     if features.channel_telegram_enabled:
         if not settings.telegram_bot_token:
-            errors.append(
-                "channel_telegram_enabled is true but TELEGRAM_BOT_TOKEN is empty"
-            )
+            errors.append("channel_telegram_enabled is true but TELEGRAM_BOT_TOKEN is empty")
         if not settings.telegram_webhook_secret:
-            errors.append(
-                "channel_telegram_enabled is true but TELEGRAM_WEBHOOK_SECRET is empty"
-            )
+            errors.append("channel_telegram_enabled is true but TELEGRAM_WEBHOOK_SECRET is empty")
 
 
 def _check_production_safety(app_config: AppConfig, is_production: bool, errors: list[str]) -> None:
@@ -115,12 +109,12 @@ def _check_production_safety(app_config: AppConfig, is_production: bool, errors:
         origins = app.cors.origins
         localhost_origins = [o for o in origins if "localhost" in o]
         if localhost_origins:
-            errors.append(
-                f"CORS origins contain localhost in production: {localhost_origins}"
-            )
+            errors.append(f"CORS origins contain localhost in production: {localhost_origins}")
 
 
-def _check_channel_allowlists(app_config: AppConfig, features: FeaturesSchema, errors: list[str]) -> None:
+def _check_channel_allowlists(
+    app_config: AppConfig, features: FeaturesSchema, errors: list[str]
+) -> None:
     """Validate that enabled channels with allowlist policy have non-empty allowlists."""
     gateway = app_config.gateway
     policy = gateway.default_policy

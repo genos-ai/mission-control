@@ -7,8 +7,8 @@ No external dependencies — pure unit tests.
 import pytest
 
 from modules.backend.agents.mission_control.check_registry import (
-    CheckResult,
     _REGISTRY,
+    CheckResult,
     check_exists,
     get_check,
     list_checks,
@@ -42,6 +42,7 @@ class TestRegisterCheck:
             return CheckResult(passed=True, details="", execution_time_ms=0.0)
 
         with pytest.raises(ValueError, match="Duplicate check name"):
+
             @register_check("test_check_dup")
             async def check_second(output, params):
                 return CheckResult(passed=True, details="", execution_time_ms=0.0)

@@ -55,9 +55,7 @@ class TelegramAdapter(ChannelAdapter):
                     chat_id=response.session_key,
                     text=chunk,
                     reply_to_message_id=(
-                        int(response.reply_to_message_id)
-                        if response.reply_to_message_id
-                        else None
+                        int(response.reply_to_message_id) if response.reply_to_message_id else None
                     ),
                 )
 

@@ -16,11 +16,14 @@ class ContextUpdateOp(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     op: str = Field(
-        ..., pattern=r"^(add|replace|remove)$",
+        ...,
+        pattern=r"^(add|replace|remove)$",
         description="Operation type",
     )
     path: str = Field(
-        ..., min_length=1, max_length=500,
+        ...,
+        min_length=1,
+        max_length=500,
         description="Dot-notation path in MCD (e.g. 'architecture.components.auth')",
     )
     value: Any = Field(
@@ -28,7 +31,9 @@ class ContextUpdateOp(BaseModel):
         description="Value to set (required for add/replace, ignored for remove)",
     )
     reason: str = Field(
-        ..., min_length=1, max_length=500,
+        ...,
+        min_length=1,
+        max_length=500,
         description="Why this change is being made",
     )
 
@@ -39,7 +44,8 @@ class ContextUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     context_updates: list[ContextUpdateOp] = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
         description="Ordered list of update operations to apply",
     )
 

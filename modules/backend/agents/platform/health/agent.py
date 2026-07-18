@@ -11,16 +11,18 @@ from collections.abc import AsyncGenerator
 from pydantic_ai import Agent, RunContext, UsageLimits
 from pydantic_ai.models import Model
 
+from modules.backend.agents.adapters import system
 from modules.backend.agents.deps.base import HealthAgentDeps
 from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.schemas import HealthCheckResult
-from modules.backend.agents.adapters import system
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[HealthAgentDeps, HealthCheckResult]:
+def create_agent(
+    model: str | Model, tool_names: list[str] | None = None
+) -> Agent[HealthAgentDeps, HealthCheckResult]:
     """Factory: create a health agent with all tools registered.
 
     Called by AgentRegistry.get_instance() on first use.
@@ -42,28 +44,32 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     async def scan_log_errors(ctx: RunContext[HealthAgentDeps]) -> dict:
         """Scan system.jsonl for errors, warnings, and patterns."""
         return await system.scan_log_errors(
-            ctx.deps.project_root, ctx.deps.scope,
+            ctx.deps.project_root,
+            ctx.deps.scope,
         )
 
     @agent.tool
     async def validate_config(ctx: RunContext[HealthAgentDeps]) -> dict:
         """Validate all YAML config files and .env secrets."""
         return await system.validate_config_files(
-            ctx.deps.project_root, ctx.deps.scope,
+            ctx.deps.project_root,
+            ctx.deps.scope,
         )
 
     @agent.tool
     async def check_dependencies(ctx: RunContext[HealthAgentDeps]) -> dict:
         """Check Python dependencies for consistency with requirements.txt."""
         return await system.check_dependencies(
-            ctx.deps.project_root, ctx.deps.scope,
+            ctx.deps.project_root,
+            ctx.deps.scope,
         )
 
     @agent.tool
     async def check_file_structure(ctx: RunContext[HealthAgentDeps]) -> dict:
         """Validate expected project file structure exists."""
         return await system.check_file_structure(
-            ctx.deps.project_root, ctx.deps.scope,
+            ctx.deps.project_root,
+            ctx.deps.scope,
         )
 
     @agent.tool

@@ -39,6 +39,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.absolute()
 sys.path.insert(0, str(PROJECT_ROOT))
 
+
 def _read_backend_port() -> int:
     """Read backend port from config/settings/application.yaml.
 
@@ -47,12 +48,14 @@ def _read_backend_port() -> int:
     """
     try:
         import yaml
+
         config_path = PROJECT_ROOT / "config" / "settings" / "application.yaml"
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
         return int(cfg.get("server", {}).get("port", 8100))
     except Exception:
         return 8100
+
 
 BACKEND_PORT = _read_backend_port()
 FRONTEND_PORT = 5174  # defined in modules/frontend/vite.config.ts
@@ -69,12 +72,15 @@ DAEMON_LOG_TAIL_BYTES = 8000
 # Port utilities
 # ---------------------------------------------------------------------------
 
+
 def get_pids_on_port(port: int) -> list[int]:
     """Return PIDs listening on a port."""
     try:
         result = subprocess.run(
             ["lsof", "-i", f":{port}", "-t"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         if result.returncode == 0 and result.stdout.strip():
             return [int(p) for p in result.stdout.strip().split("\n") if p.isdigit()]
@@ -99,7 +105,9 @@ def kill_pids(pids: list[int], label: str) -> int:
             print(f"  Permission denied killing PID {pid}")
 
     if killed:
-        print(f"  {label}: sent SIGTERM to {killed} process(es) (PID {', '.join(str(p) for p in pids)})")
+        print(
+            f"  {label}: sent SIGTERM to {killed} process(es) (PID {', '.join(str(p) for p in pids)})"
+        )
 
         # Wait for processes to die, force-kill survivors
         deadline = time.time() + 5
@@ -141,10 +149,12 @@ def stop_port(port: int, label: str) -> int:
 # Checks
 # ---------------------------------------------------------------------------
 
+
 def check_redis() -> bool:
     """Check Redis connectivity."""
     try:
         from redis import Redis
+
         r = Redis(host="localhost", port=6379, socket_connect_timeout=2)
         r.ping()
         r.close()
@@ -166,6 +176,7 @@ def check_docker(*, try_start: bool = False) -> bool:
 
     Returns True when Docker is reachable.
     """
+
     def _docker_alive() -> tuple[bool, str]:
         """Run ``docker info`` and return (ok, error_message)."""
         try:
@@ -242,11 +253,13 @@ def check_postgres() -> bool:
     """Check PostgreSQL connectivity using config from database.yaml."""
     try:
         from modules.backend.core.config import get_app_config, get_settings
+
         db_cfg = get_app_config().database
         db_password = get_settings().db_password
 
         async def _check():
             import asyncpg
+
             conn = await asyncpg.connect(
                 host=db_cfg.host,
                 port=db_cfg.port,
@@ -289,7 +302,9 @@ def preflight(backend_port: int, check_frontend: bool = True) -> bool:
         print("\nRequired services are not running. Fix the issues above and retry.")
         return False
     if not port_ok:
-        print(f"\nPort {backend_port} is in use. Run 'python services.py stop' first or use --port <other>.")
+        print(
+            f"\nPort {backend_port} is in use. Run 'python services.py stop' first or use --port <other>."
+        )
         return False
     if not docker_ok:
         print("\nWarning: Docker is not available. Container-mode agent execution will not work.")
@@ -301,12 +316,15 @@ def preflight(backend_port: int, check_frontend: bool = True) -> bool:
 # Migrations
 # ---------------------------------------------------------------------------
 
+
 def run_migrations() -> bool:
     """Run alembic upgrade head."""
     print("\nRunning migrations...")
     result = subprocess.run(
         [sys.executable, "admin.py", "migrate", "upgrade", "head"],
-        capture_output=True, text=True, cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT,
     )
     if result.returncode == 0:
         print("  Migrations ........ OK")
@@ -320,6 +338,7 @@ def run_migrations() -> bool:
 # ---------------------------------------------------------------------------
 # Seed dev user
 # ---------------------------------------------------------------------------
+
 
 def ensure_dev_user() -> None:
     """Create dev/test users (sysadmin, admin, user) if they don't exist.
@@ -445,6 +464,7 @@ def _verify_daemon_ready(
 # Process management
 # ---------------------------------------------------------------------------
 
+
 class DevRunner:
     """Manages backend and frontend subprocesses."""
 
@@ -467,10 +487,15 @@ class DevRunner:
     def start_temporal_server(self) -> subprocess.Popen:
         proc = subprocess.Popen(
             [
-                "temporal", "server", "start-dev",
-                "--port", str(TEMPORAL_PORT),
-                "--ui-port", str(TEMPORAL_UI_PORT),
-                "--log-format", "pretty",
+                "temporal",
+                "server",
+                "start-dev",
+                "--port",
+                str(TEMPORAL_PORT),
+                "--ui-port",
+                str(TEMPORAL_UI_PORT),
+                "--log-format",
+                "pretty",
             ],
             cwd=PROJECT_ROOT,
             stdout=subprocess.DEVNULL,
@@ -532,13 +557,19 @@ class DevRunner:
                 for proc in list(self.procs):
                     ret = proc.poll()
                     if ret is not None:
-                        name = " ".join(proc.args[:4]) if isinstance(proc.args, list) else str(proc.args)
+                        name = (
+                            " ".join(proc.args[:4])
+                            if isinstance(proc.args, list)
+                            else str(proc.args)
+                        )
                         # With --reload, the backend supervisor may exit
                         # transiently. Only ignore if it's the backend
                         # AND the port is still occupied (respawned).
                         is_backend = proc is self._backend_proc
                         if is_backend and self._reload_enabled and get_pids_on_port(BACKEND_PORT):
-                            print(f"\nBackend process exited (code {ret}) — reloader respawned. Continuing.")
+                            print(
+                                f"\nBackend process exited (code {ret}) — reloader respawned. Continuing."
+                            )
                             self.procs.remove(proc)
                             self._backend_proc = None
                             continue
@@ -603,14 +634,19 @@ def _backend_command(host: str, port: int, *, reload: bool) -> list[str]:
         # with an EventSource disconnects. 5s is enough for normal
         # requests to drain; SSE generators catch CancelledError and
         # clean up Redis subscriptions in their finally blocks.
-        "--timeout-graceful-shutdown", "5",
+        "--timeout-graceful-shutdown",
+        "5",
     ]
     if reload:
-        cmd.extend([
-            "--reload",
-            "--reload-dir", "modules/backend",
-            "--reload-dir", "config",
-        ])
+        cmd.extend(
+            [
+                "--reload",
+                "--reload-dir",
+                "modules/backend",
+                "--reload-dir",
+                "config",
+            ]
+        )
     return cmd
 
 
@@ -632,9 +668,13 @@ def cmd_start_daemon(args):
         print("\nStarting Temporal server in background...")
         _spawn_detached(
             [
-                "temporal", "server", "start-dev",
-                "--port", str(TEMPORAL_PORT),
-                "--ui-port", str(TEMPORAL_UI_PORT),
+                "temporal",
+                "server",
+                "start-dev",
+                "--port",
+                str(TEMPORAL_PORT),
+                "--ui-port",
+                str(TEMPORAL_UI_PORT),
             ],
             PROJECT_ROOT,
             temporal_log,
@@ -760,6 +800,7 @@ def cmd_stop(args):
 
     # Stop Temporal worker (find by process name)
     import psutil
+
     for proc in psutil.process_iter(["pid", "cmdline"], ad_value=None):
         cmdline = proc.info.get("cmdline") or []
         if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
@@ -782,7 +823,9 @@ def cmd_stop(args):
             + ([] if args.backend_only else get_pids_on_port(FRONTEND_PORT))
         )
         if remaining:
-            print(f"\n  Warning: {len(remaining)} process(es) still running. Try again or kill manually.")
+            print(
+                f"\n  Warning: {len(remaining)} process(es) still running. Try again or kill manually."
+            )
         else:
             print(f"\n  Stopped {total} process(es).")
 
@@ -803,18 +846,23 @@ def cmd_status(args):
 
     backend_pids = get_pids_on_port(args.port)
     if backend_pids:
-        print(f"\n  Backend (:{args.port})  .... RUNNING (PID {', '.join(str(p) for p in backend_pids)})")
+        print(
+            f"\n  Backend (:{args.port})  .... RUNNING (PID {', '.join(str(p) for p in backend_pids)})"
+        )
     else:
         print(f"\n  Backend (:{args.port})  .... stopped")
 
     temporal_pids = get_pids_on_port(TEMPORAL_PORT)
     if temporal_pids:
-        print(f"  Temporal (:{TEMPORAL_PORT})  ... RUNNING (PID {', '.join(str(p) for p in temporal_pids)})")
+        print(
+            f"  Temporal (:{TEMPORAL_PORT})  ... RUNNING (PID {', '.join(str(p) for p in temporal_pids)})"
+        )
     else:
         print(f"  Temporal (:{TEMPORAL_PORT})  ... stopped")
 
     # Check Temporal worker by process name
     import psutil
+
     worker_running = False
     for proc in psutil.process_iter(["pid", "cmdline"], ad_value=None):
         cmdline = proc.info.get("cmdline") or []
@@ -827,52 +875,61 @@ def cmd_status(args):
 
     frontend_pids = get_pids_on_port(FRONTEND_PORT)
     if frontend_pids:
-        print(f"  Frontend (:{FRONTEND_PORT}) ... RUNNING (PID {', '.join(str(p) for p in frontend_pids)})")
+        print(
+            f"  Frontend (:{FRONTEND_PORT}) ... RUNNING (PID {', '.join(str(p) for p in frontend_pids)})"
+        )
     else:
         print(f"  Frontend (:{FRONTEND_PORT}) ... stopped")
 
     redis_ok = False
     try:
         from redis import Redis
+
         r = Redis(host="localhost", port=6379, socket_connect_timeout=1)
         r.ping()
         r.close()
         redis_ok = True
     except Exception:
-        pass
+        redis_ok = False  # probe failed — service reported as stopped
     print(f"  Redis ............. {'RUNNING' if redis_ok else 'stopped'}")
 
     docker_ok = False
     docker_label = "stopped"
     try:
         import docker as _docker
+
         _client = _docker.from_env()
         _client.ping()
         docker_ok = True
         _info = _client.info()
         docker_label = f"RUNNING ({_info.get('ServerVersion', 'unknown')})"
     except Exception:
-        pass
+        docker_ok = False  # probe failed — service reported as stopped
     print(f"  Docker ............ {docker_label}")
 
     pg_ok = False
     try:
         from modules.backend.core.config import get_app_config, get_settings
+
         db_cfg = get_app_config().database
 
         async def _pg():
             import asyncpg
+
             conn = await asyncpg.connect(
-                host=db_cfg.host, port=db_cfg.port,
-                user=db_cfg.user, password=get_settings().db_password,
-                database=db_cfg.name, timeout=2,
+                host=db_cfg.host,
+                port=db_cfg.port,
+                user=db_cfg.user,
+                password=get_settings().db_password,
+                database=db_cfg.name,
+                timeout=2,
             )
             await conn.close()
 
         asyncio.run(_pg())
         pg_ok = True
     except Exception:
-        pass
+        pg_ok = False  # probe failed — service reported as stopped
     print(f"  PostgreSQL ........ {'RUNNING' if pg_ok else 'stopped'}")
     print()
 
@@ -892,9 +949,7 @@ def cmd_check(args):
 def cmd_tree(args):
     """Show all services.py subcommands and their flags (rule 010.1)."""
     parser = _build_parser()
-    subaction = next(
-        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
-    )
+    subaction = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     help_by_name = {ca.dest: (ca.help or "") for ca in subaction._choices_actions}
     names = sorted(subaction.choices.keys())
 
@@ -904,9 +959,7 @@ def cmd_tree(args):
         connector = "└── " if last else "├── "
         sub = subaction.choices[name]
         flags = [
-            a.option_strings[-1]
-            for a in sub._actions
-            if a.option_strings and a.dest != "help"
+            a.option_strings[-1] for a in sub._actions if a.option_strings and a.dest != "help"
         ]
         flag_str = (" " + " ".join(f"[{f}]" for f in flags)) if flags else ""
         print(f"{connector}{name}{flag_str}  {help_by_name.get(name, '')}".rstrip())
@@ -977,7 +1030,13 @@ Logging:
     )
 
     # Shared options
-    parser.add_argument("--port", "-p", type=int, default=BACKEND_PORT, help=f"Backend port (default: {BACKEND_PORT})")
+    parser.add_argument(
+        "--port",
+        "-p",
+        type=int,
+        default=BACKEND_PORT,
+        help=f"Backend port (default: {BACKEND_PORT})",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 

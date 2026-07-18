@@ -118,7 +118,12 @@ def main_logic() -> tuple[dict, list[dict], list[dict]]:
         # resources can only host Azure OpenAI models.
         if kind == "AIServices":
             aiservices_candidates.append(
-                {"account": acc_name, "resource_group": rg, "location": location, "endpoint": endpoint}
+                {
+                    "account": acc_name,
+                    "resource_group": rg,
+                    "location": location,
+                    "endpoint": endpoint,
+                }
             )
 
         try:
@@ -150,10 +155,7 @@ def main_logic() -> tuple[dict, list[dict], list[dict]]:
 
 def render(sub: dict, rows: list[dict], candidates: list[dict]) -> None:
     console = get_console()
-    console.print(
-        f"[bold]Subscription:[/bold] {sub.get('name')} "
-        f"([dim]{sub.get('id')}[/dim])"
-    )
+    console.print(f"[bold]Subscription:[/bold] {sub.get('name')} " f"([dim]{sub.get('id')}[/dim])")
     console.print(f"[bold]Identity:[/bold] {sub.get('user', {}).get('name')}\n")
 
     if not rows:

@@ -15,15 +15,49 @@ from modules.backend.temporal.activities import (
     persist_mission_outcome,
     send_notification,
 )
-from modules.backend.temporal.chat_activities import (
-    execute_chat_turn,
-    persist_user_message,
-)
-from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+from modules.backend.temporal.chat_activities import execute_chat_turn, persist_user_message
 from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
+from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+from modules.backend.temporal.human_input_activities import (
+    mark_human_input_resolved,
+    notify_human_input_needed,
+)
+from modules.backend.temporal.human_input_workflow import HumanInputWorkflow
+from modules.backend.temporal.knowledge_activities import (
+    backfill_embeddings,
+    embed_source,
+    extract_all_missions,
+    extract_mission_learnings,
+    run_knowledge_officer,
+)
+from modules.backend.temporal.knowledge_workflow import (
+    EmbeddingBackfillWorkflow,
+    KnowledgeExtractionWorkflow,
+    KnowledgeOfficerWorkflow,
+)
+from modules.backend.temporal.maintenance_activities import (
+    run_cleanup_stale_environments,
+    run_daily_cleanup,
+    run_evaluate_workflow_schedules,
+    run_hourly_health_check,
+    run_metrics_aggregation,
+    run_weekly_report_generation,
+)
+from modules.backend.temporal.maintenance_workflow import (
+    CleanupEnvironmentsWorkflow,
+    DailyCleanupWorkflow,
+    EvaluateWorkflowSchedulesWorkflow,
+    HourlyHealthCheckWorkflow,
+    MetricsAggregationWorkflow,
+    WeeklyReportWorkflow,
+)
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
-from modules.backend.temporal.scheduled_workflow import ScheduledMissionCheckWorkflow
+from modules.backend.temporal.plan_refine_activities import execute_plan_refine
+from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
+from modules.backend.temporal.run_objective_activities import execute_run_objective
+from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
 from modules.backend.temporal.scheduled_activities import find_ready_plans
+from modules.backend.temporal.scheduled_workflow import ScheduledMissionCheckWorkflow
 from modules.backend.temporal.supervisor_activities import (
     approve_proposed_tasks,
     check_plan_active,
@@ -38,47 +72,7 @@ from modules.backend.temporal.tool_fork_activities import (
     notify_director_on_completion,
     update_execution_record_status,
 )
-from modules.backend.temporal.tool_fork_workflow import (
-    DesignWorkflowWorkflow,
-    RunWorkflowWorkflow,
-)
-from modules.backend.temporal.knowledge_activities import (
-    extract_mission_learnings,
-    extract_all_missions,
-    embed_source,
-    backfill_embeddings,
-    run_knowledge_officer,
-)
-from modules.backend.temporal.knowledge_workflow import (
-    KnowledgeExtractionWorkflow,
-    KnowledgeOfficerWorkflow,
-    EmbeddingBackfillWorkflow,
-)
-from modules.backend.temporal.maintenance_activities import (
-    run_daily_cleanup,
-    run_hourly_health_check,
-    run_weekly_report_generation,
-    run_metrics_aggregation,
-    run_cleanup_stale_environments,
-    run_evaluate_workflow_schedules,
-)
-from modules.backend.temporal.maintenance_workflow import (
-    DailyCleanupWorkflow,
-    HourlyHealthCheckWorkflow,
-    WeeklyReportWorkflow,
-    MetricsAggregationWorkflow,
-    CleanupEnvironmentsWorkflow,
-    EvaluateWorkflowSchedulesWorkflow,
-)
-from modules.backend.temporal.plan_refine_activities import execute_plan_refine
-from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
-from modules.backend.temporal.run_objective_activities import execute_run_objective
-from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
-from modules.backend.temporal.human_input_activities import (
-    mark_human_input_resolved,
-    notify_human_input_needed,
-)
-from modules.backend.temporal.human_input_workflow import HumanInputWorkflow
+from modules.backend.temporal.tool_fork_workflow import DesignWorkflowWorkflow, RunWorkflowWorkflow
 from modules.backend.temporal.workflow import AgentMissionWorkflow
 
 logger = get_logger(__name__)
@@ -161,6 +155,7 @@ async def start_worker() -> None:
     )
 
     from modules.backend.core.logging import start_mission_event_drain
+
     start_mission_event_drain()
 
     logger.info(
@@ -177,6 +172,7 @@ def main() -> None:
     # errors, activity logs, and workflow events all appear in
     # var/logs/system.jsonl alongside the API server's logs.
     from modules.backend.core.logging import setup_logging
+
     setup_logging(enable_mission_events=True)
 
     asyncio.run(start_worker())

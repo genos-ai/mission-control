@@ -53,7 +53,8 @@ def generate_code_map(
     # Stage 4: Assemble output
     commit = _get_git_commit(repo_root)
     code_map = assemble_code_map(
-        modules, ranks,
+        modules,
+        ranks,
         repo_root_name=project_id or repo_root.name,
         commit=commit,
     )
@@ -61,6 +62,7 @@ def generate_code_map(
     # Optional: trim to token budget
     if max_tokens is not None:
         from modules.backend.services.code_map.assembler import trim_by_rank
+
         code_map = trim_by_rank(code_map, max_tokens)
 
     return code_map

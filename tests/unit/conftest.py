@@ -18,7 +18,6 @@ import pytest
 from modules.backend.core.config_schema import DatabaseSchema
 from tests.test_config import get_test_database_config
 
-
 # =============================================================================
 # Database Mock Fixtures
 # =============================================================================

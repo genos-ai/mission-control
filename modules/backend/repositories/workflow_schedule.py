@@ -104,8 +104,7 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
         Used for the platform-wide max_scheduled_runs_per_day safety limit.
         """
         result = await self.session.execute(
-            select(WorkflowSchedule)
-            .where(
+            select(WorkflowSchedule).where(
                 WorkflowSchedule.mission_id == mission_id,
                 WorkflowSchedule.last_fired_at.isnot(None),
                 WorkflowSchedule.last_fired_at >= today_start,

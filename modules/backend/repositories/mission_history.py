@@ -7,11 +7,7 @@ Data access for archived decisions and milestone summaries.
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.mission_history import (
-    DecisionStatus,
-    MilestoneSummary,
-    MissionDecision,
-)
+from modules.backend.models.mission_history import DecisionStatus, MilestoneSummary, MissionDecision
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -51,7 +47,6 @@ class MissionDecisionRepository(BaseRepository[MissionDecision]):
             .limit(limit)
         )
         return list(result.scalars().all())
-
 
     async def list_all(
         self,

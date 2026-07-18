@@ -11,10 +11,9 @@ Create Date: 2026-04-02
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import inspect
-
 
 # Revision identifiers
 revision: str = "phase5_001"

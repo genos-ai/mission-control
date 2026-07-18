@@ -62,20 +62,28 @@ class TestCacheTokenCost:
     def test_cache_write_1h_more_expensive_than_input(self):
         """1h cache writes cost more than regular input (2x)."""
         input_cost = compute_cost_usd(10_000, 0, "anthropic:claude-sonnet-4-6")
-        write_cost = compute_cost_usd(0, 0, "anthropic:claude-sonnet-4-6", cache_write_1h_tokens=10_000)
+        write_cost = compute_cost_usd(
+            0, 0, "anthropic:claude-sonnet-4-6", cache_write_1h_tokens=10_000
+        )
         assert write_cost > input_cost
 
     def test_thinking_tokens_billed_at_output_rate(self):
         """Thinking tokens are billed at the same rate as output tokens."""
         output_cost = compute_cost_usd(0, 10_000, "anthropic:claude-sonnet-4-6")
-        thinking_cost = compute_cost_usd(0, 0, "anthropic:claude-sonnet-4-6", thinking_tokens=10_000)
+        thinking_cost = compute_cost_usd(
+            0, 0, "anthropic:claude-sonnet-4-6", thinking_tokens=10_000
+        )
         assert thinking_cost == output_cost
 
     def test_backward_compatible_defaults(self):
         """New params default to 0 — old callers get same result."""
         old_style = compute_cost_usd(1_000_000, 500_000, "anthropic:claude-sonnet-4-6")
         new_style = compute_cost_usd(
-            1_000_000, 500_000, "anthropic:claude-sonnet-4-6",
-            cache_read_tokens=0, cache_write_1h_tokens=0, thinking_tokens=0,
+            1_000_000,
+            500_000,
+            "anthropic:claude-sonnet-4-6",
+            cache_read_tokens=0,
+            cache_write_1h_tokens=0,
+            thinking_tokens=0,
         )
         assert old_style == new_style

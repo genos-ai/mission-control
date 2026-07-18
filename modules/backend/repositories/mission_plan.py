@@ -8,10 +8,7 @@ operations have moved to TaskRepository (Plan 72).
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from modules.backend.models.mission_plan import (
-    MissionPlan,
-    MissionPlanStatus,
-)
+from modules.backend.models.mission_plan import MissionPlan, MissionPlanStatus
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -43,9 +40,8 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
         plan = await self.get_by_mission_id(mission_id)
         if plan is None:
             from modules.backend.core.exceptions import NotFoundError
-            raise NotFoundError(
-                f"MissionPlan not found for mission {mission_id}"
-            )
+
+            raise NotFoundError(f"MissionPlan not found for mission {mission_id}")
         return plan
 
     async def create_for_mission(

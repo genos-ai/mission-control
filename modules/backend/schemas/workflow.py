@@ -14,7 +14,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
 # Plan 79 §8.7 — used by WorkflowSchema.validate_steps to verify that every
 # @node.X reference in a step's inputs/config points to a declared step ID.
 # Matches the @node.<step_id> prefix; the trailing field path is ignored
@@ -275,7 +274,9 @@ class DecisionConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_resolver_fields(self) -> "DecisionConfig":
         if self.resolver == "agent" and not self.model:
-            raise ValueError("model is required for agent resolver (e.g. 'copilot:claude-haiku-4.5')")
+            raise ValueError(
+                "model is required for agent resolver (e.g. 'copilot:claude-haiku-4.5')"
+            )
         if self.resolver == "agent" and not self.prompt:
             raise ValueError("prompt is required for agent resolver")
         if self.resolver == "rule" and not self.expression:
@@ -383,14 +384,15 @@ class WorkflowStepSchema(BaseModel):
         description=(
             "Optional guard expression evaluated before dispatch. "
             "Uses the same syntax as condition nodes "
-            '(e.g. \'@context.target_path != null\'). '
+            "(e.g. '@context.target_path != null'). "
             "If the expression evaluates to false the step is skipped."
         ),
     )
     depends_on: list[str] = Field(default_factory=list)
     timeout_seconds: int | None = Field(None, ge=10, le=86400)
     max_refinement_rounds: int = Field(
-        default=1, ge=1,
+        default=1,
+        ge=1,
         description="Max internal retry/QA cycles per step. 1 = no retry.",
     )
     termination: str = Field(
@@ -399,7 +401,8 @@ class WorkflowStepSchema(BaseModel):
         description="Step termination mode",
     )
     max_iterations: int | None = Field(
-        None, ge=1,
+        None,
+        ge=1,
         description="For termination=max_iterations: how many internal cycles",
     )
 
@@ -545,7 +548,8 @@ class WorkflowSchema(BaseModel):
     @field_validator("steps")
     @classmethod
     def validate_steps(
-        cls, steps: list[WorkflowStepSchema],
+        cls,
+        steps: list[WorkflowStepSchema],
     ) -> list[WorkflowStepSchema]:
         """Validate step IDs are unique, deps exist, no cycles."""
         step_ids = {step.id for step in steps}
@@ -565,8 +569,7 @@ class WorkflowSchema(BaseModel):
             for dep_id in step.depends_on:
                 if dep_id not in step_ids:
                     raise ValueError(
-                        f"Step '{step.id}' depends on '{dep_id}' "
-                        f"which does not exist"
+                        f"Step '{step.id}' depends on '{dep_id}' " f"which does not exist"
                     )
 
         # Self-dependencies
@@ -618,9 +621,7 @@ class WorkflowSchema(BaseModel):
                 for fm in step.output_mapping.field_mappings:
                     target_keys.append(fm.target_key)
         if len(target_keys) != len(set(target_keys)):
-            raise ValueError(
-                "Duplicate output mapping target keys in workflow steps"
-            )
+            raise ValueError("Duplicate output mapping target keys in workflow steps")
 
         return steps
 

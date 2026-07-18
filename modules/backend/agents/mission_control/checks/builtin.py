@@ -13,10 +13,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from modules.backend.agents.mission_control.check_registry import (
-    CheckResult,
-    register_check,
-)
+from modules.backend.agents.mission_control.check_registry import CheckResult, register_check
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -48,8 +45,11 @@ async def validate_json_schema(output: dict[str, Any], params: dict[str, Any]) -
 
         if errors:
             error_details = "; ".join(
-                f"{'.'.join(str(p) for p in e.absolute_path)}: {e.message}"
-                if e.absolute_path else e.message
+                (
+                    f"{'.'.join(str(p) for p in e.absolute_path)}: {e.message}"
+                    if e.absolute_path
+                    else e.message
+                )
                 for e in errors[:10]  # Cap at 10 errors to avoid log bloat
             )
             return CheckResult(
@@ -194,9 +194,7 @@ async def validate_field_range(output: dict[str, Any], params: dict[str, Any]) -
 
         value = output[field_name]
         if not isinstance(value, (int, float)):
-            range_errors.append(
-                f"'{field_name}': expected numeric, got {type(value).__name__}"
-            )
+            range_errors.append(f"'{field_name}': expected numeric, got {type(value).__name__}")
             continue
 
         min_val = range_spec.get("min")

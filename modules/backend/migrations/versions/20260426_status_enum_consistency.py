@@ -12,8 +12,8 @@ Create Date: 2026-04-26
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "status_enum_consistency"
 down_revision: Union[str, None] = "float_to_numeric_monetary"
@@ -66,9 +66,10 @@ def upgrade() -> None:
         ("session_messages", "status", MESSAGE_STATUS),
     ]:
         for old_val, new_val in mapping.items():
-            conn.execute(sa.text(
-                f"UPDATE \"{table}\" SET \"{col}\" = :new WHERE \"{col}\" = :old"
-            ), {"old": old_val, "new": new_val})
+            conn.execute(
+                sa.text(f'UPDATE "{table}" SET "{col}" = :new WHERE "{col}" = :old'),
+                {"old": old_val, "new": new_val},
+            )
 
     # 2. Update server_default to uppercase
     op.alter_column("mission_plans", "status", server_default="ACTIVE")
@@ -86,9 +87,10 @@ def downgrade() -> None:
         ("session_messages", "status", MESSAGE_STATUS),
     ]:
         for old_val, new_val in mapping.items():
-            conn.execute(sa.text(
-                f"UPDATE \"{table}\" SET \"{col}\" = :old WHERE \"{col}\" = :new"
-            ), {"old": old_val, "new": new_val})
+            conn.execute(
+                sa.text(f'UPDATE "{table}" SET "{col}" = :old WHERE "{col}" = :new'),
+                {"old": old_val, "new": new_val},
+            )
 
     op.alter_column("mission_plans", "status", server_default="active")
     op.alter_column("plan_task_states", "status", server_default="proposed")

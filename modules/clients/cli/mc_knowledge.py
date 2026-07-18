@@ -14,7 +14,6 @@ from modules.clients.common.knowledge_rendering import (
     render_learning_list,
 )
 
-
 # =============================================================================
 # Intent
 # =============================================================================
@@ -31,7 +30,9 @@ async def intent_show(api: CliApiClient, mission_id: str) -> None:
 
 
 async def intent_history(
-    api: CliApiClient, mission_id: str, limit: int = 20,
+    api: CliApiClient,
+    mission_id: str,
+    limit: int = 20,
 ) -> None:
     """Show intent revision timeline."""
     console = get_console()
@@ -41,15 +42,19 @@ async def intent_history(
     )
     items = extract_list(data, "items")
     if items:
-        console.print(render_intent_history([
-            {
-                "intent_summary": r.get("intent_summary", r.get("intent", "")),
-                "source": r.get("source", ""),
-                "reason": r.get("reason", ""),
-                "created_at": str(r.get("created_at", "")),
-            }
-            for r in items
-        ]))
+        console.print(
+            render_intent_history(
+                [
+                    {
+                        "intent_summary": r.get("intent_summary", r.get("intent", "")),
+                        "source": r.get("source", ""),
+                        "reason": r.get("reason", ""),
+                        "created_at": str(r.get("created_at", "")),
+                    }
+                    for r in items
+                ]
+            )
+        )
     else:
         console.print("[dim]No intent revisions yet.[/dim]")
 
@@ -123,7 +128,9 @@ async def learnings_list(
 
 
 async def learnings_show(
-    api: CliApiClient, mission_id: str, learning_id: str,
+    api: CliApiClient,
+    mission_id: str,
+    learning_id: str,
 ) -> None:
     """Show a specific learning in detail."""
     console = get_console()
@@ -163,15 +170,19 @@ async def knowledge_search(
     items = entries if isinstance(entries, list) else (entries or [])
 
     if items:
-        console.print(render_knowledge_search_results([
-            {
-                "kind": e.get("kind", ""),
-                "title": e.get("title", ""),
-                "domain_tags": e.get("domain_tags", []),
-                "confidence": e.get("confidence", 0),
-                "distance": e.get("distance", 0),
-            }
-            for e in items
-        ]))
+        console.print(
+            render_knowledge_search_results(
+                [
+                    {
+                        "kind": e.get("kind", ""),
+                        "title": e.get("title", ""),
+                        "domain_tags": e.get("domain_tags", []),
+                        "confidence": e.get("confidence", 0),
+                        "distance": e.get("distance", 0),
+                    }
+                    for e in items
+                ]
+            )
+        )
     else:
         console.print("[dim]No matching knowledge entries found.[/dim]")

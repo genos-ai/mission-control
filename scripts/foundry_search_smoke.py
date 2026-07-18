@@ -108,7 +108,8 @@ async def _run(model: str, query: str) -> int:
     except Exception as exc:
         logger.error(
             "Responses API call failed (model=%s): %s",
-            model, exc,
+            model,
+            exc,
         )
         logger.error(
             "Common causes: model not deployed in this project, "
@@ -217,7 +218,7 @@ async def _main_async(model: str, query: str) -> int:
     "--model",
     default=_DEFAULT_MODEL,
     help=f"Foundry model deployment to use for synthesis (default: {_DEFAULT_MODEL}). "
-         "Alternatives in the registry: gpt-5-mini, gpt-5-nano, gpt-4.1.",
+    "Alternatives in the registry: gpt-5-mini, gpt-5-nano, gpt-4.1.",
 )
 @click.option(
     "--query",

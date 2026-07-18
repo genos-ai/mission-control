@@ -4,12 +4,13 @@ Unit Tests for Pagination Utilities.
 Tests the pagination helpers and utilities.
 """
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+
 from modules.backend.core.pagination import (
-    PaginationParams,
     PagedResult,
+    PaginationParams,
     create_paginated_response,
     decode_cursor,
     encode_cursor,
@@ -236,6 +237,7 @@ class TestPaginateQuery:
     @pytest.mark.asyncio
     async def test_calls_count_func(self):
         """Should call count function when provided."""
+
         async def query_func(limit, offset):
             return []
 

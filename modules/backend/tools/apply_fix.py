@@ -66,6 +66,7 @@ _impl = apply_fix
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def apply_fix(
         ctx: RunContext,

@@ -46,7 +46,8 @@ class TestAssembleInstructions:
             return_value=prompt_tree,
         ):
             result = assemble_instructions(
-                "code", "quality",
+                "code",
+                "quality",
                 mission_brief="Build a secure API",
             )
         assert "## Mission Brief" in result
@@ -58,7 +59,8 @@ class TestAssembleInstructions:
             return_value=prompt_tree,
         ):
             result = assemble_instructions(
-                "code", "quality",
+                "code",
+                "quality",
                 user_prompt="Focus on SQL injection prevention",
             )
         assert "## Mission-Specific Instructions" in result
@@ -70,7 +72,8 @@ class TestAssembleInstructions:
             return_value=prompt_tree,
         ):
             result = assemble_instructions(
-                "code", "quality",
+                "code",
+                "quality",
                 mission_brief="Build secure API",
                 user_prompt="Focus on auth",
             )

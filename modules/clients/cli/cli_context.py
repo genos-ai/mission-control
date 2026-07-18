@@ -12,10 +12,7 @@ class ShowHelpOnMissingArgs(click.Group):
     def resolve_command(self, ctx, args):
         cmd_name, cmd, remaining = super().resolve_command(ctx, args)
         if cmd is not None and not isinstance(cmd, click.Group):
-            required_args = [
-                p for p in cmd.params
-                if isinstance(p, click.Argument) and p.required
-            ]
+            required_args = [p for p in cmd.params if isinstance(p, click.Argument) and p.required]
             if required_args and len(remaining) < len(required_args):
                 with click.Context(cmd, info_name=cmd_name, parent=ctx) as sub_ctx:
                     click.echo(cmd.get_help(sub_ctx))

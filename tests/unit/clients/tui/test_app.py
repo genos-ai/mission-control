@@ -10,27 +10,29 @@ import pytest
 from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.clients.tui.app import MissionControlApp
 from modules.clients.tui.messages import (
-    MissionStartRequested,
     MissionCreated,
     MissionSelected,
+    MissionStartRequested,
     SessionEventReceived,
 )
 from modules.clients.tui.screens.dashboard import DashboardScreen
 from modules.clients.tui.screens.workspace import MissionWorkspaceScreen
 
-
 # ── Helpers ───────────────────────────────────────────────────────────
+
 
 def _mock_bridge():
     """Create a mock ServiceBridge with sensible defaults."""
     bridge = MagicMock()
     bridge.list_missions = AsyncMock(return_value=[])
     bridge.create_mission = AsyncMock(return_value={"id": "p-new", "name": "Test"})
-    bridge.get_current_user = AsyncMock(return_value={
-        "id": SYSTEM_CLI_ID,
-        "current_mission_id": None,
-        "current_mission_name": None,
-    })
+    bridge.get_current_user = AsyncMock(
+        return_value={
+            "id": SYSTEM_CLI_ID,
+            "current_mission_id": None,
+            "current_mission_name": None,
+        }
+    )
     bridge.set_current_mission = AsyncMock()
     bridge.run_execution = AsyncMock()
     bridge.list_executions = AsyncMock(return_value=[])
@@ -40,6 +42,7 @@ def _mock_bridge():
 
 
 # ── App mount tests ───────────────────────────────────────────────────
+
 
 class TestAppMount:
     @pytest.mark.asyncio
@@ -73,6 +76,7 @@ class TestAppMount:
 
 # ── Mission handling ──────────────────────────────────────────────────
 
+
 class TestMissionHandling:
     @pytest.mark.asyncio
     async def test_mission_selected_updates_state(self):
@@ -81,9 +85,7 @@ class TestMissionHandling:
 
         async with app.run_test() as pilot:
             await pilot.pause()  # wait for DashboardScreen to mount
-            app.post_message(
-                MissionSelected(mission_id="m-1", mission_name="Alpha")
-            )
+            app.post_message(MissionSelected(mission_id="m-1", mission_name="Alpha"))
             await pilot.pause()
             assert app.state.current_mission_id == "m-1"
             assert app.state.current_mission_name == "Alpha"
@@ -96,9 +98,7 @@ class TestMissionHandling:
 
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.post_message(
-                MissionSelected(mission_id="m-1", mission_name="Alpha")
-            )
+            app.post_message(MissionSelected(mission_id="m-1", mission_name="Alpha"))
             await pilot.pause()
             assert app.state.active_screen == "workspace"
             assert isinstance(pilot.app.screen, MissionWorkspaceScreen)
@@ -110,9 +110,7 @@ class TestMissionHandling:
 
         async with app.run_test() as pilot:
             await pilot.pause()  # wait for DashboardScreen to mount
-            app.post_message(
-                MissionCreated(mission_name="NewMission", description="My desc")
-            )
+            app.post_message(MissionCreated(mission_name="NewMission", description="My desc"))
             await pilot.pause()
             app.bridge.create_mission.assert_called_once_with(
                 name="NewMission", description="My desc"
@@ -135,6 +133,7 @@ class TestMissionHandling:
 
 
 # ── Mission guards ────────────────────────────────────────────────────
+
 
 class TestMissionGuards:
     @pytest.mark.asyncio
@@ -164,6 +163,7 @@ class TestMissionGuards:
 
 
 # ── Event routing ─────────────────────────────────────────────────────
+
 
 class TestEventRouting:
     @pytest.mark.asyncio
@@ -229,6 +229,7 @@ class TestEventRouting:
 
 # ── Navigation ────────────────────────────────────────────────────────
 
+
 class TestNavigation:
     @pytest.mark.asyncio
     async def test_goto_dashboard_from_workspace(self):
@@ -239,9 +240,7 @@ class TestNavigation:
         async with app.run_test() as pilot:
             await pilot.pause()
             # Enter workspace via mission selection
-            app.post_message(
-                MissionSelected(mission_id="m-1", mission_name="Alpha")
-            )
+            app.post_message(MissionSelected(mission_id="m-1", mission_name="Alpha"))
             await pilot.pause()
             assert app.state.active_screen == "workspace"
             # Go back to dashboard

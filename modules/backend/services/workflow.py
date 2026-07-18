@@ -158,8 +158,7 @@ class WorkflowService:
             agent_config = self._agent_registry[agent_name]
             if not agent_config.get("enabled", True):
                 raise ValueError(
-                    f"Agent '{agent_name}' for capability '{capability}' "
-                    f"is disabled"
+                    f"Agent '{agent_name}' for capability '{capability}' " f"is disabled"
                 )
             return agent_name
 
@@ -167,8 +166,7 @@ class WorkflowService:
         agents_dir = self._project_root / "config" / "agents"
         if not agents_dir.exists():
             raise ValueError(
-                f"No agent found for capability '{capability}' "
-                f"(agents directory not found)"
+                f"No agent found for capability '{capability}' " f"(agents directory not found)"
             )
 
         for yaml_path in agents_dir.rglob("agent.yaml"):
@@ -177,20 +175,19 @@ class WorkflowService:
                 if raw and raw.get("agent_name") == agent_name:
                     if not raw.get("enabled", True):
                         raise ValueError(
-                            f"Agent '{agent_name}' for capability "
-                            f"'{capability}' is disabled"
+                            f"Agent '{agent_name}' for capability " f"'{capability}' is disabled"
                         )
                     return agent_name
             except yaml.YAMLError:
                 continue
 
         raise ValueError(
-            f"No agent found for capability '{capability}' "
-            f"(expected agent '{agent_name}')"
+            f"No agent found for capability '{capability}' " f"(expected agent '{agent_name}')"
         )
 
     def validate_workflow_capabilities(
-        self, workflow: WorkflowSchema,
+        self,
+        workflow: WorkflowSchema,
     ) -> list[str]:
         """Validate that all capabilities in a workflow resolve to agents.
 
@@ -207,7 +204,8 @@ class WorkflowService:
         return errors
 
     def generate_mission_briefs(
-        self, workflow: WorkflowSchema,
+        self,
+        workflow: WorkflowSchema,
     ) -> list[dict[str, Any]]:
         """Convert workflow steps into Mission brief definitions."""
         step_index_map: dict[str, int] = {}
@@ -230,19 +228,15 @@ class WorkflowService:
                 "roster_ref": step.roster,
                 "complexity_tier": step.complexity_tier,
                 "cost_ceiling_usd": (
-                    step.cost_ceiling_usd
-                    or app_config.workflows.default_budget_usd
+                    step.cost_ceiling_usd or app_config.workflows.default_budget_usd
                 ),
                 "environment": step.environment,
                 "input_context": dict(step.input),
                 "output_mapping": (
-                    step.output_mapping.model_dump()
-                    if step.output_mapping
-                    else None
+                    step.output_mapping.model_dump() if step.output_mapping else None
                 ),
                 "timeout_seconds": (
-                    step.timeout_seconds
-                    or app_config.workflows.default_step_timeout_seconds
+                    step.timeout_seconds or app_config.workflows.default_step_timeout_seconds
                 ),
                 "dependencies": [
                     {
@@ -339,7 +333,10 @@ class WorkflowService:
             return resolved
 
         resolved_input = walk_refs(
-            step.input, completed_outcomes, workflow_context, leaf_resolver=_leaf,
+            step.input,
+            completed_outcomes,
+            workflow_context,
+            leaf_resolver=_leaf,
         )
         upstream["_step_input"] = resolved_input
         return upstream

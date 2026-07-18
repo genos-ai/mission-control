@@ -8,14 +8,9 @@ from __future__ import annotations
 import statistics
 
 from modules.backend.services.pqi.ast_analysis import ProjectAnalysis
-from modules.backend.services.pqi.normalizers import (
-    inverse_linear,
-    ratio_score,
-    sigmoid,
-)
+from modules.backend.services.pqi.normalizers import inverse_linear, ratio_score, sigmoid
 from modules.backend.services.pqi.tools import ToolResult
 from modules.backend.services.pqi.types import DimensionScore
-
 
 # ---------------------------------------------------------------------------
 # 5. Robustness (weight: 0.13)
@@ -24,7 +19,9 @@ from modules.backend.services.pqi.types import DimensionScore
 
 def score_robustness(project: ProjectAnalysis) -> DimensionScore:
     """Score robustness: type annotations, exception handling quality."""
-    source_files = [f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")]
+    source_files = [
+        f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")
+    ]
 
     # Sub-metric: parameter type annotation coverage
     total_params = sum(f.total_params for f in source_files)
@@ -46,21 +43,25 @@ def score_robustness(project: ProjectAnalysis) -> DimensionScore:
     else:
         handler_quality = 100.0
 
-    score = (
-        param_coverage * 0.35
-        + return_coverage * 0.30
-        + handler_quality * 0.35
-    )
+    score = param_coverage * 0.35 + return_coverage * 0.30 + handler_quality * 0.35
 
     recommendations = []
     if param_coverage < 70:
-        recommendations.append(f"Parameter type coverage is {param_coverage:.0f}% — add type annotations")
+        recommendations.append(
+            f"Parameter type coverage is {param_coverage:.0f}% — add type annotations"
+        )
     if return_coverage < 70:
-        recommendations.append(f"Return type coverage is {return_coverage:.0f}% — add return type annotations")
+        recommendations.append(
+            f"Return type coverage is {return_coverage:.0f}% — add return type annotations"
+        )
     if bare_excepts > 0:
-        recommendations.append(f"{bare_excepts} bare/swallowed except clause(s) — catch specific exceptions")
+        recommendations.append(
+            f"{bare_excepts} bare/swallowed except clause(s) — catch specific exceptions"
+        )
     if broad_excepts > 0:
-        recommendations.append(f"{broad_excepts} broad except(Exception) clause(s) — narrow the exception type")
+        recommendations.append(
+            f"{broad_excepts} broad except(Exception) clause(s) — narrow the exception type"
+        )
 
     return DimensionScore(
         name="Robustness",
@@ -90,7 +91,9 @@ def score_elegance(
     nesting depth alone misses.
     """
     tool_results = tool_results or {}
-    source_files = [f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")]
+    source_files = [
+        f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")
+    ]
 
     nestings = [f.max_nesting for f in source_files]
     if nestings:
@@ -133,28 +136,27 @@ def score_elegance(
         cc_score = sigmoid(p90_cc, midpoint=10, k=0.4)
         sub_scores["radon_complexity_p90"] = cc_score
 
-        score = (
-            nesting_score * 0.25
-            + length_score * 0.25
-            + naming_score * 0.25
-            + cc_score * 0.25
-        )
+        score = nesting_score * 0.25 + length_score * 0.25 + naming_score * 0.25 + cc_score * 0.25
 
         if p90_cc > 15:
-            recommendations.append(f"P90 cyclomatic complexity is {p90_cc} — simplify complex functions")
+            recommendations.append(
+                f"P90 cyclomatic complexity is {p90_cc} — simplify complex functions"
+            )
     else:
-        score = (
-            nesting_score * 0.35
-            + length_score * 0.35
-            + naming_score * 0.30
-        )
+        score = nesting_score * 0.35 + length_score * 0.35 + naming_score * 0.30
 
     if p90_nesting > 4:
-        recommendations.append(f"P90 nesting depth is {p90_nesting} — extract nested logic into helper functions")
+        recommendations.append(
+            f"P90 nesting depth is {p90_nesting} — extract nested logic into helper functions"
+        )
     if p90_length > 50:
-        recommendations.append(f"P90 function length is {p90_length} lines — break into smaller functions")
+        recommendations.append(
+            f"P90 function length is {p90_length} lines — break into smaller functions"
+        )
     if total_violations > 0:
-        recommendations.append(f"{total_violations} naming convention violation(s) — use PEP 8 conventions")
+        recommendations.append(
+            f"{total_violations} naming convention violation(s) — use PEP 8 conventions"
+        )
 
     return DimensionScore(
         name="Elegance",
@@ -174,7 +176,9 @@ def score_reusability(
     code_map: dict | None = None,
 ) -> DimensionScore:
     """Score reusability: coupling, API surface ratio."""
-    source_files = [f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")]
+    source_files = [
+        f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")
+    ]
 
     total_public = sum(f.public_definitions for f in source_files)
     total_private = sum(f.private_definitions for f in source_files)
@@ -208,15 +212,13 @@ def score_reusability(
     else:
         size_score = 50.0
 
-    score = (
-        api_score * 0.35
-        + coupling_score * 0.35
-        + size_score * 0.30
-    )
+    score = api_score * 0.35 + coupling_score * 0.35 + size_score * 0.30
 
     recommendations = []
     if api_ratio > 0.7:
-        recommendations.append(f"API surface is {api_ratio:.0%} public — consider making more internals private")
+        recommendations.append(
+            f"API surface is {api_ratio:.0%} public — consider making more internals private"
+        )
     if api_ratio < 0.2:
         recommendations.append(f"API surface is {api_ratio:.0%} public — very little is reusable")
 

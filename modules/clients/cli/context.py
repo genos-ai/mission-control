@@ -15,9 +15,9 @@ import json as _json
 import sys
 from pathlib import Path
 
-from modules.clients.cli.report import get_console, build_table
 from modules.backend.core.config import find_project_root
 from modules.backend.core.utils import estimate_tokens
+from modules.clients.cli.report import build_table, get_console
 
 
 def run_context(cli_logger, action: str, *, output_format: str = "human", **kwargs) -> None:
@@ -98,8 +98,10 @@ def _action_show(cli_logger, *, output_format, mission_id=None, **_):
             code_map=code_map_json,
         )
         band_colors = {
-            "excellent": "green", "good": "cyan",
-            "fair": "yellow", "poor": "red",
+            "excellent": "green",
+            "good": "cyan",
+            "fair": "yellow",
+            "poor": "red",
         }
         color = band_colors.get(result.quality_band.value, "white")
         console.print(
@@ -198,7 +200,9 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
                     domain_tags=tags,
                 )
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
-                console.print(f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n")
+                console.print(
+                    f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n"
+                )
                 packet = await assembler.build(
                     mission_id=mission_id,
                     task_definition=task_stub,
@@ -217,7 +221,9 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
     pcd = packet.get("project_context")
     if pcd:
         pcd_tokens = estimate_tokens(pcd)
-        console.print(f"[bold cyan]Layer 0: Project Context Document (PCD)[/bold cyan]  ~{pcd_tokens:,} tokens")
+        console.print(
+            f"[bold cyan]Layer 0: Project Context Document (PCD)[/bold cyan]  ~{pcd_tokens:,} tokens"
+        )
         # Show top-level keys
         if isinstance(pcd, dict):
             for key in pcd:
@@ -229,7 +235,9 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
                 console.print(f"  {key}: {val}")
         console.print()
     else:
-        console.print("[bold cyan]Layer 0: PCD[/bold cyan] [dim](empty — no PCD for this mission)[/dim]\n")
+        console.print(
+            "[bold cyan]Layer 0: PCD[/bold cyan] [dim](empty — no PCD for this mission)[/dim]\n"
+        )
 
     # Layer 1: Task
     task = packet.get("task")
@@ -254,14 +262,18 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
     if code_map:
         cm_tokens = estimate_tokens(code_map)
         lines = code_map.count("\n") if isinstance(code_map, str) else 0
-        console.print(f"[bold cyan]Layer 3: Code Map Markdown[/bold cyan]  ~{cm_tokens:,} tokens ({lines} lines)")
+        console.print(
+            f"[bold cyan]Layer 3: Code Map Markdown[/bold cyan]  ~{cm_tokens:,} tokens ({lines} lines)"
+        )
         # Show first 5 lines as preview
         if isinstance(code_map, str):
             preview = "\n".join(code_map.split("\n")[:5])
             console.print(f"  [dim]{preview}[/dim]")
         console.print()
     else:
-        console.print("[bold cyan]Layer 3: Code Map[/bold cyan] [dim](not included for these domain tags)[/dim]\n")
+        console.print(
+            "[bold cyan]Layer 3: Code Map[/bold cyan] [dim](not included for these domain tags)[/dim]\n"
+        )
 
     # Layer 2: History
     history = packet.get("history")
@@ -283,9 +295,7 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
         console.print("[bold cyan]Layer 2: History[/bold cyan] [dim](none available)[/dim]\n")
 
     # Total
-    total_tokens = sum(
-        estimate_tokens(v) for v in packet.values() if v is not None
-    )
+    total_tokens = sum(estimate_tokens(v) for v in packet.values() if v is not None)
     console.print(f"[bold]Total: ~{total_tokens:,} tokens across {len(packet)} layers[/bold]")
 
 
@@ -360,12 +370,15 @@ def _action_pqi(cli_logger, *, output_format, **_):
 
     if output_format == "json":
         from dataclasses import asdict
+
         console.print_json(_json.dumps(asdict(result), default=str))
         return
 
     band_colors = {
-        "excellent": "green", "good": "cyan",
-        "fair": "yellow", "poor": "red",
+        "excellent": "green",
+        "good": "cyan",
+        "fair": "yellow",
+        "poor": "red",
     }
     color = band_colors.get(result.quality_band.value, "white")
 
@@ -379,13 +392,16 @@ def _action_pqi(cli_logger, *, output_format, **_):
         console.print(f"  Floor penalty: [yellow]{result.floor_penalty:.3f}[/yellow]")
     console.print()
 
-    table = build_table("Dimensions", columns=[
-        ("Dimension", {"style": "cyan", "width": 18}),
-        ("Score", {"width": 8}),
-        ("Confidence", {"width": 12}),
-        ("Bar", {"width": 22}),
-        ("Recommendations", {"ratio": 1}),
-    ])
+    table = build_table(
+        "Dimensions",
+        columns=[
+            ("Dimension", {"style": "cyan", "width": 18}),
+            ("Score", {"width": 8}),
+            ("Confidence", {"width": 12}),
+            ("Bar", {"width": 22}),
+            ("Recommendations", {"ratio": 1}),
+        ],
+    )
 
     for name, dim in result.dimensions.items():
         bar_len = int(dim.score / 5)
@@ -416,14 +432,16 @@ def _action_deps(cli_logger, *, output_format, **_):
     console = get_console()
     project_root = find_project_root()
 
-    from modules.backend.services.code_map.loader import CodeMapLoader
     from modules.backend.services.code_map.assembler import find_circular_deps
+    from modules.backend.services.code_map.loader import CodeMapLoader
 
     loader = CodeMapLoader(project_root)
     code_map = loader.get_json()
 
     if code_map is None:
-        console.print("[red]No Code Map found. Run: python admin.py context codemap --generate[/red]")
+        console.print(
+            "[red]No Code Map found. Run: python admin.py context codemap --generate[/red]"
+        )
         sys.exit(1)
 
     import_graph = code_map.get("import_graph", {})
@@ -432,11 +450,15 @@ def _action_deps(cli_logger, *, output_format, **_):
     total_edges = sum(len(deps) for deps in import_graph.values())
 
     if output_format == "json":
-        console.print_json(_json.dumps({
-            "total_modules": len(modules),
-            "total_edges": total_edges,
-            "circular_dependencies": [" → ".join(c) for c in cycles],
-        }))
+        console.print_json(
+            _json.dumps(
+                {
+                    "total_modules": len(modules),
+                    "total_edges": total_edges,
+                    "circular_dependencies": [" → ".join(c) for c in cycles],
+                }
+            )
+        )
         return
 
     console.print(f"[bold]Dependency Graph[/bold]")
@@ -459,13 +481,16 @@ def _action_deps(cli_logger, *, output_format, **_):
         key=lambda kv: kv[1].get("rank", 999),
     )
 
-    table = build_table("Top Modules by PageRank", columns=[
-        ("Rank", {"width": 8}),
-        ("Module", {"style": "cyan", "ratio": 1}),
-        ("Lines", {"width": 8}),
-        ("Classes", {"width": 8}),
-        ("Functions", {"width": 10}),
-    ])
+    table = build_table(
+        "Top Modules by PageRank",
+        columns=[
+            ("Rank", {"width": 8}),
+            ("Module", {"style": "cyan", "ratio": 1}),
+            ("Lines", {"width": 8}),
+            ("Classes", {"width": 8}),
+            ("Functions", {"width": 10}),
+        ],
+    )
 
     for path, data in ranked[:15]:
         rank = data.get("rank", 0)

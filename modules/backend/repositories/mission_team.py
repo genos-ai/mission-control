@@ -44,8 +44,7 @@ class MissionTeamRepository(BaseRepository[MissionTeamMember]):
     ) -> MissionTeamMember | None:
         """Get a specific team member by mission + agent catalog entry."""
         result = await self.session.execute(
-            select(MissionTeamMember)
-            .where(
+            select(MissionTeamMember).where(
                 MissionTeamMember.mission_id == mission_id,
                 MissionTeamMember.agent_catalog_id == agent_catalog_id,
             )

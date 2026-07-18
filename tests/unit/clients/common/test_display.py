@@ -21,7 +21,6 @@ from modules.clients.common.display import (
     thinking_panel,
 )
 
-
 # ── Constants ──────────────────────────────────────────────────────────
 
 
@@ -107,18 +106,23 @@ def test_severity_color(severity, expected):
 
 
 def test_build_table_returns_table():
-    table = build_table(columns=[
-        ("Name", {"style": "cyan"}),
-        ("Value", {"ratio": 1}),
-    ])
+    table = build_table(
+        columns=[
+            ("Name", {"style": "cyan"}),
+            ("Value", {"ratio": 1}),
+        ]
+    )
     assert isinstance(table, Table)
     assert len(table.columns) == 2
 
 
 def test_build_table_with_title():
-    table = build_table("My Title", columns=[
-        ("Col", {}),
-    ])
+    table = build_table(
+        "My Title",
+        columns=[
+            ("Col", {}),
+        ],
+    )
     assert table.title == "My Title"
 
 
@@ -226,17 +230,20 @@ def test_cost_line_requires_keyword_args():
 class TestAnnotateCurrentMission:
     def test_matching_mission(self):
         from modules.clients.common.display import annotate_current_mission
+
         result = annotate_current_mission("Alpha", "abc-123", "abc-123")
         assert "\U0001f449" in result
         assert "Alpha" in result
 
     def test_non_matching_mission(self):
         from modules.clients.common.display import annotate_current_mission
+
         result = annotate_current_mission("Alpha", "abc-123", "def-456")
         assert "\U0001f449" not in result
         assert result == "Alpha"
 
     def test_none_current(self):
         from modules.clients.common.display import annotate_current_mission
+
         result = annotate_current_mission("Alpha", "abc-123", None)
         assert result == "Alpha"

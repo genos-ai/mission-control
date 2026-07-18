@@ -15,15 +15,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.agents.mission_control.gate_models import (
-    GateAction,
-    GateContext,
-)
+from modules.backend.agents.mission_control.gate_models import GateAction, GateContext
 from modules.backend.agents.mission_control.gate_post_run import (
     AutonomousPostRunReviewer,
     normalize_task_content,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -150,11 +146,13 @@ class TestBreakerStall:
     @pytest.mark.asyncio
     async def test_stall_detected(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(db_session, stall_threshold=3)
-        ctx = _context(recent_run_outcomes=[
-            {"completed_task_count": 0},
-            {"completed_task_count": 0},
-            {"completed_task_count": 0},
-        ])
+        ctx = _context(
+            recent_run_outcomes=[
+                {"completed_task_count": 0},
+                {"completed_task_count": 0},
+                {"completed_task_count": 0},
+            ]
+        )
 
         decision = await reviewer.review(ctx)
 
@@ -202,7 +200,8 @@ class TestBreakerBudgetHeadroom:
     @pytest.mark.asyncio
     async def test_headroom_insufficient(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
-            db_session, budget_safety_factor=1.5,
+            db_session,
+            budget_safety_factor=1.5,
         )
         # Budget=10, spent=9, remaining=1.
         # 5 completed tasks at $9 total → avg $1.80/task.
@@ -298,7 +297,8 @@ class TestRuleProposedTasks:
 class TestRulePlanExhausted:
     @pytest.mark.asyncio
     async def test_haiku_failure_falls_through_to_escalate(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ):
         """When Haiku classification fails, reviewer falls through to ESCALATE."""
         reviewer = AutonomousPostRunReviewer(db_session)
@@ -310,7 +310,9 @@ class TestRulePlanExhausted:
 
         # Mock _classify_with_haiku to return None (simulates failure)
         # so the reviewer falls through to ESCALATE.
-        with patch.object(reviewer, "_classify_with_haiku", new_callable=AsyncMock, return_value=None):
+        with patch.object(
+            reviewer, "_classify_with_haiku", new_callable=AsyncMock, return_value=None
+        ):
             decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
@@ -341,7 +343,8 @@ class TestCheckBudgetHeadroom:
 
     def test_remaining_exceeds_estimate(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
-            db_session, budget_safety_factor=1.5,
+            db_session,
+            budget_safety_factor=1.5,
         )
         # Budget=100, spent=10, remaining=90.
         # 10 completed at $10 total → avg $1/task. 2 proposed × $1 × 1.5 = $3.
@@ -354,7 +357,8 @@ class TestCheckBudgetHeadroom:
 
     def test_remaining_less_than_estimate(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
-            db_session, budget_safety_factor=1.5,
+            db_session,
+            budget_safety_factor=1.5,
         )
         ctx = _context(
             budget_usd=10.0,
@@ -366,7 +370,8 @@ class TestCheckBudgetHeadroom:
 
     def test_zero_completed_uses_cost_floor(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
-            db_session, cost_floor_usd=0.50,
+            db_session,
+            cost_floor_usd=0.50,
         )
         ctx = _context(
             budget_usd=10.0,
@@ -396,8 +401,10 @@ class TestCachedDecision:
 
     @pytest.mark.asyncio
     async def test_cached_row_returns_reconstructed_decision(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ):
+        from modules.backend.core.utils import utc_now
         from modules.backend.models.execution_record import (
             DecisionType,
             ExecutionDecision,
@@ -405,7 +412,6 @@ class TestCachedDecision:
             ExecutionRecordStatus,
         )
         from modules.backend.models.session import Session, SessionStatus
-        from modules.backend.core.utils import utc_now
 
         # Create a real session (FK target for execution_records)
         session = Session(
@@ -430,12 +436,14 @@ class TestCachedDecision:
         await db_session.flush()
 
         # Insert the cached decision row
-        meta = json.dumps({
-            "action": "advance_approved",
-            "reviewer": "config:rule_engine",
-            "rule": 5,
-            "model_metadata": None,
-        })
+        meta = json.dumps(
+            {
+                "action": "advance_approved",
+                "reviewer": "config:rule_engine",
+                "rule": 5,
+                "model_metadata": None,
+            }
+        )
         row = ExecutionDecision(
             execution_record_id=record_id,
             decision_type=DecisionType.POST_RUN_SUPERVISOR.value,
@@ -454,8 +462,10 @@ class TestCachedDecision:
 
     @pytest.mark.asyncio
     async def test_malformed_meta_falls_back_to_escalate(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ):
+        from modules.backend.core.utils import utc_now
         from modules.backend.models.execution_record import (
             DecisionType,
             ExecutionDecision,
@@ -463,7 +473,6 @@ class TestCachedDecision:
             ExecutionRecordStatus,
         )
         from modules.backend.models.session import Session, SessionStatus
-        from modules.backend.core.utils import utc_now
 
         # Create a real session (FK target for execution_records)
         malformed_session = Session(

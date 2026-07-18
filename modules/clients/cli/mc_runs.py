@@ -18,7 +18,6 @@ from typing import Any
 from modules.clients.cli.api_client import ApiError, CliApiClient
 from modules.clients.common.display import build_table, get_console
 
-
 _TERMINAL_STATES: frozenset[str] = frozenset({"completed", "failed", "cancelled"})
 
 
@@ -43,14 +42,16 @@ async def list_runs(
         )
         return
 
-    table = build_table(columns=[
-        ("#",       {"justify": "right", "width": 4}),
-        ("ID",      {"style": "cyan", "width": 38}),
-        ("Status",  {"width": 12}),
-        ("Workflow", {"width": 40}),
-        ("Started", {"width": 19}),
-        ("Cost",    {"justify": "right", "width": 8}),
-    ])
+    table = build_table(
+        columns=[
+            ("#", {"justify": "right", "width": 4}),
+            ("ID", {"style": "cyan", "width": 38}),
+            ("Status", {"width": 12}),
+            ("Workflow", {"width": 40}),
+            ("Started", {"width": 19}),
+            ("Cost", {"justify": "right", "width": 8}),
+        ]
+    )
     for i, r in enumerate(runs, start=1):
         table.add_row(
             str(i),

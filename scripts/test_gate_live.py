@@ -46,11 +46,13 @@ def record(name: str, passed: bool, detail: str = "") -> None:
 # Test 1: Config loading and validation
 # ---------------------------------------------------------------------------
 
+
 def test_config_loading() -> None:
     """Verify gate.yaml loads and validates through AppConfig."""
     click.echo(click.style("\n── Config Loading ──", bold=True))
     try:
         from modules.backend.core.config import get_app_config
+
         config = get_app_config()
         gate = config.gate
 
@@ -70,9 +72,16 @@ def test_config_loading() -> None:
         )
         record(
             "all 5 gate points present",
-            all(hasattr(gate.points, p) for p in
-                ["pre_dispatch", "pre_layer", "post_task",
-                 "verification_failed", "post_layer"]),
+            all(
+                hasattr(gate.points, p)
+                for p in [
+                    "pre_dispatch",
+                    "pre_layer",
+                    "post_task",
+                    "verification_failed",
+                    "post_layer",
+                ]
+            ),
         )
         record(
             "auto_rules have defaults",
@@ -87,6 +96,7 @@ def test_config_loading() -> None:
 # ---------------------------------------------------------------------------
 # Test 2: Schema validation rejects bad config
 # ---------------------------------------------------------------------------
+
 
 def test_schema_validation() -> None:
     """Verify Literal-typed mode rejects invalid values."""
@@ -116,13 +126,11 @@ def test_schema_validation() -> None:
 # Test 3: Factory function
 # ---------------------------------------------------------------------------
 
+
 def test_factory() -> None:
     """Verify create_gate returns correct types for each mode."""
     click.echo(click.style("\n── Factory Function ──", bold=True))
-    from modules.backend.agents.mission_control.gate import (
-        ConfigurableGate,
-        create_gate,
-    )
+    from modules.backend.agents.mission_control.gate import ConfigurableGate, create_gate
 
     # mode=off should return None
     gate_off = create_gate(mode_override="off")
@@ -155,6 +163,7 @@ def test_factory() -> None:
 # Test 4: ConfigurableGate routing (off mode, disabled points)
 # ---------------------------------------------------------------------------
 
+
 def test_configurable_gate_routing() -> None:
     """Verify ConfigurableGate routes correctly without needing LLM."""
     click.echo(click.style("\n── ConfigurableGate Routing ──", bold=True))
@@ -164,11 +173,7 @@ def test_configurable_gate_routing() -> None:
         GateAction,
         GateContext,
     )
-    from modules.backend.core.config_schema import (
-        GatePointSchema,
-        GatePointsSchema,
-        GateSchema,
-    )
+    from modules.backend.core.config_schema import GatePointSchema, GatePointsSchema, GateSchema
 
     async def _run():
         # Off mode should auto-continue
@@ -178,8 +183,7 @@ def test_configurable_gate_routing() -> None:
         decision = await gate.review(ctx)
         record(
             "off mode → CONTINUE (config:off)",
-            decision.action == GateAction.CONTINUE
-            and decision.reviewer == "config:off",
+            decision.action == GateAction.CONTINUE and decision.reviewer == "config:off",
             f"got: {decision.action}, reviewer={decision.reviewer}",
         )
 
@@ -192,8 +196,7 @@ def test_configurable_gate_routing() -> None:
         decision2 = await gate2.review(ctx)
         record(
             "disabled point → CONTINUE (config:disabled)",
-            decision2.action == GateAction.CONTINUE
-            and decision2.reviewer == "config:disabled",
+            decision2.action == GateAction.CONTINUE and decision2.reviewer == "config:disabled",
             f"got: {decision2.action}, reviewer={decision2.reviewer}",
         )
 
@@ -207,8 +210,7 @@ def test_configurable_gate_routing() -> None:
         decision3 = await gate3.review(ctx3)
         record(
             "per-point mode override works",
-            decision3.action == GateAction.CONTINUE
-            and decision3.reviewer == "config:off",
+            decision3.action == GateAction.CONTINUE and decision3.reviewer == "config:off",
             f"got: {decision3.action}, reviewer={decision3.reviewer}",
         )
 
@@ -218,6 +220,7 @@ def test_configurable_gate_routing() -> None:
 # ---------------------------------------------------------------------------
 # Test 5: Auto-continue rules
 # ---------------------------------------------------------------------------
+
 
 def test_auto_continue_rules() -> None:
     """Verify autonomous auto-continue rules fire correctly."""
@@ -241,49 +244,59 @@ def test_auto_continue_rules() -> None:
 
         # Pre-layer with few tasks → auto-continue
         ctx = GateContext(
-            gate_type="pre_layer", mission_id="test-auto",
+            gate_type="pre_layer",
+            mission_id="test-auto",
             pending_tasks=[{"task_id": "t1"}],
-            budget_usd=10.0, total_cost_usd=1.0,
+            budget_usd=10.0,
+            total_cost_usd=1.0,
         )
         decision = await gate.review(ctx)
         record(
             "pre_layer (1 task, low cost) → auto-continue",
-            decision.action == GateAction.CONTINUE
-            and decision.reviewer == "config:auto",
+            decision.action == GateAction.CONTINUE and decision.reviewer == "config:auto",
             f"got: {decision.action}, reviewer={decision.reviewer}",
         )
 
         # Post-task with passing verification → auto-continue
         ctx2 = GateContext(
-            gate_type="post_task", mission_id="test-auto",
+            gate_type="post_task",
+            mission_id="test-auto",
             verification={"tier_1": {"status": "pass"}, "tier_2": {"status": "pass"}},
-            budget_usd=10.0, total_cost_usd=1.0,
+            budget_usd=10.0,
+            total_cost_usd=1.0,
         )
         decision2 = await gate.review(ctx2)
         record(
             "post_task (verification pass) → auto-continue",
-            decision2.action == GateAction.CONTINUE
-            and decision2.reviewer == "config:auto",
+            decision2.action == GateAction.CONTINUE and decision2.reviewer == "config:auto",
             f"got: {decision2.action}, reviewer={decision2.reviewer}",
         )
 
         # High cost should NOT auto-continue (forces LLM review)
         # We can't actually call the LLM here, so just test the rule directly
-        result = gate._should_auto_continue(GateContext(
-            gate_type="pre_layer", mission_id="test-auto",
-            pending_tasks=[{"task_id": "t1"}],
-            budget_usd=10.0, total_cost_usd=9.0,  # 90% > 80%
-        ))
+        result = gate._should_auto_continue(
+            GateContext(
+                gate_type="pre_layer",
+                mission_id="test-auto",
+                pending_tasks=[{"task_id": "t1"}],
+                budget_usd=10.0,
+                total_cost_usd=9.0,  # 90% > 80%
+            )
+        )
         record(
             "high cost (90%) blocks auto-continue",
             result is False,
         )
 
         # verification_failed never auto-continues
-        result2 = gate._should_auto_continue(GateContext(
-            gate_type="verification_failed", mission_id="test-auto",
-            budget_usd=10.0, total_cost_usd=0.1,
-        ))
+        result2 = gate._should_auto_continue(
+            GateContext(
+                gate_type="verification_failed",
+                mission_id="test-auto",
+                budget_usd=10.0,
+                total_cost_usd=0.1,
+            )
+        )
         record(
             "verification_failed never auto-continues",
             result2 is False,
@@ -291,14 +304,15 @@ def test_auto_continue_rules() -> None:
 
         # post_layer auto-continues when cost is low
         ctx3 = GateContext(
-            gate_type="post_layer", mission_id="test-auto",
-            budget_usd=10.0, total_cost_usd=3.0,
+            gate_type="post_layer",
+            mission_id="test-auto",
+            budget_usd=10.0,
+            total_cost_usd=3.0,
         )
         decision3 = await gate.review(ctx3)
         record(
             "post_layer (low cost) → auto-continue",
-            decision3.action == GateAction.CONTINUE
-            and decision3.reviewer == "config:auto",
+            decision3.action == GateAction.CONTINUE and decision3.reviewer == "config:auto",
             f"got: {decision3.action}, reviewer={decision3.reviewer}",
         )
 
@@ -309,15 +323,12 @@ def test_auto_continue_rules() -> None:
 # Test 6: Dispatch integration with RecordingGate
 # ---------------------------------------------------------------------------
 
+
 def test_dispatch_with_recording_gate() -> None:
     """Run a real dispatch pipeline with a RecordingGate to verify all gate points fire."""
     click.echo(click.style("\n── Dispatch Integration (RecordingGate) ──", bold=True))
 
-    from modules.backend.agents.mission_control.gate import (
-        GateAction,
-        GateContext,
-        GateDecision,
-    )
+    from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
     from modules.backend.agents.mission_control.roster import (
         Roster,
         RosterAgentEntry,
@@ -348,46 +359,56 @@ def test_dispatch_with_recording_gate() -> None:
                 output={"result": "string", "confidence": "float"},
             ),
             constraints=RosterConstraintsSchema(
-                timeout_seconds=10, cost_ceiling_usd=1.0, retry_budget=1,
+                timeout_seconds=10,
+                cost_ceiling_usd=1.0,
+                retry_budget=1,
             ),
         )
         roster = Roster(agents=[entry])
 
-        plan = TaskPlan.model_validate({
-            "version": "1.0.0",
-            "mission_id": "gate-live-test",
-            "summary": "Gate integration test",
-            "estimated_cost_usd": 1.0,
-            "estimated_duration_seconds": 10,
-            "tasks": [
-                {
-                    "task_id": "t1",
-                    "agent": "test.agent",
-                    "agent_version": "1.0.0",
-                    "description": "First test task",
-                    "instructions": "Return a simple result",
-                    "dependencies": [],
-                    "verification": {
-                        "tier_1": {"schema_validation": True, "required_output_fields": ["result"]},
-                        "tier_2": {"deterministic_checks": []},
-                        "tier_3": {"requires_ai_evaluation": False},
+        plan = TaskPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "gate-live-test",
+                "summary": "Gate integration test",
+                "estimated_cost_usd": 1.0,
+                "estimated_duration_seconds": 10,
+                "tasks": [
+                    {
+                        "task_id": "t1",
+                        "agent": "test.agent",
+                        "agent_version": "1.0.0",
+                        "description": "First test task",
+                        "instructions": "Return a simple result",
+                        "dependencies": [],
+                        "verification": {
+                            "tier_1": {
+                                "schema_validation": True,
+                                "required_output_fields": ["result"],
+                            },
+                            "tier_2": {"deterministic_checks": []},
+                            "tier_3": {"requires_ai_evaluation": False},
+                        },
                     },
-                },
-                {
-                    "task_id": "t2",
-                    "agent": "test.agent",
-                    "agent_version": "1.0.0",
-                    "description": "Second test task",
-                    "instructions": "Return another result",
-                    "dependencies": [],
-                    "verification": {
-                        "tier_1": {"schema_validation": True, "required_output_fields": ["result"]},
-                        "tier_2": {"deterministic_checks": []},
-                        "tier_3": {"requires_ai_evaluation": False},
+                    {
+                        "task_id": "t2",
+                        "agent": "test.agent",
+                        "agent_version": "1.0.0",
+                        "description": "Second test task",
+                        "instructions": "Return another result",
+                        "dependencies": [],
+                        "verification": {
+                            "tier_1": {
+                                "schema_validation": True,
+                                "required_output_fields": ["result"],
+                            },
+                            "tier_2": {"deterministic_checks": []},
+                            "tier_3": {"requires_ai_evaluation": False},
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            }
+        )
 
         async def mock_executor(**kwargs):
             return {
@@ -462,9 +483,7 @@ def test_dispatch_with_recording_gate() -> None:
                 f"cost: ${post_tasks[0].total_cost_usd:.4f}",
             )
 
-        click.echo(
-            f"\n    Gate call sequence: {' → '.join(gate_types)}"
-        )
+        click.echo(f"\n    Gate call sequence: {' → '.join(gate_types)}")
         click.echo(
             f"    Mission status: {outcome.status.value}, "
             f"tasks: {len(outcome.task_results)}, "
@@ -478,15 +497,12 @@ def test_dispatch_with_recording_gate() -> None:
 # Test 7: LLM Gate Reviewer (real Haiku call)
 # ---------------------------------------------------------------------------
 
+
 def test_llm_gate_reviewer() -> None:
     """Send a real gate context to Haiku and get a structured decision back."""
     click.echo(click.style("\n── LLM Gate Reviewer (real Haiku call) ──", bold=True))
 
-    from modules.backend.agents.mission_control.gate import (
-        GateAction,
-        GateContext,
-        LlmGateReviewer,
-    )
+    from modules.backend.agents.mission_control.gate import GateAction, GateContext, LlmGateReviewer
 
     async def _run():
         reviewer = LlmGateReviewer(
@@ -576,6 +592,7 @@ def test_llm_gate_reviewer() -> None:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 @click.command()
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output.")
 @click.option("--skip-llm", is_flag=True, help="Skip the real LLM call test.")
@@ -618,7 +635,8 @@ def main(verbose: bool, skip_llm: bool) -> None:
     click.echo(
         click.style(
             f"  {passed}/{total} passed, {failed} failed",
-            fg=color, bold=True,
+            fg=color,
+            bold=True,
         )
     )
     click.echo(click.style("=" * 60, fg="cyan"))

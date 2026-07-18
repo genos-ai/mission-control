@@ -60,9 +60,16 @@ class TestSessionMessagesToModelHistory:
         assert isinstance(msgs[0].parts[0], SystemPromptPart)
 
     def test_tool_call_message(self):
-        msgs = session_messages_to_model_history([
-            _msg(role="tool_call", content='{"query": "test"}', tool_name="search", tool_call_id="tc-1"),
-        ])
+        msgs = session_messages_to_model_history(
+            [
+                _msg(
+                    role="tool_call",
+                    content='{"query": "test"}',
+                    tool_name="search",
+                    tool_call_id="tc-1",
+                ),
+            ]
+        )
         assert len(msgs) == 1
         assert isinstance(msgs[0], ModelResponse)
         part = msgs[0].parts[0]
@@ -71,9 +78,16 @@ class TestSessionMessagesToModelHistory:
         assert part.tool_call_id == "tc-1"
 
     def test_tool_result_message(self):
-        msgs = session_messages_to_model_history([
-            _msg(role="tool_result", content="found 3 results", tool_name="search", tool_call_id="tc-1"),
-        ])
+        msgs = session_messages_to_model_history(
+            [
+                _msg(
+                    role="tool_result",
+                    content="found 3 results",
+                    tool_name="search",
+                    tool_call_id="tc-1",
+                ),
+            ]
+        )
         assert len(msgs) == 1
         assert isinstance(msgs[0], ModelRequest)
         part = msgs[0].parts[0]
@@ -89,11 +103,13 @@ class TestSessionMessagesToModelHistory:
         assert session_messages_to_model_history([]) == []
 
     def test_conversation_order_preserved(self):
-        history = session_messages_to_model_history([
-            _msg(role="user", content="first"),
-            _msg(role="assistant", content="second"),
-            _msg(role="user", content="third"),
-        ])
+        history = session_messages_to_model_history(
+            [
+                _msg(role="user", content="first"),
+                _msg(role="assistant", content="second"),
+                _msg(role="user", content="third"),
+            ]
+        )
         assert len(history) == 3
         assert isinstance(history[0], ModelRequest)
         assert isinstance(history[1], ModelResponse)

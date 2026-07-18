@@ -17,9 +17,14 @@ def _make_user(role: str = "admin", is_active: bool = True) -> User:
     user.email = "test@example.com"
     user.system_role = role
     user.is_active = is_active
-    user.has_role = MagicMock(side_effect=lambda minimum: {
-        "viewer": 1, "user": 2, "admin": 3,
-    }.get(role, 0) >= {"viewer": 1, "user": 2, "admin": 3}.get(minimum, 99))
+    user.has_role = MagicMock(
+        side_effect=lambda minimum: {
+            "viewer": 1,
+            "user": 2,
+            "admin": 3,
+        }.get(role, 0)
+        >= {"viewer": 1, "user": 2, "admin": 3}.get(minimum, 99)
+    )
     return user
 
 

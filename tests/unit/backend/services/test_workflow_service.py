@@ -5,10 +5,10 @@ Tests workflow loading, validation, capability resolution,
 mission brief generation, output mapping, and workflow matching.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 import yaml
 
 from modules.backend.schemas.workflow import WorkflowSchema
@@ -91,8 +91,10 @@ class TestMissionBriefGeneration:
             workflow_name="test.pipeline.workflow",
             description="Test pipeline",
             objective={
-                "statement": "Test", "category": "test",
-                "owner": "test", "priority": "normal",
+                "statement": "Test",
+                "category": "test",
+                "owner": "test",
+                "priority": "normal",
             },
             steps=[
                 {
@@ -190,13 +192,16 @@ class TestUpstreamContextResolution:
             workflow_name="test.ctx.workflow",
             description="Test context",
             objective={
-                "statement": "T", "category": "t",
-                "owner": "t", "priority": "low",
+                "statement": "T",
+                "category": "t",
+                "owner": "t",
+                "priority": "low",
             },
             steps=[
                 {"id": "step-a", "capability": "test.agent"},
                 {
-                    "id": "step-b", "capability": "test.agent",
+                    "id": "step-b",
+                    "capability": "test.agent",
                     "depends_on": ["step-a"],
                     "input": {
                         "articles": "@context.raw_articles",
@@ -211,7 +216,9 @@ class TestUpstreamContextResolution:
         }
 
         result = service.resolve_upstream_context(
-            step, completed_outcomes, {"base_key": "base_value"},
+            step,
+            completed_outcomes,
+            {"base_key": "base_value"},
         )
 
         assert result["base_key"] == "base_value"
@@ -226,12 +233,15 @@ class TestUpstreamContextResolution:
             workflow_name="test.unresolved.workflow",
             description="Test",
             objective={
-                "statement": "T", "category": "t",
-                "owner": "t", "priority": "low",
+                "statement": "T",
+                "category": "t",
+                "owner": "t",
+                "priority": "low",
             },
             steps=[
                 {
-                    "id": "step-a", "capability": "test.agent",
+                    "id": "step-a",
+                    "capability": "test.agent",
                     "input": {"data": "@context.missing_key"},
                 },
             ],
@@ -253,19 +263,24 @@ class TestUpstreamContextDeepResolution:
         @node.X to point to a declared step).
         """
         steps = [{"id": "step-a", "capability": "test.agent"}]
-        for sid in (extra_steps or []):
+        for sid in extra_steps or []:
             steps.append({"id": sid, "capability": "test.agent"})
-        steps.append({
-            "id": "step-b", "capability": "test.agent",
-            "depends_on": ["step-a"],
-            "input": input_dict,
-        })
+        steps.append(
+            {
+                "id": "step-b",
+                "capability": "test.agent",
+                "depends_on": ["step-a"],
+                "input": input_dict,
+            }
+        )
         return WorkflowSchema(
             workflow_name="test.deep.workflow",
             description="Test",
             objective={
-                "statement": "T", "category": "t",
-                "owner": "t", "priority": "low",
+                "statement": "T",
+                "category": "t",
+                "owner": "t",
+                "priority": "low",
             },
             steps=steps,
         ).steps[-1]
@@ -274,15 +289,18 @@ class TestUpstreamContextDeepResolution:
         # Sparse-topology base case: a step input field references a prior
         # step's structured output. Should resolve to the dict.
         service = WorkflowService(agent_registry={})
-        step = self._make_step_with_input({
-            "research_packet": "@node.step-a.output",
-        })
+        step = self._make_step_with_input(
+            {
+                "research_packet": "@node.step-a.output",
+            }
+        )
         completed_outcomes = {
             "step-a": {"output": {"claims": ["c1", "c2"], "consensus": "x"}},
         }
         result = service.resolve_upstream_context(step, completed_outcomes, {})
         assert result["_step_input"]["research_packet"] == {
-            "claims": ["c1", "c2"], "consensus": "x",
+            "claims": ["c1", "c2"],
+            "consensus": "x",
         }
 
     def test_resolves_nested_dict_refs(self):
@@ -301,9 +319,11 @@ class TestUpstreamContextDeepResolution:
         completed_outcomes = {
             "open-quant": {"output": {"position": "Q1"}},
             "open-empiricist": {"output": {"position": "E1"}},
-            "critic-r0": {"output": {
-                "attacks": {"systems": {"assumption": "x", "attack": "y"}},
-            }},
+            "critic-r0": {
+                "output": {
+                    "attacks": {"systems": {"assumption": "x", "attack": "y"}},
+                }
+            },
         }
         # depends_on doesn't matter for ref resolution — the refs lookup
         # completed_outcomes directly. We use the test convenience of
@@ -314,7 +334,8 @@ class TestUpstreamContextDeepResolution:
         assert result["_step_input"]["opponents_previous"]["quant"] == {"position": "Q1"}
         assert result["_step_input"]["opponents_previous"]["empiricist"] == {"position": "E1"}
         assert result["_step_input"]["critic_attack_on_self"] == {
-            "assumption": "x", "attack": "y",
+            "assumption": "x",
+            "attack": "y",
         }
 
     def test_node_ref_to_skipped_step_returns_none(self):
@@ -339,12 +360,14 @@ class TestUpstreamContextDeepResolution:
     def test_static_values_passthrough(self):
         # Non-ref values pass through unchanged.
         service = WorkflowService(agent_registry={})
-        step = self._make_step_with_input({
-            "round_index": 1,
-            "agreement_intensity": 0.2,
-            "tags": ["a", "b"],
-            "label": "Round 1",
-        })
+        step = self._make_step_with_input(
+            {
+                "round_index": 1,
+                "agreement_intensity": 0.2,
+                "tags": ["a", "b"],
+                "label": "Round 1",
+            }
+        )
         result = service.resolve_upstream_context(step, {}, {})
         assert result["_step_input"]["round_index"] == 1
         assert result["_step_input"]["agreement_intensity"] == 0.2
@@ -361,7 +384,7 @@ class TestWorkflowLoading:
         workflow_data = {
             "workflow_name": "test.loaded.workflow",
             "description": "Loaded from disk",
-                "objective": {
+            "objective": {
                 "statement": "Test loading",
                 "category": "testing",
                 "owner": "test",
@@ -377,6 +400,7 @@ class TestWorkflowLoading:
         service._project_root = tmp_path
 
         from unittest.mock import MagicMock
+
         mock_config = MagicMock()
         mock_config.workflows.workflows_dir = "workflow_templates"
         mock_config.workflows.max_steps_per_workflow = 20
@@ -395,10 +419,12 @@ class TestWorkflowLoading:
         service = WorkflowService(agent_registry={})
         service._workflows = {
             "enabled": _make_workflow(
-                workflow_name="test.enabled.workflow", enabled=True,
+                workflow_name="test.enabled.workflow",
+                enabled=True,
             ),
             "disabled": _make_workflow(
-                workflow_name="test.disabled.workflow", enabled=False,
+                workflow_name="test.disabled.workflow",
+                enabled=False,
             ),
         }
 
@@ -410,10 +436,12 @@ class TestWorkflowLoading:
         service = WorkflowService(agent_registry={})
         service._workflows = {
             "enabled": _make_workflow(
-                workflow_name="test.enabled.workflow", enabled=True,
+                workflow_name="test.enabled.workflow",
+                enabled=True,
             ),
             "disabled": _make_workflow(
-                workflow_name="test.disabled.workflow", enabled=False,
+                workflow_name="test.disabled.workflow",
+                enabled=False,
             ),
         }
 

@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.logging import get_logger
 from modules.backend.models.execution_record import (
     ExecutionRecord,
-    TaskAttemptStatus,
     TaskAttempt,
+    TaskAttemptStatus,
     TaskExecution,
 )
 from modules.backend.services.base import BaseService
@@ -71,7 +71,8 @@ class HistoryQueryService(BaseService):
         # Domain tag filtering (post-filter for SQLite compatibility)
         if domain_tags:
             executions = [
-                e for e in executions
+                e
+                for e in executions
                 if e.domain_tags and any(tag in e.domain_tags for tag in domain_tags)
             ]
 
@@ -122,14 +123,16 @@ class HistoryQueryService(BaseService):
             if domain_tags and execution.domain_tags:
                 if not any(tag in execution.domain_tags for tag in domain_tags):
                     continue
-            failures.append({
-                "task_id": execution.task_id,
-                "agent_name": execution.agent_name,
-                "failure_tier": attempt.failure_tier,
-                "failure_reason": attempt.failure_reason,
-                "feedback_provided": attempt.feedback_provided,
-                "domain_tags": execution.domain_tags,
-            })
+            failures.append(
+                {
+                    "task_id": execution.task_id,
+                    "agent_name": execution.agent_name,
+                    "failure_tier": attempt.failure_tier,
+                    "failure_reason": attempt.failure_reason,
+                    "feedback_provided": attempt.feedback_provided,
+                    "domain_tags": execution.domain_tags,
+                }
+            )
 
         return failures[:limit]
 
@@ -145,10 +148,7 @@ class HistoryQueryService(BaseService):
         By default excludes missions that have been compressed
         into milestone summaries by the summarization pipeline.
         """
-        query = (
-            select(ExecutionRecord)
-            .where(ExecutionRecord.mission_id == mission_id)
-        )
+        query = select(ExecutionRecord).where(ExecutionRecord.mission_id == mission_id)
         if not include_summarized:
             query = query.where(ExecutionRecord.summarized == False)  # noqa: E712
         query = query.order_by(desc(ExecutionRecord.completed_at)).limit(limit)

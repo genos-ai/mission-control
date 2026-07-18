@@ -14,9 +14,10 @@ def check_health(logger, output_format: str = "human") -> None:
     checks = []
 
     try:
-        from modules.backend.core.config import get_settings, get_app_config
-        from modules.backend.core.logging import get_logger
+        from modules.backend.core.config import get_app_config, get_settings
         from modules.backend.core.exceptions import ApplicationError
+        from modules.backend.core.logging import get_logger
+
         checks.append(("Core imports", True, None))
         logger.debug("Core imports successful")
     except Exception as e:
@@ -42,6 +43,7 @@ def check_health(logger, output_format: str = "human") -> None:
 
     try:
         from modules.backend.main import get_app
+
         app = get_app()
         checks.append(("FastAPI application", True, f"Title: {app.title}"))
         logger.debug("FastAPI app loaded", extra={"title": app.title})
@@ -51,6 +53,7 @@ def check_health(logger, output_format: str = "human") -> None:
 
     try:
         from modules.backend.core.database import get_engine
+
         get_engine()
         checks.append(("Database models", True, None))
         logger.debug("Database models loaded")
@@ -60,20 +63,24 @@ def check_health(logger, output_format: str = "human") -> None:
 
     try:
         from modules.backend.schemas.base import ApiResponse, ErrorResponse
+
         checks.append(("API schemas", True, None))
         logger.debug("Schemas loaded")
     except Exception as e:
         checks.append(("API schemas", False, str(e)))
         logger.error("Schemas failed", extra={"error": str(e)})
 
-    from modules.clients.cli.report import get_console, build_table
+    from modules.clients.cli.report import build_table, get_console
 
     console = get_console()
-    table = build_table("Health Check Results", columns=[
-        ("Status", {"width": 8}),
-        ("Check",  {"style": "cyan", "width": 24}),
-        ("Detail", {"ratio": 1}),
-    ])
+    table = build_table(
+        "Health Check Results",
+        columns=[
+            ("Status", {"width": 8}),
+            ("Check", {"style": "cyan", "width": 24}),
+            ("Detail", {"ratio": 1}),
+        ],
+    )
 
     all_passed = True
     for name, passed, detail in checks:

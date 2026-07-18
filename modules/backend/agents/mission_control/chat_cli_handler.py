@@ -21,9 +21,7 @@ from modules.backend.agents.mission_control.helpers.cli_executor import (
     execute_codex,
     execute_copilot,
 )
-from modules.backend.agents.mission_control.helpers.prompt_builder import (
-    load_agent_system_prompt,
-)
+from modules.backend.agents.mission_control.helpers.prompt_builder import load_agent_system_prompt
 from modules.backend.agents.mission_control.models import EventBusProtocol
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
@@ -97,13 +95,18 @@ async def handle_cli_chat(
 
     # 1. Yield UserMessageEvent
     user_event = UserMessageEvent(
-        session_id=sid, source=source, content=message, channel=channel,
+        session_id=sid,
+        source=source,
+        content=message,
+        channel=channel,
     )
     yield user_event
 
     # 2. Yield AgentThinkingEvent
     yield AgentThinkingEvent(
-        session_id=sid, source=source, agent_id=agent_name,
+        session_id=sid,
+        source=source,
+        agent_id=agent_name,
     )
 
     # 3. Load conversation history and serialize
@@ -114,15 +117,13 @@ async def handle_cli_chat(
     full_message = message
     if history_text:
         full_message = (
-            f"[Previous conversation]\n{history_text}\n"
-            f"[End previous conversation]\n\n{message}"
+            f"[Previous conversation]\n{history_text}\n" f"[End previous conversation]\n\n{message}"
         )
 
     # 5. Inject mission context on first turn
     if not history_messages:
-        from modules.backend.agents.mission_control.mission_control import (
-            _prepend_mission_context,
-        )
+        from modules.backend.agents.mission_control.mission_control import _prepend_mission_context
+
         full_message = await _prepend_mission_context(mission_id, full_message)
 
     # 6. Load system prompt and execute
@@ -165,7 +166,8 @@ async def handle_cli_chat(
     budget_remaining = None
     if session.cost_budget_usd is not None:
         budget_remaining = max(
-            0.0, session.cost_budget_usd - session.total_cost_usd,
+            0.0,
+            session.cost_budget_usd - session.total_cost_usd,
         )
     yield CostUpdateEvent(
         session_id=sid,
@@ -184,17 +186,21 @@ async def handle_cli_chat(
         await session_service.add_message(session_id, user_create, target_agent=agent_name)
     # Persist assistant response
     from modules.backend.agents.mission_control.helpers import _persist_messages
+
     await _persist_messages(
-        session_service, session_id,
-        [SessionMessageCreate(
-            role="assistant",
-            content=output,
-            sender_id=agent_name,
-            model=model_label,
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=0.0,
-        )],
+        session_service,
+        session_id,
+        [
+            SessionMessageCreate(
+                role="assistant",
+                content=output,
+                sender_id=agent_name,
+                model=model_label,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0.0,
+            )
+        ],
     )
 
     # 10. Touch activity

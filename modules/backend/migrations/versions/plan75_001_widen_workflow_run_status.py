@@ -7,8 +7,8 @@ must accommodate the longest name.
 Revision ID: plan75_001
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "plan75_001"
 down_revision: str = "plan74_001"

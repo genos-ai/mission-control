@@ -117,12 +117,15 @@ class TestAuthMiddleware:
         }
         mock_app_config.security.user_roles = {"123456789": "admin"}
 
-        with patch(
-            "modules.clients.telegram.middlewares.auth.get_app_config",
-            return_value=mock_app_config,
-        ), patch(
-            "modules.backend.core.security.get_app_config",
-            return_value=mock_app_config,
+        with (
+            patch(
+                "modules.clients.telegram.middlewares.auth.get_app_config",
+                return_value=mock_app_config,
+            ),
+            patch(
+                "modules.backend.core.security.get_app_config",
+                return_value=mock_app_config,
+            ),
         ):
             await middleware(handler, event, data)
 
@@ -148,12 +151,15 @@ class TestAuthMiddleware:
         }
         mock_app_config.security.user_roles = {"123456789": "admin"}
 
-        with patch(
-            "modules.clients.telegram.middlewares.auth.get_app_config",
-            return_value=mock_app_config,
-        ), patch(
-            "modules.backend.core.security.get_app_config",
-            return_value=mock_app_config,
+        with (
+            patch(
+                "modules.clients.telegram.middlewares.auth.get_app_config",
+                return_value=mock_app_config,
+            ),
+            patch(
+                "modules.backend.core.security.get_app_config",
+                return_value=mock_app_config,
+            ),
         ):
             await middleware(handler, event, data)
 

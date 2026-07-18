@@ -22,16 +22,15 @@ async def main() -> None:
     print("Container Reuse Test")
     print("=" * 60)
 
-    from modules.backend.services.execution_environment import (
-        ExecutionEnvironmentService,
-    )
-    from modules.backend.services.container_backend import ContainerBackend
     from modules.backend.core.config import find_project_root
     from modules.backend.core.database import get_async_session
+    from modules.backend.services.container_backend import ContainerBackend
+    from modules.backend.services.execution_environment import ExecutionEnvironmentService
 
     async with get_async_session() as db:
         # Find a mission
         from modules.backend.repositories.mission import MissionRepository
+
         repo = MissionRepository(db)
         missions = await repo.list_active()
         mission = next((m for m in missions if "platform" in m.name), None)
@@ -98,8 +97,11 @@ async def main() -> None:
 
         # Check DB records
         from sqlalchemy import text
+
         r = await db.execute(
-            text("SELECT id, status, execution_count, last_execution_at FROM execution_environments WHERE mission_id = :mid"),
+            text(
+                "SELECT id, status, execution_count, last_execution_at FROM execution_environments WHERE mission_id = :mid"
+            ),
             {"mid": mission_id},
         )
         rows = r.all()

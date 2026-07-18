@@ -39,7 +39,8 @@ def create_agent(
     config.
     """
     instructions = assemble_instructions(
-        "deliberation", "research_packet_builder",
+        "deliberation",
+        "research_packet_builder",
     )
 
     agent = Agent(
@@ -55,6 +56,7 @@ def create_agent(
 
     if tool_names:
         from modules.backend.tools.registry import get_tool_registry
+
         get_tool_registry().register_on_agent(agent, tool_names)
 
     logger.info(

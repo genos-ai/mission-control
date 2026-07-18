@@ -126,9 +126,7 @@ class NotificationService:
         window_start = now - RATE_LIMIT_WINDOW
 
         # Clean old entries
-        self._rate_limits[user_id] = [
-            ts for ts in self._rate_limits[user_id] if ts > window_start
-        ]
+        self._rate_limits[user_id] = [ts for ts in self._rate_limits[user_id] if ts > window_start]
 
         # Check limit
         if len(self._rate_limits[user_id]) >= self._rate_limit_per_user:

@@ -17,13 +17,32 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 # Standard tags that apply across all missions regardless of MCD content.
-CROSS_CUTTING_TAGS: frozenset[str] = frozenset({
-    "auth", "api", "database", "testing", "deployment", "security",
-    "performance", "documentation", "config", "infra",
-    "backend", "frontend", "tui", "cli",
-    "code", "implementation", "refactor", "bugfix", "feature",
-    "migration", "quality", "observability",
-})
+CROSS_CUTTING_TAGS: frozenset[str] = frozenset(
+    {
+        "auth",
+        "api",
+        "database",
+        "testing",
+        "deployment",
+        "security",
+        "performance",
+        "documentation",
+        "config",
+        "infra",
+        "backend",
+        "frontend",
+        "tui",
+        "cli",
+        "code",
+        "implementation",
+        "refactor",
+        "bugfix",
+        "feature",
+        "migration",
+        "quality",
+        "observability",
+    }
+)
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -117,9 +136,7 @@ def infer_tags_from_manifest(
     for attr in ("modify", "read_first", "read_for_pattern"):
         entries = getattr(file_manifest, attr, [])
         for entry in entries:
-            path = getattr(entry, "path", None) or (
-                entry if isinstance(entry, str) else ""
-            )
+            path = getattr(entry, "path", None) or (entry if isinstance(entry, str) else "")
             if path:
                 paths.append(path)
 
@@ -129,9 +146,7 @@ def infer_tags_from_manifest(
     # Build repo_structure reverse map: directory prefix -> tag
     repo_map: dict[str, str] = {}
     if mcd:
-        repo_structure = (
-            mcd.get("identity", {}).get("repo_structure", {})
-        )
+        repo_structure = mcd.get("identity", {}).get("repo_structure", {})
         for prefix, description in repo_structure.items():
             # Derive tag from the prefix: "modules/backend/agents/" -> "agents"
             tag = normalize_tag(prefix.rstrip("/").split("/")[-1])

@@ -44,11 +44,14 @@ async def chat_repl(
             session_id = session_list[0].get("id")
 
     if not session_id:
-        session = await api.post("/sessions", body={
-            "goal": "Mission Chat",
-            "agent_id": "mission.director.agent",
-            "mission_id": mission_id,
-        })
+        session = await api.post(
+            "/sessions",
+            body={
+                "goal": "Mission Chat",
+                "agent_id": "mission.director.agent",
+                "mission_id": mission_id,
+            },
+        )
         session_id = session.get("id")
 
     # Display header
@@ -169,11 +172,19 @@ async def design_repl(
 
         if verbose:
             if tool_trace:
-                print(json.dumps({"type": "tool_trace", "trace": tool_trace}, default=str), flush=True)
-            print(json.dumps({"type": "architect_response", "response": response}, default=str), flush=True)
+                print(
+                    json.dumps({"type": "tool_trace", "trace": tool_trace}, default=str), flush=True
+                )
+            print(
+                json.dumps({"type": "architect_response", "response": response}, default=str),
+                flush=True,
+            )
             workflow_yaml = result.get("workflow_yaml")
             if workflow_yaml:
-                print(json.dumps({"type": "workflow_generated", "yaml": workflow_yaml}, default=str), flush=True)
+                print(
+                    json.dumps({"type": "workflow_generated", "yaml": workflow_yaml}, default=str),
+                    flush=True,
+                )
         else:
             if tool_summary:
                 console.print(f"\n[dim]tools: {tool_summary}[/dim]")
@@ -196,7 +207,10 @@ async def design_repl(
 
 
 def _render_sse_event(
-    console, event_type: str, data: dict, suppress_body: bool = False,
+    console,
+    event_type: str,
+    data: dict,
+    suppress_body: bool = False,
 ) -> None:
     """Render an SSE event inline in the chat stream.
 
@@ -231,9 +245,7 @@ def _render_sse_event(
             console.print(f"  [bold red]Error:[/bold red] {error_msg}")
         elif cost > 0:
             tokens = data.get("input_tokens", 0) + data.get("output_tokens", 0)
-            console.print(
-                f"[dim]  ${cost:.4f} | {tokens:,} tokens[/dim]"
-            )
+            console.print(f"[dim]  ${cost:.4f} | {tokens:,} tokens[/dim]")
 
     elif evt == "agent.thinking.started":
         agent = data.get("agent_id", "agent")
@@ -244,8 +256,7 @@ def _render_sse_event(
         tool = data.get("tool_name", data.get("content", ""))
         console.print(f"  [dim]\U0001f527 {agent}: {tool}[/dim]")
 
-    elif evt in ("agent.tool.returned", "user.message.sent",
-                 "session.cost.updated", "done"):
+    elif evt in ("agent.tool.returned", "user.message.sent", "session.cost.updated", "done"):
         pass  # suppress noise
 
     else:

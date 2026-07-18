@@ -116,7 +116,9 @@ def model_messages_to_session_creates(
                     creates.append(
                         SessionMessageCreate(
                             role="user",
-                            content=part.content if isinstance(part.content, str) else str(part.content),
+                            content=(
+                                part.content if isinstance(part.content, str) else str(part.content)
+                            ),
                         )
                     )
                 elif isinstance(part, SystemPromptPart):
@@ -130,7 +132,9 @@ def model_messages_to_session_creates(
                     creates.append(
                         SessionMessageCreate(
                             role="tool_result",
-                            content=part.content if isinstance(part.content, str) else str(part.content),
+                            content=(
+                                part.content if isinstance(part.content, str) else str(part.content)
+                            ),
                             tool_name=part.tool_name,
                             tool_call_id=part.tool_call_id,
                         )

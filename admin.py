@@ -39,8 +39,14 @@ OUTPUT_FORMATS = click.Choice(["human", "json", "jsonl"])
 @click.group(cls=ShowHelpOnMissingArgs, invoke_without_command=True)
 @click.option("--verbose", "-v", is_flag=True, help="Enable INFO-level logging.")
 @click.option("--debug", "-d", is_flag=True, help="Enable DEBUG-level logging.")
-@click.option("-o", "--output", "output_format", default="human",
-              type=OUTPUT_FORMATS, help="Output format (human, json, jsonl).")
+@click.option(
+    "-o",
+    "--output",
+    "output_format",
+    default="human",
+    type=OUTPUT_FORMATS,
+    help="Output format (human, json, jsonl).",
+)
 @click.pass_context
 def admin_cli(ctx, verbose: bool, debug: bool, output_format: str):
     """Mission Control — Admin CLI.
@@ -68,6 +74,7 @@ def admin_cli(ctx, verbose: bool, debug: bool, output_format: str):
 def health(ctx):
     """Run local health checks."""
     from modules.clients.cli.health import check_health
+
     check_health(ctx.logger, output_format=ctx.output_format)
 
 
@@ -76,6 +83,7 @@ def health(ctx):
 def config(ctx):
     """Display loaded YAML configuration."""
     from modules.clients.cli.config_display import show_config
+
     show_config(ctx.logger, output_format=ctx.output_format)
 
 
@@ -84,6 +92,7 @@ def config(ctx):
 def info(ctx):
     """Show application metadata and version."""
     from modules.clients.cli.info import show_info
+
     show_info(ctx.logger, output_format=ctx.output_format)
 
 
@@ -93,6 +102,7 @@ def info(ctx):
 def credits(ctx, roster: str):
     """Preflight credit check — verify all roster models have available credits."""
     from modules.clients.cli.credits import check_credits
+
     check_credits(ctx.logger, roster=roster, output_format=ctx.output_format)
 
 
@@ -118,12 +128,14 @@ def agent(ctx, message: str | None, name: str | None, list_agents: bool):
     """
     if list_agents:
         from modules.clients.cli.agent import show_agents
+
         show_agents(ctx.obj.logger)
         return
     if not message:
         click.echo(ctx.get_help())
         return
     from modules.clients.cli.agent import run_agent
+
     run_agent(ctx.obj.logger, message, name, ctx.obj.output_format)
 
 
@@ -155,6 +167,7 @@ def server(ctx):
 def start(ctx, host, port, reload):
     """Start the API server."""
     from modules.clients.cli.server import run_server
+
     run_server(ctx.logger, host, port, reload)
 
 
@@ -164,6 +177,7 @@ def start(ctx, host, port, reload):
 def stop(ctx, port):
     """Stop a running server."""
     from modules.clients.cli.helpers import get_service_port, service_stop
+
     service_stop(ctx.logger, "server", get_service_port(port))
 
 
@@ -173,6 +187,7 @@ def stop(ctx, port):
 def status(ctx, port):
     """Check if the server is running."""
     from modules.clients.cli.helpers import get_service_port, service_status
+
     service_status(ctx.logger, "server", get_service_port(port))
 
 
@@ -184,8 +199,10 @@ def status(ctx, port):
 def restart(ctx, host, port, reload):
     """Restart the server (stop then start)."""
     import time
+
     from modules.clients.cli.helpers import get_service_port, service_stop
     from modules.clients.cli.server import run_server
+
     service_stop(ctx.logger, "server", get_service_port(port))
     time.sleep(2)
     run_server(ctx.logger, host, port, reload)
@@ -201,6 +218,7 @@ def restart(ctx, host, port, reload):
 def telegram(ctx):
     """Start the Telegram bot in polling mode."""
     from modules.clients.cli.telegram import run_telegram_poll
+
     run_telegram_poll(ctx.logger)
 
 
@@ -223,6 +241,7 @@ def test(ctx, type: str, coverage: bool):
         python admin.py test integration
     """
     from modules.clients.cli.testing import run_tests
+
     run_tests(ctx.logger, type, coverage)
 
 
@@ -252,6 +271,7 @@ def migrate(ctx):
 def upgrade(ctx, revision: str):
     """Upgrade database to a revision (default: head)."""
     from modules.clients.cli.migrate import run_migrations
+
     run_migrations(ctx.logger, "upgrade", revision, None)
 
 
@@ -261,6 +281,7 @@ def upgrade(ctx, revision: str):
 def downgrade(ctx, revision: str):
     """Downgrade database to a revision."""
     from modules.clients.cli.migrate import run_migrations
+
     run_migrations(ctx.logger, "downgrade", revision, None)
 
 
@@ -269,6 +290,7 @@ def downgrade(ctx, revision: str):
 def current(ctx):
     """Show current database revision."""
     from modules.clients.cli.migrate import run_migrations
+
     run_migrations(ctx.logger, "current", "head", None)
 
 
@@ -277,6 +299,7 @@ def current(ctx):
 def history(ctx):
     """Show migration history."""
     from modules.clients.cli.migrate import run_migrations
+
     run_migrations(ctx.logger, "history", "head", None)
 
 
@@ -286,6 +309,7 @@ def history(ctx):
 def autogenerate(ctx, message: str):
     """Auto-generate migration from model changes."""
     from modules.clients.cli.migrate import run_migrations
+
     run_migrations(ctx.logger, "autogenerate", "head", message)
 
 
@@ -315,14 +339,29 @@ def execution(ctx):
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
 @click.option("--triggered-by", default="user:admin", help="Trigger origin.")
-@click.option("--mission", "-m", "mission_id", default=None, help="Mission ID (uses current mission if not specified).")
+@click.option(
+    "--mission",
+    "-m",
+    "mission_id",
+    default=None,
+    help="Mission ID (uses current mission if not specified).",
+)
 @click.pass_obj
 def execution_run(ctx, objective, roster, budget, triggered_by, mission_id):
     """Create and execute in one step."""
     from modules.clients.cli.execution_cmds import run_execution
-    run_execution(ctx.logger, action="run", objective=objective, execution_id=None,
-                  roster=roster, budget=budget, triggered_by=triggered_by,
-                  output_format=ctx.output_format, mission_id=mission_id)
+
+    run_execution(
+        ctx.logger,
+        action="run",
+        objective=objective,
+        execution_id=None,
+        roster=roster,
+        budget=budget,
+        triggered_by=triggered_by,
+        output_format=ctx.output_format,
+        mission_id=mission_id,
+    )
 
 
 @execution.command("create")
@@ -330,14 +369,29 @@ def execution_run(ctx, objective, roster, budget, triggered_by, mission_id):
 @click.option("--roster", default="default", help="Agent roster to use.")
 @click.option("--budget", default=None, type=float, help="Cost ceiling in USD.")
 @click.option("--triggered-by", default="user:admin", help="Trigger origin.")
-@click.option("--mission", "-m", "mission_id", default=None, help="Mission ID (uses current mission if not specified).")
+@click.option(
+    "--mission",
+    "-m",
+    "mission_id",
+    default=None,
+    help="Mission ID (uses current mission if not specified).",
+)
 @click.pass_obj
 def execution_create(ctx, objective, roster, budget, triggered_by, mission_id):
     """Create an execution (PENDING state, not yet executed)."""
     from modules.clients.cli.execution_cmds import run_execution
-    run_execution(ctx.logger, action="create", objective=objective, execution_id=None,
-                  roster=roster, budget=budget, triggered_by=triggered_by,
-                  output_format=ctx.output_format, mission_id=mission_id)
+
+    run_execution(
+        ctx.logger,
+        action="create",
+        objective=objective,
+        execution_id=None,
+        roster=roster,
+        budget=budget,
+        triggered_by=triggered_by,
+        output_format=ctx.output_format,
+        mission_id=mission_id,
+    )
 
 
 @execution.command("execute")
@@ -347,9 +401,17 @@ def execution_create(ctx, objective, roster, budget, triggered_by, mission_id):
 def execution_execute(ctx, execution_id, roster):
     """Execute an existing PENDING execution."""
     from modules.clients.cli.execution_cmds import run_execution
-    run_execution(ctx.logger, action="execute", objective=None, execution_id=execution_id,
-                  roster=roster, budget=None, triggered_by="user:admin",
-                  output_format=ctx.output_format)
+
+    run_execution(
+        ctx.logger,
+        action="execute",
+        objective=None,
+        execution_id=execution_id,
+        roster=roster,
+        budget=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @execution.command("list")
@@ -357,9 +419,17 @@ def execution_execute(ctx, execution_id, roster):
 def execution_list(ctx):
     """List recent executions."""
     from modules.clients.cli.execution_cmds import run_execution
-    run_execution(ctx.logger, action="list", objective=None, execution_id=None,
-                  roster="default", budget=None, triggered_by="user:admin",
-                  output_format=ctx.output_format)
+
+    run_execution(
+        ctx.logger,
+        action="list",
+        objective=None,
+        execution_id=None,
+        roster="default",
+        budget=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @execution.command("detail")
@@ -368,9 +438,17 @@ def execution_list(ctx):
 def execution_detail(ctx, execution_id):
     """Show execution detail with task results."""
     from modules.clients.cli.execution_cmds import run_execution
-    run_execution(ctx.logger, action="detail", objective=None, execution_id=execution_id,
-                  roster="default", budget=None, triggered_by="user:admin",
-                  output_format=ctx.output_format)
+
+    run_execution(
+        ctx.logger,
+        action="detail",
+        objective=None,
+        execution_id=execution_id,
+        roster="default",
+        budget=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @execution.command("plan")
@@ -379,9 +457,17 @@ def execution_detail(ctx, execution_id):
 def execution_plan(ctx, execution_id):
     """Show the TaskPlan DAG for an execution."""
     from modules.clients.cli.execution_cmds import run_execution
-    run_execution(ctx.logger, action="plan", objective=None, execution_id=execution_id,
-                  roster="default", budget=None, triggered_by="user:admin",
-                  output_format=ctx.output_format)
+
+    run_execution(
+        ctx.logger,
+        action="plan",
+        objective=None,
+        execution_id=execution_id,
+        roster="default",
+        budget=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @execution.command("cost")
@@ -390,9 +476,17 @@ def execution_plan(ctx, execution_id):
 def execution_cost(ctx, execution_id):
     """Show execution cost breakdown."""
     from modules.clients.cli.execution_cmds import run_execution
-    run_execution(ctx.logger, action="cost", objective=None, execution_id=execution_id,
-                  roster="default", budget=None, triggered_by="user:admin",
-                  output_format=ctx.output_format)
+
+    run_execution(
+        ctx.logger,
+        action="cost",
+        objective=None,
+        execution_id=execution_id,
+        roster="default",
+        budget=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 # =============================================================================
@@ -420,8 +514,15 @@ def workflow(ctx):
 def workflow_list(ctx):
     """List available workflows."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
-    run_workflow_cli(ctx.logger, action="list", workflow_name=None, run_id=None,
-                     triggered_by="user:admin", output_format=ctx.output_format)
+
+    run_workflow_cli(
+        ctx.logger,
+        action="list",
+        workflow_name=None,
+        run_id=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @workflow.command("detail")
@@ -430,8 +531,15 @@ def workflow_list(ctx):
 def workflow_detail(ctx, name):
     """Show workflow configuration and steps."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
-    run_workflow_cli(ctx.logger, action="detail", workflow_name=name, run_id=None,
-                     triggered_by="user:admin", output_format=ctx.output_format)
+
+    run_workflow_cli(
+        ctx.logger,
+        action="detail",
+        workflow_name=name,
+        run_id=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @workflow.command("run")
@@ -452,11 +560,19 @@ def workflow_run(ctx, name, triggered_by, mission, gate):
     gate_obj = None
     if gate and gate != "off":
         from modules.backend.agents.mission_control.gate import create_gate
+
         gate_obj = create_gate(mode_override=gate)
 
-    run_workflow_cli(ctx.logger, action="run", workflow_name=name, run_id=None,
-                     triggered_by=triggered_by, output_format=ctx.output_format,
-                     mission_name=mission, gate=gate_obj)
+    run_workflow_cli(
+        ctx.logger,
+        action="run",
+        workflow_name=name,
+        run_id=None,
+        triggered_by=triggered_by,
+        output_format=ctx.output_format,
+        mission_name=mission,
+        gate=gate_obj,
+    )
 
 
 @workflow.command("runs")
@@ -465,8 +581,15 @@ def workflow_run(ctx, name, triggered_by, mission, gate):
 def workflow_runs(ctx, name):
     """List workflow runs."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
-    run_workflow_cli(ctx.logger, action="runs", workflow_name=name, run_id=None,
-                     triggered_by="user:admin", output_format=ctx.output_format)
+
+    run_workflow_cli(
+        ctx.logger,
+        action="runs",
+        workflow_name=name,
+        run_id=None,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @workflow.command("run-detail")
@@ -475,8 +598,15 @@ def workflow_runs(ctx, name):
 def workflow_run_detail(ctx, run_id):
     """Show details for a specific workflow run."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
-    run_workflow_cli(ctx.logger, action="run-detail", workflow_name=None,
-                     run_id=run_id, triggered_by="user:admin", output_format=ctx.output_format)
+
+    run_workflow_cli(
+        ctx.logger,
+        action="run-detail",
+        workflow_name=None,
+        run_id=run_id,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 @workflow.command("report")
@@ -485,8 +615,15 @@ def workflow_run_detail(ctx, run_id):
 def workflow_report(ctx, run_id):
     """Render a report for a past workflow run."""
     from modules.clients.cli.workflow_cmds import run_workflow_cli
-    run_workflow_cli(ctx.logger, action="report", workflow_name=None,
-                     run_id=run_id, triggered_by="user:admin", output_format=ctx.output_format)
+
+    run_workflow_cli(
+        ctx.logger,
+        action="report",
+        workflow_name=None,
+        run_id=run_id,
+        triggered_by="user:admin",
+        output_format=ctx.output_format,
+    )
 
 
 # =============================================================================
@@ -518,14 +655,27 @@ def mission(ctx):
 @click.option("--budget", type=float, default=None, help="Budget ceiling (USD).")
 @click.option("--repo-url", default=None, help="Repository URL.")
 @click.option("--repo-root", default=None, help="Local repo root path.")
-@click.option("--tier", default="user", type=click.Choice(["user", "platform"]), help="Mission tier.")
+@click.option(
+    "--tier", default="user", type=click.Choice(["user", "platform"]), help="Mission tier."
+)
 @click.pass_obj
 def mission_create(ctx, name, description, brief, roster, budget, repo_url, repo_root, tier):
     """Create a new mission."""
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "create", name=name, description=description,
-                brief=brief, roster=roster, budget=budget, repo_url=repo_url,
-                repo_root=repo_root, tier=tier, output_format=ctx.output_format)
+
+    run_mission(
+        ctx.logger,
+        "create",
+        name=name,
+        description=description,
+        brief=brief,
+        roster=roster,
+        budget=budget,
+        repo_url=repo_url,
+        repo_root=repo_root,
+        tier=tier,
+        output_format=ctx.output_format,
+    )
 
 
 @mission.command("list")
@@ -533,6 +683,7 @@ def mission_create(ctx, name, description, brief, roster, budget, repo_url, repo
 def mission_list(ctx):
     """List all active missions."""
     from modules.clients.cli.mission_cmds import run_mission
+
     run_mission(ctx.logger, "list", output_format=ctx.output_format)
 
 
@@ -546,8 +697,10 @@ def mission_detail(ctx, mission_id, name):
     Uses current mission if MISSION_ID is omitted.
     """
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "detail", mission_id=mission_id, name=name,
-                output_format=ctx.output_format)
+
+    run_mission(
+        ctx.logger, "detail", mission_id=mission_id, name=name, output_format=ctx.output_format
+    )
 
 
 @mission.command("archive")
@@ -559,8 +712,8 @@ def mission_archive(ctx, mission_id):
     Uses current mission if MISSION_ID is omitted.
     """
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "archive", mission_id=mission_id,
-                output_format=ctx.output_format)
+
+    run_mission(ctx.logger, "archive", mission_id=mission_id, output_format=ctx.output_format)
 
 
 @mission.command("delete")
@@ -576,10 +729,12 @@ def mission_delete(ctx, mission_id, confirm):
     Uses current mission if MISSION_ID is omitted.
     """
     if not confirm:
-        click.confirm("This will permanently delete the mission and all its data. Continue?", abort=True)
+        click.confirm(
+            "This will permanently delete the mission and all its data. Continue?", abort=True
+        )
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "delete", mission_id=mission_id,
-                output_format=ctx.output_format)
+
+    run_mission(ctx.logger, "delete", mission_id=mission_id, output_format=ctx.output_format)
 
 
 @mission.command("use")
@@ -588,8 +743,8 @@ def mission_delete(ctx, mission_id, confirm):
 def mission_use(ctx, mission_id):
     """Set the current mission (persists across commands)."""
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "use", mission_id=mission_id,
-                output_format=ctx.output_format)
+
+    run_mission(ctx.logger, "use", mission_id=mission_id, output_format=ctx.output_format)
 
 
 @mission.command("clear")
@@ -597,6 +752,7 @@ def mission_use(ctx, mission_id):
 def mission_clear(ctx):
     """Clear the current mission selection."""
     from modules.clients.cli.mission_cmds import run_mission
+
     run_mission(ctx.logger, "clear-mission", output_format=ctx.output_format)
 
 
@@ -615,8 +771,8 @@ def mission_context_show(ctx, mission_id):
     Uses current mission if MISSION_ID is omitted.
     """
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "context-show", mission_id=mission_id,
-                output_format=ctx.output_format)
+
+    run_mission(ctx.logger, "context-show", mission_id=mission_id, output_format=ctx.output_format)
 
 
 @mission_context.command("history")
@@ -628,8 +784,10 @@ def mission_context_history(ctx, mission_id):
     Uses current mission if MISSION_ID is omitted.
     """
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "context-history", mission_id=mission_id,
-                output_format=ctx.output_format)
+
+    run_mission(
+        ctx.logger, "context-history", mission_id=mission_id, output_format=ctx.output_format
+    )
 
 
 @mission.command("summarize")
@@ -641,8 +799,8 @@ def mission_summarize(ctx, mission_id):
     Uses current mission if MISSION_ID is omitted.
     """
     from modules.clients.cli.mission_cmds import run_mission
-    run_mission(ctx.logger, "summarize", mission_id=mission_id,
-                output_format=ctx.output_format)
+
+    run_mission(ctx.logger, "summarize", mission_id=mission_id, output_format=ctx.output_format)
 
 
 @mission.command("clear-sessions")
@@ -668,14 +826,18 @@ def mission_clear_sessions(ctx, mission_id, yes):
                 mname = m.name
         else:
             from modules.clients.cli.mission_context import async_require_mission_id
+
             mid = await async_require_mission_id(None)
             mname = mid[:12]
 
         if not yes:
-            click.echo(click.style(
-                f"This will DELETE all sessions and messages for mission '{mname}' ({mid}).",
-                fg="red", bold=True,
-            ))
+            click.echo(
+                click.style(
+                    f"This will DELETE all sessions and messages for mission '{mname}' ({mid}).",
+                    fg="red",
+                    bold=True,
+                )
+            )
             if not click.confirm("Are you sure?"):
                 click.echo("Aborted.")
                 return
@@ -716,7 +878,9 @@ def context(ctx):
 
 
 @context.command("show")
-@click.option("--mission", "mission_id", default=None, help="Mission ID for full assembled context.")
+@click.option(
+    "--mission", "mission_id", default=None, help="Mission ID for full assembled context."
+)
 @click.pass_obj
 def context_show(ctx, mission_id):
     """Show all context layers and token costs.
@@ -725,12 +889,18 @@ def context_show(ctx, mission_id):
     With --mission: full assembled context packet from DB + disk.
     """
     from modules.clients.cli.context import run_context
+
     run_context(ctx.logger, "show", output_format=ctx.output_format, mission_id=mission_id)
 
 
 @context.command("assembled")
 @click.option("--mission", "mission_id", required=True, help="Mission ID.")
-@click.option("--tags", "domain_tags", default=None, help="Comma-separated domain tags (e.g. code,implementation).")
+@click.option(
+    "--tags",
+    "domain_tags",
+    default=None,
+    help="Comma-separated domain tags (e.g. code,implementation).",
+)
 @click.pass_obj
 def context_assembled(ctx, mission_id, domain_tags):
     """Build the full assembled context packet for a mission.
@@ -739,21 +909,38 @@ def context_assembled(ctx, mission_id, domain_tags):
     Requires a running database.
     """
     from modules.clients.cli.context import run_context
+
     tags = domain_tags.split(",") if domain_tags else None
-    run_context(ctx.logger, "assembled", output_format=ctx.output_format,
-                mission_id=mission_id, domain_tags=tags)
+    run_context(
+        ctx.logger,
+        "assembled",
+        output_format=ctx.output_format,
+        mission_id=mission_id,
+        domain_tags=tags,
+    )
 
 
 @context.command("codemap")
 @click.option("--generate", is_flag=True, help="Regenerate before showing.")
-@click.option("--format", "format_type", type=click.Choice(["markdown", "json"]),
-              default="markdown", help="Output format.")
+@click.option(
+    "--format",
+    "format_type",
+    type=click.Choice(["markdown", "json"]),
+    default="markdown",
+    help="Output format.",
+)
 @click.pass_obj
 def context_codemap(ctx, generate, format_type):
     """Show or generate the Code Map."""
     from modules.clients.cli.context import run_context
-    run_context(ctx.logger, "codemap", output_format=ctx.output_format,
-                generate=generate, format_type=format_type)
+
+    run_context(
+        ctx.logger,
+        "codemap",
+        output_format=ctx.output_format,
+        generate=generate,
+        format_type=format_type,
+    )
 
 
 @context.command("pqi")
@@ -761,6 +948,7 @@ def context_codemap(ctx, generate, format_type):
 def context_pqi(ctx):
     """Run the PyQuality Index scorer."""
     from modules.clients.cli.context import run_context
+
     run_context(ctx.logger, "pqi", output_format=ctx.output_format)
 
 
@@ -769,6 +957,7 @@ def context_pqi(ctx):
 def context_deps(ctx):
     """Show dependency graph analysis."""
     from modules.clients.cli.context import run_context
+
     run_context(ctx.logger, "deps", output_format=ctx.output_format)
 
 
@@ -797,6 +986,7 @@ def db(ctx):
 def db_stats(ctx):
     """Show row counts for all tables."""
     from modules.clients.cli.db import run_db
+
     run_db(ctx.logger, action="stats", table=None, limit=10, confirm=False)
 
 
@@ -805,6 +995,7 @@ def db_stats(ctx):
 def db_tables(ctx):
     """Show table schemas (columns, types, nullability)."""
     from modules.clients.cli.db import run_db
+
     run_db(ctx.logger, action="tables", table=None, limit=10, confirm=False)
 
 
@@ -815,19 +1006,31 @@ def db_tables(ctx):
 def db_query(ctx, table, limit):
     """Query recent rows from a table."""
     from modules.clients.cli.db import run_db
+
     run_db(ctx.logger, action="query", table=table, limit=limit, confirm=False)
 
 
 @db.command("clear")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
-@click.option("--include-missions", is_flag=True, default=False,
-              help="Also clear missions and MCD (full nuclear reset).")
+@click.option(
+    "--include-missions",
+    is_flag=True,
+    default=False,
+    help="Also clear missions and MCD (full nuclear reset).",
+)
 @click.pass_obj
 def db_clear(ctx, yes, include_missions):
     """Clear run data. Missions and MCD are preserved by default."""
     from modules.clients.cli.db import run_db
-    run_db(ctx.logger, action="clear", table=None, limit=10, confirm=yes,
-           include_missions=include_missions)
+
+    run_db(
+        ctx.logger,
+        action="clear",
+        table=None,
+        limit=10,
+        confirm=yes,
+        include_missions=include_missions,
+    )
 
 
 @db.command("clear-executions")
@@ -836,6 +1039,7 @@ def db_clear(ctx, yes, include_missions):
 def db_clear_executions(ctx, yes):
     """Clear execution data only."""
     from modules.clients.cli.db import run_db
+
     run_db(ctx.logger, action="clear-executions", table=None, limit=10, confirm=yes)
 
 
@@ -845,6 +1049,7 @@ def db_clear_executions(ctx, yes):
 def db_clear_sessions(ctx, yes):
     """Clear session data only."""
     from modules.clients.cli.db import run_db
+
     run_db(ctx.logger, action="clear-sessions", table=None, limit=10, confirm=yes)
 
 
@@ -854,6 +1059,7 @@ def db_clear_sessions(ctx, yes):
 def db_clear_tasks(ctx, yes):
     """Clear all tasks and task dependencies (Plan 72)."""
     from modules.clients.cli.db import run_db
+
     run_db(ctx.logger, action="clear-tasks", table=None, limit=10, confirm=yes)
 
 
@@ -882,7 +1088,11 @@ def _format_tree(group: click.Group, prefix: str = "", is_last: bool = True) -> 
             for param in cmd.params:
                 if isinstance(param, click.Argument):
                     parts.append(param.human_readable_name.upper())
-                elif isinstance(param, click.Option) and param.name not in ("help", "verbose", "debug"):
+                elif isinstance(param, click.Option) and param.name not in (
+                    "help",
+                    "verbose",
+                    "debug",
+                ):
                     flag = param.opts[-1]
                     parts.append(f"[{flag}]")
 
@@ -923,6 +1133,7 @@ def catalog(ctx):
 def catalog_list(ctx):
     """List all agents in the catalog."""
     from modules.clients.cli.catalog_cmds import run_catalog
+
     run_catalog(ctx.logger, "list", output_format=ctx.output_format)
 
 
@@ -932,6 +1143,7 @@ def catalog_list(ctx):
 def catalog_detail(ctx, agent_name):
     """Show detail for a specific agent."""
     from modules.clients.cli.catalog_cmds import run_catalog
+
     run_catalog(ctx.logger, "detail", agent_name=agent_name, output_format=ctx.output_format)
 
 
@@ -945,12 +1157,14 @@ def catalog_models(ctx):
         python admin.py catalog models
     """
     import asyncio
+
     from rich.console import Console
     from rich.table import Table
 
     async def _run():
-        from modules.backend.core.database import get_async_session
         from sqlalchemy import text
+
+        from modules.backend.core.database import get_async_session
 
         async with get_async_session() as db:
             result = await db.execute(text("""
@@ -1013,8 +1227,12 @@ def catalog_set_model(ctx, agent_name, model):
 
 @catalog.command("set-provider")
 @click.argument("provider", type=click.Choice(["copilot", "anthropic"]))
-@click.option("--model-map", type=str, default=None,
-              help="Comma-separated old=new model mappings, e.g. 'haiku-4-5=claude-haiku-4.5,sonnet-4-6=claude-sonnet-4.6'")
+@click.option(
+    "--model-map",
+    type=str,
+    default=None,
+    help="Comma-separated old=new model mappings, e.g. 'haiku-4-5=claude-haiku-4.5,sonnet-4-6=claude-sonnet-4.6'",
+)
 @click.option("--dry-run", is_flag=True, help="Show changes without applying them")
 @click.pass_obj
 def catalog_set_provider(ctx, provider, model_map, dry_run):
@@ -1044,7 +1262,9 @@ def catalog_set_provider(ctx, provider, model_map, dry_run):
         "claude-sonnet-4-5-20241022": "claude-sonnet-4.6",
         "claude-opus-4-6": "claude-opus-4.6",
     }
-    TO_ANTHROPIC = {v: k for k, v in TO_COPILOT.items() if "20251001" not in k and "20241022" not in k}
+    TO_ANTHROPIC = {
+        v: k for k, v in TO_COPILOT.items() if "20251001" not in k and "20241022" not in k
+    }
 
     mapping = TO_COPILOT if provider == "copilot" else TO_ANTHROPIC
 
@@ -1118,8 +1338,9 @@ def catalog_aliases(ctx):
 @click.pass_obj
 def catalog_aliases_list(ctx):
     """List all model aliases from models.yaml."""
-    from modules.backend.core.config import get_app_config
     from rich.table import Table
+
+    from modules.backend.core.config import get_app_config
 
     aliases = get_app_config().models.aliases
     table = Table(title="Model Aliases", show_header=True)
@@ -1132,6 +1353,7 @@ def catalog_aliases_list(ctx):
         table.add_row(alias, full_name, provider)
 
     from rich.console import Console
+
     Console().print(table)
 
 
@@ -1148,11 +1370,16 @@ def catalog_aliases_set(ctx, alias, model):
         python admin.py catalog aliases set comprehensive anthropic:claude-opus-4-6
     """
     import re
+
     import yaml
+
     from modules.backend.core.config import find_project_root
 
     if ":" not in model:
-        click.echo(f"Error: model must be a fully-qualified 'provider:model' string, got '{model}'", err=True)
+        click.echo(
+            f"Error: model must be a fully-qualified 'provider:model' string, got '{model}'",
+            err=True,
+        )
         raise SystemExit(1)
 
     models_path = find_project_root() / "config" / "settings" / "models.yaml"
@@ -1162,18 +1389,20 @@ def catalog_aliases_set(ctx, alias, model):
     old = (raw.get("aliases") or {}).get(alias, "(new)")
 
     # Patch in-place to preserve comments. Replace existing alias line or append under aliases:.
-    line_pattern = re.compile(rf'^(\s+){re.escape(alias)}:.*$', re.MULTILINE)
+    line_pattern = re.compile(rf"^(\s+){re.escape(alias)}:.*$", re.MULTILINE)
     new_line = f'  {alias}: "{model}"'
     if line_pattern.search(text):
         text = line_pattern.sub(new_line, text)
     else:
-        text = text.rstrip('\n') + f'\n{new_line}\n'
+        text = text.rstrip("\n") + f"\n{new_line}\n"
 
     models_path.write_text(text)
 
     click.echo(f"aliases.{alias}: {old} -> {model}")
     click.echo(f"Written to {models_path}")
-    click.echo("Note: restart the backend service to pick up the change (config is cached at startup).")
+    click.echo(
+        "Note: restart the backend service to pick up the change (config is cached at startup)."
+    )
 
 
 # =============================================================================
@@ -1204,7 +1433,11 @@ def admin(ctx):
 
 @admin.command("seed-catalog")
 @click.option("--force", is_flag=True, help="Update all agents from YAML (preserves DB prompts).")
-@click.option("--reset-prompts", is_flag=True, help="Also overwrite system prompts from disk (use with --force).")
+@click.option(
+    "--reset-prompts",
+    is_flag=True,
+    help="Also overwrite system prompts from disk (use with --force).",
+)
 @click.pass_obj
 def admin_seed_catalog(ctx, force, reset_prompts):
     """Seed the agent catalog from config/agents/ YAML files.
@@ -1215,7 +1448,14 @@ def admin_seed_catalog(ctx, force, reset_prompts):
     --force --reset-prompts also overwrites prompts from disk layers.
     """
     from modules.clients.cli.catalog_cmds import run_admin
-    run_admin(ctx.logger, "seed-catalog", force=force, reset_prompts=reset_prompts, output_format=ctx.output_format)
+
+    run_admin(
+        ctx.logger,
+        "seed-catalog",
+        force=force,
+        reset_prompts=reset_prompts,
+        output_format=ctx.output_format,
+    )
 
 
 @admin.command("migrate-planning-agent")
@@ -1229,10 +1469,10 @@ def admin_migrate_planning_agent(ctx):
     import asyncio
 
     async def _run():
+        from modules.backend.core.database import get_async_session
         from modules.backend.core.exceptions import ConflictError
         from modules.backend.repositories.mission import MissionRepository
         from modules.backend.services.mission_team import MissionTeamService
-        from modules.backend.core.database import get_async_session
 
         added = skipped = errors = 0
         async with get_async_session() as db:
@@ -1267,7 +1507,9 @@ def admin_seed_workflows(ctx, force):
         async with WorkflowDefinitionService.factory() as svc:
             result = await seed_workflows(svc, force=force)
         ctx.logger.info(f"Workflow seeding: {result}")
-        click.echo(f"Seeded: {result['seeded']}, Skipped: {result['skipped']}, Errors: {result['errors']}")
+        click.echo(
+            f"Seeded: {result['seeded']}, Skipped: {result['skipped']}, Errors: {result['errors']}"
+        )
 
     asyncio.run(_run())
 
@@ -1277,6 +1519,7 @@ def admin_seed_workflows(ctx, force):
 def admin_metrics(ctx):
     """Show platform overview metrics (missions, sessions, costs)."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(ctx.logger, "metrics", output_format=ctx.output_format)
 
 
@@ -1285,6 +1528,7 @@ def admin_metrics(ctx):
 def admin_costs(ctx):
     """Show cost breakdown by agent and execution status."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(ctx.logger, "costs", output_format=ctx.output_format)
 
 
@@ -1293,6 +1537,7 @@ def admin_costs(ctx):
 def admin_config(ctx):
     """View platform configuration (non-secret values)."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(ctx.logger, "config", output_format=ctx.output_format)
 
 
@@ -1301,6 +1546,7 @@ def admin_config(ctx):
 def admin_health(ctx):
     """Run system health check (database, Redis)."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(ctx.logger, "health", output_format=ctx.output_format)
 
 
@@ -1309,6 +1555,7 @@ def admin_health(ctx):
 def admin_roles(ctx):
     """List configured role hierarchy."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(ctx.logger, "roles", output_format=ctx.output_format)
 
 
@@ -1317,6 +1564,7 @@ def admin_roles(ctx):
 def admin_user_roles(ctx):
     """List user-to-role assignments."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(ctx.logger, "user-roles", output_format=ctx.output_format)
 
 
@@ -1328,9 +1576,13 @@ def admin_user_roles(ctx):
 def admin_update_prompt(ctx, agent_name, content, change_reason):
     """Update an agent's system prompt with version tracking."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(
-        ctx.logger, "update-prompt",
-        agent_name=agent_name, content=content, change_reason=change_reason,
+        ctx.logger,
+        "update-prompt",
+        agent_name=agent_name,
+        content=content,
+        change_reason=change_reason,
         output_format=ctx.output_format,
     )
 
@@ -1341,20 +1593,29 @@ def admin_update_prompt(ctx, agent_name, content, change_reason):
 def admin_toggle_agent(ctx, agent_name):
     """Toggle an agent's enabled/disabled state."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
-    run_admin_cmd(ctx.logger, "toggle-agent", agent_name=agent_name, output_format=ctx.output_format)
+
+    run_admin_cmd(
+        ctx.logger, "toggle-agent", agent_name=agent_name, output_format=ctx.output_format
+    )
 
 
 @admin.command("bootstrap-user")
 @click.option("--email", required=True, help="Admin email address.")
-@click.option("--name", "display_name", default=None, help="Display name (defaults to email prefix).")
+@click.option(
+    "--name", "display_name", default=None, help="Display name (defaults to email prefix)."
+)
 @click.option("--password", default=None, help="Password (prompted if omitted).")
 @click.pass_obj
 def admin_bootstrap_user(ctx, email, display_name, password):
     """Create the first admin user and generate their API key."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(
-        ctx.logger, "bootstrap-user",
-        email=email, display_name=display_name, password=password,
+        ctx.logger,
+        "bootstrap-user",
+        email=email,
+        display_name=display_name,
+        password=password,
         output_format=ctx.output_format,
     )
 
@@ -1364,6 +1625,7 @@ def admin_bootstrap_user(ctx, email, display_name, password):
 def admin_seed_dev_users(ctx):
     """Create dev/test users (sysadmin, admin, user) with known passwords."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(ctx.logger, "seed-dev-users", output_format=ctx.output_format)
 
 
@@ -1374,9 +1636,12 @@ def admin_seed_dev_users(ctx):
 def admin_reset_password(ctx, email, password):
     """Reset a user's password from the command line."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(
-        ctx.logger, "reset-password",
-        email=email, password=password,
+        ctx.logger,
+        "reset-password",
+        email=email,
+        password=password,
         output_format=ctx.output_format,
     )
 
@@ -1386,8 +1651,10 @@ def admin_reset_password(ctx, email, password):
 def admin_ensure_system_accounts(ctx):
     """Create system service accounts (workflow runner, CLI, scheduler)."""
     from modules.clients.cli.admin_cmds import run_admin_cmd
+
     run_admin_cmd(
-        ctx.logger, "ensure-system-accounts",
+        ctx.logger,
+        "ensure-system-accounts",
         output_format=ctx.output_format,
     )
 
@@ -1420,31 +1687,37 @@ def schedule(ctx):
 def schedule_list(ctx, mission_id):
     """List schedules for a mission."""
     from modules.clients.cli.schedule_cmds import run_schedule
-    run_schedule(ctx.logger, "list", mission_id=mission_id,
-                 output_format=ctx.output_format)
+
+    run_schedule(ctx.logger, "list", mission_id=mission_id, output_format=ctx.output_format)
 
 
 @schedule.command("create")
 @click.option("--mission", "mission_id", required=True, help="Mission ID.")
-@click.option("--workflow", "workflow_definition_id", required=True,
-              help="Workflow definition ID.")
+@click.option("--workflow", "workflow_definition_id", required=True, help="Workflow definition ID.")
 @click.option("--cron", required=True, help='Cron expression, e.g. "0 5 * * *".')
 @click.option("--description", default="", help="Schedule description.")
 @click.option("--budget", type=float, default=None, help="Budget per run (USD).")
-@click.option("--max-iterations", type=int, default=None,
-              help="Max total runs (NULL = unlimited).")
-@click.option("--cooldown", type=int, default=0,
-              help="Min seconds between runs.")
+@click.option("--max-iterations", type=int, default=None, help="Max total runs (NULL = unlimited).")
+@click.option("--cooldown", type=int, default=0, help="Min seconds between runs.")
 @click.pass_obj
-def schedule_create(ctx, mission_id, workflow_definition_id, cron, description,
-                    budget, max_iterations, cooldown):
+def schedule_create(
+    ctx, mission_id, workflow_definition_id, cron, description, budget, max_iterations, cooldown
+):
     """Create a cron-based workflow schedule."""
     from modules.clients.cli.schedule_cmds import run_schedule
-    run_schedule(ctx.logger, "create", mission_id=mission_id,
-                 workflow_definition_id=workflow_definition_id,
-                 cron=cron, description=description,
-                 budget=budget, max_iterations=max_iterations,
-                 cooldown=cooldown, output_format=ctx.output_format)
+
+    run_schedule(
+        ctx.logger,
+        "create",
+        mission_id=mission_id,
+        workflow_definition_id=workflow_definition_id,
+        cron=cron,
+        description=description,
+        budget=budget,
+        max_iterations=max_iterations,
+        cooldown=cooldown,
+        output_format=ctx.output_format,
+    )
 
 
 @schedule.command("enable")
@@ -1453,8 +1726,8 @@ def schedule_create(ctx, mission_id, workflow_definition_id, cron, description,
 def schedule_enable(ctx, schedule_id):
     """Enable a schedule."""
     from modules.clients.cli.schedule_cmds import run_schedule
-    run_schedule(ctx.logger, "enable", schedule_id=schedule_id,
-                 output_format=ctx.output_format)
+
+    run_schedule(ctx.logger, "enable", schedule_id=schedule_id, output_format=ctx.output_format)
 
 
 @schedule.command("disable")
@@ -1463,8 +1736,8 @@ def schedule_enable(ctx, schedule_id):
 def schedule_disable(ctx, schedule_id):
     """Disable a schedule."""
     from modules.clients.cli.schedule_cmds import run_schedule
-    run_schedule(ctx.logger, "disable", schedule_id=schedule_id,
-                 output_format=ctx.output_format)
+
+    run_schedule(ctx.logger, "disable", schedule_id=schedule_id, output_format=ctx.output_format)
 
 
 @schedule.command("delete")
@@ -1473,8 +1746,8 @@ def schedule_disable(ctx, schedule_id):
 def schedule_delete(ctx, schedule_id):
     """Delete a schedule."""
     from modules.clients.cli.schedule_cmds import run_schedule
-    run_schedule(ctx.logger, "delete", schedule_id=schedule_id,
-                 output_format=ctx.output_format)
+
+    run_schedule(ctx.logger, "delete", schedule_id=schedule_id, output_format=ctx.output_format)
 
 
 # =============================================================================
@@ -1515,8 +1788,10 @@ def architect(ctx):
 def architect_chat(ctx, mission_id, message):
     """Send a message to the Workflow Architect for conversational design."""
     from modules.clients.cli.architect_cmds import run_architect
-    run_architect(ctx.logger, "chat", mission_id=mission_id, message=message,
-                  output_format=ctx.output_format)
+
+    run_architect(
+        ctx.logger, "chat", mission_id=mission_id, message=message, output_format=ctx.output_format
+    )
 
 
 # =============================================================================
@@ -1547,8 +1822,15 @@ def workshop(ctx):
 def workshop_run(ctx, agent_name, inputs_json, prompt_override):
     """Run a single agent in isolation for testing."""
     from modules.clients.cli.workshop_cmds import run_workshop
-    run_workshop(ctx.logger, "run", agent_name=agent_name, inputs_json=inputs_json,
-                 prompt_override=prompt_override, output_format=ctx.output_format)
+
+    run_workshop(
+        ctx.logger,
+        "run",
+        agent_name=agent_name,
+        inputs_json=inputs_json,
+        prompt_override=prompt_override,
+        output_format=ctx.output_format,
+    )
 
 
 @workshop.command("cached-inputs")
@@ -1559,8 +1841,15 @@ def workshop_run(ctx, agent_name, inputs_json, prompt_override):
 def workshop_cached_inputs(ctx, agent_name, mission_id, limit):
     """Show cached inputs from previous runs of this agent."""
     from modules.clients.cli.workshop_cmds import run_workshop
-    run_workshop(ctx.logger, "cached-inputs", agent_name=agent_name,
-                 mission_id=mission_id, limit=limit, output_format=ctx.output_format)
+
+    run_workshop(
+        ctx.logger,
+        "cached-inputs",
+        agent_name=agent_name,
+        mission_id=mission_id,
+        limit=limit,
+        output_format=ctx.output_format,
+    )
 
 
 @workshop.command("history")
@@ -1570,8 +1859,10 @@ def workshop_cached_inputs(ctx, agent_name, mission_id, limit):
 def workshop_history(ctx, agent_name, limit):
     """List workshop run history."""
     from modules.clients.cli.workshop_cmds import run_workshop
-    run_workshop(ctx.logger, "history", agent_name=agent_name, limit=limit,
-                 output_format=ctx.output_format)
+
+    run_workshop(
+        ctx.logger, "history", agent_name=agent_name, limit=limit, output_format=ctx.output_format
+    )
 
 
 # =============================================================================
@@ -1595,13 +1886,18 @@ def console(ctx):
 
 
 @console.command("monitor")
-@click.option("--view", type=click.Choice(["user", "developer"]), default="user",
-              help="Display mode: user (default) or developer.")
+@click.option(
+    "--view",
+    type=click.Choice(["user", "developer"]),
+    default="user",
+    help="Display mode: user (default) or developer.",
+)
 @click.option("--refresh", default=2.0, type=float, help="Refresh interval in seconds.")
 @click.pass_obj
 def console_monitor(ctx, view, refresh):
     """Live-updating console monitor with missions, runs, and system health."""
     from modules.clients.cli.console_cmds import run_monitor
+
     run_monitor(view=view, refresh=refresh)
 
 

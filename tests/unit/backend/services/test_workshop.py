@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modules.backend.services.workshop import WorkshopService, WORKSHOP_CATEGORY
+from modules.backend.services.workshop import WORKSHOP_CATEGORY, WorkshopService
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ class TestRunAgent:
 
         mock_cost.return_value = 0.01
 
-        with patch.object(service, '_persist_workshop_run', new_callable=AsyncMock) as mock_persist:
+        with patch.object(service, "_persist_workshop_run", new_callable=AsyncMock) as mock_persist:
             mock_record = MagicMock()
             mock_record.id = "rec-123"
             mock_persist.return_value = mock_record
@@ -112,6 +112,7 @@ class TestRunAgent:
         mock_app_config.return_value.workflows.workshop = mock_workshop
 
         from modules.backend.core.exceptions import NotFoundError
+
         with pytest.raises(NotFoundError, match="not found"):
             await service.run_agent("nonexistent.agent")
 

@@ -58,7 +58,9 @@ async def _ping_model(model_name: str) -> ModelCheckResult:
     except Exception as e:
         elapsed = (time.monotonic() - start) * 1000
         error_msg = str(e)
-        error_type = "insufficient_credits" if "credit balance is too low" in error_msg.lower() else "error"
+        error_type = (
+            "insufficient_credits" if "credit balance is too low" in error_msg.lower() else "error"
+        )
         return ModelCheckResult(
             model_name=model_name,
             ok=False,
@@ -84,10 +86,9 @@ async def preflight_check(
     if models is None:
         registry = get_registry()
         all_agents = registry.list_all()
-        model_names = list({
-            _get_model_name(registry.get(a["agent_name"]).model)
-            for a in all_agents
-        })
+        model_names = list(
+            {_get_model_name(registry.get(a["agent_name"]).model) for a in all_agents}
+        )
     else:
         model_names = list(set(models))
 

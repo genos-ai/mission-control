@@ -68,7 +68,8 @@ class TestUpdateEntryEngine:
     """Tests for updating engine/effort via update_entry."""
 
     async def test_update_engine_pydantic_to_claude_code(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ):
         service = AgentCatalogService(db_session)
         await service.create_entry(
@@ -85,7 +86,8 @@ class TestUpdateEntryEngine:
         assert updated.engine == "claude_code"
 
     async def test_update_effort_independently(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ):
         service = AgentCatalogService(db_session)
         await service.create_entry(
@@ -105,7 +107,8 @@ class TestUpdateEntryEngine:
         assert updated.engine == "claude_code"
 
     async def test_update_engine_and_effort_together(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ):
         service = AgentCatalogService(db_session)
         await service.create_entry(
@@ -124,7 +127,8 @@ class TestUpdateEntryEngine:
         assert updated.effort == "high"
 
     async def test_read_back_after_update(
-        self, db_session: AsyncSession,
+        self,
+        db_session: AsyncSession,
     ):
         """Verify the update persists through a re-read."""
         service = AgentCatalogService(db_session)

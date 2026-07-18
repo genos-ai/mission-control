@@ -20,21 +20,25 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 # Tools that require container execution (runtime isolation)
-_CONTAINER_TOOLS: frozenset[str] = frozenset({
-    "code.run_tests",
-    "code.build",
-    "system.install_packages",
-    "system.run_migrations",
-    "system.exec_command",
-})
+_CONTAINER_TOOLS: frozenset[str] = frozenset(
+    {
+        "code.run_tests",
+        "code.build",
+        "system.install_packages",
+        "system.run_migrations",
+        "system.exec_command",
+    }
+)
 
 # Tools that write files (worktree or container)
-_WRITE_TOOLS: frozenset[str] = frozenset({
-    "filesystem.write_file",
-    "code.apply_fix",
-    "filesystem.create_file",
-    "filesystem.delete_file",
-})
+_WRITE_TOOLS: frozenset[str] = frozenset(
+    {
+        "filesystem.write_file",
+        "code.apply_fix",
+        "filesystem.create_file",
+        "filesystem.delete_file",
+    }
+)
 
 
 def resolve_execution_mode(
@@ -87,7 +91,10 @@ def resolve_execution_mode(
 
         if tools & _WRITE_TOOLS:
             resolved = _validate_mode(prefer, mission_repo_root)
-            logger.debug("Auto-resolved to preferred mode (write tools)", extra={"mode": resolved, "prefer": prefer})
+            logger.debug(
+                "Auto-resolved to preferred mode (write tools)",
+                extra={"mode": resolved, "prefer": prefer},
+            )
             return resolved
 
     # 5. Fallback

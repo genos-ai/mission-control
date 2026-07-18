@@ -19,7 +19,8 @@ from modules.backend.services.pqi.tools.radon import is_available as radon_avail
 
 
 async def generate_code_map(
-    project_root: Path, scope: FileScope,
+    project_root: Path,
+    scope: FileScope,
 ) -> dict:
     """Generate a fresh Code Map for the codebase.
 
@@ -47,7 +48,8 @@ async def generate_code_map(
 
 
 async def load_code_map(
-    project_root: Path, scope: FileScope,
+    project_root: Path,
+    scope: FileScope,
 ) -> dict:
     """Load the Code Map JSON, generating if missing or stale.
 
@@ -67,7 +69,8 @@ async def load_code_map(
 
 
 async def get_dependency_analysis(
-    project_root: Path, scope: FileScope,
+    project_root: Path,
+    scope: FileScope,
 ) -> dict:
     """Analyze the import graph for circular dependencies and key modules.
 
@@ -98,15 +101,14 @@ async def get_dependency_analysis(
     return {
         "total_modules": len(modules),
         "total_edges": sum(len(deps) for deps in import_graph.values()),
-        "circular_dependencies": [
-            " → ".join(cycle) for cycle in cycles
-        ],
+        "circular_dependencies": [" → ".join(cycle) for cycle in cycles],
         "top_modules_by_importance": top_modules,
     }
 
 
 async def run_quality_score(
-    project_root: Path, scope: FileScope,
+    project_root: Path,
+    scope: FileScope,
 ) -> dict:
     """Run the PyQuality Index (PQI) scorer on the codebase.
 

@@ -10,8 +10,8 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
-from textual.screen import ModalScreen
 from textual.message import Message
+from textual.screen import ModalScreen
 from textual.widgets import Label, Static
 
 from modules.clients.common.gate_helpers import STATUS_ICONS, safe_css_id
@@ -50,8 +50,7 @@ class MissionRow(Static):
         roster = m.get("roster_name", "")
         created = str(m.get("created_at", ""))[:16]
         yield Label(
-            f"{icon} [bold]{objective}[/bold]  "
-            f"[dim]{roster}  ${cost:.4f}  {created}[/dim]",
+            f"{icon} [bold]{objective}[/bold]  " f"[dim]{roster}  ${cost:.4f}  {created}[/dim]",
             markup=True,
         )
 
@@ -123,8 +122,7 @@ class MissionHistoryScreen(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="history-dialog"):
             yield Label(
-                f"[bold]Mission History[/bold]  "
-                f"[dim]{len(self._missions)} missions[/dim]",
+                f"[bold]Mission History[/bold]  " f"[dim]{len(self._missions)} missions[/dim]",
                 markup=True,
                 id="history-header",
             )

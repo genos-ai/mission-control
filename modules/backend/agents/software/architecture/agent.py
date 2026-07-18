@@ -16,19 +16,21 @@ from pathlib import Path
 from pydantic_ai import Agent, ModelRetry, RunContext, UsageLimits
 from pydantic_ai.models import Model
 
-from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.deps.base import QaAgentDeps
+from modules.backend.agents.mission_control.helpers import assemble_instructions
 from modules.backend.agents.schemas import ArchitectureReviewResult
+from modules.backend.core.logging import get_logger
 from modules.backend.tools.list_files import list_files as _list_files
 from modules.backend.tools.read_file import read_file as _read_file
-from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 _BASELINE_PATH = "config/qa-baseline.json"
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[QaAgentDeps, ArchitectureReviewResult]:
+def create_agent(
+    model: str | Model, tool_names: list[str] | None = None
+) -> Agent[QaAgentDeps, ArchitectureReviewResult]:
     """Factory: create an architecture review agent with file reading tools.
 
     Called by AgentRegistry.get_instance() on first use.
@@ -50,9 +52,15 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
     async def list_python_files(ctx: RunContext[QaAgentDeps]) -> list[str]:
         """List all Python files in scope, respecting exclusion patterns."""
         ctx.deps.emit({"type": "tool_start", "tool": "list_python_files"})
-        exclusions = set(ctx.deps.config.exclusions.paths) if ctx.deps.config and ctx.deps.config.exclusions else set()
+        exclusions = (
+            set(ctx.deps.config.exclusions.paths)
+            if ctx.deps.config and ctx.deps.config.exclusions
+            else set()
+        )
         files = await _list_files(ctx.deps.project_root, ctx.deps.scope, exclusions)
-        ctx.deps.emit({"type": "tool_done", "tool": "list_python_files", "detail": f"{len(files)} files"})
+        ctx.deps.emit(
+            {"type": "tool_done", "tool": "list_python_files", "detail": f"{len(files)} files"}
+        )
         return files
 
     @agent.tool
@@ -79,7 +87,8 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
 
     @agent.output_validator
     async def validate_output(
-        ctx: RunContext[QaAgentDeps], output: ArchitectureReviewResult,
+        ctx: RunContext[QaAgentDeps],
+        output: ArchitectureReviewResult,
     ) -> ArchitectureReviewResult:
         """Validate the structured output and retry with clear feedback."""
         problems: list[str] = []
@@ -100,9 +109,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if not f.file or not f.message:
                 problems.append(f"findings[{i}] is missing file or message")
         if problems:
-            raise ModelRetry(
-                "Output validation failed:\n- " + "\n- ".join(problems)
-            )
+            raise ModelRetry("Output validation failed:\n- " + "\n- ".join(problems))
         return output
 
     logger.info("Architecture review agent created (read-only)", extra={"model": str(model)})
@@ -157,7 +164,10 @@ async def run_agent_stream(
     deps.on_progress = lambda event: queue.put_nowait(event)
 
     async def _run():
-        logger.info("Architecture review agent invoked (stream)", extra={"message": user_message, "conversation_id": conversation_id})
+        logger.info(
+            "Architecture review agent invoked (stream)",
+            extra={"message": user_message, "conversation_id": conversation_id},
+        )
         result = await agent.run(user_message, deps=deps, usage_limits=usage_limits)
         return result.output
 

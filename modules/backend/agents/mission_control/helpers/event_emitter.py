@@ -19,11 +19,7 @@ from pydantic_ai.messages import (
 from modules.backend.agents.mission_control.models import EventBusProtocol
 from modules.backend.core.exceptions import ApplicationError
 from modules.backend.core.logging import get_logger
-from modules.backend.events.types import (
-    AgentToolCallEvent,
-    AgentToolResultEvent,
-    SessionEvent,
-)
+from modules.backend.events.types import AgentToolCallEvent, AgentToolResultEvent, SessionEvent
 from modules.backend.schemas.session import SessionMessageCreate
 
 logger = get_logger(__name__)
@@ -78,14 +74,18 @@ async def _emit_tool_events(
                                 agent_id=agent_id,
                                 tool_name=part.tool_name,
                                 tool_args={
-                                    "raw": part.args if isinstance(part.args, str) else str(part.args),
+                                    "raw": (
+                                        part.args if isinstance(part.args, str) else str(part.args)
+                                    ),
                                 },
                                 tool_call_id=part.tool_call_id or str(uuid.uuid4()),
                             )
                             await event_bus.publish(event)
                             tool_events.append(event)
                         except Exception:
-                            logger.debug("Event emission failed for AgentToolCallEvent", exc_info=True)
+                            logger.debug(
+                                "Event emission failed for AgentToolCallEvent", exc_info=True
+                            )
             elif isinstance(msg, ModelRequest):
                 for part in msg.parts:
                     if isinstance(part, ToolReturnPart):
@@ -105,7 +105,9 @@ async def _emit_tool_events(
                             await event_bus.publish(event)
                             tool_events.append(event)
                         except Exception:
-                            logger.debug("Event emission failed for AgentToolResultEvent", exc_info=True)
+                            logger.debug(
+                                "Event emission failed for AgentToolResultEvent", exc_info=True
+                            )
     except (AttributeError, TypeError, KeyError, ValueError):
         logger.debug("Failed to extract tool events", exc_info=True)
     return thinking_parts, tool_events

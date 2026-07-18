@@ -9,11 +9,7 @@ from pydantic import ValidationError
 
 from modules.backend.schemas.knowledge import Evidence, KnowledgeEntry
 from modules.backend.schemas.mission_intent import MissionIntentCreate
-from modules.backend.schemas.mission_learning import (
-    MissionLearningCreate,
-    MissionLearningFilter,
-)
-
+from modules.backend.schemas.mission_learning import MissionLearningCreate, MissionLearningFilter
 
 # ── Evidence ─────────────────────────────────────────────────
 
@@ -52,8 +48,11 @@ class TestEvidence:
 class TestKnowledgeEntry:
     def test_minimal(self):
         e = KnowledgeEntry(
-            id="1", kind="learning", source_table="mission_learnings",
-            title="test", body="body",
+            id="1",
+            kind="learning",
+            source_table="mission_learnings",
+            title="test",
+            body="body",
         )
         assert e.kind == "learning"
         assert e.confidence is None
@@ -61,9 +60,15 @@ class TestKnowledgeEntry:
 
     def test_with_optional_fields(self):
         e = KnowledgeEntry(
-            id="1", kind="decision", source_table="mission_decisions",
-            title="test", body="body", confidence=0.85, distance=0.123,
-            domain_tags=["auth"], mission_id="m-1",
+            id="1",
+            kind="decision",
+            source_table="mission_decisions",
+            title="test",
+            body="body",
+            confidence=0.85,
+            distance=0.123,
+            domain_tags=["auth"],
+            mission_id="m-1",
         )
         assert e.confidence == 0.85
         assert e.distance == 0.123
@@ -87,13 +92,17 @@ class TestMissionIntentCreate:
 
     def test_scope_defaults_empty(self):
         i = MissionIntentCreate(
-            intent="test", source="system", reason="test",
+            intent="test",
+            source="system",
+            reason="test",
         )
         assert i.scope == {}
 
     def test_scope_with_data(self):
         i = MissionIntentCreate(
-            intent="test", source="user_chat", reason="test",
+            intent="test",
+            source="user_chat",
+            reason="test",
             scope={"in": ["auth"], "out": ["frontend"]},
         )
         assert i.scope["in"] == ["auth"]
@@ -101,7 +110,9 @@ class TestMissionIntentCreate:
     def test_extra_forbidden(self):
         with pytest.raises(ValidationError):
             MissionIntentCreate(
-                intent="test", source="system", reason="test",
+                intent="test",
+                source="system",
+                reason="test",
                 unknown="bad",
             )
 
@@ -125,7 +136,9 @@ class TestMissionLearningCreate:
         with pytest.raises(ValidationError):
             MissionLearningCreate(
                 kind="failure_pattern",
-                title="t", body="b", recommendation="r",
+                title="t",
+                body="b",
+                recommendation="r",
                 confidence=1.5,
             )
 
@@ -133,14 +146,18 @@ class TestMissionLearningCreate:
         with pytest.raises(ValidationError):
             MissionLearningCreate(
                 kind="failure_pattern",
-                title="t", body="b", recommendation="r",
+                title="t",
+                body="b",
+                recommendation="r",
                 occurrence_count=0,
             )
 
     def test_evidence_default(self):
         l = MissionLearningCreate(
             kind="retry_strategy",
-            title="t", body="b", recommendation="r",
+            title="t",
+            body="b",
+            recommendation="r",
         )
         assert l.evidence.task_attempt_ids == []
 

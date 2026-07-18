@@ -10,8 +10,8 @@ Create Date: 2026-04-26
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "drop_notes_table"
 down_revision: Union[str, None] = "varchar36_to_native_uuid"

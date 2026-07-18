@@ -2,10 +2,10 @@
 
 from modules.backend.models.execution_record import (
     DecisionType,
-    FailureTier,
     ExecutionDecision,
     ExecutionRecord,
     ExecutionRecordStatus,
+    FailureTier,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,

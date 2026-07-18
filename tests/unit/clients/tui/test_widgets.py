@@ -4,8 +4,8 @@ import pytest
 
 from modules.clients.tui.widgets.cost_bar import CostBar, _fmt_tokens
 
-
 # ── _fmt_tokens (pure function) ──────────────────────────────────────
+
 
 class TestFmtTokens:
     @pytest.mark.parametrize(
@@ -24,6 +24,7 @@ class TestFmtTokens:
 
 
 # ── CostBar (Textual Pilot) ─────────────────────────────────────────
+
 
 class TestCostBarWidget:
     @pytest.mark.asyncio

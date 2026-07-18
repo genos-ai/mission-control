@@ -119,7 +119,7 @@ def evaluate_expectation(expect: str, output: str, returncode: int) -> bool:
     if expect == "at_least_one":
         return bool(output.strip())
     if expect.startswith("contains:"):
-        expected_text = expect[len("contains:"):]
+        expected_text = expect[len("contains:") :]
         return expected_text in output
     # Exact match
     return output.strip() == expect.strip()
@@ -163,8 +163,7 @@ def format_human(results: list[RuleResult], show_fix: bool = False) -> str:
         sev_color = SEVERITY_COLOR.get(r.rule.severity, RST)
         desc = r.rule.description[:58]
         lines.append(
-            f"  {sev_color}{r.rule.severity:<8}{RST}  "
-            f"{r.rule.id:<8}  {desc:<60}  {status}"
+            f"  {sev_color}{r.rule.severity:<8}{RST}  " f"{r.rule.id:<8}  {desc:<60}  {status}"
         )
 
         if not r.passed and r.output and r.output != "(review-only)":
@@ -191,14 +190,16 @@ def format_json(results: list[RuleResult]) -> str:
     """Format results as JSON."""
     items = []
     for r in results:
-        items.append({
-            "rule_id": r.rule.id,
-            "severity": r.rule.severity,
-            "description": r.rule.description,
-            "passed": r.passed,
-            "output": r.output if not r.passed else "",
-            "fix": r.rule.fix if not r.passed else "",
-        })
+        items.append(
+            {
+                "rule_id": r.rule.id,
+                "severity": r.rule.severity,
+                "description": r.rule.description,
+                "passed": r.passed,
+                "output": r.output if not r.passed else "",
+                "fix": r.rule.fix if not r.passed else "",
+            }
+        )
     return json.dumps({"results": items, "total": len(items)}, indent=2)
 
 
@@ -207,7 +208,9 @@ def format_json(results: list[RuleResult]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Enforce codebase rules from JSONL definitions")
-    parser.add_argument("--severity", choices=["error", "warning", "info"], help="Filter by severity")
+    parser.add_argument(
+        "--severity", choices=["error", "warning", "info"], help="Filter by severity"
+    )
     parser.add_argument("--rule-file", default="", help="Filter by rule file name (e.g., '002')")
     parser.add_argument("--rule", default="", help="Run a single rule by ID (e.g., '001.6')")
     parser.add_argument("--fix", action="store_true", help="Show fix instructions for failures")

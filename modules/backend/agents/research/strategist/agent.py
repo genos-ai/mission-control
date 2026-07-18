@@ -19,7 +19,9 @@ from modules.backend.schemas.research import ResearchDecomposition
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[BaseAgentDeps, ResearchDecomposition]:
+def create_agent(
+    model: str | Model, tool_names: list[str] | None = None
+) -> Agent[BaseAgentDeps, ResearchDecomposition]:
     """Factory: create strategist agent.
 
     Called by AgentRegistry.get_instance() on first use. Cached.

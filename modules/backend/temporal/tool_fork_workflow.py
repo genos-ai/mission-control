@@ -107,8 +107,10 @@ class DesignWorkflowWorkflow:
         )
 
         await _notify_director(
-            input.mission_id, input.session_id,
-            "design_workflow", result,
+            input.mission_id,
+            input.session_id,
+            "design_workflow",
+            result,
         )
 
         return result
@@ -152,8 +154,10 @@ class RunWorkflowWorkflow:
         )
 
         await _notify_director(
-            input.mission_id, input.session_id,
-            "run_workflow", result,
+            input.mission_id,
+            input.session_id,
+            "run_workflow",
+            result,
             followup_event_types=input.followup_event_types,
         )
 

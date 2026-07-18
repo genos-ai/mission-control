@@ -18,7 +18,11 @@ async def _create_agent(service: AgentCatalogService, **overrides):
         "agent_name": "vertical.software.quality.agent",
         "agent_type": "vertical",
         "description": "Evaluates code quality",
-        "model_config_json": {"name": "anthropic:claude-haiku-4-5-20251001", "temperature": 0.0, "max_tokens": 4096},
+        "model_config_json": {
+            "name": "anthropic:claude-haiku-4-5-20251001",
+            "temperature": 0.0,
+            "max_tokens": 4096,
+        },
     }
     defaults.update(overrides)
     return await service.create_entry(**defaults)

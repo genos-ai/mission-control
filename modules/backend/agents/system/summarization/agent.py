@@ -12,10 +12,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
-from modules.backend.agents.mission_control.helpers import (
-    _build_model,
-    assemble_instructions,
-)
+from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.logging import get_logger
 
@@ -51,7 +48,9 @@ class SessionSpanSummary(BaseModel):
     breadcrumbs: str = Field(..., description="IDs, URLs, keys needed for continuity")
 
 
-def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, SummarizationOutput]:
+def create_agent(
+    model: Model | None = None, tool_names: list[str] | None = None
+) -> Agent[None, SummarizationOutput]:
     """Create a summarization agent, resolving the model from the registry when not supplied."""
     if model is None:
         agent_config = get_registry().get(_AGENT_NAME)
@@ -153,8 +152,7 @@ async def summarize_session_span(
     )
     if existing_summary:
         prompt += (
-            f"Previous summary (DO NOT re-summarize this, only merge):\n"
-            f"{existing_summary}\n\n"
+            f"Previous summary (DO NOT re-summarize this, only merge):\n" f"{existing_summary}\n\n"
         )
     prompt += f"New messages to summarize:\n{formatted_messages}"
 

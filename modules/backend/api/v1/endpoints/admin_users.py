@@ -231,7 +231,9 @@ async def list_user_api_keys(
     )
 
 
-@router.delete("/{user_id}/api-keys/{key_id}", response_model=ApiResponse, summary="Revoke user's API key")
+@router.delete(
+    "/{user_id}/api-keys/{key_id}", response_model=ApiResponse, summary="Revoke user's API key"
+)
 async def revoke_user_api_key(
     user_id: str,
     key_id: str,
@@ -250,5 +252,3 @@ async def revoke_user_api_key(
         data={"message": "API key revoked"},
         metadata={"request_id": request_id},
     )
-
-

@@ -15,9 +15,9 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 from modules.backend.services.agent_catalog import AgentCatalogService
 
 logger = get_logger(__name__)
@@ -35,9 +35,7 @@ def _resolve_system_prompt(agent_name: str, project_root: Path) -> str:
     The resulting assembled prompt is stored in agent_catalog.system_prompt
     so agents read from DB at runtime.
     """
-    from modules.backend.agents.mission_control.helpers.prompt_builder import (
-        _assemble_from_disk,
-    )
+    from modules.backend.agents.mission_control.helpers.prompt_builder import _assemble_from_disk
 
     try:
         prompt = _assemble_from_disk(agent_name)
@@ -53,9 +51,7 @@ def _resolve_system_prompt(agent_name: str, project_root: Path) -> str:
 
     category = parts[0]
     name = parts[1]
-    prompt_path = (
-        project_root / "config" / "prompts" / "agents" / category / name / "system.md"
-    )
+    prompt_path = project_root / "config" / "prompts" / "agents" / category / name / "system.md"
 
     if not prompt_path.exists():
         logger.debug(
@@ -167,7 +163,8 @@ async def seed_catalog(
                 scope={"read": config.scope.read, "write": config.scope.write},
                 interface=(
                     {"input": config.interface.input, "output": config.interface.output}
-                    if config.interface else None
+                    if config.interface
+                    else None
                 ),
                 constraints={
                     "timeout_seconds": getattr(config, "timeout_seconds", None) or 120,

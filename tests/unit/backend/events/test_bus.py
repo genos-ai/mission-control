@@ -15,7 +15,6 @@ from redis.asyncio import Redis as AsyncRedis
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.events.types import AgentThinkingEvent, UserMessageEvent
 
-
 MISSION_ID = "test-mission-" + uuid.uuid4().hex[:8]
 SESSION_ID = uuid.uuid4()
 
@@ -30,7 +29,9 @@ class TestPublish:
     """Test event publishing to real Redis Pub/Sub."""
 
     @pytest.mark.asyncio
-    async def test_publish_sends_json_to_mission_channel(self, bus: SessionEventBus, redis: AsyncRedis):
+    async def test_publish_sends_json_to_mission_channel(
+        self, bus: SessionEventBus, redis: AsyncRedis
+    ):
         """Published event should be valid JSON on the mission channel."""
         event = AgentThinkingEvent(
             session_id=SESSION_ID,
@@ -58,7 +59,9 @@ class TestPublish:
         await pubsub.close()
 
     @pytest.mark.asyncio
-    async def test_publish_to_mission_uses_explicit_mission_id(self, bus: SessionEventBus, redis: AsyncRedis):
+    async def test_publish_to_mission_uses_explicit_mission_id(
+        self, bus: SessionEventBus, redis: AsyncRedis
+    ):
         """publish_to_mission() should publish to the specified mission channel."""
         other_mission = "other-mission-" + uuid.uuid4().hex[:8]
         event = AgentThinkingEvent(
@@ -98,7 +101,9 @@ class TestSubscribe:
     """Test event subscription from real Redis Pub/Sub."""
 
     @pytest.mark.asyncio
-    async def test_subscribe_mission_receives_typed_event(self, bus: SessionEventBus, redis: AsyncRedis):
+    async def test_subscribe_mission_receives_typed_event(
+        self, bus: SessionEventBus, redis: AsyncRedis
+    ):
         """Subscribed events should deserialize to the correct subclass."""
         event = UserMessageEvent(
             session_id=SESSION_ID,
@@ -127,14 +132,20 @@ class TestSubscribe:
         assert received[0].session_id == SESSION_ID
 
     @pytest.mark.asyncio
-    async def test_subscribe_filtered_only_yields_matching_session(self, bus: SessionEventBus, redis: AsyncRedis):
+    async def test_subscribe_filtered_only_yields_matching_session(
+        self, bus: SessionEventBus, redis: AsyncRedis
+    ):
         """subscribe_mission_filtered should only yield events for the target session."""
         other_session = uuid.uuid4()
         target_event = AgentThinkingEvent(
-            session_id=SESSION_ID, source="agent:health", agent_id="target",
+            session_id=SESSION_ID,
+            source="agent:health",
+            agent_id="target",
         )
         other_event = AgentThinkingEvent(
-            session_id=other_session, source="agent:health", agent_id="other",
+            session_id=other_session,
+            source="agent:health",
+            agent_id="other",
         )
 
         received: list = []
@@ -156,7 +167,9 @@ class TestSubscribe:
         assert received[0].agent_id == "target"
 
     @pytest.mark.asyncio
-    async def test_subscribe_receives_multiple_events_in_order(self, bus: SessionEventBus, redis: AsyncRedis):
+    async def test_subscribe_receives_multiple_events_in_order(
+        self, bus: SessionEventBus, redis: AsyncRedis
+    ):
         """Multiple events published to the same mission arrive in order."""
         events = [
             AgentThinkingEvent(session_id=SESSION_ID, source="agent:health", agent_id="agent-1"),

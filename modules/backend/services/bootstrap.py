@@ -89,7 +89,9 @@ class BootstrapService:
         await self.ensure_system_accounts()
 
         existing_admins = await self._user_repo.list_all(
-            limit=1, offset=0, role_filter="admin",
+            limit=1,
+            offset=0,
+            role_filter="admin",
         )
         if existing_admins:
             raise ConflictError(
@@ -159,7 +161,8 @@ class BootstrapService:
                 continue
 
             hashed_password = await asyncio.to_thread(
-                security.hash_password, acct["password"],
+                security.hash_password,
+                acct["password"],
             )
             user = await self._user_repo.create(
                 email=acct["email"],

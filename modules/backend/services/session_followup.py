@@ -46,14 +46,12 @@ from typing import Any, Awaitable, Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ValidationError
-from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
 from modules.backend.core.logging import get_logger
+from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import SessionFollowupFiredEvent
 from modules.backend.models.session_followup import SessionFollowup
-from modules.backend.repositories.session_followup import (
-    SessionFollowupRepository,
-)
+from modules.backend.repositories.session_followup import SessionFollowupRepository
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -187,9 +185,7 @@ class SessionFollowupService(BaseService):
         if not isinstance(trigger_event_types, list) or not all(
             isinstance(t, str) and t for t in trigger_event_types
         ):
-            raise ValidationError(
-                "trigger_event_types must be a list of non-empty strings"
-            )
+            raise ValidationError("trigger_event_types must be a list of non-empty strings")
         if not prompt_template or not prompt_template.strip():
             raise ValidationError("prompt_template is required")
         if not created_by_agent or not created_by_agent.strip():
@@ -203,9 +199,7 @@ class SessionFollowupService(BaseService):
             # cost accounting concerns that Phase A intentionally
             # defers. Unblock by tightening the guardrail in a
             # follow-up, don't sneak it in here.
-            raise ValidationError(
-                "max_fires > 1 is not yet supported (Plan 51 Phase A v1)"
-            )
+            raise ValidationError("max_fires > 1 is not yet supported (Plan 51 Phase A v1)")
         if cooldown_seconds < 0:
             raise ValidationError("cooldown_seconds must be >= 0")
 
@@ -283,7 +277,10 @@ class SessionFollowupService(BaseService):
         if not event_type:
             logger.warning(
                 "fire_matching called with event lacking event_type",
-                extra={"event_type": type(event).__name__, "mission_id": getattr(event, "mission_id", None)},
+                extra={
+                    "event_type": type(event).__name__,
+                    "mission_id": getattr(event, "mission_id", None),
+                },
             )
             return []
 
@@ -330,16 +327,15 @@ class SessionFollowupService(BaseService):
             # the event doesn't carry get a degraded but non-crashing
             # prompt.
             try:
-                rendered = row.prompt_template.format_map(
-                    _SafeDict(payload)
-                )
+                rendered = row.prompt_template.format_map(_SafeDict(payload))
             except Exception as exc:
                 logger.warning(
                     "Followup prompt template render failed",
                     extra={"followup_id": row.id, "error": str(exc), "mission_id": row.mission_id},
                 )
                 failed_row = await self._repo.mark_failed(
-                    row.id, reason=f"template render error: {exc}",
+                    row.id,
+                    reason=f"template render error: {exc}",
                 )
                 fired.append(failed_row)
                 await self._emit_fired(
@@ -372,7 +368,8 @@ class SessionFollowupService(BaseService):
                     exc_info=True,
                 )
                 failed_row = await self._repo.mark_failed(
-                    row.id, reason=f"agent turn error: {exc}",
+                    row.id,
+                    reason=f"agent turn error: {exc}",
                 )
                 fired.append(failed_row)
                 await self._emit_fired(
@@ -413,7 +410,8 @@ class SessionFollowupService(BaseService):
     ) -> list[SessionFollowup]:
         """List followups for a session. Used by the 'Pending followups' UI strip."""
         return await self._repo.list_for_session(
-            session_id, include_consumed=include_consumed,
+            session_id,
+            include_consumed=include_consumed,
         )
 
     async def cancel(self, followup_id: str, *, reason: str) -> SessionFollowup:

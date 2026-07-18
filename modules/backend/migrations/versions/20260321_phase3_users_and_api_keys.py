@@ -5,9 +5,10 @@ Revises: phase2_002
 Create Date: 2026-03-21
 """
 
-from alembic import op
-import sqlalchemy as sa
 from uuid import uuid4
+
+import sqlalchemy as sa
+from alembic import op
 
 from modules.backend.core.utils import utc_now
 
@@ -27,7 +28,9 @@ def upgrade() -> None:
         sa.Column("hashed_password", sa.String(length=200), nullable=True),
         sa.Column("system_role", sa.String(length=20), nullable=False, server_default="user"),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("is_service_account", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "is_service_account", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
         sa.Column("last_login_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
@@ -39,7 +42,12 @@ def upgrade() -> None:
     op.create_table(
         "api_keys",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "user_id",
+            sa.String(length=36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("key_prefix", sa.String(length=8), nullable=False),
         sa.Column("hashed_key", sa.String(length=200), nullable=False),
@@ -60,12 +68,16 @@ def upgrade() -> None:
 
     # Find distinct user_ids from mission_members
     member_rows = conn.execute(
-        sa.text("SELECT DISTINCT user_id FROM mission_members WHERE user_id IS NOT NULL AND TRIM(user_id) != ''")
+        sa.text(
+            "SELECT DISTINCT user_id FROM mission_members WHERE user_id IS NOT NULL AND TRIM(user_id) != ''"
+        )
     ).fetchall()
 
     # Find distinct owner_ids from missions
     owner_rows = conn.execute(
-        sa.text("SELECT DISTINCT owner_id FROM missions WHERE owner_id IS NOT NULL AND TRIM(owner_id) != ''")
+        sa.text(
+            "SELECT DISTINCT owner_id FROM missions WHERE owner_id IS NOT NULL AND TRIM(owner_id) != ''"
+        )
     ).fetchall()
 
     # Collect all unique identifiers
@@ -122,7 +134,9 @@ def upgrade() -> None:
 
     # 4. Add FK constraint on mission_members.user_id
     # First, alter column length from String(200) to String(36)
-    op.alter_column("mission_members", "user_id", type_=sa.String(length=36), existing_nullable=False)
+    op.alter_column(
+        "mission_members", "user_id", type_=sa.String(length=36), existing_nullable=False
+    )
     op.create_foreign_key(
         "fk_mission_members_user_id",
         "mission_members",
@@ -136,7 +150,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     # 1. Drop FK constraint
     op.drop_constraint("fk_mission_members_user_id", "mission_members", type_="foreignkey")
-    op.alter_column("mission_members", "user_id", type_=sa.String(length=200), existing_nullable=False)
+    op.alter_column(
+        "mission_members", "user_id", type_=sa.String(length=200), existing_nullable=False
+    )
 
     # 2. Drop api_keys table
     op.drop_index("ix_api_keys_key_prefix", table_name="api_keys")

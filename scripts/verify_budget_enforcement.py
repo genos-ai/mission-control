@@ -137,6 +137,7 @@ class BudgetEnforcementVerifier:
         complicate the script significantly.
         """
         from sqlalchemy import select
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.mission import Mission
         from modules.backend.repositories.mission_plan import MissionPlanRepository
@@ -283,7 +284,9 @@ class BudgetEnforcementVerifier:
                 f"unexpected error: {msg[:200]}",
             )
             return
-        self._pass("A3: spent < ceiling passes budget check (fails on 'no approved tasks' as expected)")
+        self._pass(
+            "A3: spent < ceiling passes budget check (fails on 'no approved tasks' as expected)"
+        )
 
     async def check_service_allows_null_ceiling(self) -> None:
         """[A4] budget_usd_ceiling = None → budget check is skipped."""

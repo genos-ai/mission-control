@@ -97,10 +97,7 @@ class SessionFollowupRepository(BaseRepository[SessionFollowup]):
         # JSON array contains the event_type. This is O(matched rows)
         # and happens after the SQL-level filter, so it only scans
         # the narrow candidate set.
-        return [
-            row for row in rows
-            if event_type in (row.trigger_event_types or [])
-        ]
+        return [row for row in rows if event_type in (row.trigger_event_types or [])]
 
     async def list_for_session(
         self,
@@ -132,13 +129,10 @@ class SessionFollowupRepository(BaseRepository[SessionFollowup]):
         shouldn't be able to register 50 followups on one session.
         """
         now = utc_now()
-        stmt = (
-            select(SessionFollowup)
-            .where(
-                SessionFollowup.session_id == session_id,
-                SessionFollowup.consumed_at.is_(None),
-                SessionFollowup.expires_at > now,
-            )
+        stmt = select(SessionFollowup).where(
+            SessionFollowup.session_id == session_id,
+            SessionFollowup.consumed_at.is_(None),
+            SessionFollowup.expires_at > now,
         )
         result = await self.session.execute(stmt)
         return len(list(result.scalars().all()))

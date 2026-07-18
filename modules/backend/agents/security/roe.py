@@ -19,10 +19,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
-from modules.backend.agents.security.errors import (
-    SecurityAssessmentError,
-    SecurityErrorCode,
-)
+from modules.backend.agents.security.errors import SecurityAssessmentError, SecurityErrorCode
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +28,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # ROE schema
 # ---------------------------------------------------------------------------
+
 
 class RulesOfEngagement(BaseModel):
     """Machine-readable scope contract. Validated by OPA on every tool call."""
@@ -52,8 +50,12 @@ class RulesOfEngagement(BaseModel):
     )
     prohibited_actions: list[str] = Field(
         default=[
-            "DROP/TRUNCATE SQL", "os-shell", "lateral_movement",
-            "password_spray>5/account", "DoS", "data_modification",
+            "DROP/TRUNCATE SQL",
+            "os-shell",
+            "lateral_movement",
+            "password_spray>5/account",
+            "DoS",
+            "data_modification",
         ],
     )
     max_tool_calls: int = Field(default=200, ge=10)
@@ -85,6 +87,7 @@ class AssessmentContext(BaseModel):
 # Exceptions
 # ---------------------------------------------------------------------------
 
+
 class RoeScopeViolationError(SecurityAssessmentError):
     """Raised when a tool call targets a resource outside the ROE scope."""
 
@@ -115,7 +118,7 @@ BLOCKED_NETWORKS = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("169.254.0.0/16"),    # link-local + cloud metadata
+    ipaddress.ip_network("169.254.0.0/16"),  # link-local + cloud metadata
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fc00::/7"),
 ]
@@ -137,9 +140,7 @@ def validate_url(url: str) -> str:
             ip = ipaddress.ip_address(addr[0])
             for network in BLOCKED_NETWORKS:
                 if ip in network:
-                    raise ValueError(
-                        f"Blocked: {url} resolves to private address {ip}"
-                    )
+                    raise ValueError(f"Blocked: {url} resolves to private address {ip}")
     except socket.gaierror:
         raise ValueError(f"Cannot resolve hostname: {parsed.hostname}")
     return url
@@ -161,6 +162,7 @@ def resolve_and_pin(url: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Path-based scope validation (Phase 1)
 # ---------------------------------------------------------------------------
+
 
 def validate_target_path(
     path: str,

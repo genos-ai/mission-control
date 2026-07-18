@@ -22,9 +22,9 @@ import click
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger, setup_logging
-from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.services.compliance import ComplianceScannerService
 
 
@@ -51,7 +51,12 @@ def format_table(findings: list[dict]) -> str:
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output (INFO level logging).")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug output (DEBUG level logging).")
 @click.option("--rule", default=None, help="Check only this rule ID (e.g., no_hardcoded_values).")
-@click.option("--severity", default=None, type=click.Choice(["error", "warning"]), help="Show only this severity.")
+@click.option(
+    "--severity",
+    default=None,
+    type=click.Choice(["error", "warning"]),
+    help="Show only this severity.",
+)
 def main(verbose: bool, debug: bool, rule: str | None, severity: str | None) -> None:
     """Scan the codebase for compliance violations and output a table."""
     if debug:
@@ -79,7 +84,9 @@ def main(verbose: bool, debug: bool, rule: str | None, severity: str | None) -> 
     if severity:
         findings = [f for f in findings if f["severity"] == severity]
 
-    findings.sort(key=lambda f: (0 if f["severity"] == "error" else 1, f["file"], f.get("line") or 0))
+    findings.sort(
+        key=lambda f: (0 if f["severity"] == "error" else 1, f["file"], f.get("line") or 0)
+    )
 
     click.echo()
     click.echo(format_table(findings))

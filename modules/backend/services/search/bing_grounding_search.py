@@ -85,10 +85,12 @@ class FoundryBingGroundingSearch:
         response = await self._client.responses.create(
             model=self._model,
             input=query,
-            tools=[{
-                "type": "web_search",
-                "search_context_size": self._context_size,
-            }],
+            tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size": self._context_size,
+                }
+            ],
             tool_choice="required",
         )
 
@@ -141,14 +143,16 @@ def _parse_response(data: dict, *, max_results: int) -> list[SearchResult]:
         seen_urls.add(url)
 
         snippet = _snippet_from_annotation(ann, summary_text)
-        results.append(SearchResult(
-            url=url,
-            title=ann.get("title") or url,
-            snippet=snippet[:500],
-            content=snippet,
-            relevance_score=max(0.0, 1.0 - i * 0.05),
-            provider="foundry-bing-grounding",
-        ))
+        results.append(
+            SearchResult(
+                url=url,
+                title=ann.get("title") or url,
+                snippet=snippet[:500],
+                content=snippet,
+                relevance_score=max(0.0, 1.0 - i * 0.05),
+                provider="foundry-bing-grounding",
+            )
+        )
         if len(results) >= max_results:
             break
 
@@ -158,11 +162,7 @@ def _parse_response(data: dict, *, max_results: int) -> list[SearchResult]:
 def _snippet_from_annotation(ann: dict, summary_text: str) -> str:
     start = ann.get("start_index")
     end = ann.get("end_index")
-    if (
-        isinstance(start, int)
-        and isinstance(end, int)
-        and 0 <= start < end <= len(summary_text)
-    ):
+    if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(summary_text):
         sliced = summary_text[start:end].strip()
         if sliced:
             return sliced

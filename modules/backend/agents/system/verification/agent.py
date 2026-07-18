@@ -50,7 +50,9 @@ class VerificationEvaluation(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[BaseAgentDeps, VerificationEvaluation]:
+def create_agent(
+    model: str | Model, tool_names: list[str] | None = None
+) -> Agent[BaseAgentDeps, VerificationEvaluation]:
     """Factory: create a Verification Agent.
 
     Called by AgentRegistry.get_instance() on first use. The registry

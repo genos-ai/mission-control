@@ -31,6 +31,7 @@ Re-runnable from a clean state any number of times.
 
 import argparse
 import asyncio
+import contextlib
 import sys
 import tempfile
 import uuid
@@ -91,14 +92,18 @@ class IsolationVerifier:
                 },
             )
             self._log(f"Container: {self._handle.environment_id}")
-            self._log(f"Container ID: {self._handle.container_id[:12] if self._handle.container_id else 'N/A'}...")
+            self._log(
+                f"Container ID: {self._handle.container_id[:12] if self._handle.container_id else 'N/A'}..."
+            )
             self._log(f"host_working_dir: {self._handle.host_working_dir}")
             self._log(f"working_dir (container): {self._handle.working_dir}")
             return True
         except RuntimeError as exc:
             print(f"\n{FAIL} Setup failed: {exc}")
             print("  Make sure Docker is running and the image is built:")
-            print("  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile .")
+            print(
+                "  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile ."
+            )
             return False
 
     async def teardown(self) -> None:
@@ -200,8 +205,7 @@ class IsolationVerifier:
             if "file not found" in result.lower():
                 self._fail(
                     "read_file reads from worktree",
-                    "read_file returned 'file not found' — worktree path not "
-                    "resolved correctly",
+                    "read_file returned 'file not found' — worktree path not " "resolved correctly",
                 )
             elif self._mission_id in result and "Plan 47 isolation sentinel" in result:
                 self._pass("read_file reads from worktree (not main repo)")
@@ -233,9 +237,7 @@ class IsolationVerifier:
             return
 
         try:
-            from modules.backend.agents.mission_control.helpers.agent_setup import (
-                _build_agent_deps,
-            )
+            from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps
             from modules.backend.agents.mission_control.registry import get_registry
             from modules.backend.core.config import find_project_root
 
@@ -252,8 +254,7 @@ class IsolationVerifier:
             if user_config.invocation.tier != "user":
                 self._skip(
                     "Executor redirects user-tier project_root",
-                    f"{user_agent_name} is tier={user_config.invocation.tier}, "
-                    f"not user",
+                    f"{user_agent_name} is tier={user_config.invocation.tier}, " f"not user",
                 )
                 return
 
@@ -275,9 +276,7 @@ class IsolationVerifier:
             worktree_root = self._handle.host_working_dir
 
             if deps.project_root == worktree_root and deps.project_root != host_root:
-                self._pass(
-                    "Executor redirects user-tier project_root to worktree"
-                )
+                self._pass("Executor redirects user-tier project_root to worktree")
                 self._log(f"  project_root → {deps.project_root}")
             else:
                 self._fail(
@@ -312,7 +311,9 @@ class IsolationVerifier:
     async def check_command_runs_in_container(self) -> None:
         """Commands run inside the container (pwd returns /workspace)."""
         result = await self._service.execute(
-            self._handle, ["pwd"], timeout_seconds=10,
+            self._handle,
+            ["pwd"],
+            timeout_seconds=10,
         )
         self._log(f"  pwd → exit={result.exit_code} stdout={result.stdout.strip()!r}")
         if result.exit_code == 0 and result.stdout.strip() == "/workspace":
@@ -432,13 +433,12 @@ class IsolationVerifier:
     async def check_platform_agent_unaffected(self) -> None:
         """Platform-tier agent deps: project_root is NOT redirected."""
         from modules.backend.agents.config_schema import AgentConfigSchema
-        from modules.backend.agents.mission_control.helpers.agent_setup import (
-            _build_agent_deps,
-        )
+        from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps
         from modules.backend.core.config import find_project_root
 
         try:
             from modules.backend.agents.mission_control.registry import get_registry
+
             registry = get_registry()
             platform_health_config = registry.get("platform.health.agent")
             if platform_health_config is None:
@@ -454,9 +454,7 @@ class IsolationVerifier:
             # so project_root should stay as find_project_root()
             expected_root = find_project_root()
             if deps.project_root == expected_root:
-                self._pass(
-                    "Platform agent project_root unchanged (find_project_root())"
-                )
+                self._pass("Platform agent project_root unchanged (find_project_root())")
             else:
                 self._fail(
                     "Platform agent project_root unchanged",
@@ -490,6 +488,7 @@ class IsolationVerifier:
         if container_id:
             try:
                 import docker
+
                 client = docker.from_env()
                 client.containers.get(container_id)
                 self._fail(
@@ -561,16 +560,18 @@ async def _main(verbose: bool) -> int:
     finally:
         # Best-effort cleanup if something went wrong mid-run
         if verifier._handle is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await verifier.teardown()
-            except Exception:
-                pass
     return 0 if passed else 1
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show debug details for each check")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show debug details for each check"
+    )
     args = parser.parse_args()
     sys.exit(asyncio.run(_main(args.verbose)))
 

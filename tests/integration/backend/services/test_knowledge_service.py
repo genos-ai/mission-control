@@ -7,6 +7,8 @@ get_current_intent, and structured search.
 Semantic/hybrid search requires pgvector — those tests are marked separately.
 """
 
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +21,6 @@ from modules.backend.services.knowledge import KnowledgeService
 from modules.backend.services.mission_intent import MissionIntentService
 from modules.backend.services.mission_learning import MissionLearningService
 
-
-from uuid import uuid5, UUID
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 _KS_USER_ID = str(uuid5(_TEST_NS, "user:ks-tester"))
 _KS_MISSION_ID = str(uuid5(_TEST_NS, "mission:ks-test"))
@@ -30,9 +30,12 @@ _KS_MISSION_ID = str(uuid5(_TEST_NS, "mission:ks-test"))
 async def user(db_session: AsyncSession) -> User:
     hashed = security.hash_password("test-pass")
     u = User(
-        id=_KS_USER_ID, email="ks@test.dev",
-        display_name="KS Tester", hashed_password=hashed,
-        system_role="admin", is_active=True,
+        id=_KS_USER_ID,
+        email="ks@test.dev",
+        display_name="KS Tester",
+        hashed_password=hashed,
+        system_role="admin",
+        is_active=True,
     )
     db_session.add(u)
     await db_session.flush()
@@ -42,9 +45,11 @@ async def user(db_session: AsyncSession) -> User:
 @pytest.fixture
 async def mission(db_session: AsyncSession, user: User) -> Mission:
     m = Mission(
-        id=_KS_MISSION_ID, name="ks-test",
+        id=_KS_MISSION_ID,
+        name="ks-test",
         description="Knowledge service test mission",
-        owner_id=user.id, status=MissionStatus.ACTIVE,
+        owner_id=user.id,
+        status=MissionStatus.ACTIVE,
     )
     db_session.add(m)
     await db_session.flush()
@@ -71,7 +76,8 @@ async def mission(db_session: AsyncSession, user: User) -> Mission:
 
 @pytest.fixture
 async def seeded_knowledge(
-    db_session: AsyncSession, mission: Mission,
+    db_session: AsyncSession,
+    mission: Mission,
 ) -> dict:
     """Seed intent + learnings for search tests."""
     # Intent
@@ -116,7 +122,10 @@ async def seeded_knowledge(
 class TestGetMissionKnowledge:
     @pytest.mark.asyncio
     async def test_returns_all_sections(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         result = await svc.get_mission_knowledge(mission.id)
@@ -129,7 +138,10 @@ class TestGetMissionKnowledge:
 
     @pytest.mark.asyncio
     async def test_mcd_present(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         result = await svc.get_mission_knowledge(mission.id)
@@ -137,7 +149,10 @@ class TestGetMissionKnowledge:
 
     @pytest.mark.asyncio
     async def test_intent_present(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         result = await svc.get_mission_knowledge(mission.id)
@@ -146,7 +161,10 @@ class TestGetMissionKnowledge:
 
     @pytest.mark.asyncio
     async def test_learnings_present(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         result = await svc.get_mission_knowledge(mission.id)
@@ -154,11 +172,15 @@ class TestGetMissionKnowledge:
 
     @pytest.mark.asyncio
     async def test_domain_tag_filter(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         result = await svc.get_mission_knowledge(
-            mission.id, domain_tags=["auth"],
+            mission.id,
+            domain_tags=["auth"],
         )
         # Only auth-tagged learning should appear
         assert len(result["learnings"]) == 1
@@ -171,7 +193,10 @@ class TestGetMissionKnowledge:
 class TestGetCurrentIntent:
     @pytest.mark.asyncio
     async def test_returns_intent(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         intent = await svc.get_current_intent(mission.id)
@@ -192,53 +217,77 @@ class TestGetCurrentIntent:
 class TestStructuredSearch:
     @pytest.mark.asyncio
     async def test_finds_by_title_substring(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         results = await svc.search(
-            "token limit", mission_id=mission.id, mode="structured",
+            "token limit",
+            mission_id=mission.id,
+            mode="structured",
         )
         assert len(results) >= 1
         assert any("token limit" in r.title.lower() for r in results)
 
     @pytest.mark.asyncio
     async def test_finds_by_recommendation_substring(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         results = await svc.search(
-            "rollback", mission_id=mission.id, mode="structured",
+            "rollback",
+            mission_id=mission.id,
+            mode="structured",
         )
         assert len(results) >= 1
 
     @pytest.mark.asyncio
     async def test_no_results_for_unmatched_query(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         results = await svc.search(
-            "xyznonexistent", mission_id=mission.id, mode="structured",
+            "xyznonexistent",
+            mission_id=mission.id,
+            mode="structured",
         )
         assert len(results) == 0
 
     @pytest.mark.asyncio
     async def test_kind_filter(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         results = await svc.search(
-            "", mission_id=mission.id, mode="structured",
+            "",
+            mission_id=mission.id,
+            mode="structured",
             kinds=["learning"],
         )
         assert len(results) == 2
 
     @pytest.mark.asyncio
     async def test_empty_without_mission_id(
-        self, db_session: AsyncSession, mission: Mission, seeded_knowledge,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        seeded_knowledge,
     ):
         svc = KnowledgeService(db_session)
         results = await svc.search(
-            "auth", mode="structured",  # no mission_id
+            "auth",
+            mode="structured",  # no mission_id
         )
         # Without mission_id and not platform_only, should return empty
         assert len(results) == 0

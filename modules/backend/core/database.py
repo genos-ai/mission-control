@@ -132,6 +132,7 @@ def get_sync_session():
     global _sync_engine
     if _sync_engine is None:
         from modules.backend.core.config import get_database_url
+
         _sync_engine = _create_sync_engine(
             get_database_url(async_driver=False),
             pool_pre_ping=True,

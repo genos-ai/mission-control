@@ -4,17 +4,13 @@ Unit Tests for Base Service.
 Tests the BaseService class methods and error handling.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from modules.backend.core.exceptions import ConflictError, DatabaseError, ValidationError
 from modules.backend.services.base import BaseService
-from modules.backend.core.exceptions import (
-    ConflictError,
-    DatabaseError,
-    ValidationError,
-)
 
 
 class TestBaseServiceInit:
@@ -49,6 +45,7 @@ class TestExecuteDbOperation:
     @pytest.mark.asyncio
     async def test_returns_result_on_success(self, service):
         """Should return the coroutine result on success."""
+
         async def successful_operation():
             return {"id": "123", "name": "test"}
 
@@ -62,6 +59,7 @@ class TestExecuteDbOperation:
     @pytest.mark.asyncio
     async def test_raises_conflict_on_unique_violation(self, service):
         """Should raise ConflictError on unique constraint violation."""
+
         async def failing_operation():
             raise IntegrityError(
                 "statement",
@@ -99,6 +97,7 @@ class TestExecuteDbOperation:
     @pytest.mark.asyncio
     async def test_raises_database_error_on_other_integrity_error(self, service):
         """Should raise DatabaseError on non-unique integrity errors."""
+
         async def failing_operation():
             raise IntegrityError(
                 "statement",
@@ -117,6 +116,7 @@ class TestExecuteDbOperation:
     @pytest.mark.asyncio
     async def test_raises_database_error_on_sqlalchemy_error(self, service):
         """Should raise DatabaseError on general SQLAlchemy errors."""
+
         async def failing_operation():
             raise SQLAlchemyError("Connection lost")
 
@@ -260,6 +260,7 @@ class TestServiceInheritance:
 
     def test_subclass_can_access_session(self):
         """Subclass should be able to access the session."""
+
         class MyService(BaseService):
             def get_session(self):
                 return self.session
@@ -271,12 +272,11 @@ class TestServiceInheritance:
 
     def test_subclass_inherits_validation_methods(self):
         """Subclass should inherit validation methods."""
+
         class MyService(BaseService):
             def validate_user(self, data: dict):
                 self._validate_required(data, ["email"])
-                self._validate_string_length(
-                    data["email"], "email", min_length=5, max_length=255
-                )
+                self._validate_string_length(data["email"], "email", min_length=5, max_length=255)
 
         service = MyService(AsyncMock())
 

@@ -14,6 +14,7 @@ def get_embedding_version() -> int:
     """Get current embedding model version from config."""
     try:
         from modules.backend.core.config import get_app_config
+
         return get_app_config().missions.knowledge.embedding.version
     except Exception:
         logger.debug("Embedding version config unavailable, defaulting to 1")
@@ -32,21 +33,25 @@ async def get_embed_text(source_table: str, source_id: str) -> str | None:
         try:
             if source_table == "mission_learnings":
                 from modules.backend.repositories.mission_learning import MissionLearningRepository
+
                 row = await MissionLearningRepository(db).get_by_id(source_id)
                 return row.embed_text
 
             elif source_table == "mission_intents":
                 from modules.backend.repositories.mission_intent import MissionIntentRepository
+
                 row = await MissionIntentRepository(db).get_by_id(source_id)
                 return f"{row.intent_summary}\n{row.intent}"
 
             elif source_table == "mission_decisions":
                 from modules.backend.repositories.mission_history import MissionDecisionRepository
+
                 row = await MissionDecisionRepository(db).get_by_id(source_id)
                 return f"{row.decision}\n{row.rationale}"
 
             elif source_table == "milestone_summaries":
                 from modules.backend.repositories.mission_history import MilestoneSummaryRepository
+
                 row = await MilestoneSummaryRepository(db).get_by_id(source_id)
                 return f"{row.title}\n{row.summary}"
 
@@ -72,11 +77,13 @@ async def get_source_mission_id(source_table: str, source_id: str) -> str | None
         try:
             if source_table == "mission_learnings":
                 from modules.backend.repositories.mission_learning import MissionLearningRepository
+
                 row = await MissionLearningRepository(db).get_by_id(source_id)
                 return row.mission_id
 
             elif source_table == "mission_intents":
                 from modules.backend.repositories.mission_intent import MissionIntentRepository
+
                 row = await MissionIntentRepository(db).get_by_id(source_id)
                 return row.mission_id
 
@@ -85,6 +92,7 @@ async def get_source_mission_id(source_table: str, source_id: str) -> str | None
                     MilestoneSummaryRepository,
                     MissionDecisionRepository,
                 )
+
                 if source_table == "mission_decisions":
                     row = await MissionDecisionRepository(db).get_by_id(source_id)
                 else:

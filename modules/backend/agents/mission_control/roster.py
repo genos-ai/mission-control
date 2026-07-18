@@ -142,26 +142,28 @@ async def derive_roster_from_team(
                 f"in model_config_json. Fix the agent_catalog row."
             )
 
-        entries.append(RosterAgentEntry(
-            agent_name=catalog_entry.agent_name,
-            agent_version=catalog_entry.version,
-            description=catalog_entry.description,
-            model=RosterModelSchema(
-                name=model_cfg["name"],
-                temperature=model_cfg.get("temperature", 0.0),
-                max_tokens=model_cfg.get("max_tokens", 4096),
-            ),
-            tools=catalog_entry.tools or [],
-            interface=RosterInterfaceSchema(
-                input=(catalog_entry.interface or {}).get("input", {}),
-                output=(catalog_entry.interface or {}).get("output", {}),
-            ),
-            constraints=RosterConstraintsSchema(
-                timeout_seconds=constraints_cfg.get("timeout_seconds", 120),
-                cost_ceiling_usd=constraints_cfg.get("cost_ceiling_usd", 1.0),
-                retry_budget=constraints_cfg.get("retry_budget", 2),
-            ),
-        ))
+        entries.append(
+            RosterAgentEntry(
+                agent_name=catalog_entry.agent_name,
+                agent_version=catalog_entry.version,
+                description=catalog_entry.description,
+                model=RosterModelSchema(
+                    name=model_cfg["name"],
+                    temperature=model_cfg.get("temperature", 0.0),
+                    max_tokens=model_cfg.get("max_tokens", 4096),
+                ),
+                tools=catalog_entry.tools or [],
+                interface=RosterInterfaceSchema(
+                    input=(catalog_entry.interface or {}).get("input", {}),
+                    output=(catalog_entry.interface or {}).get("output", {}),
+                ),
+                constraints=RosterConstraintsSchema(
+                    timeout_seconds=constraints_cfg.get("timeout_seconds", 120),
+                    cost_ceiling_usd=constraints_cfg.get("cost_ceiling_usd", 1.0),
+                    retry_budget=constraints_cfg.get("retry_budget", 2),
+                ),
+            )
+        )
 
     if not entries:
         raise ValueError(

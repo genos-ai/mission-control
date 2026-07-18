@@ -47,6 +47,7 @@ _impl = search_codebase
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def search_codebase(
         ctx: RunContext,
@@ -62,4 +63,6 @@ def register(agent):
         project_root = getattr(ctx.deps, "project_root", None)
         if not project_root:
             return [{"error": "No project root available"}]
-        return await _impl(project_root, query, file_patterns=file_patterns, max_results=max_results)
+        return await _impl(
+            project_root, query, file_patterns=file_patterns, max_results=max_results
+        )

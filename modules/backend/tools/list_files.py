@@ -60,6 +60,7 @@ _impl = list_files
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def list_files(ctx: RunContext) -> list[str]:
         """List all Python files in scope, respecting exclusion patterns."""

@@ -45,7 +45,11 @@ async def _seed_catalog_agent(
         agent_name=agent_name,
         agent_type="vertical",
         description="Test agent",
-        model_config_json={"name": "anthropic:claude-haiku-4-5-20251001", "temperature": 0.0, "max_tokens": 4096},
+        model_config_json={
+            "name": "anthropic:claude-haiku-4-5-20251001",
+            "temperature": 0.0,
+            "max_tokens": 4096,
+        },
     )
     return entry.id
 
@@ -67,7 +71,9 @@ class TestAddAgent:
         agent_id = await _seed_catalog_agent(db_session)
 
         member = await service.add_agent(
-            mission.id, agent_id, user_prompt="Focus on security",
+            mission.id,
+            agent_id,
+            user_prompt="Focus on security",
         )
         assert member.mission_id == mission.id
         assert member.agent_catalog_id == agent_id
@@ -108,7 +114,9 @@ class TestUpdateUserPrompt:
         member = await service.add_agent(mission.id, agent_id)
 
         updated = await service.update_user_prompt(
-            member.id, "New prompt", changed_by=TEST_USER_ID,
+            member.id,
+            "New prompt",
+            changed_by=TEST_USER_ID,
         )
         assert updated.user_prompt == "New prompt"
         assert updated.user_prompt_version == 2

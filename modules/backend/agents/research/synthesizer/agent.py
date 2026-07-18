@@ -21,7 +21,9 @@ from modules.backend.schemas.research import ResearchReportOutput
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[BaseAgentDeps, ResearchReportOutput]:
+def create_agent(
+    model: str | Model, tool_names: list[str] | None = None
+) -> Agent[BaseAgentDeps, ResearchReportOutput]:
     """Factory: create synthesizer agent.
 
     Called by AgentRegistry.get_instance() on first use. Cached.

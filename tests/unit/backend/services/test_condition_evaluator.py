@@ -18,7 +18,6 @@ from modules.backend.services.condition_evaluator import (
     walk_refs,
 )
 
-
 # =============================================================================
 # resolve_ref — public function (Plan 79 §8.0 promotion)
 # =============================================================================
@@ -125,7 +124,10 @@ class TestResolveTemplateSmoke:
     def test_skipped_predecessor_substitutes_empty(self):
         # Mixed-text template: skipped ref still substitutes empty (None → "").
         outcomes = {"skipped": {"_skipped": True}}
-        assert resolve_template("Before {{@node.skipped.output}} after", outcomes, {}) == "Before  after"
+        assert (
+            resolve_template("Before {{@node.skipped.output}} after", outcomes, {})
+            == "Before  after"
+        )
 
 
 # =============================================================================
@@ -237,7 +239,9 @@ class TestWalkRefs:
         outcomes = {"x": {"output": "X"}, "y": {"output": "Y"}}
         value = {"a": "{{@node.x.output}}", "nested": {"b": "{{@node.y.output}}"}}
         result = walk_refs(
-            value, outcomes, {},
+            value,
+            outcomes,
+            {},
             leaf_resolver=lambda s: resolve_template(s, outcomes, {}),
         )
         assert result == {"a": "X", "nested": {"b": "Y"}}
@@ -246,7 +250,9 @@ class TestWalkRefs:
         outcomes = {"x": {"output": 1}, "y": {"output": 2}}
         value = ["{{@node.x.output}}", "{{@node.y.output}}", "static"]
         result = walk_refs(
-            value, outcomes, {},
+            value,
+            outcomes,
+            {},
             leaf_resolver=lambda s: resolve_template(s, outcomes, {}),
         )
         assert result == [1, 2, "static"]
@@ -260,7 +266,9 @@ class TestWalkRefs:
             },
         }
         result = walk_refs(
-            value, outcomes, {},
+            value,
+            outcomes,
+            {},
             leaf_resolver=lambda s: resolve_template(s, outcomes, {}),
         )
         assert result == {"round_1": {"x": {"v": 1}, "y": {"v": 2}}}
@@ -269,7 +277,9 @@ class TestWalkRefs:
         # Ints, floats, bools, None pass through.
         value = {"a": 42, "b": 3.14, "c": True, "d": None, "e": "static"}
         result = walk_refs(
-            value, {}, {},
+            value,
+            {},
+            {},
             leaf_resolver=lambda s: s.upper() if isinstance(s, str) else s,
         )
         assert result == {"a": 42, "b": 3.14, "c": True, "d": None, "e": "STATIC"}

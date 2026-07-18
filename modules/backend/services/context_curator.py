@@ -50,7 +50,8 @@ class ContextCurator:
         # Validate domain_tags in any update that writes to a tags path (Plan 57 §4.2)
         mcd = await self._manager.get_context(mission_id)
         task_result_context_updates = self._validate_domain_tags_in_updates(
-            task_result_context_updates, mcd,
+            task_result_context_updates,
+            mcd,
         )
 
         new_version, errors = await self._manager.apply_updates(

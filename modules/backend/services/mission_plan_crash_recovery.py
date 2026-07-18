@@ -75,15 +75,11 @@ async def reconcile_orphaned_task_states(
             task.failure_reason = ORPHAN_FAILURE_REASON
             task.last_attempt_at = utc_now()
             running_to_failed += 1
-            emit_buffer.append(
-                (mission_id, plan_id, task.id, from_status, TaskStatus.FAILED)
-            )
+            emit_buffer.append((mission_id, plan_id, task.id, from_status, TaskStatus.FAILED))
         elif task.status == TaskStatus.QUEUED:
             task.status = TaskStatus.APPROVED
             queued_to_approved += 1
-            emit_buffer.append(
-                (mission_id, plan_id, task.id, from_status, TaskStatus.APPROVED)
-            )
+            emit_buffer.append((mission_id, plan_id, task.id, from_status, TaskStatus.APPROVED))
 
     await session.flush()
 
@@ -141,7 +137,9 @@ async def reconcile_orphaned_task_states(
                     ),
                 )
             except Exception:
-                logger.debug("event publish failed after crash recovery (best-effort)", exc_info=True)
+                logger.debug(
+                    "event publish failed after crash recovery (best-effort)", exc_info=True
+                )
 
     return {
         "running_to_failed": running_to_failed,
@@ -161,18 +159,17 @@ async def reconcile_orphaned_execution_records(
     """
     from sqlalchemy import update
 
-    from modules.backend.models.execution_record import (
-        ExecutionRecord,
-        ExecutionRecordStatus,
-    )
+    from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
 
     result = await session.execute(
         update(ExecutionRecord)
         .where(
-            ExecutionRecord.status.in_([
-                ExecutionRecordStatus.RUNNING,
-                ExecutionRecordStatus.PENDING,
-            ])
+            ExecutionRecord.status.in_(
+                [
+                    ExecutionRecordStatus.RUNNING,
+                    ExecutionRecordStatus.PENDING,
+                ]
+            )
         )
         .values(status=ExecutionRecordStatus.FAILED)
     )

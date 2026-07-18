@@ -54,8 +54,7 @@ SECURITY_ERROR_SPECS: dict[SecurityErrorCode, SecurityErrorSpec] = {
         code=SecurityErrorCode.ROE_SCOPE_VIOLATION,
         http_status=403,
         message_template=(
-            "Tool call to {target} is outside ROE scope. "
-            "Allowed: {scope_allowlist}."
+            "Tool call to {target} is outside ROE scope. " "Allowed: {scope_allowlist}."
         ),
         retryable=False,
         retry_after_seconds=None,

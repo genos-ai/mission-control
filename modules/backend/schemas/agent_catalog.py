@@ -63,17 +63,21 @@ class AgentCatalogCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent_name: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$",
     )
     agent_type: str = Field(
-        ..., pattern=r"^(vertical|horizontal|system)$",
+        ...,
+        pattern=r"^(vertical|horizontal|system)$",
     )
     version: str = Field(default="1.0.0", max_length=20)
     description: str = Field(..., min_length=1, max_length=2000)
     system_prompt: str = Field(default="")
     model_config_json: dict[str, Any] = Field(
-        ..., description='{"name": "anthropic:model", "temperature": 0.0, "max_tokens": 4096}',
+        ...,
+        description='{"name": "anthropic:model", "temperature": 0.0, "max_tokens": 4096}',
     )
     tools: list[str] = Field(default_factory=list)
     scope: dict[str, Any] = Field(
@@ -90,7 +94,8 @@ class AgentCatalogCreateRequest(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     enabled: bool = True
     visibility: str = Field(
-        default="public", pattern=r"^(public|system)$",
+        default="public",
+        pattern=r"^(public|system)$",
     )
 
 

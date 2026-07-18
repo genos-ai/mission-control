@@ -100,7 +100,8 @@ class WorkflowsTab(Static):
     def _render_workflow_list(self, workflows: list[dict]) -> None:
         """Populate the workflow list."""
         scroll = self.query_one(
-            "#workflows-list-scroll", VerticalScroll,
+            "#workflows-list-scroll",
+            VerticalScroll,
         )
         scroll.remove_children()
 
@@ -123,7 +124,8 @@ class WorkflowsTab(Static):
 
     def _show_list_error(self, error: str) -> None:
         scroll = self.query_one(
-            "#workflows-list-scroll", VerticalScroll,
+            "#workflows-list-scroll",
+            VerticalScroll,
         )
         scroll.remove_children()
         scroll.mount(
@@ -131,12 +133,14 @@ class WorkflowsTab(Static):
         )
 
     async def on__workflow_list_item_selected(
-        self, event: _WorkflowListItem.Selected,
+        self,
+        event: _WorkflowListItem.Selected,
     ) -> None:
         """Show workflow detail when an item is clicked."""
         self.app.state.workflow.selected_workflow = event.workflow_name
         self.run_worker(
-            self._load_detail(event.workflow_name), thread=False,
+            self._load_detail(event.workflow_name),
+            thread=False,
         )
 
     async def _load_detail(self, workflow_name: str) -> None:
@@ -150,13 +154,15 @@ class WorkflowsTab(Static):
         except Exception as exc:
             logger.warning("Could not load workflow detail", exc_info=True)
             self.app.notify(
-                f"Could not load workflow: {exc}", severity="error",
+                f"Could not load workflow: {exc}",
+                severity="error",
             )
 
     def _render_detail(self, detail: dict) -> None:
         """Render workflow detail in the right panel."""
         panel = self.query_one(
-            "#workflows-detail-panel", VerticalScroll,
+            "#workflows-detail-panel",
+            VerticalScroll,
         )
         panel.remove_children()
 
@@ -196,7 +202,9 @@ class WorkflowsTab(Static):
 
         # ── Trigger info ──────────────────────────────────────
         trigger_icons = {
-            "cron": "🕐", "event": "⚡", "manual": "✋",
+            "cron": "🕐",
+            "event": "⚡",
+            "manual": "✋",
         }
         icon = trigger_icons.get(trigger, "")
         schedule = detail.get("schedule", "")
@@ -215,7 +223,8 @@ class WorkflowsTab(Static):
             )
             for i, step in enumerate(steps, 1):
                 step_id = step.get(
-                    "step_id", step.get("name", "?"),
+                    "step_id",
+                    step.get("name", "?"),
                 )
                 agent = step.get("agent_name", "")
                 gate = step.get("gate", "")
@@ -259,5 +268,6 @@ class WorkflowsTab(Static):
             return
 
         self.app.notify(
-            f"Triggering {workflow_name}...", severity="information",
+            f"Triggering {workflow_name}...",
+            severity="information",
         )

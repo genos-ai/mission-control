@@ -8,8 +8,9 @@ Tests the health check functionality including:
 - Database and Redis connectivity checks
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestHealthCheck:
@@ -208,6 +209,7 @@ class TestReadinessCheck:
     async def test_raises_503_when_database_unhealthy(self):
         """Should raise HTTPException 503 when database is unhealthy."""
         from fastapi import HTTPException
+
         from modules.backend.api.health import readiness_check
 
         with patch(
@@ -228,6 +230,7 @@ class TestReadinessCheck:
     async def test_raises_503_when_redis_unhealthy(self):
         """Should raise HTTPException 503 when Redis is unhealthy."""
         from fastapi import HTTPException
+
         from modules.backend.api.health import readiness_check
 
         with patch(

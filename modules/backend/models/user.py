@@ -33,25 +33,38 @@ class User(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
     email: Mapped[str] = mapped_column(
-        String(200), unique=True, nullable=False, index=True,
+        String(200),
+        unique=True,
+        nullable=False,
+        index=True,
     )
     display_name: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     hashed_password: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
     system_role: Mapped[str] = mapped_column(
-        String(20), default=SystemRole.USER.value, nullable=False, index=True,
+        String(20),
+        default=SystemRole.USER.value,
+        nullable=False,
+        index=True,
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False,
+        Boolean,
+        default=True,
+        nullable=False,
     )
     is_service_account: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False,
+        Boolean,
+        default=False,
+        nullable=False,
     )
     last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     current_mission_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
@@ -62,7 +75,9 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     # Relationships
     api_keys: Mapped[list["ApiKey"]] = relationship(
-        "ApiKey", back_populates="user", cascade="all, delete-orphan",
+        "ApiKey",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
     current_mission: Mapped["Mission | None"] = relationship(
         "Mission",
@@ -84,7 +99,4 @@ class User(UUIDMixin, TimestampMixin, Base):
         return check_role_level(self.system_role, minimum)
 
     def __repr__(self) -> str:
-        return (
-            f"<User(id={self.id}, email={self.email!r}, "
-            f"role={self.system_role})>"
-        )
+        return f"<User(id={self.id}, email={self.email!r}, " f"role={self.system_role})>"

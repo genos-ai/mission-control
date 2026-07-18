@@ -14,45 +14,45 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+# Phase 2: New tables
+from modules.backend.models.agent_catalog import AgentCatalog  # noqa: F401
+from modules.backend.models.api_key import ApiKey  # noqa: F401
+
 # Import Base metadata and all models for autogenerate
 from modules.backend.models.base import Base
 
-# Import all models here so Alembic can detect them
-# Add new model imports as you create them
-from modules.backend.models.workflow_run import WorkflowRun  # noqa: F401
+# Phase 4+: Plan, artifacts, knowledge, LLM tracking, embeddings
+from modules.backend.models.embedding import Embedding  # noqa: F401
+from modules.backend.models.execution_environment import ExecutionEnvironmentModel  # noqa: F401
 from modules.backend.models.execution_record import (  # noqa: F401
     ExecutionDecision,
     ExecutionRecord,
     TaskAttempt,
     TaskExecution,
 )
-from modules.backend.models.mission import Mission, MissionMember  # noqa: F401
-from modules.backend.models.mission_context import MissionContext, ContextChange  # noqa: F401
-from modules.backend.models.mission_history import MissionDecision, MilestoneSummary  # noqa: F401
-from modules.backend.models.session import Session, SessionChannel, SessionMessage  # noqa: F401
-
-# Phase 2: New tables
-from modules.backend.models.agent_catalog import AgentCatalog  # noqa: F401
-from modules.backend.models.mission_team import MissionTeamMember  # noqa: F401
-from modules.backend.models.prompt_version import PromptVersion  # noqa: F401
-from modules.backend.models.workflow_definition import WorkflowDefinition  # noqa: F401
-from modules.backend.models.workflow_schedule import WorkflowSchedule  # noqa: F401
-
-# Phase 3: Users and API keys
-from modules.backend.models.user import User  # noqa: F401
-from modules.backend.models.api_key import ApiKey  # noqa: F401
-
-# Phase 4+: Plan, artifacts, knowledge, LLM tracking, embeddings
-from modules.backend.models.embedding import Embedding  # noqa: F401
-from modules.backend.models.execution_environment import ExecutionEnvironmentModel  # noqa: F401
 from modules.backend.models.llm_call import LlmCall  # noqa: F401
+from modules.backend.models.mission import Mission, MissionMember  # noqa: F401
 from modules.backend.models.mission_artifact import MissionArtifact  # noqa: F401
+from modules.backend.models.mission_context import ContextChange, MissionContext  # noqa: F401
+from modules.backend.models.mission_history import MilestoneSummary, MissionDecision  # noqa: F401
 from modules.backend.models.mission_intent import MissionIntent  # noqa: F401
 from modules.backend.models.mission_learning import MissionLearning  # noqa: F401
 from modules.backend.models.mission_plan import MissionPlan  # noqa: F401
-from modules.backend.models.task import Task, TaskDependency  # noqa: F401
+from modules.backend.models.mission_team import MissionTeamMember  # noqa: F401
 from modules.backend.models.model_pricing import ModelPricing  # noqa: F401
+from modules.backend.models.prompt_version import PromptVersion  # noqa: F401
+from modules.backend.models.session import Session, SessionChannel, SessionMessage  # noqa: F401
 from modules.backend.models.session_followup import SessionFollowup  # noqa: F401
+from modules.backend.models.task import Task, TaskDependency  # noqa: F401
+
+# Phase 3: Users and API keys
+from modules.backend.models.user import User  # noqa: F401
+from modules.backend.models.workflow_definition import WorkflowDefinition  # noqa: F401
+
+# Import all models here so Alembic can detect them
+# Add new model imports as you create them
+from modules.backend.models.workflow_run import WorkflowRun  # noqa: F401
+from modules.backend.models.workflow_schedule import WorkflowSchedule  # noqa: F401
 
 # Alembic Config object
 config = context.config
@@ -68,6 +68,7 @@ target_metadata = Base.metadata
 def get_database_url() -> str:
     """Get database URL from YAML config and secrets."""
     from modules.backend.core.config import get_database_url as _get_database_url
+
     return _get_database_url()
 
 

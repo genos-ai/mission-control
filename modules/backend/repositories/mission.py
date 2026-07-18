@@ -7,11 +7,7 @@ Data access for missions and mission membership.
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.mission import (
-    Mission,
-    MissionMember,
-    MissionStatus,
-)
+from modules.backend.models.mission import Mission, MissionMember, MissionStatus
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -22,9 +18,7 @@ class MissionRepository(BaseRepository[Mission]):
 
     async def get_by_name(self, name: str) -> Mission | None:
         """Get a mission by unique name."""
-        result = await self.session.execute(
-            select(Mission).where(Mission.name == name)
-        )
+        result = await self.session.execute(select(Mission).where(Mission.name == name))
         return result.scalar_one_or_none()
 
     async def list_by_owner(
@@ -49,10 +43,7 @@ class MissionRepository(BaseRepository[Mission]):
     ) -> list[Mission]:
         """List all missions regardless of status."""
         result = await self.session.execute(
-            select(Mission)
-            .order_by(Mission.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+            select(Mission).order_by(Mission.created_at.desc()).limit(limit).offset(offset)
         )
         return list(result.scalars().all())
 

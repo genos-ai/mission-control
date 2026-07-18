@@ -15,24 +15,32 @@ class MissionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         pattern=r"^[a-z][a-z0-9_-]*$",
         description="Unique mission name (lowercase, hyphens, underscores)",
     )
     description: str = Field(
-        ..., min_length=1, max_length=2000,
+        ...,
+        min_length=1,
+        max_length=2000,
         description="Mission purpose and scope",
     )
     brief: str | None = Field(
-        None, max_length=10000,
+        None,
+        max_length=10000,
         description="Strategic directive that agents read to understand their purpose",
     )
     owner_id: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         description="Primary human owner identifier",
     )
     team_id: str | None = Field(
-        None, max_length=200,
+        None,
+        max_length=200,
         description="Optional team identifier",
     )
     default_roster: str = Field(
@@ -41,15 +49,18 @@ class MissionCreate(BaseModel):
         description="Default agent roster for this mission",
     )
     budget_ceiling_usd: float | None = Field(
-        None, ge=0.01,
+        None,
+        ge=0.01,
         description="Mission-level spend cap",
     )
     repo_url: str | None = Field(
-        None, max_length=2000,
+        None,
+        max_length=2000,
         description="Source repository URL",
     )
     repo_root: str | None = Field(
-        None, max_length=1000,
+        None,
+        max_length=1000,
         description="Local filesystem root path",
     )
     tier: str = Field(
@@ -123,7 +134,9 @@ class MissionMemberAddRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_id: str = Field(
-        ..., min_length=1, max_length=36,
+        ...,
+        min_length=1,
+        max_length=36,
         description="UUID of the user to add",
     )
     role: str = Field(

@@ -14,12 +14,8 @@ from modules.backend.api.v1.endpoints.auth import router
 from modules.backend.core.database import get_db_session
 from modules.backend.core.dependencies import get_current_user
 from modules.backend.core.exceptions import NotFoundError, ValidationError
-from modules.backend.schemas.user import (
-    SetCurrentMissionRequest,
-    UserResponse,
-)
+from modules.backend.schemas.user import SetCurrentMissionRequest, UserResponse
 from tests.conftest import TEST_USER_ID
-
 
 # ── Schema tests ──────────────────────────────────────────────────────
 
@@ -101,8 +97,10 @@ class TestUserServiceSetCurrentMission:
         mock_mission = MagicMock()
         mock_mission.status = "active"
 
-        with patch.object(service, "user_repo") as mock_user_repo, \
-             patch("modules.backend.repositories.mission.MissionRepository") as MockMissionRepo:
+        with (
+            patch.object(service, "user_repo") as mock_user_repo,
+            patch("modules.backend.repositories.mission.MissionRepository") as MockMissionRepo,
+        ):
             mock_mission_repo = MockMissionRepo.return_value
             mock_mission_repo.get_by_id_or_none = AsyncMock(return_value=mock_mission)
 
@@ -117,7 +115,8 @@ class TestUserServiceSetCurrentMission:
 
             mock_mission_repo.get_by_id_or_none.assert_awaited_once_with("mission-1")
             mock_user_repo.update.assert_awaited_once_with(
-                TEST_USER_ID, current_mission_id="mission-1",
+                TEST_USER_ID,
+                current_mission_id="mission-1",
             )
             assert result is updated_user
 
@@ -143,7 +142,8 @@ class TestUserServiceSetCurrentMission:
             )
 
             mock_user_repo.update.assert_awaited_once_with(
-                TEST_USER_ID, current_mission_id=None,
+                TEST_USER_ID,
+                current_mission_id=None,
             )
 
     @pytest.mark.asyncio
@@ -222,6 +222,7 @@ def app():
     app.include_router(router, prefix="/auth")
 
     from fastapi.responses import JSONResponse
+
     from modules.backend.core.exceptions import NotFoundError, ValidationError
 
     @app.exception_handler(NotFoundError)

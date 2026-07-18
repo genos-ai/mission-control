@@ -59,7 +59,9 @@ class ContextViewer(Widget):
         self._load_overview_tab(detail)
         # Plan 72: task_plan_json removed; show outcome's plan reference if available
         outcome = detail.get("execution_outcome_json") or {}
-        self._load_json_tab(outcome.get("task_plan_reference") if isinstance(outcome, dict) else None)
+        self._load_json_tab(
+            outcome.get("task_plan_reference") if isinstance(outcome, dict) else None
+        )
         self._load_tasks_tab(detail.get("task_executions", []))
 
     def _load_overview_tab(self, detail: dict) -> None:
@@ -113,9 +115,7 @@ class ContextViewer(Widget):
     def load_json(self, title: str, data: dict | str) -> None:
         """Load arbitrary JSON data into the viewer."""
         try:
-            self.query_one("#context-title", Label).update(
-                f"[bold]{title}[/bold]"
-            )
+            self.query_one("#context-title", Label).update(f"[bold]{title}[/bold]")
         except NoMatches:
             pass
         self._load_json_tab(data)

@@ -20,33 +20,42 @@ class PromptVersion(UUIDMixin, TimestampMixin, Base):
     __table_args__ = (
         Index(
             "ix_prompt_versions_entity_lookup",
-            "entity_type", "entity_id", "version",
+            "entity_type",
+            "entity_id",
+            "version",
         ),
     )
 
     entity_type: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
         comment="agent_catalog or mission_team_member",
     )
     entity_id: Mapped[str] = mapped_column(
-        PgUUID(as_uuid=False), nullable=False,
+        PgUUID(as_uuid=False),
+        nullable=False,
         comment="UUID of the owning entity (polymorphic FK)",
     )
     prompt_type: Mapped[str] = mapped_column(
-        String(20), nullable=False,
+        String(20),
+        nullable=False,
         comment="system or user",
     )
     content: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     version: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
     )
     changed_by: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     change_reason: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
 
     @property

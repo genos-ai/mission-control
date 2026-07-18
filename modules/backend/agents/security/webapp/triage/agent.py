@@ -29,6 +29,7 @@ def create_agent(
     # Register read_file from the platform tool registry
     if tool_names:
         from modules.backend.tools.registry import get_tool_registry
+
         registry = get_tool_registry()
         registry.register_on_agent(agent, tool_names)
 

@@ -10,13 +10,9 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from modules.backend.agents.mission_control.gate import GateContext
-from modules.backend.agents.mission_control.outcome import (
-    ExecutionOutcome,
-    TaskResult,
-)
+from modules.backend.agents.mission_control.outcome import ExecutionOutcome, TaskResult
 from modules.backend.agents.mission_control.roster import RosterAgentEntry
 from modules.backend.schemas.task_plan import TaskPlan
-
 
 # ── Tab-specific sub-dataclasses ──────────────────────────────────────
 

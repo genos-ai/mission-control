@@ -83,9 +83,7 @@ class MissionPickerScreen(ModalScreen[None]):
 
     BINDINGS = [("escape", "dismiss", "Close")]
 
-    def __init__(
-        self, missions: list[dict[str, str]], **kwargs: object
-    ) -> None:
+    def __init__(self, missions: list[dict[str, str]], **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._missions = missions
 

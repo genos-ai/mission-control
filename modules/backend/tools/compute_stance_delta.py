@@ -53,22 +53,21 @@ async def compute_stance_delta(
     # avoids 8 sequential awaits adding 2-4 s of serial latency per
     # early-stop check).
     debater_ids = list(current_round.keys())
-    pair_results = await asyncio.gather(*[
-        _per_debater_delta(debater_id, previous_round.get(debater_id),
-                           current_round[debater_id], embedder)
-        for debater_id in debater_ids
-    ])
+    pair_results = await asyncio.gather(
+        *[
+            _per_debater_delta(
+                debater_id, previous_round.get(debater_id), current_round[debater_id], embedder
+            )
+            for debater_id in debater_ids
+        ]
+    )
 
     per_debater = dict(pair_results)
-    any_active_revision = any(
-        _has_active_revision(current_round[d]) for d in debater_ids
-    )
+    any_active_revision = any(_has_active_revision(current_round[d]) for d in debater_ids)
 
     # Aggregate delta — mean across debaters. The threshold is applied
     # to this aggregate, not to any single debater.
-    aggregate = (
-        sum(per_debater.values()) / max(len(per_debater), 1)
-    )
+    aggregate = sum(per_debater.values()) / max(len(per_debater), 1)
 
     stance_stable = aggregate < threshold
     should_continue = (not stance_stable) or any_active_revision

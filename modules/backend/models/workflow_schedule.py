@@ -11,7 +11,16 @@ and creates WorkflowRuns when they fire.
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,44 +54,61 @@ class WorkflowSchedule(UUIDMixin, TimestampMixin, Base):
         comment="Denormalised from workflow_definitions for query convenience",
     )
     cron_expression: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
         comment="Standard 5-field cron: minute hour day month weekday",
     )
     timezone: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="UTC",
+        String(50),
+        nullable=False,
+        default="UTC",
     )
     enabled: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False, index=True,
+        Boolean,
+        default=True,
+        nullable=False,
+        index=True,
     )
     description: Mapped[str] = mapped_column(
-        Text, nullable=False, default="",
+        Text,
+        nullable=False,
+        default="",
     )
     budget_per_run_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6, asdecimal=False), nullable=True,
+        Numeric(12, 6, asdecimal=False),
+        nullable=True,
         comment="USD ceiling per individual run triggered by this schedule",
     )
     max_iterations: Mapped[int | None] = mapped_column(
-        Integer, nullable=True,
+        Integer,
+        nullable=True,
         comment="Total runs this schedule may create (NULL = unlimited within platform cap)",
     )
     iteration_count: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False,
+        Integer,
+        default=0,
+        nullable=False,
         comment="How many runs this schedule has created so far",
     )
     cooldown_seconds: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False,
+        Integer,
+        default=0,
+        nullable=False,
         comment="Minimum seconds between consecutive runs (prevents rapid-fire)",
     )
     last_fired_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
         comment="UTC datetime of the last time this schedule created a run",
     )
     next_fire_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
         comment="Precomputed UTC datetime of the next expected fire time",
     )
     created_by: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
         comment="user:<id> or system",
     )
 

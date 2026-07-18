@@ -13,7 +13,6 @@ from modules.clients.cli.api_client import CliApiClient
 from modules.clients.common.display import get_console
 from modules.clients.common.gate_helpers import STATUS_ICONS
 
-
 # Category colors matching the web frontend's console view
 _CATEGORY_STYLES: dict[str, str] = {
     "execution": "cyan",
@@ -50,8 +49,7 @@ async def monitor(
     sse_token = sse_token_data.get("token", "")
 
     console.print(
-        f"[bold cyan]Console Monitor[/bold cyan] — {mission_name}"
-        f"  [dim]({view} view)[/dim]"
+        f"[bold cyan]Console Monitor[/bold cyan] — {mission_name}" f"  [dim]({view} view)[/dim]"
     )
     console.print(f"[dim]Streaming events from {mission_id}[/dim]")
     console.print(f"[dim]Press Ctrl+C to stop.[/dim]\n")
@@ -81,7 +79,9 @@ async def monitor(
 
 
 def _render_console_event(
-    console, event: dict, developer: bool = False,
+    console,
+    event: dict,
+    developer: bool = False,
 ) -> None:
     """Render a single console event to the terminal.
 
@@ -116,10 +116,7 @@ def _render_console_event(
     label = _event_label(evt_type, data)
 
     if label:
-        console.print(
-            f"[dim]{timestamp}[/dim]  {icon}  "
-            f"[{cat_color}]{label}[/{cat_color}]"
-        )
+        console.print(f"[dim]{timestamp}[/dim]  {icon}  " f"[{cat_color}]{label}[/{cat_color}]")
 
 
 def _event_icon(event_type: str) -> str:

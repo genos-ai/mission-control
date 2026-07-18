@@ -7,9 +7,9 @@ from modules.clients.tui.messages import (
     GateReviewCompleted,
     GateReviewRequested,
     MissionCancelRequested,
-    MissionStartRequested,
     MissionCreated,
     MissionSelected,
+    MissionStartRequested,
     SessionEventReceived,
 )
 

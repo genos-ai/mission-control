@@ -44,23 +44,31 @@ class TestComputeStanceDelta:
     @pytest.mark.asyncio
     async def test_stable_round_returns_should_continue_false(self, monkeypatch):
         # Identical positions, no active revision → should stop.
-        embedder = _MockEmbedder({
-            "p1": [1.0, 0.0, 0.0],
-        })
+        embedder = _MockEmbedder(
+            {
+                "p1": [1.0, 0.0, 0.0],
+            }
+        )
         monkeypatch.setattr(
             "modules.backend.tools.compute_stance_delta.get_embedder",
             lambda: embedder,
         )
         prev = {
-            "systems": _turn("p1"), "quant": _turn("p1"),
-            "empiricist": _turn("p1"), "ethicist": _turn("p1"),
+            "systems": _turn("p1"),
+            "quant": _turn("p1"),
+            "empiricist": _turn("p1"),
+            "ethicist": _turn("p1"),
         }
         curr = {
-            "systems": _turn("p1"), "quant": _turn("p1"),
-            "empiricist": _turn("p1"), "ethicist": _turn("p1"),
+            "systems": _turn("p1"),
+            "quant": _turn("p1"),
+            "empiricist": _turn("p1"),
+            "ethicist": _turn("p1"),
         }
         result = await compute_stance_delta(
-            previous_round=prev, current_round=curr, threshold=0.15,
+            previous_round=prev,
+            current_round=curr,
+            threshold=0.15,
         )
         assert result["should_continue"] is False
         assert result["delta"] < 0.15
@@ -76,8 +84,10 @@ class TestComputeStanceDelta:
             lambda: embedder,
         )
         prev = {
-            "systems": _turn("p1"), "quant": _turn("p1"),
-            "empiricist": _turn("p1"), "ethicist": _turn("p1"),
+            "systems": _turn("p1"),
+            "quant": _turn("p1"),
+            "empiricist": _turn("p1"),
+            "ethicist": _turn("p1"),
         }
         curr = {
             "systems": _turn("p1", decision="CONCEDE_PARTIAL"),
@@ -86,7 +96,9 @@ class TestComputeStanceDelta:
             "ethicist": _turn("p1"),
         }
         result = await compute_stance_delta(
-            previous_round=prev, current_round=curr, threshold=0.15,
+            previous_round=prev,
+            current_round=curr,
+            threshold=0.15,
         )
         assert result["should_continue"] is True
         # The reasoning string captures the active revision flag.
@@ -95,10 +107,12 @@ class TestComputeStanceDelta:
     @pytest.mark.asyncio
     async def test_large_text_change_forces_continue(self, monkeypatch):
         # Orthogonal embeddings → cosine distance ~ 1.0.
-        embedder = _MockEmbedder({
-            "p1": [1.0, 0.0, 0.0],
-            "p2": [0.0, 1.0, 0.0],
-        })
+        embedder = _MockEmbedder(
+            {
+                "p1": [1.0, 0.0, 0.0],
+                "p2": [0.0, 1.0, 0.0],
+            }
+        )
         monkeypatch.setattr(
             "modules.backend.tools.compute_stance_delta.get_embedder",
             lambda: embedder,
@@ -106,7 +120,9 @@ class TestComputeStanceDelta:
         prev = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
         curr = {d: _turn("p2") for d in ("systems", "quant", "empiricist", "ethicist")}
         result = await compute_stance_delta(
-            previous_round=prev, current_round=curr, threshold=0.15,
+            previous_round=prev,
+            current_round=curr,
+            threshold=0.15,
         )
         assert result["should_continue"] is True
         assert result["delta"] > 0.15
@@ -120,10 +136,16 @@ class TestComputeStanceDelta:
             "modules.backend.tools.compute_stance_delta.get_embedder",
             lambda: embedder,
         )
-        prev = {d: _turn("p1", confidence=0.9) for d in ("systems", "quant", "empiricist", "ethicist")}
-        curr = {d: _turn("p1", confidence=0.3) for d in ("systems", "quant", "empiricist", "ethicist")}
+        prev = {
+            d: _turn("p1", confidence=0.9) for d in ("systems", "quant", "empiricist", "ethicist")
+        }
+        curr = {
+            d: _turn("p1", confidence=0.3) for d in ("systems", "quant", "empiricist", "ethicist")
+        }
         result = await compute_stance_delta(
-            previous_round=prev, current_round=curr, threshold=0.15,
+            previous_round=prev,
+            current_round=curr,
+            threshold=0.15,
         )
         # confidence_delta = 0.6 > threshold → continue
         assert result["should_continue"] is True
@@ -138,7 +160,9 @@ class TestComputeStanceDelta:
         # previous_round empty → every debater gets 1.0 delta → continue.
         curr = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
         result = await compute_stance_delta(
-            previous_round={}, current_round=curr, threshold=0.15,
+            previous_round={},
+            current_round=curr,
+            threshold=0.15,
         )
         assert result["should_continue"] is True
         for d in ("systems", "quant", "empiricist", "ethicist"):
@@ -159,7 +183,9 @@ class TestComputeStanceDelta:
         prev = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
         curr = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
         result = await compute_stance_delta(
-            previous_round=prev, current_round=curr, threshold=0.15,
+            previous_round=prev,
+            current_round=curr,
+            threshold=0.15,
         )
         assert result["should_continue"] is True
 
@@ -194,7 +220,9 @@ class TestComputeStanceDelta:
         prev = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
         curr = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
         result = await compute_stance_delta(
-            previous_round=prev, current_round=curr, threshold=0.15,
+            previous_round=prev,
+            current_round=curr,
+            threshold=0.15,
         )
         assert result["should_continue"] is False
         assert result["gate"] == "halt"
@@ -203,7 +231,9 @@ class TestComputeStanceDelta:
         curr2 = {d: _turn("p1") for d in ("systems", "quant", "empiricist", "ethicist")}
         curr2["systems"] = _turn("p1", decision="CONCEDE_PARTIAL")
         result2 = await compute_stance_delta(
-            previous_round=prev, current_round=curr2, threshold=0.15,
+            previous_round=prev,
+            current_round=curr2,
+            threshold=0.15,
         )
         assert result2["should_continue"] is True
         assert result2["gate"] == "continue"

@@ -30,7 +30,9 @@ logger = get_logger(__name__)
 
 # get_plan extracted to agents/adapters/plan_introspection.py (shared
 # with Director). Re-export for backwards compatibility.
-from modules.backend.agents.adapters.plan_introspection import get_plan_state as get_plan  # noqa: F401
+from modules.backend.agents.adapters.plan_introspection import (  # noqa: F401
+    get_plan_state as get_plan,
+)
 
 
 async def get_recent_run_outcomes(
@@ -123,15 +125,17 @@ async def get_past_decisions(
         else:
             human_text = reasoning.strip()
 
-        decisions.append({
-            "decision_id": row.id,
-            "execution_record_id": row.execution_record_id,
-            "action": meta.get("action", "unknown"),
-            "rule": meta.get("rule", "unknown"),
-            "reviewer": meta.get("reviewer", "unknown"),
-            "reason": human_text,
-            "model_metadata": meta.get("model_metadata"),
-            "created_at": str(row.created_at),
-        })
+        decisions.append(
+            {
+                "decision_id": row.id,
+                "execution_record_id": row.execution_record_id,
+                "action": meta.get("action", "unknown"),
+                "rule": meta.get("rule", "unknown"),
+                "reviewer": meta.get("reviewer", "unknown"),
+                "reason": human_text,
+                "model_metadata": meta.get("model_metadata"),
+                "created_at": str(row.created_at),
+            }
+        )
 
     return decisions

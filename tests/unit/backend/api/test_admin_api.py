@@ -10,8 +10,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from modules.backend.core.dependencies import require_admin
 from modules.backend.core.database import get_db_session
+from modules.backend.core.dependencies import require_admin
 
 CATALOG_SVC = "modules.backend.services.agent_catalog.AgentCatalogService"
 METRICS_SVC = "modules.backend.services.platform_metrics.PlatformMetricsService"
@@ -31,7 +31,6 @@ def app(mock_db):
     """Create a FastAPI app with admin routes for testing."""
     from modules.backend.api.v1.endpoints import admin as admin_module
     from modules.backend.api.v1.endpoints import admin_users as admin_users_module
-
     from modules.backend.core.exception_handlers import register_exception_handlers
 
     _app = FastAPI()
@@ -40,8 +39,13 @@ def app(mock_db):
     _app.include_router(admin_users_module.router, prefix="/admin/users")
 
     async def _always_admin():
-        return MagicMock(id="test-admin", email="admin@test.com", system_role="admin",
-                        has_role=lambda r: True, is_active=True)
+        return MagicMock(
+            id="test-admin",
+            email="admin@test.com",
+            system_role="admin",
+            has_role=lambda r: True,
+            is_active=True,
+        )
 
     async def _mock_db_session():
         return mock_db
@@ -63,9 +67,15 @@ class TestCatalogCRUD:
     @patch(CATALOG_SVC)
     async def test_list_catalog(self, MockCatalog, client):
         mock_entry = MagicMock(
-            id="id-1", agent_name="test.agent", agent_type="vertical",
-            version="1.0.0", description="Test", enabled=True,
-            visibility="public", tools=[], keywords=[],
+            id="id-1",
+            agent_name="test.agent",
+            agent_type="vertical",
+            version="1.0.0",
+            description="Test",
+            enabled=True,
+            visibility="public",
+            tools=[],
+            keywords=[],
             model_config_json={"name": "test-model"},
             scope={"read": [], "write": []},
             engine="pydantic_ai",
@@ -85,11 +95,14 @@ class TestCatalogCRUD:
         mock_entry = MagicMock(id="id-2", agent_name="new.agent")
         MockCatalog.return_value.create_entry = AsyncMock(return_value=mock_entry)
 
-        resp = await client.post("/admin/catalog", json={
-            "agent_name": "new.agent",
-            "agent_type": "vertical",
-            "description": "A new agent",
-        })
+        resp = await client.post(
+            "/admin/catalog",
+            json={
+                "agent_name": "new.agent",
+                "agent_type": "vertical",
+                "description": "A new agent",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["data"]["agent_name"] == "new.agent"
 
@@ -99,9 +112,12 @@ class TestCatalogCRUD:
         mock_entry = MagicMock(id="id-1", agent_name="test.agent")
         MockCatalog.return_value.update_entry = AsyncMock(return_value=mock_entry)
 
-        resp = await client.patch("/admin/catalog/test.agent", json={
-            "description": "Updated",
-        })
+        resp = await client.patch(
+            "/admin/catalog/test.agent",
+            json={
+                "description": "Updated",
+            },
+        )
         assert resp.status_code == 200
         assert "description" in resp.json()["data"]["updated_fields"]
 
@@ -134,10 +150,13 @@ class TestSystemPromptEditor:
         mock_entry = MagicMock(agent_name="test.agent", system_prompt="new prompt here")
         MockCatalog.return_value.update_system_prompt = AsyncMock(return_value=mock_entry)
 
-        resp = await client.put("/admin/catalog/test.agent/prompt", json={
-            "content": "new prompt here",
-            "change_reason": "testing",
-        })
+        resp = await client.put(
+            "/admin/catalog/test.agent/prompt",
+            json={
+                "content": "new prompt here",
+                "change_reason": "testing",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["data"]["prompt_length"] == len("new prompt here")
 
@@ -156,11 +175,13 @@ class TestPlatformMetrics:
     @pytest.mark.asyncio
     @patch(METRICS_SVC)
     async def test_overview(self, MockMetrics, client):
-        MockMetrics.return_value.get_overview = AsyncMock(return_value={
-            "counts": {"missions": 5, "sessions": 10},
-            "total_cost_usd": 1.23,
-            "generated_at": "2026-03-20T00:00:00",
-        })
+        MockMetrics.return_value.get_overview = AsyncMock(
+            return_value={
+                "counts": {"missions": 5, "sessions": 10},
+                "total_cost_usd": 1.23,
+                "generated_at": "2026-03-20T00:00:00",
+            }
+        )
 
         resp = await client.get("/admin/metrics/overview")
         assert resp.status_code == 200
@@ -169,11 +190,13 @@ class TestPlatformMetrics:
     @pytest.mark.asyncio
     @patch(METRICS_SVC)
     async def test_costs(self, MockMetrics, client):
-        MockMetrics.return_value.get_cost_summary = AsyncMock(return_value={
-            "by_agent": [{"agent_name": "a", "runs": 1, "total_cost_usd": 0.5}],
-            "by_status": [],
-            "generated_at": "2026-03-20T00:00:00",
-        })
+        MockMetrics.return_value.get_cost_summary = AsyncMock(
+            return_value={
+                "by_agent": [{"agent_name": "a", "runs": 1, "total_cost_usd": 0.5}],
+                "by_status": [],
+                "generated_at": "2026-03-20T00:00:00",
+            }
+        )
 
         resp = await client.get("/admin/metrics/costs")
         assert resp.status_code == 200
@@ -182,9 +205,11 @@ class TestPlatformMetrics:
     @pytest.mark.asyncio
     @patch(METRICS_SVC)
     async def test_agent_utilisation(self, MockMetrics, client):
-        MockMetrics.return_value.get_agent_utilisation = AsyncMock(return_value=[
-            {"agent_name": "x", "total_runs": 3, "total_cost_usd": 0.3},
-        ])
+        MockMetrics.return_value.get_agent_utilisation = AsyncMock(
+            return_value=[
+                {"agent_name": "x", "total_runs": 3, "total_cost_usd": 0.3},
+            ]
+        )
 
         resp = await client.get("/admin/metrics/agents")
         assert resp.status_code == 200
@@ -193,10 +218,12 @@ class TestPlatformMetrics:
     @pytest.mark.asyncio
     @patch(METRICS_SVC)
     async def test_activity(self, MockMetrics, client):
-        MockMetrics.return_value.get_recent_activity = AsyncMock(return_value={
-            "recent_executions": [],
-            "recent_workflow_runs": [],
-        })
+        MockMetrics.return_value.get_recent_activity = AsyncMock(
+            return_value={
+                "recent_executions": [],
+                "recent_workflow_runs": [],
+            }
+        )
 
         resp = await client.get("/admin/metrics/activity")
         assert resp.status_code == 200
@@ -263,6 +290,7 @@ class TestRoleManagement:
     @patch(APP_CONFIG)
     async def test_list_roles(self, mock_config, client):
         from modules.backend.core.config_schema import RoleSchema
+
         cfg = MagicMock()
         cfg.security.roles = {
             "viewer": RoleSchema(level=1, description="Read-only"),

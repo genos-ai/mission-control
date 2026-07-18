@@ -33,14 +33,15 @@ async def run(
     workflows = await api.get("/workflows")
     workflow_list = extract_list(workflows, "workflows")
     matched = [
-        w for w in workflow_list
-        if w.get("name") == objective_or_workflow
-        or w.get("workflow_name") == objective_or_workflow
+        w
+        for w in workflow_list
+        if w.get("name") == objective_or_workflow or w.get("workflow_name") == objective_or_workflow
     ]
 
     if matched:
         await _run_workflow(
-            api, matched[0],
+            api,
+            matched[0],
             mission_id=mission_id,
             budget=budget,
             gate_override=gate_override,
@@ -50,7 +51,8 @@ async def run(
         )
     else:
         await _run_adhoc(
-            api, objective_or_workflow,
+            api,
+            objective_or_workflow,
             mission_id=mission_id,
             budget=budget,
             gate_override=gate_override,
@@ -109,8 +111,7 @@ async def retry(
                 )
             else:
                 console.print(
-                    f"Dispatched {len(failed_ids)} retried task(s). "
-                    f"Polling for progress...\n"
+                    f"Dispatched {len(failed_ids)} retried task(s). " f"Polling for progress...\n"
                 )
                 await _stream_plan_progress(api, mission_id, verbose=False, quiet=quiet)
             return
@@ -129,7 +130,8 @@ async def retry(
     original = executions[n - 1]
     objective = original.get("objective") or original.get("objective_statement", "")
     await _run_adhoc(
-        api, objective,
+        api,
+        objective,
         mission_id=mission_id,
         budget=original.get("cost_ceiling_usd"),
         gate_override=gate_override,
@@ -169,7 +171,11 @@ async def _run_workflow(
         steps = workflow.get("steps", [])
         console.print(f"  Steps: {len(steps)}")
         for step in steps:
-            deps = f" (after: {', '.join(step.get('depends_on', []))})" if step.get("depends_on") else ""
+            deps = (
+                f" (after: {', '.join(step.get('depends_on', []))})"
+                if step.get("depends_on")
+                else ""
+            )
             console.print(f"  {step.get('id', '')}: {step.get('capability', '')}{deps}")
         if context_overrides:
             console.print(f"\n  Context: {context_overrides}")
@@ -318,8 +324,7 @@ async def _stream_plan_sse(
                 task_statuses[tid] = status if status in terminal else "completed"
                 if not quiet:
                     console.print(
-                        f"  {STATUS_ICONS.get('completed', chr(0x2713))} "
-                        f"{tid} {status}"
+                        f"  {STATUS_ICONS.get('completed', chr(0x2713))} " f"{tid} {status}"
                     )
 
         elif evt == "plan.step.failed":
@@ -329,8 +334,7 @@ async def _stream_plan_sse(
                 task_statuses[tid] = "failed"
                 if not quiet:
                     console.print(
-                        f"  {STATUS_ICONS.get('failed', chr(0x2717))} "
-                        f"{tid} failed: {reason}"
+                        f"  {STATUS_ICONS.get('failed', chr(0x2717))} " f"{tid} failed: {reason}"
                     )
 
         elif evt == "mission_plan.run.completed":
@@ -349,24 +353,16 @@ async def _stream_plan_sse(
                 break
 
         # After any task state change, check if all tracked tasks are done
-        if task_statuses and all(
-            s in terminal for s in task_statuses.values()
-        ):
+        if task_statuses and all(s in terminal for s in task_statuses.values()):
             # Confirm via API — SSE events might not cover all tasks
             # (e.g. tasks that were already completed before we connected)
             plan = await api.get(f"/missions/{mission_id}/plan")
             plan_states = plan.get("task_states", [])
-            all_done = plan_states and all(
-                ts.get("status", "") in terminal for ts in plan_states
-            )
+            all_done = plan_states and all(ts.get("status", "") in terminal for ts in plan_states)
             if all_done:
                 cost = plan.get("total_spent_usd", total_cost)
-                completed = sum(
-                    1 for ts in plan_states if ts.get("status") == "completed"
-                )
-                failed_count = sum(
-                    1 for ts in plan_states if ts.get("status") == "failed"
-                )
+                completed = sum(1 for ts in plan_states if ts.get("status") == "completed")
+                failed_count = sum(1 for ts in plan_states if ts.get("status") == "failed")
                 label = "success" if failed_count == 0 else "failed"
                 console.print(
                     f"\n[bold]Plan complete:[/bold] {label}"
@@ -412,10 +408,7 @@ async def _poll_plan_fallback(
                     cost = f"${ts.get('cost_usd', 0):.4f}"
                     console.print(f"  {icon} {tid} {status} {cost}")
 
-        all_terminal = all(
-            ts.get("status", "") in terminal
-            for ts in task_states
-        )
+        all_terminal = all(ts.get("status", "") in terminal for ts in task_states)
         if all_terminal:
             cost = plan.get("total_spent_usd", 0)
             completed = sum(1 for ts in task_states if ts.get("status") == "completed")
@@ -429,5 +422,3 @@ async def _poll_plan_fallback(
             return
 
     console.print("[yellow]Timed out. Run 'mc status' to check progress.[/yellow]")
-
-

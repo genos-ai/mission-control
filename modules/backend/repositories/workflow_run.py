@@ -47,10 +47,7 @@ class WorkflowRunRepository(BaseRepository[WorkflowRun]):
         total = (await self.session.execute(count_stmt)).scalar_one()
 
         data_stmt = (
-            select(WorkflowRun)
-            .order_by(WorkflowRun.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+            select(WorkflowRun).order_by(WorkflowRun.created_at.desc()).limit(limit).offset(offset)
         )
         if conditions:
             for cond in conditions:

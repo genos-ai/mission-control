@@ -7,10 +7,12 @@ Thin renderer over AgentCatalogService. Handles list, detail, and seeding.
 import asyncio
 import sys
 
-from modules.clients.cli.report import get_console, build_table
+from modules.clients.cli.report import build_table, get_console
 
 
-def run_catalog(cli_logger, action: str, *, agent_name: str | None = None, output_format: str = "human") -> None:
+def run_catalog(
+    cli_logger, action: str, *, agent_name: str | None = None, output_format: str = "human"
+) -> None:
     """Dispatch catalog CLI actions."""
     actions = {
         "list": _action_list,
@@ -24,7 +26,14 @@ def run_catalog(cli_logger, action: str, *, agent_name: str | None = None, outpu
     asyncio.run(fn(cli_logger, agent_name=agent_name, output_format=output_format))
 
 
-def run_admin(cli_logger, action: str, *, force: bool = False, reset_prompts: bool = False, output_format: str = "human") -> None:
+def run_admin(
+    cli_logger,
+    action: str,
+    *,
+    force: bool = False,
+    reset_prompts: bool = False,
+    output_format: str = "human",
+) -> None:
     """Dispatch admin CLI actions."""
     actions = {
         "seed-catalog": _action_seed_catalog,
@@ -34,7 +43,9 @@ def run_admin(cli_logger, action: str, *, force: bool = False, reset_prompts: bo
         get_console().print(f"[red]Unknown action: {action}[/red]")
         sys.exit(1)
 
-    asyncio.run(fn(cli_logger, force=force, reset_prompts=reset_prompts, output_format=output_format))
+    asyncio.run(
+        fn(cli_logger, force=force, reset_prompts=reset_prompts, output_format=output_format)
+    )
 
 
 async def _action_list(cli_logger, *, output_format, **_):
@@ -49,14 +60,17 @@ async def _action_list(cli_logger, *, output_format, **_):
         console.print("[dim]No agents in catalog. Run: cli.py admin seed-catalog[/dim]")
         return
 
-    table = build_table("Agent Catalog", columns=[
-        ("Name", {"style": "cyan", "width": 35}),
-        ("Type", {"width": 12}),
-        ("Version", {"width": 10}),
-        ("Enabled", {"width": 9}),
-        ("Visibility", {"width": 12}),
-        ("Description", {"ratio": 1}),
-    ])
+    table = build_table(
+        "Agent Catalog",
+        columns=[
+            ("Name", {"style": "cyan", "width": 35}),
+            ("Type", {"width": 12}),
+            ("Version", {"width": 10}),
+            ("Enabled", {"width": 9}),
+            ("Visibility", {"width": 12}),
+            ("Description", {"ratio": 1}),
+        ],
+    )
     for a in agents:
         enabled = "[green]yes[/green]" if a.enabled else "[red]no[/red]"
         desc = a.description[:60] + "..." if len(a.description) > 60 else a.description
@@ -107,6 +121,7 @@ async def _action_seed_catalog(cli_logger, *, force, reset_prompts=False, **_):
     here would leave the running backend serving stale model bindings.
     """
     from urllib.parse import urlencode
+
     from modules.clients.cli.api_client import api_client
 
     console = get_console()

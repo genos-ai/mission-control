@@ -17,18 +17,18 @@ class GateAction(str, Enum):
     """Reviewer actions at a gate point."""
 
     # Standard actions (pre_dispatch, pre_layer, post_task, post_layer)
-    CONTINUE = "continue"   # Proceed to next step
-    SKIP = "skip"           # Skip this task/layer, mark SKIPPED
-    RETRY = "retry"         # Re-run the task (with optional modified inputs)
-    ABORT = "abort"         # Halt the entire mission
-    MODIFY = "modify"       # Proceed with modified inputs/instructions
+    CONTINUE = "continue"  # Proceed to next step
+    SKIP = "skip"  # Skip this task/layer, mark SKIPPED
+    RETRY = "retry"  # Re-run the task (with optional modified inputs)
+    ABORT = "abort"  # Halt the entire mission
+    MODIFY = "modify"  # Proceed with modified inputs/instructions
 
     # Post-run autonomy loop actions (Plan 51 Phase C — valid only at post_run)
-    WAIT = "wait"                       # Daemon has approved tasks to dispatch; no action
-    ADVANCE_APPROVED = "advance_approved"   # Proposed → approved; daemon picks them up
-    ADVANCE_REFINE = "advance_refine"      # Wake Planning Agent to generate next wave
-    PROPOSE_COMPLETE = "propose_complete"   # Wake Director to ask user if mission is done
-    ESCALATE = "escalate"                  # Wake Director for user attention
+    WAIT = "wait"  # Daemon has approved tasks to dispatch; no action
+    ADVANCE_APPROVED = "advance_approved"  # Proposed → approved; daemon picks them up
+    ADVANCE_REFINE = "advance_refine"  # Wake Planning Agent to generate next wave
+    PROPOSE_COMPLETE = "propose_complete"  # Wake Director to ask user if mission is done
+    ESCALATE = "escalate"  # Wake Director for user attention
 
 
 @dataclass
@@ -39,8 +39,8 @@ class GateContext:
     can consume the same data.
     """
 
-    gate_type: str               # pre_dispatch, pre_layer, post_task,
-                                 # verification_failed, post_layer, post_run
+    gate_type: str  # pre_dispatch, pre_layer, post_task,
+    # verification_failed, post_layer, post_run
     mission_id: str
     # Session is the transport primitive (P15) — gates fire within an
     # execution session. Optional to keep older callers compiling; should
@@ -54,9 +54,9 @@ class GateContext:
 
     # Post-task: completed task details
     task_id: str | None = None
-    task_result: dict | None = None     # TaskResult as dict
-    task_output: dict | None = None     # Raw agent output
-    verification: dict | None = None    # VerificationOutcome as dict
+    task_result: dict | None = None  # TaskResult as dict
+    task_output: dict | None = None  # Raw agent output
+    verification: dict | None = None  # VerificationOutcome as dict
 
     # Aggregates
     completed_tasks: list[dict] = field(default_factory=list)
@@ -83,10 +83,12 @@ class GateDecision:
 
     action: GateAction
     reason: str | None = None
-    modified_inputs: dict | None = None        # For MODIFY action
-    modified_instructions: str | None = None   # For RETRY with feedback
-    reviewer: str = "human"                    # human, ai:<model>, noop, config:disabled, config:rule_engine
-    model_metadata: dict | None = None         # Plan 51: {confidence, tokens_used, cost_usd} when LLM decides
+    modified_inputs: dict | None = None  # For MODIFY action
+    modified_instructions: str | None = None  # For RETRY with feedback
+    reviewer: str = "human"  # human, ai:<model>, noop, config:disabled, config:rule_engine
+    model_metadata: dict | None = (
+        None  # Plan 51: {confidence, tokens_used, cost_usd} when LLM decides
+    )
 
 
 class GateReviewer(Protocol):

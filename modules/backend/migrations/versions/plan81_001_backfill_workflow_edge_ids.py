@@ -26,7 +26,6 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-
 revision: str = "plan81_001"
 down_revision: Union[str, None] = "plan80h_001"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -35,9 +34,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     conn = op.get_bind()
-    rows = conn.execute(
-        sa.text("SELECT id, edges_json FROM workflow_definitions")
-    ).fetchall()
+    rows = conn.execute(sa.text("SELECT id, edges_json FROM workflow_definitions")).fetchall()
 
     for row in rows:
         edges = row.edges_json or []
@@ -52,17 +49,12 @@ def upgrade() -> None:
                 target = edge.get("target", "")
                 handle = edge.get("source_handle") or "output"
                 edge["id"] = (
-                    f"{source}:{handle}->{target}"
-                    if handle != "output"
-                    else f"{source}->{target}"
+                    f"{source}:{handle}->{target}" if handle != "output" else f"{source}->{target}"
                 )
                 changed = True
         if changed:
             conn.execute(
-                sa.text(
-                    "UPDATE workflow_definitions "
-                    "SET edges_json = :edges WHERE id = :id"
-                ),
+                sa.text("UPDATE workflow_definitions " "SET edges_json = :edges WHERE id = :id"),
                 {"edges": json.dumps(edges), "id": row.id},
             )
 

@@ -17,7 +17,9 @@ class TestValidSources:
         """Should contain all recognized log source values."""
         from modules.backend.core.logging import VALID_SOURCES
 
-        expected = frozenset({"web", "cli", "tui", "mobile", "telegram", "api", "tasks", "internal", "events"})
+        expected = frozenset(
+            {"web", "cli", "tui", "mobile", "telegram", "api", "tasks", "internal", "events"}
+        )
         assert VALID_SOURCES == expected
 
     def test_valid_sources_is_frozenset(self):
@@ -124,7 +126,9 @@ class TestSetupLogging:
         """Should configure the root logger with correct level."""
         from modules.backend.core.logging import setup_logging
 
-        with patch("modules.backend.core.logging._get_logging_config", return_value=mock_logging_config):
+        with patch(
+            "modules.backend.core.logging._get_logging_config", return_value=mock_logging_config
+        ):
             setup_logging(level="DEBUG", format_type="json", enable_file_logging=False)
 
             root_logger = logging.getLogger()
@@ -134,7 +138,9 @@ class TestSetupLogging:
         """Should work without file logging."""
         from modules.backend.core.logging import setup_logging
 
-        with patch("modules.backend.core.logging._get_logging_config", return_value=mock_logging_config):
+        with patch(
+            "modules.backend.core.logging._get_logging_config", return_value=mock_logging_config
+        ):
             setup_logging(level="INFO", format_type="console", enable_file_logging=False)
 
             root_logger = logging.getLogger()
@@ -148,8 +154,12 @@ class TestSetupLogging:
         log_file = tmp_path / "logs" / "system.jsonl"
         mock_logging_config["handlers"]["file"]["path"] = str(log_file)
 
-        with patch("modules.backend.core.logging._get_logging_config", return_value=mock_logging_config), \
-             patch("modules.backend.core.logging._resolve_log_path", return_value=log_file):
+        with (
+            patch(
+                "modules.backend.core.logging._get_logging_config", return_value=mock_logging_config
+            ),
+            patch("modules.backend.core.logging._resolve_log_path", return_value=log_file),
+        ):
             setup_logging(level="INFO", format_type="json", enable_file_logging=True)
 
             root_logger = logging.getLogger()
@@ -160,7 +170,9 @@ class TestSetupLogging:
         """Should use values from logging.yaml when not overridden."""
         from modules.backend.core.logging import setup_logging
 
-        with patch("modules.backend.core.logging._get_logging_config", return_value=mock_logging_config):
+        with patch(
+            "modules.backend.core.logging._get_logging_config", return_value=mock_logging_config
+        ):
             setup_logging(enable_file_logging=False)
 
             root_logger = logging.getLogger()
@@ -170,7 +182,9 @@ class TestSetupLogging:
         """Explicit parameters should override config values."""
         from modules.backend.core.logging import setup_logging
 
-        with patch("modules.backend.core.logging._get_logging_config", return_value=mock_logging_config):
+        with patch(
+            "modules.backend.core.logging._get_logging_config", return_value=mock_logging_config
+        ):
             setup_logging(level="DEBUG", enable_file_logging=False)
 
             root_logger = logging.getLogger()

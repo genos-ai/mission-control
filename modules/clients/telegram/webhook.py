@@ -75,7 +75,11 @@ def get_webhook_router(bot: "Bot", dp: "Dispatcher") -> APIRouter:
                 extra={
                     "update_id": update.update_id,
                     "update_type": update.event_type,
-                    "user_id": update.event.from_user.id if update.event and update.event.from_user else None,
+                    "user_id": (
+                        update.event.from_user.id
+                        if update.event and update.event.from_user
+                        else None
+                    ),
                 },
             )
 

@@ -31,6 +31,7 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
     )
 
     from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
@@ -58,13 +59,15 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
             # (e.g. admin acting on behalf of a user).
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
+
             gate = refined.gate_mode or "autonomous"
             approved_count = 0
             if gate != "interactive":
                 mission = await MissionService(db).get_mission(input.mission_id)
                 plan_svc = MissionPlanService(db, event_bus=event_bus)
                 approved_ids = await plan_svc.approve_all_proposed(
-                    input.plan_id, mission.owner_id,
+                    input.plan_id,
+                    mission.owner_id,
                 )
                 approved_count = len(approved_ids)
 

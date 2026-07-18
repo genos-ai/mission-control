@@ -53,6 +53,7 @@ def register_check(name: str) -> Callable[[CheckFn], CheckFn]:
         ValueError: If name is already registered (duplicate check names
                     are a programming error, not a runtime condition).
     """
+
     def decorator(fn: CheckFn) -> CheckFn:
         if name in _REGISTRY:
             raise ValueError(
@@ -62,6 +63,7 @@ def register_check(name: str) -> Callable[[CheckFn], CheckFn]:
         _REGISTRY[name] = fn
         logger.debug("Check registered", extra={"check_name": name})
         return fn
+
     return decorator
 
 

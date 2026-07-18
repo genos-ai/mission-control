@@ -49,7 +49,10 @@ class TestNotifyRunCompleted:
         mock_config_fn.return_value.notifications = mock_config
 
         await RunNotifierService.notify_run_completed(
-            run_id="r-1", workflow_name="w", total_cost_usd=0, step_count=1,
+            run_id="r-1",
+            workflow_name="w",
+            total_cost_usd=0,
+            step_count=1,
         )
 
         mock_dispatch.assert_not_called()
@@ -57,12 +60,17 @@ class TestNotifyRunCompleted:
     @pytest.mark.asyncio
     @patch("modules.backend.services.run_notifier.get_app_config")
     @patch("modules.backend.services.run_notifier._dispatch_to_channels", new_callable=AsyncMock)
-    async def test_skips_when_completion_notify_off(self, mock_dispatch, mock_config_fn, mock_config):
+    async def test_skips_when_completion_notify_off(
+        self, mock_dispatch, mock_config_fn, mock_config
+    ):
         mock_config.notify_on_completion = False
         mock_config_fn.return_value.notifications = mock_config
 
         await RunNotifierService.notify_run_completed(
-            run_id="r-1", workflow_name="w", total_cost_usd=0, step_count=1,
+            run_id="r-1",
+            workflow_name="w",
+            total_cost_usd=0,
+            step_count=1,
         )
 
         mock_dispatch.assert_not_called()
@@ -97,7 +105,9 @@ class TestNotifyRunFailed:
         mock_config_fn.return_value.notifications = mock_config
 
         await RunNotifierService.notify_run_failed(
-            run_id="r-2", workflow_name="w", error="boom",
+            run_id="r-2",
+            workflow_name="w",
+            error="boom",
         )
 
         mock_dispatch.assert_not_called()

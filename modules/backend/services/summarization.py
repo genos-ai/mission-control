@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import AsyncGenerator
 
-from sqlalchemy import select, update, and_, desc
+from sqlalchemy import and_, desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -72,9 +72,7 @@ class SummarizationService(BaseService):
         if not decisions:
             return 0
 
-        cutoff = (
-            utc_now() - timedelta(days=max_age_days)
-        ).isoformat()[:10]
+        cutoff = (utc_now() - timedelta(days=max_age_days)).isoformat()[:10]
         to_archive = []
         to_keep = []
 
@@ -103,15 +101,16 @@ class SummarizationService(BaseService):
         # Update MCD with pruned decisions list
         await self._context_manager.apply_updates(
             mission_id,
-            [{
-                "op": "replace",
-                "path": "decisions",
-                "value": to_keep,
-                "reason": (
-                    f"Archived {len(to_archive)} decisions "
-                    f"older than {max_age_days} days"
-                ),
-            }],
+            [
+                {
+                    "op": "replace",
+                    "path": "decisions",
+                    "value": to_keep,
+                    "reason": (
+                        f"Archived {len(to_archive)} decisions " f"older than {max_age_days} days"
+                    ),
+                }
+            ],
             agent_id="system:summarization",
         )
 
@@ -153,9 +152,7 @@ class SummarizationService(BaseService):
         await self._milestone_repo.create(
             mission_id=mission_id,
             title=f"Milestones batch ({len(to_archive)} items)",
-            summary="; ".join(
-                m if isinstance(m, str) else str(m) for m in to_archive
-            ),
+            summary="; ".join(m if isinstance(m, str) else str(m) for m in to_archive),
             execution_ids=[],
             key_outcomes={"milestones": to_archive},
             domain_tags=[],
@@ -165,12 +162,14 @@ class SummarizationService(BaseService):
         # Update MCD with pruned milestones list
         await self._context_manager.apply_updates(
             mission_id,
-            [{
-                "op": "replace",
-                "path": "current_state.recent_milestones",
-                "value": to_keep,
-                "reason": f"Archived {len(to_archive)} old milestones",
-            }],
+            [
+                {
+                    "op": "replace",
+                    "path": "current_state.recent_milestones",
+                    "value": to_keep,
+                    "reason": f"Archived {len(to_archive)} old milestones",
+                }
+            ],
             agent_id="system:summarization",
         )
 
@@ -207,10 +206,12 @@ class SummarizationService(BaseService):
                 and_(
                     ExecutionRecord.mission_id == mission_id,
                     ExecutionRecord.summarized == False,  # noqa: E712
-                    ExecutionRecord.status.in_([
-                        ExecutionRecordStatus.COMPLETED,
-                        ExecutionRecordStatus.FAILED,
-                    ]),
+                    ExecutionRecord.status.in_(
+                        [
+                            ExecutionRecordStatus.COMPLETED,
+                            ExecutionRecordStatus.FAILED,
+                        ]
+                    ),
                     ExecutionRecord.completed_at < cutoff,
                 )
             )
@@ -227,16 +228,11 @@ class SummarizationService(BaseService):
         for i in range(0, len(records), batch_size):
             batch = records[i : i + batch_size]
             execution_ids = [r.id for r in batch]
-            objectives = [
-                r.objective_statement or "(no objective)"
-                for r in batch
-            ]
+            objectives = [r.objective_statement or "(no objective)" for r in batch]
             statuses = [r.status for r in batch]
 
             # Determine period range
-            completed_dates = [
-                r.completed_at for r in batch if r.completed_at
-            ]
+            completed_dates = [r.completed_at for r in batch if r.completed_at]
             _pstart = min(completed_dates) if completed_dates else None
             _pend = max(completed_dates) if completed_dates else None
             period_start = _pstart.replace(microsecond=0).isoformat() if _pstart else None
@@ -251,12 +247,8 @@ class SummarizationService(BaseService):
                             all_domain_tags.update(te.domain_tags)
 
             # Build deterministic summary (no LLM needed for structured data)
-            completed_count = sum(
-                1 for s in statuses if s == ExecutionRecordStatus.COMPLETED
-            )
-            failed_count = sum(
-                1 for s in statuses if s == ExecutionRecordStatus.FAILED
-            )
+            completed_count = sum(1 for s in statuses if s == ExecutionRecordStatus.COMPLETED)
+            failed_count = sum(1 for s in statuses if s == ExecutionRecordStatus.FAILED)
             total_cost = sum(r.total_cost_usd for r in batch)
 
             summary_parts = [

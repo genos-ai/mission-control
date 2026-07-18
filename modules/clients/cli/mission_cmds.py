@@ -8,7 +8,7 @@ import asyncio
 import sys
 
 from modules.clients.cli.mission_context import CLI_SERVICE_ACCOUNT_ID
-from modules.clients.cli.report import get_console, build_table, DOTTED_ROWS, styled_status
+from modules.clients.cli.report import DOTTED_ROWS, build_table, get_console, styled_status
 from modules.clients.common.display import annotate_current_mission
 
 
@@ -48,24 +48,40 @@ def run_mission(
         get_console().print(f"[red]Unknown action: {action}[/red]")
         sys.exit(1)
 
-    asyncio.run(fn(
-        cli_logger,
-        name=name,
-        mission_id=mission_id,
-        description=description,
-        brief=brief,
-        owner_id=owner_id,
-        roster=roster,
-        budget=budget,
-        repo_url=repo_url,
-        repo_root=repo_root,
-        gate_mode=gate_mode,
-        tier=tier,
-        output_format=output_format,
-    ))
+    asyncio.run(
+        fn(
+            cli_logger,
+            name=name,
+            mission_id=mission_id,
+            description=description,
+            brief=brief,
+            owner_id=owner_id,
+            roster=roster,
+            budget=budget,
+            repo_url=repo_url,
+            repo_root=repo_root,
+            gate_mode=gate_mode,
+            tier=tier,
+            output_format=output_format,
+        )
+    )
 
 
-async def _action_create(cli_logger, *, name, description, brief, owner_id, roster, budget, repo_url, repo_root, gate_mode=None, tier="user", **_):
+async def _action_create(
+    cli_logger,
+    *,
+    name,
+    description,
+    brief,
+    owner_id,
+    roster,
+    budget,
+    repo_url,
+    repo_root,
+    gate_mode=None,
+    tier="user",
+    **_,
+):
     """Create a new mission."""
     from modules.backend.services.mission import MissionService
 
@@ -127,16 +143,23 @@ async def _action_list(cli_logger, *, output_format, **_):
             names = [t["agent_name"] for t in team_info]
             team_summaries[m.id] = "\n".join(names) if names else "[dim]none[/dim]"
 
-    table = build_table("Missions", columns=[
-        ("Status", {"width": 10}),
-        ("Name", {"style": "cyan", "width": 28}),
-        ("ID", {"width": 38}),
-        ("Gate", {"width": 12}),
-        ("Team", {"ratio": 1}),
-        ("Description", {"ratio": 1}),
-    ], show_lines=True, table_box=DOTTED_ROWS)
+    table = build_table(
+        "Missions",
+        columns=[
+            ("Status", {"width": 10}),
+            ("Name", {"style": "cyan", "width": 28}),
+            ("ID", {"width": 38}),
+            ("Gate", {"width": 12}),
+            ("Team", {"ratio": 1}),
+            ("Description", {"ratio": 1}),
+        ],
+        show_lines=True,
+        table_box=DOTTED_ROWS,
+    )
     for m in missions:
-        desc = m.description[:60] + "..." if len(m.description or "") > 60 else (m.description or "")
+        desc = (
+            m.description[:60] + "..." if len(m.description or "") > 60 else (m.description or "")
+        )
         name = annotate_current_mission(m.name, m.id, current_mission_id)
         gate = m.gate_mode or "[dim]off[/dim]"
         team = team_summaries.get(m.id, "[dim]none[/dim]")
@@ -147,7 +170,9 @@ async def _action_list(cli_logger, *, output_format, **_):
     if current_mission_id:
         current = next((m for m in missions if m.id == current_mission_id), None)
         if current:
-            console.print(f"\n\U0001f449 Current mission: [bold]{current.name}[/bold] ({current.id})")
+            console.print(
+                f"\n\U0001f449 Current mission: [bold]{current.name}[/bold] ({current.id})"
+            )
     else:
         console.print("\n[dim]No current mission set. Use 'mission use <id>' to select one.[/dim]")
 
@@ -184,12 +209,11 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
 
     # Show available agents from the registry
     from modules.backend.agents.mission_control.registry import get_registry
+
     try:
         registry = get_registry()
         all_agents = registry.list_all()
-        vertical_agents = [
-            a for a in all_agents if not a["agent_name"].startswith("horizontal.")
-        ]
+        vertical_agents = [a for a in all_agents if not a["agent_name"].startswith("horizontal.")]
         console.print(f"\n  [bold]Agents:[/bold]  ({len(vertical_agents)} available)")
         for agent in vertical_agents:
             desc = agent["description"].strip()[:60]
@@ -201,13 +225,15 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
         console.print("\n  [dim]Could not load agent registry.[/dim]")
 
     from modules.backend.services.workflow import WorkflowService
+
     workflow_svc = WorkflowService()
     try:
         workflow_svc.load_workflows()
     except Exception as e:
         cli_logger.debug("Could not load workflows: %s", e)
     mapped = [
-        wf for wf in workflow_svc.list_workflows(enabled_only=False)
+        wf
+        for wf in workflow_svc.list_workflows(enabled_only=False)
         if wf.mission_name and wf.mission_name == mission.name
     ]
     if mapped:
@@ -271,7 +297,9 @@ async def _action_use(cli_logger, *, mission_id, **_):
     async with UserService.factory() as svc:
         cli_user = await svc.get_user_by_id_or_none(CLI_SERVICE_ACCOUNT_ID)
         if cli_user is None:
-            console.print("[red]CLI service account not found. Run 'admin bootstrap-user' first.[/red]")
+            console.print(
+                "[red]CLI service account not found. Run 'admin bootstrap-user' first.[/red]"
+            )
             sys.exit(1)
 
         await svc.set_current_mission(
@@ -307,6 +335,7 @@ async def _action_clear_mission(cli_logger, **_):
 async def _action_context_show(cli_logger, *, mission_id, output_format, **_):
     """Show the MCD for a mission."""
     import json as _json
+
     from modules.backend.services.mission_context import MissionContextManager
     from modules.clients.cli.mission_context import async_require_mission_id
 
@@ -321,8 +350,10 @@ async def _action_context_show(cli_logger, *, mission_id, output_format, **_):
         console.print("[dim]No MCD found for this mission.[/dim]")
         return
 
-    console.print(f"[bold]Mission Context Document[/bold]  (v{size['version']}, "
-                  f"{size['size_characters']} chars, {size['pct_of_max']:.0f}% of cap)")
+    console.print(
+        f"[bold]Mission Context Document[/bold]  (v{size['version']}, "
+        f"{size['size_characters']} chars, {size['pct_of_max']:.0f}% of cap)"
+    )
     console.print()
     console.print(_json.dumps(data, indent=2, ensure_ascii=False))
 
@@ -342,16 +373,18 @@ async def _action_context_history(cli_logger, *, mission_id, output_format, **_)
         console.print("[dim]No changes recorded.[/dim]")
         return
 
-    table = build_table("MCD Changes", columns=[
-        ("Version", {"width": 8}),
-        ("Type", {"width": 10}),
-        ("Path", {"style": "cyan", "width": 40}),
-        ("Agent", {"width": 25}),
-        ("Reason", {"ratio": 1}),
-    ])
+    table = build_table(
+        "MCD Changes",
+        columns=[
+            ("Version", {"width": 8}),
+            ("Type", {"width": 10}),
+            ("Path", {"style": "cyan", "width": 40}),
+            ("Agent", {"width": 25}),
+            ("Reason", {"ratio": 1}),
+        ],
+    )
     for c in changes:
-        table.add_row(str(c.version), c.change_type, c.path,
-                      c.agent_id or "—", c.reason[:60])
+        table.add_row(str(c.version), c.change_type, c.path, c.agent_id or "—", c.reason[:60])
 
     console.print(table)
 
@@ -382,7 +415,9 @@ async def _action_set_gate(cli_logger, *, mission_id, gate_mode, **_):
     mission_id = await async_require_mission_id(mission_id)
 
     if not gate_mode:
-        console.print("[red]Gate mode is required. Valid: off, interactive, ai_assisted, autonomous[/red]")
+        console.print(
+            "[red]Gate mode is required. Valid: off, interactive, ai_assisted, autonomous[/red]"
+        )
         sys.exit(1)
 
     async with MissionService.factory() as svc:

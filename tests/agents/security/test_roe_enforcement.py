@@ -9,13 +9,13 @@ Validates:
 
 import pytest
 
+from modules.backend.agents.security.errors import SecurityAssessmentError
 from modules.backend.agents.security.roe import (
     RoeScopeViolationError,
     RulesOfEngagement,
     validate_target_path,
     verify_roe_hash,
 )
-from modules.backend.agents.security.errors import SecurityAssessmentError
 
 
 def _roe(**overrides: object) -> RulesOfEngagement:
@@ -73,6 +73,7 @@ class TestValidateTargetPath:
 class TestVerifyRoeHash:
     def test_matching_hash_passes(self):
         import hashlib
+
         roe = _roe()
         roe_json = roe.model_dump_json(exclude={"roe_sha256"})
         expected = hashlib.sha256(roe_json.encode()).hexdigest()
@@ -86,6 +87,7 @@ class TestVerifyRoeHash:
 
     def test_modified_roe_detected(self):
         import hashlib
+
         roe = _roe()
         roe_json = roe.model_dump_json(exclude={"roe_sha256"})
         original_hash = hashlib.sha256(roe_json.encode()).hexdigest()

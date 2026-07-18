@@ -40,6 +40,7 @@ async def check_database() -> dict[str, Any]:
         start = utc_now()
         async for session in get_db_session():
             from sqlalchemy import text
+
             await session.execute(text("SELECT 1"))
             break
 
@@ -68,8 +69,9 @@ async def check_redis() -> dict[str, Any]:
         Dict with status, latency, and optional error message
     """
     try:
-        from modules.backend.core.config import get_redis_url
         import redis.asyncio as redis
+
+        from modules.backend.core.config import get_redis_url
 
         redis_url = get_redis_url()
 
@@ -140,8 +142,7 @@ async def readiness_check() -> dict[str, Any]:
     # "not_configured" is OK - the service can run without these if not needed
     # "unhealthy" means a configured dependency is down
     unhealthy_checks = [
-        name for name, check in checks.items()
-        if check.get("status") == "unhealthy"
+        name for name, check in checks.items() if check.get("status") == "unhealthy"
     ]
 
     if unhealthy_checks:
@@ -198,6 +199,7 @@ async def detailed_health_check() -> dict[str, Any]:
     # Add application info
     try:
         from modules.backend.core.config import get_app_config
+
         app_config = get_app_config()
         app_settings = app_config.application
 

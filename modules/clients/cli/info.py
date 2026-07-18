@@ -13,6 +13,7 @@ def show_info(logger, output_format: str = "human") -> None:
     """Display application information."""
     try:
         from modules.backend.core.config import get_app_config
+
         app_config = get_app_config()
     except (OSError, ValueError, KeyError) as e:
         logger.error(
@@ -57,8 +58,8 @@ def show_info(logger, output_format: str = "human") -> None:
     click.echo("  python admin.py server --reload --verbose")
     click.echo("  python admin.py server stop")
     click.echo("  python admin.py test unit --coverage")
-    click.echo("  python admin.py agent \"run a health check\"")
-    click.echo("  python admin.py execution run \"audit the platform\" --budget 2.00")
+    click.echo('  python admin.py agent "run a health check"')
+    click.echo('  python admin.py execution run "audit the platform" --budget 2.00')
     click.echo("  python admin.py workflow run ops.platform-audit")
     click.echo("  python admin.py db stats")
     click.echo("  python admin.py credits")

@@ -26,12 +26,8 @@ logger = get_logger(__name__)
 # Category classification
 # ---------------------------------------------------------------------------
 
-_EXECUTION_PATTERN = re.compile(
-    r"^(plan\.|agent\.|workflow\.|convergence\.|execution\.|task\.)"
-)
-_CHAT_PATTERN = re.compile(
-    r"^(user\.message\.|assistant\.message\.|agent\.response\.complete)"
-)
+_EXECUTION_PATTERN = re.compile(r"^(plan\.|agent\.|workflow\.|convergence\.|execution\.|task\.)")
+_CHAT_PATTERN = re.compile(r"^(user\.message\.|assistant\.message\.|agent\.response\.complete)")
 
 
 async def get_console_history(
@@ -44,13 +40,11 @@ async def get_console_history(
     Single source, single query, sorted by timestamp descending.
     """
     result = await db_session.execute(
-        text(
-            """SELECT id, event_type, source, created_at, data
+        text("""SELECT id, event_type, source, created_at, data
                FROM mission_events
                WHERE mission_id = :mid
                ORDER BY created_at DESC
-               LIMIT :lim"""
-        ),
+               LIMIT :lim"""),
         {"mid": mission_id, "lim": limit},
     )
 
@@ -58,14 +52,16 @@ async def get_console_history(
     for row in result.fetchall():
         event_data = json.loads(row[4]) if isinstance(row[4], str) else (row[4] or {})
         event_type = row[1]
-        timeline.append({
-            "event_id": str(row[0]),
-            "event_type": event_type,
-            "category": classify_event(event_type),
-            "timestamp": row[3].isoformat() if row[3] else None,
-            "source": row[2] or "",
-            "data": event_data,
-        })
+        timeline.append(
+            {
+                "event_id": str(row[0]),
+                "event_type": event_type,
+                "category": classify_event(event_type),
+                "timestamp": row[3].isoformat() if row[3] else None,
+                "source": row[2] or "",
+                "data": event_data,
+            }
+        )
 
     return timeline
 

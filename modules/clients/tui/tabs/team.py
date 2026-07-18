@@ -120,7 +120,8 @@ class TeamTab(Static):
         )
 
     async def on_agent_list_item_selected(
-        self, event: AgentListItem.Selected,
+        self,
+        event: AgentListItem.Selected,
     ) -> None:
         """Show agent detail when an item is clicked."""
         member = event.member
@@ -145,7 +146,8 @@ class TeamTab(Static):
         panel.mount(detail, before=0)
 
     async def on_prompt_editor_prompt_saved(
-        self, event: PromptEditor.PromptSaved,
+        self,
+        event: PromptEditor.PromptSaved,
     ) -> None:
         """Save updated prompt via bridge."""
         mission_id = self.app.state.current_mission_id
@@ -166,9 +168,8 @@ class TeamTab(Static):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle add/remove buttons."""
         if event.button.id == "team-add-btn":
-            from modules.clients.tui.widgets.catalog_browse_modal import (
-                CatalogBrowseModal,
-            )
+            from modules.clients.tui.widgets.catalog_browse_modal import CatalogBrowseModal
+
             self.app.push_screen(CatalogBrowseModal())
 
         elif event.button.id == "team-remove-btn":
@@ -183,7 +184,8 @@ class TeamTab(Static):
 
         try:
             await self.app.bridge.remove_team_member(
-                mission_id, member_id=member_id,
+                mission_id,
+                member_id=member_id,
             )
             self.app.notify("Agent removed", severity="information")
             self.app.state.team.selected_member = None

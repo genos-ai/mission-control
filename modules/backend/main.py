@@ -29,10 +29,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(level=app_config.logging.level, enable_mission_events=True)
 
     from modules.backend.core.logging import start_mission_event_drain
+
     start_mission_event_drain()
 
     if app_config.features.security_startup_checks_enabled:
         from modules.backend.gateway.security.startup_checks import run_startup_checks
+
         run_startup_checks()
 
     logger.info(
@@ -60,17 +62,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
 
         from modules.backend.temporal.client import get_temporal_client
-        from modules.backend.temporal.scheduled_workflow import (
-            ScheduledMissionCheckWorkflow,
-        )
         from modules.backend.temporal.maintenance_workflow import (
-            DailyCleanupWorkflow,
-            HourlyHealthCheckWorkflow,
-            WeeklyReportWorkflow,
-            MetricsAggregationWorkflow,
             CleanupEnvironmentsWorkflow,
+            DailyCleanupWorkflow,
             EvaluateWorkflowSchedulesWorkflow,
+            HourlyHealthCheckWorkflow,
+            MetricsAggregationWorkflow,
+            WeeklyReportWorkflow,
         )
+        from modules.backend.temporal.scheduled_workflow import ScheduledMissionCheckWorkflow
 
         temporal_client = await get_temporal_client()
         temporal_config = app_config.temporal
@@ -85,6 +85,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             cron_expressions=None,
         ):
             from temporalio.client import ScheduleAlreadyRunningError
+
             try:
                 spec_kwargs = {}
                 if intervals:
@@ -115,9 +116,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "mission-plan-dispatch-schedule",
             ScheduledMissionCheckWorkflow.run,
             "scheduled-mission-check",
-            intervals=[ScheduleIntervalSpec(every=_td(
-                seconds=temporal_config.dispatch_check_interval_seconds,
-            ))],
+            intervals=[
+                ScheduleIntervalSpec(
+                    every=_td(
+                        seconds=temporal_config.dispatch_check_interval_seconds,
+                    )
+                )
+            ],
         )
 
         # Plan 56 Phase C: Maintenance schedules (replaces TaskIQ cron)
@@ -159,9 +164,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         # Plan 57: Knowledge platform schedules
         from modules.backend.temporal.knowledge_workflow import (
+            EmbeddingBackfillWorkflow,
             KnowledgeExtractionWorkflow,
             KnowledgeOfficerWorkflow,
-            EmbeddingBackfillWorkflow,
         )
 
         await _register_schedule(
@@ -207,6 +212,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # need reconciliation.
     try:
         from redis.asyncio import Redis as AsyncRedis
+
         from modules.backend.core.config import get_redis_url
         from modules.backend.core.database import get_async_session
         from modules.backend.events.bus import SessionEventBus
@@ -277,9 +283,9 @@ def _mount_channel_adapters(app: FastAPI, app_config) -> None:
 
     if features.channel_telegram_enabled:
         try:
+            from modules.backend.gateway.registry import get_adapter
             from modules.clients.telegram.bot import get_bot, get_dispatcher
             from modules.clients.telegram.webhook import get_webhook_router
-            from modules.backend.gateway.registry import get_adapter
 
             bot = get_bot()
             dp = get_dispatcher()

@@ -5,9 +5,8 @@ from Director tools (design_workflow, run_objective, run_workflow). One table
 for "something ran", not two.
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260414_bg_task"
 down_revision = "20260414_msg_status"

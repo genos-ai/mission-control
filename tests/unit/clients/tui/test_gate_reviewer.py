@@ -1,15 +1,11 @@
 """Tests for TuiGateReviewer — Future-based gate bridge."""
 
 import asyncio
-
-import pytest
 from unittest.mock import MagicMock
 
-from modules.backend.agents.mission_control.gate import (
-    GateAction,
-    GateContext,
-    GateDecision,
-)
+import pytest
+
+from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
 from modules.clients.tui.services.gate_reviewer import TuiGateReviewer
 
 
@@ -45,10 +41,12 @@ class TestTuiGateReviewer:
         async def resolve_soon():
             await asyncio.sleep(0.01)
             assert reviewer.is_waiting
-            reviewer.resolve(GateDecision(
-                action=GateAction.CONTINUE,
-                reviewer="test",
-            ))
+            reviewer.resolve(
+                GateDecision(
+                    action=GateAction.CONTINUE,
+                    reviewer="test",
+                )
+            )
 
         task = asyncio.create_task(resolve_soon())
         decision = await reviewer.review(ctx)
@@ -68,11 +66,13 @@ class TestTuiGateReviewer:
 
         async def resolve_abort():
             await asyncio.sleep(0.01)
-            reviewer.resolve(GateDecision(
-                action=GateAction.ABORT,
-                reason="Too expensive",
-                reviewer="human:tui",
-            ))
+            reviewer.resolve(
+                GateDecision(
+                    action=GateAction.ABORT,
+                    reason="Too expensive",
+                    reviewer="human:tui",
+                )
+            )
 
         task = asyncio.create_task(resolve_abort())
         decision = await reviewer.review(ctx)
@@ -87,10 +87,12 @@ class TestTuiGateReviewer:
         app = MagicMock()
         reviewer = TuiGateReviewer(app)
         # Should not raise
-        reviewer.resolve(GateDecision(
-            action=GateAction.CONTINUE,
-            reviewer="test",
-        ))
+        reviewer.resolve(
+            GateDecision(
+                action=GateAction.CONTINUE,
+                reviewer="test",
+            )
+        )
 
     @pytest.mark.asyncio
     async def test_pending_cleared_after_review(self):
@@ -101,10 +103,12 @@ class TestTuiGateReviewer:
 
         async def resolve_soon():
             await asyncio.sleep(0.01)
-            reviewer.resolve(GateDecision(
-                action=GateAction.SKIP,
-                reviewer="test",
-            ))
+            reviewer.resolve(
+                GateDecision(
+                    action=GateAction.SKIP,
+                    reviewer="test",
+                )
+            )
 
         task = asyncio.create_task(resolve_soon())
         await reviewer.review(ctx)

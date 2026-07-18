@@ -41,22 +41,29 @@ class MissionDecision(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     decision_id: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
     )
     domain: Mapped[str] = mapped_column(
-        String(100), nullable=False, index=True,
+        String(100),
+        nullable=False,
+        index=True,
     )
     decision: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     rationale: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     made_by: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     execution_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False), nullable=True,
+        PgUUID(as_uuid=False),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(
         Enum(DecisionStatus, native_enum=False),
@@ -64,7 +71,8 @@ class MissionDecision(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
     superseded_by: Mapped[str | None] = mapped_column(
-        String(50), nullable=True,
+        String(50),
+        nullable=True,
     )
 
     def __repr__(self) -> str:
@@ -91,29 +99,36 @@ class MilestoneSummary(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(
-        String(300), nullable=False,
+        String(300),
+        nullable=False,
     )
     summary: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     execution_ids: Mapped[list] = mapped_column(
-        JSON, default=list, nullable=False,
+        JSON,
+        default=list,
+        nullable=False,
     )
     key_outcomes: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
+        JSON,
+        default=dict,
+        nullable=False,
     )
     domain_tags: Mapped[list] = mapped_column(
-        JSON, default=list, nullable=False,
+        JSON,
+        default=list,
+        nullable=False,
     )
     period_start: Mapped[str | None] = mapped_column(
-        String(30), nullable=True,
+        String(30),
+        nullable=True,
     )
     period_end: Mapped[str | None] = mapped_column(
-        String(30), nullable=True,
+        String(30),
+        nullable=True,
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<MilestoneSummary(title={self.title!r}, "
-            f"missions={len(self.execution_ids)})>"
-        )
+        return f"<MilestoneSummary(title={self.title!r}, " f"missions={len(self.execution_ids)})>"

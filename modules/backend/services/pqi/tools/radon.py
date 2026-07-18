@@ -17,12 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from modules.backend.services.pqi.tools import (
-    Finding,
-    ToolResult,
-    check_installed,
-    run_command,
-)
+from modules.backend.services.pqi.tools import Finding, ToolResult, check_installed, run_command
 
 TOOL_NAME = "radon"
 
@@ -68,7 +63,8 @@ def _build_targets(repo_root: Path, scope: list[str] | None) -> list[str]:
 
 
 def _build_excludes(
-    repo_root: Path, exclude: list[str] | None,
+    repo_root: Path,
+    exclude: list[str] | None,
 ) -> list[str]:
     """Build radon exclude arguments."""
     if not exclude:
@@ -81,7 +77,9 @@ def _build_excludes(
 
 
 def _run_cc(
-    targets: list[str], exclude_args: list[str], cwd: Path,
+    targets: list[str],
+    exclude_args: list[str],
+    cwd: Path,
 ) -> dict | str:
     """Run radon cyclomatic complexity and return parsed JSON or error string."""
     args = [TOOL_NAME, "cc", "-j", "-s", "-a"] + exclude_args + targets
@@ -97,7 +95,9 @@ def _run_cc(
 
 
 def _run_mi(
-    targets: list[str], exclude_args: list[str], cwd: Path,
+    targets: list[str],
+    exclude_args: list[str],
+    cwd: Path,
 ) -> dict | str:
     """Run radon maintainability index and return parsed JSON or error string."""
     args = [TOOL_NAME, "mi", "-j", "-s"] + exclude_args + targets
@@ -113,7 +113,8 @@ def _run_mi(
 
 
 def _merge_results(
-    cc_data: dict | str, mi_data: dict | str,
+    cc_data: dict | str,
+    mi_data: dict | str,
 ) -> ToolResult:
     """Merge cc and mi results into a single ToolResult."""
     errors = []
@@ -126,7 +127,9 @@ def _merge_results(
 
     if errors and not cc_data and not mi_data:
         return ToolResult(
-            tool=TOOL_NAME, available=True, error="; ".join(errors),
+            tool=TOOL_NAME,
+            available=True,
+            error="; ".join(errors),
         )
 
     # Parse cyclomatic complexity
@@ -145,18 +148,20 @@ def _merge_results(
 
             # Only create findings for C+ (complexity >= 11)
             if rank not in ("A", "B"):
-                findings.append(Finding(
-                    rule_id=f"CC:{rank}",
-                    severity=_rank_to_severity(rank),
-                    confidence="HIGH",
-                    message=(
-                        f"{func.get('type', 'function')} '{func.get('name', '?')}' "
-                        f"has cyclomatic complexity {complexity} (rank {rank})"
-                    ),
-                    file=file_path,
-                    line=func.get("lineno", 0),
-                    tool=TOOL_NAME,
-                ))
+                findings.append(
+                    Finding(
+                        rule_id=f"CC:{rank}",
+                        severity=_rank_to_severity(rank),
+                        confidence="HIGH",
+                        message=(
+                            f"{func.get('type', 'function')} '{func.get('name', '?')}' "
+                            f"has cyclomatic complexity {complexity} (rank {rank})"
+                        ),
+                        file=file_path,
+                        line=func.get("lineno", 0),
+                        tool=TOOL_NAME,
+                    )
+                )
 
     # Parse maintainability index
     mi_scores: list[float] = []

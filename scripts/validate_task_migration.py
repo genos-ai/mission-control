@@ -26,7 +26,6 @@ sys.path.insert(0, str(project_root))
 from modules.backend.core.config import find_project_root  # noqa: E402
 from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
 
-
 logger = get_logger(__name__)
 
 
@@ -50,12 +49,14 @@ def _parse_json_blob(raw) -> dict | None:
 def validate(verbose: bool, debug: bool) -> None:
     """Validate task_plan_json data integrity before Plan 72 migration."""
     import asyncio
+
     asyncio.run(_validate_async(verbose, debug))
 
 
 async def _validate_async(verbose: bool, debug: bool) -> None:
     """Async validation logic."""
     from sqlalchemy import text
+
     from modules.backend.core.database import get_async_session
 
     level = "DEBUG" if debug else ("INFO" if verbose else "WARNING")
@@ -77,9 +78,9 @@ async def _validate_async(verbose: bool, debug: bool) -> None:
     async with get_async_session() as session:
         # ── Validate mission_plans.task_plan_json ──────────────────────────
 
-        result = await session.execute(text(
-            "SELECT id, mission_id, task_plan_json FROM mission_plans"
-        ))
+        result = await session.execute(
+            text("SELECT id, mission_id, task_plan_json FROM mission_plans")
+        )
         plans = result.fetchall()
         stats["plans_total"] = len(plans)
 
@@ -92,16 +93,14 @@ async def _validate_async(verbose: bool, debug: bool) -> None:
             if parsed is None:
                 stats["plans_corrupt_json"] += 1
                 issues.append(
-                    f"CORRUPT JSON: mission_plans.id={plan_id} "
-                    f"(mission={mission_id})"
+                    f"CORRUPT JSON: mission_plans.id={plan_id} " f"(mission={mission_id})"
                 )
                 continue
 
             if "tasks" not in parsed:
                 stats["plans_missing_tasks_key"] += 1
                 issues.append(
-                    f"MISSING 'tasks' KEY: mission_plans.id={plan_id} "
-                    f"(mission={mission_id})"
+                    f"MISSING 'tasks' KEY: mission_plans.id={plan_id} " f"(mission={mission_id})"
                 )
                 continue
 
@@ -111,18 +110,13 @@ async def _validate_async(verbose: bool, debug: bool) -> None:
             # Validate each task has required fields
             for i, task in enumerate(tasks):
                 if not isinstance(task, dict):
-                    issues.append(
-                        f"NON-DICT TASK: plan={plan_id} index={i}"
-                    )
+                    issues.append(f"NON-DICT TASK: plan={plan_id} index={i}")
                     continue
                 if "task_id" not in task:
-                    issues.append(
-                        f"MISSING task_id: plan={plan_id} index={i}"
-                    )
+                    issues.append(f"MISSING task_id: plan={plan_id} index={i}")
                 if "agent" not in task:
                     issues.append(
-                        f"MISSING agent: plan={plan_id} "
-                        f"task_id={task.get('task_id', '?')}"
+                        f"MISSING agent: plan={plan_id} " f"task_id={task.get('task_id', '?')}"
                     )
                 if "description" not in task:
                     issues.append(
@@ -131,38 +125,37 @@ async def _validate_async(verbose: bool, debug: bool) -> None:
                     )
 
             if verbose:
-                click.echo(
-                    f"  Plan {plan_id}: {len(tasks)} tasks OK"
-                )
+                click.echo(f"  Plan {plan_id}: {len(tasks)} tasks OK")
 
         # ── Validate plan_task_states orphans ──────────────────────────────
 
-        result = await session.execute(text(
-            "SELECT pts.id, pts.mission_plan_id, pts.task_id "
-            "FROM plan_task_states pts "
-            "LEFT JOIN mission_plans mp ON pts.mission_plan_id = mp.id "
-            "WHERE mp.id IS NULL"
-        ))
+        result = await session.execute(
+            text(
+                "SELECT pts.id, pts.mission_plan_id, pts.task_id "
+                "FROM plan_task_states pts "
+                "LEFT JOIN mission_plans mp ON pts.mission_plan_id = mp.id "
+                "WHERE mp.id IS NULL"
+            )
+        )
         orphaned_states = result.fetchall()
         stats["task_states_orphaned"] = len(orphaned_states)
         for state_id, plan_id, task_id in orphaned_states:
             issues.append(
-                f"ORPHANED PlanTaskState: id={state_id} "
-                f"plan_id={plan_id} task_id={task_id}"
+                f"ORPHANED PlanTaskState: id={state_id} " f"plan_id={plan_id} task_id={task_id}"
             )
 
         # Count total task states
-        result = await session.execute(text(
-            "SELECT count(*) FROM plan_task_states"
-        ))
+        result = await session.execute(text("SELECT count(*) FROM plan_task_states"))
         stats["task_states_total"] = result.scalar_one()
 
         # ── Validate execution_records.task_plan_json ──────────────────────
 
-        result = await session.execute(text(
-            "SELECT id, task_plan_json FROM execution_records "
-            "WHERE task_plan_json IS NOT NULL"
-        ))
+        result = await session.execute(
+            text(
+                "SELECT id, task_plan_json FROM execution_records "
+                "WHERE task_plan_json IS NOT NULL"
+            )
+        )
         exec_records = result.fetchall()
         stats["execution_records_with_json"] = len(exec_records)
 
@@ -170,9 +163,7 @@ async def _validate_async(verbose: bool, debug: bool) -> None:
             parsed = _parse_json_blob(raw)
             if parsed is None:
                 stats["execution_records_corrupt_json"] += 1
-                issues.append(
-                    f"CORRUPT JSON: execution_records.id={record_id}"
-                )
+                issues.append(f"CORRUPT JSON: execution_records.id={record_id}")
 
     # ── Report ─────────────────────────────────────────────────────────────
 

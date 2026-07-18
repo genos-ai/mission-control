@@ -30,11 +30,13 @@ def _entry(name: str) -> RosterAgentEntry:
     )
 
 
-ROSTER = Roster(agents=[
-    _entry("security.webapp.scanner.agent"),
-    _entry("security.webapp.triage.agent"),
-    _entry("security.webapp.reporter.agent"),
-])
+ROSTER = Roster(
+    agents=[
+        _entry("security.webapp.scanner.agent"),
+        _entry("security.webapp.triage.agent"),
+        _entry("security.webapp.reporter.agent"),
+    ]
+)
 
 
 @dataclass
@@ -48,11 +50,18 @@ class TestToolRegistration:
         register_planning_tools(agent)
         tool_names = {t.name for t in agent._function_toolset.tools.values()}
         expected = {
-            "add_task", "update_task", "remove_task",
-            "set_upstream_input", "set_static_input",
-            "set_file_manifest", "set_verification", "finalise_plan",
+            "add_task",
+            "update_task",
+            "remove_task",
+            "set_upstream_input",
+            "set_static_input",
+            "set_file_manifest",
+            "set_verification",
+            "finalise_plan",
         }
-        assert expected == tool_names, f"Missing: {expected - tool_names}, Extra: {tool_names - expected}"
+        assert (
+            expected == tool_names
+        ), f"Missing: {expected - tool_names}, Extra: {tool_names - expected}"
 
     def test_no_overlap_with_other_tools(self):
         """Planning tools should not conflict with existing tool names."""

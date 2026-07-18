@@ -10,7 +10,7 @@ System workflow templates have mission_id=NULL.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, JSON, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,7 +23,8 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "workflow_definitions"
     __table_args__ = (
         UniqueConstraint(
-            "mission_id", "name",
+            "mission_id",
+            "name",
             name="uq_workflow_definitions_mission_name",
         ),
     )
@@ -36,51 +37,73 @@ class WorkflowDefinition(UUIDMixin, TimestampMixin, Base):
         comment="NULL for system templates",
     )
     name: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     description: Mapped[str] = mapped_column(
-        Text, nullable=False, default="",
+        Text,
+        nullable=False,
+        default="",
     )
     version: Mapped[int] = mapped_column(
-        Integer, default=1, nullable=False,
+        Integer,
+        default=1,
+        nullable=False,
     )
     enabled: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False,
+        Boolean,
+        default=True,
+        nullable=False,
     )
     objective: Mapped[dict] = mapped_column(
-        JSON, nullable=False,
-        comment='WorkflowObjectiveSchema: {statement, category, owner, priority}',
+        JSON,
+        nullable=False,
+        comment="WorkflowObjectiveSchema: {statement, category, owner, priority}",
     )
     steps: Mapped[list] = mapped_column(
-        JSON, nullable=False,
+        JSON,
+        nullable=False,
         comment="Array of WorkflowStepSchema dicts",
     )
     edges_json: Mapped[list] = mapped_column(
-        JSON, default=list, nullable=False,
+        JSON,
+        default=list,
+        nullable=False,
         comment="React Flow edges derived from steps[].depends_on",
     )
     canvas_state: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
+        JSON,
+        default=dict,
+        nullable=False,
         comment="Viewport + node positions for the visual editor",
     )
     trigger_config: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
-        comment='WorkflowTriggerSchema: {type, schedule, event_type, match_patterns}',
+        JSON,
+        default=dict,
+        nullable=False,
+        comment="WorkflowTriggerSchema: {type, schedule, event_type, match_patterns}",
     )
     budget_config: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
-        comment='WorkflowBudgetSchema: {max_cost_usd, max_tokens}',
+        JSON,
+        default=dict,
+        nullable=False,
+        comment="WorkflowBudgetSchema: {max_cost_usd, max_tokens}",
     )
     parameters: Mapped[list] = mapped_column(
-        JSON, default=list, nullable=False,
+        JSON,
+        default=list,
+        nullable=False,
         comment="WorkflowParameterSchema[]: typed user-facing inputs shown before run",
     )
     context: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
+        JSON,
+        default=dict,
+        nullable=False,
         comment="Static context data passed to all steps",
     )
     designed_by: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
         comment="architect:<agent_id> or user:<user_id>",
     )
     locked_at: Mapped[datetime | None] = mapped_column(

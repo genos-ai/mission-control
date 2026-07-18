@@ -36,7 +36,9 @@ router = APIRouter()
 
 
 async def _require_mission_access(
-    db, mission_id: str, user,
+    db,
+    mission_id: str,
+    user,
 ) -> None:
     """Admin, owner, or mission member. Raises AuthorizationError otherwise."""
     if user.has_role("admin"):
@@ -50,7 +52,9 @@ async def _require_mission_access(
 
 
 async def _require_session_access(
-    db, session_id: str, user,
+    db,
+    session_id: str,
+    user,
 ) -> None:
     """Admin, session owner, or mission member of the session's mission."""
     if user.has_role("admin"):
@@ -106,7 +110,8 @@ async def stream_run_events(
 
             if mission_id:
                 async for event in bus.subscribe_mission_filtered(
-                    mission_id, uuid.UUID(session_id),
+                    mission_id,
+                    uuid.UUID(session_id),
                 ):
                     yield f"data: {json.dumps(format_event_for_sse(event))}\n\n"
             else:

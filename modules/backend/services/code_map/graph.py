@@ -45,29 +45,40 @@ def build_reference_graph(modules: list[ModuleInfo]) -> ReferenceGraph:
         for imp in module.imports:
             target = _resolve_import(imp, known_modules)
             if target:
-                edges.append(ReferenceEdge(
-                    source=module_qname,
-                    target=target,
-                    kind=ReferenceKind.IMPORT,
-                ))
+                edges.append(
+                    ReferenceEdge(
+                        source=module_qname,
+                        target=target,
+                        kind=ReferenceKind.IMPORT,
+                    )
+                )
 
         # Class inheritance edges
         for cls in module.classes:
             for base in cls.bases:
                 target = _resolve_name(
-                    base, module_qname, import_tables, known_symbols,
+                    base,
+                    module_qname,
+                    import_tables,
+                    known_symbols,
                 )
                 if target:
-                    edges.append(ReferenceEdge(
-                        source=cls.qualified_name,
-                        target=target,
-                        kind=ReferenceKind.INHERIT,
-                    ))
+                    edges.append(
+                        ReferenceEdge(
+                            source=cls.qualified_name,
+                            target=target,
+                            kind=ReferenceKind.INHERIT,
+                        )
+                    )
 
             # Method-level references
             for method in cls.methods:
                 _add_symbol_references(
-                    method, module_qname, import_tables, known_symbols, edges,
+                    method,
+                    module_qname,
+                    import_tables,
+                    known_symbols,
+                    edges,
                 )
 
             # Field type annotation edges
@@ -75,19 +86,28 @@ def build_reference_graph(modules: list[ModuleInfo]) -> ReferenceGraph:
                 if ": " in field_str:
                     type_str = field_str.split(": ", 1)[1]
                     target = _resolve_name(
-                        type_str, module_qname, import_tables, known_symbols,
+                        type_str,
+                        module_qname,
+                        import_tables,
+                        known_symbols,
                     )
                     if target:
-                        edges.append(ReferenceEdge(
-                            source=cls.qualified_name,
-                            target=target,
-                            kind=ReferenceKind.TYPE_ANNOTATION,
-                        ))
+                        edges.append(
+                            ReferenceEdge(
+                                source=cls.qualified_name,
+                                target=target,
+                                kind=ReferenceKind.TYPE_ANNOTATION,
+                            )
+                        )
 
         # Top-level function references
         for func in module.functions:
             _add_symbol_references(
-                func, module_qname, import_tables, known_symbols, edges,
+                func,
+                module_qname,
+                import_tables,
+                known_symbols,
+                edges,
             )
 
     # Deduplicate edges
@@ -108,25 +128,35 @@ def _add_symbol_references(
         if ": " in param:
             type_str = param.split(": ", 1)[1]
             target = _resolve_name(
-                type_str, module_qname, import_tables, known_symbols,
+                type_str,
+                module_qname,
+                import_tables,
+                known_symbols,
             )
             if target:
-                edges.append(ReferenceEdge(
-                    source=symbol.qualified_name,
-                    target=target,
-                    kind=ReferenceKind.TYPE_ANNOTATION,
-                ))
+                edges.append(
+                    ReferenceEdge(
+                        source=symbol.qualified_name,
+                        target=target,
+                        kind=ReferenceKind.TYPE_ANNOTATION,
+                    )
+                )
 
     if symbol.return_type:
         target = _resolve_name(
-            symbol.return_type, module_qname, import_tables, known_symbols,
+            symbol.return_type,
+            module_qname,
+            import_tables,
+            known_symbols,
         )
         if target:
-            edges.append(ReferenceEdge(
-                source=symbol.qualified_name,
-                target=target,
-                kind=ReferenceKind.TYPE_ANNOTATION,
-            ))
+            edges.append(
+                ReferenceEdge(
+                    source=symbol.qualified_name,
+                    target=target,
+                    kind=ReferenceKind.TYPE_ANNOTATION,
+                )
+            )
 
 
 def _build_module_index(modules: list[ModuleInfo]) -> set[str]:

@@ -6,21 +6,19 @@ Per-user, named, revocable API keys with optional expiry.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 from modules.backend.core.utils import utc_now
+from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class ApiKey(UUIDMixin, TimestampMixin, Base):
     """An API key belonging to a user."""
 
     __tablename__ = "api_keys"
-    __table_args__ = (
-        UniqueConstraint("user_id", "name", name="uq_api_keys_user_name"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_api_keys_user_name"),)
 
     user_id: Mapped[str] = mapped_column(
         PgUUID(as_uuid=False),
@@ -29,30 +27,39 @@ class ApiKey(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
     )
     key_prefix: Mapped[str] = mapped_column(
-        String(8), nullable=False, index=True,
+        String(8),
+        nullable=False,
+        index=True,
     )
     hashed_key: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     scopes: Mapped[list | None] = mapped_column(
-        JSON, nullable=True,
+        JSON,
+        nullable=True,
     )
     last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     # Relationships
     user: Mapped["User"] = relationship(
-        "User", back_populates="api_keys",
+        "User",
+        back_populates="api_keys",
     )
 
     @property
@@ -65,7 +72,4 @@ class ApiKey(UUIDMixin, TimestampMixin, Base):
         return True
 
     def __repr__(self) -> str:
-        return (
-            f"<ApiKey(id={self.id}, name={self.name!r}, "
-            f"prefix={self.key_prefix})>"
-        )
+        return f"<ApiKey(id={self.id}, name={self.name!r}, " f"prefix={self.key_prefix})>"

@@ -23,15 +23,17 @@ from textual.css.query import NoMatches
 from textual.widgets import Input, Label, Static
 from textual.worker import Worker
 
+from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.task_plan import TaskPlan
 from modules.clients.tui.messages import (
     AgentSelected,
     GateReviewCompleted,
     GateReviewRequested,
-    MissionStartRequested,
     MissionCreated,
     MissionSelected,
+    MissionStartRequested,
     ScreenChanged,
     SessionEventReceived,
     TabSwitched,
@@ -39,20 +41,18 @@ from modules.clients.tui.messages import (
 from modules.clients.tui.screens.admin import AdminScreen
 from modules.clients.tui.screens.catalog import CatalogScreen
 from modules.clients.tui.screens.dashboard import DashboardScreen
+from modules.clients.tui.screens.mission_history import MissionHistoryScreen
+from modules.clients.tui.screens.mission_picker import MissionPickerScreen
 from modules.clients.tui.screens.profile import ProfileScreen
 from modules.clients.tui.screens.workspace import MissionWorkspaceScreen
-from modules.clients.tui.screens.mission_picker import MissionPickerScreen
-from modules.clients.tui.screens.mission_history import MissionHistoryScreen
 from modules.clients.tui.services.event_listener import TuiEventBus
+from modules.clients.tui.services.gate_reviewer import TuiGateReviewer
 from modules.clients.tui.services.service_bridge import ServiceBridge
 from modules.clients.tui.services.state import TuiState
-from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus
-from modules.backend.schemas.task_plan import TaskPlan
 from modules.clients.tui.widgets.agent_detail import AgentDetailWidget
 from modules.clients.tui.widgets.agent_sidebar import AgentSidebar, MissionSummary
 from modules.clients.tui.widgets.cost_bar import CostBar
 from modules.clients.tui.widgets.event_stream import EventStreamWidget
-from modules.clients.tui.services.gate_reviewer import TuiGateReviewer
 from modules.clients.tui.widgets.gate_modal import GateReviewModal
 from modules.clients.tui.widgets.mission_panel import MissionPanel
 from modules.clients.tui.widgets.notification import (
@@ -233,7 +233,8 @@ class MissionControlApp(App):
             pass
 
     async def on_mission_start_requested(
-        self, event: MissionStartRequested,
+        self,
+        event: MissionStartRequested,
     ) -> None:
         """Start a mission from the chat input."""
         if not self.state.current_mission_id:
@@ -308,7 +309,8 @@ class MissionControlApp(App):
     # ── Event routing ────────────────────────────────────────────────
 
     async def on_session_event_received(
-        self, message: SessionEventReceived,
+        self,
+        message: SessionEventReceived,
     ) -> None:
         """Route a SessionEvent to the appropriate state update + widget."""
         event = message.event
@@ -346,7 +348,8 @@ class MissionControlApp(App):
             self.state.total_input_tokens += input_tokens
             self.state.total_output_tokens += output_tokens
             self._push_to_agent_detail_complete(
-                agent_id, cost=cost,
+                agent_id,
+                cost=cost,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
             )
@@ -364,14 +367,18 @@ class MissionControlApp(App):
             tool_args = getattr(event, "tool_args", {})
             tool_call_id = getattr(event, "tool_call_id", "")
             self.state.agent_tool_calls.setdefault(agent_id, [])
-            self.state.agent_tool_calls[agent_id].append({
-                "tool_name": tool_name,
-                "tool_args": tool_args,
-                "tool_call_id": tool_call_id,
-            })
+            self.state.agent_tool_calls[agent_id].append(
+                {
+                    "tool_name": tool_name,
+                    "tool_args": tool_args,
+                    "tool_call_id": tool_call_id,
+                }
+            )
             self._push_to_agent_detail_tool_call(
-                agent_id, tool_name=tool_name,
-                tool_args=tool_args, tool_call_id=tool_call_id,
+                agent_id,
+                tool_name=tool_name,
+                tool_args=tool_args,
+                tool_call_id=tool_call_id,
             )
 
         elif event_type == "agent.tool.returned":
@@ -385,7 +392,9 @@ class MissionControlApp(App):
 
         elif event_type == "session.cost.updated":
             self.state.total_cost_usd = getattr(
-                event, "cumulative_cost_usd", 0.0,
+                event,
+                "cumulative_cost_usd",
+                0.0,
             )
             if self.state.budget_usd > 0:
                 ratio = self.state.total_cost_usd / self.state.budget_usd
@@ -441,17 +450,21 @@ class MissionControlApp(App):
             step_count = getattr(event, "step_count", 0)
             self.state.workflow_name = wf_name
             self._notify(
-                "info", f"Workflow started: {wf_name} ({step_count} steps)",
+                "info",
+                f"Workflow started: {wf_name} ({step_count} steps)",
             )
 
         elif event_type == "workflow.mission.started":
             step_id = getattr(event, "step_id", "")
             roster = getattr(event, "roster_ref", "")
             self.state.workflow_progress[step_id] = {
-                "status": "running", "roster": roster,
+                "status": "running",
+                "roster": roster,
             }
             self._update_workflow_panel(
-                step_id, status="running", roster=roster,
+                step_id,
+                status="running",
+                roster=roster,
             )
 
         elif event_type == "workflow.mission.completed":
@@ -460,7 +473,8 @@ class MissionControlApp(App):
             cost = getattr(event, "cost_usd", 0.0)
             status = "success" if success else "failed"
             self.state.workflow_progress[step_id] = {
-                "status": status, "cost": cost,
+                "status": status,
+                "cost": cost,
             }
             self._update_workflow_panel(step_id, status=status, cost=cost)
             if not success:
@@ -505,57 +519,83 @@ class MissionControlApp(App):
             detail.update_header(status="running")
 
     def _push_to_agent_detail_chunk(
-        self, agent_id: str, content: str,
+        self,
+        agent_id: str,
+        content: str,
     ) -> None:
         if detail := self._active_detail_for(agent_id):
             detail.append_output(content)
 
     def _push_to_agent_detail_complete(
-        self, agent_id: str, *, cost: float,
-        input_tokens: int, output_tokens: int,
+        self,
+        agent_id: str,
+        *,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
     ) -> None:
         if detail := self._active_detail_for(agent_id):
             detail.update_header(
-                status="success", cost=cost,
-                input_tokens=input_tokens, output_tokens=output_tokens,
+                status="success",
+                cost=cost,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
 
     def _push_to_agent_detail_tool_call(
-        self, agent_id: str, *,
-        tool_name: str, tool_args: dict, tool_call_id: str,
+        self,
+        agent_id: str,
+        *,
+        tool_name: str,
+        tool_args: dict,
+        tool_call_id: str,
     ) -> None:
         if detail := self._active_detail_for(agent_id):
             detail.add_tool_call(
-                tool_name=tool_name, tool_args=tool_args,
+                tool_name=tool_name,
+                tool_args=tool_args,
                 tool_call_id=tool_call_id,
             )
 
     def _push_to_agent_detail_tool_result(
-        self, agent_id: str, *,
-        tool_name: str, status: str, result: str | None,
+        self,
+        agent_id: str,
+        *,
+        tool_name: str,
+        status: str,
+        result: str | None,
     ) -> None:
         if detail := self._active_detail_for(agent_id):
             detail.add_tool_result(
-                tool_name=tool_name, status=status, result=result,
+                tool_name=tool_name,
+                status=status,
+                result=result,
             )
 
     def _sidebar_set_active(
-        self, agent_name: str, active: bool,
+        self,
+        agent_name: str,
+        active: bool,
     ) -> None:
         try:
             sidebar = self.screen.query_one(
-                "#agent-sidebar", AgentSidebar,
+                "#agent-sidebar",
+                AgentSidebar,
             )
             sidebar.set_active(agent_name, active)
         except NoMatches:
             pass
 
     def _sidebar_set_status(
-        self, agent_name: str, status: str, cost: float = 0.0,
+        self,
+        agent_name: str,
+        status: str,
+        cost: float = 0.0,
     ) -> None:
         try:
             sidebar = self.screen.query_one(
-                "#agent-sidebar", AgentSidebar,
+                "#agent-sidebar",
+                AgentSidebar,
             )
             sidebar.set_agent_status(agent_name, status, cost)
         except NoMatches:
@@ -569,22 +609,17 @@ class MissionControlApp(App):
             bar.input_tokens = self.state.total_input_tokens
             bar.output_tokens = self.state.total_output_tokens
             bar.current_layer = self.state.current_layer
-            bar.total_layers = (
-                len(self.state.task_layers)
-                if self.state.task_layers
-                else 0
-            )
+            bar.total_layers = len(self.state.task_layers) if self.state.task_layers else 0
             bar.pending_gates = 1 if self.state.pending_gate else 0
             bar.workflow_name = self.state.workflow_name or ""
             done_steps = sum(
-                1 for p in self.state.workflow_progress.values()
+                1
+                for p in self.state.workflow_progress.values()
                 if p.get("status") in ("success", "failed", "skipped")
             )
             bar.workflow_step = done_steps
             bar.workflow_total_steps = (
-                len(self.state.workflow_progress)
-                if self.state.workflow_progress
-                else 0
+                len(self.state.workflow_progress) if self.state.workflow_progress else 0
             )
         except NoMatches:
             pass
@@ -596,14 +631,18 @@ class MissionControlApp(App):
         notification_type: str | None = None,
     ) -> None:
         """Push a notification to the NotificationStack and store."""
-        self.state.notifications.append({
-            "severity": severity, "message": message,
-        })
+        self.state.notifications.append(
+            {
+                "severity": severity,
+                "message": message,
+            }
+        )
 
         # Store notification for the list modal
         ntype = notification_type or (
-            "run_failed" if severity == "error" else "budget_warning"
-            if severity == "warning" else "run_completed"
+            "run_failed"
+            if severity == "error"
+            else "budget_warning" if severity == "warning" else "run_completed"
         )
         self._notification_store.add(ntype, message)
 
@@ -612,7 +651,8 @@ class MissionControlApp(App):
 
         try:
             stack = self.screen.query_one(
-                "#notification-stack", NotificationStack,
+                "#notification-stack",
+                NotificationStack,
             )
             stack.add_notification(message, severity=severity)
         except NoMatches:
@@ -628,7 +668,9 @@ class MissionControlApp(App):
             pass
 
     def _update_workflow_panel(
-        self, step_id: str, *,
+        self,
+        step_id: str,
+        *,
         status: str | None = None,
         cost: float | None = None,
         roster: str | None = None,
@@ -636,13 +678,17 @@ class MissionControlApp(App):
         """Forward step update to the WorkflowProgressWidget."""
         if self._workflow_panel:
             self._workflow_panel.update_step(
-                step_id, status=status, cost=cost, roster=roster,
+                step_id,
+                status=status,
+                cost=cost,
+                roster=roster,
             )
 
     def _update_mission_summary(self) -> None:
         try:
             summary = self.screen.query_one(
-                "#mission-summary", MissionSummary,
+                "#mission-summary",
+                MissionSummary,
             )
             summary.update_from_state(
                 status=self.state.mission_status,
@@ -673,12 +719,15 @@ class MissionControlApp(App):
         )
 
     def _show_mission_panel(
-        self, plan: TaskPlan, layers: list[list[str]],
+        self,
+        plan: TaskPlan,
+        layers: list[list[str]],
     ) -> None:
         """Mount the MissionPanel in the center panel."""
         try:
             container = self.screen.query_one(
-                "#center-content", VerticalScroll,
+                "#center-content",
+                VerticalScroll,
             )
         except NoMatches:
             return
@@ -694,7 +743,8 @@ class MissionControlApp(App):
     # ── Gate review ────────────────────────────────────────────────────
 
     async def on_gate_review_requested(
-        self, message: GateReviewRequested,
+        self,
+        message: GateReviewRequested,
     ) -> None:
         """Dispatch is waiting — show the gate modal."""
         self.state.pending_gate = message.context
@@ -708,7 +758,8 @@ class MissionControlApp(App):
         self.push_screen(GateReviewModal(message.context))
 
     async def on_gate_review_completed(
-        self, message: GateReviewCompleted,
+        self,
+        message: GateReviewCompleted,
     ) -> None:
         """User resolved the gate — forward decision."""
         self.state.pending_gate = None
@@ -722,7 +773,8 @@ class MissionControlApp(App):
         self.state.selected_agent = event.agent_name
         try:
             sidebar = self.screen.query_one(
-                "#agent-sidebar", AgentSidebar,
+                "#agent-sidebar",
+                AgentSidebar,
             )
             sidebar.set_selected(event.agent_name)
         except NoMatches:
@@ -733,7 +785,8 @@ class MissionControlApp(App):
         """Replace center-content with AgentDetailWidget."""
         try:
             container = self.screen.query_one(
-                "#center-content", VerticalScroll,
+                "#center-content",
+                VerticalScroll,
             )
         except NoMatches:
             return
@@ -760,7 +813,8 @@ class MissionControlApp(App):
         """Switch center panel back to overview (F1)."""
         try:
             container = self.screen.query_one(
-                "#center-content", VerticalScroll,
+                "#center-content",
+                VerticalScroll,
             )
         except NoMatches:
             return
@@ -795,7 +849,8 @@ class MissionControlApp(App):
             missions = await self.bridge.list_missions()
         except Exception:
             logger.warning(
-                "Could not load missions for picker", exc_info=True,
+                "Could not load missions for picker",
+                exc_info=True,
             )
             missions = []
         self.push_screen(MissionPickerScreen(missions))
@@ -810,7 +865,8 @@ class MissionControlApp(App):
             executions = await self.bridge.list_executions(limit=50)
         except Exception:
             logger.warning(
-                "Could not load mission history", exc_info=True,
+                "Could not load mission history",
+                exc_info=True,
             )
             executions = []
         finally:

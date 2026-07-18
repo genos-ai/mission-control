@@ -126,7 +126,9 @@ class LoggingMiddleware(BaseMiddleware):
                 if msg.text.startswith("/"):
                     context["command"] = msg.text.split()[0]
                 else:
-                    context["text_preview"] = msg.text[:50] + "..." if len(msg.text) > 50 else msg.text
+                    context["text_preview"] = (
+                        msg.text[:50] + "..." if len(msg.text) > 50 else msg.text
+                    )
 
         # Extract from callback query
         elif event.callback_query:

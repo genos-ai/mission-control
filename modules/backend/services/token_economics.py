@@ -54,7 +54,10 @@ class TokenEconomicsService(BaseService):
         super().__init__(session)
 
     async def get_token_breakdown(
-        self, *, timeframe: str = "7d", mission_id: str | None = None,
+        self,
+        *,
+        timeframe: str = "7d",
+        mission_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Per-agent token breakdown with cost attribution."""
         scope = _scope_filters(timeframe=timeframe, mission_id=mission_id)
@@ -65,9 +68,9 @@ class TokenEconomicsService(BaseService):
                 func.sum(LlmCall.input_tokens).label("input_tokens"),
                 func.sum(LlmCall.output_tokens).label("output_tokens"),
                 func.sum(LlmCall.cache_read_tokens).label("cache_read_tokens"),
-                func.sum(
-                    LlmCall.cache_write_5m_tokens + LlmCall.cache_write_1h_tokens
-                ).label("cache_write_tokens"),
+                func.sum(LlmCall.cache_write_5m_tokens + LlmCall.cache_write_1h_tokens).label(
+                    "cache_write_tokens"
+                ),
                 func.sum(LlmCall.thinking_tokens).label("thinking_tokens"),
                 func.sum(LlmCall.cost_usd).label("total_cost_usd"),
             )
@@ -79,7 +82,10 @@ class TokenEconomicsService(BaseService):
         return [dict(row._mapping) for row in result.all()]
 
     async def get_cache_performance(
-        self, *, timeframe: str = "7d", mission_id: str | None = None,
+        self,
+        *,
+        timeframe: str = "7d",
+        mission_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Per-agent cache hit rate and savings."""
         scope = _scope_filters(timeframe=timeframe, mission_id=mission_id)
@@ -92,17 +98,22 @@ class TokenEconomicsService(BaseService):
                 func.sum(LlmCall.cache_write_5m_tokens).label("cache_write_5m_tokens"),
                 func.sum(LlmCall.cache_write_1h_tokens).label("cache_write_1h_tokens"),
                 case(
-                    (func.sum(total_input) > 0,
-                     cast(func.sum(LlmCall.cache_read_tokens), Float)
-                     / cast(func.sum(total_input), Float)),
+                    (
+                        func.sum(total_input) > 0,
+                        cast(func.sum(LlmCall.cache_read_tokens), Float)
+                        / cast(func.sum(total_input), Float),
+                    ),
                     else_=0.0,
                 ).label("cache_hit_rate"),
                 case(
-                    (func.sum(LlmCall.cache_read_tokens) > 0,
-                     cast(
-                         func.sum(LlmCall.cache_write_5m_tokens + LlmCall.cache_write_1h_tokens),
-                         Float,
-                     ) / cast(func.sum(LlmCall.cache_read_tokens), Float)),
+                    (
+                        func.sum(LlmCall.cache_read_tokens) > 0,
+                        cast(
+                            func.sum(LlmCall.cache_write_5m_tokens + LlmCall.cache_write_1h_tokens),
+                            Float,
+                        )
+                        / cast(func.sum(LlmCall.cache_read_tokens), Float),
+                    ),
                     else_=0.0,
                 ).label("write_to_read_ratio"),
             )
@@ -114,7 +125,10 @@ class TokenEconomicsService(BaseService):
         return [dict(row._mapping) for row in result.all()]
 
     async def get_cost_timeline(
-        self, *, timeframe: str = "7d", group_by: str = "agent",
+        self,
+        *,
+        timeframe: str = "7d",
+        group_by: str = "agent",
         mission_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Hourly cost for time-series chart."""
@@ -142,7 +156,11 @@ class TokenEconomicsService(BaseService):
         ]
 
     async def get_expensive_calls(
-        self, *, limit: int = 20, timeframe: str = "7d", mission_id: str | None = None,
+        self,
+        *,
+        limit: int = 20,
+        timeframe: str = "7d",
+        mission_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Top N most expensive individual LLM calls."""
         scope = _scope_filters(timeframe=timeframe, mission_id=mission_id)
@@ -173,7 +191,10 @@ class TokenEconomicsService(BaseService):
         ]
 
     async def get_model_distribution(
-        self, *, timeframe: str = "7d", mission_id: str | None = None,
+        self,
+        *,
+        timeframe: str = "7d",
+        mission_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Call count and cost percentage per model."""
         scope = _scope_filters(timeframe=timeframe, mission_id=mission_id)
@@ -200,11 +221,15 @@ class TokenEconomicsService(BaseService):
         return rows
 
     async def get_output_efficiency(
-        self, *, timeframe: str = "7d", mission_id: str | None = None,
+        self,
+        *,
+        timeframe: str = "7d",
+        mission_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Per-agent output/input ratio — high = expensive."""
         scope = _scope_filters(timeframe=timeframe, mission_id=mission_id)
         from modules.backend.core.config import get_app_config
+
         thresholds = get_app_config().cost.output_efficiency
 
         stmt = (
@@ -216,9 +241,7 @@ class TokenEconomicsService(BaseService):
             .where(*scope)
             .group_by(LlmCall.agent_name)
             .having(func.avg(LlmCall.input_tokens) > 0)
-            .order_by(
-                (func.avg(LlmCall.output_tokens) / func.avg(LlmCall.input_tokens)).desc()
-            )
+            .order_by((func.avg(LlmCall.output_tokens) / func.avg(LlmCall.input_tokens)).desc())
         )
         result = await self._session.execute(stmt)
         rows = []
@@ -231,17 +254,22 @@ class TokenEconomicsService(BaseService):
                 flag = "critical"
             elif ratio >= thresholds.high_threshold:
                 flag = "high"
-            rows.append({
-                "agent_name": row.agent_name,
-                "avg_input_tokens": round(avg_in),
-                "avg_output_tokens": round(avg_out),
-                "output_input_ratio": ratio,
-                "flag": flag,
-            })
+            rows.append(
+                {
+                    "agent_name": row.agent_name,
+                    "avg_input_tokens": round(avg_in),
+                    "avg_output_tokens": round(avg_out),
+                    "output_input_ratio": ratio,
+                    "flag": flag,
+                }
+            )
         return rows
 
     async def get_summary(
-        self, *, timeframe: str = "7d", mission_id: str | None = None,
+        self,
+        *,
+        timeframe: str = "7d",
+        mission_id: str | None = None,
     ) -> dict[str, Any]:
         """Summary stats for the top-level cards."""
         scope = _scope_filters(timeframe=timeframe, mission_id=mission_id)
@@ -250,15 +278,19 @@ class TokenEconomicsService(BaseService):
             func.count().label("total_calls"),
             func.avg(LlmCall.cost_usd).label("avg_cost_per_call"),
             case(
-                (func.sum(LlmCall.cache_read_tokens + LlmCall.input_tokens) > 0,
-                 cast(func.sum(LlmCall.cache_read_tokens), Float)
-                 / cast(func.sum(LlmCall.cache_read_tokens + LlmCall.input_tokens), Float)),
+                (
+                    func.sum(LlmCall.cache_read_tokens + LlmCall.input_tokens) > 0,
+                    cast(func.sum(LlmCall.cache_read_tokens), Float)
+                    / cast(func.sum(LlmCall.cache_read_tokens + LlmCall.input_tokens), Float),
+                ),
                 else_=0.0,
             ).label("cache_hit_rate"),
             case(
-                (func.sum(LlmCall.input_tokens) > 0,
-                 cast(func.sum(LlmCall.output_tokens), Float)
-                 / cast(func.sum(LlmCall.input_tokens), Float)),
+                (
+                    func.sum(LlmCall.input_tokens) > 0,
+                    cast(func.sum(LlmCall.output_tokens), Float)
+                    / cast(func.sum(LlmCall.input_tokens), Float),
+                ),
                 else_=0.0,
             ).label("output_ratio"),
         ).where(*scope)

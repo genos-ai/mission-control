@@ -22,9 +22,11 @@ logger = get_logger(__name__)
 def _schedule_embed(source_table: str, source_id: str) -> None:
     """Fire embed-on-write as a background task. Best-effort."""
     import asyncio
+
     try:
         loop = asyncio.get_running_loop()
         from modules.backend.services.mission_learning import _fire_embed_direct
+
         loop.create_task(_fire_embed_direct(source_table, source_id))
     except RuntimeError:
         pass  # No event loop — skip
@@ -116,7 +118,9 @@ class MissionIntentService(BaseService):
     ) -> list[MissionIntent]:
         """List intent revisions, newest first."""
         return await self._intent_repo.list_revisions(
-            mission_id, limit=limit, offset=offset,
+            mission_id,
+            limit=limit,
+            offset=offset,
         )
 
     async def count_revisions(self, mission_id: str) -> int:
@@ -133,8 +137,9 @@ def _build_summary(intent: str, max_chars: int = 160) -> str:
     like 'software.quality.agent').
     """
     import re
+
     # Match sentence-ending punctuation followed by whitespace or end
-    match = re.search(r'[.!?](?:\s|$)', intent[:max_chars])
+    match = re.search(r"[.!?](?:\s|$)", intent[:max_chars])
     if match and match.start() > 10:  # skip very short "sentences"
         return intent[: match.start() + 1].strip()
 

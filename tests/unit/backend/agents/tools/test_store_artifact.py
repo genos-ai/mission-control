@@ -21,8 +21,10 @@ class TestStoreArtifactContentValidation:
 
         with pytest.raises(ValueError, match="structured content requires"):
             await store_artifact(
-                mission_id="m1", title="X",
-                content={"a": 1}, content_type="markdown",
+                mission_id="m1",
+                title="X",
+                content={"a": 1},
+                content_type="markdown",
             )
 
     @pytest.mark.asyncio
@@ -31,8 +33,10 @@ class TestStoreArtifactContentValidation:
 
         with pytest.raises(ValueError, match="structured content requires"):
             await store_artifact(
-                mission_id="m1", title="X",
-                content=[1, 2, 3], content_type="text",
+                mission_id="m1",
+                title="X",
+                content=[1, 2, 3],
+                content_type="text",
             )
 
     @pytest.mark.asyncio
@@ -41,8 +45,10 @@ class TestStoreArtifactContentValidation:
 
         with pytest.raises(TypeError, match="must be str/dict/list"):
             await store_artifact(
-                mission_id="m1", title="X",
-                content=42, content_type="json",  # type: ignore[arg-type]
+                mission_id="m1",
+                title="X",
+                content=42,
+                content_type="json",  # type: ignore[arg-type]
             )
 
     def test_json_encodes_dict_content(self):
@@ -65,8 +71,10 @@ class TestStoreArtifactContentValidation:
 
             async def create_artifact(self, **kwargs):
                 captured.update(kwargs)
+
                 class _A:
                     id = "fake-id"
+
                 return _A()
 
         # Patch the DB + service to a no-op.
@@ -92,13 +100,15 @@ class TestStoreArtifactContentValidation:
             async def _run():
                 payload = {"cruxes": [{"q": "a"}, {"q": "b"}], "confidence": 0.7}
                 await mod.store_artifact(
-                    mission_id="m1", title="T",
+                    mission_id="m1",
+                    title="T",
                     content=payload,
                     artifact_type="deliberation_deliverable",
                     content_type="json",
                 )
 
             import asyncio
+
             asyncio.run(_run())
 
             assert "content_text" in captured
@@ -110,4 +120,5 @@ class TestStoreArtifactContentValidation:
         finally:
             if original_get_async_session is not None:
                 from modules.backend.core import database as db_mod
+
                 db_mod.get_async_session = original_get_async_session

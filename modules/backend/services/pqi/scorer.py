@@ -110,7 +110,9 @@ def _run_tools(
         module_path = _TOOL_REGISTRY.get(name)
         if module_path is None:
             results[name] = ToolResult(
-                tool=name, available=False, error=f"Unknown tool: {name}",
+                tool=name,
+                available=False,
+                error=f"Unknown tool: {name}",
             )
             continue
         logger.info("Running tool", extra={"tool": name})

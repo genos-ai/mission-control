@@ -14,7 +14,6 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-
 from temporalio.workflow import ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():

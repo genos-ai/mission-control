@@ -49,13 +49,17 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "missions"
 
     name: Mapped[str] = mapped_column(
-        String(200), nullable=False, unique=True,
+        String(200),
+        nullable=False,
+        unique=True,
     )
     description: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     brief: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
         comment="Strategic directive that agents read to understand their purpose",
     )
     status: Mapped[str] = mapped_column(
@@ -65,25 +69,35 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     owner_id: Mapped[str] = mapped_column(
-        String(200), nullable=False, index=True,
+        String(200),
+        nullable=False,
+        index=True,
     )
     team_id: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
     default_roster: Mapped[str] = mapped_column(
-        String(100), default="default", nullable=False,
+        String(100),
+        default="default",
+        nullable=False,
     )
     budget_ceiling_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6, asdecimal=False), nullable=True,
+        Numeric(12, 6, asdecimal=False),
+        nullable=True,
     )
     repo_url: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     repo_root: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     gate_mode: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, default=None,
+        String(20),
+        nullable=True,
+        default=None,
         comment="Default gate mode: interactive, manual, ai_assisted, autonomous",
     )
     tier: Mapped[str] = mapped_column(
@@ -94,7 +108,9 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         comment="Mission tier: user (standard) or platform (admin-only)",
     )
     execution_environment: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, default=None,
+        String(20),
+        nullable=True,
+        default=None,
         comment="Default execution environment for this mission: local, worktree, container. NULL = local.",
     )
 
@@ -106,10 +122,7 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<Mission(id={self.id}, name={self.name!r}, "
-            f"status={self.status})>"
-        )
+        return f"<Mission(id={self.id}, name={self.name!r}, " f"status={self.status})>"
 
 
 class MissionMember(UUIDMixin, TimestampMixin, Base):
@@ -147,6 +160,5 @@ class MissionMember(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<MissionMember(mission={self.mission_id}, "
-            f"user={self.user_id}, role={self.role})>"
+            f"<MissionMember(mission={self.mission_id}, " f"user={self.user_id}, role={self.role})>"
         )

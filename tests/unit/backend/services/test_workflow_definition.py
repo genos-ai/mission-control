@@ -82,11 +82,19 @@ class TestCreateWorkflow:
     async def test_duplicate_name_raises_conflict(self, service, db_session):
         mission = await _seed_mission(db_session)
         await service.create_workflow(
-            mission.id, "wf-1", "desc", _minimal_objective(), [_minimal_step()],
+            mission.id,
+            "wf-1",
+            "desc",
+            _minimal_objective(),
+            [_minimal_step()],
         )
         with pytest.raises(ConflictError, match="already exists"):
             await service.create_workflow(
-                mission.id, "wf-1", "desc", _minimal_objective(), [_minimal_step()],
+                mission.id,
+                "wf-1",
+                "desc",
+                _minimal_objective(),
+                [_minimal_step()],
             )
 
     @pytest.mark.asyncio
@@ -94,7 +102,11 @@ class TestCreateWorkflow:
         mission = await _seed_mission(db_session)
         with pytest.raises(ValidationError, match="at least one step"):
             await service.create_workflow(
-                mission.id, "empty", "desc", _minimal_objective(), [],
+                mission.id,
+                "empty",
+                "desc",
+                _minimal_objective(),
+                [],
             )
 
 
@@ -103,7 +115,11 @@ class TestGetWorkflow:
     async def test_found(self, service, db_session):
         mission = await _seed_mission(db_session)
         await service.create_workflow(
-            mission.id, "wf-get", "desc", _minimal_objective(), [_minimal_step()],
+            mission.id,
+            "wf-get",
+            "desc",
+            _minimal_objective(),
+            [_minimal_step()],
         )
         result = await service.get_workflow(mission.id, "wf-get")
         assert result.name == "wf-get"
@@ -120,10 +136,18 @@ class TestListWorkflows:
     async def test_list_enabled(self, service, db_session):
         mission = await _seed_mission(db_session)
         wf1 = await service.create_workflow(
-            mission.id, "a", "desc", _minimal_objective(), [_minimal_step()],
+            mission.id,
+            "a",
+            "desc",
+            _minimal_objective(),
+            [_minimal_step()],
         )
         wf2 = await service.create_workflow(
-            mission.id, "b", "desc", _minimal_objective(), [_minimal_step()],
+            mission.id,
+            "b",
+            "desc",
+            _minimal_objective(),
+            [_minimal_step()],
         )
         await service.update_workflow(wf2.id, enabled=False)
 
@@ -137,7 +161,11 @@ class TestLockWorkflow:
     async def test_lock_sets_timestamp(self, service, db_session):
         mission = await _seed_mission(db_session)
         wf = await service.create_workflow(
-            mission.id, "lockable", "desc", _minimal_objective(), [_minimal_step()],
+            mission.id,
+            "lockable",
+            "desc",
+            _minimal_objective(),
+            [_minimal_step()],
         )
         assert wf.locked_at is None
 
@@ -152,7 +180,9 @@ class TestEdgeNormalisation:
 
     @pytest.mark.asyncio
     async def test_create_workflow_fills_missing_edge_ids(
-        self, service, db_session,
+        self,
+        service,
+        db_session,
     ):
         mission = await _seed_mission(db_session)
         wf = await service.create_workflow(
@@ -181,7 +211,9 @@ class TestEdgeNormalisation:
 
     @pytest.mark.asyncio
     async def test_create_workflow_rejects_malformed_edge(
-        self, service, db_session,
+        self,
+        service,
+        db_session,
     ):
         mission = await _seed_mission(db_session)
         with pytest.raises(ValidationError, match="Invalid edge definition"):
@@ -196,7 +228,9 @@ class TestEdgeNormalisation:
 
     @pytest.mark.asyncio
     async def test_create_workflow_preserves_valid_edges(
-        self, service, db_session,
+        self,
+        service,
+        db_session,
     ):
         mission = await _seed_mission(db_session)
         edges = [
@@ -226,8 +260,11 @@ class TestEdgeNormalisation:
     async def test_save_graph_normalises_edges(self, service, db_session):
         mission = await _seed_mission(db_session)
         wf = await service.create_workflow(
-            mission.id, "save-graph-norm", "desc",
-            _minimal_objective(), [_minimal_step()],
+            mission.id,
+            "save-graph-norm",
+            "desc",
+            _minimal_objective(),
+            [_minimal_step()],
         )
         steps = [
             _minimal_step(),
@@ -243,12 +280,17 @@ class TestEdgeNormalisation:
 
     @pytest.mark.asyncio
     async def test_update_workflow_normalises_edges(
-        self, service, db_session,
+        self,
+        service,
+        db_session,
     ):
         mission = await _seed_mission(db_session)
         wf = await service.create_workflow(
-            mission.id, "update-norm", "desc",
-            _minimal_objective(), [_minimal_step()],
+            mission.id,
+            "update-norm",
+            "desc",
+            _minimal_objective(),
+            [_minimal_step()],
         )
         updated = await service.update_workflow(
             wf.id,
@@ -264,7 +306,9 @@ class TestSeederEdgeIdNormalisation:
 
     @pytest.mark.asyncio
     async def test_seed_deliberation_think_tank_persists_edge_ids(
-        self, service, db_session,
+        self,
+        service,
+        db_session,
     ):
         from pathlib import Path
 

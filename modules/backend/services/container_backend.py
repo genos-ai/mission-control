@@ -32,10 +32,7 @@ from typing import Any
 from uuid import uuid4
 
 from modules.backend.core.logging import get_logger
-from modules.backend.services.execution_environment import (
-    CommandResult,
-    EnvironmentHandle,
-)
+from modules.backend.services.execution_environment import CommandResult, EnvironmentHandle
 
 logger = get_logger(__name__)
 
@@ -57,6 +54,7 @@ class ContainerBackend:
         if self._client is None:
             try:
                 import docker
+
                 self._client = docker.from_env()
                 self._client.ping()
                 logger.info("Docker client connected")
@@ -139,13 +137,9 @@ class ContainerBackend:
             cp = vol.get("container_path")
             mode = vol.get("mode", "rw")
             if not hp or not cp:
-                raise ValueError(
-                    f"extra_volumes entry missing host_path or container_path: {vol}"
-                )
+                raise ValueError(f"extra_volumes entry missing host_path or container_path: {vol}")
             if mode not in ("ro", "rw"):
-                raise ValueError(
-                    f"extra_volumes mode must be 'ro' or 'rw', got '{mode}'"
-                )
+                raise ValueError(f"extra_volumes mode must be 'ro' or 'rw', got '{mode}'")
             volumes[str(hp)] = {"bind": cp, "mode": mode}
 
         # --- Create and start container ---
@@ -403,6 +397,7 @@ class ContainerBackend:
         Args:
             worktree_path: Path to the worktree to remove.
         """
+
         def _remove() -> subprocess.CompletedProcess:  # type: ignore[type-arg]
             return subprocess.run(
                 ["git", "worktree", "remove", "--force", str(worktree_path)],

@@ -9,12 +9,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from modules.backend.models.mission_plan import (
-    VALID_GATE_MODES,
-    MissionPlanStatus,
-)
+from modules.backend.models.mission_plan import VALID_GATE_MODES, MissionPlanStatus
 from modules.backend.models.task import TaskStatus
-
 
 # ── Plan-level ───────────────────────────────────────────────────────────
 
@@ -39,9 +35,7 @@ class MissionPlanRefineRequest(BaseModel):
         ...,
         min_length=1,
         max_length=4000,
-        description=(
-            "Natural-language refinement instructions for the Planning Agent."
-        ),
+        description=("Natural-language refinement instructions for the Planning Agent."),
     )
 
 
@@ -55,20 +49,21 @@ class MissionPlanUpdate(BaseModel):
 
     gate_mode: str | None = Field(
         None,
-        description=(
-            f"Autonomy mode. One of: {sorted(VALID_GATE_MODES)}."
-        ),
+        description=(f"Autonomy mode. One of: {sorted(VALID_GATE_MODES)}."),
     )
     status: str | None = Field(
         None,
         description=f"Plan lifecycle: {[s.value for s in MissionPlanStatus]}",
     )
     budget_usd_ceiling: float | None = Field(
-        None, ge=0.0,
+        None,
+        ge=0.0,
         description="Cumulative cap across all runs from this plan",
     )
     veto_window_sec: int | None = Field(
-        None, ge=1, le=3600,
+        None,
+        ge=1,
+        le=3600,
         description="Seconds a user has to veto an auto-approved task.",
     )
 
@@ -120,10 +115,7 @@ class TaskResponse(BaseModel):
             # ORM model — extract deps from relationship
             deps = getattr(data, "dependencies", [])
             dep_ids = [d.depends_on_id for d in deps] if deps else []
-            obj = {
-                c.key: getattr(data, c.key)
-                for c in data.__table__.columns
-            }
+            obj = {c.key: getattr(data, c.key) for c in data.__table__.columns}
             obj["dependencies"] = dep_ids
             return obj
         return data

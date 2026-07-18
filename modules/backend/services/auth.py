@@ -46,20 +46,26 @@ class AuthService(BaseService):
             raise AuthenticationError("Invalid credentials")
 
         valid = await asyncio.to_thread(
-            security.verify_password, password, user.hashed_password,
+            security.verify_password,
+            password,
+            user.hashed_password,
         )
         if not valid:
             raise AuthenticationError("Invalid credentials")
 
-        access_token = security.create_access_token({
-            "sub": user.id,
-            "role": user.system_role,
-            "jti": str(uuid4()),
-        })
-        refresh_token = security.create_refresh_token({
-            "sub": user.id,
-            "jti": str(uuid4()),
-        })
+        access_token = security.create_access_token(
+            {
+                "sub": user.id,
+                "role": user.system_role,
+                "jti": str(uuid4()),
+            }
+        )
+        refresh_token = security.create_refresh_token(
+            {
+                "sub": user.id,
+                "jti": str(uuid4()),
+            }
+        )
 
         await self.user_repo.update_last_login(user.id)
         self._log_operation("user_login", user_id=user.id, email=user.email)
@@ -85,15 +91,19 @@ class AuthService(BaseService):
         if not user:
             raise AuthenticationError("User not found or inactive")
 
-        access_token = security.create_access_token({
-            "sub": user.id,
-            "role": user.system_role,
-            "jti": str(uuid4()),
-        })
-        new_refresh = security.create_refresh_token({
-            "sub": user.id,
-            "jti": str(uuid4()),
-        })
+        access_token = security.create_access_token(
+            {
+                "sub": user.id,
+                "role": user.system_role,
+                "jti": str(uuid4()),
+            }
+        )
+        new_refresh = security.create_refresh_token(
+            {
+                "sub": user.id,
+                "jti": str(uuid4()),
+            }
+        )
 
         self._log_operation("token_refresh", user_id=user.id)
 
@@ -112,7 +122,9 @@ class AuthService(BaseService):
 
         for candidate in candidates:
             match = await asyncio.to_thread(
-                security.verify_api_key, raw_key, candidate.hashed_key,
+                security.verify_api_key,
+                raw_key,
+                candidate.hashed_key,
             )
             if match:
                 if not candidate.user or not candidate.user.is_active:
@@ -175,14 +187,18 @@ class AuthService(BaseService):
         return full_key, api_key
 
     async def list_api_keys(
-        self, user_id: str, requesting_user: User,
+        self,
+        user_id: str,
+        requesting_user: User,
     ) -> list[ApiKey]:
         """List API keys for a user."""
         self._require_owner_or_admin(user_id, requesting_user, "view API keys")
         return await self.api_key_repo.list_by_user(user_id)
 
     async def revoke_api_key(
-        self, key_id: str, requesting_user: User,
+        self,
+        key_id: str,
+        requesting_user: User,
     ) -> ApiKey:
         """Revoke an API key."""
         key = await self.api_key_repo.get_by_id(key_id)

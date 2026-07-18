@@ -19,9 +19,9 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 from pydantic_ai.usage import UsageLimits
 
+from modules.backend.agents.adapters import workflow_design
 from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
 from modules.backend.agents.mission_control.helpers import assemble_instructions
-from modules.backend.agents.adapters import workflow_design
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import (
@@ -55,40 +55,49 @@ def _observed(tool_name: str) -> Callable:
             should_emit = ctx.deps.on_event is not None
             call_id = str(uuid.uuid4())
             if should_emit and sid is not None:
-                await _emit(ctx, AgentToolCallEvent(
-                    session_id=sid,
-                    source="workflow_architect",
-                    agent_id=_ARCHITECT_AGENT_ID,
-                    tool_name=tool_name,
-                    tool_args=kwargs or {},
-                    tool_call_id=call_id,
-                ))
+                await _emit(
+                    ctx,
+                    AgentToolCallEvent(
+                        session_id=sid,
+                        source="workflow_architect",
+                        agent_id=_ARCHITECT_AGENT_ID,
+                        tool_name=tool_name,
+                        tool_args=kwargs or {},
+                        tool_call_id=call_id,
+                    ),
+                )
             try:
                 result = await fn(ctx, *args, **kwargs)
             except Exception as e:
                 if should_emit and sid is not None:
-                    await _emit(ctx, AgentToolResultEvent(
+                    await _emit(
+                        ctx,
+                        AgentToolResultEvent(
+                            session_id=sid,
+                            source="workflow_architect",
+                            agent_id=_ARCHITECT_AGENT_ID,
+                            tool_name=tool_name,
+                            tool_call_id=call_id,
+                            result=None,
+                            status="error",
+                            error_detail=str(e)[:500],
+                        ),
+                    )
+                raise
+            if should_emit and sid is not None:
+                status = "error" if _looks_like_error(result) else "success"
+                await _emit(
+                    ctx,
+                    AgentToolResultEvent(
                         session_id=sid,
                         source="workflow_architect",
                         agent_id=_ARCHITECT_AGENT_ID,
                         tool_name=tool_name,
                         tool_call_id=call_id,
-                        result=None,
-                        status="error",
-                        error_detail=str(e)[:500],
-                    ))
-                raise
-            if should_emit and sid is not None:
-                status = "error" if _looks_like_error(result) else "success"
-                await _emit(ctx, AgentToolResultEvent(
-                    session_id=sid,
-                    source="workflow_architect",
-                    agent_id=_ARCHITECT_AGENT_ID,
-                    tool_name=tool_name,
-                    tool_call_id=call_id,
-                    result=str(result)[:500],
-                    status=status,
-                ))
+                        result=str(result)[:500],
+                        status=status,
+                    ),
+                )
             return result
 
         return wrapper
@@ -282,9 +291,11 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
 
         if ctx.deps.on_event and ctx.deps.session_id:
             event = WorkflowGraphEvent(
-                session_id=uuid.UUID(ctx.deps.session_id)
-                if isinstance(ctx.deps.session_id, str)
-                else ctx.deps.session_id,
+                session_id=(
+                    uuid.UUID(ctx.deps.session_id)
+                    if isinstance(ctx.deps.session_id, str)
+                    else ctx.deps.session_id
+                ),
                 source="workflow_architect",
                 graph_data=graph,
                 workflow_name=workflow_name,
@@ -292,11 +303,13 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
             )
             await ctx.deps.on_event(event)
 
-        return json.dumps({
-            "rendered": True,
-            "nodes": len(graph.get("nodes", [])),
-            "edges": len(graph.get("edges", [])),
-        })
+        return json.dumps(
+            {
+                "rendered": True,
+                "nodes": len(graph.get("nodes", [])),
+                "edges": len(graph.get("edges", [])),
+            }
+        )
 
     # -- Tool: list_workflows ------------------------------------------------
 
@@ -364,10 +377,12 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
 
         validation = workflow_design.validate_workflow_proposal(steps, objective)
         if not validation["valid"]:
-            return json.dumps({
-                "error": "Workflow validation failed",
-                "details": validation["errors"],
-            })
+            return json.dumps(
+                {
+                    "error": "Workflow validation failed",
+                    "details": validation["errors"],
+                }
+            )
 
         try:
             result = await workflow_design.persist_workflow(

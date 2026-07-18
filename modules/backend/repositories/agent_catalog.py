@@ -70,7 +70,8 @@ class AgentCatalogRepository(BaseRepository[AgentCatalog]):
         all_enabled = await self.list_enabled()
         text_lower = text.lower()
         return [
-            agent for agent in all_enabled
+            agent
+            for agent in all_enabled
             if any(kw.lower() in text_lower for kw in (agent.keywords or []))
         ]
 

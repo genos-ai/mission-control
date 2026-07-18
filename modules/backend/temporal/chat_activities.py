@@ -142,7 +142,11 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
     except Exception as exc:
         activity.logger.error(
             "Chat turn failed",
-            extra={"session_id": input.session_id, "error": str(exc), "mission_id": input.mission_id},
+            extra={
+                "session_id": input.session_id,
+                "error": str(exc),
+                "mission_id": input.mission_id,
+            },
         )
         error = str(exc)
     finally:

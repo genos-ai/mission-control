@@ -143,6 +143,7 @@ def _matches_exclude(rel_path: str, pattern: str) -> bool:
         return rel_path.startswith(pattern) or rel_path.startswith(pattern.rstrip("/"))
     if "*" in pattern or "?" in pattern or "[" in pattern:
         from fnmatch import fnmatch
+
         return fnmatch(rel_path, pattern)
     return rel_path.startswith(pattern)
 
@@ -555,10 +556,7 @@ def rank_symbols(
         dangling_contribution = damping * dangling_sum / n
 
         for i in range(n):
-            rank_sum = sum(
-                scores[src] / len(outgoing[src])
-                for src in incoming[i]
-            )
+            rank_sum = sum(scores[src] / len(outgoing[src]) for src in incoming[i])
             new_scores[i] = teleport + dangling_contribution + damping * rank_sum
 
         delta = sum(abs(new_scores[i] - scores[i]) for i in range(n))
@@ -593,8 +591,11 @@ def assemble_code_map(
         classes_dict: dict[str, dict] = {}
         for cls in module.classes:
             methods_list = [
-                f"{m.name}({', '.join(m.params)}) -> {m.return_type}"
-                if m.return_type else f"{m.name}({', '.join(m.params)})"
+                (
+                    f"{m.name}({', '.join(m.params)}) -> {m.return_type}"
+                    if m.return_type
+                    else f"{m.name}({', '.join(m.params)})"
+                )
                 for m in cls.methods
             ]
             classes_dict[cls.name] = {
@@ -623,8 +624,7 @@ def assemble_code_map(
         }
 
         internal_imports = [
-            imp for imp in module.imports
-            if _is_internal_import(imp, internal_modules)
+            imp for imp in module.imports if _is_internal_import(imp, internal_modules)
         ]
         if internal_imports:
             import_graph[module_qname] = internal_imports
@@ -692,16 +692,15 @@ def trim_by_rank(code_map: dict, max_tokens: int = 4096) -> dict:
         return trimmed
 
     # Pass 5: Remove modules with < 20 lines
-    trimmed["modules"] = {
-        p: m for p, m in trimmed["modules"].items() if m["lines"] >= 20
-    }
+    trimmed["modules"] = {p: m for p, m in trimmed["modules"].items() if m["lines"] >= 20}
 
     if _estimate_tokens(trimmed) <= max_tokens:
         return trimmed
 
     # Pass 6: Remove lowest-ranked entire modules
     ranked_modules = sorted(
-        trimmed["modules"].items(), key=lambda x: x[1]["rank"],
+        trimmed["modules"].items(),
+        key=lambda x: x[1]["rank"],
     )
     while _estimate_tokens(trimmed) > max_tokens and ranked_modules:
         path, _ = ranked_modules.pop(0)
@@ -918,7 +917,11 @@ def _collect_ranked_symbols(
 
 
 def _remove_symbol(
-    code_map: dict, path: str, kind: str, name: str, parent: str | None,
+    code_map: dict,
+    path: str,
+    kind: str,
+    name: str,
+    parent: str | None,
 ) -> None:
     mod = code_map["modules"].get(path)
     if mod is None:
@@ -926,9 +929,7 @@ def _remove_symbol(
     if kind == "method" and parent:
         cls_data = mod.get("classes", {}).get(parent)
         if cls_data:
-            cls_data["methods"] = [
-                m for m in cls_data["methods"] if _method_name(m) != name
-            ]
+            cls_data["methods"] = [m for m in cls_data["methods"] if _method_name(m) != name]
     elif kind == "function":
         mod.get("functions", {}).pop(name, None)
     elif kind == "class":
@@ -978,7 +979,10 @@ def generate_code_map(
     commit = _get_git_commit(repo_root)
 
     code_map = assemble_code_map(
-        modules, ranks, repo_root_name=project_id, commit=commit,
+        modules,
+        ranks,
+        repo_root_name=project_id,
+        commit=commit,
     )
 
     if max_tokens:
@@ -1030,7 +1034,8 @@ def main() -> None:
         description="Generate a structural code map of the repository.",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Verbose logging",
     )
@@ -1074,7 +1079,8 @@ def main() -> None:
         help="Print summary statistics only",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=str,
         default=None,
         help="Write output to file instead of default (.codemap/ folder)",
@@ -1089,6 +1095,7 @@ def main() -> None:
 
     sys.path.insert(0, str(PROJECT_ROOT))
     from modules.backend.core.logging import setup_logging
+
     log_level = "DEBUG" if args.debug else ("INFO" if args.verbose else "WARNING")
     setup_logging(level=log_level, format_type="console")
 

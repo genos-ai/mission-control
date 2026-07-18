@@ -22,4 +22,6 @@ class MissionSupervisorDeps(BaseAgentDeps):
     """
 
     project_root: Path = field(default_factory=lambda: Path("."))
-    scope: FileScope = field(default_factory=lambda: FileScope(read_paths=["docs/"], write_paths=[]))
+    scope: FileScope = field(
+        default_factory=lambda: FileScope(read_paths=["docs/"], write_paths=[])
+    )

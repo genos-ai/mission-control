@@ -21,11 +21,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
-
-import os
 
 import httpx
 
@@ -51,9 +50,13 @@ class ApiClient:
 
     async def login(self) -> bool:
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=60) as c:
-            r = await c.post("/api/v1/auth/login", json={
-                "email": self.email, "password": self.password,
-            })
+            r = await c.post(
+                "/api/v1/auth/login",
+                json={
+                    "email": self.email,
+                    "password": self.password,
+                },
+            )
         if r.status_code != 200:
             return False
         data = r.json().get("data", {})
@@ -97,33 +100,46 @@ class ApiClient:
                 # Temporal path — workflow started, poll for completion.
                 # Extract session_id from the URL path to poll messages.
                 import re
+
                 match = re.search(r"/sessions/([^/]+)/messages", path)
                 session_id = match.group(1) if match else ""
 
                 if not session_id:
-                    return [{"_event_type": "agent.response.complete", "full_content": "(temporal workflow started)"}]
+                    return [
+                        {
+                            "_event_type": "agent.response.complete",
+                            "full_content": "(temporal workflow started)",
+                        }
+                    ]
 
                 # Poll session messages until assistant response appears
                 import asyncio as aio
+
                 for _ in range(30):  # 60 seconds max
                     await aio.sleep(2)
                     msg_resp = await c.get(f"/sessions/{session_id}/messages")
                     if msg_resp.status_code == 200:
                         msg_data = msg_resp.json().get("data", [])
-                        messages = msg_data if isinstance(msg_data, list) else msg_data.get("messages", []) if isinstance(msg_data, dict) else []
+                        messages = (
+                            msg_data
+                            if isinstance(msg_data, list)
+                            else msg_data.get("messages", []) if isinstance(msg_data, dict) else []
+                        )
                         assistant_msgs = [m for m in messages if m.get("role") == "assistant"]
                         if assistant_msgs:
                             latest = assistant_msgs[-1]
-                            events.append({
-                                "_event_type": "agent.response.complete",
-                                "full_content": latest.get("content", ""),
-                                "agent_id": latest.get("sender_id"),
-                                "model": latest.get("model"),
-                                "input_tokens": latest.get("input_tokens"),
-                                "output_tokens": latest.get("output_tokens"),
-                                "cost_usd": latest.get("cost_usd"),
-                                "metadata": {"thinking": latest.get("thinking")},
-                            })
+                            events.append(
+                                {
+                                    "_event_type": "agent.response.complete",
+                                    "full_content": latest.get("content", ""),
+                                    "agent_id": latest.get("sender_id"),
+                                    "model": latest.get("model"),
+                                    "input_tokens": latest.get("input_tokens"),
+                                    "output_tokens": latest.get("output_tokens"),
+                                    "cost_usd": latest.get("cost_usd"),
+                                    "metadata": {"thinking": latest.get("thinking")},
+                                }
+                            )
                             break
                 return events
 
@@ -133,7 +149,9 @@ class ApiClient:
                 async with c.stream("POST", path, **kwargs) as stream_response:
                     if stream_response.status_code not in (200, 201):
                         await stream_response.aread()
-                        return [{"error": stream_response.text, "status": stream_response.status_code}]
+                        return [
+                            {"error": stream_response.text, "status": stream_response.status_code}
+                        ]
                     buffer = ""
                     async for chunk in stream_response.aiter_text():
                         buffer += chunk
@@ -254,7 +272,11 @@ class E2ETestRunner:
         # Create session (POST /api/v1/sessions)
         r = await self.admin.post(
             "/api/v1/sessions",
-            json={"goal": "e2e test", "agent_id": "mission.supervisor.agent", "mission_id": self._mission_id},
+            json={
+                "goal": "e2e test",
+                "agent_id": "mission.supervisor.agent",
+                "mission_id": self._mission_id,
+            },
         )
         if r.status_code not in (200, 201):
             self._fail("Create session", f"status={r.status_code} body={r.text[:200]}")
@@ -296,7 +318,11 @@ class E2ETestRunner:
         """User creates a session and chats with the Director."""
         r = await self.user.post(
             "/api/v1/sessions",
-            json={"goal": "e2e director test", "agent_id": "mission.director.agent", "mission_id": self._mission_id},
+            json={
+                "goal": "e2e director test",
+                "agent_id": "mission.director.agent",
+                "mission_id": self._mission_id,
+            },
         )
         if r.status_code not in (200, 201):
             self._fail("User create session", f"status={r.status_code}")
@@ -313,7 +339,9 @@ class E2ETestRunner:
         if not complete:
             self._fail("Director chat", "no complete event")
             return
-        tool_calls = [e.get("tool_name", "") for e in events if e.get("_event_type") == "agent.tool.called"]
+        tool_calls = [
+            e.get("tool_name", "") for e in events if e.get("_event_type") == "agent.tool.called"
+        ]
         self._pass(f"User chatted with Director ({len(events)} events, tools: {tool_calls})")
 
     async def test_admin_check_supervisor_on_team(self) -> None:
@@ -324,7 +352,9 @@ class E2ETestRunner:
             return
         resp_data = r.json().get("data", {})
         members = resp_data.get("team_members", []) if isinstance(resp_data, dict) else resp_data
-        agent_names = [m.get("agent", {}).get("agent_name", "") for m in members if isinstance(m, dict)]
+        agent_names = [
+            m.get("agent", {}).get("agent_name", "") for m in members if isinstance(m, dict)
+        ]
         if "mission.supervisor.agent" not in agent_names:
             self._fail("Supervisor on team", f"not found in {agent_names}")
             return

@@ -19,8 +19,8 @@ import json
 
 from pydantic_ai import Agent
 
-from modules.backend.core.model_builder import _build_model
 from modules.backend.core.logging import get_logger
+from modules.backend.core.model_builder import _build_model
 from modules.backend.schemas.execution_outcome import ExecutionOutcome
 
 logger = get_logger(__name__)
@@ -78,10 +78,7 @@ def _build_prompt(outcome: ExecutionOutcome) -> str:
     if outcome.abort_reason:
         data["abort_reason"] = outcome.abort_reason
 
-    return (
-        "Summarize this execution outcome:\n\n"
-        f"```json\n{json.dumps(data, indent=2)}\n```"
-    )
+    return "Summarize this execution outcome:\n\n" f"```json\n{json.dumps(data, indent=2)}\n```"
 
 
 async def summarize_outcome(outcome: ExecutionOutcome) -> str:
@@ -93,10 +90,7 @@ async def summarize_outcome(outcome: ExecutionOutcome) -> str:
     operational signal (quota / rate limit / transient) is visible;
     untyped exceptions log at WARNING because their cause is unclear.
     """
-    from modules.backend.core.exceptions import (
-        ProviderError,
-        log_provider_error,
-    )
+    from modules.backend.core.exceptions import ProviderError, log_provider_error
 
     try:
         agent = _create_agent()
@@ -110,7 +104,8 @@ async def summarize_outcome(outcome: ExecutionOutcome) -> str:
         return summary
     except ProviderError as exc:
         log_provider_error(
-            logger, exc,
+            logger,
+            exc,
             event="Synthesis skipped: provider error",
             surface="synthesis",
             outcome_status=outcome.status.value,

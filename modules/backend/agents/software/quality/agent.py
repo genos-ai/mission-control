@@ -12,18 +12,20 @@ from collections.abc import AsyncGenerator
 from pydantic_ai import Agent, RunContext, UsageLimits
 from pydantic_ai.models import Model
 
-from modules.backend.agents.mission_control.helpers import assemble_instructions
-from modules.backend.agents.deps.base import QaAgentDeps
-from modules.backend.agents.schemas import PqiDimensionScore, PqiScore, QaAuditResult
 from modules.backend.agents.adapters import codemap, compliance
+from modules.backend.agents.deps.base import QaAgentDeps
+from modules.backend.agents.mission_control.helpers import assemble_instructions
+from modules.backend.agents.schemas import PqiDimensionScore, PqiScore, QaAuditResult
+from modules.backend.core.logging import get_logger
 from modules.backend.tools.list_files import list_files as _list_files
 from modules.backend.tools.read_file import read_file as _read_file
-from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[QaAgentDeps, QaAuditResult]:
+def create_agent(
+    model: str | Model, tool_names: list[str] | None = None
+) -> Agent[QaAgentDeps, QaAuditResult]:
     """Factory: create a QA compliance agent with all tools registered.
 
     Called by AgentRegistry.get_instance() on first use.
@@ -46,67 +48,116 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         """Load project rules from docs/. Call this FIRST before scanning."""
         ctx.deps.emit({"type": "tool_start", "tool": "load_project_standards"})
         result = await compliance.load_project_standards(ctx.deps.project_root, ctx.deps.scope)
-        ctx.deps.emit({
-            "type": "tool_done", "tool": "load_project_standards",
-            "detail": f"{len(result['rules'])} rules",
-        })
+        ctx.deps.emit(
+            {
+                "type": "tool_done",
+                "tool": "load_project_standards",
+                "detail": f"{len(result['rules'])} rules",
+            }
+        )
         return result
 
     @agent.tool
     async def list_python_files(ctx: RunContext[QaAgentDeps]) -> list[str]:
         """List all Python files in scope, respecting exclusion patterns."""
         ctx.deps.emit({"type": "tool_start", "tool": "list_python_files"})
-        exclusions = set(ctx.deps.config.exclusions.paths) if ctx.deps.config and ctx.deps.config.exclusions else set()
+        exclusions = (
+            set(ctx.deps.config.exclusions.paths)
+            if ctx.deps.config and ctx.deps.config.exclusions
+            else set()
+        )
         files = await _list_files(ctx.deps.project_root, ctx.deps.scope, exclusions)
-        ctx.deps.emit({"type": "tool_done", "tool": "list_python_files", "detail": f"{len(files)} files"})
+        ctx.deps.emit(
+            {"type": "tool_done", "tool": "list_python_files", "detail": f"{len(files)} files"}
+        )
         return files
 
     @agent.tool
     async def scan_import_violations(ctx: RunContext[QaAgentDeps]) -> list[dict]:
         """Scan for import violations: relative imports, direct logging, os.getenv fallbacks."""
         ctx.deps.emit({"type": "tool_start", "tool": "scan_import_violations"})
-        findings = await compliance.scan_imports(ctx.deps.project_root, ctx.deps.scope, ctx.deps.config)
-        ctx.deps.emit({"type": "tool_done", "tool": "scan_import_violations", "detail": f"{len(findings)} findings"})
+        findings = await compliance.scan_imports(
+            ctx.deps.project_root, ctx.deps.scope, ctx.deps.config
+        )
+        ctx.deps.emit(
+            {
+                "type": "tool_done",
+                "tool": "scan_import_violations",
+                "detail": f"{len(findings)} findings",
+            }
+        )
         return findings
 
     @agent.tool
     async def scan_datetime_violations(ctx: RunContext[QaAgentDeps]) -> list[dict]:
         """Scan for datetime.now() and datetime.utcnow() usage."""
         ctx.deps.emit({"type": "tool_start", "tool": "scan_datetime_violations"})
-        findings = await compliance.scan_datetime(ctx.deps.project_root, ctx.deps.scope, ctx.deps.config)
-        ctx.deps.emit({"type": "tool_done", "tool": "scan_datetime_violations", "detail": f"{len(findings)} findings"})
+        findings = await compliance.scan_datetime(
+            ctx.deps.project_root, ctx.deps.scope, ctx.deps.config
+        )
+        ctx.deps.emit(
+            {
+                "type": "tool_done",
+                "tool": "scan_datetime_violations",
+                "detail": f"{len(findings)} findings",
+            }
+        )
         return findings
 
     @agent.tool
     async def scan_hardcoded_values(ctx: RunContext[QaAgentDeps]) -> list[dict]:
         """Scan for module-level UPPER_CASE constants with literal values."""
         ctx.deps.emit({"type": "tool_start", "tool": "scan_hardcoded_values"})
-        findings = await compliance.scan_hardcoded(ctx.deps.project_root, ctx.deps.scope, ctx.deps.config)
-        ctx.deps.emit({"type": "tool_done", "tool": "scan_hardcoded_values", "detail": f"{len(findings)} findings"})
+        findings = await compliance.scan_hardcoded(
+            ctx.deps.project_root, ctx.deps.scope, ctx.deps.config
+        )
+        ctx.deps.emit(
+            {
+                "type": "tool_done",
+                "tool": "scan_hardcoded_values",
+                "detail": f"{len(findings)} findings",
+            }
+        )
         return findings
 
     @agent.tool
     async def scan_file_sizes(ctx: RunContext[QaAgentDeps]) -> list[dict]:
         """Scan for Python files exceeding the configured line limit."""
         ctx.deps.emit({"type": "tool_start", "tool": "scan_file_sizes"})
-        findings = await compliance.scan_file_sizes(ctx.deps.project_root, ctx.deps.scope, ctx.deps.config)
-        ctx.deps.emit({"type": "tool_done", "tool": "scan_file_sizes", "detail": f"{len(findings)} findings"})
+        findings = await compliance.scan_file_sizes(
+            ctx.deps.project_root, ctx.deps.scope, ctx.deps.config
+        )
+        ctx.deps.emit(
+            {"type": "tool_done", "tool": "scan_file_sizes", "detail": f"{len(findings)} findings"}
+        )
         return findings
 
     @agent.tool
     async def scan_cli_options(ctx: RunContext[QaAgentDeps]) -> list[dict]:
         """Scan root CLI scripts for positional args and missing --verbose/--debug."""
         ctx.deps.emit({"type": "tool_start", "tool": "scan_cli_options"})
-        findings = await compliance.scan_cli_options(ctx.deps.project_root, ctx.deps.scope, ctx.deps.config)
-        ctx.deps.emit({"type": "tool_done", "tool": "scan_cli_options", "detail": f"{len(findings)} findings"})
+        findings = await compliance.scan_cli_options(
+            ctx.deps.project_root, ctx.deps.scope, ctx.deps.config
+        )
+        ctx.deps.emit(
+            {"type": "tool_done", "tool": "scan_cli_options", "detail": f"{len(findings)} findings"}
+        )
         return findings
 
     @agent.tool
     async def scan_config_files(ctx: RunContext[QaAgentDeps]) -> list[dict]:
         """Scan YAML config files for missing option header comments."""
         ctx.deps.emit({"type": "tool_start", "tool": "scan_config_files"})
-        findings = await compliance.scan_config_files(ctx.deps.project_root, ctx.deps.scope, ctx.deps.config)
-        ctx.deps.emit({"type": "tool_done", "tool": "scan_config_files", "detail": f"{len(findings)} findings"})
+        findings = await compliance.scan_config_files(
+            ctx.deps.project_root, ctx.deps.scope, ctx.deps.config
+        )
+        ctx.deps.emit(
+            {
+                "type": "tool_done",
+                "tool": "scan_config_files",
+                "detail": f"{len(findings)} findings",
+            }
+        )
         return findings
 
     @agent.tool
@@ -122,7 +173,13 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         """Generate a fresh Code Map for the codebase. Fast (~2-5s)."""
         ctx.deps.emit({"type": "tool_start", "tool": "generate_code_map"})
         result = await codemap.generate_code_map(ctx.deps.project_root, ctx.deps.scope)
-        ctx.deps.emit({"type": "tool_done", "tool": "generate_code_map", "detail": f"{result.get('files', 0)} files"})
+        ctx.deps.emit(
+            {
+                "type": "tool_done",
+                "tool": "generate_code_map",
+                "detail": f"{result.get('files', 0)} files",
+            }
+        )
         return result
 
     @agent.tool
@@ -140,7 +197,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         ctx.deps.emit({"type": "tool_start", "tool": "get_dependency_analysis"})
         result = await codemap.get_dependency_analysis(ctx.deps.project_root, ctx.deps.scope)
         cycles = len(result.get("circular_dependencies", []))
-        ctx.deps.emit({"type": "tool_done", "tool": "get_dependency_analysis", "detail": f"{cycles} cycles"})
+        ctx.deps.emit(
+            {"type": "tool_done", "tool": "get_dependency_analysis", "detail": f"{cycles} cycles"}
+        )
         return result
 
     @agent.tool
@@ -249,7 +308,9 @@ async def run_agent(
 
     user_message, pqi = await pre_execute(user_message, deps)
     if pqi:
-        deps.emit({"type": "tool_done", "tool": "pqi_precompute", "detail": f"PQI {pqi.composite:.1f}"})
+        deps.emit(
+            {"type": "tool_done", "tool": "pqi_precompute", "detail": f"PQI {pqi.composite:.1f}"}
+        )
 
     result = await agent.run(user_message, deps=deps, usage_limits=usage_limits)
 
@@ -296,10 +357,15 @@ async def run_agent_stream(
 
     enriched_message, pqi = await pre_execute(user_message, deps)
     if pqi:
-        queue.put_nowait({"type": "tool_done", "tool": "pqi_precompute", "detail": f"PQI {pqi.composite:.1f}"})
+        queue.put_nowait(
+            {"type": "tool_done", "tool": "pqi_precompute", "detail": f"PQI {pqi.composite:.1f}"}
+        )
 
     async def _run():
-        logger.info("QA agent invoked (stream)", extra={"message": user_message, "conversation_id": conversation_id})
+        logger.info(
+            "QA agent invoked (stream)",
+            extra={"message": user_message, "conversation_id": conversation_id},
+        )
         result = await agent.run(enriched_message, deps=deps, usage_limits=usage_limits)
         return result.output
 

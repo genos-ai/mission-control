@@ -2,15 +2,11 @@
 
 import pytest
 
-from modules.backend.agents.mission_control.gate import (
-    GateAction,
-    GateContext,
-    GateDecision,
-)
+from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
 from modules.clients.tui.widgets.gate_modal import (
-    GateReviewModal,
     _GATE_ACTIONS,
     _GATE_TITLES,
+    GateReviewModal,
     _render_context_body,
 )
 
@@ -31,6 +27,7 @@ def _make_context(**overrides: object) -> GateContext:
 
 # ── Pure function tests ──────────────────────────────────────────────
 
+
 class TestRenderContextBody:
     def test_shows_cost(self):
         ctx = _make_context(total_cost_usd=1.23, budget_usd=5.0)
@@ -43,10 +40,12 @@ class TestRenderContextBody:
         assert "2 / 3" in body
 
     def test_shows_pending_tasks(self):
-        ctx = _make_context(pending_tasks=[
-            {"agent": "code.qa", "description": "Run quality check"},
-            {"agent": "code.lint", "description": "Lint files"},
-        ])
+        ctx = _make_context(
+            pending_tasks=[
+                {"agent": "code.qa", "description": "Run quality check"},
+                {"agent": "code.lint", "description": "Lint files"},
+            ]
+        )
         body = _render_context_body(ctx)
         assert "code.qa" in body
         assert "Lint files" in body
@@ -102,13 +101,23 @@ class TestRenderContextBody:
 
 class TestGateConfig:
     def test_all_gate_types_have_titles(self):
-        for gate_type in ("pre_dispatch", "pre_layer", "post_task",
-                          "verification_failed", "post_layer"):
+        for gate_type in (
+            "pre_dispatch",
+            "pre_layer",
+            "post_task",
+            "verification_failed",
+            "post_layer",
+        ):
             assert gate_type in _GATE_TITLES
 
     def test_all_gate_types_have_actions(self):
-        for gate_type in ("pre_dispatch", "pre_layer", "post_task",
-                          "verification_failed", "post_layer"):
+        for gate_type in (
+            "pre_dispatch",
+            "pre_layer",
+            "post_task",
+            "verification_failed",
+            "post_layer",
+        ):
             assert gate_type in _GATE_ACTIONS
             assert len(_GATE_ACTIONS[gate_type]) >= 2
 
@@ -125,6 +134,7 @@ class TestGateConfig:
 
 
 # ── Modal widget tests (Textual Pilot) ───────────────────────────────
+
 
 class TestGateReviewModal:
     @pytest.mark.asyncio

@@ -61,13 +61,16 @@ async def _emit_tool_event(
     session_id = getattr(ctx.deps, "session_id", None)
     try:
         from modules.backend.events.types import AgentToolCallEvent
-        await event_bus.publish(AgentToolCallEvent(
-            session_id=_uuid.UUID(session_id) if session_id else _uuid.uuid4(),
-            source="mission.planning.agent",
-            agent_id="mission.planning.agent",
-            tool_name=tool_name,
-            tool_args=tool_args or {},
-        ))
+
+        await event_bus.publish(
+            AgentToolCallEvent(
+                session_id=_uuid.UUID(session_id) if session_id else _uuid.uuid4(),
+                source="mission.planning.agent",
+                agent_id="mission.planning.agent",
+                tool_name=tool_name,
+                tool_args=tool_args or {},
+            )
+        )
     except Exception:
         logger.debug("Failed to emit planning tool event", exc_info=True)
 
@@ -101,11 +104,15 @@ def register_planning_tools(agent: Agent) -> None:
             dependencies=dependencies,
             domain_tags=domain_tags,
         )
-        await _emit_tool_event(ctx, "add_task", {
-            "agent": agent,
-            "description": description[:100],
-            "task_id": result.get("task_id", ""),
-        })
+        await _emit_tool_event(
+            ctx,
+            "add_task",
+            {
+                "agent": agent,
+                "description": description[:100],
+                "task_id": result.get("task_id", ""),
+            },
+        )
         return json.dumps(result)
 
     @agent.tool
@@ -177,11 +184,15 @@ def register_planning_tools(agent: Agent) -> None:
             source_task=source_task,
             source_field=source_field,
         )
-        await _emit_tool_event(ctx, "set_upstream_input", {
-            "task_id": task_id[:12],
-            "source_task": source_task[:12],
-            "input_name": input_name,
-        })
+        await _emit_tool_event(
+            ctx,
+            "set_upstream_input",
+            {
+                "task_id": task_id[:12],
+                "source_task": source_task[:12],
+                "input_name": input_name,
+            },
+        )
         return json.dumps(result)
 
     @agent.tool
@@ -209,7 +220,9 @@ def register_planning_tools(agent: Agent) -> None:
         except (json.JSONDecodeError, TypeError):
             pass
         result = session.set_static_input(
-            task_id=task_id, key=key, value=parsed_value,
+            task_id=task_id,
+            key=key,
+            value=parsed_value,
         )
         return json.dumps(result)
 
@@ -262,7 +275,9 @@ def register_planning_tools(agent: Agent) -> None:
         """
         session = _require_build_session(ctx)
         result = session.set_verification(
-            task_id=task_id, tier=tier, config=config,
+            task_id=task_id,
+            tier=tier,
+            config=config,
         )
         return json.dumps(result)
 
@@ -290,22 +305,34 @@ def register_planning_tools(agent: Agent) -> None:
             estimated_duration_seconds=estimated_duration_seconds,
         )
         if not result["valid"]:
-            await _emit_tool_event(ctx, "finalise_plan", {
-                "status": "invalid",
-                "error_count": len(result["errors"]),
-            })
-            return json.dumps({
-                "status": "invalid",
-                "validation_errors": result["errors"],
-                "hint": "Fix the errors above with update_task/remove_task, then call finalise_plan again.",
-            })
+            await _emit_tool_event(
+                ctx,
+                "finalise_plan",
+                {
+                    "status": "invalid",
+                    "error_count": len(result["errors"]),
+                },
+            )
+            return json.dumps(
+                {
+                    "status": "invalid",
+                    "validation_errors": result["errors"],
+                    "hint": "Fix the errors above with update_task/remove_task, then call finalise_plan again.",
+                }
+            )
         task_count = len(session.tasks)
-        await _emit_tool_event(ctx, "finalise_plan", {
-            "status": "finalised",
-            "task_count": task_count,
-            "summary": summary[:100],
-        })
-        return json.dumps({
-            "status": "finalised",
-            "task_count": task_count,
-        })
+        await _emit_tool_event(
+            ctx,
+            "finalise_plan",
+            {
+                "status": "finalised",
+                "task_count": task_count,
+                "summary": summary[:100],
+            },
+        )
+        return json.dumps(
+            {
+                "status": "finalised",
+                "task_count": task_count,
+            }
+        )

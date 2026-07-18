@@ -31,6 +31,7 @@ import sys
 
 # Ensure project root is on sys.path
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
@@ -269,8 +270,7 @@ STEPS = [
             "model": "quick",
             "system_prompt": None,
             "prompt_template": (
-                "Provide a brief technical analysis (3-4 bullet points) of:\n"
-                "{{@context.topic}}"
+                "Provide a brief technical analysis (3-4 bullet points) of:\n" "{{@context.topic}}"
             ),
             "temperature": 0.0,
             "max_tokens": 500,
@@ -298,8 +298,7 @@ STEPS = [
             "model": "quick",
             "system_prompt": None,
             "prompt_template": (
-                "Brainstorm 3-4 creative and unconventional ideas about:\n"
-                "{{@context.topic}}"
+                "Brainstorm 3-4 creative and unconventional ideas about:\n" "{{@context.topic}}"
             ),
             "temperature": 0.7,
             "max_tokens": 500,
@@ -460,16 +459,40 @@ STEPS = [
 
 EDGES = [
     {"id": "check-mcd->route-mcd", "source": "check-mcd", "target": "route-mcd"},
-    {"id": "route-mcd->init-mcd", "source": "route-mcd", "target": "init-mcd", "label": "missing", "source_handle": "missing"},
-    {"id": "route-mcd->mcd-ok", "source": "route-mcd", "target": "mcd-ok", "label": "exists", "source_handle": "exists"},
+    {
+        "id": "route-mcd->init-mcd",
+        "source": "route-mcd",
+        "target": "init-mcd",
+        "label": "missing",
+        "source_handle": "missing",
+    },
+    {
+        "id": "route-mcd->mcd-ok",
+        "source": "route-mcd",
+        "target": "mcd-ok",
+        "label": "exists",
+        "source_handle": "exists",
+    },
     {"id": "init-mcd->mcd-ok", "source": "init-mcd", "target": "mcd-ok"},
     {"id": "mcd-ok->read-context", "source": "mcd-ok", "target": "read-context"},
     {"id": "mcd-ok->read-knowledge", "source": "mcd-ok", "target": "read-knowledge"},
     {"id": "read-context->classify", "source": "read-context", "target": "classify"},
     {"id": "read-knowledge->classify", "source": "read-knowledge", "target": "classify"},
     {"id": "classify->route", "source": "classify", "target": "route"},
-    {"id": "route->technical-path", "source": "route", "target": "technical-path", "label": "technical", "source_handle": "technical"},
-    {"id": "route->creative-path", "source": "route", "target": "creative-path", "label": "creative", "source_handle": "creative"},
+    {
+        "id": "route->technical-path",
+        "source": "route",
+        "target": "technical-path",
+        "label": "technical",
+        "source_handle": "technical",
+    },
+    {
+        "id": "route->creative-path",
+        "source": "route",
+        "target": "creative-path",
+        "label": "creative",
+        "source_handle": "creative",
+    },
     {"id": "technical-path->collect", "source": "technical-path", "target": "collect"},
     {"id": "creative-path->collect", "source": "creative-path", "target": "collect"},
     {"id": "collect->summarize", "source": "collect", "target": "summarize"},
@@ -493,9 +516,21 @@ async def main():
     parser = argparse.ArgumentParser(description="Test decision node workflow")
     parser.add_argument("--mission", required=True, help="Mission name or ID")
     parser.add_argument("--topic", default="quantum computing", help="Topic to classify and route")
-    parser.add_argument("--create-only", action="store_true", help="Create workflow but don't run it")
-    parser.add_argument("--resolver", default="agent", choices=["agent", "rule", "human"], help="Resolver type to test")
-    parser.add_argument("--timeout", type=float, default=0.01, help="Timeout in hours for human resolver (default: 0.01 = 36s)")
+    parser.add_argument(
+        "--create-only", action="store_true", help="Create workflow but don't run it"
+    )
+    parser.add_argument(
+        "--resolver",
+        default="agent",
+        choices=["agent", "rule", "human"],
+        help="Resolver type to test",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=0.01,
+        help="Timeout in hours for human resolver (default: 0.01 = 36s)",
+    )
     args = parser.parse_args()
 
     # Swap the decision config based on resolver type
@@ -537,7 +572,10 @@ async def main():
                     "temperature": 0.0,
                     "expression": None,
                     "options": [
-                        {"key": "technical", "label": "Topic is technical — run structured analysis"},
+                        {
+                            "key": "technical",
+                            "label": "Topic is technical — run structured analysis",
+                        },
                         {"key": "creative", "label": "Topic is creative — run brainstorm session"},
                     ],
                 }
@@ -558,6 +596,7 @@ async def main():
         mission_repo = MissionRepository(db)
         try:
             from uuid import UUID
+
             UUID(args.mission)
             mission = await mission_repo.get_by_id(args.mission)
         except (ValueError, Exception):
@@ -570,7 +609,9 @@ async def main():
         defn_svc = WorkflowDefinitionService(db)
         try:
             existing = await defn_svc.get_workflow(mission_id, WORKFLOW_NAME)
-            print(f"Workflow '{WORKFLOW_NAME}' already exists (id={existing.id}), updating steps...")
+            print(
+                f"Workflow '{WORKFLOW_NAME}' already exists (id={existing.id}), updating steps..."
+            )
             await defn_svc.save_graph(
                 existing.id,
                 canvas_state={},
@@ -616,7 +657,9 @@ async def main():
             if etype == "step_start":
                 print(f"  -> Starting: {event.get('step_id')}")
             elif etype == "step_done":
-                print(f"  <- Done: {event.get('step_id')} ({event.get('status')}) ${event.get('cost_usd', 0):.4f}")
+                print(
+                    f"  <- Done: {event.get('step_id')} ({event.get('status')}) ${event.get('cost_usd', 0):.4f}"
+                )
             elif etype == "step_skipped":
                 print(f"  -- Skipped: {event.get('step_id')} ({event.get('reason')})")
 

@@ -13,10 +13,10 @@ Create Date: 2026-04-26
 """
 
 from typing import Sequence, Union
+from uuid import UUID, uuid5
 
-from alembic import op
 import sqlalchemy as sa
-from uuid import uuid5, UUID
+from alembic import op
 
 revision: str = "system_account_uuids"
 down_revision: Union[str, None] = "widen_artifact_type"
@@ -87,8 +87,7 @@ def upgrade() -> None:
         )
         conn.execute(
             sa.text(
-                "UPDATE workflow_schedules SET created_by = :new_id "
-                "WHERE created_by = :old_id"
+                "UPDATE workflow_schedules SET created_by = :new_id " "WHERE created_by = :old_id"
             ),
             {"new_id": new_id, "old_id": old_id},
         )
@@ -97,9 +96,7 @@ def upgrade() -> None:
     for old_id, new_id in ID_MAP.items():
         display_name = old_id.replace("system:", "").replace("_", "-")
         conn.execute(
-            sa.text(
-                "UPDATE users SET email = :email WHERE id = :uid"
-            ),
+            sa.text("UPDATE users SET email = :email WHERE id = :uid"),
             {"email": f"{display_name}-runner@system.local", "uid": new_id},
         )
 
@@ -143,8 +140,7 @@ def downgrade() -> None:
         )
         conn.execute(
             sa.text(
-                "UPDATE workflow_schedules SET created_by = :old_id "
-                "WHERE created_by = :new_id"
+                "UPDATE workflow_schedules SET created_by = :old_id " "WHERE created_by = :new_id"
             ),
             {"old_id": old_id, "new_id": new_id},
         )

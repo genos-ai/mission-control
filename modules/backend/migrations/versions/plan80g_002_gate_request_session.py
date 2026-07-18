@@ -11,9 +11,8 @@ Create Date: 2026-05-24
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision: str = "plan80g_002"
 down_revision: Union[str, None] = "plan80g_001"
@@ -27,14 +26,16 @@ def upgrade() -> None:
     op.add_column(
         "gate_requests",
         sa.Column(
-            "session_id", PgUUID(as_uuid=False),
+            "session_id",
+            PgUUID(as_uuid=False),
             sa.ForeignKey("sessions.id", ondelete="SET NULL"),
             nullable=True,
         ),
     )
     op.create_index(
         "ix_gate_requests_session_id",
-        "gate_requests", ["session_id"],
+        "gate_requests",
+        ["session_id"],
     )
 
 

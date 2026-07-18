@@ -12,10 +12,10 @@ import pytest
 from pydantic import ValidationError
 
 from modules.backend.schemas.deliberation import (
+    ConvergenceFlag,
     CriticAttack,
     CriticReport,
     CruxRecord,
-    ConvergenceFlag,
     DebaterTurn,
     ExpertDisagreement,
     FinalDeliverable,
@@ -27,7 +27,6 @@ from modules.backend.schemas.deliberation import (
     SourcedClaim,
     StanceDelta,
 )
-
 
 # Reusable fixtures -----------------------------------------------------------
 
@@ -42,13 +41,17 @@ def _packet(**overrides):
         ],
         expert_disagreements=[
             ExpertDisagreement(
-                topic="t1", camps=["A", "B"],
-                side_a_steelman="a", side_b_steelman="b",
+                topic="t1",
+                camps=["A", "B"],
+                side_a_steelman="a",
+                side_b_steelman="b",
                 resolving_evidence="e",
             ),
             ExpertDisagreement(
-                topic="t2", camps=["C", "D"],
-                side_a_steelman="c", side_b_steelman="d",
+                topic="t2",
+                camps=["C", "D"],
+                side_a_steelman="c",
+                side_b_steelman="d",
                 resolving_evidence="f",
             ),
         ],
@@ -138,30 +141,41 @@ class TestResearchPacket:
 
     def test_requires_three_sourced_claims(self):
         with pytest.raises(ValidationError):
-            _packet(what_is_known=[
-                SourcedClaim(claim="A", source="s", confidence="HIGH"),
-                SourcedClaim(claim="B", source="s", confidence="HIGH"),
-            ])
+            _packet(
+                what_is_known=[
+                    SourcedClaim(claim="A", source="s", confidence="HIGH"),
+                    SourcedClaim(claim="B", source="s", confidence="HIGH"),
+                ]
+            )
 
     def test_requires_two_disagreements(self):
         with pytest.raises(ValidationError):
-            _packet(expert_disagreements=[
-                ExpertDisagreement(
-                    topic="t", camps=["a", "b"],
-                    side_a_steelman="x", side_b_steelman="y",
-                    resolving_evidence="e",
-                ),
-            ])
+            _packet(
+                expert_disagreements=[
+                    ExpertDisagreement(
+                        topic="t",
+                        camps=["a", "b"],
+                        side_a_steelman="x",
+                        side_b_steelman="y",
+                        resolving_evidence="e",
+                    ),
+                ]
+            )
 
     def test_caps_disagreements_at_five(self):
         with pytest.raises(ValidationError):
-            _packet(expert_disagreements=[
-                ExpertDisagreement(
-                    topic=f"t{i}", camps=["a", "b"],
-                    side_a_steelman="x", side_b_steelman="y",
-                    resolving_evidence="e",
-                ) for i in range(6)
-            ])
+            _packet(
+                expert_disagreements=[
+                    ExpertDisagreement(
+                        topic=f"t{i}",
+                        camps=["a", "b"],
+                        side_a_steelman="x",
+                        side_b_steelman="y",
+                        resolving_evidence="e",
+                    )
+                    for i in range(6)
+                ]
+            )
 
     def test_under_discussed_angles_bounds(self):
         with pytest.raises(ValidationError):
@@ -249,16 +263,19 @@ class TestDebaterTurn:
 
     def test_requires_at_least_two_load_bearing_claims(self):
         with pytest.raises(ValidationError):
-            self._turn(load_bearing_claims=[
-                LoadBearingClaim(claim="only one", if_this_fails="x"),
-            ])
+            self._turn(
+                load_bearing_claims=[
+                    LoadBearingClaim(claim="only one", if_this_fails="x"),
+                ]
+            )
 
     def test_caps_load_bearing_claims_at_three(self):
         with pytest.raises(ValidationError):
-            self._turn(load_bearing_claims=[
-                LoadBearingClaim(claim=f"c{i}", if_this_fails="f")
-                for i in range(4)
-            ])
+            self._turn(
+                load_bearing_claims=[
+                    LoadBearingClaim(claim=f"c{i}", if_this_fails="f") for i in range(4)
+                ]
+            )
 
     def test_confidence_bounds(self):
         with pytest.raises(ValidationError):
@@ -284,7 +301,10 @@ class TestCriticReport:
             convergence_flag=_convergence_none(),
         )
         assert set(report.attacks.keys()) == {
-            "systems", "quant", "empiricist", "ethicist",
+            "systems",
+            "quant",
+            "empiricist",
+            "ethicist",
         }
 
     def test_rejects_missing_debater(self):
@@ -309,8 +329,7 @@ class TestCriticReport:
             )
 
     def test_convergence_flag_kinds(self):
-        for kind in ("shared_hidden_assumption", "paraphrase",
-                     "collapse_to_mainstream", "none"):
+        for kind in ("shared_hidden_assumption", "paraphrase", "collapse_to_mainstream", "none"):
             CriticReport(
                 round_index=1,
                 attacks=_full_attacks(),
@@ -332,8 +351,7 @@ class TestStanceDelta:
             threshold=0.15,
             should_continue=False,
             gate="halt",
-            per_debater={"systems": 0.05, "quant": 0.1, "empiricist": 0.07,
-                         "ethicist": 0.1},
+            per_debater={"systems": 0.05, "quant": 0.1, "empiricist": 0.07, "ethicist": 0.1},
             reasoning="stance change 0.08 < threshold 0.15; no active revision",
         )
         assert d.should_continue is False
@@ -389,9 +407,7 @@ class TestFinalDeliverableAntiFlattening:
         # Cruxes proliferating means the synthesiser failed to filter
         # noise from real disagreement. Cap.
         with pytest.raises(ValidationError):
-            _deliverable(cruxes=[
-                _crux(["systems"], ["quant"]) for _ in range(6)
-            ])
+            _deliverable(cruxes=[_crux(["systems"], ["quant"]) for _ in range(6)])
 
     def test_minority_position_can_be_none(self):
         # "No minority position survived" must be an explicit None, not
@@ -427,9 +443,14 @@ class TestFinalDeliverableAntiFlattening:
     def test_biggest_things_upper_bound(self):
         # More than 3 means noise; cap.
         with pytest.raises(ValidationError):
-            _deliverable(biggest_things_that_could_be_wrong=[
-                "one", "two", "three", "four",
-            ])
+            _deliverable(
+                biggest_things_that_could_be_wrong=[
+                    "one",
+                    "two",
+                    "three",
+                    "four",
+                ]
+            )
 
     def test_report_markdown_min_length(self):
         # A short report_markdown means the synthesiser didn't actually
@@ -444,12 +465,15 @@ class TestFinalDeliverableAntiFlattening:
 
     def test_forward_claim_requires_falsifier(self):
         with pytest.raises(ValidationError):
-            _deliverable(forward_claim=ForwardClaim(
-                horizon="2030", most_likely="X",
-                plausible_alternative="Y",
-                would_surprise_the_system="Z",
-                falsifiers=[],  # empty → reject
-            ))
+            _deliverable(
+                forward_claim=ForwardClaim(
+                    horizon="2030",
+                    most_likely="X",
+                    plausible_alternative="Y",
+                    would_surprise_the_system="Z",
+                    falsifiers=[],  # empty → reject
+                )
+            )
 
     def test_confidence_bounds(self):
         with pytest.raises(ValidationError):

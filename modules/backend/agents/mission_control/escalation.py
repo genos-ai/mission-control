@@ -86,15 +86,25 @@ def get_next_escalation(current_level: int) -> EscalationLevel | None:
 
 # ---- Risk classification (P2: all deterministic) ----
 
-LOW_RISK_ACTIONS = frozenset({
-    "read_file", "list_files", "get_status", "get_mission_status",
-    "list_available_agents",
-})
+LOW_RISK_ACTIONS = frozenset(
+    {
+        "read_file",
+        "list_files",
+        "get_status",
+        "get_mission_status",
+        "list_available_agents",
+    }
+)
 
-MEDIUM_RISK_ACTIONS = frozenset({
-    "invoke_agent", "apply_fix", "run_tests", "create_mission",
-    "revise_mission",
-})
+MEDIUM_RISK_ACTIONS = frozenset(
+    {
+        "invoke_agent",
+        "apply_fix",
+        "run_tests",
+        "create_mission",
+        "revise_mission",
+    }
+)
 
 
 @dataclass
@@ -105,9 +115,13 @@ class RiskThresholds:
     max_medium_approve_cost_usd: float = 10.00
     max_auto_approve_retries: int = 3
     allowed_retry_actions: frozenset[str] = field(
-        default_factory=lambda: frozenset({
-            "invoke_agent", "apply_fix", "run_tests",
-        }),
+        default_factory=lambda: frozenset(
+            {
+                "invoke_agent",
+                "apply_fix",
+                "run_tests",
+            }
+        ),
     )
 
 
@@ -121,9 +135,7 @@ def _get_thresholds() -> RiskThresholds:
         return _thresholds
 
     try:
-        from modules.backend.agents.mission_control.middleware import (
-            _load_mission_control_config,
-        )
+        from modules.backend.agents.mission_control.middleware import _load_mission_control_config
 
         mc_config = _load_mission_control_config()
         esc = mc_config.escalation
@@ -198,10 +210,7 @@ async def evaluate_risk_matrix(
     thresholds = _get_thresholds()
     cost = context.get("estimated_cost_usd", 0)
 
-    if (
-        action in MEDIUM_RISK_ACTIONS
-        and cost < thresholds.max_medium_approve_cost_usd
-    ):
+    if action in MEDIUM_RISK_ACTIONS and cost < thresholds.max_medium_approve_cost_usd:
         agent = context.get("agent_name", "")
         allowed = context.get("allowed_agents", set())
         if agent in allowed or not agent:

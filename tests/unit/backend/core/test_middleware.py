@@ -22,11 +22,15 @@ def _make_app(handler=None):
     """Build a minimal Starlette app with the real middleware."""
 
     async def default_handler(request: Request) -> JSONResponse:
-        return JSONResponse({
-            "request_id": request.state.request_id,
-            "source": request.state.source,
-            "start_time": request.state.start_time.isoformat() if request.state.start_time else None,
-        })
+        return JSONResponse(
+            {
+                "request_id": request.state.request_id,
+                "source": request.state.source,
+                "start_time": (
+                    request.state.start_time.isoformat() if request.state.start_time else None
+                ),
+            }
+        )
 
     async def error_handler(request: Request) -> JSONResponse:
         raise RuntimeError("Something went wrong")

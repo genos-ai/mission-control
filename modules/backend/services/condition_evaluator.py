@@ -30,14 +30,15 @@ logger = get_logger(__name__)
 # Tokens
 # ---------------------------------------------------------------------------
 
+
 class TokenType(Enum):
-    REF = auto()        # @node.step_id.field or @context.key
-    STRING = auto()     # "quoted string"
-    NUMBER = auto()     # 123, 45.6
-    BOOL = auto()       # true, false
-    NULL = auto()       # null
-    OP = auto()         # ==, !=, >, >=, <, <=, contains, not_contains
-    UNARY_OP = auto()   # is_empty, is_not_empty
+    REF = auto()  # @node.step_id.field or @context.key
+    STRING = auto()  # "quoted string"
+    NUMBER = auto()  # 123, 45.6
+    BOOL = auto()  # true, false
+    NULL = auto()  # null
+    OP = auto()  # ==, !=, >, >=, <, <=, contains, not_contains
+    UNARY_OP = auto()  # is_empty, is_not_empty
     AND = auto()
     OR = auto()
     NOT = auto()
@@ -145,16 +146,19 @@ def tokenize(expression: str) -> list[Token]:
 # AST Nodes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CompareExpr:
-    left: Any   # resolved value or ref
+    left: Any  # resolved value or ref
     op: str
     right: Any
+
 
 @dataclass
 class UnaryCheckExpr:
     ref: str
     op: str  # is_empty, is_not_empty
+
 
 @dataclass
 class BoolBinExpr:
@@ -162,13 +166,16 @@ class BoolBinExpr:
     op: str  # AND, OR
     right: Any
 
+
 @dataclass
 class NotExpr:
     child: Any
 
+
 @dataclass
 class LiteralExpr:
     value: Any
+
 
 @dataclass
 class RefExpr:
@@ -178,6 +185,7 @@ class RefExpr:
 # ---------------------------------------------------------------------------
 # Parser — recursive descent
 # ---------------------------------------------------------------------------
+
 
 class ConditionEvaluationError(Exception):
     pass
@@ -205,9 +213,7 @@ class _Parser:
     def parse(self) -> Any:
         expr = self._or_expr()
         if self.peek().type != TokenType.EOF:
-            raise ConditionEvaluationError(
-                f"Unexpected token after expression: {self.peek()}"
-            )
+            raise ConditionEvaluationError(f"Unexpected token after expression: {self.peek()}")
         return expr
 
     def _or_expr(self) -> Any:
@@ -280,6 +286,7 @@ class _Parser:
 # Evaluator
 # ---------------------------------------------------------------------------
 
+
 def resolve_ref(path: str, completed_outcomes: dict[str, dict], workflow_context: dict) -> Any:
     """Resolve @node.step_id.field or @context.key against runtime data.
 
@@ -316,7 +323,9 @@ def resolve_ref(path: str, completed_outcomes: dict[str, dict], workflow_context
         key = ".".join(parts[1:])
         return workflow_context.get(key)
 
-    raise ConditionEvaluationError(f"Unknown reference root: {parts[0]} (expected 'node' or 'context')")
+    raise ConditionEvaluationError(
+        f"Unknown reference root: {parts[0]} (expected 'node' or 'context')"
+    )
 
 
 def _eval(node: Any, outcomes: dict[str, dict], ctx: dict) -> Any:
@@ -390,6 +399,7 @@ def _is_empty(val: Any) -> bool:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def evaluate_condition(
     expression: str,
@@ -481,6 +491,7 @@ def resolve_template(
 # =============================================================================
 # walk_refs — generic recursive walker, parameterised by leaf resolver
 # =============================================================================
+
 
 def walk_refs(
     value: Any,

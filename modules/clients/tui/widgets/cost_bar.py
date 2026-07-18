@@ -65,9 +65,7 @@ class CostBar(Widget):
     def watch_cost_usd(self, cost: float) -> None:
         color = cost_color(cost, self.budget_usd)
         try:
-            self.query_one("#cost-label", Label).update(
-                f"[{color}]${cost:.4f}[/{color}]"
-            )
+            self.query_one("#cost-label", Label).update(f"[{color}]${cost:.4f}[/{color}]")
         except NoMatches:
             pass
 
@@ -87,9 +85,7 @@ class CostBar(Widget):
 
     def watch_current_layer(self, layer: int) -> None:
         try:
-            self.query_one("#layer-label", Label).update(
-                f"Layer {layer}/{self.total_layers}"
-            )
+            self.query_one("#layer-label", Label).update(f"Layer {layer}/{self.total_layers}")
         except NoMatches:
             pass
 

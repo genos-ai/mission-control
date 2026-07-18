@@ -2,16 +2,11 @@
 
 from datetime import datetime
 
-from sqlalchemy import delete, select, update, func
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.utils import utc_now
-from modules.backend.models.session import (
-    Session,
-    SessionChannel,
-    SessionMessage,
-    SessionStatus,
-)
+from modules.backend.models.session import Session, SessionChannel, SessionMessage, SessionStatus
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -34,10 +29,12 @@ class SessionRepository(BaseRepository[Session]):
             select(Session)
             .where(
                 Session.user_id == user_id,
-                Session.status.in_([
-                    SessionStatus.ACTIVE,
-                    SessionStatus.SUSPENDED,
-                ]),
+                Session.status.in_(
+                    [
+                        SessionStatus.ACTIVE,
+                        SessionStatus.SUSPENDED,
+                    ]
+                ),
             )
             .order_by(Session.last_activity_at.desc())
             .limit(limit)
@@ -58,19 +55,18 @@ class SessionRepository(BaseRepository[Session]):
         """
         conditions = [
             Session.mission_id == mission_id,
-            Session.status.in_([
-                SessionStatus.ACTIVE,
-                SessionStatus.SUSPENDED,
-            ]),
+            Session.status.in_(
+                [
+                    SessionStatus.ACTIVE,
+                    SessionStatus.SUSPENDED,
+                ]
+            ),
         ]
         if user_id:
             conditions.append(Session.user_id == user_id)
 
         result = await self.session.execute(
-            select(Session)
-            .where(*conditions)
-            .order_by(Session.last_activity_at.desc())
-            .limit(1)
+            select(Session).where(*conditions).order_by(Session.last_activity_at.desc()).limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -88,9 +84,7 @@ class SessionRepository(BaseRepository[Session]):
         await self.session.execute(
             delete(SessionChannel).where(SessionChannel.session_id.in_(session_ids_q))
         )
-        result = await self.session.execute(
-            delete(Session).where(Session.mission_id == mission_id)
-        )
+        result = await self.session.execute(delete(Session).where(Session.mission_id == mission_id))
         await self.session.flush()
         return result.rowcount
 
@@ -134,14 +128,14 @@ class SessionRepository(BaseRepository[Session]):
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
-    async def update_last_activity(self, session_id: str, new_expires_at: datetime | None = None) -> None:
+    async def update_last_activity(
+        self, session_id: str, new_expires_at: datetime | None = None
+    ) -> None:
         """Touch the session's last_activity_at and optionally update expires_at."""
         values: dict = {"last_activity_at": utc_now()}
         if new_expires_at is not None:
             values["expires_at"] = new_expires_at
-        await self.session.execute(
-            update(Session).where(Session.id == session_id).values(**values)
-        )
+        await self.session.execute(update(Session).where(Session.id == session_id).values(**values))
         await self.session.flush()
 
     async def find_expired(self, now: datetime | None = None) -> list[Session]:
@@ -152,10 +146,12 @@ class SessionRepository(BaseRepository[Session]):
             select(Session).where(
                 Session.expires_at.isnot(None),
                 Session.expires_at <= now,
-                Session.status.in_([
-                    SessionStatus.ACTIVE,
-                    SessionStatus.SUSPENDED,
-                ]),
+                Session.status.in_(
+                    [
+                        SessionStatus.ACTIVE,
+                        SessionStatus.SUSPENDED,
+                    ]
+                ),
             )
         )
         return list(result.scalars().all())
@@ -225,10 +221,12 @@ class SessionRepository(BaseRepository[Session]):
                 SessionChannel.channel_type == channel_type,
                 SessionChannel.channel_id == channel_id,
                 SessionChannel.is_active == True,  # noqa: E712
-                Session.status.in_([
-                    SessionStatus.ACTIVE,
-                    SessionStatus.SUSPENDED,
-                ]),
+                Session.status.in_(
+                    [
+                        SessionStatus.ACTIVE,
+                        SessionStatus.SUSPENDED,
+                    ]
+                ),
             )
         )
         return result.scalar_one_or_none()

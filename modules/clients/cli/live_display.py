@@ -36,8 +36,8 @@ from modules.backend.agents.mission_control.models import EventBusProtocol
 from modules.backend.events.types import SessionEvent
 from modules.clients.common.display import styled_status
 from modules.clients.common.event_rendering import (
-    EVENT_STYLES,
     DEFAULT_STYLE,
+    EVENT_STYLES,
     format_event_line,
     is_noisy,
     is_streaming,
@@ -64,6 +64,7 @@ class VerboseEventBus(EventBusProtocol):
 
     def __init__(self) -> None:
         import json as _json
+
         self._json = _json
         self._start = time.monotonic()
 
@@ -119,6 +120,7 @@ class LiveExecutionDisplay:
     def start(self) -> Live:
         """Create and return a Rich Live context for use with `with`."""
         from rich.console import Console
+
         console = Console()
         self._start_time = time.monotonic()
         self._live = Live(
@@ -150,9 +152,7 @@ class LiveExecutionDisplay:
             if sid in self._steps:
                 self._steps[sid]["status"] = event.get("status", "done")
                 self._steps[sid]["cost_usd"] = event.get("cost_usd", 0)
-            self._total_cost = sum(
-                s.get("cost_usd", 0) for s in self._steps.values()
-            )
+            self._total_cost = sum(s.get("cost_usd", 0) for s in self._steps.values())
             self._refresh()
 
     def handle_event(self, event: SessionEvent) -> None:
@@ -164,9 +164,7 @@ class LiveExecutionDisplay:
         if is_streaming(event):
             if self._show_thinking and agent_id:
                 content = getattr(event, "content", "")
-                self._thinking_buffer[agent_id] = (
-                    self._thinking_buffer.get(agent_id, "") + content
-                )
+                self._thinking_buffer[agent_id] = self._thinking_buffer.get(agent_id, "") + content
             self._refresh()
             return
 
@@ -222,14 +220,16 @@ class LiveExecutionDisplay:
             start = self._agent_start.get(agent, 0.0)
             duration = time.monotonic() - start if start else 0.0
 
-            self._results.append({
-                "step_id": step_id,
-                "agent": agent,
-                "status": status,
-                "cost_usd": cost,
-                "duration": duration,
-                "summary": result_summary,
-            })
+            self._results.append(
+                {
+                    "step_id": step_id,
+                    "agent": agent,
+                    "status": status,
+                    "cost_usd": cost,
+                    "duration": duration,
+                    "summary": result_summary,
+                }
+            )
             if status == "failed" and result_summary:
                 self._errors.append(f"{step_id} ({agent}): {result_summary}")
 
@@ -305,9 +305,7 @@ class LiveExecutionDisplay:
 
         # Active agents
         if self._current_agents:
-            active = ", ".join(
-                f"[bold cyan]{aid}[/bold cyan]" for aid in self._current_agents
-            )
+            active = ", ".join(f"[bold cyan]{aid}[/bold cyan]" for aid in self._current_agents)
             activity_lines.append(f"[bold]Active:[/bold] {active}")
             activity_lines.append("")
 
@@ -318,12 +316,8 @@ class LiveExecutionDisplay:
                     display_text = buf[-800:].replace("\n", " ")
                     if len(buf) > 800:
                         display_text = "…" + display_text
-                    activity_lines.append(
-                        f"\U0001f4ad [cyan]{aid}[/cyan]:"
-                    )
-                    activity_lines.append(
-                        f"  [dim italic]{display_text}[/dim italic]"
-                    )
+                    activity_lines.append(f"\U0001f4ad [cyan]{aid}[/cyan]:")
+                    activity_lines.append(f"  [dim italic]{display_text}[/dim italic]")
             if activity_lines:
                 activity_lines.append("")
 
@@ -335,9 +329,7 @@ class LiveExecutionDisplay:
             if self._phase == "planning":
                 elapsed = time.monotonic() - self._start_time
                 dots = "." * (int(elapsed) % 4 + 1)
-                activity_lines.append(
-                    f"[yellow]⏳ Planning execution{dots}[/yellow]"
-                )
+                activity_lines.append(f"[yellow]⏳ Planning execution{dots}[/yellow]")
                 activity_lines.append(
                     "[dim]  Building task plan from objective and team roster[/dim]"
                 )
@@ -384,9 +376,7 @@ class LiveExecutionDisplay:
 
             agent = r.get("agent", "")
             agent_short = agent.rsplit(".", 1)[0] if "." in agent else agent
-            result_lines.append(
-                f"{sym} [bold]{r['step_id']}[/bold] [cyan]{agent_short}[/cyan]"
-            )
+            result_lines.append(f"{sym} [bold]{r['step_id']}[/bold] [cyan]{agent_short}[/cyan]")
             result_lines.append(f"  [dim]{detail}[/dim]")
 
         if not result_lines:
@@ -406,10 +396,11 @@ class LiveExecutionDisplay:
         minutes, seconds = divmod(int(elapsed), 60)
 
         completed = sum(
-            1 for s in self._steps.values()
-            if s.get("status") in ("completed", "success")
+            1 for s in self._steps.values() if s.get("status") in ("completed", "success")
         )
-        total = self._total_steps or len(self._steps) or len(self._results) + len(self._current_agents)
+        total = (
+            self._total_steps or len(self._steps) or len(self._results) + len(self._current_agents)
+        )
 
         effective_status = self._status
         if effective_status == "running" and self._phase == "planning":

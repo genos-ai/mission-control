@@ -46,7 +46,6 @@ def _format_activity_error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {str(exc)[:250]}"
 
 
-
 @activity.defn
 async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult:
     """Execute approved plan tasks via dispatch_approved().
@@ -93,6 +92,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             if not session_id:
                 from modules.backend.schemas.session import SessionCreate
                 from modules.backend.services.session import SessionService
+
                 session_svc = SessionService(db)
                 session = await session_svc.create_session(
                     SessionCreate(
@@ -165,7 +165,9 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             # Emit error event so it surfaces in the Console
             try:
                 import uuid
+
                 from modules.backend.events.types import SystemEvent
+
                 await event_bus.publish_to_mission(
                     input.mission_id,
                     SystemEvent(
@@ -177,7 +179,9 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                     ),
                 )
             except Exception:
-                logger.debug("error event publish failed in Temporal activity (best-effort)", exc_info=True)
+                logger.debug(
+                    "error event publish failed in Temporal activity (best-effort)", exc_info=True
+                )
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
                 status="failed",
@@ -196,15 +200,17 @@ async def persist_mission_outcome(
     mission_id: str | None = None,
 ) -> bool:
     """Persist mission results to PostgreSQL. Best-effort."""
-    from modules.backend.agents.mission_control.persistence_bridge import (
-        persist_mission_results,
-    )
+    from modules.backend.agents.mission_control.persistence_bridge import persist_mission_results
     from modules.backend.core.database import get_async_session
 
     try:
         # If outcome_json is an error stub (e.g. from a failed execute_mission),
         # skip persistence — there's nothing meaningful to persist.
-        if isinstance(outcome_json, dict) and "error" in outcome_json and "mission_id" not in outcome_json:
+        if (
+            isinstance(outcome_json, dict)
+            and "error" in outcome_json
+            and "mission_id" not in outcome_json
+        ):
             activity.logger.info(
                 "Skipping persist — outcome is an error stub",
                 extra={"mission_id": mission_id, "error": str(outcome_json.get("error"))[:200]},
@@ -231,6 +237,7 @@ async def persist_mission_outcome(
         task_plan_ref = outcome_json.get("task_plan_reference")
         if isinstance(task_plan_ref, str):
             import json
+
             try:
                 task_plan_ref = json.loads(task_plan_ref)
             except (json.JSONDecodeError, TypeError):
@@ -264,10 +271,12 @@ async def persist_mission_outcome(
         if mission_id:
             try:
                 import uuid
+
+                from redis.asyncio import Redis as AsyncRedis
+
                 from modules.backend.core.config import get_redis_url
                 from modules.backend.events.bus import SessionEventBus
                 from modules.backend.events.types import SystemEvent
-                from redis.asyncio import Redis as AsyncRedis
 
                 redis = AsyncRedis.from_url(get_redis_url())
                 try:
@@ -285,7 +294,9 @@ async def persist_mission_outcome(
                 finally:
                     await redis.aclose()
             except Exception:
-                logger.debug("notification publish failed in Temporal activity (best-effort)", exc_info=True)
+                logger.debug(
+                    "notification publish failed in Temporal activity (best-effort)", exc_info=True
+                )
         return False
 
 

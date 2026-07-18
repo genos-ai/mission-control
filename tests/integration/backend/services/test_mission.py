@@ -11,7 +11,9 @@ from modules.backend.services.mission import MissionService
 
 class TestCreateMission:
     async def test_create_basic_mission(
-        self, db_session: AsyncSession, regular_user: User,
+        self,
+        db_session: AsyncSession,
+        regular_user: User,
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(
@@ -27,7 +29,9 @@ class TestCreateMission:
         assert mission.status == MissionStatus.ACTIVE
 
     async def test_create_mission_with_all_fields(
-        self, db_session: AsyncSession, regular_user: User,
+        self,
+        db_session: AsyncSession,
+        regular_user: User,
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(
@@ -49,7 +53,9 @@ class TestCreateMission:
 
 class TestGetMission:
     async def test_get_existing_mission(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = MissionService(db_session)
         result = await service.get_mission(test_mission.id)
@@ -64,14 +70,18 @@ class TestGetMission:
 
 class TestResolveMission:
     async def test_resolve_by_id(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = MissionService(db_session)
         result = await service.resolve_mission(test_mission.id)
         assert result.id == test_mission.id
 
     async def test_resolve_by_name(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = MissionService(db_session)
         result = await service.resolve_mission("test-mission")
@@ -85,7 +95,10 @@ class TestResolveMission:
 
 class TestListMissions:
     async def test_list_all(
-        self, db_session: AsyncSession, test_mission: Mission, archived_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
+        archived_mission: Mission,
     ):
         service = MissionService(db_session)
         # list_missions with no owner_id returns active missions
@@ -96,7 +109,10 @@ class TestListMissions:
         assert archived_mission.id not in active_ids
 
     async def test_list_by_owner(
-        self, db_session: AsyncSession, regular_user: User, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        regular_user: User,
+        test_mission: Mission,
     ):
         service = MissionService(db_session)
         missions = await service.list_missions(owner_id=regular_user.id)
@@ -105,27 +121,35 @@ class TestListMissions:
 
 class TestUpdateMission:
     async def test_update_description(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = MissionService(db_session)
         updated = await service.update_mission(
-            test_mission.id, description="Updated description",
+            test_mission.id,
+            description="Updated description",
         )
         assert updated.description == "Updated description"
 
     async def test_update_budget(
-        self, db_session: AsyncSession, test_mission: Mission,
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
     ):
         service = MissionService(db_session)
         updated = await service.update_mission(
-            test_mission.id, budget_ceiling_usd=100.0,
+            test_mission.id,
+            budget_ceiling_usd=100.0,
         )
         assert updated.budget_ceiling_usd == 100.0
 
 
 class TestDeleteMission:
     async def test_delete_mission(
-        self, db_session: AsyncSession, regular_user: User,
+        self,
+        db_session: AsyncSession,
+        regular_user: User,
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(

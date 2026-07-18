@@ -22,7 +22,6 @@ from modules.backend.events.types import (
 from modules.backend.schemas.session import SessionCreate
 from modules.backend.services.session import SessionService
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -219,7 +218,8 @@ class TestHandleErrors:
         events = []
         with _patch_build_model(), _patch_mission_context():
             async for event in handle(
-                fake_id, "hello",
+                fake_id,
+                "hello",
                 mission_id=STUB_MISSION_ID,
                 session_service=session_service,
             ):
@@ -233,6 +233,8 @@ class TestHandleErrors:
     async def test_works_with_default_event_bus(self, session_service, health_session):
         """handle() works with default NoOpEventBus."""
         events = await _collect_events(
-            health_session.id, "check health", session_service,
+            health_session.id,
+            "check health",
+            session_service,
         )
         assert any(isinstance(e, AgentResponseCompleteEvent) for e in events)

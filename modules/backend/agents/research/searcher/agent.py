@@ -39,6 +39,7 @@ def create_agent(
     # Shared tools from registry (driven by agent YAML config)
     if tool_names:
         from modules.backend.tools.registry import get_tool_registry
+
         get_tool_registry().register_on_agent(agent, tool_names)
 
     logger.info("Research searcher agent created", extra={"model": str(model)})

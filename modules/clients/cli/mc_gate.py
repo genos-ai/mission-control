@@ -28,7 +28,6 @@ from typing import Any
 from modules.clients.cli.api_client import ApiError, CliApiClient, resolve_short_id
 from modules.clients.common.display import build_table, get_console
 
-
 # =============================================================================
 # Mode metadata
 # =============================================================================
@@ -36,7 +35,7 @@ from modules.clients.common.display import build_table, get_console
 
 VALID_MODES: dict[str, str] = {
     "autonomous": "LLM (or rule engine) approves everything; no human pause.",
-    "manual":     "Human approves each step via `mc plan approve <task_id>` (HTTP API).",
+    "manual": "Human approves each step via `mc plan approve <task_id>` (HTTP API).",
     "interactive": "Human approves each step at a Rich CLI prompt (TTY-bound).",
     "ai_assisted": "LLM recommends; human confirms at a TTY prompt.",
 }
@@ -44,13 +43,16 @@ VALID_MODES: dict[str, str] = {
 
 VALID_ACTIONS_BY_GATE: dict[str, list[str]] = {
     # Standard post-execution gates.
-    "post_task":          ["continue", "skip", "retry", "abort"],
+    "post_task": ["continue", "skip", "retry", "abort"],
     "verification_failed": ["continue", "skip", "retry", "abort"],
-    "post_layer":         ["continue", "abort"],
+    "post_layer": ["continue", "abort"],
     # Supervisor / autonomy-loop decision points.
-    "post_run":           [
-        "wait", "advance_approved", "advance_refine",
-        "propose_complete", "escalate",
+    "post_run": [
+        "wait",
+        "advance_approved",
+        "advance_refine",
+        "propose_complete",
+        "escalate",
     ],
 }
 
@@ -91,12 +93,14 @@ async def show(api: CliApiClient, *, mission_id: str) -> None:
         return
 
     console.print(f"\n[bold]{len(gates)} pending gate(s):[/bold]")
-    table = build_table(columns=[
-        ("#",         {"justify": "right", "width": 4}),
-        ("ID",        {"style": "cyan", "width": 38}),
-        ("Gate type", {"width": 22}),
-        ("Created",   {"width": 19}),
-    ])
+    table = build_table(
+        columns=[
+            ("#", {"justify": "right", "width": 4}),
+            ("ID", {"style": "cyan", "width": 38}),
+            ("Gate type", {"width": 22}),
+            ("Created", {"width": 19}),
+        ]
+    )
     for i, g in enumerate(gates, start=1):
         table.add_row(
             str(i),
@@ -116,9 +120,7 @@ async def set_mode(api: CliApiClient, *, mission_id: str, mode: str) -> None:
     """Change the gate mode for this mission's plan."""
     console = get_console()
     if mode not in VALID_MODES:
-        console.print(
-            f"[red]Invalid mode '{mode}'. Valid: {', '.join(sorted(VALID_MODES))}.[/red]"
-        )
+        console.print(f"[red]Invalid mode '{mode}'. Valid: {', '.join(sorted(VALID_MODES))}.[/red]")
         return
     await api.patch(f"/missions/{mission_id}/plan", body={"gate_mode": mode})
     console.print(f"[green]Gate mode set:[/green] [cyan]{mode}[/cyan]")
@@ -163,13 +165,15 @@ async def pending(api: CliApiClient, *, mission_id: str) -> None:
         )
         return
 
-    table = build_table(columns=[
-        ("#",         {"justify": "right", "width": 4}),
-        ("ID",        {"style": "cyan", "width": 38}),
-        ("Gate type", {"width": 22}),
-        ("Created",   {"width": 19}),
-        ("Valid actions", {"ratio": 1, "no_wrap": False}),
-    ])
+    table = build_table(
+        columns=[
+            ("#", {"justify": "right", "width": 4}),
+            ("ID", {"style": "cyan", "width": 38}),
+            ("Gate type", {"width": 22}),
+            ("Created", {"width": 19}),
+            ("Valid actions", {"ratio": 1, "no_wrap": False}),
+        ]
+    )
     for i, g in enumerate(gates, start=1):
         gt = g.get("gate_type", "?")
         actions = ", ".join(VALID_ACTIONS_BY_GATE.get(gt, ["?"]))
@@ -219,7 +223,9 @@ async def decide(
 
 
 async def _resolve_gate_id(
-    api: CliApiClient, mission_id: str, gate_id: str,
+    api: CliApiClient,
+    mission_id: str,
+    gate_id: str,
 ) -> str:
     """Accept full UUID or unique ≥4-char prefix, matched against pending gates."""
     return await resolve_short_id(

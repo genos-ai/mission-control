@@ -6,7 +6,6 @@ It owns zero-or-more step executions (linked via execution_records).
 """
 
 import enum
-
 from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
@@ -33,10 +32,13 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "workflow_runs"
 
     workflow_name: Mapped[str] = mapped_column(
-        String(200), nullable=False, index=True,
+        String(200),
+        nullable=False,
+        index=True,
     )
     workflow_version: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
     )
     mission_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
@@ -53,34 +55,47 @@ class WorkflowRun(UUIDMixin, TimestampMixin, Base):
     session_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
         ForeignKey("sessions.id", ondelete="SET NULL"),
-        nullable=True, index=True,
+        nullable=True,
+        index=True,
     )
     trigger_type: Mapped[str] = mapped_column(
-        String(50), default="on_demand", nullable=False,
+        String(50),
+        default="on_demand",
+        nullable=False,
     )
     triggered_by: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     context: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
+        JSON,
+        default=dict,
+        nullable=False,
     )
     total_cost_usd: Mapped[float] = mapped_column(
-        Numeric(12, 6, asdecimal=False), default=0.0, nullable=False,
+        Numeric(12, 6, asdecimal=False),
+        default=0.0,
+        nullable=False,
     )
     budget_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6, asdecimal=False), nullable=True,
+        Numeric(12, 6, asdecimal=False),
+        nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     error_data: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True,
+        JSON,
+        nullable=True,
     )
     result_summary: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
 
     execution_record_id: Mapped[str | None] = mapped_column(

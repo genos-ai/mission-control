@@ -15,12 +15,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from modules.backend.core.logging import get_logger
-from modules.backend.models.task import (
-    Task,
-    TaskDependency,
-    TaskStatus,
-    TERMINAL_TASK_STATUSES,
-)
+from modules.backend.models.task import TERMINAL_TASK_STATUSES, Task, TaskDependency, TaskStatus
 from modules.backend.repositories.base import BaseRepository
 
 logger = get_logger(__name__)
@@ -61,18 +56,15 @@ class TaskRepository(BaseRepository[Task]):
         status: TaskStatus | None = None,
     ) -> list[Task]:
         """Return all tasks for a mission (cross-plan)."""
-        query = (
-            select(Task)
-            .where(Task.mission_id == mission_id)
-            .order_by(Task.created_at)
-        )
+        query = select(Task).where(Task.mission_id == mission_id).order_by(Task.created_at)
         if status is not None:
             query = query.where(Task.status == status)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
     async def list_in_flight(
-        self, plan_id: str | None = None,
+        self,
+        plan_id: str | None = None,
     ) -> list[Task]:
         """Return all tasks in RUNNING or QUEUED status.
 
@@ -82,11 +74,7 @@ class TaskRepository(BaseRepository[Task]):
         conditions = [Task.status.in_([TaskStatus.RUNNING, TaskStatus.QUEUED])]
         if plan_id is not None:
             conditions.append(Task.plan_id == plan_id)
-        query = (
-            select(Task)
-            .where(*conditions)
-            .order_by(Task.created_at)
-        )
+        query = select(Task).where(*conditions).order_by(Task.created_at)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
@@ -134,30 +122,26 @@ class TaskRepository(BaseRepository[Task]):
         depends_on_ids: list[str],
     ) -> None:
         """Replace all dependencies for a task with the given list."""
-        await self.session.execute(
-            delete(TaskDependency).where(TaskDependency.task_id == task_id)
-        )
+        await self.session.execute(delete(TaskDependency).where(TaskDependency.task_id == task_id))
         for dep_id in depends_on_ids:
-            self.session.add(TaskDependency(
-                id=str(uuid7()),
-                task_id=task_id,
-                depends_on_id=dep_id,
-            ))
+            self.session.add(
+                TaskDependency(
+                    id=str(uuid7()),
+                    task_id=task_id,
+                    depends_on_id=dep_id,
+                )
+            )
         await self.session.flush()
 
     async def get_dependency_ids(self, task_id: str) -> list[str]:
         """Return IDs of tasks that the given task depends on."""
-        query = select(TaskDependency.depends_on_id).where(
-            TaskDependency.task_id == task_id
-        )
+        query = select(TaskDependency.depends_on_id).where(TaskDependency.task_id == task_id)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
     async def get_dependent_ids(self, task_id: str) -> list[str]:
         """Return IDs of tasks that depend on the given task."""
-        query = select(TaskDependency.task_id).where(
-            TaskDependency.depends_on_id == task_id
-        )
+        query = select(TaskDependency.task_id).where(TaskDependency.depends_on_id == task_id)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
@@ -205,9 +189,15 @@ class TaskRepository(BaseRepository[Task]):
             if task.id in new_ids:
                 task_def = new_by_id[task.id]
                 changed = False
-                for field in ("agent", "description", "instructions",
-                              "inputs_json", "verification_json",
-                              "constraints_json", "domain_tags"):
+                for field in (
+                    "agent",
+                    "description",
+                    "instructions",
+                    "inputs_json",
+                    "verification_json",
+                    "constraints_json",
+                    "domain_tags",
+                ):
                     if field in task_def and getattr(task, field) != task_def[field]:
                         setattr(task, field, task_def[field])
                         changed = True
@@ -273,18 +263,18 @@ class TaskRepository(BaseRepository[Task]):
         """
         if task_ids:
             await self.session.execute(
-                delete(TaskDependency).where(
-                    TaskDependency.task_id.in_(task_ids)
-                )
+                delete(TaskDependency).where(TaskDependency.task_id.in_(task_ids))
             )
 
         for task_id, dep_ids in dependency_map.items():
             for dep_id in dep_ids:
-                self.session.add(TaskDependency(
-                    id=str(uuid7()),
-                    task_id=task_id,
-                    depends_on_id=dep_id,
-                ))
+                self.session.add(
+                    TaskDependency(
+                        id=str(uuid7()),
+                        task_id=task_id,
+                        depends_on_id=dep_id,
+                    )
+                )
 
         await self.session.flush()
 
@@ -299,8 +289,6 @@ class TaskRepository(BaseRepository[Task]):
         Prefer rebuild_dependencies_for_task_ids when task IDs are
         already available.
         """
-        result = await self.session.execute(
-            select(Task.id).where(Task.plan_id == plan_id)
-        )
+        result = await self.session.execute(select(Task.id).where(Task.plan_id == plan_id))
         task_ids = set(result.scalars().all())
         await self.rebuild_dependencies_for_task_ids(task_ids, dependency_map)

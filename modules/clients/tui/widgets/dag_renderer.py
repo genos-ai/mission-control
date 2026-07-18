@@ -44,7 +44,9 @@ class DagRenderer(Static):
             logger.debug("DAG render update failed", exc_info=True)
 
     def update_step_status(
-        self, step_id: str, status: str,
+        self,
+        step_id: str,
+        status: str,
     ) -> None:
         """Update a single step's status and re-render."""
         for step in self._steps:
@@ -65,9 +67,7 @@ class DagRenderer(Static):
         for layer_idx, layer in enumerate(layers):
             if layer_idx > 0:
                 # Draw connector between layers
-                connector = "  " + "  ".join(
-                    "│" for _ in layer
-                )
+                connector = "  " + "  ".join("│" for _ in layer)
                 lines.append(f"  [dim]{connector}[/dim]")
 
             row_parts: list[str] = []

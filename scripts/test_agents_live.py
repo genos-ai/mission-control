@@ -29,13 +29,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger, setup_logging
 
-
 logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
 # QA Agent — read-only audit of the codebase
 # ---------------------------------------------------------------------------
+
 
 async def run_qa_agent() -> dict:
     """Run the QA agent against the real codebase. Returns QaAuditResult dict."""
@@ -61,7 +61,8 @@ async def run_qa_agent() -> dict:
         scope=scope,
         config=qa_config,
         on_progress=lambda event: logger.info(
-            "QA progress", extra={"event": event},
+            "QA progress",
+            extra={"event": event},
         ),
     )
 
@@ -93,6 +94,7 @@ async def run_qa_agent() -> dict:
 # ---------------------------------------------------------------------------
 # Health Agent — read-only platform health audit
 # ---------------------------------------------------------------------------
+
 
 async def run_health_agent() -> dict:
     """Run the Health agent against the real codebase. Returns HealthCheckResult dict."""
@@ -150,6 +152,7 @@ async def run_health_agent() -> dict:
 # Planning Agent — decompose a QA audit mission into a task plan
 # ---------------------------------------------------------------------------
 
+
 async def run_planning_agent() -> dict:
     """Run the Planning Agent with a test mission brief. Returns TaskPlan dict."""
     from modules.backend.agents.mission_control.helpers.agent_executor import _call_planning_agent
@@ -190,16 +193,14 @@ async def run_planning_agent() -> dict:
 # Verification Agent — evaluate QA agent output
 # ---------------------------------------------------------------------------
 
+
 async def run_verification_agent(qa_output: dict) -> dict:
     """Run the Verification Agent against QA agent output. Returns evaluation dict."""
     from pydantic_ai import UsageLimits
 
     from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
-    from modules.backend.agents.system.verification.agent import (
-        create_agent,
-        run_agent,
-    )
     from modules.backend.agents.mission_control.helpers import _build_model
+    from modules.backend.agents.system.verification.agent import create_agent, run_agent
 
     logger.info("=== Verification Agent: evaluating QA output ===")
 
@@ -252,6 +253,7 @@ async def run_verification_agent(qa_output: dict) -> dict:
 # Output formatting
 # ---------------------------------------------------------------------------
 
+
 def print_qa_results(result: dict) -> None:
     """Print QA audit results in a readable format."""
     click.echo(click.style("\n" + "=" * 70, fg="cyan"))
@@ -276,15 +278,16 @@ def print_qa_results(result: dict) -> None:
             )
             click.echo(f"{'':>14s}{v['message']}")
             if v.get("recommendation"):
-                click.echo(
-                    f"{'':>14s}{click.style('→ ' + v['recommendation'], fg='green')}"
-                )
+                click.echo(f"{'':>14s}{click.style('→ ' + v['recommendation'], fg='green')}")
 
     pqi = result.get("pqi")
     if pqi:
         band_colors = {
-            "Excellent": "green", "Good": "cyan", "Adequate": "yellow",
-            "Acceptable": "yellow", "Poor": "red",
+            "Excellent": "green",
+            "Good": "cyan",
+            "Adequate": "yellow",
+            "Acceptable": "yellow",
+            "Poor": "red",
         }
         band = pqi.get("quality_band", "?")
         score = pqi.get("composite", 0)
@@ -296,8 +299,7 @@ def print_qa_results(result: dict) -> None:
             f"  [{click.style(band, fg=color)}]"
         )
         click.echo(
-            f"  Files: {pqi.get('file_count', '?')}  "
-            f"Lines: {pqi.get('line_count', '?'):,}"
+            f"  Files: {pqi.get('file_count', '?')}  " f"Lines: {pqi.get('line_count', '?'):,}"
         )
 
         dims = pqi.get("dimensions", {})
@@ -305,7 +307,11 @@ def print_qa_results(result: dict) -> None:
             for name, dim in sorted(dims.items(), key=lambda x: -x[1]["score"]):
                 bar_len = int(dim["score"] / 5)
                 bar = "█" * bar_len + "░" * (20 - bar_len)
-                conf = f" (confidence: {dim['confidence']:.0%})" if dim.get("confidence", 1.0) < 0.8 else ""
+                conf = (
+                    f" (confidence: {dim['confidence']:.0%})"
+                    if dim.get("confidence", 1.0) < 0.8
+                    else ""
+                )
                 click.echo(f"  {name:>20s}  {dim['score']:5.1f}  {bar}{conf}")
 
 
@@ -382,16 +388,16 @@ def print_health_results(result: dict) -> None:
 
     click.echo(f"\nSummary: {result['summary']}")
     click.echo(f"Status: {click.style(status.upper(), fg=status_color, bold=True)}")
-    click.echo(
-        f"Issues: {result['error_count']} errors, {result['warning_count']} warnings"
-    )
+    click.echo(f"Issues: {result['error_count']} errors, {result['warning_count']} warnings")
     click.echo(f"Checks performed: {', '.join(result['checks_performed'])}")
 
     if result["findings"]:
         click.echo(click.style("\nFindings:", bold=True))
         for f in result["findings"]:
             severity_color = {
-                "error": "red", "warning": "yellow", "info": "blue",
+                "error": "red",
+                "warning": "yellow",
+                "info": "blue",
             }.get(f["severity"], "white")
             click.echo(
                 f"  {click.style(f['severity'].upper(), fg=severity_color):>12s}  "
@@ -459,7 +465,9 @@ def print_mission_results(result: dict) -> None:
 
     status = result["status"]
     status_color = {
-        "success": "green", "partial": "yellow", "failed": "red",
+        "success": "green",
+        "partial": "yellow",
+        "failed": "red",
     }.get(status, "white")
 
     click.echo(f"\nMission ID: {result['mission_id']}")
@@ -479,14 +487,18 @@ def print_mission_results(result: dict) -> None:
         for tr in result["task_results"]:
             task_status = tr["status"]
             task_color = {
-                "success": "green", "failed": "red", "timeout": "yellow",
+                "success": "green",
+                "failed": "red",
+                "timeout": "yellow",
             }.get(task_status, "white")
 
             click.echo(
                 f"\n  {click.style(task_status.upper(), fg=task_color):>12s}  "
                 f"{tr['task_id']} ({tr['agent_name']})"
             )
-            click.echo(f"{'':>14s}Duration: {tr['duration_seconds']:.1f}s | Cost: ${tr['cost_usd']:.4f}")
+            click.echo(
+                f"{'':>14s}Duration: {tr['duration_seconds']:.1f}s | Cost: ${tr['cost_usd']:.4f}"
+            )
 
             # Verification outcome
             vo = tr.get("verification_outcome", {})
@@ -516,11 +528,13 @@ def print_mission_results(result: dict) -> None:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 @click.command()
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output.")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug output.")
 @click.option(
-    "--agent", "-a",
+    "--agent",
+    "-a",
     type=click.Choice(["qa", "health", "planning", "verification", "mission", "all"]),
     default="all",
     help="Which agent(s) to run.",

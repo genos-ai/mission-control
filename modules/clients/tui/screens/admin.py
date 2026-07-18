@@ -47,7 +47,11 @@ class _AdminCatalogTab(Static):
     async def on_mount(self) -> None:
         table = self.query_one("#admin-catalog-table", DataTable)
         table.add_columns(
-            "Name", "Type", "Version", "Enabled", "Visibility",
+            "Name",
+            "Type",
+            "Version",
+            "Enabled",
+            "Visibility",
         )
         self.run_worker(self._load_agents(), thread=False)
 
@@ -118,7 +122,8 @@ class _AdminMetricsTab(Static):
             logger.warning("Could not load metrics", exc_info=True)
             try:
                 panel = self.query_one(
-                    "#admin-metrics-overview", Static,
+                    "#admin-metrics-overview",
+                    Static,
                 )
                 panel.update(f"[red]Error: {exc}[/red]")
             except Exception:
@@ -165,7 +170,9 @@ class _AdminMetricsTab(Static):
             total = sum(by_agent.values()) or 1.0
             lines = ["[bold]── COST BY AGENT ──[/bold]"]
             for agent, cost in sorted(
-                by_agent.items(), key=lambda x: x[1], reverse=True,
+                by_agent.items(),
+                key=lambda x: x[1],
+                reverse=True,
             ):
                 pct = (cost / total) * 100
                 bar_len = int(pct / 5)
@@ -230,7 +237,8 @@ class _AdminConfigTab(Static):
             logger.warning("Could not load config", exc_info=True)
             try:
                 panel = self.query_one(
-                    "#admin-config-content", Static,
+                    "#admin-config-content",
+                    Static,
                 )
                 panel.update(f"[red]Error: {exc}[/red]")
             except Exception:
@@ -245,7 +253,9 @@ class _AdminConfigTab(Static):
             logger.debug("config render failed", exc_info=True)
 
     def _format_dict(
-        self, d: dict, indent: int = 0,
+        self,
+        d: dict,
+        indent: int = 0,
     ) -> list[str]:
         lines: list[str] = []
         prefix = "  " * indent
@@ -296,7 +306,8 @@ class _AdminHealthTab(Static):
             logger.warning("Could not load health", exc_info=True)
             try:
                 panel = self.query_one(
-                    "#admin-health-content", Static,
+                    "#admin-health-content",
+                    Static,
                 )
                 panel.update(f"[red]Health check failed: {exc}[/red]")
             except Exception:
@@ -349,7 +360,11 @@ class _AdminUsersTab(Static):
     async def on_mount(self) -> None:
         table = self.query_one("#admin-users-table", DataTable)
         table.add_columns(
-            "Name", "Email", "Role", "Status", "Service Acct",
+            "Name",
+            "Email",
+            "Role",
+            "Status",
+            "Service Acct",
         )
         self.run_worker(self._load_users(), thread=False)
 
@@ -399,7 +414,11 @@ class AdminScreen(Screen):
                 id="admin-title",
             )
             with TabbedContent(
-                "Catalog", "Metrics", "Config", "Health", "Users",
+                "Catalog",
+                "Metrics",
+                "Config",
+                "Health",
+                "Users",
                 id="admin-tabs",
             ):
                 with TabPane("Catalog", id="admin-catalog-pane"):

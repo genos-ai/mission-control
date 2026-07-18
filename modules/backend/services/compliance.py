@@ -44,11 +44,7 @@ class ComplianceScannerService:
         return set(self._config.get("exclusions", {}).get("paths", []))
 
     def _get_enabled_rule_ids(self) -> set[str]:
-        return {
-            rule["id"]
-            for rule in self._config.get("rules", [])
-            if rule.get("enabled", True)
-        }
+        return {rule["id"] for rule in self._config.get("rules", []) if rule.get("enabled", True)}
 
     def get_rule_severity(self, rule_id: str) -> str:
         """Get severity for a rule from config."""
@@ -103,12 +99,14 @@ class ComplianceScannerService:
                 if "no_relative_imports" in self._enabled_rules and re.match(
                     r"^from\s+\.", stripped
                 ):
-                    findings.append({
-                        "rule_id": "no_relative_imports",
-                        "file": rel_path,
-                        "line": i,
-                        "message": stripped,
-                    })
+                    findings.append(
+                        {
+                            "rule_id": "no_relative_imports",
+                            "file": rel_path,
+                            "line": i,
+                            "message": stripped,
+                        }
+                    )
 
                 if (
                     "no_direct_logging" in self._enabled_rules
@@ -116,23 +114,25 @@ class ComplianceScannerService:
                     and not is_core_logging
                     and stripped == "import logging"
                 ):
-                    findings.append({
-                        "rule_id": "no_direct_logging",
-                        "file": rel_path,
-                        "line": i,
-                        "message": "Direct 'import logging' — use get_logger() from core.logging",
-                    })
-
-                if "no_os_getenv_fallback" in self._enabled_rules:
-                    if re.search(
-                        r"os\.(getenv|environ\.get)\s*\(.+,\s*.+\)", stripped
-                    ):
-                        findings.append({
-                            "rule_id": "no_os_getenv_fallback",
+                    findings.append(
+                        {
+                            "rule_id": "no_direct_logging",
                             "file": rel_path,
                             "line": i,
-                            "message": stripped,
-                        })
+                            "message": "Direct 'import logging' — use get_logger() from core.logging",
+                        }
+                    )
+
+                if "no_os_getenv_fallback" in self._enabled_rules:
+                    if re.search(r"os\.(getenv|environ\.get)\s*\(.+,\s*.+\)", stripped):
+                        findings.append(
+                            {
+                                "rule_id": "no_os_getenv_fallback",
+                                "file": rel_path,
+                                "line": i,
+                                "message": stripped,
+                            }
+                        )
 
         return findings
 
@@ -152,12 +152,14 @@ class ComplianceScannerService:
             lines = self.scan_file_lines(rel_path)
             for i, line in enumerate(lines, 1):
                 if pattern.search(line):
-                    findings.append({
-                        "rule_id": "no_datetime_now",
-                        "file": rel_path,
-                        "line": i,
-                        "message": line.strip(),
-                    })
+                    findings.append(
+                        {
+                            "rule_id": "no_datetime_now",
+                            "file": rel_path,
+                            "line": i,
+                            "message": line.strip(),
+                        }
+                    )
 
         return findings
 
@@ -170,9 +172,15 @@ class ComplianceScannerService:
             return findings
 
         skip_names = {
-            "__all__", "__version__", "__tablename__", "__abstract__",
-            "VALID_SOURCES", "EXCEPTION_STATUS_MAP", "EVENT_TYPE_MAP",
-            "MODEL_COST_PER_MILLION_TOKENS", "DEFAULT_COST_PER_MILLION",
+            "__all__",
+            "__version__",
+            "__tablename__",
+            "__abstract__",
+            "VALID_SOURCES",
+            "EXCEPTION_STATUS_MAP",
+            "EVENT_TYPE_MAP",
+            "MODEL_COST_PER_MILLION_TOKENS",
+            "DEFAULT_COST_PER_MILLION",
             "SYSTEM_PROMPT",
         }
         skip_names.update(self._config.get("hardcoded_skip_names", []))
@@ -200,12 +208,14 @@ class ComplianceScannerService:
                         continue
                     val = node.value.value
                     if isinstance(val, (int, float, str)) and not isinstance(val, bool):
-                        findings.append({
-                            "rule_id": "no_hardcoded_values",
-                            "file": rel_path,
-                            "line": node.lineno,
-                            "message": f"{name} = {val!r}",
-                        })
+                        findings.append(
+                            {
+                                "rule_id": "no_hardcoded_values",
+                                "file": rel_path,
+                                "line": node.lineno,
+                                "message": f"{name} = {val!r}",
+                            }
+                        )
 
         return findings
 
@@ -222,12 +232,14 @@ class ComplianceScannerService:
             lines = self.scan_file_lines(rel_path)
             count = len(lines)
             if count > limit:
-                findings.append({
-                    "rule_id": "file_size_limit",
-                    "file": rel_path,
-                    "line": None,
-                    "message": f"{count} lines (limit: {limit})",
-                })
+                findings.append(
+                    {
+                        "rule_id": "file_size_limit",
+                        "file": rel_path,
+                        "line": None,
+                        "message": f"{count} lines (limit: {limit})",
+                    }
+                )
 
         return findings
 
@@ -262,12 +274,14 @@ class ComplianceScannerService:
                                     and isinstance(first_arg.value, str)
                                     and not first_arg.value.startswith("-")
                                 ):
-                                    findings.append({
-                                        "rule_id": "cli_options_not_positional",
-                                        "file": rel_path,
-                                        "line": node.lineno,
-                                        "message": f"Positional argument: {first_arg.value!r}",
-                                    })
+                                    findings.append(
+                                        {
+                                            "rule_id": "cli_options_not_positional",
+                                            "file": rel_path,
+                                            "line": node.lineno,
+                                            "message": f"Positional argument: {first_arg.value!r}",
+                                        }
+                                    )
                     except SyntaxError:
                         pass
 
@@ -280,12 +294,14 @@ class ComplianceScannerService:
                         missing.append("--verbose")
                     if not has_debug:
                         missing.append("--debug")
-                    findings.append({
-                        "rule_id": "cli_verbose_debug",
-                        "file": rel_path,
-                        "line": None,
-                        "message": f"Missing CLI options: {', '.join(missing)}",
-                    })
+                    findings.append(
+                        {
+                            "rule_id": "cli_verbose_debug",
+                            "file": rel_path,
+                            "line": None,
+                            "message": f"Missing CLI options: {', '.join(missing)}",
+                        }
+                    )
 
         return findings
 
@@ -312,12 +328,14 @@ class ComplianceScannerService:
                     continue
 
                 if "# =====" not in head:
-                    findings.append({
-                        "rule_id": "yaml_header_comment",
-                        "file": rel_path,
-                        "line": 1,
-                        "message": "YAML file missing commented option header",
-                    })
+                    findings.append(
+                        {
+                            "rule_id": "yaml_header_comment",
+                            "file": rel_path,
+                            "line": 1,
+                            "message": "YAML file missing commented option header",
+                        }
+                    )
 
         return findings
 

@@ -45,20 +45,20 @@ class TestInlineConditionSkip:
         assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}) is False
 
     def test_true_condition_runs(self):
-        step = _step("a", condition='@context.target_path != null')
+        step = _step("a", condition="@context.target_path != null")
         step_map = {"a": step}
         ctx = {"target_path": "/some/path"}
         assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, ctx) is False
 
     def test_false_condition_skips(self):
-        step = _step("a", condition='@context.target_path != null')
+        step = _step("a", condition="@context.target_path != null")
         step_map = {"a": step}
         ctx = {"target_path": None}
         assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, ctx) is True
 
     def test_missing_context_key_skips(self):
         """If the referenced key is absent from context, it resolves to None."""
-        step = _step("a", condition='@context.nonexistent != null')
+        step = _step("a", condition="@context.nonexistent != null")
         step_map = {"a": step}
         assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, {}) is True
 
@@ -70,7 +70,7 @@ class TestInlineConditionSkip:
 
     def test_condition_with_node_reference(self):
         """Condition referencing a completed upstream step's output."""
-        step = _step("b", depends_on=["a"], condition='@node.a.score >= 0.7')
+        step = _step("b", depends_on=["a"], condition="@node.a.score >= 0.7")
         step_map = {"a": _step("a"), "b": step}
         outcomes = {"a": {"score": 0.8}}
         assert WorkflowRunWavesMixin._should_skip("b", step_map, outcomes, {}) is False
@@ -89,11 +89,15 @@ class TestGraphConditionUnchanged:
     """Existing graph-based condition routing still works."""
 
     def test_condition_branch_match_runs(self):
-        cond = _step("cond", node_type="condition", condition_config={
-            "expression": "@context.mode == \"full\"",
-            "true_label": "Yes",
-            "false_label": "No",
-        })
+        cond = _step(
+            "cond",
+            node_type="condition",
+            condition_config={
+                "expression": '@context.mode == "full"',
+                "true_label": "Yes",
+                "false_label": "No",
+            },
+        )
         step = _step("a", depends_on=["cond"])
         step_map = {"cond": cond, "a": step}
         outcomes = {"cond": {"_branch": "Yes"}}
@@ -101,11 +105,15 @@ class TestGraphConditionUnchanged:
         assert WorkflowRunWavesMixin._should_skip("a", step_map, outcomes, edges) is False
 
     def test_condition_branch_mismatch_skips(self):
-        cond = _step("cond", node_type="condition", condition_config={
-            "expression": "@context.mode == \"full\"",
-            "true_label": "Yes",
-            "false_label": "No",
-        })
+        cond = _step(
+            "cond",
+            node_type="condition",
+            condition_config={
+                "expression": '@context.mode == "full"',
+                "true_label": "Yes",
+                "false_label": "No",
+            },
+        )
         step = _step("a", depends_on=["cond"])
         step_map = {"cond": cond, "a": step}
         outcomes = {"cond": {"_branch": "No"}}
@@ -125,12 +133,16 @@ class TestInlineAndGraphCombined:
 
     def test_inline_false_skips_even_if_graph_passes(self):
         """Inline condition is checked first — if false, step is skipped."""
-        cond = _step("cond", node_type="condition", condition_config={
-            "expression": "true",
-            "true_label": "Yes",
-            "false_label": "No",
-        })
-        step = _step("a", depends_on=["cond"], condition='@context.enabled != null')
+        cond = _step(
+            "cond",
+            node_type="condition",
+            condition_config={
+                "expression": "true",
+                "true_label": "Yes",
+                "false_label": "No",
+            },
+        )
+        step = _step("a", depends_on=["cond"], condition="@context.enabled != null")
         step_map = {"cond": cond, "a": step}
         outcomes = {"cond": {"_branch": "Yes"}}
         edges = {("cond", "a"): "Yes"}
@@ -139,12 +151,16 @@ class TestInlineAndGraphCombined:
 
     def test_inline_true_but_graph_mismatch_skips(self):
         """Inline condition passes but graph branch doesn't match — still skipped."""
-        cond = _step("cond", node_type="condition", condition_config={
-            "expression": "true",
-            "true_label": "Yes",
-            "false_label": "No",
-        })
-        step = _step("a", depends_on=["cond"], condition='@context.enabled != null')
+        cond = _step(
+            "cond",
+            node_type="condition",
+            condition_config={
+                "expression": "true",
+                "true_label": "Yes",
+                "false_label": "No",
+            },
+        )
+        step = _step("a", depends_on=["cond"], condition="@context.enabled != null")
         step_map = {"cond": cond, "a": step}
         outcomes = {"cond": {"_branch": "No"}}
         edges = {("cond", "a"): "Yes"}

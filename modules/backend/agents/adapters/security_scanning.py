@@ -12,10 +12,7 @@ from __future__ import annotations
 
 import json
 
-from modules.backend.agents.security.sarif import (
-    load_sarif,
-    merge_sarif,
-)
+from modules.backend.agents.security.sarif import load_sarif, merge_sarif
 from modules.backend.agents.security.tool_registry import (
     CapabilityInput,
     SecurityToolRegistry,
@@ -31,6 +28,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Parametric scanning capability
 # ---------------------------------------------------------------------------
+
 
 async def run_scan(
     capability: ToolCapability,
@@ -54,7 +52,10 @@ async def run_scan(
         output_path=f"{evidence_path}/sarif/{filename}.sarif",
     )
     results = await run_capability(
-        capability, cap_input, registry, environment_handle=environment_handle,
+        capability,
+        cap_input,
+        registry,
+        environment_handle=environment_handle,
     )
     if not results:
         return f"{capability.value}: all engines failed"
@@ -65,6 +66,7 @@ async def run_scan(
 # ---------------------------------------------------------------------------
 # Utility tools
 # ---------------------------------------------------------------------------
+
 
 async def run_detect_surface(target_path: str) -> str:
     """security.detect_surface — identify file types and applicable capabilities."""

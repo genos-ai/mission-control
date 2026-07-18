@@ -36,10 +36,12 @@ class MissionCard(Static):
     def on_click(self) -> None:
         from modules.clients.tui.messages import MissionSelected
 
-        self.post_message(MissionSelected(
-            mission_id=self._mission["id"],
-            mission_name=self._mission.get("name", ""),
-        ))
+        self.post_message(
+            MissionSelected(
+                mission_id=self._mission["id"],
+                mission_name=self._mission.get("name", ""),
+            )
+        )
 
 
 class DashboardScreen(Screen):

@@ -17,18 +17,12 @@ import json
 
 from rich.panel import Panel
 
-from modules.backend.agents.mission_control.gate import (
-    GateAction,
-    GateContext,
-    GateDecision,
-)
+from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
 from modules.clients.common.display import build_table, get_console
-from modules.clients.common.gate_helpers import (
-    ACTION_COLORS,
-    cost_color as _cost_color,
-    gate_header,
-    status_icon as _status_icon,
-)
+from modules.clients.common.gate_helpers import ACTION_COLORS
+from modules.clients.common.gate_helpers import cost_color as _cost_color
+from modules.clients.common.gate_helpers import gate_header
+from modules.clients.common.gate_helpers import status_icon as _status_icon
 
 
 class CliGateReviewer:
@@ -58,11 +52,14 @@ class CliGateReviewer:
     async def _review_pre_dispatch(self, ctx: GateContext) -> GateDecision:
         header = self._header(ctx, "Review Task Plan")
 
-        table = build_table(columns=[
-            ("Task ID", {"style": "cyan", "width": 24}),
-            ("Agent", {"width": 30}),
-            ("Description", {"ratio": 1}),
-        ], show_lines=True)
+        table = build_table(
+            columns=[
+                ("Task ID", {"style": "cyan", "width": 24}),
+                ("Agent", {"width": 30}),
+                ("Description", {"ratio": 1}),
+            ],
+            show_lines=True,
+        )
 
         for t in ctx.pending_tasks:
             table.add_row(
@@ -71,50 +68,66 @@ class CliGateReviewer:
                 (t.get("description") or "")[:80],
             )
 
-        self.console.print(Panel.fit(
-            table,
-            title=header,
-            border_style="blue",
-            padding=(1, 2),
-        ))
+        self.console.print(
+            Panel.fit(
+                table,
+                title=header,
+                border_style="blue",
+                padding=(1, 2),
+            )
+        )
 
-        return self._prompt(ctx, actions="c/a/i", help_text={
-            "c": "continue \u2014 execute all tasks",
-            "a": "abort \u2014 cancel execution",
-            "i": "inspect \u2014 show task details (JSON)",
-        })
+        return self._prompt(
+            ctx,
+            actions="c/a/i",
+            help_text={
+                "c": "continue \u2014 execute all tasks",
+                "a": "abort \u2014 cancel execution",
+                "i": "inspect \u2014 show task details (JSON)",
+            },
+        )
 
     async def _review_pre_layer(self, ctx: GateContext) -> GateDecision:
         header = self._header(ctx, f"Layer {ctx.layer_index + 1}/{ctx.total_layers}")
 
-        table = build_table(columns=[
-            ("Task ID", {"style": "cyan", "width": 24}),
-            ("Agent", {"width": 30}),
-            ("Input Keys", {"width": 30}),
-            ("Instructions", {"ratio": 1}),
-        ], show_lines=True)
+        table = build_table(
+            columns=[
+                ("Task ID", {"style": "cyan", "width": 24}),
+                ("Agent", {"width": 30}),
+                ("Input Keys", {"width": 30}),
+                ("Instructions", {"ratio": 1}),
+            ],
+            show_lines=True,
+        )
 
         for t in ctx.pending_tasks:
             table.add_row(
                 t.get("task_id", "?"),
                 t.get("agent", "?"),
                 ", ".join(t.get("input_keys", [])),
-                (t.get("instructions") or "")[:60] + ("..." if len(t.get("instructions", "")) > 60 else ""),
+                (t.get("instructions") or "")[:60]
+                + ("..." if len(t.get("instructions", "")) > 60 else ""),
             )
 
-        self.console.print(Panel.fit(
-            table,
-            title=header,
-            border_style="cyan",
-            padding=(1, 2),
-        ))
+        self.console.print(
+            Panel.fit(
+                table,
+                title=header,
+                border_style="cyan",
+                padding=(1, 2),
+            )
+        )
 
-        return self._prompt(ctx, actions="c/s/a/i", help_text={
-            "c": "continue \u2014 execute this layer",
-            "s": "skip \u2014 skip all tasks in this layer",
-            "a": "abort \u2014 cancel execution",
-            "i": "inspect \u2014 show full task details",
-        })
+        return self._prompt(
+            ctx,
+            actions="c/s/a/i",
+            help_text={
+                "c": "continue \u2014 execute this layer",
+                "s": "skip \u2014 skip all tasks in this layer",
+                "a": "abort \u2014 cancel execution",
+                "i": "inspect \u2014 show full task details",
+            },
+        )
 
     async def _review_post_task(self, ctx: GateContext) -> GateDecision:
         header = self._header(ctx, f"Task Complete: {ctx.task_id}")
@@ -127,7 +140,9 @@ class CliGateReviewer:
             tokens_in = status.get("input_tokens", 0)
             tokens_out = status.get("output_tokens", 0)
 
-            lines.append(f"[bold]Cost:[/bold] ${cost:.4f}  |  Tokens: {tokens_in:,} in / {tokens_out:,} out")
+            lines.append(
+                f"[bold]Cost:[/bold] ${cost:.4f}  |  Tokens: {tokens_in:,} in / {tokens_out:,} out"
+            )
             if summary:
                 lines.append(f"\n[bold]Summary:[/bold] {summary[:200]}")
 
@@ -145,24 +160,32 @@ class CliGateReviewer:
         # PQI if present
         pqi = ctx.task_output.get("pqi") if ctx.task_output else None
         if isinstance(pqi, dict) and pqi.get("composite"):
-            lines.append(f"[bold]PQI:[/bold] {pqi['composite']:.1f}/100 ({pqi.get('quality_band', '?')})")
+            lines.append(
+                f"[bold]PQI:[/bold] {pqi['composite']:.1f}/100 ({pqi.get('quality_band', '?')})"
+            )
 
         body = "\n".join(lines) if lines else "[dim]No output details[/dim]"
-        self.console.print(Panel(
-            body,
-            title=header,
-            border_style="green",
-            padding=(1, 2),
-        ))
+        self.console.print(
+            Panel(
+                body,
+                title=header,
+                border_style="green",
+                padding=(1, 2),
+            )
+        )
 
-        return self._prompt(ctx, actions="c/r/s/a/o/v", help_text={
-            "c": "continue \u2014 accept and proceed",
-            "r": "retry \u2014 re-run this task",
-            "s": "skip \u2014 discard result, skip task",
-            "a": "abort \u2014 cancel execution",
-            "o": "output \u2014 show full output (JSON)",
-            "v": "verification \u2014 show verification details",
-        })
+        return self._prompt(
+            ctx,
+            actions="c/r/s/a/o/v",
+            help_text={
+                "c": "continue \u2014 accept and proceed",
+                "r": "retry \u2014 re-run this task",
+                "s": "skip \u2014 discard result, skip task",
+                "a": "abort \u2014 cancel execution",
+                "o": "output \u2014 show full output (JSON)",
+                "v": "verification \u2014 show verification details",
+            },
+        )
 
     async def _review_verification_failed(self, ctx: GateContext) -> GateDecision:
         header = self._header(ctx, f"Verification FAILED: {ctx.task_id}")
@@ -182,20 +205,26 @@ class CliGateReviewer:
                     for check in tier["failed_checks"]:
                         lines.append(f"    [red]\u2022[/red] {check}")
 
-        self.console.print(Panel(
-            "\n".join(lines),
-            title=header,
-            border_style="red",
-            padding=(1, 2),
-        ))
+        self.console.print(
+            Panel(
+                "\n".join(lines),
+                title=header,
+                border_style="red",
+                padding=(1, 2),
+            )
+        )
 
-        return self._prompt(ctx, actions="r/m/s/a/v", help_text={
-            "r": "retry \u2014 retry with feedback (default)",
-            "m": "modify \u2014 accept output despite failure",
-            "s": "skip \u2014 skip this task",
-            "a": "abort \u2014 cancel execution",
-            "v": "verification \u2014 show full details",
-        })
+        return self._prompt(
+            ctx,
+            actions="r/m/s/a/v",
+            help_text={
+                "r": "retry \u2014 retry with feedback (default)",
+                "m": "modify \u2014 accept output despite failure",
+                "s": "skip \u2014 skip this task",
+                "a": "abort \u2014 cancel execution",
+                "v": "verification \u2014 show full details",
+            },
+        )
 
     async def _review_post_layer(self, ctx: GateContext) -> GateDecision:
         header = self._header(ctx, f"Layer {ctx.layer_index + 1}/{ctx.total_layers} Complete")
@@ -216,17 +245,23 @@ class CliGateReviewer:
             f" / ${ctx.budget_usd:.2f} budget"
         )
 
-        self.console.print(Panel(
-            body,
-            title=header,
-            border_style="blue",
-            padding=(1, 2),
-        ))
+        self.console.print(
+            Panel(
+                body,
+                title=header,
+                border_style="blue",
+                padding=(1, 2),
+            )
+        )
 
-        return self._prompt(ctx, actions="c/a", help_text={
-            "c": "continue \u2014 proceed to next layer",
-            "a": "abort \u2014 cancel remaining layers",
-        })
+        return self._prompt(
+            ctx,
+            actions="c/a",
+            help_text={
+                "c": "continue \u2014 proceed to next layer",
+                "a": "abort \u2014 cancel remaining layers",
+            },
+        )
 
     async def _review_generic(self, ctx: GateContext) -> GateDecision:
         self.console.print(f"[yellow]Unknown gate type: {ctx.gate_type}[/yellow]")
@@ -256,12 +291,14 @@ class CliGateReviewer:
             lines.append(f"[bold]Suggested feedback:[/bold] {rec.modified_instructions}")
         lines.append(f"[dim]Reviewer: {rec.reviewer}[/dim]")
 
-        self.console.print(Panel(
-            "\n".join(lines),
-            title="[bold magenta]AI Recommendation[/bold magenta]",
-            border_style="magenta",
-            padding=(0, 2),
-        ))
+        self.console.print(
+            Panel(
+                "\n".join(lines),
+                title="[bold magenta]AI Recommendation[/bold magenta]",
+                border_style="magenta",
+                padding=(0, 2),
+            )
+        )
 
     def _prompt(
         self,
@@ -290,7 +327,9 @@ class CliGateReviewer:
             if choice == "c":
                 return GateDecision(action=GateAction.CONTINUE, reviewer="human")
             elif choice == "m":
-                return GateDecision(action=GateAction.MODIFY, reason="Accepted despite failure", reviewer="human")
+                return GateDecision(
+                    action=GateAction.MODIFY, reason="Accepted despite failure", reviewer="human"
+                )
             elif choice == "a":
                 reason = input("Reason (optional): ").strip() or None
                 return GateDecision(action=GateAction.ABORT, reason=reason, reviewer="human")

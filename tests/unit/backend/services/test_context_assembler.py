@@ -4,24 +4,27 @@ Tests use mocked dependencies (MissionContextManager, HistoryQueryService)
 since the assembler is pure orchestration over those services.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from modules.backend.core.utils import estimate_tokens
 from modules.backend.services.context_assembler import (
-    ContextAssembler,
-    DEFAULT_TOKEN_BUDGET,
     _CODING_TAGS,
+    DEFAULT_TOKEN_BUDGET,
+    ContextAssembler,
 )
 
 
 @pytest.fixture
 def mock_context_manager() -> MagicMock:
     mgr = MagicMock()
-    mgr.get_context = AsyncMock(return_value={
-        "identity": {"name": "test-project", "tech_stack": ["python"]},
-        "version": 1,
-    })
+    mgr.get_context = AsyncMock(
+        return_value={
+            "identity": {"name": "test-project", "tech_stack": ["python"]},
+            "version": 1,
+        }
+    )
     return mgr
 
 
@@ -79,12 +82,16 @@ class TestBuild:
 
     @pytest.mark.asyncio
     async def test_history_included_with_domain_tags(
-        self, assembler, mock_history_service,
+        self,
+        assembler,
+        mock_history_service,
     ):
         """Layer 2 (history) is assembled when domain_tags are provided."""
-        mock_history_service.get_recent_failures = AsyncMock(return_value=[
-            {"task_id": "old-t1", "failure_reason": "timeout"},
-        ])
+        mock_history_service.get_recent_failures = AsyncMock(
+            return_value=[
+                {"task_id": "old-t1", "failure_reason": "timeout"},
+            ]
+        )
         packet = await assembler.build(
             mission_id="proj-1",
             task_definition={"task_id": "t1"},
@@ -97,7 +104,9 @@ class TestBuild:
 
     @pytest.mark.asyncio
     async def test_history_executions_included(
-        self, assembler, mock_history_service,
+        self,
+        assembler,
+        mock_history_service,
     ):
         """Recent executions appear in history when budget allows."""
         mock_history_service.get_recent_task_executions = AsyncMock(
@@ -148,7 +157,9 @@ class TestBuild:
 
     @pytest.mark.asyncio
     async def test_history_skipped_when_budget_exhausted(
-        self, assembler, mock_history_service,
+        self,
+        assembler,
+        mock_history_service,
     ):
         """History is skipped when remaining budget is too low."""
         # Use a very tight budget that PCD+task will consume
@@ -192,7 +203,9 @@ class TestCodeMapLayer:
 
     @pytest.mark.asyncio
     async def test_no_code_map_without_loader(
-        self, mock_context_manager, mock_history_service,
+        self,
+        mock_context_manager,
+        mock_history_service,
     ):
         """No code_map in packet when no loader is injected."""
         assembler = ContextAssembler(mock_context_manager, mock_history_service)
@@ -206,14 +219,17 @@ class TestCodeMapLayer:
 
     @pytest.mark.asyncio
     async def test_code_map_included_for_coding_task(
-        self, mock_context_manager, mock_history_service,
+        self,
+        mock_context_manager,
+        mock_history_service,
     ):
         """Code Map markdown is included for coding tasks."""
         mock_loader = MagicMock()
         mock_loader.get_markdown.return_value = "# Code Map\n\n- module_a\n- module_b"
 
         assembler = ContextAssembler(
-            mock_context_manager, mock_history_service,
+            mock_context_manager,
+            mock_history_service,
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(
@@ -228,14 +244,17 @@ class TestCodeMapLayer:
 
     @pytest.mark.asyncio
     async def test_code_map_skipped_for_non_coding_task(
-        self, mock_context_manager, mock_history_service,
+        self,
+        mock_context_manager,
+        mock_history_service,
     ):
         """Code Map is not loaded for non-coding domain tags."""
         mock_loader = MagicMock()
         mock_loader.get_markdown.return_value = "# Code Map"
 
         assembler = ContextAssembler(
-            mock_context_manager, mock_history_service,
+            mock_context_manager,
+            mock_history_service,
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(
@@ -249,14 +268,17 @@ class TestCodeMapLayer:
 
     @pytest.mark.asyncio
     async def test_code_map_included_when_no_domain_tags(
-        self, mock_context_manager, mock_history_service,
+        self,
+        mock_context_manager,
+        mock_history_service,
     ):
         """Conservative: Code Map is included when domain_tags is None."""
         mock_loader = MagicMock()
         mock_loader.get_markdown.return_value = "# Code Map\n\nfull content"
 
         assembler = ContextAssembler(
-            mock_context_manager, mock_history_service,
+            mock_context_manager,
+            mock_history_service,
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(
@@ -268,14 +290,17 @@ class TestCodeMapLayer:
 
     @pytest.mark.asyncio
     async def test_code_map_none_when_loader_returns_none(
-        self, mock_context_manager, mock_history_service,
+        self,
+        mock_context_manager,
+        mock_history_service,
     ):
         """No code_map key when loader returns None (file missing)."""
         mock_loader = MagicMock()
         mock_loader.get_markdown.return_value = None
 
         assembler = ContextAssembler(
-            mock_context_manager, mock_history_service,
+            mock_context_manager,
+            mock_history_service,
             code_map_loader=mock_loader,
         )
         packet = await assembler.build(

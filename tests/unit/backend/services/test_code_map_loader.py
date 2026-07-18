@@ -25,10 +25,12 @@ def loader_with_files(tmp_path, code_map_data):
     codemap_dir = tmp_path / ".codemap"
     codemap_dir.mkdir()
     (codemap_dir / "map.json").write_text(
-        json.dumps(code_map_data), encoding="utf-8",
+        json.dumps(code_map_data),
+        encoding="utf-8",
     )
     (codemap_dir / "map.md").write_text(
-        "# Code Map\n\nSome markdown content", encoding="utf-8",
+        "# Code Map\n\nSome markdown content",
+        encoding="utf-8",
     )
     return CodeMapLoader(tmp_path)
 
@@ -89,7 +91,8 @@ class TestIsStale:
         codemap_dir = tmp_path / ".codemap"
         codemap_dir.mkdir()
         (codemap_dir / "map.json").write_text(
-            json.dumps({"project_id": "test"}), encoding="utf-8",
+            json.dumps({"project_id": "test"}),
+            encoding="utf-8",
         )
         loader = CodeMapLoader(tmp_path)
         assert loader.is_stale() is True
@@ -98,7 +101,8 @@ class TestIsStale:
         codemap_dir = tmp_path / ".codemap"
         codemap_dir.mkdir()
         (codemap_dir / "map.json").write_text(
-            json.dumps({"commit": ""}), encoding="utf-8",
+            json.dumps({"commit": ""}),
+            encoding="utf-8",
         )
         loader = CodeMapLoader(tmp_path)
         assert loader.is_stale() is True

@@ -14,13 +14,13 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     Numeric,
     String,
     Text,
@@ -66,11 +66,13 @@ VALID_TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.CANCELLED: frozenset(),
 }
 
-TERMINAL_TASK_STATUSES: frozenset[TaskStatus] = frozenset({
-    TaskStatus.COMPLETED,
-    TaskStatus.SKIPPED,
-    TaskStatus.CANCELLED,
-})
+TERMINAL_TASK_STATUSES: frozenset[TaskStatus] = frozenset(
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.SKIPPED,
+        TaskStatus.CANCELLED,
+    }
+)
 
 
 class Task(UUIDMixin, TimestampMixin, Base):

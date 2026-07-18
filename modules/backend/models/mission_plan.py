@@ -18,15 +18,7 @@ Plan 72 changes:
 
 import enum
 
-from sqlalchemy import (
-    Enum,
-    ForeignKey,
-    Integer,
-    JSON,
-    Numeric,
-    String,
-    Text,
-)
+from sqlalchemy import JSON, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,12 +45,14 @@ class MissionPlanStatus(str, enum.Enum):
 # Gate modes — mirrors config/settings/gate.yaml values verbatim so
 # MissionPlanService can pass this string straight to create_gate(mode_override=...).
 # Plan 42 §10.4: autonomy is gate mode lifted to plan level.
-VALID_GATE_MODES: frozenset[str] = frozenset({
-    "interactive",
-    "manual",
-    "ai_assisted",
-    "autonomous",
-})
+VALID_GATE_MODES: frozenset[str] = frozenset(
+    {
+        "interactive",
+        "manual",
+        "ai_assisted",
+        "autonomous",
+    }
+)
 
 
 class MissionPlan(UUIDMixin, TimestampMixin, Base):

@@ -69,11 +69,14 @@ class MissionArtifactService(BaseService):
                 f"Allowed: {sorted(VALID_ARTIFACT_TYPES)}"
             )
         return await self._repo.list_for_mission(
-            mission_id, limit=limit, artifact_type=artifact_type,
+            mission_id,
+            limit=limit,
+            artifact_type=artifact_type,
         )
 
     async def list_for_execution_record(
-        self, execution_record_id: str,
+        self,
+        execution_record_id: str,
     ) -> list[MissionArtifact]:
         """List all artifacts produced by a specific run."""
         return await self._repo.list_for_execution_record(execution_record_id)
@@ -107,8 +110,7 @@ class MissionArtifactService(BaseService):
             )
         if content_type not in VALID_CONTENT_TYPES:
             raise ValidationError(
-                f"Invalid content_type {content_type!r}. "
-                f"Allowed: {sorted(VALID_CONTENT_TYPES)}"
+                f"Invalid content_type {content_type!r}. " f"Allowed: {sorted(VALID_CONTENT_TYPES)}"
             )
         if not title or not title.strip():
             raise ValidationError("Artifact title is required")
@@ -189,13 +191,12 @@ class MissionArtifactService(BaseService):
             report = output["report"]
             if isinstance(report.get("report_markdown"), str) and report["report_markdown"].strip():
                 content = report["report_markdown"]
-            elif isinstance(report.get("executive_summary"), str) and report["executive_summary"].strip():
+            elif (
+                isinstance(report.get("executive_summary"), str)
+                and report["executive_summary"].strip()
+            ):
                 content = report["executive_summary"]
-            title_override = (
-                output.get("report_title")
-                or report.get("title")
-                or None
-            )
+            title_override = output.get("report_title") or report.get("title") or None
         else:
             # Path 2: Standard agent — unwrap {"output": {...}, "_meta": {...}}
             inner = output.get("output", {})

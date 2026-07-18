@@ -78,6 +78,7 @@ BRIEFS = {
 # Build a roster from the agent catalog (no DB needed)
 # ---------------------------------------------------------------------------
 
+
 def build_roster_from_catalog(agent_names: list[str] | None = None):
     """Build a Roster from the on-disk agent catalog YAML files."""
     from modules.backend.agents.mission_control.roster import (
@@ -110,25 +111,35 @@ def build_roster_from_catalog(agent_names: list[str] | None = None):
         input_schema = getattr(interface, "input", {}) if interface else {}
         output_schema = getattr(interface, "output", {}) if interface else {}
 
-        entries.append(RosterAgentEntry(
-            agent_name=name,
-            agent_version=config.version or "1.0.0",
-            description=config.description or "",
-            model=RosterModelSchema(
-                name=model_name,
-                temperature=getattr(model_schema, "temperature", 0.0) if hasattr(model_schema, "temperature") else 0.0,
-                max_tokens=getattr(model_schema, "max_tokens", 4096) if hasattr(model_schema, "max_tokens") else 4096,
-            ),
-            tools=config.tools or [],
-            interface=RosterInterfaceSchema(
-                input=input_schema if isinstance(input_schema, dict) else {},
-                output=output_schema if isinstance(output_schema, dict) else {},
-            ),
-            constraints=RosterConstraintsSchema(
-                timeout_seconds=120,
-                cost_ceiling_usd=config.max_budget_usd or 1.0,
-            ),
-        ))
+        entries.append(
+            RosterAgentEntry(
+                agent_name=name,
+                agent_version=config.version or "1.0.0",
+                description=config.description or "",
+                model=RosterModelSchema(
+                    name=model_name,
+                    temperature=(
+                        getattr(model_schema, "temperature", 0.0)
+                        if hasattr(model_schema, "temperature")
+                        else 0.0
+                    ),
+                    max_tokens=(
+                        getattr(model_schema, "max_tokens", 4096)
+                        if hasattr(model_schema, "max_tokens")
+                        else 4096
+                    ),
+                ),
+                tools=config.tools or [],
+                interface=RosterInterfaceSchema(
+                    input=input_schema if isinstance(input_schema, dict) else {},
+                    output=output_schema if isinstance(output_schema, dict) else {},
+                ),
+                constraints=RosterConstraintsSchema(
+                    timeout_seconds=120,
+                    cost_ceiling_usd=config.max_budget_usd or 1.0,
+                ),
+            )
+        )
 
     return Roster(agents=entries)
 
@@ -136,6 +147,7 @@ def build_roster_from_catalog(agent_names: list[str] | None = None):
 # ---------------------------------------------------------------------------
 # Main test flow
 # ---------------------------------------------------------------------------
+
 
 async def run_planning_test(
     model_override: str | None,
@@ -150,13 +162,8 @@ async def run_planning_test(
     from pydantic_ai import UsageLimits
 
     from modules.backend.agents.deps.base import FileScope
-    from modules.backend.agents.mission.planning.agent import (
-        PlanningAgentDeps,
-        create_agent,
-    )
-    from modules.backend.agents.mission.planning.build_session import (
-        PlanBuildingSession,
-    )
+    from modules.backend.agents.mission.planning.agent import PlanningAgentDeps, create_agent
+    from modules.backend.agents.mission.planning.build_session import PlanBuildingSession
     from modules.backend.agents.mission_control.helpers.model_builder import (
         _build_model,
         _get_model_name,
@@ -242,7 +249,9 @@ async def run_planning_test(
 
     try:
         result = await agent.run(
-            planning_prompt, deps=deps, model_settings=model_settings,
+            planning_prompt,
+            deps=deps,
+            model_settings=model_settings,
             usage_limits=UsageLimits(request_limit=50),
         )
         usage = result.usage()
@@ -278,11 +287,14 @@ async def run_planning_test(
 
     # ── Check finalisation ───────────────────────────────────────
     if build_session.finalised_plan is None:
-        click.echo(click.style(
-            f"\n  FAILED: Agent did not call finalise_plan. "
-            f"{len(build_session.tasks)} tasks added but not finalised.",
-            fg="red", bold=True,
-        ))
+        click.echo(
+            click.style(
+                f"\n  FAILED: Agent did not call finalise_plan. "
+                f"{len(build_session.tasks)} tasks added but not finalised.",
+                fg="red",
+                bold=True,
+            )
+        )
         click.echo(f"\n  {build_session.render_plan_summary()}")
         return {
             "success": False,
@@ -350,15 +362,21 @@ async def run_planning_test(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 @click.command()
-@click.option("--model", "-m", default=None, help="Model override, e.g. anthropic:claude-sonnet-4-6")
 @click.option(
-    "--brief", "-b",
+    "--model", "-m", default=None, help="Model override, e.g. anthropic:claude-sonnet-4-6"
+)
+@click.option(
+    "--brief",
+    "-b",
     type=click.Choice(list(BRIEFS.keys()) + ["custom"]),
     default="wasa",
     help="Mission brief to use.",
 )
-@click.option("--custom", "custom_brief", default=None, help="Custom brief text (use with --brief custom).")
+@click.option(
+    "--custom", "custom_brief", default=None, help="Custom brief text (use with --brief custom)."
+)
 @click.option("--mission-id", default="test-planning-001", help="Mission ID for the plan.")
 @click.option("--show-prompt", is_flag=True, help="Print the full prompt sent to the model.")
 @click.option("--dry-run", is_flag=True, help="Build prompt and roster only, skip LLM call.")
@@ -388,15 +406,17 @@ def main(
 
     agent_names = [a.strip() for a in agents.split(",")] if agents else None
 
-    result = asyncio.run(run_planning_test(
-        model_override=model,
-        brief_key=brief,
-        custom_brief=custom_brief,
-        mission_id=mission_id,
-        show_prompt=show_prompt,
-        dry_run=dry_run,
-        agent_names=agent_names,
-    ))
+    result = asyncio.run(
+        run_planning_test(
+            model_override=model,
+            brief_key=brief,
+            custom_brief=custom_brief,
+            mission_id=mission_id,
+            show_prompt=show_prompt,
+            dry_run=dry_run,
+            agent_names=agent_names,
+        )
+    )
 
     # Exit code: 0 on success, 1 on validation failure, 2 on LLM error
     if result.get("error"):

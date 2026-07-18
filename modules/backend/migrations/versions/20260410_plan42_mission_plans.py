@@ -18,10 +18,9 @@ Create Date: 2026-04-10
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import inspect
-
 
 # Revision identifiers
 revision: str = "plan42_001"

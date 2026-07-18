@@ -93,7 +93,8 @@ class CatalogScreen(Screen):
         except Exception as exc:
             logger.warning("Could not load catalog", exc_info=True)
             scroll = self.query_one(
-                "#catalog-list-scroll", VerticalScroll,
+                "#catalog-list-scroll",
+                VerticalScroll,
             )
             scroll.remove_children()
             scroll.mount(
@@ -122,7 +123,8 @@ class CatalogScreen(Screen):
             return
 
         filtered = filter_catalog_agents(
-            getattr(self, "_all_agents", []), event.value,
+            getattr(self, "_all_agents", []),
+            event.value,
         )
         self._render_list(filtered)
 

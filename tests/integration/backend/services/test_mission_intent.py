@@ -5,16 +5,16 @@ Real database, no mocks (P12). Tests the full create → dedup → list → coun
 lifecycle against the DB.
 """
 
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core import security
 from modules.backend.models.mission import Mission, MissionStatus
 from modules.backend.models.user import User
-from modules.backend.core import security
 from modules.backend.services.mission_intent import MissionIntentService
 
-
-from uuid import uuid5, UUID
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 _INTENT_USER_ID = str(uuid5(_TEST_NS, "user:intent-tester"))
 _INTENT_MISSION_ID = str(uuid5(_TEST_NS, "mission:intent-test"))
@@ -67,15 +67,21 @@ class TestMissionIntentService:
         assert result.revised_from is None
 
     @pytest.mark.asyncio
-    async def test_create_revision_links_to_previous(self, db_session: AsyncSession, mission: Mission):
+    async def test_create_revision_links_to_previous(
+        self, db_session: AsyncSession, mission: Mission
+    ):
         svc = MissionIntentService(db_session)
         first = await svc.create_intent(
-            mission.id, "Original intent",
-            source="system", reason="Initial",
+            mission.id,
+            "Original intent",
+            source="system",
+            reason="Initial",
         )
         second = await svc.create_intent(
-            mission.id, "Revised intent",
-            source="user_cli", reason="Changed mind",
+            mission.id,
+            "Revised intent",
+            source="user_cli",
+            reason="Changed mind",
         )
         assert second is not None
         assert second.revised_from == first.id
@@ -84,42 +90,58 @@ class TestMissionIntentService:
     async def test_dedup_identical_intent(self, db_session: AsyncSession, mission: Mission):
         svc = MissionIntentService(db_session)
         await svc.create_intent(
-            mission.id, "Same intent",
+            mission.id,
+            "Same intent",
             scope={"in": ["auth"]},
-            source="system", reason="First",
+            source="system",
+            reason="First",
         )
         duplicate = await svc.create_intent(
-            mission.id, "Same intent",
+            mission.id,
+            "Same intent",
             scope={"in": ["auth"]},
-            source="user_cli", reason="Should dedup",
+            source="user_cli",
+            reason="Should dedup",
         )
         assert duplicate is None
 
     @pytest.mark.asyncio
-    async def test_dedup_different_scope_creates_new(self, db_session: AsyncSession, mission: Mission):
+    async def test_dedup_different_scope_creates_new(
+        self, db_session: AsyncSession, mission: Mission
+    ):
         svc = MissionIntentService(db_session)
         await svc.create_intent(
-            mission.id, "Same text",
+            mission.id,
+            "Same text",
             scope={"in": ["auth"]},
-            source="system", reason="First",
+            source="system",
+            reason="First",
         )
         different_scope = await svc.create_intent(
-            mission.id, "Same text",
+            mission.id,
+            "Same text",
             scope={"in": ["auth", "api"]},
-            source="user_cli", reason="Expanded scope",
+            source="user_cli",
+            reason="Expanded scope",
         )
         assert different_scope is not None
 
     @pytest.mark.asyncio
-    async def test_get_current_returns_most_recent(self, db_session: AsyncSession, mission: Mission):
+    async def test_get_current_returns_most_recent(
+        self, db_session: AsyncSession, mission: Mission
+    ):
         svc = MissionIntentService(db_session)
         await svc.create_intent(
-            mission.id, "Old intent",
-            source="system", reason="First",
+            mission.id,
+            "Old intent",
+            source="system",
+            reason="First",
         )
         await svc.create_intent(
-            mission.id, "Current intent",
-            source="user_cli", reason="Updated",
+            mission.id,
+            "Current intent",
+            source="user_cli",
+            reason="Updated",
         )
         current = await svc.get_current(mission.id)
         assert current is not None
@@ -157,8 +179,10 @@ class TestMissionIntentService:
         svc = MissionIntentService(db_session)
         long_intent = "x" * 500
         result = await svc.create_intent(
-            mission.id, long_intent,
-            source="system", reason="Long",
+            mission.id,
+            long_intent,
+            source="system",
+            reason="Long",
         )
         assert len(result.intent_summary) <= 163  # 160 + "..."
 
@@ -168,6 +192,7 @@ class TestMissionIntentService:
         result = await svc.create_intent(
             mission.id,
             "Build auth module. Then add testing. Finally deploy.",
-            source="system", reason="Multi-sentence",
+            source="system",
+            reason="Multi-sentence",
         )
         assert result.intent_summary == "Build auth module."

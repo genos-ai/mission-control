@@ -51,13 +51,15 @@ class WorkflowDefinitionService(BaseService):
         for step in steps:
             step_id = step.get("id", "")
             for dep_id in step.get("depends_on", []):
-                edges.append({
-                    "id": f"{dep_id}->{step_id}",
-                    "source": dep_id,
-                    "target": step_id,
-                    "source_handle": "output",
-                    "target_handle": "input",
-                })
+                edges.append(
+                    {
+                        "id": f"{dep_id}->{step_id}",
+                        "source": dep_id,
+                        "target": step_id,
+                        "source_handle": "output",
+                        "target_handle": "input",
+                    }
+                )
         return edges
 
     async def create_workflow(
@@ -81,9 +83,7 @@ class WorkflowDefinitionService(BaseService):
 
         existing = await self._repo.get_by_mission_and_name(mission_id, name)
         if existing:
-            raise ConflictError(
-                f"Workflow '{name}' already exists for this mission"
-            )
+            raise ConflictError(f"Workflow '{name}' already exists for this mission")
 
         self._validate_steps(steps)
         resolved_edges = self._normalise_edges(
@@ -123,9 +123,7 @@ class WorkflowDefinitionService(BaseService):
         workflow = await self._repo.get_by_mission_and_name(mission_id, name)
         if not workflow:
             scope = f"mission '{mission_id}'" if mission_id else "system templates"
-            raise NotFoundError(
-                f"Workflow '{name}' not found in {scope}"
-            )
+            raise NotFoundError(f"Workflow '{name}' not found in {scope}")
         return workflow
 
     async def list_workflows(
@@ -176,7 +174,10 @@ class WorkflowDefinitionService(BaseService):
         warnings: list[str] = []
         if steps is not None and normalised_edges is not None:
             from modules.backend.services.workflow_validator import validate_workflow_graph
-            warnings = validate_workflow_graph(steps, normalised_edges, current_workflow_id=workflow_id)
+
+            warnings = validate_workflow_graph(
+                steps, normalised_edges, current_workflow_id=workflow_id
+            )
 
         workflow = await self._repo.update(workflow_id, **updates)
         return workflow, warnings
@@ -188,6 +189,7 @@ class WorkflowDefinitionService(BaseService):
     async def lock_workflow(self, workflow_id: str) -> WorkflowDefinition:
         """Lock a workflow (user confirmed the design)."""
         from modules.backend.core.utils import utc_now
+
         return await self._repo.update(workflow_id, locked_at=utc_now())
 
     async def import_from_template(
@@ -207,9 +209,7 @@ class WorkflowDefinitionService(BaseService):
         template_service = WorkflowService()
         template = template_service.get_workflow(template_name)
         if not template:
-            raise NotFoundError(
-                f"Workflow template '{template_name}' not found"
-            )
+            raise NotFoundError(f"Workflow template '{template_name}' not found")
 
         workflow_name = name_override or template.workflow_name.replace(".workflow", "")
 
@@ -245,13 +245,15 @@ class WorkflowDefinitionService(BaseService):
 
         try:
             from modules.backend.schemas.workflow import WorkflowStepSchema
+
             for step_data in steps:
                 WorkflowStepSchema(**step_data)
         except (TypeError, ValueError, KeyError) as e:
             raise ValidationError(f"Invalid step definition: {e}") from e
 
     def _normalise_edges(
-        self, edges: list[dict[str, Any]] | None,
+        self,
+        edges: list[dict[str, Any]] | None,
     ) -> list[dict[str, Any]] | None:
         """Run each edge through WorkflowEdgeSchema to fail fast on malformed
         input and auto-fill the `id` field that React Flow requires.

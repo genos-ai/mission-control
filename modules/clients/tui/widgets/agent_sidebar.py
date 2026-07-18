@@ -48,7 +48,11 @@ class AgentCard(Static):
         self.entry = entry
 
     def compose(self) -> ComposeResult:
-        name = self.entry.agent_name.split(".")[-2] if "." in self.entry.agent_name else self.entry.agent_name
+        name = (
+            self.entry.agent_name.split(".")[-2]
+            if "." in self.entry.agent_name
+            else self.entry.agent_name
+        )
         model_short = self.entry.model.name.split(":")[-1][:12] if self.entry.model else "?"
         yield Label(f"{name}  [dim]{model_short}[/dim]", markup=True)
 
@@ -155,9 +159,7 @@ class AgentSidebar(Widget):
         for name, card in self._cards.items():
             card.is_selected = name == agent_name
 
-    def set_agent_status(
-        self, agent_name: str, status: str, cost: float = 0.0
-    ) -> None:
+    def set_agent_status(self, agent_name: str, status: str, cost: float = 0.0) -> None:
         """Update status icon on an agent card."""
         if card := self._cards.get(agent_name):
             card.update_status(status, cost)

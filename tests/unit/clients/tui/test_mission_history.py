@@ -2,10 +2,7 @@
 
 import pytest
 
-from modules.clients.tui.screens.mission_history import (
-    MissionHistoryScreen,
-    MissionRow,
-)
+from modules.clients.tui.screens.mission_history import MissionHistoryScreen, MissionRow
 from modules.clients.tui.widgets.context_viewer import ContextViewer
 
 
@@ -75,9 +72,7 @@ class TestMissionHistoryScreen:
             pilot.app.push_screen(screen)
             await pilot.pause()
 
-            viewer = pilot.app.screen.query_one(
-                "#history-context-viewer", ContextViewer
-            )
+            viewer = pilot.app.screen.query_one("#history-context-viewer", ContextViewer)
             assert viewer is not None
 
     @pytest.mark.asyncio

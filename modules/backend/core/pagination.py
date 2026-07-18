@@ -180,10 +180,7 @@ def create_paginated_response(
         has_more = True
 
     # Validate items through schema
-    validated_items = [
-        item_schema.model_validate(item).model_dump(mode="json")
-        for item in items
-    ]
+    validated_items = [item_schema.model_validate(item).model_dump(mode="json") for item in items]
 
     # Build pagination info
     pagination = PaginationInfo(
@@ -241,7 +238,7 @@ async def paginate_query(
     # Check if there are more items
     has_more = len(items) > params.limit
     if has_more:
-        items = items[:params.limit]
+        items = items[: params.limit]
 
     # Get total count if function provided
     total = None

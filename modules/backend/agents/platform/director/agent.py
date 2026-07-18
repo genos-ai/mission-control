@@ -14,11 +14,8 @@ from typing import Any
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 
+from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
 from modules.backend.agents.platform.director.deps import PlatformDirectorDeps
-from modules.backend.agents.mission_control.helpers import (
-    _build_model,
-    assemble_instructions,
-)
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -59,8 +56,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             "active_missions": len(missions),
             "recent_executions": total,
             "missions": [
-                {"name": m.name, "status": m.status, "tier": m.tier}
-                for m in missions[:10]
+                {"name": m.name, "status": m.status, "tier": m.tier} for m in missions[:10]
             ],
         }
 
@@ -100,6 +96,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             return {"error": "No database session available"}
 
         from sqlalchemy import func, select
+
         from modules.backend.models.execution_record import ExecutionRecord
 
         result = await db.execute(
@@ -143,9 +140,17 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         config = get_app_config()
         return {
             "database": "connected" if config.database else "not configured",
-            "redis": "connected" if getattr(config.database, 'redis', None) else "not configured",
-            "temporal_enabled": config.temporal.enabled if hasattr(config, 'temporal') and config.temporal else False,
-            "max_concurrent_missions": getattr(config.workflows, 'max_concurrent_missions', 0) if hasattr(config, 'workflows') else 0,
+            "redis": "connected" if getattr(config.database, "redis", None) else "not configured",
+            "temporal_enabled": (
+                config.temporal.enabled
+                if hasattr(config, "temporal") and config.temporal
+                else False
+            ),
+            "max_concurrent_missions": (
+                getattr(config.workflows, "max_concurrent_missions", 0)
+                if hasattr(config, "workflows")
+                else 0
+            ),
         }
 
     return agent

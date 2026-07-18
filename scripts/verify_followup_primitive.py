@@ -116,6 +116,7 @@ class FollowupVerifier:
     async def setup(self) -> bool:
         """Find a host mission and create a throwaway session against it."""
         from sqlalchemy import select
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.mission import Mission
         from modules.backend.models.session import Session
@@ -148,6 +149,7 @@ class FollowupVerifier:
         if self._session_id is None:
             return
         from sqlalchemy import delete
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.session import Session
         from modules.backend.models.session_followup import SessionFollowup
@@ -161,14 +163,9 @@ class FollowupVerifier:
                         SessionFollowup.id.in_(self._created_followup_ids)
                     )
                 )
-            await db.execute(
-                delete(Session).where(Session.id == self._session_id)
-            )
+            await db.execute(delete(Session).where(Session.id == self._session_id))
             await db.commit()
-        self._log(
-            f"Cleaned up {len(self._created_followup_ids)} followups + "
-            f"1 test session"
-        )
+        self._log(f"Cleaned up {len(self._created_followup_ids)} followups + " f"1 test session")
 
     # -------------------------------------------------------------------------
     # Checks
@@ -177,9 +174,7 @@ class FollowupVerifier:
     async def check_schedule_followup_writes_row(self) -> None:
         """[A] schedule_followup inserts a valid session_followup row."""
         from modules.backend.core.database import get_async_session
-        from modules.backend.services.session_followup import (
-            SessionFollowupService,
-        )
+        from modules.backend.services.session_followup import SessionFollowupService
 
         async with get_async_session() as db:
             svc = SessionFollowupService(db)
@@ -224,9 +219,7 @@ class FollowupVerifier:
         """[B] Invalid inputs raise ValidationError."""
         from modules.backend.core.database import get_async_session
         from modules.backend.core.exceptions import ValidationError
-        from modules.backend.services.session_followup import (
-            SessionFollowupService,
-        )
+        from modules.backend.services.session_followup import SessionFollowupService
 
         async def _expect_raises(
             label: str,
@@ -354,22 +347,20 @@ class FollowupVerifier:
 
         # Clean up the cap test session — cascades followups.
         from sqlalchemy import delete
+
         async with get_async_session() as db:
             await db.execute(delete(Session).where(Session.id == cap_session_id))
             await db.commit()
 
         self._pass(
-            f"Per-session cap ({MAX_ACTIVE_FOLLOWUPS_PER_SESSION}) "
-            f"enforced via ValidationError"
+            f"Per-session cap ({MAX_ACTIVE_FOLLOWUPS_PER_SESSION}) " f"enforced via ValidationError"
         )
 
     async def check_fire_matching_success(self) -> None:
         """[C] fire_matching finds + fires the matching followup."""
         from modules.backend.core.database import get_async_session
         from modules.backend.events.types import MissionPlanDispatchedEvent
-        from modules.backend.services.session_followup import (
-            SessionFollowupService,
-        )
+        from modules.backend.services.session_followup import SessionFollowupService
 
         runner = _RecordingRunner()
         bus = _RecordingBus()
@@ -393,9 +384,7 @@ class FollowupVerifier:
                 session_id=self._session_id,
                 mission_id=self._mission_id,
                 trigger_event_types=["mission_plan.dispatched"],
-                prompt_template=(
-                    "Dispatched run {execution_record_id} on plan {plan_id}."
-                ),
+                prompt_template=("Dispatched run {execution_record_id} on plan {plan_id}."),
                 created_by_agent=f"test.fire.{self._run_tag}",
             )
             self._created_followup_ids.append(row.id)
@@ -450,8 +439,7 @@ class FollowupVerifier:
 
         # Assertions on event publishing.
         fired_events = [
-            e for _, e in bus.published
-            if getattr(e, "event_type", "") == "session.followup.fired"
+            e for _, e in bus.published if getattr(e, "event_type", "") == "session.followup.fired"
         ]
         if not fired_events:
             self._fail(
@@ -473,9 +461,7 @@ class FollowupVerifier:
         """[D] trigger_filter literal-match excludes non-matching events."""
         from modules.backend.core.database import get_async_session
         from modules.backend.events.types import MissionPlanDispatchedEvent
-        from modules.backend.services.session_followup import (
-            SessionFollowupService,
-        )
+        from modules.backend.services.session_followup import SessionFollowupService
 
         runner = _RecordingRunner()
 
@@ -530,9 +516,7 @@ class FollowupVerifier:
         """[E] A consumed row does not re-fire on a new event."""
         from modules.backend.core.database import get_async_session
         from modules.backend.events.types import MissionPlanDispatchedEvent
-        from modules.backend.services.session_followup import (
-            SessionFollowupService,
-        )
+        from modules.backend.services.session_followup import SessionFollowupService
 
         # Re-fire the same event type that check [C] already consumed
         # a row for. The check-[C] row should NOT be in the new fired
@@ -555,9 +539,8 @@ class FollowupVerifier:
         # Any [D] rows have filter that doesn't match this event.
         # If fire_count is 1 on all our tracked rows, we're good.
         async with get_async_session() as db:
-            from modules.backend.repositories.session_followup import (
-                SessionFollowupRepository,
-            )
+            from modules.backend.repositories.session_followup import SessionFollowupRepository
+
             repo = SessionFollowupRepository(db)
             for fid in self._created_followup_ids:
                 row = await repo.get_by_id_or_none(fid)
@@ -574,9 +557,7 @@ class FollowupVerifier:
         """[F] Runner exception → failure_reason recorded, consumed stamped."""
         from modules.backend.core.database import get_async_session
         from modules.backend.events.types import MissionPlanDispatchedEvent
-        from modules.backend.services.session_followup import (
-            SessionFollowupService,
-        )
+        from modules.backend.services.session_followup import SessionFollowupService
 
         bus = _RecordingBus()
 
@@ -609,15 +590,15 @@ class FollowupVerifier:
         async with get_async_session() as db:
             svc = SessionFollowupService(db, event_bus=bus)
             fired = await svc.fire_matching(
-                event_dict, agent_turn_runner=runner,
+                event_dict,
+                agent_turn_runner=runner,
             )
             await db.commit()
 
         # Inspect the row — should have failure_reason set, consumed_at stamped.
         async with get_async_session() as db:
-            from modules.backend.repositories.session_followup import (
-                SessionFollowupRepository,
-            )
+            from modules.backend.repositories.session_followup import SessionFollowupRepository
+
             repo = SessionFollowupRepository(db)
             updated = await repo.get_by_id_or_none(row.id)
 
@@ -639,7 +620,8 @@ class FollowupVerifier:
 
         # Also check a failure event was published.
         failure_events = [
-            e for _, e in bus.published
+            e
+            for _, e in bus.published
             if getattr(e, "event_type", "") == "session.followup.fired"
             and not getattr(e, "success", True)
         ]
@@ -655,9 +637,7 @@ class FollowupVerifier:
     async def check_safe_template_render(self) -> None:
         """[G] Missing template fields render as "" without raising."""
         from modules.backend.core.database import get_async_session
-        from modules.backend.services.session_followup import (
-            SessionFollowupService,
-        )
+        from modules.backend.services.session_followup import SessionFollowupService
 
         runner = _RecordingRunner()
 
@@ -767,7 +747,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Show debug details for each check",
     )
     args = parser.parse_args()

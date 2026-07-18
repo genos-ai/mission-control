@@ -24,7 +24,6 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 from textual.widgets import Button, Label, Static
 
-
 # ── Severity levels ──────────────────────────────────────────────────
 
 _SEVERITY_STYLES: dict[str, tuple[str, str]] = {
@@ -64,9 +63,7 @@ class NotificationEntry(Static):
         self._severity = severity
 
     def compose(self) -> ComposeResult:
-        icon, color = _SEVERITY_STYLES.get(
-            self._severity, _SEVERITY_STYLES["info"]
-        )
+        icon, color = _SEVERITY_STYLES.get(self._severity, _SEVERITY_STYLES["info"])
         yield Label(
             f"[{color}]{icon}[/{color}] {self._message}",
             markup=True,
@@ -173,7 +170,11 @@ class NotificationRecord:
     """A stored notification with read/unread state."""
 
     __slots__ = (
-        "id", "type", "message", "urgency", "read",
+        "id",
+        "type",
+        "message",
+        "urgency",
+        "read",
         "created_at",
     )
 
@@ -189,7 +190,8 @@ class NotificationRecord:
         self.type = notification_type
         self.message = message
         urgency, _ = _TYPE_CONFIG.get(
-            notification_type, (URGENCY_NORMAL, ""),
+            notification_type,
+            (URGENCY_NORMAL, ""),
         )
         self.urgency = urgency
         self.read = False
@@ -312,7 +314,9 @@ class NotificationListModal(ModalScreen):
     ]
 
     def __init__(
-        self, store: NotificationStore, **kwargs: object,
+        self,
+        store: NotificationStore,
+        **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
         self._store = store
@@ -337,7 +341,8 @@ class NotificationListModal(ModalScreen):
     def _render_list(self) -> None:
         try:
             scroll = self.query_one(
-                "#notif-list-scroll", VerticalScroll,
+                "#notif-list-scroll",
+                VerticalScroll,
             )
             scroll.remove_children()
 

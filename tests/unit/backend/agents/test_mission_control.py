@@ -9,7 +9,10 @@ import pytest
 
 from modules.backend.agents.mission_control.cost import compute_cost_usd
 from modules.backend.agents.mission_control.middleware import _load_mission_control_config
-from modules.backend.agents.mission_control.models import MissionControlRequest, MissionControlResponse
+from modules.backend.agents.mission_control.models import (
+    MissionControlRequest,
+    MissionControlResponse,
+)
 from modules.backend.agents.mission_control.registry import AgentRegistry, get_registry
 from modules.backend.agents.mission_control.router import RuleBasedRouter
 

@@ -244,24 +244,30 @@ class TestRunStartupChecks:
     def test_passes_in_development_with_valid_config(self):
         config = _mock_app_config(environment="development")
         settings = _mock_settings()
-        with patch(
-            "modules.backend.gateway.security.startup_checks.get_app_config",
-            return_value=config,
-        ), patch(
-            "modules.backend.gateway.security.startup_checks.get_settings",
-            return_value=settings,
+        with (
+            patch(
+                "modules.backend.gateway.security.startup_checks.get_app_config",
+                return_value=config,
+            ),
+            patch(
+                "modules.backend.gateway.security.startup_checks.get_settings",
+                return_value=settings,
+            ),
         ):
             run_startup_checks()
 
     def test_raises_with_short_jwt_secret(self):
         config = _mock_app_config()
         settings = _mock_settings(jwt_secret="short")
-        with patch(
-            "modules.backend.gateway.security.startup_checks.get_app_config",
-            return_value=config,
-        ), patch(
-            "modules.backend.gateway.security.startup_checks.get_settings",
-            return_value=settings,
+        with (
+            patch(
+                "modules.backend.gateway.security.startup_checks.get_app_config",
+                return_value=config,
+            ),
+            patch(
+                "modules.backend.gateway.security.startup_checks.get_settings",
+                return_value=settings,
+            ),
         ):
             with pytest.raises(StartupSecurityError, match="security check"):
                 run_startup_checks()

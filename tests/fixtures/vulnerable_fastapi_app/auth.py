@@ -16,7 +16,9 @@ async def get_current_user(token: str = Depends(security)) -> dict:
     """Decode JWT — uses weak hardcoded secret."""
     try:
         payload = jwt.decode(
-            token.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM],
+            token.credentials,
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
         )
         return payload
     except jwt.InvalidTokenError:

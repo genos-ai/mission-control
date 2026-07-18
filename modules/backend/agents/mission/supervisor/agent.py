@@ -24,10 +24,7 @@ from pydantic_ai.models import Model
 
 from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
 from modules.backend.agents.mission.supervisor.models import SupervisorDecision
-from modules.backend.agents.mission_control.helpers import (
-    _build_model,
-    assemble_instructions,
-)
+from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -51,11 +48,16 @@ def _register_tools(agent: Agent) -> None:
             from modules.backend.agents.adapters.plan_introspection import get_plan_state
 
             result = await get_plan_state(
-                ctx.deps.db_session, mission_id=ctx.deps.mission_id,
+                ctx.deps.db_session,
+                mission_id=ctx.deps.mission_id,
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("supervisor get_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "supervisor get_plan failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -79,7 +81,11 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("supervisor get_recent_run_outcomes failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "supervisor get_recent_run_outcomes failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -103,7 +109,11 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
-            logger.error("supervisor get_past_decisions failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True)
+            logger.error(
+                "supervisor get_past_decisions failed",
+                extra={"mission_id": ctx.deps.mission_id},
+                exc_info=True,
+            )
             return json.dumps({"error": str(e)})
 
 
@@ -132,7 +142,9 @@ def create_event_agent(
     return agent
 
 
-def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Agent[MissionSupervisorDeps, str]:
+def create_agent(
+    model: str | Model, tool_names: list[str] | None = None
+) -> Agent[MissionSupervisorDeps, str]:
     """Chat-mode variant for the agent registry.
 
     Called when the user opens a chat with mission.supervisor.agent.
@@ -145,7 +157,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         model = _build_model(model)
 
     system_prompt = assemble_instructions(
-        "mission", "supervisor", variant="chat",
+        "mission",
+        "supervisor",
+        variant="chat",
     )
 
     agent: Agent[MissionSupervisorDeps, str] = Agent(

@@ -29,6 +29,7 @@ logger = get_logger(__name__)
 # Capability enum
 # ---------------------------------------------------------------------------
 
+
 class ToolCapability(str, Enum):
     """security.{domain}.{verb} naming convention.
 
@@ -74,6 +75,7 @@ class CapabilityMode(str, Enum):
 # ---------------------------------------------------------------------------
 # Standardised I/O contracts (tool layer, not agent layer)
 # ---------------------------------------------------------------------------
+
 
 class CapabilityInput(BaseModel):
     """Standard input for all capabilities."""
@@ -152,6 +154,7 @@ CAPABILITY_OUTPUT_CONTRACTS: dict[str, type] = {
 # Tool specification
 # ---------------------------------------------------------------------------
 
+
 class SecurityToolSpec(BaseModel):
     """Registry entry for a pluggable security tool."""
 
@@ -173,6 +176,7 @@ class SecurityToolSpec(BaseModel):
 # ---------------------------------------------------------------------------
 # Surface detection result
 # ---------------------------------------------------------------------------
+
 
 class SurfaceDetectionResult(BaseModel):
     """Result of detecting file types and frameworks in a target directory."""
@@ -237,6 +241,7 @@ def detect_surface(target_path: str) -> SurfaceDetectionResult:
 # Registry
 # ---------------------------------------------------------------------------
 
+
 class SecurityToolRegistry:
     """Resolves security tools by capability. Config-driven."""
 
@@ -267,7 +272,8 @@ class SecurityToolRegistry:
         return self._tools.get(capability, [])
 
     def get_applicable(
-        self, surface: SurfaceDetectionResult,
+        self,
+        surface: SurfaceDetectionResult,
     ) -> list[SecurityToolSpec]:
         """Return primary tool for each capability matching the surface."""
         result: list[SecurityToolSpec] = []
@@ -279,9 +285,7 @@ class SecurityToolRegistry:
             if not primary.applies_when:
                 result.append(primary)
                 seen.add(primary.capability)
-            elif any(
-                getattr(surface, cond, False) for cond in primary.applies_when
-            ):
+            elif any(getattr(surface, cond, False) for cond in primary.applies_when):
                 result.append(primary)
                 seen.add(primary.capability)
         return result

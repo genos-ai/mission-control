@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from modules.backend.agents.security.sarif import load_sarif, merge_sarif
 from modules.backend.agents.security.evidence import EvidenceManifest
+from modules.backend.agents.security.sarif import load_sarif, merge_sarif
 from modules.backend.agents.security.tool_registry import detect_surface
 
 
@@ -22,7 +22,8 @@ class TestSastPipeline:
     """End-to-end scan → merge → triage-ready pipeline with fixture data."""
 
     def test_surface_detection_on_vulnerable_app(
-        self, vulnerable_fastapi_app: Path,
+        self,
+        vulnerable_fastapi_app: Path,
     ):
         """detect_surface identifies Python, Dockerfile, requirements.txt."""
         result = detect_surface(str(vulnerable_fastapi_app))
@@ -31,7 +32,8 @@ class TestSastPipeline:
         assert result.has_requirements_txt is True
 
     def test_surface_detection_on_clean_app(
-        self, clean_fastapi_app: Path,
+        self,
+        clean_fastapi_app: Path,
     ):
         result = detect_surface(str(clean_fastapi_app))
         assert result.has_python is True
@@ -63,10 +65,14 @@ class TestSastPipeline:
     def test_pipeline_with_empty_sarif(self, tmp_path: Path):
         """S-01: Pipeline handles empty scanner output gracefully."""
         empty_sarif = tmp_path / "empty.sarif"
-        empty_sarif.write_text(json.dumps({
-            "version": "2.1.0",
-            "runs": [{"tool": {"driver": {"name": "opengrep"}}, "results": []}],
-        }))
+        empty_sarif.write_text(
+            json.dumps(
+                {
+                    "version": "2.1.0",
+                    "runs": [{"tool": {"driver": {"name": "opengrep"}}, "results": []}],
+                }
+            )
+        )
 
         merged_path = str(tmp_path / "merged.sarif")
         merge_sarif([str(empty_sarif)], merged_path)
@@ -77,13 +83,33 @@ class TestSastPipeline:
     def test_pipeline_with_missing_sarif_files(self, tmp_path: Path):
         """S-01: Pipeline continues when some scanner outputs are missing."""
         valid_sarif = tmp_path / "valid.sarif"
-        valid_sarif.write_text(json.dumps({
-            "version": "2.1.0",
-            "runs": [{"tool": {"driver": {"name": "ruff"}}, "results": [
-                {"ruleId": "S105", "level": "warning", "message": {"text": "Hardcoded password"},
-                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "config.py"}, "region": {"startLine": 3}}}]},
-            ]}],
-        }))
+        valid_sarif.write_text(
+            json.dumps(
+                {
+                    "version": "2.1.0",
+                    "runs": [
+                        {
+                            "tool": {"driver": {"name": "ruff"}},
+                            "results": [
+                                {
+                                    "ruleId": "S105",
+                                    "level": "warning",
+                                    "message": {"text": "Hardcoded password"},
+                                    "locations": [
+                                        {
+                                            "physicalLocation": {
+                                                "artifactLocation": {"uri": "config.py"},
+                                                "region": {"startLine": 3},
+                                            }
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
 
         merged_path = str(tmp_path / "merged.sarif")
         # Mix of valid + missing files

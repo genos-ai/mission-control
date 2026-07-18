@@ -22,22 +22,24 @@ async def main() -> None:
     print("Container Execution Integration Test")
     print("=" * 60)
 
-    from modules.backend.services.execution import ExecutionService
-    from modules.backend.services.session import SessionService
+    from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.agents.mission_control.dispatch_adapter import (
         MissionControlDispatchAdapter,
     )
-    from modules.backend.events.bus import SessionEventBus
     from modules.backend.core.config import get_redis_url
-    from redis.asyncio import Redis as AsyncRedis
+    from modules.backend.events.bus import SessionEventBus
+    from modules.backend.services.execution import ExecutionService
+    from modules.backend.services.session import SessionService
 
     redis = AsyncRedis.from_url(get_redis_url())
     event_bus = SessionEventBus(redis)
 
     # Find the platform-test mission
+    from sqlalchemy import text
+
     from modules.backend.core.database import get_async_session
     from modules.backend.repositories.mission import MissionRepository
-    from sqlalchemy import text
 
     async with get_async_session() as db:
         repo = MissionRepository(db)
@@ -46,7 +48,9 @@ async def main() -> None:
 
         if not mission:
             print("\nNo platform mission found. Create one first:")
-            print("  python admin.py mission create --name platform-test --description 'Test' --tier platform --repo-root .")
+            print(
+                "  python admin.py mission create --name platform-test --description 'Test' --tier platform --repo-root ."
+            )
             sys.exit(1)
 
         print(f"\nMission: {mission.name} ({mission.id})")

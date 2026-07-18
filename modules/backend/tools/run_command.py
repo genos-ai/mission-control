@@ -46,7 +46,10 @@ async def run_command(
     """
     if environment_handle is not None:
         return await _run_in_environment(
-            command, environment_handle, timeout_seconds, working_dir,
+            command,
+            environment_handle,
+            timeout_seconds,
+            working_dir,
         )
     return await _run_local(command, timeout_seconds)
 
@@ -58,13 +61,12 @@ async def _run_in_environment(
     working_dir: str | None,
 ) -> dict[str, Any]:
     """Execute command inside a container/worktree environment."""
-    from modules.backend.services.execution_environment import (
-        ExecutionEnvironmentService,
-    )
+    from modules.backend.services.execution_environment import ExecutionEnvironmentService
 
     service = ExecutionEnvironmentService()
     if handle.mode == "container":
         from modules.backend.services.container_backend import ContainerBackend
+
         service.register_backend("container", ContainerBackend())
 
     result = await service.execute(
@@ -96,7 +98,8 @@ async def _run_local(command: str, timeout_seconds: int) -> dict[str, Any]:
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout_seconds,
+            proc.communicate(),
+            timeout=timeout_seconds,
         )
         return {
             "exit_code": proc.returncode or 0,
@@ -126,6 +129,7 @@ _impl = run_command
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def run_command(
         ctx: RunContext,

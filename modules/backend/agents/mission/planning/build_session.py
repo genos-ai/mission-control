@@ -47,6 +47,7 @@ def resolve_agent_version(agent_name: str) -> str:
     Shared by PlanBuildingSession and MissionPlanService.add_task().
     """
     from modules.backend.core.agent_registry import AgentRegistry
+
     registry = AgentRegistry()
     if registry.has(agent_name):
         return registry.get(agent_name).version or "1.0.0"
@@ -64,9 +65,7 @@ def semantic_check(plan: TaskPlan) -> list[str]:
     errors: list[str] = []
 
     if plan.estimated_cost_usd < 0:
-        errors.append(
-            f"estimated_cost_usd must be >= 0, got {plan.estimated_cost_usd}"
-        )
+        errors.append(f"estimated_cost_usd must be >= 0, got {plan.estimated_cost_usd}")
     if plan.estimated_duration_seconds < 0:
         errors.append(
             f"estimated_duration_seconds must be >= 0, got {plan.estimated_duration_seconds}"
@@ -75,17 +74,14 @@ def semantic_check(plan: TaskPlan) -> list[str]:
     for task in plan.tasks:
         if not _UUID_PATTERN.match(task.task_id):
             errors.append(
-                f"tasks[{task.task_id}].task_id: must be a valid UUID, "
-                f"got '{task.task_id}'"
+                f"tasks[{task.task_id}].task_id: must be a valid UUID, " f"got '{task.task_id}'"
             )
 
     all_ids = {t.task_id for t in plan.tasks}
     for task in plan.tasks:
         for dep in task.dependencies:
             if dep not in all_ids:
-                errors.append(
-                    f"tasks[{task.task_id}].dependencies: '{dep}' not in plan"
-                )
+                errors.append(f"tasks[{task.task_id}].dependencies: '{dep}' not in plan")
 
     for task in plan.tasks:
         for field_name, ref_or_list in task.inputs.from_upstream.items():

@@ -12,8 +12,8 @@ import click
 def show_config(logger, output_format: str = "human") -> None:
     """Display loaded configuration."""
     try:
-        from modules.clients.cli.report import get_console, primary_panel
         from modules.backend.core.config import get_app_config
+        from modules.clients.cli.report import get_console, primary_panel
 
         app_config = get_app_config()
         console = get_console()

@@ -28,7 +28,8 @@ import click
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import cast, select, and_, String as SAString
+from sqlalchemy import String as SAString
+from sqlalchemy import and_, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -44,9 +45,9 @@ from modules.backend.models.llm_call import LlmCall
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_event import MissionEvent
 from modules.backend.models.mission_plan import MissionPlan
-from modules.backend.models.task import Task
 from modules.backend.models.session import Session, SessionMessage
 from modules.backend.models.session_followup import SessionFollowup
+from modules.backend.models.task import Task
 
 logger = get_logger(__name__)
 
@@ -135,9 +136,7 @@ async def resolve_execution(
     return result.scalar_one_or_none()
 
 
-async def collect_execution_details(
-    db: AsyncSession, record: ExecutionRecord
-) -> dict:
+async def collect_execution_details(db: AsyncSession, record: ExecutionRecord) -> dict:
     """Load task executions, attempts, and decisions for an execution."""
     stmt = (
         select(TaskExecution)
@@ -165,11 +164,7 @@ async def collect_mission_events(
     conditions = [MissionEvent.mission_id == mission_id]
     if since:
         conditions.append(MissionEvent.timestamp >= since)
-    stmt = (
-        select(MissionEvent)
-        .where(and_(*conditions))
-        .order_by(MissionEvent.timestamp.asc())
-    )
+    stmt = select(MissionEvent).where(and_(*conditions)).order_by(MissionEvent.timestamp.asc())
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -180,18 +175,12 @@ async def collect_session_messages(
     conditions = [SessionMessage.session_id == session_id]
     if since:
         conditions.append(SessionMessage.created_at >= since)
-    stmt = (
-        select(SessionMessage)
-        .where(and_(*conditions))
-        .order_by(SessionMessage.created_at.asc())
-    )
+    stmt = select(SessionMessage).where(and_(*conditions)).order_by(SessionMessage.created_at.asc())
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
-async def collect_followups(
-    db: AsyncSession, session_id: str
-) -> list[SessionFollowup]:
+async def collect_followups(db: AsyncSession, session_id: str) -> list[SessionFollowup]:
     stmt = (
         select(SessionFollowup)
         .where(SessionFollowup.session_id == session_id)
@@ -217,26 +206,18 @@ async def collect_llm_calls(
         return []
     if since:
         conditions.append(LlmCall.created_at >= since)
-    stmt = (
-        select(LlmCall)
-        .where(and_(*conditions))
-        .order_by(LlmCall.created_at.asc())
-    )
+    stmt = select(LlmCall).where(and_(*conditions)).order_by(LlmCall.created_at.asc())
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
-async def collect_mission_plan(
-    db: AsyncSession, mission_id: str
-) -> MissionPlan | None:
+async def collect_mission_plan(db: AsyncSession, mission_id: str) -> MissionPlan | None:
     stmt = select(MissionPlan).where(MissionPlan.mission_id == mission_id)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def collect_session_for_mission(
-    db: AsyncSession, mission_id: str
-) -> Session | None:
+async def collect_session_for_mission(db: AsyncSession, mission_id: str) -> Session | None:
     stmt = (
         select(Session)
         .where(Session.mission_id == mission_id)
@@ -286,83 +267,111 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
     events: list[TraceEvent] = []
 
     # Execution lifecycle
-    events.append(TraceEvent(
-        record.created_at, "DB",
-        f"ExecutionRecord created  id={_short_id(record.id)}  status={record.status.name if hasattr(record.status, 'name') else record.status}",
-        [
-            f"mission_id={_short_id(record.mission_id)}",
-            f"roster={record.roster_name}",
-            f"temporal_workflow_id={record.temporal_workflow_id or 'None'}",
-        ],
-    ))
+    events.append(
+        TraceEvent(
+            record.created_at,
+            "DB",
+            f"ExecutionRecord created  id={_short_id(record.id)}  status={record.status.name if hasattr(record.status, 'name') else record.status}",
+            [
+                f"mission_id={_short_id(record.mission_id)}",
+                f"roster={record.roster_name}",
+                f"temporal_workflow_id={record.temporal_workflow_id or 'None'}",
+            ],
+        )
+    )
 
     if record.started_at:
-        events.append(TraceEvent(
-            record.started_at, "DISPATCH",
-            f"Execution started  id={_short_id(record.id)}",
-            [
-                f"objective={record.objective_statement or '(none)'}",
-            ],
-        ))
+        events.append(
+            TraceEvent(
+                record.started_at,
+                "DISPATCH",
+                f"Execution started  id={_short_id(record.id)}",
+                [
+                    f"objective={record.objective_statement or '(none)'}",
+                ],
+            )
+        )
 
     # Task executions
     for te in details.get("task_executions", []):
         if te.started_at:
-            events.append(TraceEvent(
-                te.started_at, "DISPATCH",
-                f"Task {te.task_id} started  agent={te.agent_name}",
-            ))
+            events.append(
+                TraceEvent(
+                    te.started_at,
+                    "DISPATCH",
+                    f"Task {te.task_id} started  agent={te.agent_name}",
+                )
+            )
         for attempt in getattr(te, "attempts", []):
             is_fail = str(getattr(attempt.status, "name", attempt.status)).upper() == "FAILED"
-            events.append(TraceEvent(
-                attempt.created_at, "DISPATCH",
-                f"Task {te.task_id} attempt #{attempt.attempt_number}  status={attempt.status.name if hasattr(attempt.status, 'name') else attempt.status}",
-                [
-                    f"failure_tier={attempt.failure_tier}" if attempt.failure_tier else None,
-                    f"failure_reason={attempt.failure_reason}" if attempt.failure_reason else None,
-                ],
-                is_error=is_fail,
-            ))
+            events.append(
+                TraceEvent(
+                    attempt.created_at,
+                    "DISPATCH",
+                    f"Task {te.task_id} attempt #{attempt.attempt_number}  status={attempt.status.name if hasattr(attempt.status, 'name') else attempt.status}",
+                    [
+                        f"failure_tier={attempt.failure_tier}" if attempt.failure_tier else None,
+                        (
+                            f"failure_reason={attempt.failure_reason}"
+                            if attempt.failure_reason
+                            else None
+                        ),
+                    ],
+                    is_error=is_fail,
+                )
+            )
         if te.completed_at:
             te_status = te.status.name if hasattr(te.status, "name") else te.status
-            events.append(TraceEvent(
-                te.completed_at, "DISPATCH",
-                f"Task {te.task_id} completed  status={te_status}  cost=${te.cost_usd or 0:.4f}  duration={te.duration_seconds or 0:.1f}s",
-                is_error=str(te_status).upper() == "FAILED",
-            ))
+            events.append(
+                TraceEvent(
+                    te.completed_at,
+                    "DISPATCH",
+                    f"Task {te.task_id} completed  status={te_status}  cost=${te.cost_usd or 0:.4f}  duration={te.duration_seconds or 0:.1f}s",
+                    is_error=str(te_status).upper() == "FAILED",
+                )
+            )
 
     # Decisions
     for d in details.get("decisions", []):
         d_type = d.decision_type.name if hasattr(d.decision_type, "name") else d.decision_type
-        events.append(TraceEvent(
-            d.created_at, "DISPATCH",
-            f"Decision: {d_type}" + (f"  task={d.task_id}" if d.task_id else ""),
-            [f"reasoning={d.reasoning}"] if d.reasoning else [],
-            is_error=d_type.upper() in {"FAIL", "ESCALATE"},
-        ))
+        events.append(
+            TraceEvent(
+                d.created_at,
+                "DISPATCH",
+                f"Decision: {d_type}" + (f"  task={d.task_id}" if d.task_id else ""),
+                [f"reasoning={d.reasoning}"] if d.reasoning else [],
+                is_error=d_type.upper() in {"FAIL", "ESCALATE"},
+            )
+        )
 
     # Completed
     if record.completed_at:
         status = record.status.name if hasattr(record.status, "name") else record.status
-        events.append(TraceEvent(
-            record.completed_at, "DB",
-            f"ExecutionRecord completed  status={status}  cost=${record.total_cost_usd or 0:.4f}",
-            [
-                f"completed_tasks={record.completed_task_count or 0}  failed_tasks={record.failed_task_count or 0}",
-            ],
-            is_error=str(status).upper() in {"FAILED", "TIMED_OUT"},
-        ))
+        events.append(
+            TraceEvent(
+                record.completed_at,
+                "DB",
+                f"ExecutionRecord completed  status={status}  cost=${record.total_cost_usd or 0:.4f}",
+                [
+                    f"completed_tasks={record.completed_task_count or 0}  failed_tasks={record.failed_task_count or 0}",
+                ],
+                is_error=str(status).upper() in {"FAILED", "TIMED_OUT"},
+            )
+        )
 
     # Outcome
     outcome = record.execution_outcome_json
     if isinstance(outcome, dict):
         abort = outcome.get("abort_reason")
         if abort:
-            events.append(TraceEvent(
-                record.completed_at, "VALIDATE",
-                f"Abort reason: {abort}",
-                is_error=True,
-            ))
+            events.append(
+                TraceEvent(
+                    record.completed_at,
+                    "VALIDATE",
+                    f"Abort reason: {abort}",
+                    is_error=True,
+                )
+            )
 
     return events
 
@@ -376,27 +385,34 @@ def build_plan_metadata_events(plan: MissionPlan) -> list[TraceEvent]:
     tasks = plan.tasks or []
     task_ids = [_short_id(t.id) for t in tasks]
 
-    events.append(TraceEvent(
-        plan.created_at, "PLAN",
-        f"MissionPlan  id={_short_id(plan.id)}  v{plan.version}  status={plan_status}  gate_mode={plan.gate_mode}",
-        [
-            f"budget_ceiling=${plan.budget_usd_ceiling or 0:.2f}  spent=${plan.total_spent_usd or 0:.4f}",
-            f"tasks ({len(tasks)}): {', '.join(task_ids[:10])}" + ("..." if len(task_ids) > 10 else ""),
-            f"supervisor_iterations={plan.supervisor_iteration_count}/{plan.max_supervisor_iterations}",
-        ],
-    ))
+    events.append(
+        TraceEvent(
+            plan.created_at,
+            "PLAN",
+            f"MissionPlan  id={_short_id(plan.id)}  v{plan.version}  status={plan_status}  gate_mode={plan.gate_mode}",
+            [
+                f"budget_ceiling=${plan.budget_usd_ceiling or 0:.2f}  spent=${plan.total_spent_usd or 0:.4f}",
+                f"tasks ({len(tasks)}): {', '.join(task_ids[:10])}"
+                + ("..." if len(task_ids) > 10 else ""),
+                f"supervisor_iterations={plan.supervisor_iteration_count}/{plan.max_supervisor_iterations}",
+            ],
+        )
+    )
 
     # Emit per-task definitions from the plan's tasks relationship
     for t in tasks:
         deps = [_short_id(d.depends_on_id) for d in (t.dependencies or [])]
-        events.append(TraceEvent(
-            plan.created_at, "PLAN",
-            f"Task definition: {_short_id(t.id)}  agent={t.agent}",
-            [
-                f"description={t.description[:150]}" if t.description else None,
-                f"depends_on={deps}" if deps else None,
-            ],
-        ))
+        events.append(
+            TraceEvent(
+                plan.created_at,
+                "PLAN",
+                f"Task definition: {_short_id(t.id)}  agent={t.agent}",
+                [
+                    f"description={t.description[:150]}" if t.description else None,
+                    f"depends_on={deps}" if deps else None,
+                ],
+            )
+        )
 
     return events
 
@@ -413,12 +429,15 @@ def build_task_events(tasks: list[Task]) -> list[TraceEvent]:
         if t.cost_usd:
             detail_lines.append(f"cost=${t.cost_usd:.4f}  duration={t.duration_seconds or 0:.1f}s")
 
-        events.append(TraceEvent(
-            t.updated_at, "PLAN",
-            f"Task {_short_id(t.id)} → {status}",
-            detail_lines,
-            is_error=str(status).upper() == "FAILED",
-        ))
+        events.append(
+            TraceEvent(
+                t.updated_at,
+                "PLAN",
+                f"Task {_short_id(t.id)} → {status}",
+                detail_lines,
+                is_error=str(status).upper() == "FAILED",
+            )
+        )
     return events
 
 
@@ -432,22 +451,33 @@ def build_sse_events(mission_events: list[MissionEvent]) -> list[TraceEvent]:
                 detail_lines.append(f"{key}={data[key]}")
         is_err = any(kw in me.event_type.lower() for kw in ("error", "fail"))
         is_err = is_err or any(
-            kw in str(data.get("status", "")).lower() or kw in str(data.get("run_status", "")).lower()
+            kw in str(data.get("status", "")).lower()
+            or kw in str(data.get("run_status", "")).lower()
             for kw in ("failed", "error")
         )
-        events.append(TraceEvent(
-            me.timestamp, "SSE",
-            f"{me.event_type}" + (f"  source={me.source}" if me.source else ""),
-            detail_lines,
-            is_error=is_err,
-        ))
+        events.append(
+            TraceEvent(
+                me.timestamp,
+                "SSE",
+                f"{me.event_type}" + (f"  source={me.source}" if me.source else ""),
+                detail_lines,
+                is_error=is_err,
+            )
+        )
     return events
 
 
-PLANNING_TOOLS = frozenset({
-    "refine_plan", "add_task", "set_upstream_input", "finalise_plan",
-    "get_plan", "get_roster", "get_current_plan",
-})
+PLANNING_TOOLS = frozenset(
+    {
+        "refine_plan",
+        "add_task",
+        "set_upstream_input",
+        "finalise_plan",
+        "get_plan",
+        "get_roster",
+        "get_current_plan",
+    }
+)
 
 
 def build_message_events(messages: list[SessionMessage]) -> list[TraceEvent]:
@@ -456,61 +486,82 @@ def build_message_events(messages: list[SessionMessage]) -> list[TraceEvent]:
         role = msg.role
         if role == "tool_call":
             source = "PLANNING" if msg.tool_name in PLANNING_TOOLS else "DIRECTOR"
-            events.append(TraceEvent(
-                msg.created_at, source,
-                f"Tool call: {msg.tool_name or '?'}",
-                [f"content={msg.content[:200]}"] if msg.content else [],
-            ))
+            events.append(
+                TraceEvent(
+                    msg.created_at,
+                    source,
+                    f"Tool call: {msg.tool_name or '?'}",
+                    [f"content={msg.content[:200]}"] if msg.content else [],
+                )
+            )
         elif role == "tool_result":
             source = "PLANNING" if msg.tool_name in PLANNING_TOOLS else "DIRECTOR"
             snippet = (msg.content or "")[:200]
-            events.append(TraceEvent(
-                msg.created_at, source,
-                f"Tool result: {msg.tool_name or '?'}",
-                [f"→ {snippet}"] if snippet else [],
-            ))
+            events.append(
+                TraceEvent(
+                    msg.created_at,
+                    source,
+                    f"Tool result: {msg.tool_name or '?'}",
+                    [f"→ {snippet}"] if snippet else [],
+                )
+            )
         elif role == "assistant":
             snippet = (msg.content or "")[:300]
-            events.append(TraceEvent(
-                msg.created_at, "DIRECTOR",
-                f"Response rendered",
-                [f"→ {snippet}"],
-            ))
+            events.append(
+                TraceEvent(
+                    msg.created_at,
+                    "DIRECTOR",
+                    f"Response rendered",
+                    [f"→ {snippet}"],
+                )
+            )
         elif role == "user":
             snippet = (msg.content or "")[:200]
-            events.append(TraceEvent(
-                msg.created_at, "DIRECTOR",
-                f"User message",
-                [f"→ {snippet}"],
-            ))
+            events.append(
+                TraceEvent(
+                    msg.created_at,
+                    "DIRECTOR",
+                    f"User message",
+                    [f"→ {snippet}"],
+                )
+            )
         elif role == "system":
             snippet = (msg.content or "")[:200]
-            events.append(TraceEvent(
-                msg.created_at, "DIRECTOR",
-                f"System message",
-                [f"→ {snippet}"],
-            ))
+            events.append(
+                TraceEvent(
+                    msg.created_at,
+                    "DIRECTOR",
+                    f"System message",
+                    [f"→ {snippet}"],
+                )
+            )
     return events
 
 
 def build_followup_events(followups: list[SessionFollowup]) -> list[TraceEvent]:
     events: list[TraceEvent] = []
     for fu in followups:
-        events.append(TraceEvent(
-            fu.created_at, "FOLLOWUP",
-            f"Followup registered  triggers={fu.trigger_event_types}",
-            [
-                f"created_by={fu.created_by_agent}",
-                f"max_fires={fu.max_fires}  fire_count={fu.fire_count}",
-                f"expires_at={fu.expires_at}",
-            ],
-        ))
+        events.append(
+            TraceEvent(
+                fu.created_at,
+                "FOLLOWUP",
+                f"Followup registered  triggers={fu.trigger_event_types}",
+                [
+                    f"created_by={fu.created_by_agent}",
+                    f"max_fires={fu.max_fires}  fire_count={fu.fire_count}",
+                    f"expires_at={fu.expires_at}",
+                ],
+            )
+        )
         if fu.consumed_at:
-            events.append(TraceEvent(
-                fu.consumed_at, "FOLLOWUP",
-                f"Followup consumed (fired)",
-                [f"prompt_template={fu.prompt_template[:150]}"] if fu.prompt_template else [],
-            ))
+            events.append(
+                TraceEvent(
+                    fu.consumed_at,
+                    "FOLLOWUP",
+                    f"Followup consumed (fired)",
+                    [f"prompt_template={fu.prompt_template[:150]}"] if fu.prompt_template else [],
+                )
+            )
     return events
 
 
@@ -518,14 +569,17 @@ def build_llm_events(calls: list[LlmCall]) -> list[TraceEvent]:
     events: list[TraceEvent] = []
     for c in calls:
         total_tokens = (c.input_tokens or 0) + (c.output_tokens or 0) + (c.cache_read_tokens or 0)
-        events.append(TraceEvent(
-            c.created_at, "LLM",
-            f"LLM call  agent={c.agent_name}  model={c.model}  cost=${c.cost_usd or 0:.4f}",
-            [
-                f"tokens: in={c.input_tokens} out={c.output_tokens} cache_read={c.cache_read_tokens} total={total_tokens}",
-                f"latency={c.latency_ms}ms" if c.latency_ms else None,
-            ],
-        ))
+        events.append(
+            TraceEvent(
+                c.created_at,
+                "LLM",
+                f"LLM call  agent={c.agent_name}  model={c.model}  cost=${c.cost_usd or 0:.4f}",
+                [
+                    f"tokens: in={c.input_tokens} out={c.output_tokens} cache_read={c.cache_read_tokens} total={total_tokens}",
+                    f"latency={c.latency_ms}ms" if c.latency_ms else None,
+                ],
+            )
+        )
     return events
 
 
@@ -564,15 +618,22 @@ def build_log_events(
 
                 level = entry.get("level", "info").upper()
                 is_err = level in ("ERROR", "CRITICAL", "WARNING")
-                events.append(TraceEvent(
-                    ts, "LOG",
-                    f"[{level}] {entry.get('event', '')}",
-                    [
-                        f"logger={entry.get('logger', '')}",
-                        f"extra={json.dumps({k: v for k, v in extra.items() if k != 'mission_id'})}" if extra else None,
-                    ],
-                    is_error=is_err,
-                ))
+                events.append(
+                    TraceEvent(
+                        ts,
+                        "LOG",
+                        f"[{level}] {entry.get('event', '')}",
+                        [
+                            f"logger={entry.get('logger', '')}",
+                            (
+                                f"extra={json.dumps({k: v for k, v in extra.items() if k != 'mission_id'})}"
+                                if extra
+                                else None
+                            ),
+                        ],
+                        is_error=is_err,
+                    )
+                )
     except OSError:
         pass
 
@@ -589,12 +650,17 @@ async def collect_temporal_events(workflow_id: str) -> list[TraceEvent]:
     events: list[TraceEvent] = []
     try:
         from modules.backend.temporal.client import get_temporal_client
+
         client = await get_temporal_client()
         handle = client.get_workflow_handle(workflow_id)
         history = await handle.fetch_history()
 
         for event in history.events:
-            ts = event.event_time.ToDatetime().replace(tzinfo=timezone.utc) if event.event_time else None
+            ts = (
+                event.event_time.ToDatetime().replace(tzinfo=timezone.utc)
+                if event.event_time
+                else None
+            )
             etype = str(event.event_type)
             detail_lines = []
 
@@ -611,18 +677,24 @@ async def collect_temporal_events(workflow_id: str) -> list[TraceEvent]:
                     detail_lines.append(f"failure={attrs.failure.message[:200]}")
 
             is_err = "FAILED" in etype or "TIMED_OUT" in etype
-            events.append(TraceEvent(
-                ts, "TEMPORAL",
-                etype.replace("EVENT_TYPE_", ""),
-                detail_lines,
-                is_error=is_err,
-            ))
+            events.append(
+                TraceEvent(
+                    ts,
+                    "TEMPORAL",
+                    etype.replace("EVENT_TYPE_", ""),
+                    detail_lines,
+                    is_error=is_err,
+                )
+            )
     except Exception as e:
-        events.append(TraceEvent(
-            datetime.now(timezone.utc), "TEMPORAL",
-            f"(Temporal unavailable: {e})",
-            is_error=False,
-        ))
+        events.append(
+            TraceEvent(
+                datetime.now(timezone.utc),
+                "TEMPORAL",
+                f"(Temporal unavailable: {e})",
+                is_error=False,
+            )
+        )
     return events
 
 
@@ -669,7 +741,11 @@ def diagnose(
     for ev in timeline:
         if ev.source == "FOLLOWUP" and "consumed" in ev.summary.lower():
             followup_fired = True
-        if followup_fired and ev.source in ("DIRECTOR", "PLANNING") and "get_plan" in ev.summary.lower():
+        if (
+            followup_fired
+            and ev.source in ("DIRECTOR", "PLANNING")
+            and "get_plan" in ev.summary.lower()
+        ):
             director_checked = True
 
     if followup_fired and not director_checked and status.upper() == "FAILED":
@@ -702,6 +778,7 @@ def diagnose_session(
 
     # 2. Planning agent failures (tool called with no matching result)
     from collections import Counter
+
     call_counts: Counter[str] = Counter()
     for ev in timeline:
         if ev.source == "PLANNING" and "Tool call" in ev.summary:
@@ -718,14 +795,15 @@ def diagnose_session(
     for t in tasks:
         ts = t.status.name if hasattr(t.status, "name") else str(t.status)
         if ts.upper() == "RUNNING":
-            findings.append(
-                f"Task {_short_id(t.id)} stuck in RUNNING during planning session."
-            )
+            findings.append(f"Task {_short_id(t.id)} stuck in RUNNING during planning session.")
 
     # 4. refine_plan timeout patterns
     for ev in timeline:
         if "refine_plan" in ev.summary.lower() and any(
-            kw in detail.lower() for detail in ev.details if detail for kw in ("timeout", "timed out")
+            kw in detail.lower()
+            for detail in ev.details
+            if detail
+            for kw in ("timeout", "timed out")
         ):
             findings.append(f"refine_plan timeout detected at {_ts(ev.timestamp)}")
 
@@ -827,7 +905,9 @@ def render_text(
     if diagnosis:
         click.echo()
         click.secho("=" * 60, bold=True)
-        click.secho(f"DIAGNOSIS ({status})", fg="red" if "FAIL" in status.upper() else "green", bold=True)
+        click.secho(
+            f"DIAGNOSIS ({status})", fg="red" if "FAIL" in status.upper() else "green", bold=True
+        )
         click.echo()
         for finding in diagnosis:
             click.echo(f"  - {finding}")
@@ -898,6 +978,7 @@ async def run_trace(
         since = None
         if since_hours:
             from datetime import timedelta
+
             since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
 
         # --session mode: trace a chat session without requiring an execution record
@@ -1029,10 +1110,23 @@ async def run_trace(
 @click.option("--execution", "-e", "execution_id", help="Execution record ID (prefix match)")
 @click.option("--workflow", "-w", "workflow_id", help="Temporal workflow ID")
 @click.option("--last", is_flag=True, help="Use the most recent execution for the mission")
-@click.option("--session", "-s", "session_mode", is_flag=True, help="Trace a chat session (no execution record required)")
-@click.option("--filter", "-f", "filter_str", help="Comma-separated filters: errors,transitions,director,temporal,llm,sse,followup,dispatch,log,planning")
+@click.option(
+    "--session",
+    "-s",
+    "session_mode",
+    is_flag=True,
+    help="Trace a chat session (no execution record required)",
+)
+@click.option(
+    "--filter",
+    "-f",
+    "filter_str",
+    help="Comma-separated filters: errors,transitions,director,temporal,llm,sse,followup,dispatch,log,planning",
+)
 @click.option("--json", "output_json", is_flag=True, help="JSON output for piping")
-@click.option("--since", "since_hours", type=float, help="Only include events from the last N hours")
+@click.option(
+    "--since", "since_hours", type=float, help="Only include events from the last N hours"
+)
 @click.option("--verbose", "-v", is_flag=True, help="Verbose logging")
 def main(
     mission_name: str | None,
@@ -1064,16 +1158,18 @@ def main(
     if filter_str:
         filters = {f.strip().lower() for f in filter_str.split(",")}
 
-    asyncio.run(run_trace(
-        mission_name=mission_name,
-        execution_id=execution_id,
-        workflow_id=workflow_id,
-        last=last,
-        session_mode=session_mode,
-        filters=filters,
-        output_json=output_json,
-        since_hours=since_hours,
-    ))
+    asyncio.run(
+        run_trace(
+            mission_name=mission_name,
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            last=last,
+            session_mode=session_mode,
+            filters=filters,
+            output_json=output_json,
+            since_hours=since_hours,
+        )
+    )
 
 
 if __name__ == "__main__":

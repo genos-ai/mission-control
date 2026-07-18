@@ -152,7 +152,10 @@ async def execute_convergence_loop(
 
         # Publish iteration event
         from modules.backend.events.types import ConvergenceIterationEvent
-        await _emit(_bus, ConvergenceIterationEvent,
+
+        await _emit(
+            _bus,
+            ConvergenceIterationEvent,
             session_id=_sid,
             source=f"convergence:{task_id}",
             loop_task_id=task_id,
@@ -172,21 +175,25 @@ async def execute_convergence_loop(
             break
 
         # --- Gate check: should we continue? ---
-        decision = await _gate.review(GateContext(
-            gate_type="convergence_cycle",
-            mission_id=mission_id,
-            session_id=_sid,
-            layer_index=cycle_num,
-            total_layers=config.max_iterations,
-            task_output=eval_result,
-            pending_tasks=[{
-                "task_id": f"{task_id}-fix-{cycle_num}",
-                "agent": config.remediation_agent,
-                "description": f"Fix {findings_count} findings (cycle {cycle_num})",
-            }],
-            total_cost_usd=total_cost,
-            budget_usd=0,  # No per-loop budget — mission budget applies
-        ))
+        decision = await _gate.review(
+            GateContext(
+                gate_type="convergence_cycle",
+                mission_id=mission_id,
+                session_id=_sid,
+                layer_index=cycle_num,
+                total_layers=config.max_iterations,
+                task_output=eval_result,
+                pending_tasks=[
+                    {
+                        "task_id": f"{task_id}-fix-{cycle_num}",
+                        "agent": config.remediation_agent,
+                        "description": f"Fix {findings_count} findings (cycle {cycle_num})",
+                    }
+                ],
+                total_cost_usd=total_cost,
+                budget_usd=0,  # No per-loop budget — mission budget applies
+            )
+        )
 
         if decision.action == GateAction.ABORT:
             logger.info("Convergence loop aborted by gate", extra={"cycle": cycle_num})
@@ -257,14 +264,17 @@ async def execute_convergence_loop(
 
     # --- Build final result ---
     outcome = (
-        "converged" if final_converged and verification_passed is not False
-        else "verification_failed" if verification_passed is False
-        else "max_iterations"
+        "converged"
+        if final_converged and verification_passed is not False
+        else "verification_failed" if verification_passed is False else "max_iterations"
     )
 
     # Publish completion event
     from modules.backend.events.types import ConvergenceCompletedEvent
-    await _emit(_bus, ConvergenceCompletedEvent,
+
+    await _emit(
+        _bus,
+        ConvergenceCompletedEvent,
         session_id=_sid,
         source=f"convergence:{task_id}",
         loop_task_id=task_id,
@@ -333,7 +343,10 @@ async def _run_final_verification(
 
     # Publish verification event
     from modules.backend.events.types import FinalVerificationEvent
-    await _emit(event_bus, FinalVerificationEvent,
+
+    await _emit(
+        event_bus,
+        FinalVerificationEvent,
         session_id=session_id,
         source=f"convergence:{task_id}",
         loop_task_id=task_id,

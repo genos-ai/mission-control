@@ -46,18 +46,20 @@ def run_admin_cmd(
         get_console().print(f"[red]Unknown admin action: {action}[/red]")
         sys.exit(1)
 
-    asyncio.run(fn(
-        cli_logger,
-        agent_name=agent_name,
-        content=content,
-        change_reason=change_reason,
-        user_id=user_id,
-        role=role,
-        email=email,
-        display_name=display_name,
-        password=password,
-        output_format=output_format,
-    ))
+    asyncio.run(
+        fn(
+            cli_logger,
+            agent_name=agent_name,
+            content=content,
+            change_reason=change_reason,
+            user_id=user_id,
+            role=role,
+            email=email,
+            display_name=display_name,
+            password=password,
+            output_format=output_format,
+        )
+    )
 
 
 async def _action_metrics(cli_logger, *, output_format, **_):
@@ -72,10 +74,13 @@ async def _action_metrics(cli_logger, *, output_format, **_):
         console.print_json(json.dumps(overview, default=str))
         return
 
-    table = build_table("Platform Overview", columns=[
-        ("Metric", {"style": "cyan", "width": 25}),
-        ("Value", {"justify": "right", "width": 15}),
-    ])
+    table = build_table(
+        "Platform Overview",
+        columns=[
+            ("Metric", {"style": "cyan", "width": 25}),
+            ("Value", {"justify": "right", "width": 15}),
+        ],
+    )
     for key, val in overview["counts"].items():
         table.add_row(key.replace("_", " ").title(), str(val))
     table.add_row("Total Cost USD", f"${overview['total_cost_usd']:.4f}", end_section=True)
@@ -96,21 +101,29 @@ async def _action_costs(cli_logger, *, output_format, **_):
         return
 
     if costs["by_agent"]:
-        agent_table = build_table("Cost by Agent", columns=[
-            ("Agent", {"style": "cyan", "width": 35}),
-            ("Runs", {"justify": "right", "width": 10}),
-            ("Total Cost", {"justify": "right", "width": 14}),
-        ])
+        agent_table = build_table(
+            "Cost by Agent",
+            columns=[
+                ("Agent", {"style": "cyan", "width": 35}),
+                ("Runs", {"justify": "right", "width": 10}),
+                ("Total Cost", {"justify": "right", "width": 14}),
+            ],
+        )
         for row in costs["by_agent"]:
-            agent_table.add_row(row["agent_name"], str(row["runs"]), f"${row['total_cost_usd']:.4f}")
+            agent_table.add_row(
+                row["agent_name"], str(row["runs"]), f"${row['total_cost_usd']:.4f}"
+            )
         console.print(agent_table)
 
     if costs["by_status"]:
-        status_table = build_table("Cost by Status", columns=[
-            ("Status", {"style": "cyan", "width": 20}),
-            ("Count", {"justify": "right", "width": 10}),
-            ("Total Cost", {"justify": "right", "width": 14}),
-        ])
+        status_table = build_table(
+            "Cost by Status",
+            columns=[
+                ("Status", {"style": "cyan", "width": 20}),
+                ("Count", {"justify": "right", "width": 10}),
+                ("Total Cost", {"justify": "right", "width": 14}),
+            ],
+        )
         for row in costs["by_status"]:
             status_table.add_row(row["status"], str(row["count"]), f"${row['total_cost_usd']:.4f}")
         console.print(status_table)
@@ -144,10 +157,13 @@ async def _action_config(cli_logger, *, output_format, **_):
         return
 
     for section, values in data.items():
-        table = build_table(section.title(), columns=[
-            ("Key", {"style": "cyan", "width": 30}),
-            ("Value", {"width": 30}),
-        ])
+        table = build_table(
+            section.title(),
+            columns=[
+                ("Key", {"style": "cyan", "width": 30}),
+                ("Value", {"width": 30}),
+            ],
+        )
         for k, v in values.items():
             table.add_row(k, str(v))
         console.print(table)
@@ -171,7 +187,9 @@ async def _action_health(cli_logger, *, output_format, **_):
 
     for component in report.components:
         status = component.status
-        color = "green" if status == "healthy" else ("yellow" if status == "not_configured" else "red")
+        color = (
+            "green" if status == "healthy" else ("yellow" if status == "not_configured" else "red")
+        )
         console.print(f"  [{color}]{component.name}: {status}[/{color}]")
         if component.latency_ms is not None:
             console.print(f"    latency: {component.latency_ms}ms")
@@ -185,15 +203,21 @@ async def _action_roles(cli_logger, *, output_format, **_):
     config = get_app_config()
 
     if output_format == "json":
-        data = {name: {"level": r.level, "description": r.description} for name, r in config.security.roles.items()}
+        data = {
+            name: {"level": r.level, "description": r.description}
+            for name, r in config.security.roles.items()
+        }
         console.print_json(json.dumps(data))
         return
 
-    table = build_table("Roles", columns=[
-        ("Role", {"style": "cyan", "width": 15}),
-        ("Level", {"justify": "right", "width": 8}),
-        ("Description", {"ratio": 1}),
-    ])
+    table = build_table(
+        "Roles",
+        columns=[
+            ("Role", {"style": "cyan", "width": 15}),
+            ("Level", {"justify": "right", "width": 8}),
+            ("Description", {"ratio": 1}),
+        ],
+    )
     for name, r in sorted(config.security.roles.items(), key=lambda x: x[1].level):
         table.add_row(name, str(r.level), r.description)
     console.print(table)
@@ -215,10 +239,13 @@ async def _action_user_roles(cli_logger, *, output_format, **_):
         console.print("[dim]No user role assignments. All users default to 'viewer'.[/dim]")
         return
 
-    table = build_table("User Role Assignments", columns=[
-        ("User ID", {"style": "cyan", "width": 30}),
-        ("Role", {"width": 15}),
-    ])
+    table = build_table(
+        "User Role Assignments",
+        columns=[
+            ("User ID", {"style": "cyan", "width": 30}),
+            ("Role", {"width": 15}),
+        ],
+    )
     for uid, r in user_roles.items():
         table.add_row(uid, r)
     console.print(table)
@@ -237,6 +264,7 @@ async def _action_update_prompt(cli_logger, *, agent_name, content, change_reaso
     prompt_content = content
     if content.startswith("@"):
         import pathlib
+
         path = pathlib.Path(content[1:])
         if not path.exists():
             console.print(f"[red]File not found: {path}[/red]")
@@ -253,7 +281,9 @@ async def _action_update_prompt(cli_logger, *, agent_name, content, change_reaso
             change_reason=change_reason,
         )
 
-    console.print(f"[green]Updated prompt for {entry.agent_name} ({len(entry.system_prompt)} chars)[/green]")
+    console.print(
+        f"[green]Updated prompt for {entry.agent_name} ({len(entry.system_prompt)} chars)[/green]"
+    )
 
 
 async def _action_toggle_agent(cli_logger, *, agent_name, **_):

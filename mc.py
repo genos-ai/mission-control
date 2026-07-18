@@ -82,8 +82,7 @@ def _show_quickstart():
     """Formatted quick-start guide."""
     from modules.clients.common.display import get_console
 
-    get_console().print(
-        """
+    get_console().print("""
 [bold cyan]Mission Control[/bold cyan]
 
   [bold]Quick Start:[/bold]
@@ -105,8 +104,7 @@ def _show_quickstart():
     mc context show              Mission Context Document
 
   [dim]Use mc <command> --help for details.[/dim]
-"""
-    )
+""")
 
 
 # =============================================================================

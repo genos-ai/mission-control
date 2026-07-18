@@ -48,9 +48,7 @@ class AgentDetailWidget(Widget):
     def __init__(self, agent_name: str, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.agent_name = agent_name
-        self._display_name = (
-            agent_name.split(".")[-2] if "." in agent_name else agent_name
-        )
+        self._display_name = agent_name.split(".")[-2] if "." in agent_name else agent_name
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-detail-header"):
@@ -145,16 +143,13 @@ class AgentDetailWidget(Widget):
 
         parts = [f"[bold]{self._display_name}[/bold]"]
         if status:
-            color = {"running": "cyan", "success": "green", "failed": "red"}.get(
-                status, "dim"
-            )
+            color = {"running": "cyan", "success": "green", "failed": "red"}.get(status, "dim")
             parts.append(f"[{color}]{status}[/{color}]")
         if cost > 0:
             parts.append(f"[green]${cost:.3f}[/green]")
         if input_tokens or output_tokens:
             parts.append(
-                f"[dim]{_fmt_tokens(input_tokens)} in / "
-                f"{_fmt_tokens(output_tokens)} out[/dim]"
+                f"[dim]{_fmt_tokens(input_tokens)} in / " f"{_fmt_tokens(output_tokens)} out[/dim]"
             )
 
         label = self.query_one("#agent-header-label", Label)

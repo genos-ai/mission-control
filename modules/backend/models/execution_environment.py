@@ -7,10 +7,9 @@ up on mission archive/delete or idle timeout.
 """
 
 import enum
-
 from datetime import datetime
 
-from sqlalchemy import DateTime, JSON, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,7 +38,8 @@ class ExecutionEnvironmentModel(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     mode: Mapped[str] = mapped_column(
-        String(20), nullable=False,
+        String(20),
+        nullable=False,
         comment="Environment mode: container, worktree",
     )
     status: Mapped[str] = mapped_column(
@@ -48,31 +48,40 @@ class ExecutionEnvironmentModel(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
     container_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True,
+        String(100),
+        nullable=True,
         comment="Docker container ID (for container mode)",
     )
     container_name: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
         comment="Docker container name",
     )
     branch_name: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
     working_dir: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     image: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
     execution_count: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False,
+        Integer,
+        default=0,
+        nullable=False,
     )
     last_execution_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
         comment="Timestamp of last execution in this environment",
     )
     config: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True,
+        JSON,
+        nullable=True,
         comment="Backend-specific configuration used to create this environment",
     )
 

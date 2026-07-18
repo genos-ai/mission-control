@@ -128,9 +128,7 @@ class RateLimitMiddleware(BaseMiddleware):
         """
         # Clean old requests outside the window
         window_start = now - self.rate_window
-        self._requests[user_id] = [
-            ts for ts in self._requests[user_id] if ts > window_start
-        ]
+        self._requests[user_id] = [ts for ts in self._requests[user_id] if ts > window_start]
 
         # Check if limit exceeded
         request_count = len(self._requests[user_id])
@@ -142,9 +140,7 @@ class RateLimitMiddleware(BaseMiddleware):
 
         return False, 0
 
-    async def _send_rate_limit_message(
-        self, event: TelegramObject, remaining: int
-    ) -> None:
+    async def _send_rate_limit_message(self, event: TelegramObject, remaining: int) -> None:
         """Send rate limit notification to user."""
         message = f"⏳ Rate limit exceeded. Please wait {remaining} seconds."
 

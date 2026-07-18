@@ -22,10 +22,9 @@ Create Date: 2026-04-12
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import inspect, text
-
 
 revision: str = "plan51_003"
 down_revision: Union[str, None] = "plan51_002"
@@ -49,9 +48,7 @@ def upgrade() -> None:
 
     # Find the catalog id for the supervisor agent.
     result = bind.execute(
-        text(
-            "SELECT id FROM agent_catalog WHERE agent_name = :name LIMIT 1"
-        ),
+        text("SELECT id FROM agent_catalog WHERE agent_name = :name LIMIT 1"),
         {"name": SUPERVISOR_AGENT},
     )
     row = result.fetchone()
@@ -101,9 +98,7 @@ def downgrade() -> None:
         return
 
     result = bind.execute(
-        text(
-            "SELECT id FROM agent_catalog WHERE agent_name = :name LIMIT 1"
-        ),
+        text("SELECT id FROM agent_catalog WHERE agent_name = :name LIMIT 1"),
         {"name": SUPERVISOR_AGENT},
     )
     row = result.fetchone()
@@ -111,8 +106,6 @@ def downgrade() -> None:
         return
 
     bind.execute(
-        text(
-            "DELETE FROM mission_team_members WHERE agent_catalog_id = :catalog_id"
-        ),
+        text("DELETE FROM mission_team_members WHERE agent_catalog_id = :catalog_id"),
         {"catalog_id": row[0]},
     )

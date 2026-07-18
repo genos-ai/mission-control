@@ -32,7 +32,8 @@ class TestVerificationAgentWithTestModel:
     async def test_returns_verification_evaluation(self, verification_deps):
         agent = create_agent(TestModel(call_tools=[]))
         result = await agent.run(
-            "Evaluate this output against the criteria.", deps=verification_deps,
+            "Evaluate this output against the criteria.",
+            deps=verification_deps,
         )
 
         assert isinstance(result.output, VerificationEvaluation)
@@ -46,7 +47,8 @@ class TestVerificationAgentWithTestModel:
     async def test_score_range(self, verification_deps):
         agent = create_agent(TestModel(call_tools=[]))
         result = await agent.run(
-            "Evaluate this output.", deps=verification_deps,
+            "Evaluate this output.",
+            deps=verification_deps,
         )
         assert 0.0 <= result.output.overall_score <= 1.0
 

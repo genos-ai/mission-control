@@ -10,8 +10,8 @@ Create Date: 2026-04-26
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "float_to_numeric_monetary"
 down_revision: Union[str, None] = "add_missing_fk_constraints"
@@ -59,7 +59,8 @@ MONETARY_COLUMNS = [
 def upgrade() -> None:
     for table, column in MONETARY_COLUMNS:
         op.alter_column(
-            table, column,
+            table,
+            column,
             type_=sa.Numeric(12, 6),
             existing_type=sa.Float(),
             existing_nullable=True,
@@ -69,7 +70,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     for table, column in MONETARY_COLUMNS:
         op.alter_column(
-            table, column,
+            table,
+            column,
             type_=sa.Float(),
             existing_type=sa.Numeric(12, 6),
             existing_nullable=True,

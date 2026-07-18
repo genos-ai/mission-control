@@ -14,12 +14,7 @@ import json
 from pathlib import Path
 
 from modules.backend.core.logging import get_logger
-from modules.backend.services.pqi.tools import (
-    Finding,
-    ToolResult,
-    check_installed,
-    run_command,
-)
+from modules.backend.services.pqi.tools import Finding, ToolResult, check_installed, run_command
 
 logger = get_logger(__name__)
 
@@ -80,7 +75,10 @@ def run(
 
     # Bandit returns 1 when findings exist (not an error)
     if returncode not in (0, 1):
-        logger.warning("Bandit exited with unexpected code", extra={"returncode": returncode, "stderr": stderr[:500]})
+        logger.warning(
+            "Bandit exited with unexpected code",
+            extra={"returncode": returncode, "stderr": stderr[:500]},
+        )
         return ToolResult(
             tool=TOOL_NAME,
             available=True,
@@ -90,7 +88,11 @@ def run(
     result = _parse_output(_strip_progress(stdout))
     logger.debug(
         "Bandit parsed",
-        extra={"findings": len(result.findings), "success": result.success, "error": result.error or None},
+        extra={
+            "findings": len(result.findings),
+            "success": result.success,
+            "error": result.error or None,
+        },
     )
     return result
 
@@ -145,27 +147,25 @@ def _parse_output(raw_json: str) -> ToolResult:
         severity_counts[severity] = severity_counts.get(severity, 0) + 1
         confidence_counts[confidence] = confidence_counts.get(confidence, 0) + 1
 
-        findings.append(Finding(
-            rule_id=rule_id,
-            severity=severity,
-            confidence=confidence,
-            message=result.get("issue_text", ""),
-            file=filename,
-            line=result.get("line_number", 0),
-            tool=TOOL_NAME,
-        ))
+        findings.append(
+            Finding(
+                rule_id=rule_id,
+                severity=severity,
+                confidence=confidence,
+                message=result.get("issue_text", ""),
+                file=filename,
+                line=result.get("line_number", 0),
+                tool=TOOL_NAME,
+            )
+        )
 
     # Compute severity-weighted density
     metrics = data.get("metrics", {})
-    total_loc = sum(
-        v.get("loc", 0) for v in metrics.values() if isinstance(v, dict)
-    )
+    total_loc = sum(v.get("loc", 0) for v in metrics.values() if isinstance(v, dict))
 
     # Weighted score: High×3 + Medium×2 + Low×1
     weighted_findings = (
-        severity_counts["HIGH"] * 3
-        + severity_counts["MEDIUM"] * 2
-        + severity_counts["LOW"] * 1
+        severity_counts["HIGH"] * 3 + severity_counts["MEDIUM"] * 2 + severity_counts["LOW"] * 1
     )
     kloc = max(total_loc / 1000, 0.1)
 

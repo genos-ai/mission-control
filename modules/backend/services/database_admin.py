@@ -96,12 +96,15 @@ class DatabaseAdminService:
     async def get_table_columns(self, table: str) -> list[tuple[str, str, str]]:
         """Return (column_name, data_type, is_nullable) for a table."""
         self._validate_table(table)
-        result = await self._session.execute(text(
-            "SELECT column_name, data_type, is_nullable "
-            "FROM information_schema.columns "
-            "WHERE table_name = :table "
-            "ORDER BY ordinal_position"
-        ), {"table": table})
+        result = await self._session.execute(
+            text(
+                "SELECT column_name, data_type, is_nullable "
+                "FROM information_schema.columns "
+                "WHERE table_name = :table "
+                "ORDER BY ordinal_position"
+            ),
+            {"table": table},
+        )
         return result.fetchall()
 
     async def get_table_row_count(self, table: str) -> int:
@@ -111,7 +114,9 @@ class DatabaseAdminService:
         return result.scalar()
 
     async def query_recent_rows(
-        self, table: str, limit: int = 20,
+        self,
+        table: str,
+        limit: int = 20,
     ) -> tuple[list[str], list[Any]]:
         """Query recent rows from a table.
 
@@ -120,16 +125,20 @@ class DatabaseAdminService:
         """
         self._validate_table(table)
 
-        col_result = await self._session.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = :table ORDER BY ordinal_position"
-        ), {"table": table})
+        col_result = await self._session.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = :table ORDER BY ordinal_position"
+            ),
+            {"table": table},
+        )
         columns = [row[0] for row in col_result.fetchall()]
 
         order_col = "created_at" if "created_at" in columns else columns[0]
-        result = await self._session.execute(text(
-            f"SELECT * FROM {table} ORDER BY {order_col} DESC LIMIT :limit"  # noqa: S608
-        ), {"limit": limit})
+        result = await self._session.execute(
+            text(f"SELECT * FROM {table} ORDER BY {order_col} DESC LIMIT :limit"),  # noqa: S608
+            {"limit": limit},
+        )
 
         return columns, result.fetchall()
 

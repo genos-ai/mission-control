@@ -30,8 +30,10 @@ def _make_emitter(
 ):
     """Return an async callable that publishes events when bus and session_id are set."""
     if not event_bus or not session_id:
+
         async def _noop(**_kwargs: Any) -> None:
             pass
+
         return _noop
 
     from modules.backend.events.types import (
@@ -101,6 +103,7 @@ def _cli_result_from_sdk(output: str, result_msg: Any | None) -> dict:
         },
     }
 
+
 def _cli_result(output: str) -> dict:
     """Normalize CLI executor output to match PydanticAI agent return structure."""
     return {
@@ -142,7 +145,8 @@ async def _run_subprocess(
 
     try:
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout,
+            proc.communicate(),
+            timeout=timeout,
         )
     except asyncio.TimeoutError:
         proc.kill()
@@ -227,10 +231,17 @@ async def execute_claude_code(
                         await _emit("chunk", content=block.text)
                     elif isinstance(block, ToolUseBlock):
                         pending_tool_calls[block.id] = block.name
-                        await _emit("tool_call", tool_name=block.name, tool_args=block.input, tool_call_id=block.id)
+                        await _emit(
+                            "tool_call",
+                            tool_name=block.name,
+                            tool_args=block.input,
+                            tool_call_id=block.id,
+                        )
                     elif isinstance(block, ToolResultBlock):
                         tool_name = pending_tool_calls.pop(block.tool_use_id, block.tool_use_id)
-                        result_content = block.content if isinstance(block.content, str) else str(block.content)
+                        result_content = (
+                            block.content if isinstance(block.content, str) else str(block.content)
+                        )
                         await _emit(
                             "tool_result",
                             tool_name=tool_name,
@@ -262,15 +273,21 @@ async def execute_codex(
     user_message = _compose_user_message(instructions, inputs)
 
     cmd = [
-        "codex", "exec", user_message,
-        "--approval-mode", "never",
+        "codex",
+        "exec",
+        user_message,
+        "--approval-mode",
+        "never",
         "--full-auto",
     ]
     if system_prompt:
         cmd.extend(["--config", f"developer_instructions={system_prompt}"])
 
     output = await _run_subprocess(
-        cmd, cwd=cwd, agent_name=agent_name, engine_label="Codex",
+        cmd,
+        cwd=cwd,
+        agent_name=agent_name,
+        engine_label="Codex",
     )
     return _cli_result(output)
 
@@ -300,7 +317,10 @@ async def execute_copilot(
         cmd = ["copilot", "-p", user_message, "-s"]
 
         output = await _run_subprocess(
-            cmd, cwd=cwd, agent_name=agent_name, engine_label="Copilot",
+            cmd,
+            cwd=cwd,
+            agent_name=agent_name,
+            engine_label="Copilot",
         )
     finally:
         if agents_md_backup is not None:

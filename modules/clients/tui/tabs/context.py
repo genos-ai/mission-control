@@ -32,8 +32,7 @@ class _ChangeEntry(Static):
         version = self._change.get("version", "?")
 
         yield Static(
-            f"  v{version} · {created}\n"
-            f"  [dim]{agent}: {summary}[/dim]",
+            f"  v{version} · {created}\n" f"  [dim]{agent}: {summary}[/dim]",
             markup=True,
         )
 
@@ -103,7 +102,8 @@ class ContextTab(Static):
 
         try:
             history = await self.app.bridge.get_context_history(
-                mission_id, limit=50,
+                mission_id,
+                limit=50,
             )
             self._render_history(history)
         except Exception as exc:
@@ -118,7 +118,8 @@ class ContextTab(Static):
 
     @staticmethod
     def _dict_section_to_md(
-        heading: str, data: dict[str, Any],
+        heading: str,
+        data: dict[str, Any],
     ) -> list[str]:
         """Convert a key-value dict section into markdown lines."""
         lines = [f"## {heading}"]
@@ -164,8 +165,7 @@ class ContextTab(Static):
                 for d in decisions:
                     if isinstance(d, dict):
                         lines.append(
-                            f"- **{d.get('decision', '')}** — "
-                            f"{d.get('rationale', '')}",
+                            f"- **{d.get('decision', '')}** — " f"{d.get('rationale', '')}",
                         )
                     else:
                         lines.append(f"- {d}")
@@ -185,8 +185,7 @@ class ContextTab(Static):
             if version or updated:
                 lines.append("---")
                 lines.append(
-                    f"*Version {version} · "
-                    f"Updated {updated} by {updated_by}*",
+                    f"*Version {version} · " f"Updated {updated} by {updated_by}*",
                 )
 
             md_text = "\n".join(lines) if lines else "*Empty context*"
@@ -211,7 +210,8 @@ class ContextTab(Static):
         """Render change history entries."""
         try:
             scroll = self.query_one(
-                "#context-history-scroll", VerticalScroll,
+                "#context-history-scroll",
+                VerticalScroll,
             )
             scroll.remove_children()
 
@@ -246,8 +246,7 @@ class ContextTab(Static):
                 color = "red"
 
             label.update(
-                f"[{color}]v{version} · {chars:,} chars · "
-                f"{pct:.0f}% capacity[/{color}]",
+                f"[{color}]v{version} · {chars:,} chars · " f"{pct:.0f}% capacity[/{color}]",
             )
         except Exception:
             logger.debug("context size label update failed", exc_info=True)

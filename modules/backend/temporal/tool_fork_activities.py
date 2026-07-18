@@ -74,10 +74,12 @@ async def execute_design_workflow(input: DesignWorkflowInput) -> ToolForkResult:
     )
 
     try:
-        from modules.backend.agents.mission_control.helpers import _build_model
-        from modules.backend.agents.mission_control.helpers.agent_setup import build_deps_from_config
-        from modules.backend.core.agent_registry import get_registry
         from modules.backend.agents.mission.workflow.architect.deps import ArchitectAgentDeps
+        from modules.backend.agents.mission_control.helpers import _build_model
+        from modules.backend.agents.mission_control.helpers.agent_setup import (
+            build_deps_from_config,
+        )
+        from modules.backend.core.agent_registry import get_registry
         from modules.backend.core.database import get_async_session
 
         _ARCHITECT = "mission.workflow.architect"
@@ -122,7 +124,9 @@ async def execute_design_workflow(input: DesignWorkflowInput) -> ToolForkResult:
             extra={"mission_id": input.mission_id, "error": str(e)},
             exc_info=True,
         )
-        await _emit_activity_error(input.mission_id, "workflow_architect", f"Design workflow failed: {e}")
+        await _emit_activity_error(
+            input.mission_id, "workflow_architect", f"Design workflow failed: {e}"
+        )
         return ToolForkResult(
             execution_record_id=input.execution_record_id,
             status="failed",
@@ -142,10 +146,11 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
     )
 
     try:
+        from redis.asyncio import Redis as AsyncRedis
+
         from modules.backend.core.config import get_redis_url
         from modules.backend.events.bus import SessionEventBus
         from modules.backend.services.workflow_run import WorkflowRunService
-        from redis.asyncio import Redis as AsyncRedis
 
         redis = AsyncRedis.from_url(get_redis_url())
         event_bus = SessionEventBus(redis, mission_id=input.mission_id)
@@ -171,7 +176,9 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
             extra={"mission_id": input.mission_id, "error": str(e)},
             exc_info=True,
         )
-        await _emit_activity_error(input.mission_id, "workflow_runner", f"Run workflow '{input.workflow_name}' failed: {e}")
+        await _emit_activity_error(
+            input.mission_id, "workflow_runner", f"Run workflow '{input.workflow_name}' failed: {e}"
+        )
         return ToolForkResult(
             execution_record_id=input.execution_record_id,
             status="failed",

@@ -73,9 +73,7 @@ class TestResearchVerifierAgent:
         # If the prompt file is missing or unreadable, assemble_instructions
         # falls back to an empty string and the agent still constructs —
         # but its system prompt has no content. Catch that.
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "research_verifier")
         # The prompt file should contain the verifier's checks. Smoke check
@@ -83,7 +81,4 @@ class TestResearchVerifierAgent:
         assert "Verifier" in prompt or "verifier" in prompt
         assert "audit" in prompt.lower()
         # The four-check structure is the verifier's contract.
-        assert (
-            "mainstream consensus" in prompt.lower()
-            or "Mainstream consensus" in prompt
-        )
+        assert "mainstream consensus" in prompt.lower() or "Mainstream consensus" in prompt

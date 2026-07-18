@@ -7,8 +7,8 @@ Create Date: 2026-04-19
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "plan60_002"
 down_revision: Union[str, None] = "plan60_001"
@@ -32,8 +32,7 @@ def upgrade() -> None:
 
     # Seed with April 2026 Anthropic list prices.
     # Model names use the anthropic: prefix to match llm_calls.model values.
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO model_pricing
             (model, effective_from, effective_to,
              price_per_mtok_input, price_per_mtok_output,
@@ -48,8 +47,7 @@ def upgrade() -> None:
              '2026-02-01', '9999-12-31', 3.00, 15.00, 3.75, 6.00, 0.30),
             ('anthropic:claude-haiku-4-5-20251001',
              '2025-10-01', '9999-12-31', 1.00, 5.00, 1.25, 2.00, 0.10)
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

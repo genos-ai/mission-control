@@ -43,16 +43,24 @@ class MissionContext(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     context_data: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
+        JSON,
+        default=dict,
+        nullable=False,
     )
     version: Mapped[int] = mapped_column(
-        Integer, default=1, nullable=False,
+        Integer,
+        default=1,
+        nullable=False,
     )
     size_characters: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False,
+        Integer,
+        default=0,
+        nullable=False,
     )
     size_tokens: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False,
+        Integer,
+        default=0,
+        nullable=False,
     )
 
     # Relationships
@@ -81,19 +89,25 @@ class ContextMilestone(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     description: Mapped[str] = mapped_column(
-        Text, nullable=False, default="",
+        Text,
+        nullable=False,
+        default="",
     )
     version_snapshot: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
     )
     context_snapshot: Mapped[dict] = mapped_column(
-        JSON, nullable=False,
+        JSON,
+        nullable=False,
     )
     created_by: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
 
     def __repr__(self) -> str:
@@ -115,22 +129,28 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     version: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
     )
     change_type: Mapped[str] = mapped_column(
-        Enum(ChangeType, native_enum=False), nullable=False,
+        Enum(ChangeType, native_enum=False),
+        nullable=False,
     )
     path: Mapped[str] = mapped_column(
-        String(500), nullable=False,
+        String(500),
+        nullable=False,
     )
     old_value: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True,
+        JSON,
+        nullable=True,
     )
     new_value: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True,
+        JSON,
+        nullable=True,
     )
     agent_id: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
     mission_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
@@ -138,13 +158,17 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
         nullable=True,
     )
     task_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False), nullable=True,
+        PgUUID(as_uuid=False),
+        nullable=True,
     )
     execution_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False), nullable=True, index=True,
+        PgUUID(as_uuid=False),
+        nullable=True,
+        index=True,
     )
     reason: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
 
     # Relationships

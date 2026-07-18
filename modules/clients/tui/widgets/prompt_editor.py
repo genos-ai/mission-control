@@ -26,7 +26,10 @@ class PromptEditor(Static):
         """Emitted when user clicks Save."""
 
         def __init__(
-            self, *, member_id: str, content: str,
+            self,
+            *,
+            member_id: str,
+            content: str,
         ) -> None:
             super().__init__()
             self.member_id = member_id

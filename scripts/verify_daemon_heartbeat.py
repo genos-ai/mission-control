@@ -79,10 +79,7 @@ class DaemonHeartbeatVerifier:
         from redis.asyncio import Redis as AsyncRedis
 
         from modules.backend.core.config import get_redis_url
-        from modules.backend.services.mission_plan_daemon import (
-            HEARTBEAT_KEY,
-            MissionPlanDaemon,
-        )
+        from modules.backend.services.mission_plan_daemon import HEARTBEAT_KEY, MissionPlanDaemon
 
         # Open our own Redis client for reads so the test doesn't
         # depend on the daemon's client being exposed.
@@ -127,7 +124,8 @@ class DaemonHeartbeatVerifier:
             return
 
         missing = [
-            k for k in ("timestamp", "tick_count", "poll_interval_sec", "last_error")
+            k
+            for k in ("timestamp", "tick_count", "poll_interval_sec", "last_error")
             if k not in heartbeat
         ]
         if missing:
@@ -302,7 +300,9 @@ def main() -> None:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show debug details for each check")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show debug details for each check"
+    )
     args = parser.parse_args()
     sys.exit(asyncio.run(_main(args.verbose)))
 

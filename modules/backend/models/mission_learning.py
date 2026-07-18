@@ -52,48 +52,66 @@ class MissionLearning(UUIDMixin, TimestampMixin, Base):
 
     # Classification
     kind: Mapped[str] = mapped_column(
-        String(32), nullable=False,
+        String(32),
+        nullable=False,
     )
     title: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     body: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     recommendation: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
 
     # Evidence — uncapped JSONB following Evidence schema
     evidence: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
+        JSON,
+        default=dict,
+        nullable=False,
     )
 
     # Tags and scope
     domain_tags: Mapped[list] = mapped_column(
-        JSON, default=list, nullable=False,
+        JSON,
+        default=list,
+        nullable=False,
     )
     agent_names: Mapped[list] = mapped_column(
-        JSON, default=list, nullable=False,
+        JSON,
+        default=list,
+        nullable=False,
     )
 
     # Confidence and frequency
     confidence: Mapped[float] = mapped_column(
-        Numeric(12, 6, asdecimal=False), nullable=False, default=0.0,
+        Numeric(12, 6, asdecimal=False),
+        nullable=False,
+        default=0.0,
     )
     occurrence_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1,
+        Integer,
+        nullable=False,
+        default=1,
     )
 
     # Platform promotion
     platform_promoted: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False,
+        Boolean,
+        nullable=False,
+        default=False,
     )
     promoted_at: Mapped[str | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     promoted_by: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
 
     # Contradiction tracking
@@ -105,7 +123,9 @@ class MissionLearning(UUIDMixin, TimestampMixin, Base):
 
     # Status
     status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=LearningStatus.ACTIVE.value,
+        String(32),
+        nullable=False,
+        default=LearningStatus.ACTIVE.value,
     )
 
     @property

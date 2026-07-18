@@ -12,8 +12,8 @@ Create Date: 2026-04-26
 import json
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "plan45_workflow_graph"
 down_revision: Union[str, None] = "drop_notes_table"
@@ -27,13 +27,15 @@ def _derive_edges(steps: list[dict]) -> list[dict]:
     for step in steps:
         step_id = step.get("id", "")
         for dep_id in step.get("depends_on", []):
-            edges.append({
-                "id": f"{dep_id}->{step_id}",
-                "source": dep_id,
-                "target": step_id,
-                "source_handle": "output",
-                "target_handle": "input",
-            })
+            edges.append(
+                {
+                    "id": f"{dep_id}->{step_id}",
+                    "source": dep_id,
+                    "target": step_id,
+                    "source_handle": "output",
+                    "target_handle": "input",
+                }
+            )
     return edges
 
 
@@ -49,9 +51,7 @@ def upgrade() -> None:
 
     # Backfill edges from existing steps[].depends_on
     conn = op.get_bind()
-    rows = conn.execute(
-        sa.text("SELECT id, steps FROM workflow_definitions")
-    ).fetchall()
+    rows = conn.execute(sa.text("SELECT id, steps FROM workflow_definitions")).fetchall()
 
     for row in rows:
         row_id = row[0]
@@ -59,9 +59,7 @@ def upgrade() -> None:
         steps = json.loads(steps_raw) if isinstance(steps_raw, str) else (steps_raw or [])
         edges = _derive_edges(steps)
         conn.execute(
-            sa.text(
-                "UPDATE workflow_definitions SET edges_json = :edges WHERE id = :id"
-            ),
+            sa.text("UPDATE workflow_definitions SET edges_json = :edges WHERE id = :id"),
             {"edges": json.dumps(edges), "id": row_id},
         )
 

@@ -26,7 +26,11 @@ Example:
         item_id = callback_data.item_id
 """
 
-from modules.clients.telegram.callbacks.common import ActionCallback, MenuCallback, PaginationCallback
+from modules.clients.telegram.callbacks.common import (
+    ActionCallback,
+    MenuCallback,
+    PaginationCallback,
+)
 
 __all__ = [
     "ActionCallback",

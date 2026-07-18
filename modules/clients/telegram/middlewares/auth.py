@@ -60,7 +60,9 @@ class AuthMiddleware(BaseMiddleware):
                 chat_type = event.message.chat.type
             elif event.callback_query:
                 user = event.callback_query.from_user
-                chat_type = event.callback_query.message.chat.type if event.callback_query.message else None
+                chat_type = (
+                    event.callback_query.message.chat.type if event.callback_query.message else None
+                )
             elif event.inline_query:
                 user = event.inline_query.from_user
 
@@ -123,6 +125,7 @@ def require_role(min_role: str):
         async def trade_handler(message: Message, user_role: str):
             pass
     """
+
     def decorator(func: Callable) -> Callable:
         async def wrapper(*args, **kwargs):
             user_role = kwargs.get("user_role", "viewer")

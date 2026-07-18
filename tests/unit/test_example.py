@@ -5,11 +5,12 @@ Tests real functions against real configuration.
 """
 
 import os
-import pytest
+import sys
 from pathlib import Path
+
+import pytest
 from click.testing import CliRunner
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from admin import admin_cli as cli

@@ -16,10 +16,10 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class SeverityLevel(str, Enum):
     CRITICAL = "CRITICAL"
@@ -81,6 +81,7 @@ class AssessmentPhase(str, Enum):
 # Assessment state
 # ---------------------------------------------------------------------------
 
+
 class AssessmentState(BaseModel):
     """Tracks current progress through the assessment pipeline."""
 
@@ -101,6 +102,7 @@ class AssessmentState(BaseModel):
 # ---------------------------------------------------------------------------
 # Credentials (Vault refs — never plaintext)
 # ---------------------------------------------------------------------------
+
 
 class TestCredential(BaseModel):
     """Per-role credential for authenticated DAST testing.
@@ -131,6 +133,7 @@ class TestCredential(BaseModel):
 # Pentest Task Tree
 # ---------------------------------------------------------------------------
 
+
 class PentestTask(BaseModel):
     """Single node in the Pentest Task Tree (PTT)."""
 
@@ -156,6 +159,7 @@ class PentestTask(BaseModel):
 # Core finding model
 # ---------------------------------------------------------------------------
 
+
 class Finding(BaseModel):
     """Unified finding model across all assessment phases."""
 
@@ -166,16 +170,19 @@ class Finding(BaseModel):
     owasp_category: OWASPCategory
     cwe_id: str | None = Field(default=None, description="CWE-NNN format")
     wstg_id: str | None = Field(
-        default=None, description="OWASP WSTG test case ID",
+        default=None,
+        description="OWASP WSTG test case ID",
     )
 
     # Location
     file_path: str | None = Field(
-        default=None, description="Source file for SAST/AppSec findings",
+        default=None,
+        description="Source file for SAST/AppSec findings",
     )
     line_number: int | None = Field(default=None, ge=1)
     url: str | None = Field(
-        default=None, description="Target URL for DAST findings",
+        default=None,
+        description="Target URL for DAST findings",
     )
     http_method: str | None = None
 
@@ -188,7 +195,8 @@ class Finding(BaseModel):
         description="Reproducible PoC: curl command, script, or Burp request",
     )
     poc_validated: bool = Field(
-        default=False, description="True if PoC was executed and confirmed",
+        default=False,
+        description="True if PoC was executed and confirmed",
     )
 
     # Metadata
@@ -206,13 +214,15 @@ class Finding(BaseModel):
     # CVSS + enrichment
     cvss_score: float | None = Field(default=None, ge=0.0, le=10.0)
     cvss_vector: str | None = Field(
-        default=None, description="CVSS v4.0 vector string",
+        default=None,
+        description="CVSS v4.0 vector string",
     )
     epss_score: float | None = Field(default=None, ge=0.0, le=1.0)
     epss_percentile: float | None = Field(default=None, ge=0.0, le=1.0)
     kev_listed: bool = Field(default=False)
     ssvc_outcome: str | None = Field(
-        default=None, description="Track | Track* | Attend | Act",
+        default=None,
+        description="Track | Track* | Attend | Act",
     )
 
     # Dedup fingerprint
@@ -232,10 +242,12 @@ class Finding(BaseModel):
 
     # Validation (producer never verifies own output)
     validated: bool = Field(
-        default=False, description="True only if validator agent confirmed",
+        default=False,
+        description="True only if validator agent confirmed",
     )
     validated_by: str | None = Field(
-        default=None, description="'validator' or null — never producing agent",
+        default=None,
+        description="'validator' or null — never producing agent",
     )
     validator_evidence_hash: str | None = None
 
@@ -272,6 +284,7 @@ class Finding(BaseModel):
 # Digest agent output
 # ---------------------------------------------------------------------------
 
+
 class HttpResponseSummary(BaseModel):
     """Typed summary of raw HTTP response. Free-text fields clamped to 200 chars."""
 
@@ -287,6 +300,7 @@ class HttpResponseSummary(BaseModel):
 # ---------------------------------------------------------------------------
 # Validator agent output
 # ---------------------------------------------------------------------------
+
 
 class ValidationResult(BaseModel):
     """Non-LLM deterministic validation result."""
@@ -307,6 +321,7 @@ class ValidationResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Report components
 # ---------------------------------------------------------------------------
+
 
 class AttackPath(BaseModel):
     """Chained attack narrative connecting multiple findings."""
@@ -359,6 +374,7 @@ class CoverageMatrix(BaseModel):
 # Final report
 # ---------------------------------------------------------------------------
 
+
 class SecurityAssessmentReport(BaseModel):
     """Final structured security assessment report. Primary deliverable."""
 
@@ -381,7 +397,8 @@ class SecurityAssessmentReport(BaseModel):
     owasp_coverage: dict = Field(description="{A01..A10: [finding_ids]}")
     confirmed_findings: list[Finding]
     suppressed_findings: list[Finding] = Field(
-        default_factory=list, description="FP findings for audit trail",
+        default_factory=list,
+        description="FP findings for audit trail",
     )
 
     # Analysis

@@ -205,8 +205,13 @@ def _compute_max_nesting(tree: ast.Module) -> int:
     def walk(node: ast.AST, depth: int) -> None:
         nonlocal max_depth
         nesting_types = (
-            ast.If, ast.For, ast.While, ast.With,
-            ast.Try, ast.AsyncFor, ast.AsyncWith,
+            ast.If,
+            ast.For,
+            ast.While,
+            ast.With,
+            ast.Try,
+            ast.AsyncFor,
+            ast.AsyncWith,
         )
         if isinstance(node, nesting_types):
             depth += 1
@@ -244,33 +249,24 @@ def _detect_unsafe_patterns(tree: ast.Module) -> list[str]:
         if isinstance(node, ast.Call):
             # Direct calls: eval(), exec()
             if isinstance(node.func, ast.Name) and node.func.id in UNSAFE_PATTERNS:
-                findings.append(
-                    f"line {node.lineno}: {UNSAFE_PATTERNS[node.func.id]}"
-                )
+                findings.append(f"line {node.lineno}: {UNSAFE_PATTERNS[node.func.id]}")
 
             # Attribute calls: os.system(), pickle.loads()
             if isinstance(node.func, ast.Attribute):
                 if isinstance(node.func.value, ast.Name):
                     key = (node.func.value.id, node.func.attr)
                     if key in UNSAFE_ATTR_PATTERNS:
-                        findings.append(
-                            f"line {node.lineno}: {UNSAFE_ATTR_PATTERNS[key]}"
-                        )
+                        findings.append(f"line {node.lineno}: {UNSAFE_ATTR_PATTERNS[key]}")
 
                 # Check for shell=True in subprocess calls
-                if (
-                    isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "subprocess"
-                ):
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess":
                     for kw in node.keywords:
                         if (
                             kw.arg == "shell"
                             and isinstance(kw.value, ast.Constant)
                             and kw.value.value is True
                         ):
-                            findings.append(
-                                f"line {node.lineno}: subprocess with shell=True"
-                            )
+                            findings.append(f"line {node.lineno}: subprocess with shell=True")
 
     return findings
 

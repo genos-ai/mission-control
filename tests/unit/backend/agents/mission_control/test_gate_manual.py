@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from modules.backend.agents.mission_control.gate_manual import (
-    ManualGateReviewer,
     _PENDING,
+    ManualGateReviewer,
     fire_decision,
 )
 from modules.backend.schemas.gate import GateAction, GateContext, GateDecision
@@ -146,9 +146,13 @@ async def test_fire_decision_unknown_id_is_safe_noop():
 async def test_registry_cleaned_up_after_decision():
     """Reviewer must pop its Event from _PENDING after returning."""
     reviewer = _make_reviewer(timeout=5)
-    reviewer._read_decision = AsyncMock(return_value=GateDecision(
-        action=GateAction.ABORT, reason="x", reviewer="u",
-    ))
+    reviewer._read_decision = AsyncMock(
+        return_value=GateDecision(
+            action=GateAction.ABORT,
+            reason="x",
+            reviewer="u",
+        )
+    )
 
     async def _decide():
         for _ in range(50):

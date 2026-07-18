@@ -88,6 +88,7 @@ def _matches_exclude(rel_path: str, pattern: str) -> bool:
         return rel_path.startswith(pattern) or rel_path.startswith(pattern.rstrip("/"))
     if "*" in pattern or "?" in pattern or "[" in pattern:
         from fnmatch import fnmatch
+
         return fnmatch(rel_path, pattern)
     return rel_path.startswith(pattern)
 

@@ -44,9 +44,7 @@ class CodebaseSearchService:
         patterns = file_patterns or ["*.py"]
         files = self._collect_files(patterns)
 
-        results = await asyncio.to_thread(
-            self._grep_files, query, files, max_results
-        )
+        results = await asyncio.to_thread(self._grep_files, query, files, max_results)
 
         logger.info(
             "Codebase search complete",
@@ -58,15 +56,11 @@ class CodebaseSearchService:
         """Collect files matching glob patterns under project root."""
         files: list[Path] = []
         for pattern in patterns:
-            matches = globlib.glob(
-                str(self._root / "**" / pattern), recursive=True
-            )
+            matches = globlib.glob(str(self._root / "**" / pattern), recursive=True)
             files.extend(Path(m) for m in matches)
         return sorted(set(files))
 
-    def _grep_files(
-        self, query: str, files: list[Path], max_results: int
-    ) -> list[dict]:
+    def _grep_files(self, query: str, files: list[Path], max_results: int) -> list[dict]:
         """Search files for query pattern (runs in thread)."""
         try:
             pattern = re.compile(query, re.IGNORECASE)
@@ -81,11 +75,13 @@ class CodebaseSearchService:
                 text = filepath.read_text(errors="replace")
                 for i, line in enumerate(text.splitlines(), 1):
                     if pattern.search(line):
-                        results.append({
-                            "file": str(filepath.relative_to(self._root)),
-                            "line": i,
-                            "content": line.strip()[:200],
-                        })
+                        results.append(
+                            {
+                                "file": str(filepath.relative_to(self._root)),
+                                "line": i,
+                                "content": line.strip()[:200],
+                            }
+                        )
                         if len(results) >= max_results:
                             break
             except (OSError, UnicodeDecodeError):

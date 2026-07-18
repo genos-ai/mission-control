@@ -9,11 +9,11 @@ bypassing the broker registration which requires Redis.
 import pytest
 
 from modules.backend.tasks.example import (
-    send_notification,
-    process_data,
+    TASK_CONFIG,
     cleanup_expired_records,
     generate_report,
-    TASK_CONFIG,
+    process_data,
+    send_notification,
 )
 from tests.conftest import TEST_USER_ID
 

@@ -21,16 +21,31 @@ from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
 from modules.backend.core.config import find_project_root
 from modules.backend.schemas.deliberation import DebaterTurn
 
-
 DEBATERS = [
-    ("debater_systems", "deliberation.debater_systems.agent",
-     "Systems Mapper", ["systems", "feedback", "second-order"]),
-    ("debater_quant", "deliberation.debater_quant.agent",
-     "Reductionist Quant", ["mechanism", "falsifier", "quantitative"]),
-    ("debater_empiricist", "deliberation.debater_empiricist.agent",
-     "Adversarial Empiricist", ["historical", "track record", "maverick"]),
-    ("debater_ethicist", "deliberation.debater_ethicist.agent",
-     "Distributional Ethicist", ["distribution", "absent voices", "aggregate"]),
+    (
+        "debater_systems",
+        "deliberation.debater_systems.agent",
+        "Systems Mapper",
+        ["systems", "feedback", "second-order"],
+    ),
+    (
+        "debater_quant",
+        "deliberation.debater_quant.agent",
+        "Reductionist Quant",
+        ["mechanism", "falsifier", "quantitative"],
+    ),
+    (
+        "debater_empiricist",
+        "deliberation.debater_empiricist.agent",
+        "Adversarial Empiricist",
+        ["historical", "track record", "maverick"],
+    ),
+    (
+        "debater_ethicist",
+        "deliberation.debater_ethicist.agent",
+        "Distributional Ethicist",
+        ["distribution", "absent voices", "aggregate"],
+    ),
 ]
 
 
@@ -49,7 +64,12 @@ class TestDebaterAgents:
 
     @pytest.mark.asyncio
     async def test_run_produces_debater_turn(
-        self, module_name, agent_name, heading, keywords, debater_deps,
+        self,
+        module_name,
+        agent_name,
+        heading,
+        keywords,
+        debater_deps,
     ):
         mod = importlib.import_module(
             f"modules.backend.agents.deliberation.{module_name}.agent",
@@ -59,13 +79,16 @@ class TestDebaterAgents:
         assert isinstance(result.output, DebaterTurn)
 
     def test_yaml_matches_agent_config_schema(
-        self, module_name, agent_name, heading, keywords,
+        self,
+        module_name,
+        agent_name,
+        heading,
+        keywords,
     ):
         from modules.backend.schemas.agent_config import AgentConfigSchema
 
         path = (
-            find_project_root()
-            / "config" / "agents" / "deliberation" / module_name / "agent.yaml"
+            find_project_root() / "config" / "agents" / "deliberation" / module_name / "agent.yaml"
         )
         with open(path) as f:
             raw = yaml.safe_load(f)
@@ -81,11 +104,13 @@ class TestDebaterAgents:
         assert config.tools == []
 
     def test_prompt_loads_with_role_content(
-        self, module_name, agent_name, heading, keywords,
+        self,
+        module_name,
+        agent_name,
+        heading,
+        keywords,
     ):
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", module_name)
         # Heading should appear (smoke check that the right file loaded).
@@ -93,24 +118,24 @@ class TestDebaterAgents:
         # Each debater has its characteristic vocabulary.
         prompt_lower = prompt.lower()
         for keyword in keywords:
-            assert keyword.lower() in prompt_lower, (
-                f"{module_name} prompt missing keyword '{keyword}'"
-            )
+            assert (
+                keyword.lower() in prompt_lower
+            ), f"{module_name} prompt missing keyword '{keyword}'"
 
     def test_prompt_has_hold_concede_schema(
-        self, module_name, agent_name, heading, keywords,
+        self,
+        module_name,
+        agent_name,
+        heading,
+        keywords,
     ):
         # All four debater prompts must reference the four DECISION values.
         # If any drift away from this schema, the sycophancy detector breaks.
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", module_name)
         for decision in ("HOLD", "REFINE", "CONCEDE_PARTIAL", "CONCEDE_FULL"):
-            assert decision in prompt, (
-                f"{module_name} prompt missing decision value '{decision}'"
-            )
+            assert decision in prompt, f"{module_name} prompt missing decision value '{decision}'"
 
 
 class TestDebaterDiversity:
@@ -120,9 +145,7 @@ class TestDebaterDiversity:
     accidental copies."""
 
     def test_prompts_are_distinct(self):
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompts = {
             module_name: assemble_instructions("deliberation", module_name)
@@ -135,22 +158,21 @@ class TestDebaterDiversity:
 
         modules = list(prompts.keys())
         for i, a in enumerate(modules):
-            for b in modules[i + 1:]:
+            for b in modules[i + 1 :]:
                 ratio = difflib.SequenceMatcher(
-                    None, prompts[a], prompts[b],
+                    None,
+                    prompts[a],
+                    prompts[b],
                 ).ratio()
                 assert ratio < 0.7, (
-                    f"Prompts {a} and {b} are {ratio:.0%} similar — "
-                    f"likely copy-paste error"
+                    f"Prompts {a} and {b} are {ratio:.0%} similar — " f"likely copy-paste error"
                 )
 
     def test_empiricist_is_explicitly_maverick(self):
         """The Adversarial Empiricist's prompt must explicitly call out
         the maverick role. Without that, the anti-collapse-to-mainstream
         machinery loses its load-bearing component."""
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "debater_empiricist")
         assert "maverick" in prompt.lower()

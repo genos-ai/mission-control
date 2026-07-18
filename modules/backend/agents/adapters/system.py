@@ -106,16 +106,17 @@ async def scan_log_errors(
             msg = entry.get("event", entry.get("message", entry.get("msg", "unknown")))
             error_messages[msg] += 1
             if len(recent_errors) < 20:
-                recent_errors.append({
-                    "timestamp": entry.get("timestamp", "unknown"),
-                    "level": level,
-                    "message": msg,
-                    "logger": entry.get("logger", "unknown"),
-                })
+                recent_errors.append(
+                    {
+                        "timestamp": entry.get("timestamp", "unknown"),
+                        "level": level,
+                        "message": msg,
+                        "logger": entry.get("logger", "unknown"),
+                    }
+                )
 
     unique_errors = [
-        {"message": msg, "count": count}
-        for msg, count in error_messages.most_common(20)
+        {"message": msg, "count": count} for msg, count in error_messages.most_common(20)
     ]
 
     return {
@@ -179,10 +180,12 @@ async def validate_config_files(
             yaml.safe_load(content)
             valid_files.append(config_name)
         except yaml.YAMLError as e:
-            invalid_files.append({
-                "file": config_name,
-                "error": str(e),
-            })
+            invalid_files.append(
+                {
+                    "file": config_name,
+                    "error": str(e),
+                }
+            )
 
     # Check .env secrets
     env_path = project_root / "config" / ".env"
@@ -210,9 +213,7 @@ async def validate_config_files(
     if missing_files:
         issues.append(f"Missing config files: {', '.join(missing_files)}")
     if invalid_files:
-        issues.append(
-            f"Invalid YAML: {', '.join(f['file'] for f in invalid_files)}"
-        )
+        issues.append(f"Invalid YAML: {', '.join(f['file'] for f in invalid_files)}")
     missing_secrets = [k for k, v in secrets_status.items() if v != "set"]
     if missing_secrets:
         issues.append(f"Missing secrets: {', '.join(missing_secrets)}")
@@ -278,12 +279,14 @@ async def check_dependencies(
                 expected = version_spec.replace("==", "").strip()
                 if installed_version != expected:
                     status = "version_mismatch"
-            version_info.append({
-                "package": pkg_name,
-                "required": version_spec or "any",
-                "installed": installed_version,
-                "status": status,
-            })
+            version_info.append(
+                {
+                    "package": pkg_name,
+                    "required": version_spec or "any",
+                    "installed": installed_version,
+                    "status": status,
+                }
+            )
         except importlib.metadata.PackageNotFoundError:
             missing.append(pkg_name)
 
@@ -295,7 +298,9 @@ async def check_dependencies(
     if mismatches:
         issues.append(
             f"Version mismatches: "
-            + ", ".join(f"{m['package']} (want {m['required']}, have {m['installed']})" for m in mismatches)
+            + ", ".join(
+                f"{m['package']} (want {m['required']}, have {m['installed']})" for m in mismatches
+            )
         )
 
     return {

@@ -21,8 +21,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from modules.backend.core.logging import get_logger
-
 # Re-export models for callers that import from gate directly
 from modules.backend.agents.mission_control.gate_models import (  # noqa: F401
     GateAction,
@@ -36,6 +34,7 @@ from modules.backend.agents.mission_control.gate_prompt import (
     _build_gate_prompt,
     _parse_action,
 )
+from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -134,11 +133,11 @@ class ConfigurableGate:
 
     def __init__(
         self,
-        config: Any,            # GateSchema from config_schema.py
-        console: Any = None,    # Rich Console for CLI modes
+        config: Any,  # GateSchema from config_schema.py
+        console: Any = None,  # Rich Console for CLI modes
         verbose: bool = False,
         session_factory: Any = None,  # callable yielding AsyncSession; required for `manual` mode
-        event_bus: Any = None,        # SessionEventBus; optional, used by `manual` for lifecycle events
+        event_bus: Any = None,  # SessionEventBus; optional, used by `manual` for lifecycle events
     ):
         from modules.backend.core.config_schema import GateSchema
 
@@ -168,6 +167,7 @@ class ConfigurableGate:
     def _get_cli(self):
         if self._cli is None:
             from modules.clients.cli.gate import CliGateReviewer
+
             self._cli = CliGateReviewer(
                 console=self._console,
                 verbose=self._verbose,
@@ -182,14 +182,15 @@ class ConfigurableGate:
                     "ConfigurableGate construction time. Update create_gate() "
                     "callers to pass the AsyncSession factory.",
                 )
-            from modules.backend.agents.mission_control.gate_manual import (
-                ManualGateReviewer,
-            )
+            from modules.backend.agents.mission_control.gate_manual import ManualGateReviewer
+
             self._manual = ManualGateReviewer(
                 session_factory=self._session_factory,
-                timeout_seconds=self._config.manual.timeout_seconds
-                if hasattr(self._config, "manual") and self._config.manual is not None
-                else 1800,
+                timeout_seconds=(
+                    self._config.manual.timeout_seconds
+                    if hasattr(self._config, "manual") and self._config.manual is not None
+                    else 1800
+                ),
                 event_bus=self._event_bus,
             )
         return self._manual

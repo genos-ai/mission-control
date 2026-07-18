@@ -38,11 +38,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class QualityBand(str, Enum):
-    POOR = "Poor"              # 0-30
+    POOR = "Poor"  # 0-30
     ACCEPTABLE = "Acceptable"  # 31-54
-    ADEQUATE = "Adequate"      # 55-64
-    GOOD = "Good"              # 65-79
-    EXCELLENT = "Excellent"    # 80-100
+    ADEQUATE = "Adequate"  # 55-64
+    GOOD = "Good"  # 65-79
+    EXCELLENT = "Excellent"  # 80-100
 
 
 @dataclass
@@ -296,6 +296,7 @@ def _matches_exclude(rel_path: str, pattern: str) -> bool:
         return rel_path.startswith(pattern) or rel_path.startswith(pattern.rstrip("/"))
     if "*" in pattern or "?" in pattern or "[" in pattern:
         from fnmatch import fnmatch
+
         return fnmatch(rel_path, pattern)
     return rel_path.startswith(pattern)
 
@@ -419,8 +420,13 @@ def _compute_max_nesting(tree: ast.Module) -> int:
     def walk(node: ast.AST, depth: int) -> None:
         nonlocal max_depth
         nesting_types = (
-            ast.If, ast.For, ast.While, ast.With,
-            ast.Try, ast.AsyncFor, ast.AsyncWith,
+            ast.If,
+            ast.For,
+            ast.While,
+            ast.With,
+            ast.Try,
+            ast.AsyncFor,
+            ast.AsyncWith,
         )
         if isinstance(node, nesting_types):
             depth += 1
@@ -437,29 +443,20 @@ def _detect_unsafe_patterns(tree: ast.Module) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in UNSAFE_PATTERNS:
-                findings.append(
-                    f"line {node.lineno}: {UNSAFE_PATTERNS[node.func.id]}"
-                )
+                findings.append(f"line {node.lineno}: {UNSAFE_PATTERNS[node.func.id]}")
             if isinstance(node.func, ast.Attribute):
                 if isinstance(node.func.value, ast.Name):
                     key = (node.func.value.id, node.func.attr)
                     if key in UNSAFE_ATTR_PATTERNS:
-                        findings.append(
-                            f"line {node.lineno}: {UNSAFE_ATTR_PATTERNS[key]}"
-                        )
-                if (
-                    isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "subprocess"
-                ):
+                        findings.append(f"line {node.lineno}: {UNSAFE_ATTR_PATTERNS[key]}")
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess":
                     for kw in node.keywords:
                         if (
                             kw.arg == "shell"
                             and isinstance(kw.value, ast.Constant)
                             and kw.value.value is True
                         ):
-                            findings.append(
-                                f"line {node.lineno}: subprocess with shell=True"
-                            )
+                            findings.append(f"line {node.lineno}: subprocess with shell=True")
     return findings
 
 
@@ -485,11 +482,17 @@ def _check_installed(command: str) -> bool:
 
 
 def _run_command(
-    args: list[str], cwd: Path, timeout: int = 120,
+    args: list[str],
+    cwd: Path,
+    timeout: int = 120,
 ) -> tuple[str, str, int]:
     try:
         result = subprocess.run(
-            args, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
         return result.stdout, result.stderr, result.returncode
     except subprocess.TimeoutExpired:
@@ -528,7 +531,8 @@ def run_bandit(
 
     if returncode not in (0, 1):
         return ToolResult(
-            tool="bandit", available=True,
+            tool="bandit",
+            available=True,
             error=stderr or f"bandit exited with code {returncode}",
         )
 
@@ -540,7 +544,8 @@ def run_bandit(
         data = json.loads(raw_json)
     except json.JSONDecodeError as e:
         return ToolResult(
-            tool="bandit", available=True,
+            tool="bandit",
+            available=True,
             error=f"Failed to parse bandit JSON: {e}",
             raw_output=raw_json[:500],
         )
@@ -566,26 +571,29 @@ def run_bandit(
         severity_counts[sev] = severity_counts.get(sev, 0) + 1
         confidence_counts[conf] = confidence_counts.get(conf, 0) + 1
 
-        findings.append(Finding(
-            rule_id=rule_id, severity=sev, confidence=conf,
-            message=result.get("issue_text", ""),
-            file=filename, line=result.get("line_number", 0),
-            tool="bandit",
-        ))
+        findings.append(
+            Finding(
+                rule_id=rule_id,
+                severity=sev,
+                confidence=conf,
+                message=result.get("issue_text", ""),
+                file=filename,
+                line=result.get("line_number", 0),
+                tool="bandit",
+            )
+        )
 
     metrics = data.get("metrics", {})
-    total_loc = sum(
-        v.get("loc", 0) for v in metrics.values() if isinstance(v, dict)
-    )
+    total_loc = sum(v.get("loc", 0) for v in metrics.values() if isinstance(v, dict))
     weighted_findings = (
-        severity_counts["HIGH"] * 3
-        + severity_counts["MEDIUM"] * 2
-        + severity_counts["LOW"] * 1
+        severity_counts["HIGH"] * 3 + severity_counts["MEDIUM"] * 2 + severity_counts["LOW"] * 1
     )
     kloc = max(total_loc / 1000, 0.1)
 
     return ToolResult(
-        tool="bandit", available=True, findings=findings,
+        tool="bandit",
+        available=True,
+        findings=findings,
         metrics={
             "total_findings": len(findings),
             "high_severity": severity_counts["HIGH"],
@@ -625,7 +633,9 @@ def run_radon(
     # Run cyclomatic complexity
     cc_args = ["radon", "cc", "-j", "-s", "-a"] + exclude_args + targets
     cc_stdout, cc_stderr, cc_rc = _run_command(cc_args, cwd=repo_root)
-    cc_data: dict | str = cc_stderr or f"radon cc exited with code {cc_rc}" if cc_rc != 0 else cc_stdout
+    cc_data: dict | str = (
+        cc_stderr or f"radon cc exited with code {cc_rc}" if cc_rc != 0 else cc_stdout
+    )
     if isinstance(cc_data, str) and cc_rc == 0:
         try:
             cc_data = json.loads(cc_data)
@@ -635,7 +645,9 @@ def run_radon(
     # Run maintainability index
     mi_args = ["radon", "mi", "-j", "-s"] + exclude_args + targets
     mi_stdout, mi_stderr, mi_rc = _run_command(mi_args, cwd=repo_root)
-    mi_data: dict | str = mi_stderr or f"radon mi exited with code {mi_rc}" if mi_rc != 0 else mi_stdout
+    mi_data: dict | str = (
+        mi_stderr or f"radon mi exited with code {mi_rc}" if mi_rc != 0 else mi_stdout
+    )
     if isinstance(mi_data, str) and mi_rc == 0:
         try:
             mi_data = json.loads(mi_data)
@@ -675,18 +687,20 @@ def run_radon(
             rank_counts[rank] = rank_counts.get(rank, 0) + 1
 
             if rank not in ("A", "B"):
-                findings.append(Finding(
-                    rule_id=f"CC:{rank}",
-                    severity=_rank_to_severity(rank),
-                    confidence="HIGH",
-                    message=(
-                        f"{func.get('type', 'function')} '{func.get('name', '?')}' "
-                        f"has cyclomatic complexity {complexity} (rank {rank})"
-                    ),
-                    file=file_path,
-                    line=func.get("lineno", 0),
-                    tool="radon",
-                ))
+                findings.append(
+                    Finding(
+                        rule_id=f"CC:{rank}",
+                        severity=_rank_to_severity(rank),
+                        confidence="HIGH",
+                        message=(
+                            f"{func.get('type', 'function')} '{func.get('name', '?')}' "
+                            f"has cyclomatic complexity {complexity} (rank {rank})"
+                        ),
+                        file=file_path,
+                        line=func.get("lineno", 0),
+                        tool="radon",
+                    )
+                )
 
     mi_scores: list[float] = []
     for file_path, mi_info in mi_data.items():
@@ -717,8 +731,11 @@ def run_radon(
     error = "; ".join(errors) if errors else ""
 
     return ToolResult(
-        tool="radon", available=True, findings=findings,
-        metrics=radon_metrics, error=error,
+        tool="radon",
+        available=True,
+        findings=findings,
+        metrics=radon_metrics,
+        error=error,
     )
 
 
@@ -774,11 +791,15 @@ def score_maintainability(
         mi_score = min(100.0, max(0.0, avg_mi))
         sub_scores["radon_mi"] = mi_score
         score = (
-            doc_coverage * 0.25 + file_size_score * 0.20
-            + func_length_score * 0.25 + mi_score * 0.30
+            doc_coverage * 0.25
+            + file_size_score * 0.20
+            + func_length_score * 0.25
+            + mi_score * 0.30
         )
         if avg_mi < 40:
-            recommendations.append(f"Average maintainability index is {avg_mi:.0f} — refactor complex modules")
+            recommendations.append(
+                f"Average maintainability index is {avg_mi:.0f} — refactor complex modules"
+            )
     else:
         if source:
             avg_funcs = statistics.mean(f.functions for f in source)
@@ -787,18 +808,26 @@ def score_maintainability(
             cohesion_score = 100.0
         sub_scores["cohesion"] = cohesion_score
         score = (
-            doc_coverage * 0.30 + file_size_score * 0.25
-            + func_length_score * 0.25 + cohesion_score * 0.20
+            doc_coverage * 0.30
+            + file_size_score * 0.25
+            + func_length_score * 0.25
+            + cohesion_score * 0.20
         )
 
     if doc_coverage < 50:
-        recommendations.append(f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes")
+        recommendations.append(
+            f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes"
+        )
     if p90_size > 500:
         recommendations.append(f"P90 file size is {p90_size} lines — split large files")
     if p90_length > 50:
-        recommendations.append(f"P90 function length is {p90_length} lines — extract helper functions")
+        recommendations.append(
+            f"P90 function length is {p90_length} lines — extract helper functions"
+        )
 
-    return DimensionScore(name="Maintainability", score=score, sub_scores=sub_scores, recommendations=recommendations)
+    return DimensionScore(
+        name="Maintainability", score=score, sub_scores=sub_scores, recommendations=recommendations
+    )
 
 
 def score_security(
@@ -841,21 +870,29 @@ def score_security(
         sub_scores["bandit_medium_severity"] = bandit_medium_score
 
         score = (
-            bandit_density_score * 0.30 + bandit_high_score * 0.25
-            + bandit_medium_score * 0.15 + ast_unsafe_score * 0.15
+            bandit_density_score * 0.30
+            + bandit_high_score * 0.25
+            + bandit_medium_score * 0.15
+            + ast_unsafe_score * 0.15
             + ast_clean_ratio * 0.15
         )
 
         if high_count > 0:
             recommendations.append(f"{high_count} HIGH severity finding(s) — fix immediately")
         if medium_count > 0:
-            recommendations.append(f"{medium_count} MEDIUM severity finding(s) — review and remediate")
+            recommendations.append(
+                f"{medium_count} MEDIUM severity finding(s) — review and remediate"
+            )
         if low_count > 0:
             recommendations.append(f"{low_count} LOW severity finding(s)")
 
         for finding in bandit.findings[:5]:
             if finding.severity in ("HIGH", "MEDIUM"):
-                short_path = finding.file.split("/modules/")[-1] if "/modules/" in finding.file else finding.file
+                short_path = (
+                    finding.file.split("/modules/")[-1]
+                    if "/modules/" in finding.file
+                    else finding.file
+                )
                 recommendations.append(
                     f"[{finding.severity}] {short_path}:{finding.line} — "
                     f"{finding.message} ({finding.rule_id})"
@@ -871,11 +908,16 @@ def score_security(
         if bandit and not bandit.success:
             recommendations.append(f"Bandit error: {bandit.error}")
         elif not bandit:
-            recommendations.append("Install bandit for deeper security analysis: pip install bandit")
+            recommendations.append(
+                "Install bandit for deeper security analysis: pip install bandit"
+            )
 
     return DimensionScore(
-        name="Security", score=score, sub_scores=sub_scores,
-        confidence=confidence, recommendations=recommendations,
+        name="Security",
+        score=score,
+        sub_scores=sub_scores,
+        confidence=confidence,
+        recommendations=recommendations,
     )
 
 
@@ -885,7 +927,9 @@ def score_modularity(
 ) -> DimensionScore:
     if not code_map:
         return DimensionScore(
-            name="Modularity", score=50.0, confidence=0.3,
+            name="Modularity",
+            score=50.0,
+            confidence=0.3,
             recommendations=["Run with --with-code-map for accurate modularity scoring"],
         )
 
@@ -927,21 +971,27 @@ def score_modularity(
         gini_score = 100.0
 
     score = (
-        instability_score * 0.25 + coupling_score * 0.30
-        + cycle_score * 0.25 + gini_score * 0.20
+        instability_score * 0.25 + coupling_score * 0.30 + cycle_score * 0.25 + gini_score * 0.20
     )
 
     recommendations = []
     if max_ce > 15:
         worst = max(ce, key=ce.get)
-        recommendations.append(f"{worst} has Ce={max_ce} — too many dependencies, consider splitting")
+        recommendations.append(
+            f"{worst} has Ce={max_ce} — too many dependencies, consider splitting"
+        )
     if cycle_count > 0:
-        recommendations.append(f"{cycle_count} circular dependency(ies) detected — break with protocols or restructure")
+        recommendations.append(
+            f"{cycle_count} circular dependency(ies) detected — break with protocols or restructure"
+        )
     if gini > 0.6:
-        recommendations.append(f"Module size Gini={gini:.2f} — sizes are very uneven, split large modules")
+        recommendations.append(
+            f"Module size Gini={gini:.2f} — sizes are very uneven, split large modules"
+        )
 
     return DimensionScore(
-        name="Modularity", score=score,
+        name="Modularity",
+        score=score,
         sub_scores={
             "instability_balance": instability_score,
             "coupling_max_ce": coupling_score,
@@ -998,18 +1048,22 @@ def score_testability(
         sub_scores["simple_function_ratio"] = simple_score
 
         score = (
-            ratio_score_val * 0.30 + file_ratio_score * 0.15
-            + complexity_score * 0.25 + simple_score * 0.15
+            ratio_score_val * 0.30
+            + file_ratio_score * 0.15
+            + complexity_score * 0.25
+            + simple_score * 0.15
             + nesting_score * 0.15
         )
 
         if avg_cc > 10:
-            recommendations.append(f"Average cyclomatic complexity is {avg_cc:.1f} — simplify branching logic")
-        complex_count = sum(
-            int(radon.metrics.get(f"rank_{r}", 0)) for r in ("D", "E", "F")
-        )
+            recommendations.append(
+                f"Average cyclomatic complexity is {avg_cc:.1f} — simplify branching logic"
+            )
+        complex_count = sum(int(radon.metrics.get(f"rank_{r}", 0)) for r in ("D", "E", "F"))
         if complex_count > 0:
-            recommendations.append(f"{complex_count} function(s) with complexity rank D+ — refactor or split")
+            recommendations.append(
+                f"{complex_count} function(s) with complexity rank D+ — refactor or split"
+            )
     else:
         all_lengths: list[int] = []
         for f in source:
@@ -1022,8 +1076,10 @@ def score_testability(
         sub_scores["avg_function_length"] = length_score
 
         score = (
-            ratio_score_val * 0.35 + file_ratio_score * 0.20
-            + length_score * 0.25 + nesting_score * 0.20
+            ratio_score_val * 0.35
+            + file_ratio_score * 0.20
+            + length_score * 0.25
+            + nesting_score * 0.20
         )
 
     if test_ratio < 0.5:
@@ -1032,7 +1088,9 @@ def score_testability(
         recommendations.append("No test files found")
 
     return DimensionScore(
-        name="Testability", score=score, sub_scores=sub_scores,
+        name="Testability",
+        score=score,
+        sub_scores=sub_scores,
         recommendations=recommendations,
     )
 
@@ -1057,22 +1115,29 @@ def score_robustness(project: ProjectAnalysis) -> DimensionScore:
     else:
         handler_quality = 100.0
 
-    score = (
-        param_coverage * 0.35 + return_coverage * 0.30 + handler_quality * 0.35
-    )
+    score = param_coverage * 0.35 + return_coverage * 0.30 + handler_quality * 0.35
 
     recommendations = []
     if param_coverage < 70:
-        recommendations.append(f"Parameter type coverage is {param_coverage:.0f}% — add type annotations")
+        recommendations.append(
+            f"Parameter type coverage is {param_coverage:.0f}% — add type annotations"
+        )
     if return_coverage < 70:
-        recommendations.append(f"Return type coverage is {return_coverage:.0f}% — add return type annotations")
+        recommendations.append(
+            f"Return type coverage is {return_coverage:.0f}% — add return type annotations"
+        )
     if bare_excepts > 0:
-        recommendations.append(f"{bare_excepts} bare/swallowed except clause(s) — catch specific exceptions")
+        recommendations.append(
+            f"{bare_excepts} bare/swallowed except clause(s) — catch specific exceptions"
+        )
     if broad_excepts > 0:
-        recommendations.append(f"{broad_excepts} broad except(Exception) clause(s) — narrow the exception type")
+        recommendations.append(
+            f"{broad_excepts} broad except(Exception) clause(s) — narrow the exception type"
+        )
 
     return DimensionScore(
-        name="Robustness", score=score,
+        name="Robustness",
+        score=score,
         sub_scores={
             "param_type_coverage": param_coverage,
             "return_type_coverage": return_coverage,
@@ -1129,24 +1194,31 @@ def score_elegance(
         p90_cc = radon.metrics.get("p90_complexity", 5)
         cc_score = sigmoid(p90_cc, midpoint=10, k=0.4)
         sub_scores["radon_complexity_p90"] = cc_score
-        score = (
-            nesting_score * 0.25 + length_score * 0.25
-            + naming_score * 0.25 + cc_score * 0.25
-        )
+        score = nesting_score * 0.25 + length_score * 0.25 + naming_score * 0.25 + cc_score * 0.25
         if p90_cc > 15:
-            recommendations.append(f"P90 cyclomatic complexity is {p90_cc} — simplify complex functions")
+            recommendations.append(
+                f"P90 cyclomatic complexity is {p90_cc} — simplify complex functions"
+            )
     else:
         score = nesting_score * 0.35 + length_score * 0.35 + naming_score * 0.30
 
     if p90_nesting > 4:
-        recommendations.append(f"P90 nesting depth is {p90_nesting} — extract nested logic into helper functions")
+        recommendations.append(
+            f"P90 nesting depth is {p90_nesting} — extract nested logic into helper functions"
+        )
     if p90_length > 50:
-        recommendations.append(f"P90 function length is {p90_length} lines — break into smaller functions")
+        recommendations.append(
+            f"P90 function length is {p90_length} lines — break into smaller functions"
+        )
     if total_violations > 0:
-        recommendations.append(f"{total_violations} naming convention violation(s) — use PEP 8 conventions")
+        recommendations.append(
+            f"{total_violations} naming convention violation(s) — use PEP 8 conventions"
+        )
 
     return DimensionScore(
-        name="Elegance", score=score, sub_scores=sub_scores,
+        name="Elegance",
+        score=score,
+        sub_scores=sub_scores,
         recommendations=recommendations,
     )
 
@@ -1193,12 +1265,15 @@ def score_reusability(
 
     recommendations = []
     if api_ratio > 0.7:
-        recommendations.append(f"API surface is {api_ratio:.0%} public — consider making more internals private")
+        recommendations.append(
+            f"API surface is {api_ratio:.0%} public — consider making more internals private"
+        )
     if api_ratio < 0.2:
         recommendations.append(f"API surface is {api_ratio:.0%} public — very little is reusable")
 
     return DimensionScore(
-        name="Reusability", score=score,
+        name="Reusability",
+        score=score,
         sub_scores={
             "api_surface_ratio": api_score,
             "coupling": coupling_score,
@@ -1250,7 +1325,7 @@ def _floor_penalty(dimension_scores: dict[str, float]) -> float:
     penalty = 1.0
     for s in violations:
         deficit = (CRITICAL_FLOOR - s) / CRITICAL_FLOOR
-        penalty *= (1.0 - 0.3 * deficit)
+        penalty *= 1.0 - 0.3 * deficit
     return max(0.3, penalty)
 
 
@@ -1300,8 +1375,9 @@ def _collect_issues(
 ) -> list[QualityIssue]:
     """Collect all actionable quality issues with file/line detail."""
     issues: list[QualityIssue] = []
-    source_files = [f for f in project.files
-                    if "/tests/" not in f.path and not f.path.startswith("tests/")]
+    source_files = [
+        f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")
+    ]
 
     for fa in source_files:
         # Robustness: broad/bare excepts — need line-level detail from re-parse
@@ -1310,12 +1386,18 @@ def _collect_issues(
         # Elegance: long functions — need line-level detail from re-parse
         # Elegance: deep nesting
         if fa.max_nesting > 4:
-            issues.append(QualityIssue(
-                file=fa.path, line=0, dimension="Elegance", severity="MEDIUM",
-                category="deep-nesting",
-                message=f"Max nesting depth {fa.max_nesting} (threshold: 4)",
-                value=fa.max_nesting, threshold=4,
-            ))
+            issues.append(
+                QualityIssue(
+                    file=fa.path,
+                    line=0,
+                    dimension="Elegance",
+                    severity="MEDIUM",
+                    category="deep-nesting",
+                    message=f"Max nesting depth {fa.max_nesting} (threshold: 4)",
+                    value=fa.max_nesting,
+                    threshold=4,
+                )
+            )
 
         # Security: unsafe patterns (already have line info in the string)
         for finding in fa.unsafe_calls:
@@ -1326,10 +1408,16 @@ def _collect_issues(
                 except (IndexError, ValueError):
                     pass
             msg = finding.split(": ", 1)[-1] if ": " in finding else finding
-            issues.append(QualityIssue(
-                file=fa.path, line=line_num, dimension="Security", severity="HIGH",
-                category="unsafe-pattern", message=msg,
-            ))
+            issues.append(
+                QualityIssue(
+                    file=fa.path,
+                    line=line_num,
+                    dimension="Security",
+                    severity="HIGH",
+                    category="unsafe-pattern",
+                    message=msg,
+                )
+            )
 
     # Detailed AST walk for line-level issues (broad excepts, long functions, missing annotations)
     for fa in source_files:
@@ -1343,34 +1431,58 @@ def _collect_issues(
         # Large files
         if fa.lines > 500:
             sev = "HIGH" if fa.lines > 800 else "MEDIUM"
-            issues.append(QualityIssue(
-                file=fa.path, line=0, dimension="Maintainability",
-                severity=sev, category="large-file",
-                message=f"File is {fa.lines} lines (threshold: 500)",
-                value=fa.lines, threshold=500,
-            ))
+            issues.append(
+                QualityIssue(
+                    file=fa.path,
+                    line=0,
+                    dimension="Maintainability",
+                    severity=sev,
+                    category="large-file",
+                    message=f"File is {fa.lines} lines (threshold: 500)",
+                    value=fa.lines,
+                    threshold=500,
+                )
+            )
 
         for node in ast.walk(tree):
             # Broad/bare excepts with line numbers
             if isinstance(node, ast.ExceptHandler):
                 if node.type is None:
-                    issues.append(QualityIssue(
-                        file=fa.path, line=node.lineno, dimension="Robustness",
-                        severity="MEDIUM", category="bare-except",
-                        message="Bare except clause — catch specific exceptions",
-                    ))
-                elif isinstance(node.type, ast.Name) and node.type.id in ("Exception", "BaseException"):
-                    issues.append(QualityIssue(
-                        file=fa.path, line=node.lineno, dimension="Robustness",
-                        severity="LOW", category="broad-except",
-                        message=f"Broad except({node.type.id}) — narrow the exception type",
-                    ))
+                    issues.append(
+                        QualityIssue(
+                            file=fa.path,
+                            line=node.lineno,
+                            dimension="Robustness",
+                            severity="MEDIUM",
+                            category="bare-except",
+                            message="Bare except clause — catch specific exceptions",
+                        )
+                    )
+                elif isinstance(node.type, ast.Name) and node.type.id in (
+                    "Exception",
+                    "BaseException",
+                ):
+                    issues.append(
+                        QualityIssue(
+                            file=fa.path,
+                            line=node.lineno,
+                            dimension="Robustness",
+                            severity="LOW",
+                            category="broad-except",
+                            message=f"Broad except({node.type.id}) — narrow the exception type",
+                        )
+                    )
                 if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
-                    issues.append(QualityIssue(
-                        file=fa.path, line=node.lineno, dimension="Robustness",
-                        severity="HIGH", category="swallowed-exception",
-                        message="Exception swallowed (except: pass) — log or re-raise",
-                    ))
+                    issues.append(
+                        QualityIssue(
+                            file=fa.path,
+                            line=node.lineno,
+                            dimension="Robustness",
+                            severity="HIGH",
+                            category="swallowed-exception",
+                            message="Exception swallowed (except: pass) — log or re-raise",
+                        )
+                    )
 
             # Long functions with line numbers
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1378,32 +1490,49 @@ def _collect_issues(
                     length = node.end_lineno - node.lineno + 1
                     if length > 60:
                         sev = "HIGH" if length > 100 else "MEDIUM"
-                        issues.append(QualityIssue(
-                            file=fa.path, line=node.lineno, dimension="Elegance",
-                            severity=sev, category="long-function",
-                            message=f"Function '{node.name}' is {length} lines (threshold: 60)",
-                            entity=node.name, value=length, threshold=60,
-                        ))
+                        issues.append(
+                            QualityIssue(
+                                file=fa.path,
+                                line=node.lineno,
+                                dimension="Elegance",
+                                severity=sev,
+                                category="long-function",
+                                message=f"Function '{node.name}' is {length} lines (threshold: 60)",
+                                entity=node.name,
+                                value=length,
+                                threshold=60,
+                            )
+                        )
 
                 # Missing return type annotation
                 if node.returns is None and not node.name.startswith("_"):
-                    issues.append(QualityIssue(
-                        file=fa.path, line=node.lineno, dimension="Robustness",
-                        severity="LOW", category="missing-return-type",
-                        message=f"Public function '{node.name}' missing return type annotation",
-                        entity=node.name,
-                    ))
+                    issues.append(
+                        QualityIssue(
+                            file=fa.path,
+                            line=node.lineno,
+                            dimension="Robustness",
+                            severity="LOW",
+                            category="missing-return-type",
+                            message=f"Public function '{node.name}' missing return type annotation",
+                            entity=node.name,
+                        )
+                    )
 
             # Missing docstrings on public classes/functions
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
                 if not node.name.startswith("_") and not ast.get_docstring(node):
                     kind = "class" if isinstance(node, ast.ClassDef) else "function"
-                    issues.append(QualityIssue(
-                        file=fa.path, line=node.lineno, dimension="Maintainability",
-                        severity="LOW", category="missing-docstring",
-                        message=f"Public {kind} '{node.name}' missing docstring",
-                        entity=node.name,
-                    ))
+                    issues.append(
+                        QualityIssue(
+                            file=fa.path,
+                            line=node.lineno,
+                            dimension="Maintainability",
+                            severity="LOW",
+                            category="missing-docstring",
+                            message=f"Public {kind} '{node.name}' missing docstring",
+                            entity=node.name,
+                        )
+                    )
 
     # Bandit findings (already structured)
     bandit = tool_results.get("bandit")
@@ -1412,11 +1541,17 @@ def _collect_issues(
             short_path = f.file
             if str(PROJECT_ROOT) in short_path:
                 short_path = str(Path(short_path).relative_to(PROJECT_ROOT))
-            issues.append(QualityIssue(
-                file=short_path, line=f.line, dimension="Security",
-                severity=f.severity, category=f.rule_id,
-                message=f"{f.message} ({f.rule_id})", tool="bandit",
-            ))
+            issues.append(
+                QualityIssue(
+                    file=short_path,
+                    line=f.line,
+                    dimension="Security",
+                    severity=f.severity,
+                    category=f.rule_id,
+                    message=f"{f.message} ({f.rule_id})",
+                    tool="bandit",
+                )
+            )
 
     # Radon findings (already structured)
     radon = tool_results.get("radon")
@@ -1434,12 +1569,19 @@ def _collect_issues(
             cc_match = re.search(r"complexity (\d+)", f.message)
             if cc_match:
                 value = float(cc_match.group(1))
-            issues.append(QualityIssue(
-                file=short_path, line=f.line, dimension="Testability",
-                severity=f.severity, category=f.rule_id,
-                message=f.message, tool="radon",
-                entity=entity, value=value,
-            ))
+            issues.append(
+                QualityIssue(
+                    file=short_path,
+                    line=f.line,
+                    dimension="Testability",
+                    severity=f.severity,
+                    category=f.rule_id,
+                    message=f.message,
+                    tool="radon",
+                    entity=entity,
+                    value=value,
+                )
+            )
 
     # Sort by severity (HIGH first), then file, then line
     issues.sort(key=lambda i: (i.priority, i.file, i.line))
@@ -1461,7 +1603,7 @@ def score_project(
     project = analyze_project(repo_root, scope=scope, exclude=exclude)
 
     tool_results: dict[str, ToolResult] = {}
-    for name in (tools or []):
+    for name in tools or []:
         if name == "bandit":
             tool_results["bandit"] = run_bandit(repo_root, scope, exclude)
         elif name == "radon":
@@ -1480,7 +1622,8 @@ def score_project(
     issues = _collect_issues(project, tool_results)
 
     result = compute_pqi(
-        dimensions, profile=profile,
+        dimensions,
+        profile=profile,
         file_count=project.source_files,
         line_count=project.source_lines,
     )
@@ -1699,7 +1842,9 @@ def _render_markdown_report(result: PQIResult) -> str:
             dim_high = sum(1 for i in dim_iss if i.severity == "HIGH")
             dim_med = sum(1 for i in dim_iss if i.severity == "MEDIUM")
             dim_low = sum(1 for i in dim_iss if i.severity == "LOW")
-            lines.append(f"### {dim_name} — {len(dim_iss)} issues ({dim_high}H / {dim_med}M / {dim_low}L)")
+            lines.append(
+                f"### {dim_name} — {len(dim_iss)} issues ({dim_high}H / {dim_med}M / {dim_low}L)"
+            )
             lines.append("")
 
             # Group by category, render each as a typed table
@@ -1711,7 +1856,9 @@ def _render_markdown_report(result: PQIResult) -> str:
                 categories.items(),
                 key=lambda x: (x[1][0].priority, -len(x[1])),
             ):
-                cat_issues_sorted = sorted(cat_issues, key=lambda i: (i.priority, -i.value, i.file, i.line))
+                cat_issues_sorted = sorted(
+                    cat_issues, key=lambda i: (i.priority, -i.value, i.file, i.line)
+                )
                 sev = cat_issues[0].severity
                 has_entity = any(i.entity for i in cat_issues)
                 has_value = any(i.value for i in cat_issues)
@@ -1767,7 +1914,8 @@ def main() -> None:
         description="Score codebase quality using the PyQuality Index (PQI).",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Verbose logging",
     )
@@ -1826,7 +1974,8 @@ def main() -> None:
         help="Skip Radon complexity analyzer",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=str,
         default=None,
         help="Write output to file instead of default (.codemap/ folder)",
@@ -1841,6 +1990,7 @@ def main() -> None:
 
     sys.path.insert(0, str(PROJECT_ROOT))
     from modules.backend.core.logging import setup_logging
+
     log_level = "DEBUG" if args.debug else ("INFO" if args.verbose else "WARNING")
     setup_logging(level=log_level, format_type="console")
 
@@ -1859,6 +2009,7 @@ def main() -> None:
         # Import from sibling script
         sys.path.insert(0, str(PROJECT_ROOT))
         from scripts.code_map import generate_code_map
+
         code_map = generate_code_map(
             repo_root=PROJECT_ROOT,
             scope=args.scope,

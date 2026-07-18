@@ -16,7 +16,6 @@ from modules.backend.agents.deps.base import FileScope
 from modules.backend.agents.schemas import QaAuditResult, Violation
 from modules.backend.services.compliance import ComplianceScannerService
 
-
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _QA_YAML = _PROJECT_ROOT / "config" / "agents" / "software" / "quality" / "agent.yaml"
 

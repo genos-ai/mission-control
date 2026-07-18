@@ -12,7 +12,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
-
 # =============================================================================
 # Sample Model (for fixture testing only)
 # =============================================================================
@@ -65,9 +64,7 @@ class TestDatabaseSession:
         await db_session.flush()
 
         # Act
-        result = await db_session.execute(
-            select(SampleItem).where(SampleItem.id == item.id)
-        )
+        result = await db_session.execute(select(SampleItem).where(SampleItem.id == item.id))
         found = result.scalar_one_or_none()
 
         # Assert
@@ -160,9 +157,7 @@ class TestTimestampMixin:
         assert item.updated_at is not None
 
     @pytest.mark.asyncio
-    async def test_created_at_equals_updated_at_initially(
-        self, db_session: AsyncSession
-    ):
+    async def test_created_at_equals_updated_at_initially(self, db_session: AsyncSession):
         """created_at and updated_at should be equal on creation."""
         item = SampleItem(name="Timestamp Test")
         db_session.add(item)

@@ -92,16 +92,26 @@ async def handle_mission(
     _plan_sid = uuid.UUID(session_id) if session_id else uuid.uuid4()
 
     async def _phase(step: str, message: str) -> None:
-        await _publish(event_bus, PlanningPhaseEvent(
-            session_id=_plan_sid, source="mission_control",
-            step=step, message=message,
-        ))
+        await _publish(
+            event_bus,
+            PlanningPhaseEvent(
+                session_id=_plan_sid,
+                source="mission_control",
+                step=step,
+                message=message,
+            ),
+        )
 
-    logger.info("TRACE >>> handle_mission entered",
-                 extra={"mission_run_id": mission_run_id, "mission_id": mission_id,
-                        "has_precomputed_plan": precomputed_plan is not None,
-                        "task_count": len(precomputed_plan.tasks) if precomputed_plan else 0,
-                        "event_bus_type": type(event_bus).__name__})
+    logger.info(
+        "TRACE >>> handle_mission entered",
+        extra={
+            "mission_run_id": mission_run_id,
+            "mission_id": mission_id,
+            "has_precomputed_plan": precomputed_plan is not None,
+            "task_count": len(precomputed_plan.tasks) if precomputed_plan else 0,
+            "event_bus_type": type(event_bus).__name__,
+        },
+    )
     await _phase("roster", "Deriving agent roster from team")
     roster = await derive_roster_from_team(mission_id, db_session)
     await _phase("roster", f"Roster ready — {len(roster.agents)} agents")
@@ -138,7 +148,8 @@ async def handle_mission(
                 exc_info=True,
             )
             await _emit(
-                event_bus, SystemEvent,
+                event_bus,
+                SystemEvent,
                 session_id=session_id or mission_run_id,
                 source="mission_dispatch",
                 level="warning",
@@ -149,7 +160,8 @@ async def handle_mission(
         # Load recent failures so the planner can avoid repeating them
         try:
             recent_failures = await history_service.get_recent_failures(
-                mission_id, limit=5,
+                mission_id,
+                limit=5,
             )
         except (OSError, ValueError, RuntimeError) as exc:
             logger.warning(
@@ -158,7 +170,8 @@ async def handle_mission(
                 exc_info=True,
             )
             await _emit(
-                event_bus, SystemEvent,
+                event_bus,
+                SystemEvent,
                 session_id=session_id or mission_run_id,
                 source="mission_dispatch",
                 level="warning",
@@ -196,7 +209,8 @@ async def handle_mission(
                 },
             )
             await _emit(
-                event_bus, SystemEvent,
+                event_bus,
+                SystemEvent,
                 session_id=session_id or mission_run_id,
                 source="mission_dispatch",
                 level="error",
@@ -209,18 +223,24 @@ async def handle_mission(
 
         # Emit planning started event
         await _phase("thinking", "Planning agent decomposing objective")
-        await _publish(event_bus, AgentThinkingEvent(
-            session_id=_plan_sid,
-            source="mission_control",
-            agent_id=planning_agent_id,
-        ))
+        await _publish(
+            event_bus,
+            AgentThinkingEvent(
+                session_id=_plan_sid,
+                source="mission_control",
+                agent_id=planning_agent_id,
+            ),
+        )
 
         planning_result = None
         for attempt in range(max_planning_attempts):
             try:
                 planning_result = await _call_planning_agent(
-                    planning_brief, roster, upstream_context,
-                    event_bus=event_bus, session_id=session_id,
+                    planning_brief,
+                    roster,
+                    upstream_context,
+                    event_bus=event_bus,
+                    session_id=session_id,
                     mission_id=mission_id or mission_run_id,
                     project_context=project_context,
                     recent_failures=recent_failures,
@@ -234,7 +254,9 @@ async def handle_mission(
                     break
 
                 last_error = "; ".join(validation.errors)
-                await _phase("error", f"Attempt {attempt + 1} failed: plan validation — {last_error}")
+                await _phase(
+                    "error", f"Attempt {attempt + 1} failed: plan validation — {last_error}"
+                )
                 logger.warning(
                     "TaskPlan validation failed, retrying Planning Agent",
                     extra={
@@ -244,7 +266,8 @@ async def handle_mission(
                     },
                 )
                 planning_brief = _append_validation_feedback(
-                    planning_brief, validation.errors,
+                    planning_brief,
+                    validation.errors,
                 )
                 plan = None
 
@@ -268,26 +291,33 @@ async def handle_mission(
                     },
                 )
                 planning_brief = _append_validation_feedback(
-                    planning_brief, [last_error],
+                    planning_brief,
+                    [last_error],
                 )
 
     # Emit planning complete event
     _sid = uuid.UUID(session_id) if session_id else uuid.uuid4()
     if plan is not None:
-        await _publish(event_bus, AgentResponseCompleteEvent(
-            session_id=_sid,
-            source="mission_control",
-            agent_id=planning_agent_id,
-            full_content=f"Plan created: {len(plan.tasks)} tasks",
-        ))
+        await _publish(
+            event_bus,
+            AgentResponseCompleteEvent(
+                session_id=_sid,
+                source="mission_control",
+                agent_id=planning_agent_id,
+                full_content=f"Plan created: {len(plan.tasks)} tasks",
+            ),
+        )
     else:
-        await _publish(event_bus, AgentResponseCompleteEvent(
-            session_id=_sid,
-            source="mission_control",
-            agent_id=planning_agent_id,
-            full_content=last_error or "Planning failed after retries",
-            metadata={"error": True},
-        ))
+        await _publish(
+            event_bus,
+            AgentResponseCompleteEvent(
+                session_id=_sid,
+                source="mission_control",
+                agent_id=planning_agent_id,
+                full_content=last_error or "Planning failed after retries",
+                metadata={"error": True},
+            ),
+        )
         return ExecutionOutcome(
             mission_id=mission_run_id,
             status=ExecutionStatus.FAILED,
@@ -333,11 +363,9 @@ async def handle_mission(
     env_handle = None
     if execution_mode != "local":
         try:
-            from modules.backend.services.execution_environment import (
-                ExecutionEnvironmentService,
-            )
-            from modules.backend.services.container_backend import ContainerBackend
             from modules.backend.core.config import find_project_root
+            from modules.backend.services.container_backend import ContainerBackend
+            from modules.backend.services.execution_environment import ExecutionEnvironmentService
 
             env_service = ExecutionEnvironmentService(db_session=db_session)
             env_service.register_backend("container", ContainerBackend())
@@ -371,7 +399,8 @@ async def handle_mission(
                 exc_info=True,
             )
             await _emit(
-                event_bus, SystemEvent,
+                event_bus,
+                SystemEvent,
                 session_id=session_id or mission_run_id,
                 source="mission_dispatch",
                 level="warning",

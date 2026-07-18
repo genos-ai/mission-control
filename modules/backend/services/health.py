@@ -46,9 +46,9 @@ class HealthCheckService:
         Mirrors the logic of the /health/ready endpoint but returns
         domain objects instead of HTTP responses.
         """
-        from modules.backend.api.health import check_database, check_redis
-
         import asyncio
+
+        from modules.backend.api.health import check_database, check_redis
 
         db_raw, redis_raw = await asyncio.gather(
             check_database(),
@@ -66,10 +66,7 @@ class HealthCheckService:
             self._parse_component("redis", redis_raw),
         ]
 
-        degraded = any(
-            c.status not in ("healthy", "not_configured")
-            for c in components
-        )
+        degraded = any(c.status not in ("healthy", "not_configured") for c in components)
         overall = "degraded" if degraded else "healthy"
 
         return HealthReport(overall_status=overall, components=components)

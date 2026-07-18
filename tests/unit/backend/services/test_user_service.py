@@ -8,11 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modules.backend.core.exceptions import (
-    AuthorizationError,
-    ConflictError,
-    ValidationError,
-)
+from modules.backend.core.exceptions import AuthorizationError, ConflictError, ValidationError
 from modules.backend.services.user import UserService
 from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
@@ -33,8 +29,11 @@ def _make_user(
     user.hashed_password = hashed_password
     user.has_role = MagicMock(
         side_effect=lambda minimum: {
-            "viewer": 1, "user": 2, "admin": 3,
-        }.get(role, 0) >= {"viewer": 1, "user": 2, "admin": 3}.get(minimum, 99)
+            "viewer": 1,
+            "user": 2,
+            "admin": 3,
+        }.get(role, 0)
+        >= {"viewer": 1, "user": 2, "admin": 3}.get(minimum, 99)
     )
     return user
 
@@ -46,8 +45,10 @@ def mock_session():
 
 @pytest.fixture
 def service(mock_session):
-    with patch("modules.backend.services.user.UserRepository") as MockUserRepo, \
-         patch("modules.backend.services.user.ApiKeyRepository") as MockApiKeyRepo:
+    with (
+        patch("modules.backend.services.user.UserRepository") as MockUserRepo,
+        patch("modules.backend.services.user.ApiKeyRepository") as MockApiKeyRepo,
+    ):
         svc = UserService(mock_session)
         svc.user_repo = MockUserRepo.return_value
         svc.api_key_repo = MockApiKeyRepo.return_value
@@ -178,7 +179,9 @@ class TestUpdateUser:
         service.user_repo.update = AsyncMock(return_value=updated)
 
         result = await service.update_user(
-            "target", admin, system_role="admin",
+            "target",
+            admin,
+            system_role="admin",
         )
         assert result == updated
 
@@ -189,10 +192,13 @@ class TestUpdateUser:
         service.user_repo.update = AsyncMock(return_value=updated)
 
         result = await service.update_user(
-            "self-1", user, display_name="New Name",
+            "self-1",
+            user,
+            display_name="New Name",
         )
         service.user_repo.update.assert_called_once_with(
-            "self-1", display_name="New Name",
+            "self-1",
+            display_name="New Name",
         )
 
     @pytest.mark.asyncio
@@ -201,7 +207,9 @@ class TestUpdateUser:
 
         with pytest.raises(AuthorizationError, match="Only admins"):
             await service.update_user(
-                "self-1", user, system_role="admin",
+                "self-1",
+                user,
+                system_role="admin",
             )
 
     @pytest.mark.asyncio
@@ -210,7 +218,9 @@ class TestUpdateUser:
 
         with pytest.raises(AuthorizationError, match="Cannot update"):
             await service.update_user(
-                "other", user, display_name="Nope",
+                "other",
+                user,
+                display_name="Nope",
             )
 
     @pytest.mark.asyncio
@@ -259,8 +269,13 @@ class TestChangePassword:
         service.user_repo.get_by_id = AsyncMock(return_value=user)
         service.user_repo.update = AsyncMock()
 
-        with patch("modules.backend.services.user.security.verify_password", return_value=True), \
-             patch("modules.backend.services.user.security.hash_password", return_value="$2b$12$newhash"):
+        with (
+            patch("modules.backend.services.user.security.verify_password", return_value=True),
+            patch(
+                "modules.backend.services.user.security.hash_password",
+                return_value="$2b$12$newhash",
+            ),
+        ):
             await service.change_password("me", "oldpw", "newpw", user)
 
         service.user_repo.update.assert_called_once_with("me", hashed_password="$2b$12$newhash")
@@ -296,11 +311,14 @@ class TestAdminResetPassword:
         admin = _make_user(user_id="admin-1", role="admin")
         service.user_repo.update = AsyncMock()
 
-        with patch("modules.backend.services.user.security.hash_password", return_value="$2b$12$reset"):
+        with patch(
+            "modules.backend.services.user.security.hash_password", return_value="$2b$12$reset"
+        ):
             await service.admin_reset_password("target", "newpw", admin)
 
         service.user_repo.update.assert_called_once_with(
-            "target", hashed_password="$2b$12$reset",
+            "target",
+            hashed_password="$2b$12$reset",
         )
 
     @pytest.mark.asyncio

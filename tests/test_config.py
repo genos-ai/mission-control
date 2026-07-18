@@ -41,8 +41,7 @@ def get_test_database_url() -> str:
     url = config.get("database_url")
     if not url:
         raise ValueError(
-            "config/settings/test.yaml must define 'database_url' "
-            "(or set TEST_DATABASE_URL env)"
+            "config/settings/test.yaml must define 'database_url' " "(or set TEST_DATABASE_URL env)"
         )
     return url
 
@@ -76,7 +75,6 @@ def get_test_redis_url() -> str:
     url = config.get("redis_url")
     if not url:
         raise ValueError(
-            "config/settings/test.yaml must define 'redis_url' "
-            "(or set TEST_REDIS_URL env)"
+            "config/settings/test.yaml must define 'redis_url' " "(or set TEST_REDIS_URL env)"
         )
     return url

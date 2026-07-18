@@ -9,10 +9,7 @@ Validates:
 
 import pytest
 
-from modules.backend.agents.security.models import (
-    Finding,
-    TriageVerdict,
-)
+from modules.backend.agents.security.models import Finding, TriageVerdict
 
 
 def _triaged_finding(**overrides: object) -> dict:
@@ -23,7 +20,7 @@ def _triaged_finding(**overrides: object) -> dict:
         "description": "Raw SQL with f-string interpolation allows injection",
         "severity": "HIGH",
         "owasp_category": "A03",
-        "evidence": "text(f\"SELECT * FROM users WHERE id = {user_id}\")",
+        "evidence": 'text(f"SELECT * FROM users WHERE id = {user_id}")',
         "source_phase": "scan",
         "source_tool": "opengrep",
         "remediation": "Use parameterised queries via SQLAlchemy ORM",
@@ -39,40 +36,50 @@ class TestT01FpRequiresRationale:
 
     def test_fp_without_rationale_rejected(self):
         with pytest.raises(ValueError, match="triage_rationale required"):
-            Finding(**_triaged_finding(
-                triage_verdict="FALSE_POSITIVE",
-                fp_confidence=0.9,
-                triage_rationale=None,
-            ))
+            Finding(
+                **_triaged_finding(
+                    triage_verdict="FALSE_POSITIVE",
+                    fp_confidence=0.9,
+                    triage_rationale=None,
+                )
+            )
 
     def test_fp_with_empty_rationale_rejected(self):
         with pytest.raises(ValueError, match="triage_rationale required"):
-            Finding(**_triaged_finding(
-                triage_verdict="FALSE_POSITIVE",
-                fp_confidence=0.9,
-                triage_rationale="",
-            ))
+            Finding(
+                **_triaged_finding(
+                    triage_verdict="FALSE_POSITIVE",
+                    fp_confidence=0.9,
+                    triage_rationale="",
+                )
+            )
 
     def test_fp_with_rationale_accepted(self):
-        f = Finding(**_triaged_finding(
-            triage_verdict="FALSE_POSITIVE",
-            fp_confidence=0.9,
-            triage_rationale="ORM parameterised query — not injectable",
-        ))
+        f = Finding(
+            **_triaged_finding(
+                triage_verdict="FALSE_POSITIVE",
+                fp_confidence=0.9,
+                triage_rationale="ORM parameterised query — not injectable",
+            )
+        )
         assert f.triage_verdict == TriageVerdict.FALSE_POSITIVE
 
     def test_tp_without_rationale_ok(self):
-        f = Finding(**_triaged_finding(
-            triage_verdict="TRUE_POSITIVE",
-            triage_rationale=None,
-        ))
+        f = Finding(
+            **_triaged_finding(
+                triage_verdict="TRUE_POSITIVE",
+                triage_rationale=None,
+            )
+        )
         assert f.triage_verdict == TriageVerdict.TRUE_POSITIVE
 
     def test_uncertain_without_rationale_ok(self):
-        f = Finding(**_triaged_finding(
-            triage_verdict="UNCERTAIN",
-            triage_rationale=None,
-        ))
+        f = Finding(
+            **_triaged_finding(
+                triage_verdict="UNCERTAIN",
+                triage_rationale=None,
+            )
+        )
         assert f.triage_verdict == TriageVerdict.UNCERTAIN
 
 
@@ -87,23 +94,28 @@ class TestT02FpConfidenceThreshold:
 
     def test_config_default_threshold(self):
         from modules.backend.core.config_schema import SecurityAssessmentSchema
+
         schema = SecurityAssessmentSchema(roe_opa_endpoint="http://localhost:8181")
         assert schema.triage_fp_confidence_threshold == 0.75
 
     def test_confidence_below_threshold_is_valid_pydantic(self):
         """The model accepts any float in [0,1] — threshold is prompt-enforced."""
-        f = Finding(**_triaged_finding(
-            triage_verdict="UNCERTAIN",
-            fp_confidence=0.5,
-        ))
+        f = Finding(
+            **_triaged_finding(
+                triage_verdict="UNCERTAIN",
+                fp_confidence=0.5,
+            )
+        )
         assert f.fp_confidence == 0.5
 
     def test_confidence_above_threshold_for_fp(self):
-        f = Finding(**_triaged_finding(
-            triage_verdict="FALSE_POSITIVE",
-            fp_confidence=0.85,
-            triage_rationale="Confirmed safe by ORM usage",
-        ))
+        f = Finding(
+            **_triaged_finding(
+                triage_verdict="FALSE_POSITIVE",
+                fp_confidence=0.85,
+                triage_rationale="Confirmed safe by ORM usage",
+            )
+        )
         assert f.fp_confidence == 0.85
 
     def test_confidence_out_of_range_rejected(self):
@@ -116,11 +128,13 @@ class TestT04SuppressedFindingsAuditTrail:
 
     def test_fp_finding_can_be_serialised(self):
         """FP findings must be serialisable for the suppressed_findings list."""
-        f = Finding(**_triaged_finding(
-            triage_verdict="FALSE_POSITIVE",
-            fp_confidence=0.9,
-            triage_rationale="Known test placeholder value",
-        ))
+        f = Finding(
+            **_triaged_finding(
+                triage_verdict="FALSE_POSITIVE",
+                fp_confidence=0.9,
+                triage_rationale="Known test placeholder value",
+            )
+        )
         data = f.model_dump()
         assert data["triage_verdict"] == "FALSE_POSITIVE"
         assert data["triage_rationale"] == "Known test placeholder value"
@@ -128,11 +142,13 @@ class TestT04SuppressedFindingsAuditTrail:
     def test_report_accepts_suppressed_findings(self):
         from modules.backend.agents.security.models import SecurityAssessmentReport
 
-        fp_finding = Finding(**_triaged_finding(
-            triage_verdict="FALSE_POSITIVE",
-            fp_confidence=0.9,
-            triage_rationale="ORM safe",
-        ))
+        fp_finding = Finding(
+            **_triaged_finding(
+                triage_verdict="FALSE_POSITIVE",
+                fp_confidence=0.9,
+                triage_rationale="ORM safe",
+            )
+        )
 
         report = SecurityAssessmentReport(
             report_id="RPT-001",

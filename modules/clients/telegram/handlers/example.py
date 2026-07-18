@@ -105,8 +105,7 @@ async def process_category(message: Message, state: FSMContext) -> None:
     await state.update_data(category=message.text)
     await state.set_state(FeedbackForm.waiting_for_message)
     await message.answer(
-        f"Category: <b>{message.text}</b>\n\n"
-        "Now please describe your feedback:"
+        f"Category: <b>{message.text}</b>\n\n" "Now please describe your feedback:"
     )
 
 
@@ -114,10 +113,7 @@ async def process_category(message: Message, state: FSMContext) -> None:
 async def process_invalid_category(message: Message) -> None:
     """Handle invalid category input."""
     await message.answer(
-        "❌ Invalid category. Please type one of:\n"
-        "• bug\n"
-        "• feature\n"
-        "• other"
+        "❌ Invalid category. Please type one of:\n" "• bug\n" "• feature\n" "• other"
     )
 
 
@@ -160,8 +156,7 @@ async def cmd_confirm(message: Message) -> None:
     Shows a confirmation dialog with Yes/No buttons.
     """
     await message.answer(
-        "⚠️ <b>Confirmation Required</b>\n\n"
-        "Do you want to proceed with this action?",
+        "⚠️ <b>Confirmation Required</b>\n\n" "Do you want to proceed with this action?",
         reply_markup=get_confirmation_keyboard("example_action"),
     )
 
@@ -180,9 +175,7 @@ async def callback_confirm(callback: CallbackQuery, callback_data: ActionCallbac
         },
     )
 
-    await callback.message.edit_text(
-        f"✅ Action <code>{action_id}</code> confirmed and executed!"
-    )
+    await callback.message.edit_text(f"✅ Action <code>{action_id}</code> confirmed and executed!")
     await callback.answer("Action confirmed!")
 
 
@@ -199,9 +192,7 @@ async def callback_cancel(callback: CallbackQuery, callback_data: ActionCallback
         },
     )
 
-    await callback.message.edit_text(
-        f"❌ Action <code>{action_id}</code> cancelled."
-    )
+    await callback.message.edit_text(f"❌ Action <code>{action_id}</code> cancelled.")
     await callback.answer("Action cancelled!")
 
 

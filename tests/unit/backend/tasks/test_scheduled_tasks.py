@@ -11,8 +11,8 @@ import pytest
 from modules.backend.tasks.scheduled import (
     daily_cleanup,
     hourly_health_check,
-    weekly_report_generation,
     metrics_aggregation,
+    weekly_report_generation,
 )
 
 
@@ -113,7 +113,6 @@ class TestMetricsAggregation:
         result = await metrics_aggregation(interval_minutes=5)
 
         assert result["interval_minutes"] == 5
-
 
     # TestScheduledTasksConfiguration removed — SCHEDULED_TASKS dict was deleted
     # when TaskIQ was replaced by Temporal Schedules (Plan 56 Phase C).

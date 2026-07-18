@@ -10,7 +10,7 @@ Expected: >= 5 TRUE_POSITIVE findings across SAST tools.
 DO NOT deploy this application. It exists solely as a test fixture.
 """
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +48,7 @@ async def get_user_profile(
 @app.get("/api/external")
 async def call_external():
     import httpx
+
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             "https://api.example.com/data",

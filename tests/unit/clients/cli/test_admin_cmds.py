@@ -176,10 +176,12 @@ class TestActionHealth:
     async def test_health_all_healthy(self, cli_logger, mock_console):
         from modules.clients.cli.admin_cmds import _action_health
 
-        report = self._mock_report([
-            ("database", "healthy", 5, None),
-            ("redis", "healthy", 2, None),
-        ])
+        report = self._mock_report(
+            [
+                ("database", "healthy", 5, None),
+                ("redis", "healthy", 2, None),
+            ]
+        )
 
         with patch("modules.backend.services.health.HealthCheckService") as MockCls:
             MockCls.return_value.check_readiness = AsyncMock(return_value=report)
@@ -192,10 +194,12 @@ class TestActionHealth:
     async def test_health_json_format(self, cli_logger, mock_console):
         from modules.clients.cli.admin_cmds import _action_health
 
-        report = self._mock_report([
-            ("database", "healthy", None, None),
-            ("redis", "error", None, "timeout"),
-        ])
+        report = self._mock_report(
+            [
+                ("database", "healthy", None, None),
+                ("redis", "error", None, "timeout"),
+            ]
+        )
 
         with patch("modules.backend.services.health.HealthCheckService") as MockCls:
             MockCls.return_value.check_readiness = AsyncMock(return_value=report)
@@ -210,10 +214,12 @@ class TestActionHealth:
     async def test_health_degraded(self, cli_logger, mock_console):
         from modules.clients.cli.admin_cmds import _action_health
 
-        report = self._mock_report([
-            ("database", "unhealthy", None, "connection refused"),
-            ("redis", "healthy", 2, None),
-        ])
+        report = self._mock_report(
+            [
+                ("database", "unhealthy", None, "connection refused"),
+                ("redis", "healthy", 2, None),
+            ]
+        )
 
         with patch("modules.backend.services.health.HealthCheckService") as MockCls:
             MockCls.return_value.check_readiness = AsyncMock(return_value=report)
@@ -236,7 +242,9 @@ class TestDispatchRouter:
     def test_known_action_dispatches(self, cli_logger):
         from modules.clients.cli.admin_cmds import run_admin_cmd
 
-        with patch("modules.clients.cli.admin_cmds._action_roles", new_callable=AsyncMock) as mock_fn:
+        with patch(
+            "modules.clients.cli.admin_cmds._action_roles", new_callable=AsyncMock
+        ) as mock_fn:
             run_admin_cmd(cli_logger, "roles", output_format="human")
 
         mock_fn.assert_called_once()

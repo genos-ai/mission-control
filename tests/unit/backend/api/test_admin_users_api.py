@@ -80,8 +80,11 @@ def app(mock_db):
 
     async def _always_admin():
         return MagicMock(
-            id="test-admin", email="admin@test.com", system_role="admin",
-            has_role=lambda r: True, is_active=True,
+            id="test-admin",
+            email="admin@test.com",
+            system_role="admin",
+            has_role=lambda r: True,
+            is_active=True,
         )
 
     async def _mock_db_session():
@@ -106,12 +109,15 @@ class TestCreateUser:
         user = _mock_user()
         MockUserSvc.return_value.create_user = AsyncMock(return_value=user)
 
-        resp = await client.post("/admin/users/", json={
-            "email": "alice@example.com",
-            "display_name": "Alice",
-            "password": "securepassword123",
-            "system_role": "user",
-        })
+        resp = await client.post(
+            "/admin/users/",
+            json={
+                "email": "alice@example.com",
+                "display_name": "Alice",
+                "password": "securepassword123",
+                "system_role": "user",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
@@ -126,19 +132,25 @@ class TestCreateUser:
             side_effect=ConflictError("User could not be created"),
         )
 
-        resp = await client.post("/admin/users/", json={
-            "email": "alice@example.com",
-            "display_name": "Alice",
-        })
+        resp = await client.post(
+            "/admin/users/",
+            json={
+                "email": "alice@example.com",
+                "display_name": "Alice",
+            },
+        )
         assert resp.status_code == 409
 
     @pytest.mark.asyncio
     async def test_create_user_invalid_role(self, client):
-        resp = await client.post("/admin/users/", json={
-            "email": "alice@example.com",
-            "display_name": "Alice",
-            "system_role": "superadmin",
-        })
+        resp = await client.post(
+            "/admin/users/",
+            json={
+                "email": "alice@example.com",
+                "display_name": "Alice",
+                "system_role": "superadmin",
+            },
+        )
         assert resp.status_code == 422
 
 
@@ -199,9 +211,12 @@ class TestUpdateUser:
         user = _mock_user(display_name="Alice Updated")
         MockUserSvc.return_value.update_user = AsyncMock(return_value=user)
 
-        resp = await client.patch("/admin/users/user-1", json={
-            "display_name": "Alice Updated",
-        })
+        resp = await client.patch(
+            "/admin/users/user-1",
+            json={
+                "display_name": "Alice Updated",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["data"]["display_name"] == "Alice Updated"
 
@@ -211,9 +226,12 @@ class TestUpdateUser:
         user = _mock_user(system_role="admin")
         MockUserSvc.return_value.update_user = AsyncMock(return_value=user)
 
-        resp = await client.patch("/admin/users/user-1", json={
-            "system_role": "admin",
-        })
+        resp = await client.patch(
+            "/admin/users/user-1",
+            json={
+                "system_role": "admin",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["data"]["system_role"] == "admin"
 
@@ -247,17 +265,23 @@ class TestResetPassword:
     async def test_reset_password(self, MockUserSvc, client):
         MockUserSvc.return_value.admin_reset_password = AsyncMock()
 
-        resp = await client.post("/admin/users/user-1/reset-password", json={
-            "new_password": "newsecurepassword123",
-        })
+        resp = await client.post(
+            "/admin/users/user-1/reset-password",
+            json={
+                "new_password": "newsecurepassword123",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["data"]["message"] == "Password reset"
 
     @pytest.mark.asyncio
     async def test_reset_password_too_short(self, client):
-        resp = await client.post("/admin/users/user-1/reset-password", json={
-            "new_password": "short",
-        })
+        resp = await client.post(
+            "/admin/users/user-1/reset-password",
+            json={
+                "new_password": "short",
+            },
+        )
         assert resp.status_code == 422
 
 
@@ -270,10 +294,13 @@ class TestApiKeyManagement:
             return_value=("mc_abcde_full_key_value", api_key),
         )
 
-        resp = await client.post("/admin/users/user-1/api-keys", json={
-            "name": "dev-key",
-            "expires_in_days": 90,
-        })
+        resp = await client.post(
+            "/admin/users/user-1/api-keys",
+            json={
+                "name": "dev-key",
+                "expires_in_days": 90,
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["name"] == "dev-key"

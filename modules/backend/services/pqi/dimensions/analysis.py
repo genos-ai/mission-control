@@ -8,15 +8,9 @@ from __future__ import annotations
 import statistics
 
 from modules.backend.services.pqi.ast_analysis import ProjectAnalysis
-from modules.backend.services.pqi.normalizers import (
-    exp_decay,
-    inverse_linear,
-    ratio_score,
-    sigmoid,
-)
+from modules.backend.services.pqi.normalizers import exp_decay, inverse_linear, ratio_score, sigmoid
 from modules.backend.services.pqi.tools import ToolResult
 from modules.backend.services.pqi.types import DimensionScore
-
 
 # ---------------------------------------------------------------------------
 # Helpers (used by modularity)
@@ -76,7 +70,9 @@ def score_maintainability(
     volume, cyclomatic complexity, and lines of code.
     """
     tool_results = tool_results or {}
-    source_files = [f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")]
+    source_files = [
+        f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")
+    ]
 
     # Sub-metric: documentation coverage
     total_callables = sum(f.total_callables for f in source_files)
@@ -128,7 +124,9 @@ def score_maintainability(
         )
 
         if avg_mi < 40:
-            recommendations.append(f"Average maintainability index is {avg_mi:.0f} — refactor complex modules")
+            recommendations.append(
+                f"Average maintainability index is {avg_mi:.0f} — refactor complex modules"
+            )
     else:
         if source_files:
             avg_funcs = statistics.mean(f.functions for f in source_files)
@@ -145,11 +143,15 @@ def score_maintainability(
         )
 
     if doc_coverage < 50:
-        recommendations.append(f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes")
+        recommendations.append(
+            f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes"
+        )
     if p90_size > 500:
         recommendations.append(f"P90 file size is {p90_size} lines — split large files")
     if p90_length > 50:
-        recommendations.append(f"P90 function length is {p90_length} lines — extract helper functions")
+        recommendations.append(
+            f"P90 function length is {p90_length} lines — extract helper functions"
+        )
 
     return DimensionScore(
         name="Maintainability",
@@ -175,7 +177,9 @@ def score_security(
     fills in as a baseline when Bandit is unavailable.
     """
     tool_results = tool_results or {}
-    source_files = [f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")]
+    source_files = [
+        f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")
+    ]
     kloc = max(project.source_lines / 1000, 0.1)
 
     total_unsafe = sum(len(f.unsafe_calls) for f in source_files)
@@ -183,7 +187,11 @@ def score_security(
     ast_unsafe_score = exp_decay(unsafe_per_kloc, rate=1.0)
 
     files_with_unsafe = sum(1 for f in source_files if f.unsafe_calls)
-    ast_clean_ratio = ratio_score(len(source_files) - files_with_unsafe, len(source_files)) if source_files else 100.0
+    ast_clean_ratio = (
+        ratio_score(len(source_files) - files_with_unsafe, len(source_files))
+        if source_files
+        else 100.0
+    )
 
     sub_scores: dict[str, float] = {
         "ast_unsafe_patterns": ast_unsafe_score,
@@ -221,13 +229,19 @@ def score_security(
         if high_count > 0:
             recommendations.append(f"{high_count} HIGH severity finding(s) — fix immediately")
         if medium_count > 0:
-            recommendations.append(f"{medium_count} MEDIUM severity finding(s) — review and remediate")
+            recommendations.append(
+                f"{medium_count} MEDIUM severity finding(s) — review and remediate"
+            )
         if low_count > 0:
             recommendations.append(f"{low_count} LOW severity finding(s)")
 
         for finding in bandit.findings[:5]:
             if finding.severity in ("HIGH", "MEDIUM"):
-                short_path = finding.file.split("/modules/")[-1] if "/modules/" in finding.file else finding.file
+                short_path = (
+                    finding.file.split("/modules/")[-1]
+                    if "/modules/" in finding.file
+                    else finding.file
+                )
                 recommendations.append(
                     f"[{finding.severity}] {short_path}:{finding.line} — "
                     f"{finding.message} ({finding.rule_id})"
@@ -245,7 +259,9 @@ def score_security(
         if bandit and not bandit.success:
             recommendations.append(f"Bandit error: {bandit.error}")
         elif not bandit:
-            recommendations.append("Install bandit for deeper security analysis: pip install bandit")
+            recommendations.append(
+                "Install bandit for deeper security analysis: pip install bandit"
+            )
 
     return DimensionScore(
         name="Security",
@@ -314,20 +330,23 @@ def score_modularity(
         gini_score = 100.0
 
     score = (
-        instability_score * 0.25
-        + coupling_score * 0.30
-        + cycle_score * 0.25
-        + gini_score * 0.20
+        instability_score * 0.25 + coupling_score * 0.30 + cycle_score * 0.25 + gini_score * 0.20
     )
 
     recommendations = []
     if max_ce > 15:
         worst = max(ce, key=ce.get)
-        recommendations.append(f"{worst} has Ce={max_ce} — too many dependencies, consider splitting")
+        recommendations.append(
+            f"{worst} has Ce={max_ce} — too many dependencies, consider splitting"
+        )
     if cycle_count > 0:
-        recommendations.append(f"{cycle_count} circular dependency(ies) detected — break with protocols or restructure")
+        recommendations.append(
+            f"{cycle_count} circular dependency(ies) detected — break with protocols or restructure"
+        )
     if gini > 0.6:
-        recommendations.append(f"Module size Gini={gini:.2f} — sizes are very uneven, split large modules")
+        recommendations.append(
+            f"Module size Gini={gini:.2f} — sizes are very uneven, split large modules"
+        )
 
     return DimensionScore(
         name="Modularity",
@@ -373,7 +392,9 @@ def score_testability(
         file_ratio = 0.0
         file_ratio_score = 0.0
 
-    source_files = [f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")]
+    source_files = [
+        f for f in project.files if "/tests/" not in f.path and not f.path.startswith("tests/")
+    ]
 
     max_nestings = [f.max_nesting for f in source_files if f.max_nesting > 0]
     if max_nestings:
@@ -408,13 +429,14 @@ def score_testability(
         )
 
         if avg_cc > 10:
-            recommendations.append(f"Average cyclomatic complexity is {avg_cc:.1f} — simplify branching logic")
-        complex_count = sum(
-            int(radon.metrics.get(f"rank_{r}", 0))
-            for r in ("D", "E", "F")
-        )
+            recommendations.append(
+                f"Average cyclomatic complexity is {avg_cc:.1f} — simplify branching logic"
+            )
+        complex_count = sum(int(radon.metrics.get(f"rank_{r}", 0)) for r in ("D", "E", "F"))
         if complex_count > 0:
-            recommendations.append(f"{complex_count} function(s) with complexity rank D+ — refactor or split")
+            recommendations.append(
+                f"{complex_count} function(s) with complexity rank D+ — refactor or split"
+            )
     else:
         all_lengths = []
         for f in source_files:

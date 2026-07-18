@@ -21,9 +21,7 @@ import httpx
 from modules.backend.core.config import get_app_config, get_settings
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import SearchResult
-from modules.backend.services.search.bing_grounding_search import (
-    FoundryBingGroundingSearch,
-)
+from modules.backend.services.search.bing_grounding_search import FoundryBingGroundingSearch
 
 logger = get_logger(__name__)
 
@@ -49,9 +47,7 @@ class WebSearchService:
         # "configured" signal. AAD auth is handled inside the provider
         # factory in modules.backend.core.model_providers.
         try:
-            self._foundry_configured = bool(
-                get_app_config().providers.foundry_project.base_url
-            )
+            self._foundry_configured = bool(get_app_config().providers.foundry_project.base_url)
         except Exception:
             self._foundry_configured = False
 
@@ -97,7 +93,8 @@ class WebSearchService:
         """
         if provider:
             return await self._search_provider(
-                provider, query,
+                provider,
+                query,
                 max_results=max_results,
                 search_depth=search_depth,
                 include_domains=include_domains,
@@ -111,7 +108,8 @@ class WebSearchService:
                 continue
             try:
                 return await self._search_provider(
-                    p, query,
+                    p,
+                    query,
                     max_results=max_results,
                     search_depth=search_depth,
                     include_domains=include_domains,
@@ -249,25 +247,29 @@ class WebSearchService:
         # Build results — one per citation with the full response as context
         results = []
         for i, url in enumerate(citations[:max_results]):
-            results.append(SearchResult(
-                url=url,
-                title=url.split("/")[-1].replace("-", " ").title() if "/" in url else url,
-                snippet=content[:500] if i == 0 else "",
-                content=content if i == 0 else "",
-                relevance_score=1.0 - (i * 0.05),
-                provider="perplexity",
-            ))
+            results.append(
+                SearchResult(
+                    url=url,
+                    title=url.split("/")[-1].replace("-", " ").title() if "/" in url else url,
+                    snippet=content[:500] if i == 0 else "",
+                    content=content if i == 0 else "",
+                    relevance_score=1.0 - (i * 0.05),
+                    provider="perplexity",
+                )
+            )
 
         # If no citations but we got content, return as a single result
         if not results and content:
-            results.append(SearchResult(
-                url="",
-                title="Perplexity response",
-                snippet=content[:500],
-                content=content,
-                relevance_score=1.0,
-                provider="perplexity",
-            ))
+            results.append(
+                SearchResult(
+                    url="",
+                    title="Perplexity response",
+                    snippet=content[:500],
+                    content=content,
+                    relevance_score=1.0,
+                    provider="perplexity",
+                )
+            )
 
         logger.info(
             "Perplexity search complete",
@@ -314,14 +316,16 @@ class WebSearchService:
 
         results = []
         for item in data.get("results", [])[:max_results]:
-            results.append(SearchResult(
-                url=item.get("url", ""),
-                title=item.get("title", ""),
-                snippet=item.get("content", "")[:500],
-                content=item.get("content", ""),
-                relevance_score=item.get("score", 0.0),
-                provider="tavily",
-            ))
+            results.append(
+                SearchResult(
+                    url=item.get("url", ""),
+                    title=item.get("title", ""),
+                    snippet=item.get("content", "")[:500],
+                    content=item.get("content", ""),
+                    relevance_score=item.get("score", 0.0),
+                    provider="tavily",
+                )
+            )
 
         logger.info(
             "Tavily search complete",
@@ -353,14 +357,16 @@ class WebSearchService:
 
         results = []
         for item in data.get("web", {}).get("results", [])[:max_results]:
-            results.append(SearchResult(
-                url=item.get("url", ""),
-                title=item.get("title", ""),
-                snippet=item.get("description", ""),
-                content="",
-                relevance_score=0.0,
-                provider="brave",
-            ))
+            results.append(
+                SearchResult(
+                    url=item.get("url", ""),
+                    title=item.get("title", ""),
+                    snippet=item.get("description", ""),
+                    content="",
+                    relevance_score=0.0,
+                    provider="brave",
+                )
+            )
 
         logger.info(
             "Brave search complete",

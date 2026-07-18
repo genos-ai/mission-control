@@ -28,12 +28,17 @@ def show_agents(cli_logger) -> None:
 
     from modules.clients.cli.report import DOTTED_ROWS, build_table, get_console
 
-    table = build_table("Available Agents", columns=[
-        ("Agent",       {"style": "cyan", "width": 26}),
-        ("Description", {"ratio": 2, "no_wrap": False}),
-        ("Tools",       {"style": "green", "ratio": 2, "no_wrap": False}),
-        ("Folders",     {"style": "dim", "width": 20, "no_wrap": False}),
-    ], show_lines=True, table_box=DOTTED_ROWS)
+    table = build_table(
+        "Available Agents",
+        columns=[
+            ("Agent", {"style": "cyan", "width": 26}),
+            ("Description", {"ratio": 2, "no_wrap": False}),
+            ("Tools", {"style": "green", "ratio": 2, "no_wrap": False}),
+            ("Folders", {"style": "dim", "width": 20, "no_wrap": False}),
+        ],
+        show_lines=True,
+        table_box=DOTTED_ROWS,
+    )
 
     for agent in agents:
         tools = ", ".join(agent.get("tools", []))
@@ -94,8 +99,8 @@ def run_agent(cli_logger, message: str, agent: str | None, output_format: str = 
 async def _dispatch(message: str, agent: str | None) -> dict:
     """Run agent dispatch with a real DB session."""
     from modules.backend.agents.mission_control.mission_control import collect
-    from modules.backend.services.session import SessionService
     from modules.backend.schemas.session import SessionCreate
+    from modules.backend.services.session import SessionService
 
     async with SessionService.factory() as service:
         session = await service.create_session(
@@ -176,11 +181,7 @@ def _print_jsonl(result: dict) -> None:
 
 def _print_human(result: dict, console) -> None:
     """Human-friendly output — shape-detected tables instead of raw JSON."""
-    from modules.clients.cli.report import (
-        render_human,
-        summary_table,
-        thinking_panel,
-    )
+    from modules.clients.cli.report import render_human, summary_table, thinking_panel
 
     thinking = result.get("thinking")
     if thinking:
@@ -193,13 +194,15 @@ def _print_human(result: dict, console) -> None:
     ):
         console.print(renderable)
 
-    console.print(summary_table(
-        agent_name=result["agent_name"],
-        session_id=result["session_id"],
-        input_tokens=result["input_tokens"],
-        output_tokens=result["output_tokens"],
-        cost_usd=result["cost_usd"],
-    ))
+    console.print(
+        summary_table(
+            agent_name=result["agent_name"],
+            session_id=result["session_id"],
+            input_tokens=result["input_tokens"],
+            output_tokens=result["output_tokens"],
+            cost_usd=result["cost_usd"],
+        )
+    )
 
 
 def _print_result(result: dict, console) -> None:
@@ -215,16 +218,20 @@ def _print_result(result: dict, console) -> None:
     if thinking:
         console.print(thinking_panel(content=thinking))
 
-    console.print(output_panel(
-        format_json_body(result["output"]),
-        title=result["agent_name"],
-        subtitle=f"session {result['session_id']}",
-    ))
+    console.print(
+        output_panel(
+            format_json_body(result["output"]),
+            title=result["agent_name"],
+            subtitle=f"session {result['session_id']}",
+        )
+    )
 
-    console.print(summary_table(
-        agent_name=result["agent_name"],
-        session_id=result["session_id"],
-        input_tokens=result["input_tokens"],
-        output_tokens=result["output_tokens"],
-        cost_usd=result["cost_usd"],
-    ))
+    console.print(
+        summary_table(
+            agent_name=result["agent_name"],
+            session_id=result["session_id"],
+            input_tokens=result["input_tokens"],
+            output_tokens=result["output_tokens"],
+            cost_usd=result["cost_usd"],
+        )
+    )

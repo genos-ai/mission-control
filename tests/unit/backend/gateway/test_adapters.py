@@ -4,8 +4,9 @@ Unit Tests for channel adapters — base chunking and Telegram formatting.
 Tests use real objects with mocked bot — no LLM, no network.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from modules.backend.gateway.adapters.base import AgentResponse, ChannelAdapter, ChannelMessage
 from modules.backend.gateway.adapters.telegram import (

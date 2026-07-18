@@ -11,10 +11,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
-from modules.backend.agents.mission_control.helpers import (
-    _build_model,
-    assemble_instructions,
-)
+from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.logging import get_logger
 
@@ -27,20 +24,26 @@ class KnowledgeOfficerReport(BaseModel):
     """Structured output from the Knowledge Officer."""
 
     contradictions_flagged: int = Field(
-        default=0, description="Number of contradiction pairs flagged",
+        default=0,
+        description="Number of contradiction pairs flagged",
     )
     promoted: int = Field(
-        default=0, description="Number of learnings promoted to platform",
+        default=0,
+        description="Number of learnings promoted to platform",
     )
     retracted: int = Field(
-        default=0, description="Number of learnings retracted",
+        default=0,
+        description="Number of learnings retracted",
     )
     notes: list[str] = Field(
-        default_factory=list, description="Free-text notes from the officer",
+        default_factory=list,
+        description="Free-text notes from the officer",
     )
 
 
-def create_agent(model: Model | None = None, tool_names: list[str] | None = None) -> Agent[None, KnowledgeOfficerReport]:
+def create_agent(
+    model: Model | None = None, tool_names: list[str] | None = None
+) -> Agent[None, KnowledgeOfficerReport]:
     """Create a Knowledge Officer agent with all tools registered.
 
     Always creates a fresh agent so tools are bound to the returned
@@ -84,6 +87,7 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
             platform_only: Only return platform-promoted cross-mission entries.
         """
         from modules.backend.tools.query_knowledge import query_knowledge as _query
+
         return await _query(
             mission_id,
             query=query,
@@ -118,6 +122,7 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
             confidence: Confidence score 0.0–1.0 (default 0.8 for curated findings).
         """
         import json as _json
+
         from modules.backend.services.mission_learning import MissionLearningService
 
         async with MissionLearningService.factory() as svc:
@@ -143,6 +148,7 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
         Phase 2: LLM confirmation (only if candidates found).
         """
         import json as _json
+
         from modules.backend.services.mission_learning import MissionLearningService
 
         async with MissionLearningService.factory() as svc:
@@ -153,8 +159,16 @@ def create_agent(model: Model | None = None, tool_names: list[str] | None = None
 
         flagged = [
             {
-                "learning_a": {"id": a.id, "title": a.title, "recommendation": a.recommendation[:200]},
-                "learning_b": {"id": b.id, "title": b.title, "recommendation": b.recommendation[:200]},
+                "learning_a": {
+                    "id": a.id,
+                    "title": a.title,
+                    "recommendation": a.recommendation[:200],
+                },
+                "learning_b": {
+                    "id": b.id,
+                    "title": b.title,
+                    "recommendation": b.recommendation[:200],
+                },
                 "shared_tags": list(set(a.domain_tags or []) & set(b.domain_tags or [])),
             }
             for a, b in candidates

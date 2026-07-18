@@ -130,9 +130,7 @@ class TestCliEngineInterfaceValidator:
 
     def test_cli_engine_with_no_interface_ok(self):
         """CLI engines with interface=None are fine."""
-        config = AgentConfigSchema(
-            **_make_config(engine="claude_code", interface=None)
-        )
+        config = AgentConfigSchema(**_make_config(engine="claude_code", interface=None))
         assert config.interface is None
 
     def test_pydantic_ai_with_output_fields_ok(self):

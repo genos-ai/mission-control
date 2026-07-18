@@ -47,6 +47,7 @@ def _get_foundry_credential():
     global _foundry_credential
     if _foundry_credential is None:
         from azure.identity.aio import DefaultAzureCredential
+
         _foundry_credential = DefaultAzureCredential()
     return _foundry_credential
 
@@ -98,9 +99,12 @@ def get_anthropic_provider():
     if not credential:
         try:
             from modules.backend.core.config import get_settings
+
             credential = get_settings().anthropic_api_key
         except Exception:
-            logger.debug("settings API key lookup failed, continuing without credential", exc_info=True)
+            logger.debug(
+                "settings API key lookup failed, continuing without credential", exc_info=True
+            )
 
     if not credential:
         raise ValueError(
@@ -205,6 +209,7 @@ def get_foundry_provider():
         # itself is a module-level singleton (see _get_foundry_credential)
         # to avoid leaking aiohttp sessions on repeated factory calls.
         from azure.identity.aio import get_bearer_token_provider
+
         if not config.scope:
             raise ValueError(
                 "Foundry entra auth requires scope in providers.yaml "
@@ -265,6 +270,7 @@ def get_foundry_project_provider():
         # Shares the module-level credential singleton with get_foundry_provider()
         # — see _get_foundry_credential() for the lifecycle rationale.
         from azure.identity.aio import get_bearer_token_provider
+
         if not config.scope:
             raise ValueError(
                 "foundry_project entra auth requires scope in providers.yaml "
@@ -295,4 +301,5 @@ def get_foundry_project_provider():
 def _get_provider_config():
     """Load provider config from app config."""
     from modules.backend.core.config import get_app_config
+
     return get_app_config().providers

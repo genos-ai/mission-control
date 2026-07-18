@@ -5,14 +5,13 @@ Base class for all database models with common fields and utilities.
 """
 
 from datetime import datetime
-from uuid import uuid5, uuid7, UUID
+from uuid import UUID, uuid5, uuid7
 
 from sqlalchemy import DateTime
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from modules.backend.core.utils import utc_now
-
 
 # ── System account UUIDs ──────────────────────────────────
 # Deterministic UUID v5 from a fixed namespace. Same value in every

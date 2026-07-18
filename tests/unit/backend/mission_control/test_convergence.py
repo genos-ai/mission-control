@@ -25,7 +25,6 @@ from modules.backend.agents.mission_control.dispatch.convergence import (
 from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
 from modules.backend.agents.mission_control.outcome import TaskStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -81,12 +80,14 @@ def _abort_gate() -> MagicMock:
 
 class TestConvergenceConfig:
     def test_valid_config(self):
-        cfg = ConvergenceConfig.from_dict({
-            "max_iterations": 3,
-            "convergence_condition": "zero_findings",
-            "evaluation_agent": "qa.agent",
-            "remediation_agent": "coder.agent",
-        })
+        cfg = ConvergenceConfig.from_dict(
+            {
+                "max_iterations": 3,
+                "convergence_condition": "zero_findings",
+                "evaluation_agent": "qa.agent",
+                "remediation_agent": "coder.agent",
+            }
+        )
         assert cfg.max_iterations == 3
         assert cfg.convergence_condition == "zero_findings"
         assert cfg.evaluation_agent == "qa.agent"
@@ -99,11 +100,13 @@ class TestConvergenceConfig:
         assert cfg.final_verification is False
 
     def test_unknown_fields_ignored(self):
-        cfg = ConvergenceConfig.from_dict({
-            "max_iterations": 2,
-            "unknown_field": "should be dropped",
-            "another_junk": 999,
-        })
+        cfg = ConvergenceConfig.from_dict(
+            {
+                "max_iterations": 2,
+                "unknown_field": "should be dropped",
+                "another_junk": 999,
+            }
+        )
         assert cfg.max_iterations == 2
         assert not hasattr(cfg, "unknown_field")
 
@@ -284,11 +287,11 @@ class TestConvergenceLoopMultiCycle:
     @pytest.mark.asyncio
     async def test_three_cycle_convergence(self):
         executor = _make_executor(
-            _agent_result(findings_count=3),   # eval cycle 1: 3 findings
-            _agent_result(fixes_applied=3),    # fix cycle 1
-            _agent_result(findings_count=1),   # eval cycle 2: 1 finding
-            _agent_result(fixes_applied=1),    # fix cycle 2
-            _agent_result(findings_count=0),   # eval cycle 3: clean → converged
+            _agent_result(findings_count=3),  # eval cycle 1: 3 findings
+            _agent_result(fixes_applied=3),  # fix cycle 1
+            _agent_result(findings_count=1),  # eval cycle 2: 1 finding
+            _agent_result(fixes_applied=1),  # fix cycle 2
+            _agent_result(findings_count=0),  # eval cycle 3: clean → converged
         )
         config = ConvergenceConfig(max_iterations=5)
 
@@ -407,7 +410,7 @@ class TestConvergenceLoopFinalVerification:
     @pytest.mark.asyncio
     async def test_final_verification_fails(self):
         executor = _make_executor(
-            _agent_result(findings_count=0),   # eval: converged
+            _agent_result(findings_count=0),  # eval: converged
             # Final verification: agent reports failure
             _agent_result(findings_count=2, cost_usd=0.03, success=False),
         )

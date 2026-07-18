@@ -4,13 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.clients.common.gate_helpers import (
-    ACTION_COLORS,
-    cost_color,
-    gate_header,
-    status_icon,
-)
-
+from modules.clients.common.gate_helpers import ACTION_COLORS, cost_color, gate_header, status_icon
 
 # ── cost_color ─────────────────────────────────────────────────────────
 

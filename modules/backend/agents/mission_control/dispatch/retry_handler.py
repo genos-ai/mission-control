@@ -12,11 +12,7 @@ import time
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from pydantic_ai.exceptions import (
-    IncompleteToolCall,
-    UnexpectedModelBehavior,
-    UsageLimitExceeded,
-)
+from pydantic_ai.exceptions import IncompleteToolCall, UnexpectedModelBehavior, UsageLimitExceeded
 
 from modules.backend.core.exceptions import (
     QuotaExhaustedError,
@@ -41,10 +37,7 @@ from modules.backend.agents.mission_control.dispatch.result_builders import (
     failed_result,
     skipped_result,
 )
-from modules.backend.agents.mission_control.dispatch.step_executor import (
-    execute_task,
-    verify_task,
-)
+from modules.backend.agents.mission_control.dispatch.step_executor import execute_task, verify_task
 from modules.backend.agents.mission_control.gate import (
     GateAction,
     GateContext,
@@ -103,19 +96,22 @@ async def execute_with_retry(
             # codebase. Catch sites add their situational context.
             duration = time.monotonic() - task_start
             log_provider_error(
-                logger, e,
+                logger,
+                e,
                 event="Task failed (no retry): provider quota exhausted",
                 task_id=task.task_id,
                 agent=task.agent,
                 mission_id=mission_id,
                 attempt=attempt,
             )
-            retry_history.append(RetryHistoryEntry(
-                attempt=attempt + 1,
-                failure_tier=0,
-                failure_reason=f"{type(e).__name__}: {str(e)[:400]}",
-                feedback_provided="",
-            ))
+            retry_history.append(
+                RetryHistoryEntry(
+                    attempt=attempt + 1,
+                    failure_tier=0,
+                    failure_reason=f"{type(e).__name__}: {str(e)[:400]}",
+                    feedback_provided="",
+                )
+            )
             return failed_result(
                 task,
                 f"{type(e).__name__}: {str(e)[:300]}",
@@ -153,7 +149,8 @@ async def execute_with_retry(
                 # Transient ProviderError — use the helper so the
                 # provider/model/request_id make it into the log.
                 log_provider_error(
-                    logger, e,
+                    logger,
+                    e,
                     event="Task execution: transient provider failure, will retry",
                     task_id=task.task_id,
                     agent=task.agent,
@@ -162,12 +159,14 @@ async def execute_with_retry(
                     mission_id=mission_id,
                 )
             if attempt < retry_budget:
-                retry_history.append(RetryHistoryEntry(
-                    attempt=attempt + 1,
-                    failure_tier=0,
-                    failure_reason=failure_label,
-                    feedback_provided=feedback_msg,
-                ))
+                retry_history.append(
+                    RetryHistoryEntry(
+                        attempt=attempt + 1,
+                        failure_tier=0,
+                        failure_reason=failure_label,
+                        feedback_provided=feedback_msg,
+                    )
+                )
                 instructions = append_feedback(task.instructions, feedback_msg)
                 continue
 
@@ -204,14 +203,19 @@ async def execute_with_retry(
                     "mission_id": mission_id,
                 },
             )
-            retry_history.append(RetryHistoryEntry(
-                attempt=attempt + 1,
-                failure_tier=0,
-                failure_reason=f"{type(e).__name__}: {str(e)[:500]}",
-                feedback_provided="",
-            ))
+            retry_history.append(
+                RetryHistoryEntry(
+                    attempt=attempt + 1,
+                    failure_tier=0,
+                    failure_reason=f"{type(e).__name__}: {str(e)[:500]}",
+                    feedback_provided="",
+                )
+            )
             return failed_result(
-                task, str(e), retry_count=attempt, retry_history=retry_history,
+                task,
+                str(e),
+                retry_count=attempt,
+                retry_history=retry_history,
                 execution_id=execution_id,
             )
         except Exception as e:
@@ -228,12 +232,14 @@ async def execute_with_retry(
                 },
             )
             if attempt < retry_budget and not is_token_limit:
-                retry_history.append(RetryHistoryEntry(
-                    attempt=attempt + 1,
-                    failure_tier=0,
-                    failure_reason=str(e),
-                    feedback_provided=f"Previous attempt failed: {e}",
-                ))
+                retry_history.append(
+                    RetryHistoryEntry(
+                        attempt=attempt + 1,
+                        failure_tier=0,
+                        failure_reason=str(e),
+                        feedback_provided=f"Previous attempt failed: {e}",
+                    )
+                )
                 instructions = append_feedback(
                     task.instructions,
                     f"Previous attempt failed with error: {e}. Avoid this error.",
@@ -241,7 +247,10 @@ async def execute_with_retry(
                 continue
 
             return failed_result(
-                task, str(e), retry_count=attempt, retry_history=retry_history,
+                task,
+                str(e),
+                retry_count=attempt,
+                retry_history=retry_history,
                 execution_id=execution_id,
             )
 
@@ -342,21 +351,25 @@ async def _handle_verification_failure(
     feedback = build_retry_feedback(verification, attempt=attempt + 1)
 
     if attempt < retry_budget:
-        gate_decision = await gate.review(GateContext(
-            gate_type="verification_failed",
-            mission_id=mission_id,
-            session_id=session_id,
-            task_id=task.task_id,
-            task_output=output,
-            verification=build_verification_outcome(verification).model_dump(),
-            current_instructions=instructions,
-            current_inputs=resolved_inputs,
-            budget_usd=budget_usd,
-        ))
+        gate_decision = await gate.review(
+            GateContext(
+                gate_type="verification_failed",
+                mission_id=mission_id,
+                session_id=session_id,
+                task_id=task.task_id,
+                task_output=output,
+                verification=build_verification_outcome(verification).model_dump(),
+                current_instructions=instructions,
+                current_inputs=resolved_inputs,
+                budget_usd=budget_usd,
+            )
+        )
         if gate_decision.action == GateAction.ABORT:
             return failed_result(
-                task, "Aborted at verification gate",
-                retry_count=attempt, retry_history=retry_history,
+                task,
+                "Aborted at verification gate",
+                retry_count=attempt,
+                retry_history=retry_history,
                 execution_id=execution_id,
             )
         if gate_decision.action == GateAction.SKIP:
@@ -376,12 +389,14 @@ async def _handle_verification_failure(
                 execution_id=execution_id,
             )
 
-        retry_history.append(RetryHistoryEntry(
-            attempt=feedback.get("attempt", attempt + 1),
-            failure_tier=feedback.get("failure_tier", 0),
-            failure_reason=feedback.get("failure_reason", "Verification failed"),
-            feedback_provided=feedback.get("feedback_provided", ""),
-        ))
+        retry_history.append(
+            RetryHistoryEntry(
+                attempt=feedback.get("attempt", attempt + 1),
+                failure_tier=feedback.get("failure_tier", 0),
+                failure_reason=feedback.get("failure_reason", "Verification failed"),
+                feedback_provided=feedback.get("feedback_provided", ""),
+            )
+        )
         new_instructions = append_feedback(
             task.instructions,
             f"--- VERIFICATION FEEDBACK (attempt {attempt + 1}) ---\n"
@@ -426,33 +441,39 @@ async def _handle_post_task_gate(
     session_id: str | None = None,
 ) -> TaskResult | str:
     """Handle the post-task gate review. Returns TaskResult to finish, or str (new instructions) to retry."""
-    gate_decision = await gate.review(GateContext(
-        gate_type="post_task",
-        mission_id=mission_id,
-        session_id=session_id,
-        task_id=task.task_id,
-        task_output=output,
-        verification=build_verification_outcome(verification).model_dump(),
-        current_instructions=instructions,
-        current_inputs=resolved_inputs,
-        total_cost_usd=cost_usd,
-        budget_usd=budget_usd,
-    ))
+    gate_decision = await gate.review(
+        GateContext(
+            gate_type="post_task",
+            mission_id=mission_id,
+            session_id=session_id,
+            task_id=task.task_id,
+            task_output=output,
+            verification=build_verification_outcome(verification).model_dump(),
+            current_instructions=instructions,
+            current_inputs=resolved_inputs,
+            total_cost_usd=cost_usd,
+            budget_usd=budget_usd,
+        )
+    )
     if gate_decision.action == GateAction.ABORT:
         return failed_result(
-            task, "Aborted at post_task gate",
-            retry_count=attempt, retry_history=retry_history,
+            task,
+            "Aborted at post_task gate",
+            retry_count=attempt,
+            retry_history=retry_history,
             execution_id=execution_id,
         )
     if gate_decision.action == GateAction.SKIP:
         return skipped_result(task, gate_decision.reason, execution_id=execution_id)
     if gate_decision.action == GateAction.RETRY and attempt < retry_budget:
-        retry_history.append(RetryHistoryEntry(
-            attempt=attempt + 1,
-            failure_tier=0,
-            failure_reason="Reviewer requested retry",
-            feedback_provided=gate_decision.reason or "",
-        ))
+        retry_history.append(
+            RetryHistoryEntry(
+                attempt=attempt + 1,
+                failure_tier=0,
+                failure_reason="Reviewer requested retry",
+                feedback_provided=gate_decision.reason or "",
+            )
+        )
         return gate_decision.modified_instructions or append_feedback(
             task.instructions,
             gate_decision.reason or "Reviewer requested retry.",
@@ -462,21 +483,22 @@ async def _handle_post_task_gate(
 
     pqi = output.get("pqi")
     if isinstance(pqi, dict) and pqi.get("composite") is not None:
-        context_updates.append({
-            "op": "add",
-            "path": "current_state.pqi_score",
-            "value": {
-                "composite": pqi["composite"],
-                "quality_band": pqi.get("quality_band"),
-                "dimensions": {
-                    name: dim.get("score")
-                    for name, dim in pqi.get("dimensions", {}).items()
+        context_updates.append(
+            {
+                "op": "add",
+                "path": "current_state.pqi_score",
+                "value": {
+                    "composite": pqi["composite"],
+                    "quality_band": pqi.get("quality_band"),
+                    "dimensions": {
+                        name: dim.get("score") for name, dim in pqi.get("dimensions", {}).items()
+                    },
+                    "file_count": pqi.get("file_count"),
+                    "line_count": pqi.get("line_count"),
                 },
-                "file_count": pqi.get("file_count"),
-                "line_count": pqi.get("line_count"),
-            },
-            "reason": "PQI score from code quality audit",
-        })
+                "reason": "PQI score from code quality audit",
+            }
+        )
 
     return TaskResult(
         task_id=task.task_id,

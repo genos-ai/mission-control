@@ -4,21 +4,22 @@ Per P12: tests run against the live platform. Uses real db_session fixture
 with transaction rollback for isolation.
 """
 
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission_context import ChangeType
 from modules.backend.services.mission_context import (
+    _SENTINEL,
     MissionContextManager,
     _cache,
     _delete_nested,
     _get_nested,
-    _SENTINEL,
     _set_nested,
 )
 from tests.conftest import TEST_USER_ID
 
-from uuid import uuid5, UUID
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 _MID = lambda tag: str(uuid5(_TEST_NS, f"mission:ctx-{tag}"))
 
@@ -26,8 +27,22 @@ _MID = lambda tag: str(uuid5(_TEST_NS, f"mission:ctx-{tag}"))
 # "nonexistent" and "nonexistent-mission" are deliberately omitted
 # because those tests verify not-found behaviour.
 _MISSION_TAGS = [
-    "1", "2", "get", "cache", "ver", "size", "add", "rep", "rm",
-    "restricted", "guard", "nopath", "noop", "unk", "inv", "hist",
+    "1",
+    "2",
+    "get",
+    "cache",
+    "ver",
+    "size",
+    "add",
+    "rep",
+    "rm",
+    "restricted",
+    "guard",
+    "nopath",
+    "noop",
+    "unk",
+    "inv",
+    "hist",
 ]
 
 
@@ -181,8 +196,14 @@ class TestApplyUpdates:
         await manager.create_context(_MID("add"), "add-test", "desc")
         new_ver, errors = await manager.apply_updates(
             _MID("add"),
-            [{"op": "add", "path": "identity.tech_stack", "value": ["python", "fastapi"],
-              "reason": "Set tech stack"}],
+            [
+                {
+                    "op": "add",
+                    "path": "identity.tech_stack",
+                    "value": ["python", "fastapi"],
+                    "reason": "Set tech stack",
+                }
+            ],
         )
         assert new_ver == 2
         assert errors == []
@@ -194,13 +215,18 @@ class TestApplyUpdates:
         await manager.create_context(_MID("rep"), "rep-test", "desc")
         await manager.apply_updates(
             _MID("rep"),
-            [{"op": "add", "path": "architecture.data_flow", "value": "initial",
-              "reason": "init"}],
+            [{"op": "add", "path": "architecture.data_flow", "value": "initial", "reason": "init"}],
         )
         new_ver, errors = await manager.apply_updates(
             _MID("rep"),
-            [{"op": "replace", "path": "architecture.data_flow", "value": "updated",
-              "reason": "update flow"}],
+            [
+                {
+                    "op": "replace",
+                    "path": "architecture.data_flow",
+                    "value": "updated",
+                    "reason": "update flow",
+                }
+            ],
         )
         assert new_ver == 3
         assert errors == []
@@ -210,13 +236,18 @@ class TestApplyUpdates:
         await manager.create_context(_MID("rm"), "rm-test", "desc")
         await manager.apply_updates(
             _MID("rm"),
-            [{"op": "add", "path": "architecture.components.auth",
-              "value": {"type": "jwt"}, "reason": "add auth"}],
+            [
+                {
+                    "op": "add",
+                    "path": "architecture.components.auth",
+                    "value": {"type": "jwt"},
+                    "reason": "add auth",
+                }
+            ],
         )
         new_ver, errors = await manager.apply_updates(
             _MID("rm"),
-            [{"op": "remove", "path": "architecture.components.auth",
-              "reason": "remove auth"}],
+            [{"op": "remove", "path": "architecture.components.auth", "reason": "remove auth"}],
         )
         assert new_ver == 3
         assert errors == []
@@ -228,8 +259,7 @@ class TestApplyUpdates:
         await manager.create_context(_MID("restricted"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
             _MID("restricted"),
-            [{"op": "replace", "path": "version", "value": 999,
-              "reason": "hack version"}],
+            [{"op": "replace", "path": "version", "value": 999, "reason": "hack version"}],
         )
         assert len(errors) == 1
         assert "Restricted path" in errors[0]
@@ -239,13 +269,18 @@ class TestApplyUpdates:
         await manager.create_context(_MID("guard"), "test", "desc")
         await manager.apply_updates(
             _MID("guard"),
-            [{"op": "replace", "path": "guardrails",
-              "value": {"no_delete": "Never delete production data"}, "reason": "safety"}],
+            [
+                {
+                    "op": "replace",
+                    "path": "guardrails",
+                    "value": {"no_delete": "Never delete production data"},
+                    "reason": "safety",
+                }
+            ],
         )
         new_ver, errors = await manager.apply_updates(
             _MID("guard"),
-            [{"op": "remove", "path": "guardrails.no_delete",
-              "reason": "trying to remove"}],
+            [{"op": "remove", "path": "guardrails.no_delete", "reason": "trying to remove"}],
             agent_id="some.agent",
         )
         assert len(errors) == 1
@@ -256,8 +291,7 @@ class TestApplyUpdates:
         await manager.create_context(_MID("nopath"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
             _MID("nopath"),
-            [{"op": "replace", "path": "nonexistent.deep.path",
-              "value": "val", "reason": "test"}],
+            [{"op": "replace", "path": "nonexistent.deep.path", "value": "val", "reason": "test"}],
         )
         assert len(errors) == 1
         assert "Path not found" in errors[0]
@@ -267,8 +301,7 @@ class TestApplyUpdates:
         await manager.create_context(_MID("noop"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
             _MID("noop"),
-            [{"op": "replace", "path": "identity.name", "value": "test",
-              "reason": "no change"}],
+            [{"op": "replace", "path": "identity.name", "value": "test", "reason": "no change"}],
         )
         assert len(errors) == 1
         assert "No-op" in errors[0]
@@ -278,8 +311,7 @@ class TestApplyUpdates:
         await manager.create_context(_MID("unk"), "test", "desc")
         new_ver, errors = await manager.apply_updates(
             _MID("unk"),
-            [{"op": "patch", "path": "identity.name", "value": "x",
-              "reason": "bad op"}],
+            [{"op": "patch", "path": "identity.name", "value": "x", "reason": "bad op"}],
         )
         assert len(errors) == 1
         assert "Unknown operation" in errors[0]
@@ -300,8 +332,7 @@ class TestApplyUpdates:
         assert _MID("inv") in _cache
         await manager.apply_updates(
             _MID("inv"),
-            [{"op": "add", "path": "identity.tech_stack", "value": ["go"],
-              "reason": "test"}],
+            [{"op": "add", "path": "identity.tech_stack", "value": ["go"], "reason": "test"}],
         )
         assert _MID("inv") not in _cache
 
@@ -312,8 +343,14 @@ class TestGetHistory:
         await manager.create_context(_MID("hist"), "test", "desc")
         await manager.apply_updates(
             _MID("hist"),
-            [{"op": "add", "path": "identity.tech_stack", "value": ["python"],
-              "reason": "added stack"}],
+            [
+                {
+                    "op": "add",
+                    "path": "identity.tech_stack",
+                    "value": ["python"],
+                    "reason": "added stack",
+                }
+            ],
             agent_id="test.agent",
         )
         changes = await manager.get_history(_MID("hist"))

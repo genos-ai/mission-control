@@ -4,8 +4,8 @@ Revision ID: mission_events_001
 Revises: fix_timestamps
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "mission_events_001"
 down_revision = "fix_timestamps"

@@ -95,7 +95,9 @@ async def process_data(
         "duration_ms": duration_ms,
     }
 
-    logger.info("Data processing completed", extra={"operation": operation, "duration_ms": duration_ms})
+    logger.info(
+        "Data processing completed", extra={"operation": operation, "duration_ms": duration_ms}
+    )
     return result
 
 
@@ -113,7 +115,9 @@ async def cleanup_expired_records(
     Returns:
         Cleanup statistics
     """
-    logger.info("Starting cleanup", extra={"table_name": table_name, "older_than_days": older_than_days})
+    logger.info(
+        "Starting cleanup", extra={"table_name": table_name, "older_than_days": older_than_days}
+    )
 
     deleted_count = 0
 
@@ -125,7 +129,9 @@ async def cleanup_expired_records(
         "completed_at": utc_now().isoformat(),
     }
 
-    logger.info("Cleanup completed", extra={"table_name": table_name, "deleted_count": deleted_count})
+    logger.info(
+        "Cleanup completed", extra={"table_name": table_name, "deleted_count": deleted_count}
+    )
     return result
 
 
@@ -145,7 +151,9 @@ async def generate_report(
     Returns:
         Report metadata and location
     """
-    logger.info("Starting report generation", extra={"report_type": report_type, "user_id": user_id})
+    logger.info(
+        "Starting report generation", extra={"report_type": report_type, "user_id": user_id}
+    )
 
     report_id = f"report_{report_type}_{utc_now().strftime('%Y%m%d_%H%M%S')}"
 

@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Project root for running commands
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 

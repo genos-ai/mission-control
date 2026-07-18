@@ -26,10 +26,7 @@ with workflow.unsafe.imports_passed_through():
     from modules.backend.core.config import get_app_config
     from modules.backend.temporal import activities
     from modules.backend.temporal import supervisor_activities as sup
-    from modules.backend.temporal.models import (
-        MissionWorkflowInput,
-        NotificationPayload,
-    )
+    from modules.backend.temporal.models import MissionWorkflowInput, NotificationPayload
 
 
 @workflow.defn
@@ -154,12 +151,15 @@ class MissionRunWorkflow:
             await workflow.execute_activity(
                 sup.fire_supervisor_followups,
                 args=[
-                    _mission, input.mission_run_id,
+                    _mission,
+                    input.mission_run_id,
                     result.execution_record_id or "",
-                    eval_result.action, eval_result.reason[:200],
+                    eval_result.action,
+                    eval_result.reason[:200],
                     eval_result.reviewer,
                     result.status or "unknown",
-                    result.total_cost_usd, self._total_cost,
+                    result.total_cost_usd,
+                    self._total_cost,
                     str(_failure_reason)[:500],
                 ],
                 start_to_close_timeout=timedelta(seconds=30),
@@ -183,9 +183,11 @@ class MissionRunWorkflow:
 
             if eval_result.action == "wait":
                 # Approved tasks still pending — short sleep then re-check
-                await workflow.sleep(timedelta(
-                    seconds=config.wait_action_sleep_seconds,
-                ))
+                await workflow.sleep(
+                    timedelta(
+                        seconds=config.wait_action_sleep_seconds,
+                    )
+                )
                 continue
 
             elif eval_result.action == "advance_approved":
@@ -317,9 +319,9 @@ class MissionRunWorkflow:
 
         # If we exhausted the iteration cap without a terminal decision,
         # escalate so the user knows the mission stopped making progress.
-        if (
-            self._iteration >= max_loop_iterations
-            and self._last_action not in ("propose_complete", "escalate")
+        if self._iteration >= max_loop_iterations and self._last_action not in (
+            "propose_complete",
+            "escalate",
         ):
             _mission = input.mission_id or input.mission_run_id
             reason = (

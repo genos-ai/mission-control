@@ -58,8 +58,7 @@ class PromptVersionRepository(BaseRepository[PromptVersion]):
     async def _next_version(self, entity_type: str, entity_id: str) -> int:
         """Compute the next version number for an entity."""
         result = await self.session.execute(
-            select(func.max(PromptVersion.version))
-            .where(
+            select(func.max(PromptVersion.version)).where(
                 PromptVersion.entity_type == entity_type,
                 PromptVersion.entity_id == entity_id,
             )

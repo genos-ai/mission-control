@@ -4,13 +4,11 @@ send_notification is tested live (it's a stub that logs).
 execute_mission mocks handle_mission (LLM calls — not infra we operate).
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from modules.backend.temporal.models import (
-    MissionWorkflowInput,
-    NotificationPayload,
-)
+import pytest
+
+from modules.backend.temporal.models import MissionWorkflowInput, NotificationPayload
 
 
 class TestSendNotification:

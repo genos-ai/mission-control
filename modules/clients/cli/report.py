@@ -20,10 +20,12 @@ from rich.table import Table
 
 from modules.backend.core.logging import get_logger
 
+# Re-export severity internals used by _build_dynamic_table
 # Re-export display primitives so existing CLI files don't need changes yet.
 from modules.clients.common.display import (
     DOTTED_ROWS,
     OUTPUT_FORMATS,
+    SEVERITY_ORDER,
     build_table,
     cost_line,
     format_json_body,
@@ -39,11 +41,6 @@ from modules.clients.common.display import (
     thinking_panel,
 )
 
-# Re-export severity internals used by _build_dynamic_table
-from modules.clients.common.display import (
-    SEVERITY_ORDER,
-)
-
 logger = get_logger(__name__)
 
 
@@ -53,25 +50,31 @@ logger = get_logger(__name__)
 
 # Known field styles — applied automatically when a field name matches.
 _FIELD_STYLES: dict[str, dict[str, Any]] = {
-    "severity":    {"width": 8},
-    "status":      {"width": 10},
-    "category":    {"style": "cyan", "width": 20},
-    "type":        {"style": "cyan", "width": 16},
-    "rule_id":     {"style": "cyan", "width": 24},
-    "rule":        {"style": "cyan", "width": 24},
-    "file":        {"style": "dim", "width": 44},
-    "path":        {"style": "dim", "width": 44},
-    "line":        {"justify": "right", "width": 5},
+    "severity": {"width": 8},
+    "status": {"width": 10},
+    "category": {"style": "cyan", "width": 20},
+    "type": {"style": "cyan", "width": 16},
+    "rule_id": {"style": "cyan", "width": 24},
+    "rule": {"style": "cyan", "width": 24},
+    "file": {"style": "dim", "width": 44},
+    "path": {"style": "dim", "width": 44},
+    "line": {"justify": "right", "width": 5},
     "line_number": {"justify": "right", "width": 5},
-    "name":        {"style": "cyan", "width": 30},
-    "check":       {"style": "cyan", "width": 30},
+    "name": {"style": "cyan", "width": 30},
+    "check": {"style": "cyan", "width": 30},
 }
 
 _SKIP_FIELDS: set[str] = {"type", "id", "uuid"}
 
 _FLEX_FIELDS: set[str] = {
-    "message", "description", "detail", "details",
-    "finding", "summary", "output", "value",
+    "message",
+    "description",
+    "detail",
+    "details",
+    "finding",
+    "summary",
+    "output",
+    "value",
 }
 
 
@@ -128,6 +131,7 @@ def render_human(
 ) -> list[Any]:
     """Parse agent output and return human-friendly Rich renderables."""
     import json as _json
+
     from rich.text import Text
 
     try:
@@ -184,15 +188,21 @@ def _build_dynamic_table(items: list[dict], *, list_key: str) -> Table:
                 seen.add(key)
                 field_order.append(key)
 
-    styled = [f for f in field_order if f in _FIELD_STYLES and f not in _SKIP_FIELDS and f not in _FLEX_FIELDS]
-    plain = [f for f in field_order if f not in _FIELD_STYLES and f not in _SKIP_FIELDS and f not in _FLEX_FIELDS]
+    styled = [
+        f
+        for f in field_order
+        if f in _FIELD_STYLES and f not in _SKIP_FIELDS and f not in _FLEX_FIELDS
+    ]
+    plain = [
+        f
+        for f in field_order
+        if f not in _FIELD_STYLES and f not in _SKIP_FIELDS and f not in _FLEX_FIELDS
+    ]
     flex = [f for f in field_order if f in _FLEX_FIELDS]
 
     def _has_data(field: str) -> bool:
         return any(
-            item.get(field) not in (None, "", [])
-            for item in items
-            if isinstance(item, dict)
+            item.get(field) not in (None, "", []) for item in items if isinstance(item, dict)
         )
 
     ordered = [f for f in styled + plain + flex if _has_data(f)]
@@ -261,8 +271,11 @@ def _build_pqi_panel(pqi: dict) -> Panel:
     line_count = pqi.get("line_count", 0)
 
     band_colors = {
-        "Excellent": "green", "Good": "cyan", "Adequate": "yellow",
-        "Acceptable": "yellow", "Poor": "red",
+        "Excellent": "green",
+        "Good": "cyan",
+        "Adequate": "yellow",
+        "Acceptable": "yellow",
+        "Poor": "red",
     }
     color = band_colors.get(band, "white")
 
@@ -270,7 +283,9 @@ def _build_pqi_panel(pqi: dict) -> Panel:
     bar = "█" * bar_len + "░" * (40 - bar_len)
 
     lines: list[str] = []
-    lines.append(f"  Composite Score:  [{color} bold]{composite:.1f} / 100[/{color} bold]  [{color}][{band}][/{color}]")
+    lines.append(
+        f"  Composite Score:  [{color} bold]{composite:.1f} / 100[/{color} bold]  [{color}][{band}][/{color}]"
+    )
     lines.append(f"    [{color}]{bar}[/{color}] {composite:.1f}%")
     lines.append("")
     lines.append(f"  Files: {file_count}    Lines: {line_count:,}")
@@ -420,6 +435,7 @@ async def generate_narrative(data: dict) -> str:
     """Call the synthesis agent; fall back to deterministic summary on failure."""
     try:
         from modules.backend.agents.system.synthesis.agent import synthesize
+
         return await synthesize(data)
     except (ImportError, RuntimeError, OSError, ValueError) as e:
         logger.warning(
@@ -531,7 +547,11 @@ def _render_workflow_detail(run: Any, executions: list[Any]) -> None:
         f"[bold]Run ID:[/bold]    {run.id}",
         f"[bold]Status:[/bold]    {styled_status(run.status)}",
         f"[bold]Cost:[/bold]      ${run.total_cost_usd:.4f}"
-        + (f"  ({(run.total_cost_usd / run.budget_usd) * 100:.0f}% of ${run.budget_usd:.2f} budget)" if run.budget_usd else ""),
+        + (
+            f"  ({(run.total_cost_usd / run.budget_usd) * 100:.0f}% of ${run.budget_usd:.2f} budget)"
+            if run.budget_usd
+            else ""
+        ),
         f"[bold]Started:[/bold]   {run.started_at or '—'}",
         f"[bold]Completed:[/bold] {run.completed_at or '—'}",
         f"[bold]Triggered:[/bold] {run.triggered_by}",

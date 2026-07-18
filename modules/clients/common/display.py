@@ -16,21 +16,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-
 OUTPUT_FORMATS = ("human", "json", "jsonl")
 
 # Solid outer border with dotted row dividers — used for tables with
 # multi-line cells or dense rows where visual separation helps scanning.
-DOTTED_ROWS = box.Box(
-    "┌─┬┐\n"
-    "│ ││\n"
-    "├─┼┤\n"
-    "│ ││\n"
-    "│-││\n"
-    "│-││\n"
-    "│ ││\n"
-    "└─┴┘\n"
-)
+DOTTED_ROWS = box.Box("┌─┬┐\n" "│ ││\n" "├─┼┤\n" "│ ││\n" "│-││\n" "│-││\n" "│ ││\n" "└─┴┘\n")
 
 # ── Status & severity ──────────────────────────────────────────────────
 
@@ -64,7 +54,10 @@ _SEVERITY_COLORS: dict[str, str] = {
 
 # Sort priority — lower number = higher priority.
 SEVERITY_ORDER: dict[str, int] = {
-    "critical": 0, "error": 1, "warning": 2, "info": 3,
+    "critical": 0,
+    "error": 1,
+    "warning": 2,
+    "info": 3,
 }
 
 
@@ -93,6 +86,7 @@ def annotate_current_mission(
 def get_console() -> Console:
     """Return a Console with width from application config."""
     from modules.backend.core.config import get_app_config
+
     width = get_app_config().application.cli.console_width
     return Console(width=width)
 
@@ -181,14 +175,18 @@ def output_panel(
 def format_json_body(raw: str) -> Any:
     """Parse a JSON string into a Rich Syntax object, or fall back to Text."""
     import json
+
     from rich.syntax import Syntax
     from rich.text import Text
 
     try:
         parsed = json.loads(raw)
         return Syntax(
-            json.dumps(parsed, indent=2), "json",
-            theme="monokai", word_wrap=True, background_color="default",
+            json.dumps(parsed, indent=2),
+            "json",
+            theme="monokai",
+            word_wrap=True,
+            background_color="default",
         )
     except (json.JSONDecodeError, TypeError):
         return Text(str(raw))

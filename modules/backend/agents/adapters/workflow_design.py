@@ -111,9 +111,7 @@ def validate_workflow_proposal(
     for s in validated_steps:
         for dep_id in s.depends_on:
             if dep_id not in step_ids:
-                errors.append(
-                    f"Step '{s.id}' depends on '{dep_id}' which does not exist"
-                )
+                errors.append(f"Step '{s.id}' depends on '{dep_id}' which does not exist")
         if s.id in s.depends_on:
             errors.append(f"Step '{s.id}' depends on itself")
 
@@ -143,8 +141,7 @@ def validate_workflow_proposal(
         if s.output_mapping and s.output_mapping.summary_key:
             if s.output_mapping.summary_key in output_keys:
                 errors.append(
-                    f"Duplicate output key '{s.output_mapping.summary_key}' "
-                    f"in step '{s.id}'"
+                    f"Duplicate output key '{s.output_mapping.summary_key}' " f"in step '{s.id}'"
                 )
             output_keys.add(s.output_mapping.summary_key)
 
@@ -166,19 +163,23 @@ def build_graph_structure(steps: list[dict[str, Any]]) -> dict[str, Any]:
 
     for step in steps:
         step_id = step.get("id", "unknown")
-        nodes.append({
-            "id": step_id,
-            "label": step.get("description", step_id),
-            "capability": step.get("capability", ""),
-            "complexity_tier": step.get("complexity_tier", "simple"),
-            "environment": step.get("environment", "local"),
-        })
+        nodes.append(
+            {
+                "id": step_id,
+                "label": step.get("description", step_id),
+                "capability": step.get("capability", ""),
+                "complexity_tier": step.get("complexity_tier", "simple"),
+                "environment": step.get("environment", "local"),
+            }
+        )
 
         for dep_id in step.get("depends_on", []):
-            edges.append({
-                "source": dep_id,
-                "target": step_id,
-            })
+            edges.append(
+                {
+                    "source": dep_id,
+                    "target": step_id,
+                }
+            )
 
     return {"nodes": nodes, "edges": edges}
 
@@ -266,7 +267,14 @@ async def update_workflow(
 
     # Build update payload: only include fields that were provided
     payload: dict[str, Any] = {}
-    for field in ("description", "objective", "steps", "trigger_config", "budget_config", "context"):
+    for field in (
+        "description",
+        "objective",
+        "steps",
+        "trigger_config",
+        "budget_config",
+        "context",
+    ):
         if field in updates:
             payload[field] = updates[field]
 

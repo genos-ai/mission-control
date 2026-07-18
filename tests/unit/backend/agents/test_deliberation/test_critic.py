@@ -95,12 +95,16 @@ class TestCriticAgent:
     async def test_run_produces_valid_critic_report(self, critic_deps):
         agent = create_agent(_make_critic_function_model())
         result = await agent.run(
-            "Critique the positions in this round.", deps=critic_deps,
+            "Critique the positions in this round.",
+            deps=critic_deps,
         )
         assert isinstance(result.output, CriticReport)
         # The schema-enforced four-key contract.
         assert set(result.output.attacks.keys()) == {
-            "systems", "quant", "empiricist", "ethicist",
+            "systems",
+            "quant",
+            "empiricist",
+            "ethicist",
         }
         # Convergence flag is required.
         assert result.output.convergence_flag is not None
@@ -108,10 +112,7 @@ class TestCriticAgent:
     def test_yaml_matches_agent_config_schema(self):
         from modules.backend.schemas.agent_config import AgentConfigSchema
 
-        path = (
-            find_project_root()
-            / "config" / "agents" / "deliberation" / "critic" / "agent.yaml"
-        )
+        path = find_project_root() / "config" / "agents" / "deliberation" / "critic" / "agent.yaml"
         with open(path) as f:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
@@ -124,9 +125,7 @@ class TestCriticAgent:
         assert config.tools == []
 
     def test_prompt_loads_with_critic_content(self):
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "critic")
         assert "Critic" in prompt
@@ -150,9 +149,7 @@ class TestCriticAgent:
         """The critic must NOT see its own prior reports. The prompt
         must explicitly state this so the model does not retain a
         committed line across rounds."""
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "critic")
         assert "independent" in prompt.lower()

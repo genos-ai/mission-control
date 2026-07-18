@@ -9,10 +9,7 @@ from sqlalchemy import and_, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.utils import utc_now
-from modules.backend.models.mission_learning import (
-    LearningStatus,
-    MissionLearning,
-)
+from modules.backend.models.mission_learning import LearningStatus, MissionLearning
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -37,19 +34,20 @@ class MissionLearningRepository(BaseRepository[MissionLearning]):
         compatibility (same pattern as HistoryQueryService).
         """
         fetch_limit = limit * 3 if domain_tags else limit
-        query = (
-            select(MissionLearning)
-            .where(MissionLearning.mission_id == mission_id)
-        )
+        query = select(MissionLearning).where(MissionLearning.mission_id == mission_id)
         if kind:
             query = query.where(MissionLearning.kind == kind)
         if status:
             query = query.where(MissionLearning.status == status)
 
-        query = query.order_by(
-            desc(MissionLearning.confidence),
-            desc(MissionLearning.created_at),
-        ).limit(fetch_limit).offset(offset)
+        query = (
+            query.order_by(
+                desc(MissionLearning.confidence),
+                desc(MissionLearning.created_at),
+            )
+            .limit(fetch_limit)
+            .offset(offset)
+        )
 
         result = await self.session.execute(query)
         rows = list(result.scalars().all())
@@ -57,8 +55,7 @@ class MissionLearningRepository(BaseRepository[MissionLearning]):
         # Post-filter domain tags for SQLite compat
         if domain_tags:
             rows = [
-                r for r in rows
-                if r.domain_tags and any(t in r.domain_tags for t in domain_tags)
+                r for r in rows if r.domain_tags and any(t in r.domain_tags for t in domain_tags)
             ]
             rows = rows[:limit]
 
@@ -82,18 +79,21 @@ class MissionLearningRepository(BaseRepository[MissionLearning]):
         if kind:
             query = query.where(MissionLearning.kind == kind)
 
-        query = query.order_by(
-            desc(MissionLearning.confidence),
-            desc(MissionLearning.created_at),
-        ).limit(fetch_limit).offset(offset)
+        query = (
+            query.order_by(
+                desc(MissionLearning.confidence),
+                desc(MissionLearning.created_at),
+            )
+            .limit(fetch_limit)
+            .offset(offset)
+        )
 
         result = await self.session.execute(query)
         rows = list(result.scalars().all())
 
         if domain_tags:
             rows = [
-                r for r in rows
-                if r.domain_tags and any(t in r.domain_tags for t in domain_tags)
+                r for r in rows if r.domain_tags and any(t in r.domain_tags for t in domain_tags)
             ]
             rows = rows[:limit]
 

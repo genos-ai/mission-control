@@ -82,9 +82,7 @@ CLI_OBJECTIVE = (
     "Summarize in 3 bullet points: what are the main benefits "
     "of structured logging vs print statements?"
 )
-API_OBJECTIVE = (
-    "List 3 advantages of async/await over callbacks in Python. Be concise."
-)
+API_OBJECTIVE = "List 3 advantages of async/await over callbacks in Python. Be concise."
 WAVE2_OBJECTIVE = (
     "Cross-reference the async benefits with FastAPI and Django. "
     "Which framework benefits most from async? One paragraph."
@@ -130,8 +128,9 @@ class Section:
 
 
 async def db_scalar(sql: str) -> Any:
-    from modules.backend.core.database import get_async_session
     from sqlalchemy import text
+
+    from modules.backend.core.database import get_async_session
 
     async with get_async_session() as s:
         r = await s.execute(text(sql))
@@ -147,7 +146,11 @@ async def db_scalar(sql: str) -> Any:
 def mc(*args: str, timeout: int = 180) -> subprocess.CompletedProcess:
     cmd = [sys.executable, str(_REPO_ROOT / "mc.py"), *args]
     return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout, cwd=str(_REPO_ROOT),
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        cwd=str(_REPO_ROOT),
     )
 
 
@@ -158,9 +161,13 @@ def mc(*args: str, timeout: int = 180) -> subprocess.CompletedProcess:
 
 async def get_token() -> str:
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(f"{API_BASE}/auth/login", json={
-            "email": "admin@missioncontrol.dev", "password": "admin",
-        })
+        r = await client.post(
+            f"{API_BASE}/auth/login",
+            json={
+                "email": "admin@missioncontrol.dev",
+                "password": "admin",
+            },
+        )
         return r.json().get("data", {}).get("access_token", "")
 
 
@@ -168,7 +175,8 @@ async def api_post(token: str, path: str, body: dict) -> dict:
     try:
         async with httpx.AsyncClient(timeout=300) as client:
             r = await client.post(
-                f"{API_BASE}{path}", json=body,
+                f"{API_BASE}{path}",
+                json=body,
                 headers={"Authorization": f"Bearer {token}"},
             )
             return r.json()
@@ -179,7 +187,8 @@ async def api_post(token: str, path: str, body: dict) -> dict:
 async def api_patch(token: str, path: str, body: dict) -> dict:
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.patch(
-            f"{API_BASE}{path}", json=body,
+            f"{API_BASE}{path}",
+            json=body,
             headers={"Authorization": f"Bearer {token}"},
         )
         return r.json()
@@ -208,12 +217,12 @@ async def wait_plan_idle(mission_id: str, max_wait: int = 180) -> bool:
 
 
 async def _ensure_mission(
-    name: str, reset: bool, verbose: bool,
+    name: str,
+    reset: bool,
+    verbose: bool,
 ) -> str | None:
     """Ensure a named mission exists, is active, and configured. Returns ID."""
-    mission_id = await db_scalar(
-        f"SELECT id FROM missions WHERE name = '{name}' LIMIT 1"
-    )
+    mission_id = await db_scalar(f"SELECT id FROM missions WHERE name = '{name}' LIMIT 1")
 
     if reset and mission_id:
         print(f"    Deleting old: {name}")
@@ -224,19 +233,23 @@ async def _ensure_mission(
     if not mission_id:
         print(f"    Creating: {name}")
         result = mc(
-            "mission", "create",
-            "--name", name,
-            "--description", BENCH_DESCRIPTION,
-            "--brief", BENCH_BRIEF,
-            "--gate", BENCH_GATE_MODE,
-            "--budget", str(BENCH_BUDGET_USD),
+            "mission",
+            "create",
+            "--name",
+            name,
+            "--description",
+            BENCH_DESCRIPTION,
+            "--brief",
+            BENCH_BRIEF,
+            "--gate",
+            BENCH_GATE_MODE,
+            "--budget",
+            str(BENCH_BUDGET_USD),
         )
         if verbose and result.stdout:
             for line in result.stdout.strip().split("\n")[:3]:
                 print(f"      {line}")
-        mission_id = await db_scalar(
-            f"SELECT id FROM missions WHERE name = '{name}' LIMIT 1"
-        )
+        mission_id = await db_scalar(f"SELECT id FROM missions WHERE name = '{name}' LIMIT 1")
 
     if not mission_id:
         return None
@@ -251,8 +264,11 @@ async def _ensure_mission(
 
 
 async def setup_bench(
-    token: str, reset: bool, verbose: bool,
-    need_cli: bool, need_api: bool,
+    token: str,
+    reset: bool,
+    verbose: bool,
+    need_cli: bool,
+    need_api: bool,
 ) -> tuple[Section, str, str]:
     """Create/verify bench missions. Returns (section, cli_mission_id, api_mission_id)."""
     section = Section("SETUP")
@@ -261,13 +277,21 @@ async def setup_bench(
 
     if need_cli:
         cli_id = await _ensure_mission(BENCH_CLI_MISSION, reset, verbose) or ""
-        section.check("S1a", f"CLI mission: {BENCH_CLI_MISSION}", bool(cli_id),
-                      cli_id[:12] if cli_id else "not found")
+        section.check(
+            "S1a",
+            f"CLI mission: {BENCH_CLI_MISSION}",
+            bool(cli_id),
+            cli_id[:12] if cli_id else "not found",
+        )
 
     if need_api:
         api_id = await _ensure_mission(BENCH_API_MISSION, reset, verbose) or ""
-        section.check("S1b", f"API mission: {BENCH_API_MISSION}", bool(api_id),
-                      api_id[:12] if api_id else "not found")
+        section.check(
+            "S1b",
+            f"API mission: {BENCH_API_MISSION}",
+            bool(api_id),
+            api_id[:12] if api_id else "not found",
+        )
 
     # Verify config and agents on whichever missions we have
     for label, mid in [("CLI", cli_id), ("API", api_id)]:
@@ -275,12 +299,20 @@ async def setup_bench(
             continue
 
         gate = await db_scalar(f"SELECT gate_mode FROM missions WHERE id = '{mid}'")
-        section.check(f"S2:{label}", f"{label} gate = {BENCH_GATE_MODE}",
-                      gate == BENCH_GATE_MODE, f"got={gate}")
+        section.check(
+            f"S2:{label}",
+            f"{label} gate = {BENCH_GATE_MODE}",
+            gate == BENCH_GATE_MODE,
+            f"got={gate}",
+        )
 
         budget = await db_scalar(f"SELECT budget_ceiling_usd FROM missions WHERE id = '{mid}'")
-        section.check(f"S3:{label}", f"{label} budget = ${BENCH_BUDGET_USD}",
-                      float(budget or 0) == BENCH_BUDGET_USD, f"got=${budget}")
+        section.check(
+            f"S3:{label}",
+            f"{label} budget = ${BENCH_BUDGET_USD}",
+            float(budget or 0) == BENCH_BUDGET_USD,
+            f"got=${budget}",
+        )
 
         for agent_name in REQUIRED_AGENTS:
             present = await db_scalar(f"""
@@ -326,8 +358,9 @@ async def test_cli(mission_id: str, verbose: bool) -> Section:
         JOIN mission_plans mp ON pts.mission_plan_id = mp.id
         WHERE mp.mission_id = '{mission_id}'
     """)
-    section.check("A2", "plan_task_states rows exist", (state_count or 0) > 0,
-                  f"count={state_count}")
+    section.check(
+        "A2", "plan_task_states rows exist", (state_count or 0) > 0, f"count={state_count}"
+    )
 
     # A3: Terminal tasks
     terminal = await db_scalar(f"""
@@ -336,30 +369,22 @@ async def test_cli(mission_id: str, verbose: bool) -> Section:
         WHERE mp.mission_id = '{mission_id}'
         AND pts.status IN ('completed', 'failed', 'skipped')
     """)
-    section.check("A3", "Tasks reached terminal state", (terminal or 0) > 0,
-                  f"count={terminal}")
+    section.check("A3", "Tasks reached terminal state", (terminal or 0) > 0, f"count={terminal}")
 
     # A4: llm_calls recorded
-    llm_count = await db_scalar(
-        f"SELECT COUNT(*) FROM llm_calls WHERE mission_id = '{mission_id}'"
-    )
-    section.check("A4", "llm_calls recorded", (llm_count or 0) > 0,
-                  f"count={llm_count}")
+    llm_count = await db_scalar(f"SELECT COUNT(*) FROM llm_calls WHERE mission_id = '{mission_id}'")
+    section.check("A4", "llm_calls recorded", (llm_count or 0) > 0, f"count={llm_count}")
 
     # A5: Budget tracked
     spent = await db_scalar(f"""
         SELECT total_spent_usd FROM mission_plans
         WHERE mission_id = '{mission_id}' LIMIT 1
     """)
-    section.check("A5", "total_spent_usd > 0", (spent or 0) > 0,
-                  f"${spent or 0:.4f}")
+    section.check("A5", "total_spent_usd > 0", (spent or 0) > 0, f"${spent or 0:.4f}")
 
     # A6: No legacy executions row
-    legacy = await db_scalar(
-        f"SELECT COUNT(*) FROM executions WHERE mission_id = '{mission_id}'"
-    )
-    section.check("A6", "No legacy executions row", legacy == 0,
-                  f"count={legacy}")
+    legacy = await db_scalar(f"SELECT COUNT(*) FROM executions WHERE mission_id = '{mission_id}'")
+    section.check("A6", "No legacy executions row", legacy == 0, f"count={legacy}")
 
     return section
 
@@ -373,18 +398,21 @@ async def test_api(token: str, mission_id: str, verbose: bool) -> Section:
     section = Section("API (POST /plan/run-objective)")
 
     print("  Running objective via API (async)...")
-    resp = await api_post(token, f"/missions/{mission_id}/plan/run-objective", {
-        "objective": API_OBJECTIVE,
-        "async_dispatch": True,
-    })
+    resp = await api_post(
+        token,
+        f"/missions/{mission_id}/plan/run-objective",
+        {
+            "objective": API_OBJECTIVE,
+            "async_dispatch": True,
+        },
+    )
     data = resp.get("data") or {}
     error = resp.get("error") or {}
     outcome = data.get("outcome_status", error.get("message", "unknown"))
     if verbose:
         print(f"    {json.dumps(data, indent=2, default=str)}")
 
-    section.check("B1", "outcome_status = dispatching",
-                  outcome == "dispatching", f"got={outcome}")
+    section.check("B1", "outcome_status = dispatching", outcome == "dispatching", f"got={outcome}")
 
     if outcome == "dispatching":
         print("  Waiting for dispatch...")
@@ -400,16 +428,16 @@ async def test_api(token: str, mission_id: str, verbose: bool) -> Section:
         WHERE er.mission_id = '{mission_id}'
         AND UPPER(d.decision_type) = 'POST_RUN_SUPERVISOR'
     """)
-    section.check("B3", "Supervisor decision recorded",
-                  (supervisor or 0) > 0, f"count={supervisor}")
+    section.check(
+        "B3", "Supervisor decision recorded", (supervisor or 0) > 0, f"count={supervisor}"
+    )
 
     # B4: Budget tracked on plan
     spent = await db_scalar(f"""
         SELECT total_spent_usd FROM mission_plans
         WHERE mission_id = '{mission_id}' LIMIT 1
     """)
-    section.check("B4", "total_spent_usd > 0",
-                  (spent or 0) > 0, f"${spent or 0:.4f}")
+    section.check("B4", "total_spent_usd > 0", (spent or 0) > 0, f"${spent or 0:.4f}")
 
     return section
 
@@ -433,8 +461,12 @@ async def test_multiwave(token: str, mission_id: str, verbose: bool) -> Section:
         SELECT supervisor_iteration_count FROM mission_plans
         WHERE mission_id = '{mission_id}' LIMIT 1
     """)
-    section.check("C1", "Supervisor evaluated (iterations >= 1)",
-                  (iterations or 0) >= 1, f"count={iterations}")
+    section.check(
+        "C1",
+        "Supervisor evaluated (iterations >= 1)",
+        (iterations or 0) >= 1,
+        f"count={iterations}",
+    )
 
     # C2: Supervisor made a decision
     decisions = await db_scalar(f"""
@@ -443,22 +475,19 @@ async def test_multiwave(token: str, mission_id: str, verbose: bool) -> Section:
         WHERE er.mission_id = '{mission_id}'
         AND UPPER(d.decision_type) = 'POST_RUN_SUPERVISOR'
     """)
-    section.check("C2", "Supervisor decision recorded",
-                  (decisions or 0) > 0, f"count={decisions}")
+    section.check("C2", "Supervisor decision recorded", (decisions or 0) > 0, f"count={decisions}")
 
     # C3: Execution record created by daemon dispatch
     records = await db_scalar(
         f"SELECT COUNT(*) FROM execution_records WHERE mission_id = '{mission_id}'"
     )
-    section.check("C3", "Execution record from dispatch",
-                  (records or 0) >= 1, f"count={records}")
+    section.check("C3", "Execution record from dispatch", (records or 0) >= 1, f"count={records}")
 
     # C4: Plan version >= 2 (refined by run_objective)
     version = await db_scalar(
         f"SELECT version FROM mission_plans WHERE mission_id = '{mission_id}' LIMIT 1"
     )
-    section.check("C4", "Plan version >= 2 (refined)",
-                  (version or 0) >= 2, f"version={version}")
+    section.check("C4", "Plan version >= 2 (refined)", (version or 0) >= 2, f"version={version}")
 
     return section
 
@@ -488,20 +517,17 @@ async def test_parity(cli_mission_id: str, api_mission_id: str) -> Section:
             JOIN mission_plans mp ON pts.mission_plan_id = mp.id
             WHERE mp.mission_id = '{mid}'
         """)
-        section.check(f"P2:{label}", f"{label} has plan_task_states",
-                      (states or 0) > 0, f"count={states}")
-
-        calls = await db_scalar(
-            f"SELECT COUNT(*) FROM llm_calls WHERE mission_id = '{mid}'"
+        section.check(
+            f"P2:{label}", f"{label} has plan_task_states", (states or 0) > 0, f"count={states}"
         )
-        section.check(f"P3:{label}", f"{label} has llm_calls",
-                      (calls or 0) > 0, f"count={calls}")
 
-        legacy = await db_scalar(
-            f"SELECT COUNT(*) FROM executions WHERE mission_id = '{mid}'"
+        calls = await db_scalar(f"SELECT COUNT(*) FROM llm_calls WHERE mission_id = '{mid}'")
+        section.check(f"P3:{label}", f"{label} has llm_calls", (calls or 0) > 0, f"count={calls}")
+
+        legacy = await db_scalar(f"SELECT COUNT(*) FROM executions WHERE mission_id = '{mid}'")
+        section.check(
+            f"P4:{label}", f"{label} zero legacy executions", legacy == 0, f"count={legacy}"
         )
-        section.check(f"P4:{label}", f"{label} zero legacy executions",
-                      legacy == 0, f"count={legacy}")
 
     return section
 
@@ -512,7 +538,10 @@ async def test_parity(cli_mission_id: str, api_mission_id: str) -> Section:
 
 
 async def test_knowledge(
-    token: str, mission_id: str, mission_name: str, verbose: bool,
+    token: str,
+    mission_id: str,
+    mission_name: str,
+    verbose: bool,
 ) -> Section:
     """Verify knowledge endpoints work and Director can query learnings."""
     section = Section("KNOWLEDGE (post-execution)")
@@ -523,8 +552,9 @@ async def test_knowledge(
             f"{API_BASE}/missions/{mission_id}/knowledge",
             headers={"Authorization": f"Bearer {token}"},
         )
-    section.check("K1", "GET /knowledge returns 200",
-                  r.status_code == 200, f"status={r.status_code}")
+    section.check(
+        "K1", "GET /knowledge returns 200", r.status_code == 200, f"status={r.status_code}"
+    )
 
     # K2: Learnings endpoint returns list (may be empty on first run)
     async with httpx.AsyncClient(timeout=30) as client:
@@ -534,8 +564,9 @@ async def test_knowledge(
         )
     learnings_data = r.json().get("data", [])
     learning_count = len(learnings_data) if isinstance(learnings_data, list) else 0
-    section.check("K2", "GET /learnings returns 200",
-                  r.status_code == 200, f"count={learning_count}")
+    section.check(
+        "K2", "GET /learnings returns 200", r.status_code == 200, f"count={learning_count}"
+    )
 
     # K3: Mission intent exists (seeded from --brief on creation)
     async with httpx.AsyncClient(timeout=30) as client:
@@ -544,8 +575,7 @@ async def test_knowledge(
             headers={"Authorization": f"Bearer {token}"},
         )
     intent_data = r.json().get("data")
-    section.check("K3", "Mission intent exists",
-                  intent_data is not None and r.status_code == 200)
+    section.check("K3", "Mission intent exists", intent_data is not None and r.status_code == 200)
 
     # K4: Director can query knowledge via chat
     print("  Asking Director about learnings...")
@@ -555,8 +585,12 @@ async def test_knowledge(
     if verbose and result.stdout:
         for line in result.stdout.strip().split("\n")[-5:]:
             print(f"    {line}")
-    section.check("K4", "Director responds to knowledge query", got_response,
-                  f"exit={result.returncode}, len={len(result.stdout.strip())}")
+    section.check(
+        "K4",
+        "Director responds to knowledge query",
+        got_response,
+        f"exit={result.returncode}, len={len(result.stdout.strip())}",
+    )
 
     # K5: Platform search endpoint works
     async with httpx.AsyncClient(timeout=30) as client:
@@ -565,8 +599,9 @@ async def test_knowledge(
             params={"q": "structured logging async"},
             headers={"Authorization": f"Bearer {token}"},
         )
-    section.check("K5", "GET /knowledge/search returns 200",
-                  r.status_code == 200, f"status={r.status_code}")
+    section.check(
+        "K5", "GET /knowledge/search returns 200", r.status_code == 200, f"status={r.status_code}"
+    )
 
     return section
 
@@ -656,7 +691,11 @@ async def main(
     # SETUP — separate missions for CLI and API
     print("--- SETUP ---")
     setup_section, cli_id, api_id = await setup_bench(
-        token, reset, verbose, need_cli, need_api,
+        token,
+        reset,
+        verbose,
+        need_cli,
+        need_api,
     )
     sections.append(setup_section)
     if (need_cli and not cli_id) or (need_api and not api_id):
@@ -720,12 +759,15 @@ examples:
 
     if args.debug:
         import logging
+
         logging.basicConfig(level=logging.DEBUG)
 
-    exit_code = asyncio.run(main(
-        verbose=args.verbose or args.debug,
-        cli_only=args.cli_only,
-        api_only=args.api_only,
-        reset=args.reset,
-    ))
+    exit_code = asyncio.run(
+        main(
+            verbose=args.verbose or args.debug,
+            cli_only=args.cli_only,
+            api_only=args.api_only,
+            reset=args.reset,
+        )
+    )
     sys.exit(exit_code)

@@ -53,7 +53,11 @@ QUESTIONS = {
 
 
 def _anonymise_one(
-    q_id: str, q_text: str, seed: int, comparator: str, blind_dir: Path,
+    q_id: str,
+    q_text: str,
+    seed: int,
+    comparator: str,
+    blind_dir: Path,
 ) -> dict:
     """Anonymise one question's pair. Returns the A/B → source mapping."""
     layout = COMPARATOR_LAYOUTS[comparator]
@@ -78,18 +82,24 @@ def _anonymise_one(
         # Strip any obvious source markers from the markdown.
         body = src.read_text()
         for marker in (
-            "baseline", "BASELINE", "Baseline",
-            "v2", "V2",
-            "v1_decomposed", "v1-decomposed", "v1d",
-            "Plan 79", "Plan 81", "Think Tank v2",
-            "single-call", "deliberation_loop",
+            "baseline",
+            "BASELINE",
+            "Baseline",
+            "v2",
+            "V2",
+            "v1_decomposed",
+            "v1-decomposed",
+            "v1d",
+            "Plan 79",
+            "Plan 81",
+            "Think Tank v2",
+            "single-call",
+            "deliberation_loop",
         ):
             body = body.replace(marker, "")
         # Add a neutral header.
         dst.write_text(
-            f"# Deliverable for question {q_id.upper()}\n"
-            f"# {q_text}\n\n"
-            f"---\n\n{body}",
+            f"# Deliverable for question {q_id.upper()}\n" f"# {q_text}\n\n" f"---\n\n{body}",
         )
         print(f"  {dst.relative_to(PROJECT_ROOT)}  <-  {src.relative_to(PROJECT_ROOT)}")
 
@@ -98,22 +108,26 @@ def _anonymise_one(
 
 @click.command()
 @click.option(
-    "--reveal", is_flag=True,
+    "--reveal",
+    is_flag=True,
     help="Print the A/B → source mapping (after scoring).",
 )
 @click.option(
-    "--comparator", default="v2",
+    "--comparator",
+    default="v2",
     type=click.Choice(sorted(COMPARATOR_LAYOUTS.keys())),
     help="Which challenger family to A/B against baseline. v2 is the "
-         "original Plan 79 v2; v1_decomposed is Plan 81 (Phase 0 "
-         "decomposed). The blind/key files live in "
-         "var/validation/blind_{comparator}/ so multiple comparators "
-         "do not collide.",
+    "original Plan 79 v2; v1_decomposed is Plan 81 (Phase 0 "
+    "decomposed). The blind/key files live in "
+    "var/validation/blind_{comparator}/ so multiple comparators "
+    "do not collide.",
 )
 @click.option(
-    "--seed", default=None, type=int,
+    "--seed",
+    default=None,
+    type=int,
     help="RNG seed for the shuffle (default: random). Use a fixed value to "
-         "make anonymisation reproducible.",
+    "make anonymisation reproducible.",
 )
 def main(reveal: bool, comparator: str, seed: int | None) -> None:
     blind_dir = VALIDATION_DIR / f"blind_{comparator}"
@@ -139,8 +153,11 @@ def main(reveal: bool, comparator: str, seed: int | None) -> None:
     for q_id, q_text in QUESTIONS.items():
         try:
             mapping = _anonymise_one(
-                q_id, q_text, rng.randint(0, 2**31 - 1),
-                comparator, blind_dir,
+                q_id,
+                q_text,
+                rng.randint(0, 2**31 - 1),
+                comparator,
+                blind_dir,
             )
             key[q_id] = mapping
         except FileNotFoundError as e:
@@ -149,10 +166,14 @@ def main(reveal: bool, comparator: str, seed: int | None) -> None:
         print()
 
     key_file.write_text(json.dumps(key, indent=2))
-    print(f"\nKey saved to {key_file.relative_to(PROJECT_ROOT)} (do not open until scoring is done).")
+    print(
+        f"\nKey saved to {key_file.relative_to(PROJECT_ROOT)} (do not open until scoring is done)."
+    )
     print(f"\nBlind deliverables: {blind_dir.relative_to(PROJECT_ROOT)}/")
     print(f"  Read in pairs (e.g. q1_A.md and q1_B.md) and score each.")
-    print(f"  Then run: python scripts/think_tank_anonymise.py --comparator {comparator} --reveal\n")
+    print(
+        f"  Then run: python scripts/think_tank_anonymise.py --comparator {comparator} --reveal\n"
+    )
 
 
 if __name__ == "__main__":

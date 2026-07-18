@@ -39,10 +39,7 @@ def extract_usage(usage: object) -> UsageFields:
         output_tokens=getattr(usage, "output_tokens", 0) or 0,
         cache_read_tokens=getattr(usage, "cache_read_tokens", 0) or 0,
         cache_write_tokens=getattr(usage, "cache_write_tokens", 0) or 0,
-        thinking_tokens=(
-            details.get("reasoning_tokens", 0)
-            or details.get("thinking_tokens", 0)
-        ),
+        thinking_tokens=(details.get("reasoning_tokens", 0) or details.get("thinking_tokens", 0)),
     )
 
 

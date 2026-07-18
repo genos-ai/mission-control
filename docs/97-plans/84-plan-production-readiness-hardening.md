@@ -182,10 +182,16 @@ Exit criterion: `pytest tests/unit -q` fully green locally. Only then create the
 
 Three jobs, triggered on `push` to `main` and on `pull_request`:
 
-1. **lint** — Python 3.12, install via `uv pip install -r requirements.txt` (system uv), then:
-   `black --check --line-length=100 modules scripts tests`,
-   `isort --check-only modules scripts tests`, `flake8 modules scripts tests`.
-   Mirror the pre-commit config exactly (`.pre-commit-config.yaml`) — do not invent new arguments.
+1. **lint** — Python 3.14 (pyproject requires >=3.14), install the pinned toolchain
+   (black 26.3.1, isort 8.0.1 — MUST match `.pre-commit-config.yaml` revs), then:
+   `black --check --line-length=100` and `isort --check-only` over
+   `modules/backend modules/clients tests scripts mc.py admin.py services.py tui.py`.
+   **No tree-wide flake8 in CI yet**: the tree carries ~843 pre-existing flake8
+   findings (measured 2026-07-18; mostly E501-in-strings, F401, F541, E402 in files
+   never touched since the hooks were installed). flake8 remains per-commit via
+   pre-commit, which contains new debt; the backlog is worked off opportunistically
+   as Phase 5 rewrites the affected files. Add flake8 to CI when
+   `flake8 modules scripts tests` exits 0.
 2. **rules** — `python scripts/code_rules_fast.py --all` (exit code is the gate).
 3. **tests** — service containers for `postgres:16` and `redis:7`; export
    `TEST_DATABASE_URL=postgresql+asyncpg://...` per `tests/conftest.py:102-115` expectations,

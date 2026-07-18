@@ -31,9 +31,11 @@ from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
 
+
 def _load_mcd_limits() -> tuple[int, int]:
     """Load MCD size limits from missions config."""
     from modules.backend.core.config import get_app_config
+
     cfg = get_app_config().missions
     return cfg.pcd_max_size_bytes, cfg.pcd_target_size_bytes
 
@@ -44,6 +46,7 @@ def _get_max_size() -> int:
 
 def _get_target_size() -> int:
     return _load_mcd_limits()[1]
+
 
 # In-memory cache: mission_id -> (context_data, version, timestamp)
 _cache: dict[str, tuple[dict, int, float]] = {}
@@ -217,8 +220,7 @@ class MissionContextManager(BaseService):
         """Get MCD size metrics."""
         ctx = await self._context_repo.get_by_mission_id(mission_id)
         if ctx is None:
-            return {"size_characters": 0, "size_tokens": 0, "version": 0,
-                    "pct_of_max": 0.0}
+            return {"size_characters": 0, "size_tokens": 0, "version": 0, "pct_of_max": 0.0}
         return {
             "size_characters": ctx.size_characters,
             "size_tokens": ctx.size_tokens,
@@ -298,13 +300,15 @@ class MissionContextManager(BaseService):
                 errors.append(f"Unknown operation: {op}")
                 continue
 
-            applied_changes.append({
-                "change_type": change_type,
-                "path": path,
-                "old_value": old_value if not isinstance(old_value, type(_SENTINEL)) else None,
-                "new_value": value,
-                "reason": reason,
-            })
+            applied_changes.append(
+                {
+                    "change_type": change_type,
+                    "path": path,
+                    "old_value": old_value if not isinstance(old_value, type(_SENTINEL)) else None,
+                    "new_value": value,
+                    "reason": reason,
+                }
+            )
 
         data["version"] = current_version + 1
         data["last_updated"] = utc_now().isoformat()

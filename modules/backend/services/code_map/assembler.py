@@ -12,7 +12,6 @@ Plus a convenience compositor:
 from __future__ import annotations
 
 from modules.backend.core.utils import utc_now
-
 from modules.backend.services.code_map.types import ModuleInfo, SymbolInfo, SymbolKind
 
 
@@ -48,8 +47,11 @@ def assemble_code_map(
         classes_dict: dict[str, dict] = {}
         for cls in module.classes:
             methods_list = [
-                f"{m.name}({', '.join(m.params)}) -> {m.return_type}"
-                if m.return_type else f"{m.name}({', '.join(m.params)})"
+                (
+                    f"{m.name}({', '.join(m.params)}) -> {m.return_type}"
+                    if m.return_type
+                    else f"{m.name}({', '.join(m.params)})"
+                )
                 for m in cls.methods
             ]
             classes_dict[cls.name] = {
@@ -79,8 +81,7 @@ def assemble_code_map(
 
         # Build import graph (internal edges only)
         internal_imports = [
-            imp for imp in module.imports
-            if _is_internal_import(imp, internal_modules)
+            imp for imp in module.imports if _is_internal_import(imp, internal_modules)
         ]
         if internal_imports:
             import_graph[module_qname] = internal_imports
@@ -121,6 +122,7 @@ def trim_by_rank(
         A new (trimmed) Code Map dict. The original is not modified.
     """
     import copy
+
     trimmed = copy.deepcopy(code_map)
     current_tokens = _estimate_tokens(trimmed)
 
@@ -164,16 +166,15 @@ def trim_by_rank(
         return trimmed
 
     # Pass 5: Remove modules with < 20 lines
-    trimmed["modules"] = {
-        p: m for p, m in trimmed["modules"].items() if m["lines"] >= 20
-    }
+    trimmed["modules"] = {p: m for p, m in trimmed["modules"].items() if m["lines"] >= 20}
 
     if _estimate_tokens(trimmed) <= max_tokens:
         return trimmed
 
     # Pass 6: Remove lowest-ranked entire modules
     ranked_modules = sorted(
-        trimmed["modules"].items(), key=lambda x: x[1]["rank"],
+        trimmed["modules"].items(),
+        key=lambda x: x[1]["rank"],
     )
     while _estimate_tokens(trimmed) > max_tokens and ranked_modules:
         path, _ = ranked_modules.pop(0)
@@ -434,6 +435,7 @@ def _estimate_tokens(data: dict | str) -> int:
         text = data
     else:
         import json
+
         text = json.dumps(data)
     return len(text) // 4
 
@@ -475,9 +477,7 @@ def _remove_symbol(
     if kind == "method" and parent:
         cls_data = mod.get("classes", {}).get(parent)
         if cls_data:
-            cls_data["methods"] = [
-                m for m in cls_data["methods"] if _method_name(m) != name
-            ]
+            cls_data["methods"] = [m for m in cls_data["methods"] if _method_name(m) != name]
     elif kind == "function":
         mod.get("functions", {}).pop(name, None)
     elif kind == "class":

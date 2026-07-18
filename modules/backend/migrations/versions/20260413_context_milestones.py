@@ -7,8 +7,8 @@ Revision ID: plan18_milestones
 Revises: plan51_widen_decision_type
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "plan18_milestones"
 down_revision = "plan60_002"

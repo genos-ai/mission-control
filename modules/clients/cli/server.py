@@ -33,10 +33,14 @@ def run_server(logger, host: str | None, port: int | None, reload: bool) -> None
     )
 
     cmd = [
-        sys.executable, "-m", "uvicorn",
+        sys.executable,
+        "-m",
+        "uvicorn",
         "modules.backend.main:app",
-        "--host", server_host,
-        "--port", str(server_port),
+        "--host",
+        server_host,
+        "--port",
+        str(server_port),
     ]
 
     if reload:

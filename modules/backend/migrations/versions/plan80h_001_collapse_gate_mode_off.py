@@ -17,7 +17,6 @@ from typing import Sequence, Union
 
 from alembic import op
 
-
 revision: str = "plan80h_001"
 down_revision: Union[str, None] = "plan80g_002"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -25,14 +24,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "UPDATE mission_plans SET gate_mode = 'autonomous' "
-        "WHERE gate_mode = 'off'"
-    )
-    op.execute(
-        "UPDATE missions SET gate_mode = 'autonomous' "
-        "WHERE gate_mode = 'off'"
-    )
+    op.execute("UPDATE mission_plans SET gate_mode = 'autonomous' " "WHERE gate_mode = 'off'")
+    op.execute("UPDATE missions SET gate_mode = 'autonomous' " "WHERE gate_mode = 'off'")
 
 
 def downgrade() -> None:

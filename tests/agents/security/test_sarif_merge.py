@@ -12,11 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from modules.backend.agents.security.sarif import (
-    convert_to_sarif,
-    load_sarif,
-    merge_sarif,
-)
+from modules.backend.agents.security.sarif import convert_to_sarif, load_sarif, merge_sarif
 
 
 @pytest.fixture
@@ -86,9 +82,11 @@ class TestMergeSarif:
         # The CWE-89 at users.py:42 was "error" in opengrep, "warning" in ruff
         # Merged result should keep "error" (highest)
         users_sqli = [
-            r for r in results
+            r
+            for r in results
             if any(
-                loc.get("physicalLocation", {}).get("artifactLocation", {}).get("uri") == "app/routes/users.py"
+                loc.get("physicalLocation", {}).get("artifactLocation", {}).get("uri")
+                == "app/routes/users.py"
                 and loc.get("physicalLocation", {}).get("region", {}).get("startLine") == 42
                 for loc in r.get("locations", [])
             )
@@ -116,20 +114,60 @@ class TestMergeSarif:
         sarif_a = tmp_path / "a.sarif"
         sarif_b = tmp_path / "b.sarif"
 
-        sarif_a.write_text(json.dumps({
-            "version": "2.1.0",
-            "runs": [{"tool": {"driver": {"name": "tool-a"}}, "results": [
-                {"ruleId": "R1", "level": "error", "message": {"text": "Finding A"},
-                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "a.py"}, "region": {"startLine": 1}}}]},
-            ]}],
-        }))
-        sarif_b.write_text(json.dumps({
-            "version": "2.1.0",
-            "runs": [{"tool": {"driver": {"name": "tool-b"}}, "results": [
-                {"ruleId": "R2", "level": "warning", "message": {"text": "Finding B"},
-                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "b.py"}, "region": {"startLine": 2}}}]},
-            ]}],
-        }))
+        sarif_a.write_text(
+            json.dumps(
+                {
+                    "version": "2.1.0",
+                    "runs": [
+                        {
+                            "tool": {"driver": {"name": "tool-a"}},
+                            "results": [
+                                {
+                                    "ruleId": "R1",
+                                    "level": "error",
+                                    "message": {"text": "Finding A"},
+                                    "locations": [
+                                        {
+                                            "physicalLocation": {
+                                                "artifactLocation": {"uri": "a.py"},
+                                                "region": {"startLine": 1},
+                                            }
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+        sarif_b.write_text(
+            json.dumps(
+                {
+                    "version": "2.1.0",
+                    "runs": [
+                        {
+                            "tool": {"driver": {"name": "tool-b"}},
+                            "results": [
+                                {
+                                    "ruleId": "R2",
+                                    "level": "warning",
+                                    "message": {"text": "Finding B"},
+                                    "locations": [
+                                        {
+                                            "physicalLocation": {
+                                                "artifactLocation": {"uri": "b.py"},
+                                                "region": {"startLine": 2},
+                                            }
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
 
         output = str(tmp_path / "merged.sarif")
         merge_sarif([str(sarif_a), str(sarif_b)], output)
@@ -142,10 +180,26 @@ class TestConvertToSarif:
     def test_json_conversion(self, tmp_path: Path):
         """Convert ruff-style JSON output to SARIF."""
         source = tmp_path / "ruff_output.json"
-        source.write_text(json.dumps([
-            {"code": "S608", "message": "SQL injection", "filename": "app.py", "line": 10, "severity": "high"},
-            {"code": "S105", "message": "Hardcoded password", "filename": "config.py", "line": 5, "severity": "medium"},
-        ]))
+        source.write_text(
+            json.dumps(
+                [
+                    {
+                        "code": "S608",
+                        "message": "SQL injection",
+                        "filename": "app.py",
+                        "line": 10,
+                        "severity": "high",
+                    },
+                    {
+                        "code": "S105",
+                        "message": "Hardcoded password",
+                        "filename": "config.py",
+                        "line": 5,
+                        "severity": "medium",
+                    },
+                ]
+            )
+        )
 
         convert_to_sarif(str(source), "json", "ruff")
 

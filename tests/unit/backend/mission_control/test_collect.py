@@ -61,8 +61,10 @@ class TestCollect:
     async def test_returns_agent_name(self, session_service, health_session):
         with _patch_build_model(), _patch_mission_context():
             result = await collect(
-                str(health_session.id), "check health",
-                mission_id=STUB_MISSION_ID, session_service=session_service,
+                str(health_session.id),
+                "check health",
+                mission_id=STUB_MISSION_ID,
+                session_service=session_service,
             )
         assert result["agent_name"] == "platform.health.agent"
 
@@ -70,8 +72,10 @@ class TestCollect:
     async def test_returns_output(self, session_service, health_session):
         with _patch_build_model(), _patch_mission_context():
             result = await collect(
-                str(health_session.id), "check health",
-                mission_id=STUB_MISSION_ID, session_service=session_service,
+                str(health_session.id),
+                "check health",
+                mission_id=STUB_MISSION_ID,
+                session_service=session_service,
             )
         assert isinstance(result["output"], str)
 
@@ -79,8 +83,10 @@ class TestCollect:
     async def test_returns_cost(self, session_service, health_session):
         with _patch_build_model(), _patch_mission_context():
             result = await collect(
-                str(health_session.id), "check health",
-                mission_id=STUB_MISSION_ID, session_service=session_service,
+                str(health_session.id),
+                "check health",
+                mission_id=STUB_MISSION_ID,
+                session_service=session_service,
             )
         assert isinstance(result["cost_usd"], float)
         assert result["cost_usd"] >= 0
@@ -89,6 +95,7 @@ class TestCollect:
     async def test_returns_session_id(self, session_service, health_session):
         sid = str(health_session.id)
         with _patch_build_model(), _patch_mission_context():
-            result = await collect(sid, "check health",
-                                   mission_id=STUB_MISSION_ID, session_service=session_service)
+            result = await collect(
+                sid, "check health", mission_id=STUB_MISSION_ID, session_service=session_service
+            )
         assert result["session_id"] == sid

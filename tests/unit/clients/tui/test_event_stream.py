@@ -5,13 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.clients.common.event_rendering import (
-    summarize_event,
-    is_noisy,
-)
-
+from modules.clients.common.event_rendering import is_noisy, summarize_event
 
 # ── summarize_event (pure function) ──────────────────────────────────
+
 
 class TestSummarizeEvent:
     def _make_event(self, event_type: str, **attrs: object) -> MagicMock:
@@ -29,7 +26,9 @@ class TestSummarizeEvent:
 
     def test_response_complete(self):
         ev = self._make_event(
-            "agent.response.complete", agent_id="planner", cost_usd=0.042,
+            "agent.response.complete",
+            agent_id="planner",
+            cost_usd=0.042,
             metadata=None,
         )
         summary = summarize_event(ev)
@@ -41,9 +40,7 @@ class TestSummarizeEvent:
         assert "code_search" in summarize_event(ev)
 
     def test_tool_returned(self):
-        ev = self._make_event(
-            "agent.tool.returned", tool_name="code_search", status="success"
-        )
+        ev = self._make_event("agent.tool.returned", tool_name="code_search", status="success")
         summary = summarize_event(ev)
         assert "code_search" in summary
         assert "success" in summary
@@ -81,10 +78,12 @@ class TestSummarizeEvent:
 
 # ── EventStreamWidget (Textual Pilot) ─────────────────────────────────
 
+
 class TestEventStreamWidget:
     @pytest.mark.asyncio
     async def test_mounts_with_heading(self):
         from textual.app import App, ComposeResult
+
         from modules.clients.tui.widgets.event_stream import EventStreamWidget
 
         class TestApp(App):
@@ -99,6 +98,7 @@ class TestEventStreamWidget:
     async def test_add_event_creates_entry(self):
         from textual.app import App, ComposeResult
         from textual.containers import VerticalScroll
+
         from modules.clients.tui.widgets.event_stream import EventStreamWidget
 
         class TestApp(App):

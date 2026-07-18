@@ -28,12 +28,14 @@ def run_architect(
         get_console().print(f"[red]Unknown action: {action}[/red]")
         sys.exit(1)
 
-    asyncio.run(fn(
-        cli_logger,
-        mission_id=mission_id,
-        message=message,
-        output_format=output_format,
-    ))
+    asyncio.run(
+        fn(
+            cli_logger,
+            mission_id=mission_id,
+            message=message,
+            output_format=output_format,
+        )
+    )
 
 
 async def _action_chat(cli_logger, *, mission_id, message, output_format, **_):

@@ -81,9 +81,7 @@ def _valid_payload(**overrides) -> dict:
             "## Mainstream Prior\n\nConventional answer X.\n\n"
             "## Forward Claim\n\nBy 2030, Y will dominate."
         ),
-        "recommendation_markdown": (
-            "Watch for: changes in A and breakdown of mechanism B."
-        ),
+        "recommendation_markdown": ("Watch for: changes in A and breakdown of mechanism B."),
     }
     base.update(overrides)
     return base
@@ -127,12 +125,14 @@ class TestSynthesiserAgent:
     async def test_minority_position_preserved(self, synthesiser_deps):
         # The schema requires explicit None vs record. A None synthesis
         # round-trips cleanly; a record synthesis preserves the debater.
-        payload = _valid_payload(minority_position={
-            "debater": "empiricist",
-            "position": "held contrarian view",
-            "why_it_survived": "critic could not break it",
-            "why_it_merits_preservation": "track record warrants it",
-        })
+        payload = _valid_payload(
+            minority_position={
+                "debater": "empiricist",
+                "position": "held contrarian view",
+                "why_it_survived": "critic could not break it",
+                "why_it_merits_preservation": "track record warrants it",
+            }
+        )
         agent = create_agent(_make_synthesiser_function_model(payload))
         result = await agent.run("Synthesise.", deps=synthesiser_deps)
         assert result.output.minority_position is not None
@@ -143,7 +143,11 @@ class TestSynthesiserAgent:
 
         path = (
             find_project_root()
-            / "config" / "agents" / "deliberation" / "synthesiser" / "agent.yaml"
+            / "config"
+            / "agents"
+            / "deliberation"
+            / "synthesiser"
+            / "agent.yaml"
         )
         with open(path) as f:
             raw = yaml.safe_load(f)
@@ -160,19 +164,24 @@ class TestSynthesiserAgent:
         """The synthesiser prompt enumerates the 11 required fields of
         the deliverable. If any go missing, the schema validators will
         fail at runtime but the test catches drift earlier."""
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "synthesiser")
         lower = prompt.lower()
         # All FinalDeliverable field names must appear in the prompt.
         for field in (
-            "question_restated", "committed_answer", "confidence",
-            "cruxes", "minority_position", "mainstream_prior",
-            "deliberation_vs_mainstream", "forward_claim",
-            "biggest_things_that_could_be_wrong", "sycophancy_flags",
-            "report_markdown", "recommendation_markdown",
+            "question_restated",
+            "committed_answer",
+            "confidence",
+            "cruxes",
+            "minority_position",
+            "mainstream_prior",
+            "deliberation_vs_mainstream",
+            "forward_claim",
+            "biggest_things_that_could_be_wrong",
+            "sycophancy_flags",
+            "report_markdown",
+            "recommendation_markdown",
         ):
             assert field in lower, f"prompt missing field: {field}"
 
@@ -180,9 +189,7 @@ class TestSynthesiserAgent:
         """Plan 79 §5 — the synthesiser MUST flag
         deliberation_vs_mainstream='merely_reproduces' when applicable.
         Drift here weakens the anti-flattening machinery."""
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "synthesiser")
         assert "merely_reproduces" in prompt
@@ -191,18 +198,14 @@ class TestSynthesiserAgent:
     def test_prompt_handles_skipped_rounds(self):
         """Plan 79 §6 / S3 fix — the synthesiser prompt explicitly
         tells the model how to handle null entries for skipped rounds."""
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "synthesiser")
         assert "skipped" in prompt.lower()
         assert "null" in prompt.lower() or "None" in prompt
 
     def test_prompt_has_early_stop_clarification(self):
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "synthesiser")
         assert "early-stop" in prompt.lower() or "stopping signal" in prompt.lower()

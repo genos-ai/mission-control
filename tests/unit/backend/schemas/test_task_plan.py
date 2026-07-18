@@ -41,10 +41,14 @@ class TestTaskPlan:
         assert len(plan.tasks) == 1
 
     def test_task_ids_property(self):
-        plan = TaskPlan.model_validate(_make_plan([
-            _make_task("a"),
-            _make_task("b"),
-        ]))
+        plan = TaskPlan.model_validate(
+            _make_plan(
+                [
+                    _make_task("a"),
+                    _make_task("b"),
+                ]
+            )
+        )
         assert plan.task_ids == ["a", "b"]
 
     def test_get_task(self):

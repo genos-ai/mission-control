@@ -17,10 +17,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from modules.backend.services.execution_environment import (
-    ExecutionEnvironmentService,
-)
 from modules.backend.services.container_backend import ContainerBackend
+from modules.backend.services.execution_environment import ExecutionEnvironmentService
 
 
 async def main() -> None:
@@ -54,7 +52,9 @@ async def main() -> None:
     except RuntimeError as e:
         print(f"\n✗ Container creation failed: {e}")
         print("  Make sure Docker is running and code-workspace image is built:")
-        print("  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile .")
+        print(
+            "  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile ."
+        )
         sys.exit(1)
 
     print(f"✓ Container created: {handle.environment_id}")
@@ -89,7 +89,11 @@ async def main() -> None:
     # Run a simple Python command
     result = await service.execute(
         handle,
-        ["python", "-c", "import sys; print(f'Python {sys.version}'); print('Container execution works!')"],
+        [
+            "python",
+            "-c",
+            "import sys; print(f'Python {sys.version}'); print('Container execution works!')",
+        ],
     )
     print(f"\nPython in container: {result.stdout.strip()}")
 

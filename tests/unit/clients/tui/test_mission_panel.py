@@ -11,8 +11,8 @@ from modules.clients.tui.widgets.mission_panel import (
     _task_status_icon,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────
+
 
 def _make_plan(task_count: int = 3) -> TaskPlan:
     """Build a minimal TaskPlan with `task_count` sequential tasks."""
@@ -88,6 +88,7 @@ def _make_parallel_plan() -> tuple[TaskPlan, list[list[str]]]:
 
 # ── Pure functions ────────────────────────────────────────────────────
 
+
 class TestAgentShortName:
     def test_dotted_name(self):
         assert _agent_short_name("software.quality.agent") == "quality"
@@ -136,6 +137,7 @@ class TestTaskStatusIcon:
 
 
 # ── MissionPanel (Textual Pilot) ─────────────────────────────────────
+
 
 class TestMissionPanel:
     @pytest.mark.asyncio

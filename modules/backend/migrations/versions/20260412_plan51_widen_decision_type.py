@@ -13,9 +13,8 @@ Create Date: 2026-04-12
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision: str = "plan51_004"
 down_revision: Union[str, None] = "plan51_003"

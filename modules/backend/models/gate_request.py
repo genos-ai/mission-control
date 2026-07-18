@@ -62,11 +62,14 @@ class GateRequest(UUIDMixin, Base):
         ),
     )
     gate_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, index=True,
+        String(50),
+        nullable=False,
+        index=True,
         comment="pre_dispatch | pre_layer | post_task | verification_failed | post_layer | post_run",
     )
     context_json: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False,
+        JSONB,
+        nullable=False,
         comment="Serialised GateContext at the time of the pause.",
     )
     status: Mapped[str] = mapped_column(
@@ -76,7 +79,8 @@ class GateRequest(UUIDMixin, Base):
         index=True,
     )
     decision_json: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True,
+        JSONB,
+        nullable=True,
         comment="Serialised GateDecision once a client POSTs a verdict.",
     )
     decided_by_user_id: Mapped[str | None] = mapped_column(
@@ -85,13 +89,16 @@ class GateRequest(UUIDMixin, Base):
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
     )
     decided_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     timed_out_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     def __repr__(self) -> str:

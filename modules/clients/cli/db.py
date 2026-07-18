@@ -38,8 +38,7 @@ def run_db(
     if not handler:
         click.echo(
             click.style(
-                f"Unknown db action: {action}. "
-                f"Valid: {', '.join(actions.keys())}",
+                f"Unknown db action: {action}. " f"Valid: {', '.join(actions.keys())}",
                 fg="red",
             ),
             err=True,
@@ -47,13 +46,15 @@ def run_db(
         sys.exit(1)
 
     try:
-        asyncio.run(handler(
-            cli_logger,
-            table=table,
-            limit=limit,
-            confirm=confirm,
-            include_missions=include_missions,
-        ))
+        asyncio.run(
+            handler(
+                cli_logger,
+                table=table,
+                limit=limit,
+                confirm=confirm,
+                include_missions=include_missions,
+            )
+        )
     except (OSError, RuntimeError, ValueError) as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
         cli_logger.error("DB action failed", extra={"action": action, "error": str(e)})
@@ -68,17 +69,20 @@ def run_db(
 async def _action_stats(cli_logger, *, table, limit, confirm, **_):
     """Show row counts for all tables."""
     from modules.backend.services.database_admin import DatabaseAdminService
-    from modules.clients.cli.report import get_console, build_table
+    from modules.clients.cli.report import build_table, get_console
 
     console = get_console()
 
     async with DatabaseAdminService.factory() as svc:
         counts = await svc.get_table_row_counts()
 
-    tbl_table = build_table("Database Statistics", columns=[
-        ("Table", {"style": "cyan", "width": 28}),
-        ("Rows",  {"justify": "right", "width": 10}),
-    ])
+    tbl_table = build_table(
+        "Database Statistics",
+        columns=[
+            ("Table", {"style": "cyan", "width": 28}),
+            ("Rows", {"justify": "right", "width": 10}),
+        ],
+    )
 
     total = 0
     for tbl_name, count in counts:
@@ -93,7 +97,7 @@ async def _action_stats(cli_logger, *, table, limit, confirm, **_):
 async def _action_tables(cli_logger, *, table, limit, confirm, **_):
     """List all application tables with column info."""
     from modules.backend.services.database_admin import ALL_TABLES, DatabaseAdminService
-    from modules.clients.cli.report import get_console, build_table
+    from modules.clients.cli.report import build_table, get_console
 
     console = get_console()
 
@@ -102,11 +106,14 @@ async def _action_tables(cli_logger, *, table, limit, confirm, **_):
             columns = await svc.get_table_columns(tbl)
             count = await svc.get_table_row_count(tbl)
 
-            col_table = build_table(f"{tbl}  ({count} rows)", columns=[
-                ("Column",   {"style": "cyan", "width": 30}),
-                ("Type",     {"width": 22}),
-                ("Nullable", {"width": 10}),
-            ])
+            col_table = build_table(
+                f"{tbl}  ({count} rows)",
+                columns=[
+                    ("Column", {"style": "cyan", "width": 30}),
+                    ("Type", {"width": 22}),
+                    ("Nullable", {"width": 10}),
+                ],
+            )
             for col_name, data_type, nullable in columns:
                 null_str = "yes" if nullable == "YES" else "[dim]NOT NULL[/dim]"
                 col_table.add_row(col_name, data_type, null_str)
@@ -134,13 +141,17 @@ async def _action_query(cli_logger, *, table, limit, confirm, **_):
         click.echo(f"No rows in {table}.")
         return
 
-    from modules.clients.cli.report import get_console, build_table
+    from modules.clients.cli.report import build_table, get_console
 
     console = get_console()
-    row_table = build_table(f"{table}  ({len(rows)} rows shown)", columns=[
-        ("Column", {"style": "cyan", "width": 30}),
-        ("Value",  {"ratio": 1}),
-    ], show_lines=True)
+    row_table = build_table(
+        f"{table}  ({len(rows)} rows shown)",
+        columns=[
+            ("Column", {"style": "cyan", "width": 30}),
+            ("Value", {"ratio": 1}),
+        ],
+        show_lines=True,
+    )
 
     for i, row in enumerate(rows):
         row_table.add_row(f"[dim]--- Row {i + 1} ---[/dim]", "", end_section=True)
@@ -152,25 +163,27 @@ async def _action_query(cli_logger, *, table, limit, confirm, **_):
 
 async def _action_clear(cli_logger, *, table, limit, confirm, include_missions=False, **_):
     """Clear run data. Use --include-projects for full reset."""
-    from modules.backend.services.database_admin import (
-        ALL_TABLES,
-        RUN_TABLES,
-        DatabaseAdminService,
-    )
+    from modules.backend.services.database_admin import ALL_TABLES, RUN_TABLES, DatabaseAdminService
 
     tables = ALL_TABLES if include_missions else RUN_TABLES
 
     if not confirm:
         if include_missions:
-            click.echo(click.style(
-                "This will DELETE ALL DATA including projects and context.",
-                fg="red", bold=True,
-            ))
+            click.echo(
+                click.style(
+                    "This will DELETE ALL DATA including projects and context.",
+                    fg="red",
+                    bold=True,
+                )
+            )
         else:
-            click.echo(click.style(
-                "This will DELETE run data (executions, sessions, workflow runs).",
-                fg="red", bold=True,
-            ))
+            click.echo(
+                click.style(
+                    "This will DELETE run data (executions, sessions, workflow runs).",
+                    fg="red",
+                    bold=True,
+                )
+            )
             click.echo("Projects and PCD are preserved. Use --include-projects for full reset.")
         click.echo(f"Tables: {', '.join(tables)}")
         click.echo()

@@ -102,7 +102,8 @@ class TestAutomatedRules:
     @pytest.mark.asyncio
     async def test_approve_low_cost(self):
         result = await evaluate_automated_rules(
-            "invoke_agent", {"estimated_cost_usd": 0.50},
+            "invoke_agent",
+            {"estimated_cost_usd": 0.50},
         )
         assert result is not None
         assert result["decision"] == "approved"
@@ -110,7 +111,8 @@ class TestAutomatedRules:
     @pytest.mark.asyncio
     async def test_approve_retry(self):
         result = await evaluate_automated_rules(
-            "invoke_agent", {"is_retry": True, "retry_count": 1},
+            "invoke_agent",
+            {"is_retry": True, "retry_count": 1},
         )
         assert result is not None
         assert result["decision"] == "approved"
@@ -118,7 +120,8 @@ class TestAutomatedRules:
     @pytest.mark.asyncio
     async def test_skip_high_risk(self):
         result = await evaluate_automated_rules(
-            "deploy_to_production", {"estimated_cost_usd": 100.0},
+            "deploy_to_production",
+            {"estimated_cost_usd": 100.0},
         )
         assert result is None
 
@@ -148,14 +151,16 @@ class TestRiskMatrix:
     @pytest.mark.asyncio
     async def test_escalate_high_cost(self):
         result = await evaluate_risk_matrix(
-            "invoke_agent", {"estimated_cost_usd": 50.0},
+            "invoke_agent",
+            {"estimated_cost_usd": 50.0},
         )
         assert result is None
 
     @pytest.mark.asyncio
     async def test_approve_safe_error_category(self):
         result = await evaluate_risk_matrix(
-            "unknown_action", {"error_category": "timeout"},
+            "unknown_action",
+            {"error_category": "timeout"},
         )
         assert result is not None
         assert result["decision"] == "approved"
@@ -163,13 +168,15 @@ class TestRiskMatrix:
     @pytest.mark.asyncio
     async def test_approve_rate_limit_error(self):
         result = await evaluate_risk_matrix(
-            "invoke_agent", {"error_category": "rate_limit"},
+            "invoke_agent",
+            {"error_category": "rate_limit"},
         )
         assert result is not None
 
     @pytest.mark.asyncio
     async def test_escalate_unknown_error(self):
         result = await evaluate_risk_matrix(
-            "unknown_action", {"error_category": "data_corruption"},
+            "unknown_action",
+            {"error_category": "data_corruption"},
         )
         assert result is None

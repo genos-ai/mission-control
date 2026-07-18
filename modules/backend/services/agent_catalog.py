@@ -107,11 +107,13 @@ class AgentCatalogService(BaseService):
             version=version,
             description=description,
             system_prompt=system_prompt,
-            model_config_json=model_config_json or {"name": "copilot:claude-haiku-4.5", "temperature": 0.0, "max_tokens": 4096},
+            model_config_json=model_config_json
+            or {"name": "copilot:claude-haiku-4.5", "temperature": 0.0, "max_tokens": 4096},
             tools=tools or [],
             scope=scope or {"read": [], "write": []},
             interface=interface,
-            constraints=constraints or {"timeout_seconds": 120, "cost_ceiling_usd": 1.0, "retry_budget": 2},
+            constraints=constraints
+            or {"timeout_seconds": 120, "cost_ceiling_usd": 1.0, "retry_budget": 2},
             keywords=keywords or [],
             enabled=enabled,
             chat_enabled=chat_enabled,
@@ -151,6 +153,7 @@ class AgentCatalogService(BaseService):
         await self._session.refresh(entry)
 
         from modules.backend.repositories.prompt_version import PromptVersionRepository
+
         pv_repo = PromptVersionRepository(self._session)
         await pv_repo.create_version(
             entity_type="agent_catalog",
@@ -182,6 +185,7 @@ class AgentCatalogService(BaseService):
         """
         if not updates:
             from modules.backend.core.exceptions import ValidationError
+
             raise ValidationError("No fields to update")
         entry = await self.get_by_name(agent_name)
         return await self._repo.update(entry.id, **updates)

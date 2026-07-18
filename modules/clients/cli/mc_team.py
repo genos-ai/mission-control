@@ -44,13 +44,16 @@ async def list_team(api: CliApiClient, mission_id: str) -> None:
         console.print("[dim]  Use: mc team add --agent <name>[/dim]")
         return
 
-    table = build_table(f"Team ({len(members)} agents)", columns=[
-        ("Agent", {"style": "cyan", "width": 32}),
-        ("Provider", {"style": "magenta", "width": 10}),
-        ("Model", {"style": "green", "width": 22}),
-        ("Description", {"ratio": 1, "style": "dim"}),
-        ("On", {"width": 4, "justify": "center"}),
-    ])
+    table = build_table(
+        f"Team ({len(members)} agents)",
+        columns=[
+            ("Agent", {"style": "cyan", "width": 32}),
+            ("Provider", {"style": "magenta", "width": 10}),
+            ("Model", {"style": "green", "width": 22}),
+            ("Description", {"ratio": 1, "style": "dim"}),
+            ("On", {"width": 4, "justify": "center"}),
+        ],
+    )
 
     for m in members:
         agent = m.get("agent") or {}
@@ -78,15 +81,18 @@ async def ping_team(api: CliApiClient, mission_id: str) -> None:
         return
 
     title = f"Team Ping ({total} agents, {failures} failed)"
-    table = build_table(title, columns=[
-        ("Agent", {"style": "cyan", "width": 32}),
-        ("Provider", {"style": "magenta", "width": 10}),
-        ("Model", {"style": "green", "width": 22}),
-        ("Latency", {"justify": "right", "width": 9}),
-        ("In/Out", {"justify": "right", "width": 12}),
-        ("Cost", {"justify": "right", "width": 11}),
-        ("Status", {"width": 12}),
-    ])
+    table = build_table(
+        title,
+        columns=[
+            ("Agent", {"style": "cyan", "width": 32}),
+            ("Provider", {"style": "magenta", "width": 10}),
+            ("Model", {"style": "green", "width": 22}),
+            ("Latency", {"justify": "right", "width": 9}),
+            ("In/Out", {"justify": "right", "width": 12}),
+            ("Cost", {"justify": "right", "width": 11}),
+            ("Status", {"width": 12}),
+        ],
+    )
 
     for p in pings:
         provider, model_name = _split_model(p.get("model_name") or "")
@@ -114,8 +120,10 @@ async def ping_team(api: CliApiClient, mission_id: str) -> None:
 
     console.print(table)
     if failures:
-        console.print(f"\n[red]{failures} agent(s) failed.[/red] Use `mc team list` to see the catalog rows; "
-                      f"`python admin.py catalog set-model <agent> <model>` to repoint.")
+        console.print(
+            f"\n[red]{failures} agent(s) failed.[/red] Use `mc team list` to see the catalog rows; "
+            f"`python admin.py catalog set-model <agent> <model>` to repoint."
+        )
 
 
 async def list_available(api: CliApiClient, search: str | None = None) -> None:
@@ -134,10 +142,13 @@ async def list_available(api: CliApiClient, search: str | None = None) -> None:
         console.print(f"[dim]No agents matching '{search}'.[/dim]")
         return
 
-    table = build_table(f"Agent Catalog ({len(agents)} agents)", columns=[
-        ("Name", {"style": "cyan", "width": 30}),
-        ("Description", {"ratio": 1}),
-    ])
+    table = build_table(
+        f"Agent Catalog ({len(agents)} agents)",
+        columns=[
+            ("Name", {"style": "cyan", "width": 30}),
+            ("Description", {"ratio": 1}),
+        ],
+    )
 
     for a in agents:
         desc = (a.get("description") or "")[:60]
@@ -169,9 +180,7 @@ async def add_agent(api: CliApiClient, mission_id: str, agent_name: str) -> None
         )
     except ApiError as exc:
         if exc.status == 409:
-            console.print(
-                f"[yellow]Agent '{agent_name}' is already on this team.[/yellow]"
-            )
+            console.print(f"[yellow]Agent '{agent_name}' is already on this team.[/yellow]")
             return
         raise
 
@@ -186,10 +195,7 @@ async def remove_agent(api: CliApiClient, mission_id: str, agent_name: str) -> N
     data = await api.get(f"/missions/{mission_id}/team")
     members = extract_list(data, "team_members")
 
-    matched = [
-        m for m in members
-        if m.get("agent", {}).get("agent_name") == agent_name
-    ]
+    matched = [m for m in members if m.get("agent", {}).get("agent_name") == agent_name]
 
     if not matched:
         console.print(f"[red]Agent '{agent_name}' not found on this team.[/red]")

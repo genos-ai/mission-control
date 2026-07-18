@@ -84,6 +84,7 @@ class ArtifactsVerifier:
     async def setup(self) -> bool:
         """Find an existing mission to attach test artifacts to."""
         from sqlalchemy import select
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.mission import Mission
 
@@ -104,6 +105,7 @@ class ArtifactsVerifier:
             return
 
         from sqlalchemy import delete
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.execution_record import ExecutionRecord, TaskExecution
         from modules.backend.models.mission_artifact import MissionArtifact
@@ -122,9 +124,7 @@ class ArtifactsVerifier:
             # cascaded to NULL).
             if self._created_task_execution_id:
                 await db.execute(
-                    delete(TaskExecution).where(
-                        TaskExecution.id == self._created_task_execution_id
-                    )
+                    delete(TaskExecution).where(TaskExecution.id == self._created_task_execution_id)
                 )
             if self._created_execution_record_id:
                 await db.execute(
@@ -261,7 +261,6 @@ class ArtifactsVerifier:
 
     async def check_extraction_from_outcome(self) -> None:
         """[D] persist_mission_results extracts artifacts end-to-end."""
-        from modules.backend.core.database import get_async_session
         from modules.backend.agents.mission_control.outcome import (
             ExecutionOutcome,
             ExecutionStatus,
@@ -271,6 +270,7 @@ class ArtifactsVerifier:
         from modules.backend.agents.mission_control.persistence_bridge import (
             persist_mission_results,
         )
+        from modules.backend.core.database import get_async_session
         from modules.backend.services.mission_artifact import MissionArtifactService
 
         # Build a synthetic outcome with one task that has a summary
@@ -396,7 +396,8 @@ class ArtifactsVerifier:
         async with get_async_session() as db:
             svc = MissionArtifactService(db)
             artifacts = await svc.list_for_mission(
-                mission_id=self._mission_id, limit=50,
+                mission_id=self._mission_id,
+                limit=50,
             )
 
         # Look for our test rows in the result. Because the mission may
@@ -412,9 +413,7 @@ class ArtifactsVerifier:
                 f"missing {len(missing)} of {len(our_ids)}: {sorted(missing)[:3]}",
             )
             return
-        self._pass(
-            f"list_for_mission returns all {len(our_ids)} test artifacts (newest first)"
-        )
+        self._pass(f"list_for_mission returns all {len(our_ids)} test artifacts (newest first)")
 
     async def check_list_with_type_filter(self) -> None:
         """[F] artifact_type filter narrows the result correctly."""
@@ -482,10 +481,7 @@ class ArtifactsVerifier:
     # -------------------------------------------------------------------------
 
     async def run(self) -> bool:
-        print(
-            f"\nPlan 43 — Persistent Artifacts Verification "
-            f"(run_tag={self._run_tag})"
-        )
+        print(f"\nPlan 43 — Persistent Artifacts Verification " f"(run_tag={self._run_tag})")
         print("=" * 70)
 
         print("\n[Setup] Finding host mission...")
@@ -541,7 +537,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Show debug details for each check",
     )
     args = parser.parse_args()

@@ -7,9 +7,14 @@ from modules.backend.agents.mission.planning.agent import create_agent
 
 # The 8 planning tools (shared between dispatch and chat modes)
 PLANNING_TOOLS = {
-    "add_task", "update_task", "remove_task",
-    "set_upstream_input", "set_static_input",
-    "set_file_manifest", "set_verification", "finalise_plan",
+    "add_task",
+    "update_task",
+    "remove_task",
+    "set_upstream_input",
+    "set_static_input",
+    "set_file_manifest",
+    "set_verification",
+    "finalise_plan",
 }
 
 # Read-only introspection tools (chat mode only)
@@ -34,7 +39,9 @@ class TestCreateAgent:
         agent = create_agent(TestModel(), chat_mode=True)
         tool_names = {t.name for t in agent._function_toolset.tools.values()}
         expected = PLANNING_TOOLS | READ_TOOLS
-        assert expected == tool_names, f"Missing: {expected - tool_names}, Extra: {tool_names - expected}"
+        assert (
+            expected == tool_names
+        ), f"Missing: {expected - tool_names}, Extra: {tool_names - expected}"
 
     def test_dispatch_and_chat_are_independent(self):
         """Creating agents in both modes must not share state."""

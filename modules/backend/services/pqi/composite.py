@@ -80,6 +80,6 @@ def floor_penalty(dimension_scores: dict[str, float]) -> float:
     penalty = 1.0
     for score in violations:
         deficit = (CRITICAL_FLOOR - score) / CRITICAL_FLOOR
-        penalty *= (1.0 - 0.3 * deficit)
+        penalty *= 1.0 - 0.3 * deficit
 
     return max(0.3, penalty)

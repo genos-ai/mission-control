@@ -69,7 +69,9 @@ class TestResearcherAgent:
         # Catch drift between yaml and AgentConfigSchema at test time.
         from modules.backend.schemas.agent_config import AgentConfigSchema
 
-        path = find_project_root() / "config" / "agents" / "deliberation" / "researcher" / "agent.yaml"
+        path = (
+            find_project_root() / "config" / "agents" / "deliberation" / "researcher" / "agent.yaml"
+        )
         with open(path) as f:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
@@ -83,9 +85,7 @@ class TestResearcherAgent:
         assert "query_knowledge" in config.tools
 
     def test_instructions_loaded_from_disk(self):
-        from modules.backend.agents.mission_control.helpers import (
-            assemble_instructions,
-        )
+        from modules.backend.agents.mission_control.helpers import assemble_instructions
 
         prompt = assemble_instructions("deliberation", "researcher")
         # Smoke check for content we know is in the prompt.

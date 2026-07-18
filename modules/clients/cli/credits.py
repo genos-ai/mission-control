@@ -55,11 +55,14 @@ async def _check_credits_async(logger, roster: str) -> None:
         console.print(f"[red]FAIL  {e}[/red]")
         sys.exit(1)
 
-    table = build_table("Credit Check", columns=[
-        ("Status", {"width": 8}),
-        ("Model",  {"style": "cyan", "width": 44}),
-        ("Detail", {"ratio": 1}),
-    ])
+    table = build_table(
+        "Credit Check",
+        columns=[
+            ("Status", {"width": 8}),
+            ("Model", {"style": "cyan", "width": 44}),
+            ("Detail", {"ratio": 1}),
+        ],
+    )
 
     for check in result.checks:
         if check.ok:

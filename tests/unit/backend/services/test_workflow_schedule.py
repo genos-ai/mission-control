@@ -9,10 +9,7 @@ from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
 from modules.backend.models.workflow_definition import WorkflowDefinition
-from modules.backend.services.workflow_schedule import (
-    WorkflowScheduleService,
-    _validate_cron,
-)
+from modules.backend.services.workflow_schedule import WorkflowScheduleService, _validate_cron
 from tests.conftest import TEST_USER_ID
 
 
@@ -46,7 +43,8 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
 
 
 async def _seed_workflow_definition(
-    db_session: AsyncSession, mission_id: str,
+    db_session: AsyncSession,
+    mission_id: str,
 ) -> WorkflowDefinition:
     """Create a minimal workflow definition for schedule tests."""
     from modules.backend.core.utils import utc_now
@@ -240,7 +238,8 @@ class TestUpdateSchedule:
         original_next = created.next_fire_at
 
         updated = await service.update_schedule(
-            created.id, cron_expression="0 12 * * *",
+            created.id,
+            cron_expression="0 12 * * *",
         )
         assert updated.cron_expression == "0 12 * * *"
 

@@ -38,11 +38,7 @@ class ApiKeyRepository(BaseRepository[ApiKey]):
 
     async def list_by_user(self, user_id: str) -> list[ApiKey]:
         """List all keys (including revoked) for a user."""
-        stmt = (
-            select(ApiKey)
-            .where(ApiKey.user_id == user_id)
-            .order_by(ApiKey.created_at.desc())
-        )
+        stmt = select(ApiKey).where(ApiKey.user_id == user_id).order_by(ApiKey.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -71,10 +67,6 @@ class ApiKeyRepository(BaseRepository[ApiKey]):
 
     async def update_last_used(self, key_id: str) -> None:
         """Update the last_used_at timestamp."""
-        stmt = (
-            update(ApiKey)
-            .where(ApiKey.id == key_id)
-            .values(last_used_at=utc_now())
-        )
+        stmt = update(ApiKey).where(ApiKey.id == key_id).values(last_used_at=utc_now())
         await self.session.execute(stmt)
         await self.session.flush()

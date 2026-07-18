@@ -15,7 +15,10 @@ from fastapi import APIRouter, Query
 
 from modules.backend.core.dependencies import AdminRole, DbSession
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.mission_learning import MissionLearningListResponse, MissionLearningResponse
+from modules.backend.schemas.mission_learning import (
+    MissionLearningListResponse,
+    MissionLearningResponse,
+)
 from modules.backend.services.knowledge import KnowledgeService
 from modules.backend.services.mission_learning import MissionLearningService
 
@@ -28,7 +31,9 @@ async def search_knowledge(
     admin: AdminRole,
     q: str = Query("", description="Search query text"),
     tags: str | None = Query(None, description="Comma-separated domain tags"),
-    kinds: str | None = Query(None, description="Comma-separated kinds: learning,decision,milestone"),
+    kinds: str | None = Query(
+        None, description="Comma-separated kinds: learning,decision,milestone"
+    ),
     mission_id: str | None = Query(None),
     platform_only: bool = Query(False),
     mode: str = Query("hybrid", description="structured | hybrid | semantic"),
@@ -40,8 +45,13 @@ async def search_knowledge(
 
     svc = KnowledgeService(db)
     entries = await svc.search(
-        q, mission_id=mission_id, platform_only=platform_only,
-        kinds=kind_list, domain_tags=tag_list, mode=mode, limit=limit,
+        q,
+        mission_id=mission_id,
+        platform_only=platform_only,
+        kinds=kind_list,
+        domain_tags=tag_list,
+        mode=mode,
+        limit=limit,
     )
     return ApiResponse(data=[e.model_dump() for e in entries])
 
@@ -73,10 +83,12 @@ async def list_platform_learnings(
     tags = [t.strip() for t in domain_tags.split(",")] if domain_tags else None
     svc = MissionLearningService(db)
     learnings = await svc.list_platform(kind=kind, domain_tags=tags, limit=limit, offset=offset)
-    return ApiResponse(data={
-        "items": [MissionLearningResponse.model_validate(l).model_dump() for l in learnings],
-        "total": len(learnings),
-    })
+    return ApiResponse(
+        data={
+            "items": [MissionLearningResponse.model_validate(l).model_dump() for l in learnings],
+            "total": len(learnings),
+        }
+    )
 
 
 @router.get("/knowledge/decisions")
@@ -90,7 +102,9 @@ async def list_platform_decisions(
     """List archived decisions across missions."""
     svc = KnowledgeService(db)
     decisions = await svc.list_decisions(
-        mission_id=mission_id, domain=domain, limit=limit,
+        mission_id=mission_id,
+        domain=domain,
+        limit=limit,
     )
     return ApiResponse(data=decisions)
 
@@ -115,7 +129,10 @@ async def list_knowledge_tags(
 ) -> ApiResponse:
     """List the current domain tag taxonomy."""
     from modules.backend.core.domain_tags import CROSS_CUTTING_TAGS
-    return ApiResponse(data={
-        "cross_cutting_tags": sorted(CROSS_CUTTING_TAGS),
-        "total": len(CROSS_CUTTING_TAGS),
-    })
+
+    return ApiResponse(
+        data={
+            "cross_cutting_tags": sorted(CROSS_CUTTING_TAGS),
+            "total": len(CROSS_CUTTING_TAGS),
+        }
+    )

@@ -69,14 +69,16 @@ STATUS_ICONS: dict[str, str] = {
 
 
 def filter_catalog_agents(
-    agents: list[dict], query: str,
+    agents: list[dict],
+    query: str,
 ) -> list[dict]:
     """Filter catalog agent dicts by name, description, or keywords."""
     q = query.lower().strip()
     if not q:
         return agents
     return [
-        a for a in agents
+        a
+        for a in agents
         if q in a.get("agent_name", "").lower()
         or q in a.get("description", "").lower()
         or any(q in k.lower() for k in a.get("keywords", []))

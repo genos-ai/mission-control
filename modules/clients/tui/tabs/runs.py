@@ -109,7 +109,8 @@ class RunsTab(Static):
         except Exception as exc:
             logger.warning("Could not load runs", exc_info=True)
             scroll = self.query_one(
-                "#runs-list-scroll", VerticalScroll,
+                "#runs-list-scroll",
+                VerticalScroll,
             )
             scroll.remove_children()
             scroll.mount(
@@ -123,8 +124,7 @@ class RunsTab(Static):
         if not runs:
             scroll.mount(
                 Static(
-                    "No runs yet.\n"
-                    "Go to Workflows (Alt+4) to trigger your first run.",
+                    "No runs yet.\n" "Go to Workflows (Alt+4) to trigger your first run.",
                     markup=True,
                     classes="placeholder-panel",
                 ),
@@ -136,7 +136,8 @@ class RunsTab(Static):
 
     def _update_page_label(self) -> None:
         total_pages = max(
-            1, (self._total + self._page_size - 1) // self._page_size,
+            1,
+            (self._total + self._page_size - 1) // self._page_size,
         )
         try:
             label = self.query_one("#runs-page-label", Label)
@@ -158,11 +159,13 @@ class RunsTab(Static):
                 self.run_worker(self._load_runs(), thread=False)
 
     async def on__run_row_selected(
-        self, event: _RunRow.Selected,
+        self,
+        event: _RunRow.Selected,
     ) -> None:
         """Show run detail when clicked."""
         self.run_worker(
-            self._load_detail(event.execution_id), thread=False,
+            self._load_detail(event.execution_id),
+            thread=False,
         )
 
     async def _load_detail(self, execution_id: str) -> None:
@@ -175,16 +178,19 @@ class RunsTab(Static):
                 self._render_detail(detail)
         except Exception as exc:
             logger.warning(
-                "Could not load run detail", exc_info=True,
+                "Could not load run detail",
+                exc_info=True,
             )
             self.app.notify(
-                f"Could not load run: {exc}", severity="error",
+                f"Could not load run: {exc}",
+                severity="error",
             )
 
     def _render_detail(self, detail: dict) -> None:
         """Render run detail in the right panel."""
         panel = self.query_one(
-            "#runs-detail-panel", VerticalScroll,
+            "#runs-detail-panel",
+            VerticalScroll,
         )
         panel.remove_children()
 
@@ -194,9 +200,7 @@ class RunsTab(Static):
         roster = detail.get("roster_name", "")
         created = detail.get("created_at", "")
 
-        status_str = (
-            status.value if hasattr(status, "value") else str(status)
-        )
+        status_str = status.value if hasattr(status, "value") else str(status)
 
         panel.mount(
             Label(f"[bold]{objective}[/bold]", markup=True),
@@ -223,15 +227,10 @@ class RunsTab(Static):
                 agent = t.get("agent_name", "?")
                 t_status = t.get("status", "?")
                 t_cost = t.get("cost_usd", 0.0)
-                t_status_str = (
-                    t_status.value
-                    if hasattr(t_status, "value")
-                    else str(t_status)
-                )
+                t_status_str = t_status.value if hasattr(t_status, "value") else str(t_status)
                 panel.mount(
                     Static(
-                        f"  {task_id}  → {agent}  "
-                        f"{t_status_str}  ${t_cost:.3f}",
+                        f"  {task_id}  → {agent}  " f"{t_status_str}  ${t_cost:.3f}",
                         markup=True,
                     ),
                 )

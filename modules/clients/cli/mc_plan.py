@@ -24,7 +24,6 @@ import click
 from modules.clients.cli.api_client import ApiError, CliApiClient, resolve_short_id
 from modules.clients.common.display import build_table, get_console, styled_status
 
-
 # =============================================================================
 # Show
 # =============================================================================
@@ -63,17 +62,19 @@ async def show(
     gate_mode = plan.get("gate_mode") or "autonomous"
     spent = plan.get("total_spent_usd", 0.0) or 0.0
     ceiling = plan.get("budget_usd_ceiling")
-    header = f"Plan {plan.get('id', '')}  status={plan_status}  gate={gate_mode}  spent=${spent:.2f}"
+    header = (
+        f"Plan {plan.get('id', '')}  status={plan_status}  gate={gate_mode}  spent=${spent:.2f}"
+    )
     if ceiling:
         header += f" / ${ceiling:.2f}"
     console.print(f"[bold]{header}[/bold]\n")
 
     columns = [
-        ("#",      {"justify": "right", "width": 4}),
-        ("ID",     {"style": "cyan", "width": 38}),
+        ("#", {"justify": "right", "width": 4}),
+        ("ID", {"style": "cyan", "width": 38}),
         ("Status", {"width": 11}),
-        ("Agent",  {"width": 38}),
-        ("Cost",   {"justify": "right", "width": 8}),
+        ("Agent", {"width": 38}),
+        ("Cost", {"justify": "right", "width": 8}),
         ("Description", {"ratio": 1, "no_wrap": False}),
     ]
     if show_deps:
@@ -133,7 +134,7 @@ async def task_detail(
     if task.get("instructions"):
         console.print(f"\n[bold]Instructions:[/bold]")
         console.print(f"  {task['instructions'][:2000]}")
-        if len(task['instructions']) > 2000:
+        if len(task["instructions"]) > 2000:
             console.print(f"  [dim]... ({len(task['instructions'])} chars total)[/dim]")
     if task.get("dependencies"):
         console.print(f"\n[bold]Dependencies:[/bold]  {', '.join(task['dependencies'])}")
@@ -213,7 +214,8 @@ async def reject(
         plan = await api.get(f"/missions/{mission_id}/plan")
         non_terminal = frozenset({"proposed", "approved", "queued", "running"})
         candidates = [
-            t["id"] for t in plan.get("tasks", [])
+            t["id"]
+            for t in plan.get("tasks", [])
             if (t.get("status") or "").lower() in non_terminal
         ]
         if not candidates:
@@ -229,9 +231,7 @@ async def reject(
                 # Race: a previous transitive cancel already covered this id.
                 # Skip and move on.
                 console.print(f"  [dim]{tid}: {exc.message}[/dim]")
-        console.print(
-            f"[yellow]Cancelled[/yellow] {cancelled_total} task transition(s) total."
-        )
+        console.print(f"[yellow]Cancelled[/yellow] {cancelled_total} task transition(s) total.")
         return
 
     if not task_id:
@@ -243,7 +243,11 @@ async def reject(
     cancelled = result.get("transitioned_task_ids", [])
     console.print(
         f"[yellow]Rejected[/yellow] {resolved_id}"
-        + (f" (+{len(cancelled) - 1} transitive dependents cancelled)" if len(cancelled) > 1 else "")
+        + (
+            f" (+{len(cancelled) - 1} transitive dependents cancelled)"
+            if len(cancelled) > 1
+            else ""
+        )
     )
 
 

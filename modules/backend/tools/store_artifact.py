@@ -58,8 +58,7 @@ async def store_artifact(
         content_text = content
     else:
         raise TypeError(
-            f"store_artifact: content must be str/dict/list, got "
-            f"{type(content).__name__}"
+            f"store_artifact: content must be str/dict/list, got " f"{type(content).__name__}"
         )
 
     from modules.backend.core.database import get_async_session

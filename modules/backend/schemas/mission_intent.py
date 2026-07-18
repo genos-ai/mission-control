@@ -11,7 +11,9 @@ class MissionIntentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     intent: str = Field(
-        ..., min_length=1, max_length=5000,
+        ...,
+        min_length=1,
+        max_length=5000,
         description="The full intent text",
     )
     scope: dict = Field(
@@ -23,7 +25,9 @@ class MissionIntentCreate(BaseModel):
         description="How captured: user_chat | user_cli | director_inferred | system",
     )
     reason: str = Field(
-        ..., min_length=1, max_length=1000,
+        ...,
+        min_length=1,
+        max_length=1000,
         description="Why this revision was made",
     )
     agent_id: str | None = Field(

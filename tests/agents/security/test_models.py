@@ -14,6 +14,7 @@ import pytest
 
 from modules.backend.agents.security.models import (
     AttackPath,
+    ExploitStage,
     Finding,
     HttpResponseSummary,
     OWASPCategory,
@@ -21,13 +22,12 @@ from modules.backend.agents.security.models import (
     SecurityAssessmentReport,
     SeverityLevel,
     TriageVerdict,
-    ExploitStage,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _minimal_finding(**overrides: object) -> dict:
     """Build a minimal valid Finding dict."""
@@ -37,7 +37,7 @@ def _minimal_finding(**overrides: object) -> dict:
         "description": "Raw SQL with f-string interpolation allows injection",
         "severity": "HIGH",
         "owasp_category": "A03",
-        "evidence": "text(f\"SELECT * FROM users WHERE id = {user_id}\")",
+        "evidence": 'text(f"SELECT * FROM users WHERE id = {user_id}")',
         "source_phase": "scan",
         "source_tool": "opengrep",
         "remediation": "Use parameterised queries via SQLAlchemy ORM",
@@ -62,12 +62,14 @@ def _minimal_report(**overrides: object) -> dict:
         "finding_counts": {"HIGH": 3, "MEDIUM": 2},
         "owasp_coverage": {"A03": ["F-001"]},
         "confirmed_findings": [],
-        "remediation_roadmap": [{
-            "finding_ref": "F-001",
-            "priority": "IMMEDIATE",
-            "action": "Replace raw SQL with ORM parameterised queries",
-            "effort_estimate": "2 hours",
-        }],
+        "remediation_roadmap": [
+            {
+                "finding_ref": "F-001",
+                "priority": "IMMEDIATE",
+                "action": "Replace raw SQL with ORM parameterised queries",
+                "effort_estimate": "2 hours",
+            }
+        ],
         "phases_completed": ["scan", "triage", "report"],
         "scanners_run": ["opengrep", "ruff"],
         "dast_performed": False,
@@ -86,6 +88,7 @@ def _minimal_report(**overrides: object) -> dict:
 # ---------------------------------------------------------------------------
 # Finding tests
 # ---------------------------------------------------------------------------
+
 
 class TestFinding:
     def test_valid_finding(self):
@@ -109,9 +112,13 @@ class TestFinding:
 
     def test_finding_with_url_only(self):
         """DAST finding with URL but no file_path is valid."""
-        f = Finding(**_minimal_finding(
-            file_path=None, line_number=None, url="https://example.com/api/users",
-        ))
+        f = Finding(
+            **_minimal_finding(
+                file_path=None,
+                line_number=None,
+                url="https://example.com/api/users",
+            )
+        )
         assert f.url == "https://example.com/api/users"
 
     def test_finding_with_file_only(self):
@@ -122,25 +129,31 @@ class TestFinding:
     def test_fp_requires_rationale(self):
         """T-01: FALSE_POSITIVE verdict without rationale is rejected."""
         with pytest.raises(ValueError, match="triage_rationale required"):
-            Finding(**_minimal_finding(
-                triage_verdict="FALSE_POSITIVE",
-                triage_rationale=None,
-            ))
+            Finding(
+                **_minimal_finding(
+                    triage_verdict="FALSE_POSITIVE",
+                    triage_rationale=None,
+                )
+            )
 
     def test_fp_with_rationale_accepted(self):
-        f = Finding(**_minimal_finding(
-            triage_verdict="FALSE_POSITIVE",
-            fp_confidence=0.9,
-            triage_rationale="ORM parameterised query confirmed safe",
-        ))
+        f = Finding(
+            **_minimal_finding(
+                triage_verdict="FALSE_POSITIVE",
+                fp_confidence=0.9,
+                triage_rationale="ORM parameterised query confirmed safe",
+            )
+        )
         assert f.triage_verdict == TriageVerdict.FALSE_POSITIVE
 
     def test_tp_without_rationale_accepted(self):
         """TRUE_POSITIVE does not require triage_rationale."""
-        f = Finding(**_minimal_finding(
-            triage_verdict="TRUE_POSITIVE",
-            triage_rationale=None,
-        ))
+        f = Finding(
+            **_minimal_finding(
+                triage_verdict="TRUE_POSITIVE",
+                triage_rationale=None,
+            )
+        )
         assert f.triage_verdict == TriageVerdict.TRUE_POSITIVE
 
     def test_title_min_length(self):
@@ -159,6 +172,7 @@ class TestFinding:
 # ---------------------------------------------------------------------------
 # AttackPath tests
 # ---------------------------------------------------------------------------
+
 
 class TestAttackPath:
     def test_valid_attack_path(self):
@@ -191,6 +205,7 @@ class TestAttackPath:
 # Report tests
 # ---------------------------------------------------------------------------
 
+
 class TestSecurityAssessmentReport:
     def test_valid_report(self):
         r = SecurityAssessmentReport(**_minimal_report())
@@ -199,28 +214,35 @@ class TestSecurityAssessmentReport:
     def test_executive_summary_min_length(self):
         """R-02: executive_summary must be >= 300 chars."""
         with pytest.raises(ValueError):
-            SecurityAssessmentReport(**_minimal_report(
-                executive_summary="Too short",
-            ))
+            SecurityAssessmentReport(
+                **_minimal_report(
+                    executive_summary="Too short",
+                )
+            )
 
     def test_known_limitations_required(self):
         """R-04: known_limitations must be non-empty."""
         with pytest.raises(ValueError):
-            SecurityAssessmentReport(**_minimal_report(
-                known_limitations=[],
-            ))
+            SecurityAssessmentReport(
+                **_minimal_report(
+                    known_limitations=[],
+                )
+            )
 
     def test_report_with_findings(self):
         finding = Finding(**_minimal_finding())
-        r = SecurityAssessmentReport(**_minimal_report(
-            confirmed_findings=[finding.model_dump()],
-        ))
+        r = SecurityAssessmentReport(
+            **_minimal_report(
+                confirmed_findings=[finding.model_dump()],
+            )
+        )
         assert len(r.confirmed_findings) == 1
 
 
 # ---------------------------------------------------------------------------
 # HttpResponseSummary tests
 # ---------------------------------------------------------------------------
+
 
 class TestHttpResponseSummary:
     def test_valid_summary(self):
@@ -241,6 +263,7 @@ class TestHttpResponseSummary:
 # Enum tests
 # ---------------------------------------------------------------------------
 
+
 class TestEnums:
     def test_owasp_category_values(self):
         assert OWASPCategory.A01_BROKEN_ACCESS_CONTROL.value == "A01"
@@ -252,4 +275,5 @@ class TestEnums:
 
     def test_remediation_priority_values(self):
         from modules.backend.agents.security.models import RemediationPriority
+
         assert RemediationPriority.IMMEDIATE.value == "IMMEDIATE"

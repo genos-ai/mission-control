@@ -41,6 +41,7 @@ SARIF_LEVEL_TO_SEVERITY = {
 # Loading
 # ---------------------------------------------------------------------------
 
+
 def load_sarif(path: str) -> list[dict[str, Any]]:
     """Read a SARIF file and return a flat list of normalised findings.
 
@@ -52,9 +53,7 @@ def load_sarif(path: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
 
     for run in data.get("runs", []):
-        tool_name = (
-            run.get("tool", {}).get("driver", {}).get("name", "unknown")
-        )
+        tool_name = run.get("tool", {}).get("driver", {}).get("name", "unknown")
         # Build rule_id → CWE mapping from tool rules
         rule_cwe: dict[str, str | None] = {}
         for rule in run.get("tool", {}).get("driver", {}).get("rules", []):
@@ -78,16 +77,18 @@ def load_sarif(path: str) -> list[dict[str, Any]]:
                 line_number = region.get("startLine")
                 break  # use first location
 
-            findings.append({
-                "rule_id": rule_id,
-                "cwe_id": rule_cwe.get(rule_id),
-                "file_path": file_path,
-                "line_number": line_number,
-                "severity": SARIF_LEVEL_TO_SEVERITY.get(level, "MEDIUM"),
-                "sarif_level": level,
-                "message": message,
-                "tool_name": tool_name,
-            })
+            findings.append(
+                {
+                    "rule_id": rule_id,
+                    "cwe_id": rule_cwe.get(rule_id),
+                    "file_path": file_path,
+                    "line_number": line_number,
+                    "severity": SARIF_LEVEL_TO_SEVERITY.get(level, "MEDIUM"),
+                    "sarif_level": level,
+                    "message": message,
+                    "tool_name": tool_name,
+                }
+            )
 
     return findings
 
@@ -111,6 +112,7 @@ def _extract_cwe_from_rule(rule: dict) -> str | None:
 # ---------------------------------------------------------------------------
 # Merging
 # ---------------------------------------------------------------------------
+
 
 def merge_sarif(paths: list[str], output_path: str) -> str:
     """Merge multiple SARIF files into one, deduplicating by composite key.
@@ -151,10 +153,12 @@ def merge_sarif(paths: list[str], output_path: str) -> str:
         else:
             # Take highest severity
             existing_rank = _SEVERITY_RANK.get(
-                existing.get("sarif_level", "warning"), 0,
+                existing.get("sarif_level", "warning"),
+                0,
             )
             new_rank = _SEVERITY_RANK.get(
-                finding.get("sarif_level", "warning"), 0,
+                finding.get("sarif_level", "warning"),
+                0,
             )
             if new_rank > existing_rank:
                 deduped[key] = finding
@@ -183,15 +187,17 @@ def merge_sarif(paths: list[str], output_path: str) -> str:
     merged_sarif = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
         "version": "2.1.0",
-        "runs": [{
-            "tool": {
-                "driver": {
-                    "name": "wasa-merged",
-                    "version": "1.0.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "wasa-merged",
+                        "version": "1.0.0",
+                    },
                 },
-            },
-            "results": results,
-        }],
+                "results": results,
+            }
+        ],
     }
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -212,6 +218,7 @@ def merge_sarif(paths: list[str], output_path: str) -> str:
 # ---------------------------------------------------------------------------
 # Format conversion (non-SARIF → SARIF)
 # ---------------------------------------------------------------------------
+
 
 def convert_to_sarif(
     source_path: str,
@@ -248,22 +255,25 @@ def convert_to_sarif(
     sarif = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
         "version": "2.1.0",
-        "runs": [{
-            "tool": {
-                "driver": {
-                    "name": tool_name,
-                    "version": "converted",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": tool_name,
+                        "version": "converted",
+                    },
                 },
-            },
-            "results": results,
-        }],
+                "results": results,
+            }
+        ],
     }
 
     Path(source_path).write_text(json.dumps(sarif, indent=2))
 
 
 def _convert_json_to_sarif_results(
-    raw: str, tool_name: str,
+    raw: str,
+    tool_name: str,
 ) -> list[dict]:
     """Convert JSON array of findings to SARIF results."""
     try:
@@ -302,7 +312,8 @@ def _convert_json_to_sarif_results(
 
 
 def _convert_jsonl_to_sarif_results(
-    raw: str, tool_name: str,
+    raw: str,
+    tool_name: str,
 ) -> list[dict]:
     """Convert JSONL (one JSON object per line) to SARIF results."""
     results: list[dict] = []
@@ -314,15 +325,17 @@ def _convert_jsonl_to_sarif_results(
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        results.append({
-            "ruleId": item.get("template-id", item.get("id", "unknown")),
-            "level": _map_severity_to_sarif_level(
-                item.get("severity", item.get("info", {}).get("severity", "medium")),
-            ),
-            "message": {
-                "text": item.get("name", item.get("info", {}).get("name", str(item))),
-            },
-        })
+        results.append(
+            {
+                "ruleId": item.get("template-id", item.get("id", "unknown")),
+                "level": _map_severity_to_sarif_level(
+                    item.get("severity", item.get("info", {}).get("severity", "medium")),
+                ),
+                "message": {
+                    "text": item.get("name", item.get("info", {}).get("name", str(item))),
+                },
+            }
+        )
     return results
 
 

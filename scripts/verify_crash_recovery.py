@@ -79,6 +79,7 @@ class CrashRecoveryVerifier:
         unnecessary for the test.
         """
         from sqlalchemy import select
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.mission import Mission
         from modules.backend.models.mission_plan import PlanTaskState, PlanTaskStatus
@@ -142,6 +143,7 @@ class CrashRecoveryVerifier:
             return
 
         from sqlalchemy import delete
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.mission_plan import PlanTaskState
 
@@ -158,6 +160,7 @@ class CrashRecoveryVerifier:
     async def _get_state_by_label(self, label: str) -> dict | None:
         """Read a test state row back by its label suffix."""
         from sqlalchemy import select
+
         from modules.backend.core.database import get_async_session
         from modules.backend.models.mission_plan import PlanTaskState
 
@@ -415,7 +418,9 @@ def main() -> None:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show debug details for each check")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show debug details for each check"
+    )
     args = parser.parse_args()
     sys.exit(asyncio.run(_main(args.verbose)))
 

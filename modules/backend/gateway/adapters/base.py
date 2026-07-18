@@ -103,9 +103,9 @@ class ChannelAdapter(ABC):
                 chunks.append(remaining)
                 break
 
-            split_at = remaining[:self.max_message_length].rfind("\n\n")
+            split_at = remaining[: self.max_message_length].rfind("\n\n")
             if split_at == -1:
-                split_at = remaining[:self.max_message_length].rfind("\n")
+                split_at = remaining[: self.max_message_length].rfind("\n")
             if split_at == -1:
                 split_at = self.max_message_length
 

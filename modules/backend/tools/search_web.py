@@ -7,7 +7,6 @@ Search the web for information using the configured search provider.
 from __future__ import annotations
 
 import httpx
-
 from pydantic_ai import RunContext
 
 from modules.backend.core.logging import get_logger
@@ -58,6 +57,7 @@ _impl = search_web
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def search_web(
         ctx: RunContext,
@@ -76,7 +76,8 @@ def register(agent):
         if not http_client:
             return [{"error": "No HTTP client available"}]
         return await _impl(
-            http_client, query,
+            http_client,
+            query,
             max_results=max_results,
             include_domains=include_domains,
             exclude_domains=exclude_domains,

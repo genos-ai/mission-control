@@ -129,13 +129,11 @@ class WorkshopTab(Static):
                 self._show_empty_state()
                 return
 
-            options = [
-                (m.get("agent_name", "unknown"), m.get("agent_name", ""))
-                for m in team
-            ]
+            options = [(m.get("agent_name", "unknown"), m.get("agent_name", "")) for m in team]
             try:
                 select = self.query_one(
-                    "#workshop-agent-select", Select,
+                    "#workshop-agent-select",
+                    Select,
                 )
                 select.set_options(options)
             except Exception:
@@ -183,14 +181,16 @@ class WorkshopTab(Static):
         if member:
             try:
                 sys_prompt = self.query_one(
-                    "#workshop-sys-prompt", TextArea,
+                    "#workshop-sys-prompt",
+                    TextArea,
                 )
                 sys_prompt.load_text(member.get("system_prompt", ""))
             except Exception:
                 logger.debug("workshop system prompt load failed", exc_info=True)
             try:
                 user_prompt = self.query_one(
-                    "#workshop-user-prompt", TextArea,
+                    "#workshop-user-prompt",
+                    TextArea,
                 )
                 user_prompt.load_text(member.get("user_prompt", ""))
             except Exception:
@@ -219,7 +219,8 @@ class WorkshopTab(Static):
         """Render cached inputs section."""
         try:
             content = self.query_one(
-                "#workshop-inputs-content", Static,
+                "#workshop-inputs-content",
+                Static,
             )
             if not self._cached_inputs:
                 content.update("[dim]No cached inputs from previous runs[/dim]")
@@ -232,8 +233,7 @@ class WorkshopTab(Static):
                 data = ci.get("output_data", "")
                 preview = (str(data)[:80] + "...") if len(str(data)) > 80 else str(data)
                 lines.append(
-                    f"  [bold]{task_id}[/bold] ({agent}): "
-                    f"[dim]{preview}[/dim]",
+                    f"  [bold]{task_id}[/bold] ({agent}): " f"[dim]{preview}[/dim]",
                 )
             content.update("\n".join(lines))
         except Exception:
@@ -286,7 +286,8 @@ class WorkshopTab(Static):
         self._cached_inputs_expanded = not self._cached_inputs_expanded
         try:
             content = self.query_one(
-                "#workshop-inputs-content", Static,
+                "#workshop-inputs-content",
+                Static,
             )
             btn = self.query_one("#workshop-inputs-toggle", Button)
             if self._cached_inputs_expanded:
@@ -310,20 +311,21 @@ class WorkshopTab(Static):
 
         try:
             user_prompt = self.query_one(
-                "#workshop-user-prompt", TextArea,
+                "#workshop-user-prompt",
+                TextArea,
             )
             content = user_prompt.text
 
             # Find team member ID
             team = self.app.state.team.members or []
             member = next(
-                (m for m in team
-                 if m.get("agent_name") == self._selected_agent),
+                (m for m in team if m.get("agent_name") == self._selected_agent),
                 None,
             )
             if not member:
                 self.app.notify(
-                    "Agent not found on team", severity="error",
+                    "Agent not found on team",
+                    severity="error",
                 )
                 return
 
@@ -351,7 +353,8 @@ class WorkshopTab(Static):
 
         try:
             user_prompt = self.query_one(
-                "#workshop-user-prompt", TextArea,
+                "#workshop-user-prompt",
+                TextArea,
             )
             prompt_text = user_prompt.text
 

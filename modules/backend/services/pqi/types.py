@@ -12,11 +12,11 @@ from enum import Enum
 class QualityBand(str, Enum):
     """Quality rating bands based on composite PQI score."""
 
-    POOR = "Poor"                # 0-30
-    ACCEPTABLE = "Acceptable"    # 31-54
-    ADEQUATE = "Adequate"        # 55-64
-    GOOD = "Good"                # 65-79
-    EXCELLENT = "Excellent"      # 80-100
+    POOR = "Poor"  # 0-30
+    ACCEPTABLE = "Acceptable"  # 31-54
+    ADEQUATE = "Adequate"  # 55-64
+    GOOD = "Good"  # 65-79
+    EXCELLENT = "Excellent"  # 80-100
 
 
 @dataclass

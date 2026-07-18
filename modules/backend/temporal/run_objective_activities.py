@@ -10,10 +10,7 @@ dispatch chains to MissionRunWorkflow internally.
 from temporalio import activity
 
 from modules.backend.core.logging import get_logger
-from modules.backend.temporal.run_objective_models import (
-    RunObjectiveInput,
-    RunObjectiveResult,
-)
+from modules.backend.temporal.run_objective_models import RunObjectiveInput, RunObjectiveResult
 
 logger = get_logger(__name__)
 
@@ -38,6 +35,7 @@ async def execute_run_objective(input: RunObjectiveInput) -> RunObjectiveResult:
     )
 
     from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus

@@ -28,9 +28,7 @@ def topological_sort(plan: TaskPlan) -> list[list[str]]:
             in_degree[task.task_id] += 1
 
     layers: list[list[str]] = []
-    queue: deque[str] = deque(
-        tid for tid, deg in in_degree.items() if deg == 0
-    )
+    queue: deque[str] = deque(tid for tid, deg in in_degree.items() if deg == 0)
 
     while queue:
         layer = list(queue)

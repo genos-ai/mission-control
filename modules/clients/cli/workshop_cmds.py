@@ -9,7 +9,7 @@ import asyncio
 import json
 import sys
 
-from modules.clients.cli.report import get_console, build_table
+from modules.clients.cli.report import build_table, get_console
 
 
 def run_workshop(
@@ -34,15 +34,17 @@ def run_workshop(
         get_console().print(f"[red]Unknown action: {action}[/red]")
         sys.exit(1)
 
-    asyncio.run(fn(
-        cli_logger,
-        agent_name=agent_name,
-        inputs_json=inputs_json,
-        prompt_override=prompt_override,
-        mission_id=mission_id,
-        limit=limit,
-        output_format=output_format,
-    ))
+    asyncio.run(
+        fn(
+            cli_logger,
+            agent_name=agent_name,
+            inputs_json=inputs_json,
+            prompt_override=prompt_override,
+            mission_id=mission_id,
+            limit=limit,
+            output_format=output_format,
+        )
+    )
 
 
 async def _action_run(cli_logger, *, agent_name, inputs_json, prompt_override, **_):
@@ -95,7 +97,9 @@ async def _action_cached_inputs(cli_logger, *, agent_name, mission_id, limit, **
 
     async with WorkshopService.factory() as service:
         cached = await service.get_cached_inputs(
-            agent_name, mission_id=mission_id, limit=limit,
+            agent_name,
+            mission_id=mission_id,
+            limit=limit,
         )
 
     if not cached:

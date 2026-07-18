@@ -21,11 +21,7 @@ from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 
 def append_feedback(original_instructions: str, feedback: str) -> str:
     """Append failure feedback to agent instructions (Reflection pattern)."""
-    return (
-        f"{original_instructions}\n\n"
-        f"--- FEEDBACK FROM PREVIOUS ATTEMPT ---\n"
-        f"{feedback}"
-    )
+    return f"{original_instructions}\n\n" f"--- FEEDBACK FROM PREVIOUS ATTEMPT ---\n" f"{feedback}"
 
 
 def aborted_outcome(

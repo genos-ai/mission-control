@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from modules.backend.events.types import SessionEvent
 
-
 # ── Event type → display config ──────────────────────────────────────
 
 EVENT_STYLES: dict[str, tuple[str, str]] = {

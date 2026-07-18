@@ -166,6 +166,7 @@ async def _run(deployment: str) -> int:
             response_format={"type": "json_schema", "json_schema": person_schema},
         )
         import json
+
         payload = json.loads(raw.choices[0].message.content)
         person = PersonInfo.model_validate(payload)
         assert person.name == "Carol Ng", f"got {person.name!r}"

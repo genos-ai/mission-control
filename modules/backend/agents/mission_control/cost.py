@@ -40,8 +40,7 @@ def compute_cost_usd(
     cache_write_1h_cost = (cache_write_1h_tokens / 1_000_000) * rates.cache_write_1h
 
     return round(
-        input_cost + output_cost + cache_read_cost
-        + cache_write_5m_cost + cache_write_1h_cost,
+        input_cost + output_cost + cache_read_cost + cache_write_5m_cost + cache_write_1h_cost,
         6,
     )
 

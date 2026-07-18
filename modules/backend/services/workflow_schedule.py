@@ -70,6 +70,7 @@ def _compute_next_fire(cron_expression: str, after: datetime) -> datetime | None
     """
     try:
         from croniter import croniter
+
         cron = croniter(cron_expression, after)
         next_dt = cron.get_next(datetime)
         if next_dt.tzinfo is None:
@@ -115,9 +116,7 @@ class WorkflowScheduleService(BaseService):
 
         workflow = await self._wf_repo.get_by_id_or_none(workflow_definition_id)
         if not workflow:
-            raise NotFoundError(
-                f"Workflow definition '{workflow_definition_id}' not found"
-            )
+            raise NotFoundError(f"Workflow definition '{workflow_definition_id}' not found")
 
         if budget_per_run_usd is not None:
             app_config = get_app_config()
@@ -183,7 +182,8 @@ class WorkflowScheduleService(BaseService):
             _validate_cron(updates["cron_expression"])
             now = utc_now()
             updates["next_fire_at"] = _compute_next_fire(
-                updates["cron_expression"], now,
+                updates["cron_expression"],
+                now,
             )
 
         return await self._repo.update(schedule_id, **updates)
@@ -200,7 +200,8 @@ class WorkflowScheduleService(BaseService):
             schedule = await self.get_schedule(schedule_id)
             now = utc_now()
             updates["next_fire_at"] = _compute_next_fire(
-                schedule.cron_expression, now,
+                schedule.cron_expression,
+                now,
             )
 
         return await self._repo.update(schedule_id, **updates)
@@ -267,7 +268,8 @@ class WorkflowScheduleService(BaseService):
                     continue
 
             daily_count = await self._repo.count_by_mission_today(
-                schedule.mission_id, today_start,
+                schedule.mission_id,
+                today_start,
             )
             if daily_count >= max_per_day:
                 logger.warning(
@@ -287,13 +289,15 @@ class WorkflowScheduleService(BaseService):
                 next_fire_at=next_fire,
             )
 
-            fired.append({
-                "schedule_id": schedule.id,
-                "workflow_definition_id": schedule.workflow_definition_id,
-                "mission_id": schedule.mission_id,
-                "budget_per_run_usd": schedule.budget_per_run_usd,
-                "fired_at": now.isoformat(),
-            })
+            fired.append(
+                {
+                    "schedule_id": schedule.id,
+                    "workflow_definition_id": schedule.workflow_definition_id,
+                    "mission_id": schedule.mission_id,
+                    "budget_per_run_usd": schedule.budget_per_run_usd,
+                    "fired_at": now.isoformat(),
+                }
+            )
 
             logger.info(
                 "Schedule fired",

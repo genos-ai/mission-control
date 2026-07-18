@@ -17,13 +17,17 @@ class MissionLearningCreate(BaseModel):
         description="failure_pattern | success_pattern | anti_pattern | retry_strategy | capability_gap",
     )
     title: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
     )
     body: str = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
     )
     recommendation: str = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
     )
     evidence: Evidence = Field(
         default_factory=Evidence,

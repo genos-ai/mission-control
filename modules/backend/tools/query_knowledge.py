@@ -83,6 +83,7 @@ _impl = query_knowledge
 
 def register(agent):
     """Register this tool on a PydanticAI agent."""
+
     @agent.tool
     async def query_knowledge(
         ctx: RunContext,
@@ -99,7 +100,9 @@ def register(agent):
         if not mission_id:
             return "No mission context available."
         return await _impl(
-            mission_id, query=query,
-            kinds=kinds, domain_tags=domain_tags,
+            mission_id,
+            query=query,
+            kinds=kinds,
+            domain_tags=domain_tags,
             platform_only=platform_only,
         )

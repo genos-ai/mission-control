@@ -19,10 +19,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 
 from modules.backend.agents.deps.base import BaseAgentDeps
-from modules.backend.agents.mission_control.helpers import (
-    _build_model,
-    assemble_instructions,
-)
+from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -74,6 +71,7 @@ def create_agent(
 
     # Register the 8 planning tools (shared between dispatch and chat)
     from modules.backend.agents.mission.planning.tools import register_planning_tools
+
     register_planning_tools(agent)
 
     # Dynamic instructions: inject current plan state before each LLM call
@@ -93,6 +91,7 @@ def create_agent(
 # Chat-mode read-only introspection tools
 # ---------------------------------------------------------------------------
 
+
 def _register_read_tools(agent: Agent) -> None:
     """Register read-only tools for chat-mode plan interaction."""
 
@@ -103,8 +102,10 @@ def _register_read_tools(agent: Agent) -> None:
             return json.dumps({"error": "No mission context available"})
 
         from modules.backend.agents.adapters.plan_introspection import get_plan_state
+
         result = await get_plan_state(
-            ctx.deps.db_session, mission_id=ctx.deps.mission_id,
+            ctx.deps.db_session,
+            mission_id=ctx.deps.mission_id,
         )
         return json.dumps(result, indent=2, default=str)
 
@@ -114,12 +115,14 @@ def _register_read_tools(agent: Agent) -> None:
         if not ctx.deps.mission_id or not ctx.deps.db_session:
             return json.dumps({"error": "No mission context available"})
 
-        from modules.backend.agents.mission_control.roster import derive_roster_from_team
         from modules.backend.agents.mission_control.helpers.prompt_builder import (
             _build_roster_prompt,
         )
+        from modules.backend.agents.mission_control.roster import derive_roster_from_team
+
         roster = await derive_roster_from_team(
-            ctx.deps.mission_id, ctx.deps.db_session,
+            ctx.deps.mission_id,
+            ctx.deps.db_session,
         )
         return _build_roster_prompt(roster)
 
@@ -130,14 +133,19 @@ def _register_read_tools(agent: Agent) -> None:
             return json.dumps({"error": "No mission context available"})
 
         from modules.backend.repositories.mission import MissionRepository
+
         repo = MissionRepository(ctx.deps.db_session)
         mission = await repo.get_by_id(ctx.deps.mission_id)
-        return json.dumps({
-            "id": mission.id,
-            "name": mission.name,
-            "description": mission.description,
-            "brief": mission.brief,
-            "status": mission.status,
-            "default_roster": mission.default_roster,
-            "execution_environment": mission.execution_environment,
-        }, indent=2, default=str)
+        return json.dumps(
+            {
+                "id": mission.id,
+                "name": mission.name,
+                "description": mission.description,
+                "brief": mission.brief,
+                "status": mission.status,
+                "default_roster": mission.default_roster,
+                "execution_environment": mission.execution_environment,
+            },
+            indent=2,
+            default=str,
+        )

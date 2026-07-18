@@ -14,8 +14,8 @@ Create Date: 2026-04-26
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "timezone_aware_timestamps"
 down_revision: Union[str, None] = "composite_indexes"
@@ -114,16 +114,20 @@ COLUMNS = [
 def upgrade() -> None:
     conn = op.get_bind()
     for table, column in COLUMNS:
-        conn.execute(sa.text(
-            f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
-            f"TYPE timestamptz USING \"{column}\" AT TIME ZONE 'UTC'"
-        ))
+        conn.execute(
+            sa.text(
+                f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
+                f"TYPE timestamptz USING \"{column}\" AT TIME ZONE 'UTC'"
+            )
+        )
 
 
 def downgrade() -> None:
     conn = op.get_bind()
     for table, column in COLUMNS:
-        conn.execute(sa.text(
-            f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
-            f"TYPE timestamp USING \"{column}\" AT TIME ZONE 'UTC'"
-        ))
+        conn.execute(
+            sa.text(
+                f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
+                f"TYPE timestamp USING \"{column}\" AT TIME ZONE 'UTC'"
+            )
+        )

@@ -180,12 +180,14 @@ async def _publish_sse_notification(
         if not mission_id:
             return  # No mission context, skip SSE (Telegram still sends)
 
-        payload = json.dumps({
-            "type": alert_type,
-            "title": title,
-            "body": body,
-            "data": data,
-        })
+        payload = json.dumps(
+            {
+                "type": alert_type,
+                "title": title,
+                "body": body,
+                "data": data,
+            }
+        )
 
         # Publish to a mission-scoped notification channel.
         # The frontend subscribes to notify:{user_id}, but we also

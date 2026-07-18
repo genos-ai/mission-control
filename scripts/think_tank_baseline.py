@@ -156,8 +156,10 @@ async def run_baseline(
 
     if packet is None:
         from modules.backend.tools.registry import get_tool_registry
+
         registered = get_tool_registry().register_on_agent(
-            agent, ["search_web", "fetch_url"],
+            agent,
+            ["search_web", "fetch_url"],
         )
         logger.info("Registered tools", extra={"tools": registered})
 
@@ -183,27 +185,32 @@ async def run_baseline(
 @click.command()
 @click.option("--question", required=True, help="The contested question.")
 @click.option(
-    "--packet", "packet_path",
+    "--packet",
+    "packet_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
     help="Optional: path to v2's ResearchPacket JSON. If omitted, the "
-         "model uses search_web/fetch_url to do its own research.",
+    "model uses search_web/fetch_url to do its own research.",
 )
 @click.option(
-    "--out", "out_path", required=True,
+    "--out",
+    "out_path",
+    required=True,
     type=click.Path(dir_okay=False, path_type=Path),
-    help="Output JSON path. The Markdown report is written as a sibling "
-         "with .md extension.",
+    help="Output JSON path. The Markdown report is written as a sibling " "with .md extension.",
 )
 @click.option(
-    "--reasoning-effort", default="high",
+    "--reasoning-effort",
+    default="high",
     type=click.Choice(["low", "medium", "high"]),
     help="Copilot reasoning effort. Default: high (we want extended thinking).",
 )
 @click.option(
-    "--request-limit", default=40, type=int,
+    "--request-limit",
+    default=40,
+    type=int,
     help="Max tool-call/turn requests for the agent run. Higher when doing "
-         "own research (more search calls).",
+    "own research (more search calls).",
 )
 def main(
     question: str,
@@ -231,12 +238,14 @@ def main(
         },
     )
 
-    deliverable = asyncio.run(run_baseline(
-        question=question,
-        packet=packet,
-        reasoning_effort=reasoning_effort,
-        request_limit=request_limit,
-    ))
+    deliverable = asyncio.run(
+        run_baseline(
+            question=question,
+            packet=packet,
+            reasoning_effort=reasoning_effort,
+            request_limit=request_limit,
+        )
+    )
 
     out_path.write_text(json.dumps(deliverable.model_dump(), indent=2))
     md_path = out_path.with_suffix(".md")

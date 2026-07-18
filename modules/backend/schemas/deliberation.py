@@ -15,7 +15,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
-
 # =============================================================================
 # Research packet (researcher output)
 # =============================================================================
@@ -51,7 +50,9 @@ class ResearchPacket(BaseModel):
     question_restated: str = Field(..., min_length=1, max_length=2000)
     what_is_known: list[SourcedClaim] = Field(..., min_length=3)
     expert_disagreements: list[ExpertDisagreement] = Field(
-        ..., min_length=2, max_length=5,
+        ...,
+        min_length=2,
+        max_length=5,
     )
     mainstream_consensus: str = Field(..., min_length=1, max_length=2000)
     under_discussed_angles: list[str] = Field(..., min_length=3, max_length=5)
@@ -190,7 +191,9 @@ class DebaterTurn(BaseModel):
     round_index: int = Field(ge=0, le=5)
     position: str = Field(..., min_length=1, max_length=4000)
     load_bearing_claims: list[LoadBearingClaim] = Field(
-        ..., min_length=2, max_length=3,
+        ...,
+        min_length=2,
+        max_length=3,
     )
     what_would_change_my_mind: str = Field(..., min_length=1, max_length=2000)
     decision: Literal["HOLD", "REFINE", "CONCEDE_PARTIAL", "CONCEDE_FULL"]
@@ -203,8 +206,8 @@ class DebaterTurn(BaseModel):
             "Optional list of specific follow-up research questions this "
             "debater wants answered before the next round. Each question "
             "should be focused and answerable by a search-tool-equipped "
-            "agent (e.g. \"What is the empirical false-positive rate of "
-            "LLM-based static analysis on Python codebases at >100K LOC?\"). "
+            'agent (e.g. "What is the empirical false-positive rate of '
+            'LLM-based static analysis on Python codebases at >100K LOC?"). '
             "Empty list = no request. The deliberation orchestrator "
             "dispatches the researcher against pooled requests between "
             "rounds and appends the new findings to the packet."
@@ -272,18 +275,15 @@ class CriticReport(BaseModel):
     @field_validator("attacks")
     @classmethod
     def _validate_attack_keys(
-        cls, v: dict[str, CriticAttack],
+        cls,
+        v: dict[str, CriticAttack],
     ) -> dict[str, CriticAttack]:
         bad = set(v.keys()) - _ALLOWED_DEBATER_IDS
         missing = _ALLOWED_DEBATER_IDS - set(v.keys())
         if bad:
-            raise ValueError(
-                f"CriticReport.attacks has unknown debater IDs: {sorted(bad)}"
-            )
+            raise ValueError(f"CriticReport.attacks has unknown debater IDs: {sorted(bad)}")
         if missing:
-            raise ValueError(
-                f"CriticReport.attacks missing debater IDs: {sorted(missing)}"
-            )
+            raise ValueError(f"CriticReport.attacks missing debater IDs: {sorted(missing)}")
         return v
 
 
@@ -393,11 +393,16 @@ class FinalDeliverable(BaseModel):
     minority_position: MinorityPosition | None
     mainstream_prior: str
     deliberation_vs_mainstream: Literal[
-        "supports", "modifies", "rejects", "merely_reproduces",
+        "supports",
+        "modifies",
+        "rejects",
+        "merely_reproduces",
     ]
     forward_claim: ForwardClaim
     biggest_things_that_could_be_wrong: list[str] = Field(
-        ..., min_length=2, max_length=3,
+        ...,
+        min_length=2,
+        max_length=3,
     )
     sycophancy_flags: list[str] = Field(
         default_factory=list,

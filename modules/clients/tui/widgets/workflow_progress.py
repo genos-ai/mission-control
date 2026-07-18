@@ -147,7 +147,9 @@ class WorkflowProgressWidget(Widget):
         self._update_header(status="failed", summary=error)
 
     def _update_header(
-        self, status: str = "running", summary: str = "",
+        self,
+        status: str = "running",
+        summary: str = "",
     ) -> None:
         """Update the header with progress info."""
         done = sum(1 for s in self._step_status.values() if s in ("success", "failed", "skipped"))
@@ -180,10 +182,12 @@ class WorkflowProgressWidget(Widget):
         self._update_header()
 
         for wave_idx, wave_steps in enumerate(self._waves):
-            scroll.mount(Label(
-                f"  Wave {wave_idx}",
-                classes="wave-heading",
-            ))
+            scroll.mount(
+                Label(
+                    f"  Wave {wave_idx}",
+                    classes="wave-heading",
+                )
+            )
             for step_id in wave_steps:
                 safe_id = safe_css_id(step_id)
                 node = StepNode(

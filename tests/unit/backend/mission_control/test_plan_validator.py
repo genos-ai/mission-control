@@ -45,7 +45,10 @@ def _plan(tasks: list[dict], **overrides) -> TaskPlan:
 
 
 def _task(
-    task_id: str, agent: str = "agent_a", deps: list[str] | None = None, **kw,
+    task_id: str,
+    agent: str = "agent_a",
+    deps: list[str] | None = None,
+    **kw,
 ) -> dict:
     return {
         "task_id": task_id,
@@ -73,18 +76,22 @@ class TestRule2AgentValidation:
 
 class TestRule3DagValidation:
     def test_valid_dag_passes(self):
-        plan = _plan([
-            _task("t1", "agent_a"),
-            _task("t2", "agent_a", deps=["t1"]),
-        ])
+        plan = _plan(
+            [
+                _task("t1", "agent_a"),
+                _task("t2", "agent_a", deps=["t1"]),
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert result.is_valid
 
     def test_cycle_fails(self):
-        plan = _plan([
-            _task("t1", "agent_a", deps=["t2"]),
-            _task("t2", "agent_a", deps=["t1"]),
-        ])
+        plan = _plan(
+            [
+                _task("t1", "agent_a", deps=["t2"]),
+                _task("t2", "agent_a", deps=["t1"]),
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert not result.is_valid
         assert any("dag_validation" in e for e in result.errors)
@@ -102,28 +109,42 @@ class TestRule3DagValidation:
 
 class TestRule4DependencyConsistency:
     def test_consistent_deps_pass(self):
-        plan = _plan([
-            _task("t1", "agent_a"),
-            _task("t2", "agent_a", deps=["t1"], inputs={
-                "static": {},
-                "from_upstream": {
-                    "data": {"source_task": "t1", "source_field": "result"},
-                },
-            }),
-        ])
+        plan = _plan(
+            [
+                _task("t1", "agent_a"),
+                _task(
+                    "t2",
+                    "agent_a",
+                    deps=["t1"],
+                    inputs={
+                        "static": {},
+                        "from_upstream": {
+                            "data": {"source_task": "t1", "source_field": "result"},
+                        },
+                    },
+                ),
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert result.is_valid
 
     def test_upstream_not_in_deps_fails(self):
-        plan = _plan([
-            _task("t1", "agent_a"),
-            _task("t2", "agent_a", deps=[], inputs={
-                "static": {},
-                "from_upstream": {
-                    "data": {"source_task": "t1", "source_field": "result"},
-                },
-            }),
-        ])
+        plan = _plan(
+            [
+                _task("t1", "agent_a"),
+                _task(
+                    "t2",
+                    "agent_a",
+                    deps=[],
+                    inputs={
+                        "static": {},
+                        "from_upstream": {
+                            "data": {"source_task": "t1", "source_field": "result"},
+                        },
+                    },
+                ),
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert not result.is_valid
         assert any("dependency_consistency" in e for e in result.errors)
@@ -131,28 +152,42 @@ class TestRule4DependencyConsistency:
 
 class TestRule5InputCompatibility:
     def test_valid_source_field_passes(self):
-        plan = _plan([
-            _task("t1", "agent_a"),
-            _task("t2", "agent_a", deps=["t1"], inputs={
-                "static": {},
-                "from_upstream": {
-                    "data": {"source_task": "t1", "source_field": "result"},
-                },
-            }),
-        ])
+        plan = _plan(
+            [
+                _task("t1", "agent_a"),
+                _task(
+                    "t2",
+                    "agent_a",
+                    deps=["t1"],
+                    inputs={
+                        "static": {},
+                        "from_upstream": {
+                            "data": {"source_task": "t1", "source_field": "result"},
+                        },
+                    },
+                ),
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert result.is_valid
 
     def test_invalid_source_field_fails(self):
-        plan = _plan([
-            _task("t1", "agent_a"),
-            _task("t2", "agent_a", deps=["t1"], inputs={
-                "static": {},
-                "from_upstream": {
-                    "data": {"source_task": "t1", "source_field": "nonexistent_field"},
-                },
-            }),
-        ])
+        plan = _plan(
+            [
+                _task("t1", "agent_a"),
+                _task(
+                    "t2",
+                    "agent_a",
+                    deps=["t1"],
+                    inputs={
+                        "static": {},
+                        "from_upstream": {
+                            "data": {"source_task": "t1", "source_field": "nonexistent_field"},
+                        },
+                    },
+                ),
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert not result.is_valid
         assert any("input_compatibility" in e for e in result.errors)
@@ -173,18 +208,34 @@ class TestRule7BudgetValidation:
 
 class TestRule8TimeoutValidation:
     def test_within_timeout_passes(self):
-        plan = _plan([_task("t1", "agent_a", constraints={
-            "timeout_override_seconds": 60,
-            "priority": "normal",
-        })])
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    constraints={
+                        "timeout_override_seconds": 60,
+                        "priority": "normal",
+                    },
+                )
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert result.is_valid
 
     def test_over_timeout_fails(self):
-        plan = _plan([_task("t1", "agent_a", constraints={
-            "timeout_override_seconds": 999,
-            "priority": "normal",
-        })])
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    constraints={
+                        "timeout_override_seconds": 999,
+                        "priority": "normal",
+                    },
+                )
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert not result.is_valid
         assert any("timeout_validation" in e for e in result.errors)
@@ -214,72 +265,110 @@ class TestRule9CriticalPathValidation:
 
 class TestRule10Tier3Completeness:
     def test_complete_tier3_passes(self):
-        roster = Roster(agents=[
-            _entry("agent_a"),
-            _entry("system.verification.agent"),
-        ])
-        plan = _plan([_task("t1", "agent_a", verification={
-            "tier_1": {"schema_validation": True, "required_output_fields": []},
-            "tier_2": {"deterministic_checks": []},
-            "tier_3": {
-                "requires_ai_evaluation": True,
-                "evaluation_criteria": ["Is it good?"],
-                "evaluator_agent": "system.verification.agent",
-                "min_evaluation_score": 0.85,
-            },
-        })])
+        roster = Roster(
+            agents=[
+                _entry("agent_a"),
+                _entry("system.verification.agent"),
+            ]
+        )
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    verification={
+                        "tier_1": {"schema_validation": True, "required_output_fields": []},
+                        "tier_2": {"deterministic_checks": []},
+                        "tier_3": {
+                            "requires_ai_evaluation": True,
+                            "evaluation_criteria": ["Is it good?"],
+                            "evaluator_agent": "system.verification.agent",
+                            "min_evaluation_score": 0.85,
+                        },
+                    },
+                )
+            ]
+        )
         result = validate_plan(plan, roster, 10.0)
         assert result.is_valid
 
     def test_missing_criteria_fails(self):
-        roster = Roster(agents=[
-            _entry("agent_a"),
-            _entry("system.verification.agent"),
-        ])
-        plan = _plan([_task("t1", "agent_a", verification={
-            "tier_1": {"schema_validation": True, "required_output_fields": []},
-            "tier_2": {"deterministic_checks": []},
-            "tier_3": {
-                "requires_ai_evaluation": True,
-                "evaluation_criteria": [],
-                "evaluator_agent": "system.verification.agent",
-                "min_evaluation_score": 0.85,
-            },
-        })])
+        roster = Roster(
+            agents=[
+                _entry("agent_a"),
+                _entry("system.verification.agent"),
+            ]
+        )
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    verification={
+                        "tier_1": {"schema_validation": True, "required_output_fields": []},
+                        "tier_2": {"deterministic_checks": []},
+                        "tier_3": {
+                            "requires_ai_evaluation": True,
+                            "evaluation_criteria": [],
+                            "evaluator_agent": "system.verification.agent",
+                            "min_evaluation_score": 0.85,
+                        },
+                    },
+                )
+            ]
+        )
         result = validate_plan(plan, roster, 10.0)
         assert not result.is_valid
         assert any("tier3_completeness" in e for e in result.errors)
 
     def test_missing_evaluator_fails(self):
-        plan = _plan([_task("t1", "agent_a", verification={
-            "tier_1": {"schema_validation": True, "required_output_fields": []},
-            "tier_2": {"deterministic_checks": []},
-            "tier_3": {
-                "requires_ai_evaluation": True,
-                "evaluation_criteria": ["Check quality"],
-                "evaluator_agent": None,
-                "min_evaluation_score": 0.85,
-            },
-        })])
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    verification={
+                        "tier_1": {"schema_validation": True, "required_output_fields": []},
+                        "tier_2": {"deterministic_checks": []},
+                        "tier_3": {
+                            "requires_ai_evaluation": True,
+                            "evaluation_criteria": ["Check quality"],
+                            "evaluator_agent": None,
+                            "min_evaluation_score": 0.85,
+                        },
+                    },
+                )
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert not result.is_valid
 
     def test_missing_score_gets_default(self):
         """min_evaluation_score defaults to 0.7 when requires_ai_evaluation=true."""
-        roster = Roster(agents=[
-            _entry("agent_a"),
-            _entry("system.verification.agent"),
-        ])
-        plan = _plan([_task("t1", "agent_a", verification={
-            "tier_1": {"schema_validation": True, "required_output_fields": []},
-            "tier_2": {"deterministic_checks": []},
-            "tier_3": {
-                "requires_ai_evaluation": True,
-                "evaluation_criteria": ["Check quality"],
-                "evaluator_agent": "system.verification.agent",
-                "min_evaluation_score": None,
-            },
-        })])
+        roster = Roster(
+            agents=[
+                _entry("agent_a"),
+                _entry("system.verification.agent"),
+            ]
+        )
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    verification={
+                        "tier_1": {"schema_validation": True, "required_output_fields": []},
+                        "tier_2": {"deterministic_checks": []},
+                        "tier_3": {
+                            "requires_ai_evaluation": True,
+                            "evaluation_criteria": ["Check quality"],
+                            "evaluator_agent": "system.verification.agent",
+                            "min_evaluation_score": None,
+                        },
+                    },
+                )
+            ]
+        )
         # Schema defaults None → 0.7, so validator passes
         result = validate_plan(plan, roster, 10.0)
         assert result.is_valid
@@ -288,34 +377,52 @@ class TestRule10Tier3Completeness:
 
 class TestRule11SelfEvaluationPrevention:
     def test_different_evaluator_passes(self):
-        roster = Roster(agents=[
-            _entry("agent_a"),
-            _entry("system.verification.agent"),
-        ])
-        plan = _plan([_task("t1", "agent_a", verification={
-            "tier_1": {"schema_validation": True, "required_output_fields": []},
-            "tier_2": {"deterministic_checks": []},
-            "tier_3": {
-                "requires_ai_evaluation": True,
-                "evaluation_criteria": ["Check quality"],
-                "evaluator_agent": "system.verification.agent",
-                "min_evaluation_score": 0.85,
-            },
-        })])
+        roster = Roster(
+            agents=[
+                _entry("agent_a"),
+                _entry("system.verification.agent"),
+            ]
+        )
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    verification={
+                        "tier_1": {"schema_validation": True, "required_output_fields": []},
+                        "tier_2": {"deterministic_checks": []},
+                        "tier_3": {
+                            "requires_ai_evaluation": True,
+                            "evaluation_criteria": ["Check quality"],
+                            "evaluator_agent": "system.verification.agent",
+                            "min_evaluation_score": 0.85,
+                        },
+                    },
+                )
+            ]
+        )
         result = validate_plan(plan, roster, 10.0)
         assert result.is_valid
 
     def test_self_evaluation_fails(self):
-        plan = _plan([_task("t1", "agent_a", verification={
-            "tier_1": {"schema_validation": True, "required_output_fields": []},
-            "tier_2": {"deterministic_checks": []},
-            "tier_3": {
-                "requires_ai_evaluation": True,
-                "evaluation_criteria": ["Check quality"],
-                "evaluator_agent": "agent_a",
-                "min_evaluation_score": 0.85,
-            },
-        })])
+        plan = _plan(
+            [
+                _task(
+                    "t1",
+                    "agent_a",
+                    verification={
+                        "tier_1": {"schema_validation": True, "required_output_fields": []},
+                        "tier_2": {"deterministic_checks": []},
+                        "tier_3": {
+                            "requires_ai_evaluation": True,
+                            "evaluation_criteria": ["Check quality"],
+                            "evaluator_agent": "agent_a",
+                            "min_evaluation_score": 0.85,
+                        },
+                    },
+                )
+            ]
+        )
         result = validate_plan(plan, _roster("agent_a"), 10.0)
         assert not result.is_valid
         assert any("self_evaluation" in e for e in result.errors)

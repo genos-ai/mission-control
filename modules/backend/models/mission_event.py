@@ -10,7 +10,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from modules.backend.models.base import Base, UUIDMixin, TimestampMixin
+from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class MissionEvent(UUIDMixin, TimestampMixin, Base):
@@ -50,7 +50,4 @@ class MissionEvent(UUIDMixin, TimestampMixin, Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<MissionEvent(mission={self.mission_id[:8]}, "
-            f"type={self.event_type!r})>"
-        )
+        return f"<MissionEvent(mission={self.mission_id[:8]}, " f"type={self.event_type!r})>"

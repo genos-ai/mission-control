@@ -71,9 +71,7 @@ def check_file(path: Path, forbidden: list[str]) -> list[str]:
             module = node.module
             for prefix in forbidden:
                 if module.startswith(prefix) and module not in ALLOWED_EXCEPTIONS:
-                    violations.append(
-                        f"  {path}:{node.lineno}: forbidden import '{module}'"
-                    )
+                    violations.append(f"  {path}:{node.lineno}: forbidden import '{module}'")
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 for prefix in forbidden:

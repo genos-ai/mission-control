@@ -3,11 +3,11 @@
 import pytest
 
 from modules.backend.models.session import (
+    VALID_TRANSITIONS,
     Session,
     SessionChannel,
     SessionMessage,
     SessionStatus,
-    VALID_TRANSITIONS,
 )
 
 

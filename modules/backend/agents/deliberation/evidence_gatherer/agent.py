@@ -48,6 +48,7 @@ def create_agent(
 
     if tool_names:
         from modules.backend.tools.registry import get_tool_registry
+
         get_tool_registry().register_on_agent(agent, tool_names)
 
     logger.info(

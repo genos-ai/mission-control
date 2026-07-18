@@ -23,6 +23,7 @@ def _get_compression_config() -> dict:
     """Load session_memory config with safe defaults."""
     try:
         from modules.backend.core.config import get_app_config
+
         cfg = get_app_config().missions.knowledge.session_memory
         return {
             "threshold": cfg.compression_threshold_messages,
@@ -56,9 +57,7 @@ class SessionMemoryService(BaseService):
         threshold = config["threshold"]
 
         # Get current session state
-        result = await self.session.execute(
-            select(Session).where(Session.id == session_id)
-        )
+        result = await self.session.execute(select(Session).where(Session.id == session_id))
         session_row = result.scalar_one_or_none()
         if not session_row:
             return False
@@ -90,8 +89,11 @@ class SessionMemoryService(BaseService):
 
         # Convert to dicts for the summarizer (include sender_id for multi-agent sessions)
         message_dicts = [
-            {"role": m.role, "content": m.content[:1000],
-             **({"sender_id": m.sender_id} if m.sender_id else {})}
+            {
+                "role": m.role,
+                "content": m.content[:1000],
+                **({"sender_id": m.sender_id} if m.sender_id else {}),
+            }
             for m in messages
         ]
 
@@ -124,8 +126,7 @@ class SessionMemoryService(BaseService):
     async def get_rolling_summary(self, session_id: str) -> str | None:
         """Get the current rolling summary for a session."""
         result = await self.session.execute(
-            select(Session.rolling_summary)
-            .where(Session.id == session_id)
+            select(Session.rolling_summary).where(Session.id == session_id)
         )
         row = result.scalar_one_or_none()
         return row if row else None

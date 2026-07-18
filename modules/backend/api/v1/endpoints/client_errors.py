@@ -10,14 +10,16 @@ from fastapi import APIRouter
 from modules.backend.core.dependencies import RequestId
 from modules.backend.core.logging import get_logger, log_with_source
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.client_error import ClientErrorReport, ClientErrorReceived
+from modules.backend.schemas.client_error import ClientErrorReceived, ClientErrorReport
 
 router = APIRouter()
 
 logger = get_logger(__name__)
 
 
-@router.post("", response_model=ApiResponse[ClientErrorReceived], summary="Report a client-side error")
+@router.post(
+    "", response_model=ApiResponse[ClientErrorReceived], summary="Report a client-side error"
+)
 async def report_client_error(
     body: ClientErrorReport,
     request_id: RequestId,

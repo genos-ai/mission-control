@@ -342,8 +342,7 @@ class TemporalSchema(_StrictBase):
     def _require_server_url_when_enabled(self) -> "TemporalSchema":
         if self.enabled and self.server_url is None:
             raise ValueError(
-                "temporal.server_url must be explicitly configured when "
-                "temporal.enabled is true"
+                "temporal.server_url must be explicitly configured when " "temporal.enabled is true"
             )
         return self
 
@@ -448,7 +447,9 @@ class KnowledgeSchema(_StrictBase):
     embedding: KnowledgeEmbeddingSchema = Field(default_factory=KnowledgeEmbeddingSchema)
     learnings: KnowledgeLearningsSchema = Field(default_factory=KnowledgeLearningsSchema)
     intent: KnowledgeIntentSchema = Field(default_factory=KnowledgeIntentSchema)
-    session_memory: KnowledgeSessionMemorySchema = Field(default_factory=KnowledgeSessionMemorySchema)
+    session_memory: KnowledgeSessionMemorySchema = Field(
+        default_factory=KnowledgeSessionMemorySchema
+    )
     officer: KnowledgeOfficerSchema = Field(default_factory=KnowledgeOfficerSchema)
 
 
@@ -528,7 +529,9 @@ class ProviderAuthSchema(_StrictBase):
     growing the union — the pattern-of-three threshold for splitting is real.
     """
 
-    auth_mode: str = "api_key"  # "api_key" | "auth_token" | "codex_oauth" | "entra" | "bearer_token"
+    auth_mode: str = (
+        "api_key"  # "api_key" | "auth_token" | "codex_oauth" | "entra" | "bearer_token"
+    )
     env_var: str | None = None
     base_url: str | None = None
     scope: str | None = None  # foundry-only: Entra ID token scope
@@ -539,12 +542,14 @@ class ProvidersSchema(_StrictBase):
 
     anthropic: ProviderAuthSchema = Field(
         default_factory=lambda: ProviderAuthSchema(
-            auth_mode="api_key", env_var="ANTHROPIC_API_KEY",
+            auth_mode="api_key",
+            env_var="ANTHROPIC_API_KEY",
         ),
     )
     openai: ProviderAuthSchema = Field(
         default_factory=lambda: ProviderAuthSchema(
-            auth_mode="api_key", env_var="OPENAI_API_KEY",
+            auth_mode="api_key",
+            env_var="OPENAI_API_KEY",
         ),
     )
     foundry: ProviderAuthSchema = Field(

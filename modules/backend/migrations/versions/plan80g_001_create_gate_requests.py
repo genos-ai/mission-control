@@ -12,9 +12,8 @@ Create Date: 2026-05-24
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision: str = "plan80g_001"
 down_revision: Union[str, None] = "plan75_001"
@@ -30,24 +29,32 @@ def upgrade() -> None:
         "gate_requests",
         sa.Column("id", PgUUID(as_uuid=False), primary_key=True),
         sa.Column(
-            "mission_id", PgUUID(as_uuid=False),
+            "mission_id",
+            PgUUID(as_uuid=False),
             sa.ForeignKey("missions.id", ondelete="CASCADE"),
-            nullable=False, index=True,
+            nullable=False,
+            index=True,
         ),
         sa.Column(
-            "plan_id", PgUUID(as_uuid=False),
+            "plan_id",
+            PgUUID(as_uuid=False),
             sa.ForeignKey("mission_plans.id", ondelete="SET NULL"),
-            nullable=True, index=True,
+            nullable=True,
+            index=True,
         ),
         sa.Column("gate_type", sa.String(50), nullable=False, index=True),
         sa.Column("context_json", JSONB(), nullable=False),
         sa.Column(
-            "status", sa.String(20), nullable=False,
-            server_default="PENDING", index=True,
+            "status",
+            sa.String(20),
+            nullable=False,
+            server_default="PENDING",
+            index=True,
         ),
         sa.Column("decision_json", JSONB(), nullable=True),
         sa.Column(
-            "decided_by_user_id", PgUUID(as_uuid=False),
+            "decided_by_user_id",
+            PgUUID(as_uuid=False),
             sa.ForeignKey("users.id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -57,7 +64,8 @@ def upgrade() -> None:
     )
     op.create_index(
         "ix_gate_requests_mission_status",
-        "gate_requests", ["mission_id", "status"],
+        "gate_requests",
+        ["mission_id", "status"],
     )
 
 

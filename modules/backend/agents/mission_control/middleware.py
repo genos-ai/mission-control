@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 def _load_mission_control_config() -> MissionControlConfigSchema:
     """Load mission control config. Delegates to core.config."""
     from modules.backend.core.config import get_mission_control_config
+
     return get_mission_control_config()
 
 
@@ -41,9 +42,7 @@ def check_guardrails(
     max_length = agent_max if agent_max is not None else mc_max
 
     if len(user_input) > max_length:
-        raise ValueError(
-            f"Input exceeds maximum length ({len(user_input)} > {max_length})"
-        )
+        raise ValueError(f"Input exceeds maximum length ({len(user_input)} > {max_length})")
 
     patterns = mc_config.guardrails.injection_patterns
     text_lower = user_input.lower()
@@ -62,10 +61,13 @@ def with_guardrails(agent_config: AgentConfigSchema | None = None):
     Kept for backward compatibility with the old handle() path.
     New code should call check_guardrails() directly.
     """
+
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(user_input: str, *args, **kwargs):
             check_guardrails(user_input, agent_config)
             return await func(user_input, *args, **kwargs)
+
         return wrapper
+
     return decorator

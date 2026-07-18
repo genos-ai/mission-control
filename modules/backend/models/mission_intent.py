@@ -44,16 +44,21 @@ class MissionIntent(UUIDMixin, Base):
         index=True,
     )
     intent: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     intent_summary: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     scope: Mapped[dict] = mapped_column(
-        JSON, default=dict, nullable=False,
+        JSON,
+        default=dict,
+        nullable=False,
     )
     source: Mapped[str] = mapped_column(
-        String(32), nullable=False,
+        String(32),
+        nullable=False,
     )
     revised_from: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
@@ -61,10 +66,12 @@ class MissionIntent(UUIDMixin, Base):
         nullable=True,
     )
     reason: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     agent_id: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
     session_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
@@ -72,7 +79,9 @@ class MissionIntent(UUIDMixin, Base):
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now,
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
     )
 
     def __repr__(self) -> str:

@@ -17,7 +17,6 @@ from __future__ import annotations
 from typing import Any
 
 from modules.backend.agents.mission_control.models import ExecuteAgentFn
-from modules.backend.core.logging import get_logger
 
 # Re-export models so callers can import from here
 from modules.backend.agents.mission_control.verification_models import (  # noqa: F401
@@ -32,6 +31,7 @@ from modules.backend.agents.mission_control.verification_tiers import (
     _run_tier_2,
     _run_tier_3,
 )
+from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -58,6 +58,7 @@ async def run_verification_pipeline(
         VerificationResult with per-tier results and overall pass/fail.
     """
     import time
+
     pipeline_start = time.perf_counter()
     result = VerificationResult(passed=True)
     verification_config = task.get("verification", {})
@@ -89,7 +90,9 @@ async def run_verification_pipeline(
         return result
 
     tier_3_result = await _run_tier_3(
-        output, task, verification_config,
+        output,
+        task,
+        verification_config,
         execute_agent_fn=execute_agent_fn,
         session_id=session_id,
     )
@@ -134,28 +137,18 @@ def build_retry_feedback(
     feedback_parts = []
 
     if failed_tier == 1 and verification_result.tier_1:
-        feedback_parts.append(
-            f"Structural validation failed: {verification_result.tier_1.details}"
-        )
+        feedback_parts.append(f"Structural validation failed: {verification_result.tier_1.details}")
 
     elif failed_tier == 2 and verification_result.tier_2:
-        feedback_parts.append(
-            f"Deterministic checks failed: {verification_result.tier_2.details}"
-        )
+        feedback_parts.append(f"Deterministic checks failed: {verification_result.tier_2.details}")
         for check_result in verification_result.tier_2.check_results:
             if not check_result.get("passed"):
-                feedback_parts.append(
-                    f"  - {check_result['check']}: {check_result['details']}"
-                )
+                feedback_parts.append(f"  - {check_result['check']}: {check_result['details']}")
 
     elif failed_tier == 3 and verification_result.tier_3:
-        feedback_parts.append(
-            f"Quality evaluation failed: {verification_result.tier_3.details}"
-        )
+        feedback_parts.append(f"Quality evaluation failed: {verification_result.tier_3.details}")
         if isinstance(verification_result.tier_3, Tier3Result):
-            feedback_parts.append(
-                f"  Score: {verification_result.tier_3.overall_score:.2f}"
-            )
+            feedback_parts.append(f"  Score: {verification_result.tier_3.overall_score:.2f}")
 
     failure_reason = ""
     if failed_tier == 1 and verification_result.tier_1:
