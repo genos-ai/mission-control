@@ -7,6 +7,16 @@ Tests that request context is properly propagated through the API.
 import pytest
 from httpx import AsyncClient
 
+from modules.backend.core.dependencies import get_current_user
+
+
+@pytest.fixture(autouse=True)
+def _authenticated(client: AsyncClient, test_user):
+    """Endpoints require auth (endpoint-authz hardening); act as test_user."""
+    client.app.dependency_overrides[get_current_user] = lambda: test_user
+    yield
+    client.app.dependency_overrides.pop(get_current_user, None)
+
 
 class TestRequestIdHeader:
     """Tests for X-Request-ID header handling."""
@@ -73,8 +83,8 @@ class TestResponseTimeHeader:
         """Should include response time even on error responses."""
         response = await client.get("/api/v1/sessions/00000000-0000-0000-0000-000000000000")
 
-        # Should be 404 but still have timing header
-        assert response.status_code == 404
+        # 403 for non-admins (anti-enumeration) — timing header must still be present
+        assert response.status_code == 403
         assert "X-Response-Time" in response.headers
 
 
@@ -91,7 +101,8 @@ class TestRequestContextInErrors:
             headers={"X-Request-ID": custom_id},
         )
 
-        assert response.status_code == 404
+        # 403 for non-admins (anti-enumeration)
+        assert response.status_code == 403
         data = response.json()
 
         # Error response should include request_id in metadata

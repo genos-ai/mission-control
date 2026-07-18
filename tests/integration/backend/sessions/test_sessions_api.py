@@ -4,8 +4,22 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.session import Session, SessionStatus
+from modules.backend.core.dependencies import get_current_user
 from modules.backend.core.utils import utc_now
+from modules.backend.models.session import Session, SessionStatus
+from tests.conftest import TEST_USER_ID
+
+
+@pytest.fixture(autouse=True)
+def _authenticated(client: AsyncClient, test_user):
+    """Endpoints require auth (endpoint-authz hardening); act as test_user.
+
+    Auth mechanics themselves are covered by test_auth.py — these tests
+    exercise session endpoint behavior, not credential handling.
+    """
+    client.app.dependency_overrides[get_current_user] = lambda: test_user
+    yield
+    client.app.dependency_overrides.pop(get_current_user, None)
 
 
 class TestCreateSession:
@@ -52,6 +66,7 @@ class TestGetSession:
     async def test_get_session(self, client: AsyncClient, db_session: AsyncSession, api):
         """Should return a session by ID."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.ACTIVE.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -68,9 +83,13 @@ class TestGetSession:
 
     @pytest.mark.asyncio
     async def test_get_session_not_found(self, client: AsyncClient, api):
-        """Should return 404 for nonexistent session."""
+        """Nonexistent session returns 403 for non-admins.
+
+        Endpoint-authz hardening: require_session_access maps NotFound to
+        AuthorizationError so non-owners cannot enumerate session ids.
+        """
         response = await client.get("/api/v1/sessions/00000000-0000-0000-0000-000000000000")
-        api.assert_error(response, 404, "RES_NOT_FOUND")
+        api.assert_error(response, 403, "AUTHZ_FORBIDDEN")
 
 
 class TestUpdateSession:
@@ -80,6 +99,7 @@ class TestUpdateSession:
     async def test_update_session_goal(self, client: AsyncClient, db_session: AsyncSession, api):
         """Should update goal and metadata."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.ACTIVE.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -105,6 +125,7 @@ class TestStateTransitions:
     async def test_suspend_session(self, client: AsyncClient, db_session: AsyncSession, api):
         """Should suspend an active session."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.ACTIVE.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -125,6 +146,7 @@ class TestStateTransitions:
     async def test_resume_session(self, client: AsyncClient, db_session: AsyncSession, api):
         """Should resume a suspended session."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.SUSPENDED.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -143,6 +165,7 @@ class TestStateTransitions:
     async def test_complete_session(self, client: AsyncClient, db_session: AsyncSession, api):
         """Should complete an active session."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.ACTIVE.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -161,6 +184,7 @@ class TestStateTransitions:
     async def test_invalid_transition(self, client: AsyncClient, db_session: AsyncSession, api):
         """COMPLETED -> ACTIVE should return error."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.COMPLETED.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -182,6 +206,7 @@ class TestChannelBinding:
     async def test_bind_channel(self, client: AsyncClient, db_session: AsyncSession, api):
         """Should bind a channel and return 201."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.ACTIVE.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -206,6 +231,7 @@ class TestChannelBinding:
         from modules.backend.models.session import SessionChannel
 
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.ACTIVE.value,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -237,6 +263,7 @@ class TestMessages:
     async def test_get_messages_empty(self, client: AsyncClient, db_session: AsyncSession, api):
         """Should return empty list for session with no messages."""
         session = Session(
+            user_id=TEST_USER_ID,
             status=SessionStatus.ACTIVE.value,
             total_input_tokens=0,
             total_output_tokens=0,

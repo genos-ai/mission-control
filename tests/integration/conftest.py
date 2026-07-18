@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.database import get_db_session
 from tests.test_config import get_test_database_config
 
-
 # =============================================================================
 # API Client Fixtures
 # =============================================================================
@@ -37,14 +36,17 @@ async def client(
             response = await client.get("/health")
             assert response.status_code == 200
     """
+
     # Override the database session dependency
     async def override_get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
-    with patch("modules.backend.core.config.get_settings") as mock_secrets, \
-         patch("modules.backend.core.config.get_app_config") as mock_config, \
-         patch("modules.backend.core.security.get_settings") as mock_security_settings, \
-         patch("modules.backend.core.security.get_app_config") as mock_security_config:
+    with (
+        patch("modules.backend.core.config.get_settings") as mock_secrets,
+        patch("modules.backend.core.config.get_app_config") as mock_config,
+        patch("modules.backend.core.security.get_settings") as mock_security_settings,
+        patch("modules.backend.core.security.get_app_config") as mock_security_config,
+    ):
         mock_secrets.return_value = _create_mock_settings()
         mock_security_settings.return_value = _create_mock_settings()
         mock_app_config = _create_mock_app_config()
@@ -60,6 +62,9 @@ async def client(
             transport=ASGITransport(app=app),
             base_url="http://test",
         ) as test_client:
+            # Expose the app so tests can layer dependency overrides
+            # (e.g. get_current_user) on top of this fixture.
+            test_client.app = app
             yield test_client
 
         app.dependency_overrides.clear()
@@ -75,10 +80,12 @@ async def client_no_db() -> AsyncGenerator[AsyncClient, None]:
 
     Note: This requires mocking get_settings since no .env exists.
     """
-    with patch("modules.backend.core.config.get_settings") as mock_secrets, \
-         patch("modules.backend.core.config.get_app_config") as mock_config, \
-         patch("modules.backend.core.security.get_settings") as mock_security_settings, \
-         patch("modules.backend.core.security.get_app_config") as mock_security_config:
+    with (
+        patch("modules.backend.core.config.get_settings") as mock_secrets,
+        patch("modules.backend.core.config.get_app_config") as mock_config,
+        patch("modules.backend.core.security.get_settings") as mock_security_settings,
+        patch("modules.backend.core.security.get_app_config") as mock_security_config,
+    ):
         mock_secrets.return_value = _create_mock_settings()
         mock_security_settings.return_value = _create_mock_settings()
         mock_app_config = _create_mock_app_config()
@@ -221,6 +228,14 @@ def _create_mock_app_config() -> Any:
                     "allow_methods": ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
                     "allow_headers": ["Authorization", "Content-Type"],
                 },
+                # Mirrors config/settings/security.yaml — endpoint authz
+                # (check_role_level) resolves minimum roles against this.
+                roles={
+                    "viewer": {"level": 1, "description": "Read-only"},
+                    "user": {"level": 2, "description": "Standard access"},
+                    "admin": {"level": 3, "description": "Full system access"},
+                    "sysadmin": {"level": 4, "description": "Platform-level operations"},
+                },
             )
             self.gateway = GatewaySchema(
                 default_policy="allow_all",
@@ -255,8 +270,7 @@ class ApiAssertions:
             AssertionError: If response is not successful
         """
         assert response.status_code == expected_status, (
-            f"Expected status {expected_status}, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected status {expected_status}, got {response.status_code}: " f"{response.text}"
         )
         data = response.json()
         assert data.get("success") is True, f"Response not successful: {data}"
@@ -283,8 +297,7 @@ class ApiAssertions:
             AssertionError: If response is not an error or codes don't match
         """
         assert response.status_code == expected_status, (
-            f"Expected status {expected_status}, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected status {expected_status}, got {response.status_code}: " f"{response.text}"
         )
         data = response.json()
         assert data.get("success") is False, f"Response should be error: {data}"
@@ -292,9 +305,9 @@ class ApiAssertions:
 
         if expected_code:
             actual_code = data["error"].get("code")
-            assert actual_code == expected_code, (
-                f"Expected error code {expected_code}, got {actual_code}"
-            )
+            assert (
+                actual_code == expected_code
+            ), f"Expected error code {expected_code}, got {actual_code}"
 
         return data
 
@@ -319,8 +332,7 @@ class ApiAssertions:
             errors = data["error"].get("details", {}).get("validation_errors", [])
             fields = [e.get("field", "") for e in errors]
             assert any(field in f for f in fields), (
-                f"Expected validation error for field '{field}', "
-                f"got errors for: {fields}"
+                f"Expected validation error for field '{field}', " f"got errors for: {fields}"
             )
 
         return data

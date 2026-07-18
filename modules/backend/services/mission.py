@@ -9,25 +9,16 @@ import json
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy import func, select
-
 from modules.backend.core.agent_registry import get_registry
-from modules.backend.core.logging import get_logger
 from modules.backend.core.exceptions import ConflictError, NotFoundError
-from modules.backend.models.mission import (
-    Mission,
-    MissionMember,
-    MissionMemberRole,
-    MissionStatus,
-)
+from modules.backend.core.logging import get_logger
+from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
 from modules.backend.models.mission_event import MissionEvent
 from modules.backend.models.mission_plan import VALID_GATE_MODES
-from modules.backend.repositories.mission import (
-    MissionMemberRepository,
-    MissionRepository,
-)
+from modules.backend.repositories.mission import MissionMemberRepository, MissionRepository
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -97,6 +88,7 @@ class MissionService(BaseService):
 
         # Create seed MCD
         from modules.backend.services.mission_context import MissionContextManager
+
         mcd_manager = MissionContextManager(self._session)
         await mcd_manager.create_context(
             mission_id=mission.id,
@@ -111,6 +103,7 @@ class MissionService(BaseService):
         if brief:
             try:
                 from modules.backend.services.mission_intent import MissionIntentService
+
                 intent_svc = MissionIntentService(self._session)
                 await intent_svc.create_intent(
                     mission.id,
@@ -188,26 +181,29 @@ class MissionService(BaseService):
         # Cancel running Temporal workflows for this mission
         try:
             from modules.backend.temporal.client import get_temporal_client
+
             client = await get_temporal_client()
 
             # Cancel MissionRunWorkflow if running
-            for plan in (mission.plans if hasattr(mission, "plans") else []):
+            for plan in mission.plans if hasattr(mission, "plans") else []:
                 workflow_id = f"mission-run-{plan.id}"
                 try:
                     handle = client.get_workflow_handle(workflow_id)
                     await handle.terminate(reason=f"Mission {mission_name} deleted")
                 except Exception:
-                    logger.debug("Temporal workflow terminate failed (not running or already completed): %s", workflow_id, exc_info=True)
+                    logger.debug(
+                        "Temporal workflow terminate failed (not running or already completed): %s",
+                        workflow_id,
+                        exc_info=True,
+                    )
         except Exception:
             logger.debug("Temporal cleanup skipped (non-fatal)", exc_info=True)
 
         # Clean up containers BEFORE deleting DB records
         # (cleanup_for_mission queries execution_environments table)
         try:
-            from modules.backend.services.execution_environment import (
-                ExecutionEnvironmentService,
-            )
             from modules.backend.services.container_backend import ContainerBackend
+            from modules.backend.services.execution_environment import ExecutionEnvironmentService
 
             env_svc = ExecutionEnvironmentService(db_session=self._session)
             env_svc.register_backend("container", ContainerBackend())
@@ -238,46 +234,51 @@ class MissionService(BaseService):
         # ── Level 3: deepest children (FK → FK → mission_id) ──
         # task_attempts → task_executions → execution_records
         await self._session.execute(
-            text("DELETE FROM task_attempts WHERE task_execution_id IN "
-                 "(SELECT id FROM task_executions WHERE execution_record_id IN "
-                 "(SELECT id FROM execution_records WHERE mission_id = :mid))"),
+            text(
+                "DELETE FROM task_attempts WHERE task_execution_id IN "
+                "(SELECT id FROM task_executions WHERE execution_record_id IN "
+                "(SELECT id FROM execution_records WHERE mission_id = :mid))"
+            ),
             {"mid": mid},
         )
         # session_messages / session_channels → sessions → mission_id
         await self._session.execute(
-            text("DELETE FROM session_messages WHERE session_id IN "
-                 "(SELECT id FROM sessions WHERE mission_id = :mid)"),
+            text(
+                "DELETE FROM session_messages WHERE session_id IN "
+                "(SELECT id FROM sessions WHERE mission_id = :mid)"
+            ),
             {"mid": mid},
         )
         await self._session.execute(
-            text("DELETE FROM session_channels WHERE session_id IN "
-                 "(SELECT id FROM sessions WHERE mission_id = :mid)"),
+            text(
+                "DELETE FROM session_channels WHERE session_id IN "
+                "(SELECT id FROM sessions WHERE mission_id = :mid)"
+            ),
             {"mid": mid},
         )
 
         # ── Level 2: children of mission-scoped parents ──
         # Children of execution_records
         await self._session.execute(
-            text("DELETE FROM execution_decisions WHERE execution_record_id IN "
-                 "(SELECT id FROM execution_records WHERE mission_id = :mid)"),
+            text(
+                "DELETE FROM execution_decisions WHERE execution_record_id IN "
+                "(SELECT id FROM execution_records WHERE mission_id = :mid)"
+            ),
             {"mid": mid},
         )
         await self._session.execute(
-            text("DELETE FROM task_executions WHERE execution_record_id IN "
-                 "(SELECT id FROM execution_records WHERE mission_id = :mid)"),
+            text(
+                "DELETE FROM task_executions WHERE execution_record_id IN "
+                "(SELECT id FROM execution_records WHERE mission_id = :mid)"
+            ),
             {"mid": mid},
         )
-        # Children of mission_plans
-        await self._session.execute(
-            text("DELETE FROM plan_task_states WHERE mission_plan_id IN "
-                 "(SELECT id FROM mission_plans WHERE mission_id = :mid)"),
-            {"mid": mid},
-        )
+        # Children of mission_plans (tasks, task_dependencies) cascade at
+        # the DB level via ondelete=CASCADE when mission_plans rows go.
 
         # ── Level 1: direct children of missions ──
         direct_tables = [
             "execution_records",
-            "executions",
             "mission_plans",
             "mission_artifacts",
             "mission_events",
@@ -325,6 +326,7 @@ class MissionService(BaseService):
         """Remove any Docker containers labeled with this mission ID."""
         try:
             import docker
+
             client = docker.from_env()
             containers = client.containers.list(
                 all=True,
@@ -335,7 +337,9 @@ class MissionService(BaseService):
         except ImportError:
             pass
         except Exception:
-            logger.debug("Docker container cleanup failed for mission %s", mission_id, exc_info=True)
+            logger.debug(
+                "Docker container cleanup failed for mission %s", mission_id, exc_info=True
+            )
 
     async def is_member(self, mission_id: str, user_id: str) -> bool:
         """Check if a user is a member of a mission."""
@@ -351,7 +355,10 @@ class MissionService(BaseService):
         return await self._mission_repo.get_by_name(name)
 
     async def get_narrative_events(
-        self, mission_id: str, *, limit: int = 200,
+        self,
+        mission_id: str,
+        *,
+        limit: int = 200,
     ) -> list[dict]:
         """Return persisted narrative events for a mission timeline."""
         rows = await self._session.execute(
@@ -368,14 +375,16 @@ class MissionService(BaseService):
                     data = json.loads(data)
                 except (json.JSONDecodeError, TypeError):
                     data = {}
-            events.append({
-                "event_id": str(data.get('event_id') or row.id),
-                "event_type": row.event_type,
-                "category": "execution",
-                "timestamp": row.timestamp,
-                "source": row.source,
-                "data": data,
-            })
+            events.append(
+                {
+                    "event_id": str(data.get("event_id") or row.id),
+                    "event_type": row.event_type,
+                    "category": "execution",
+                    "timestamp": row.timestamp,
+                    "source": row.source,
+                    "data": data,
+                }
+            )
         return events
 
     async def resolve_mission(self, id_or_name: str) -> Mission:
@@ -410,7 +419,9 @@ class MissionService(BaseService):
         if owner_id:
             status_enum = MissionStatus(status) if status else None
             return await self._mission_repo.list_by_owner(
-                owner_id, status=status_enum, limit=limit,
+                owner_id,
+                status=status_enum,
+                limit=limit,
             )
 
         missions = await self._mission_repo.list_all(limit=limit)
@@ -430,8 +441,7 @@ class MissionService(BaseService):
         """Update the default gate mode for a mission."""
         if mode not in VALID_GATE_MODES:
             raise ValueError(
-                f"Invalid gate mode: {mode}. "
-                f"Valid: {', '.join(sorted(VALID_GATE_MODES))}"
+                f"Invalid gate mode: {mode}. " f"Valid: {', '.join(sorted(VALID_GATE_MODES))}"
             )
         mission = await self.get_mission(mission_id)
         mission.gate_mode = mode
@@ -442,13 +452,15 @@ class MissionService(BaseService):
     async def archive_mission(self, mission_id: str) -> Mission:
         """Archive a mission. No new executions can be created."""
         return await self._mission_repo.update(
-            mission_id, status=MissionStatus.ARCHIVED,
+            mission_id,
+            status=MissionStatus.ARCHIVED,
         )
 
     async def unarchive_mission(self, mission_id: str) -> Mission:
         """Restore an archived mission to active status."""
         return await self._mission_repo.update(
-            mission_id, status=MissionStatus.ACTIVE,
+            mission_id,
+            status=MissionStatus.ACTIVE,
         )
 
     async def get_stats(self, mission_id: str) -> dict:
@@ -464,13 +476,15 @@ class MissionService(BaseService):
         await self._mission_repo.get_by_id(mission_id)  # ensure exists
 
         team_result = await self._session.execute(
-            select(func.count()).select_from(MissionTeamMember)
+            select(func.count())
+            .select_from(MissionTeamMember)
             .where(MissionTeamMember.mission_id == mission_id)
         )
         team_count = team_result.scalar() or 0
 
         wf_result = await self._session.execute(
-            select(func.count()).select_from(WorkflowDefinition)
+            select(func.count())
+            .select_from(WorkflowDefinition)
             .where(WorkflowDefinition.mission_id == mission_id)
         )
         workflow_count = wf_result.scalar() or 0
@@ -544,12 +558,11 @@ class MissionService(BaseService):
         """Update a mission member's role."""
         member = await self._member_repo.get_membership(mission_id, user_id)
         if not member:
-            raise NotFoundError(
-                f"User '{user_id}' is not a member of mission '{mission_id}'"
-            )
+            raise NotFoundError(f"User '{user_id}' is not a member of mission '{mission_id}'")
 
         member = await self._member_repo.update(
-            member.id, role=MissionMemberRole(role),
+            member.id,
+            role=MissionMemberRole(role),
         )
         self._log_operation(
             "Mission member role updated",
@@ -567,9 +580,7 @@ class MissionService(BaseService):
         """Remove a human user from a mission."""
         member = await self._member_repo.get_membership(mission_id, user_id)
         if not member:
-            raise NotFoundError(
-                f"User '{user_id}' is not a member of mission '{mission_id}'"
-            )
+            raise NotFoundError(f"User '{user_id}' is not a member of mission '{mission_id}'")
 
         await self._member_repo.delete(member.id)
         self._log_operation(

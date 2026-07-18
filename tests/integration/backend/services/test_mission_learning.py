@@ -5,6 +5,8 @@ Real database, no mocks (P12). Tests CRUD, dedup via occurrence increment,
 promote/retract, contradiction detection, and the deterministic extractor.
 """
 
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +20,7 @@ from modules.backend.models.execution_record import (
     TaskExecutionStatus,
 )
 from modules.backend.models.mission import Mission, MissionStatus
-from modules.backend.models.mission_learning import LearningKind, LearningStatus
+from modules.backend.models.mission_learning import LearningKind
 from modules.backend.models.session import Session
 from modules.backend.models.user import User
 from modules.backend.services.mission_learning import (
@@ -26,8 +28,6 @@ from modules.backend.services.mission_learning import (
     MissionLearningService,
 )
 
-
-from uuid import uuid5, UUID
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
 _LEARN_USER_ID = str(uuid5(_TEST_NS, "user:learn-tester"))
 _LEARN_MISSION_ID = str(uuid5(_TEST_NS, "mission:learn-test"))
@@ -42,9 +42,12 @@ _TEX_LEARN_002 = str(uuid5(_TEST_NS, "tex:learn-002"))
 async def user(db_session: AsyncSession) -> User:
     hashed = security.hash_password("test-pass")
     u = User(
-        id=_LEARN_USER_ID, email="learn@test.dev",
-        display_name="Learn Tester", hashed_password=hashed,
-        system_role="user", is_active=True,
+        id=_LEARN_USER_ID,
+        email="learn@test.dev",
+        display_name="Learn Tester",
+        hashed_password=hashed,
+        system_role="user",
+        is_active=True,
     )
     db_session.add(u)
     await db_session.flush()
@@ -54,9 +57,11 @@ async def user(db_session: AsyncSession) -> User:
 @pytest.fixture
 async def mission(db_session: AsyncSession, user: User) -> Mission:
     m = Mission(
-        id=_LEARN_MISSION_ID, name="learn-test",
+        id=_LEARN_MISSION_ID,
+        name="learn-test",
         description="Test mission for learnings",
-        owner_id=user.id, status=MissionStatus.ACTIVE,
+        owner_id=user.id,
+        status=MissionStatus.ACTIVE,
     )
     db_session.add(m)
     await db_session.flush()
@@ -79,11 +84,14 @@ async def test_session(db_session: AsyncSession, mission: Mission) -> Session:
 
 @pytest.fixture
 async def execution_with_failures(
-    db_session: AsyncSession, mission: Mission, test_session: Session,
+    db_session: AsyncSession,
+    mission: Mission,
+    test_session: Session,
 ) -> ExecutionRecord:
     """Create an execution record with multiple failed task attempts."""
     record = ExecutionRecord(
-        id=_EXEC_LEARN_001, mission_id=mission.id,
+        id=_EXEC_LEARN_001,
+        mission_id=mission.id,
         session_id=test_session.id,
         objective_statement="Run quality check",
         status=ExecutionRecordStatus.COMPLETED,
@@ -93,8 +101,10 @@ async def execution_with_failures(
 
     # Task execution with domain tags
     tex = TaskExecution(
-        id=_TEX_LEARN_001, execution_record_id=record.id,
-        task_id="task-001", agent_name="software.quality.agent",
+        id=_TEX_LEARN_001,
+        execution_record_id=record.id,
+        task_id=str(uuid5(_TEST_NS, "task:learn-001")),
+        agent_name="software.quality.agent",
         status=TaskExecutionStatus.FAILED,
         domain_tags=["quality", "testing"],
     )
@@ -147,7 +157,9 @@ class TestMissionLearningService:
         learning = await svc.create_learning(
             mission.id,
             kind="failure_pattern",
-            title="Test", body="b", recommendation="r",
+            title="Test",
+            body="b",
+            recommendation="r",
             domain_tags=["auth", "invalid_tag_xyz"],
         )
         # invalid tags are dropped, valid ones kept
@@ -158,13 +170,19 @@ class TestMissionLearningService:
     async def test_list_by_mission(self, db_session: AsyncSession, mission: Mission):
         svc = MissionLearningService(db_session)
         await svc.create_learning(
-            mission.id, kind="failure_pattern",
-            title="L1", body="b1", recommendation="r1",
+            mission.id,
+            kind="failure_pattern",
+            title="L1",
+            body="b1",
+            recommendation="r1",
             confidence=0.9,
         )
         await svc.create_learning(
-            mission.id, kind="retry_strategy",
-            title="L2", body="b2", recommendation="r2",
+            mission.id,
+            kind="retry_strategy",
+            title="L2",
+            body="b2",
+            recommendation="r2",
             confidence=0.5,
         )
 
@@ -180,52 +198,69 @@ class TestMissionLearningService:
     async def test_promote_and_list_platform(self, db_session: AsyncSession, mission: Mission):
         svc = MissionLearningService(db_session)
         learning = await svc.create_learning(
-            mission.id, kind="failure_pattern",
-            title="Promotable", body="b", recommendation="r",
+            mission.id,
+            kind="failure_pattern",
+            title="Promotable",
+            body="b",
+            recommendation="r",
         )
 
         await svc.promote(learning.id, "test-admin")
         platform = await svc.list_platform()
-        assert any(l.id == learning.id for l in platform)
+        assert any(x.id == learning.id for x in platform)
 
     @pytest.mark.asyncio
     async def test_promote_idempotent(self, db_session: AsyncSession, mission: Mission):
         svc = MissionLearningService(db_session)
         learning = await svc.create_learning(
-            mission.id, kind="failure_pattern",
-            title="Idempotent", body="b", recommendation="r",
+            mission.id,
+            kind="failure_pattern",
+            title="Idempotent",
+            body="b",
+            recommendation="r",
         )
         await svc.promote(learning.id, "admin")
         await svc.promote(learning.id, "admin")  # no error
         platform = await svc.list_platform()
-        count = sum(1 for l in platform if l.id == learning.id)
+        count = sum(1 for x in platform if x.id == learning.id)
         assert count == 1
 
     @pytest.mark.asyncio
     async def test_retract(self, db_session: AsyncSession, mission: Mission):
         svc = MissionLearningService(db_session)
         learning = await svc.create_learning(
-            mission.id, kind="failure_pattern",
-            title="Retractable", body="b", recommendation="r",
+            mission.id,
+            kind="failure_pattern",
+            title="Retractable",
+            body="b",
+            recommendation="r",
         )
         await svc.retract(learning.id)
 
         # Retracted learnings excluded from default list
         active = await svc.list_by_mission(mission.id)
-        assert not any(l.id == learning.id for l in active)
+        assert not any(x.id == learning.id for x in active)
 
     @pytest.mark.asyncio
     async def test_find_contradiction_candidates(self, db_session: AsyncSession, mission: Mission):
         svc = MissionLearningService(db_session)
         await svc.create_learning(
-            mission.id, kind="failure_pattern",
-            title="A", body="b", recommendation="Always use caching",
-            domain_tags=["performance"], agent_names=["agent-x"],
+            mission.id,
+            kind="failure_pattern",
+            title="A",
+            body="b",
+            recommendation="Always use caching",
+            domain_tags=["performance"],
+            agent_names=["agent-x"],
         )
         await svc.create_learning(
-            mission.id, kind="failure_pattern",
-            title="B", body="b", recommendation="Never use caching",
-            domain_tags=["performance"], agent_names=["agent-x"],
+            mission.id,
+            kind="failure_pattern",
+            title="B",
+            body="b",
+            recommendation="Never use caching",
+            domain_tags=["performance"],
+            agent_names=["agent-x"],
         )
 
         candidates = await svc.find_contradiction_candidates(mission.id)
@@ -240,7 +275,9 @@ class TestMissionLearningService:
 class TestMissionLearningExtractor:
     @pytest.mark.asyncio
     async def test_extracts_from_failures(
-        self, db_session: AsyncSession, mission: Mission,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
         execution_with_failures: ExecutionRecord,
     ):
         extractor = MissionLearningExtractor(db_session)
@@ -254,11 +291,15 @@ class TestMissionLearningExtractor:
 
     @pytest.mark.asyncio
     async def test_no_extraction_below_threshold(
-        self, db_session: AsyncSession, mission: Mission, test_session: Session,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        test_session: Session,
     ):
         """One failure is below min_occurrence — no learning created."""
         record = ExecutionRecord(
-            id=_EXEC_LEARN_002, mission_id=mission.id,
+            id=_EXEC_LEARN_002,
+            mission_id=mission.id,
             session_id=test_session.id,
             objective_statement="Single fail",
             status=ExecutionRecordStatus.COMPLETED,
@@ -267,15 +308,18 @@ class TestMissionLearningExtractor:
         await db_session.flush()
 
         tex = TaskExecution(
-            id=_TEX_LEARN_002, execution_record_id=record.id,
-            task_id="task-002", agent_name="unique.agent",
+            id=_TEX_LEARN_002,
+            execution_record_id=record.id,
+            task_id=str(uuid5(_TEST_NS, "task:learn-002")),
+            agent_name="unique.agent",
             status=TaskExecutionStatus.FAILED,
         )
         db_session.add(tex)
         await db_session.flush()
 
         attempt = TaskAttempt(
-            task_execution_id=tex.id, attempt_number=1,
+            task_execution_id=tex.id,
+            attempt_number=1,
             status=TaskAttemptStatus.FAILED,
             failure_reason="Single failure",
         )
@@ -286,12 +330,14 @@ class TestMissionLearningExtractor:
         created = await extractor.extract_for_mission(mission.id)
 
         # Should not extract — only 1 occurrence, threshold is 2
-        unique_agent = [l for l in created if "unique.agent" in l.agent_names]
+        unique_agent = [x for x in created if "unique.agent" in x.agent_names]
         assert len(unique_agent) == 0
 
     @pytest.mark.asyncio
     async def test_dedup_increments_occurrence(
-        self, db_session: AsyncSession, mission: Mission,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
         execution_with_failures: ExecutionRecord,
     ):
         extractor = MissionLearningExtractor(db_session)
@@ -299,7 +345,6 @@ class TestMissionLearningExtractor:
         # First extraction
         created1 = await extractor.extract_for_mission(mission.id)
         assert len(created1) >= 1
-        first_id = created1[0].id
 
         # Second extraction (same data) — should dedup
         created2 = await extractor.extract_for_mission(mission.id)
@@ -307,7 +352,9 @@ class TestMissionLearningExtractor:
 
     @pytest.mark.asyncio
     async def test_confidence_formula(
-        self, db_session: AsyncSession, mission: Mission,
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
         execution_with_failures: ExecutionRecord,
     ):
         extractor = MissionLearningExtractor(db_session)
