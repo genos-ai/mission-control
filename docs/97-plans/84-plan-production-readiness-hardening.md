@@ -1,9 +1,9 @@
 # Plan 84 — Production Readiness Hardening
 
-**Version:** 1.0.0
-**Date:** 2026-07-05
+**Version:** 1.1.0
+**Date:** 2026-07-05 (v1.0) · re-baselined 2026-07-23 (v1.1, `/prompt-get-context` re-run)
 **Author:** Herman + Fable 5 context review (`/prompt-get-context`, 2026-07-05)
-**Status:** Ready for implementation
+**Status:** In progress — Phases 0, 1.0, 1.1 complete. Next: Phase 1.3, then Phase 2.
 **Depends on:** None (all changes harden existing code)
 **Unlocks:** Production deployment from a code & architecture standpoint
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -48,6 +48,50 @@ This plan sequences all 14 findings into 9 phases on the critical path:
 | 10 | Security loose ends | 7 | P2 |
 | 11 | B608 string-SQL | 7 | P2 |
 | 14 | models package coupling (Ce=24) | 8 | P3 (optional) |
+
+### Progress (re-baseline 2026-07-23)
+
+Completed, verified in tree and git history — do not redo:
+
+| Phase | Commits |
+|---|---|
+| 0.1 SSE logger fix | `d762404` |
+| 0.2 dead code deletion | `fb46a51` |
+| 0.3 README Quick Start rewrite | `ec86aa1` |
+| 1.0a DB fixture repair (226 errors → 0) | `b310271` |
+| 1.0b unit + integration suites green | `7977887`, `0d17da6` |
+| 1.1 CI workflow (lint/rules/tests), green on main | `7a951ce`, `370a680`, `56ae299` |
+
+### v1.1 re-baseline deltas
+
+The 2026-07-23 review re-ran every gate. Facts that changed, and scope added:
+
+1. **Phase 1.2 is blocked, not a click.** GitHub returns 403 for branch protection —
+   private repo on a free plan; the feature requires GitHub Pro or a public repo.
+   Account-level decision for Herman; nothing for the implementing agent to do.
+2. **flake8 backlog collapsed: ~843 → 246** (the Phase 1.1 prep normalization burned
+   most of it). Burning down the rest and adding tree-wide flake8 to CI is now cheap —
+   pulled forward as new **Phase 1.3**.
+3. **New Phase 1.4** — tool-scope hygiene: exclude `modules/frontend/node_modules` from
+   codemap/PQI/rule tooling; delete `tasks/example.py` and unwire the telegram example
+   handler/state scaffolding.
+4. **The Phase 5 god-files grew while waiting:** 1,801 → 1,832 / 1,468 → 1,505 /
+   1,233 → 1,355. Section sizes updated; all line references in this plan are hints —
+   **re-locate by symbol name**, never trust line numbers.
+5. **New Phase 5.5** — root `admin.py` (1,910 lines) escapes rule 002.2 because the
+   checker only scans `modules/`; extend checker scope to root entry files and move
+   inline command bodies into `modules/clients/cli/`.
+6. **Phase 4.2 scope extended (4.2b)** — the original sweep covered `except: pass`
+   (now 52 sites) but not broad `except Exception` (318 tree-wide, PQI
+   exception-handling 37.8). A bounded sweep of the run-affecting paths is added;
+   tree-wide residue is explicitly accepted and counted.
+7. **New Phase 4.6** — `compute_cost_usd` returns 0.0 when pricing config is missing,
+   silently defeating budget enforcement. Fail fast.
+8. **New Phase 8.2 (optional)** — `schemas/mission_plan.py` imports enums from
+   `models.*` (the only schema module reaching into models). Milder than first
+   assessed (enums, not mapped classes); optional hygiene.
+
+Violation counts re-verified 2026-07-23 and unchanged: 91× 014.1, 9× 012.1, 40× 011.1.
 
 ### Out of scope
 
@@ -202,16 +246,54 @@ Three jobs, triggered on `push` to `main` and on `pull_request`:
    with the existing `slow` or a new `temporal` marker and exclude via `-m "not temporal"` —
    do not install Temporal in CI in this plan.
 
-### 1.2 Post-merge note for Herman (manual, not code)
+### 1.2 Branch protection — BLOCKED on account decision (Herman, not code)
 
-Record in the completion notes: enable GitHub branch protection on `main` requiring the `ci`
-workflow — that is a repo-settings click, not a code change, and is what makes the gate truly
-unskippable.
+**v1.1 update:** verified 2026-07-23 — the branch-protection API returns **403: requires
+GitHub Pro or a public repo**. Until Herman upgrades the plan (or makes the repo public),
+CI is a post-hoc detector, not a gate: direct pushes to `main` land regardless of CI
+outcome. Implementing agent: skip this item entirely; compensate by treating the local
+gates in global constraint 4 as mandatory before every push, and confirm the CI run is
+green (`gh run watch`) after every push before starting the next sub-phase.
+
+### 1.3 flake8 backlog burn-down → tree-wide flake8 in CI
+
+Measured 2026-07-23: `flake8 modules/backend modules/clients mc.py admin.py services.py
+tui.py --count` → **246** (down from ~843 before the Phase 1.1 prep normalization).
+
+1. Enumerate by code: `flake8 <targets> --statistics -q`. Fix mechanically by category
+   (F401 unused imports, F541 f-strings without placeholders, E402 import order, E501
+   only where trivially splittable — long strings in prompts may take `# noqa: E501`
+   with judgment, not blanket).
+2. Do NOT reformat beyond what flake8 requires — black/isort already own formatting.
+3. When `flake8 modules/backend modules/clients tests scripts mc.py admin.py services.py
+   tui.py` exits 0, add that exact invocation to the `lint` job in
+   `.github/workflows/ci.yml` (pin `flake8==7.3.0` to match `.pre-commit-config.yaml`).
+4. If a residue is genuinely unfixable in this phase, stop, record the count and
+   categories in the commit message, and do not add flake8 to CI — never weaken
+   `.flake8` config to force a pass.
+
+### 1.4 Tool-scope hygiene (analysis noise + scaffold code)
+
+1. Exclude `modules/frontend/node_modules` from every analysis tool that currently
+   ingests it: the codemap generator (`scripts/code_map.py` / `services/code_map/`),
+   PQI (`scripts/code_quality.py` / `services/pqi/`), and `scripts/code_rules_fast.py`
+   file discovery (`get_all_module_files`). The vendored `flatted.py` currently shows up
+   in `.codemap/quality.md` (bare-except) and rule 002.3 output — third-party code must
+   not pollute our metrics.
+2. Delete `modules/backend/tasks/example.py` and `tests/unit/backend/tasks/test_example_tasks.py`
+   (verified: referenced only by its own docstring and that test).
+3. Unwire and delete the telegram example scaffolding: `modules/clients/telegram/handlers/example.py`
+   and `modules/clients/telegram/states/example.py` are **wired in** via
+   `handlers/setup.py`, `handlers/__init__.py`, `states/__init__.py`, and
+   `tests/unit/telegram/test_states.py`. Remove the router registration and re-exports,
+   delete the two modules and the tests that exist only to exercise them. Verify the bot
+   module still imports (`python -c "import modules.clients.telegram.handlers.setup"`).
 
 ### Verification
 
 Push a commit; confirm the workflow runs green in GitHub Actions (`gh run list --limit 1`,
-`gh run watch`).
+`gh run watch`). After 1.3: the CI lint job includes flake8 and passes. After 1.4:
+`python scripts/code_quality.py` no longer reports `node_modules` files.
 
 ---
 
@@ -357,16 +439,36 @@ Budget expectation: the large clusters are `workflow_run_waves.py`, `mission_pla
 `director/agent.py`, `temporal/*` activities — exactly the run-affecting paths; expect most
 sites to need events, not markers. Do not blanket-mark files to make the checker pass.
 
-### 4.2 Eliminate `except: pass` swallowed exceptions (51 sites)
+### 4.2 Eliminate `except: pass` swallowed exceptions (52 sites at re-baseline)
 
 Authoritative list: `.codemap/quality.md` → Robustness → swallowed-exception (regenerate via
 `python scripts/code_quality.py` if stale). Policy:
 - **Backend** (`modules/backend/**`): narrow the exception type and either log-with-context +
   mission event (per 4.1) or re-raise. `except: pass` is never acceptable in backend code.
-- **TUI/CLI widgets** (`modules/clients/**` — ~28 of the 51, mostly `tui/app.py`,
+- **TUI/CLI widgets** (`modules/clients/**` — roughly half the sites, mostly `tui/app.py`,
   `tui/widgets/cost_bar.py`): narrow to the specific expected exception and log at debug via
   the centralized logger. Rendering must not crash the TUI, but silence must still leave a
   trace.
+
+### 4.2b Broad `except Exception` in run-affecting paths (v1.1 scope extension)
+
+The tree carries ~318 broad `except Exception` clauses (PQI exception-handling 37.8). A
+tree-wide sweep is NOT in scope. The bounded scope is the run-affecting core only:
+`modules/backend/agents/mission_control/dispatch/**`, `modules/backend/temporal/*_activities.py`,
+`modules/backend/services/{workflow_run_waves,mission_plan_orchestrator,execution_persistence}.py`.
+
+For each broad except in those paths, exactly one of:
+1. **Narrow** to the specific exceptions the block actually expects.
+2. **Classify** — if the block wraps a provider/agent call, route through
+   `classify_provider_error` (4.3) and re-dispatch typed results.
+3. **Justify** — if a genuine catch-all backstop is required (e.g. Temporal activity
+   boundary must convert everything into a failed-activity result), keep it but ensure it
+   logs with context AND emits a mission event (4.1), and add a one-line comment stating
+   why a catch-all is correct here.
+
+Judgment over bulk edits: this is per-site reasoning, committed in small batches. Record
+the before/after count for the scoped paths in the commit message; record the accepted
+tree-wide residue count in the completion notes.
 
 ### 4.3 Wire ProviderError taxonomy across all adapters
 
@@ -424,11 +526,32 @@ In `scripts/code_rules_fast.py`: change `"warning"` → `"error"` in the 012.1 c
 (constraint 7). Checker must still exit 0 — which it will, because 4.1–4.4 cleared the
 violations.
 
+### 4.6 `compute_cost_usd` fails fast on missing pricing (v1.1 addition)
+
+`modules/backend/agents/mission_control/cost.py:27-34` — when neither the model nor a
+`default` entry exists in `model_pricing`, the function logs a warning and **returns 0.0**.
+Every downstream consumer (budget guards in `SessionService`, cost recording in
+`agent_executor`, `gate_post_run`, `workflow_run_waves`) then under-reports cost as zero —
+silently defeating budget enforcement, one of the platform's own safety controls.
+
+1. `rates is None` after both lookups → **raise** `ValueError` (or the closest existing
+   exception in `core/exceptions.py` — note `ConfigurationError` was deleted in Phase 0.2;
+   do not re-add it unless multiple sites need it) with the model name and the config path
+   (`config/agents/mission_control.yaml model_pricing`) in the message. Never return 0.0.
+2. Unknown model falling back to the explicit `default` entry is acceptable (it is
+   deliberate config, not a hidden default) but must `logger.warning` with the model name
+   so pricing gaps are visible and get fixed.
+3. Check `estimate_cost` (same file) inherits the behavior; check callers don't blanket-catch
+   the new exception into oblivion (that would recreate the bug one layer up — if a caller
+   must survive it, it emits a mission event per 4.1).
+4. Unit tests: unknown model + default present → default rates + warning; no default →
+   raises; known model → exact arithmetic unchanged.
+
 ### Verification
 
 ```bash
 python scripts/code_rules_fast.py --all   # exit 0 with 012.1/014.1 now error-severity
-python scripts/code_quality.py            # swallowed-exception count: 51 → 0 backend / documented client residue
+python scripts/code_quality.py            # swallowed-exception count: 52 → 0 backend / documented client residue
 pytest tests/unit tests/integration -q
 ```
 
@@ -440,7 +563,13 @@ pytest tests/unit tests/integration -q
 > list deleted and rule 002.2 promoted to error. **Pure moves only** (global constraint 3) —
 > Phase 2 tests plus existing suites are the safety net. One file per sub-phase commit.
 
-### 5.1 Split `services/workflow_run_waves.py` (1,801 lines)
+> **v1.1 warning:** all three files GREW since this plan was written (1,801→1,832,
+> 1,468→1,505, 1,233→1,355 at re-baseline, and the tree keeps moving). Every line number
+> and method inventory in the tables below is a hint from 2026-07-05 — **re-enumerate the
+> actual methods by symbol name before moving anything**, and include any methods added
+> since in the appropriate destination module.
+
+### 5.1 Split `services/workflow_run_waves.py` (1,832 lines at re-baseline)
 
 Keep `WorkflowRunWavesMixin` with `_execute_steps` (line 258), `_execute_wave` (539),
 `_execute_step` routing (580), and the plan-sync/publish helpers (164–256) in place. Move step
@@ -458,7 +587,7 @@ Convert moved methods to module-level functions taking an explicit context (the 
 service handles they already receive) — matching P7's pure-implementation style. `_execute_step`
 becomes a thin dispatch table over them. Target: every file ≤ ~500 lines.
 
-### 5.2 Split `services/mission_plan_orchestrator.py` (1,468 lines)
+### 5.2 Split `services/mission_plan_orchestrator.py` (1,505 lines at re-baseline)
 
 | New module | Moves (current lines) |
 |---|---|
@@ -471,7 +600,7 @@ The orchestrator composes the split modules; external callers (endpoints, direct
 Temporal activities) keep importing the same public methods from the orchestrator — only
 internals move. Update the Phase 2.3 test imports if the helpers' homes change.
 
-### 5.3 Split `agents/mission/director/agent.py` (1,233 lines)
+### 5.3 Split `agents/mission/director/agent.py` (1,355 lines at re-baseline)
 
 Per P7 (implementation vs registration), keep `create_agent` (line 138) plus the three
 `@agent.instructions` hooks (`inject_current_intent` 1080, `inject_capabilities` 1094,
@@ -495,12 +624,33 @@ simplify `check_file_size` (line ~55) to `severity = "error"` unconditionally. M
 `docs/04-rules/002_code_patterns.jsonl`. If any *other* file has crossed 1000 lines by the time
 this runs, split or trim it in this phase too — the gate must exit 0 with the rule at error.
 
+### 5.5 Root `admin.py` (1,910 lines) — the file the checker cannot see (v1.1 addition)
+
+Rule 002.2 never fires on root entry files because `get_all_module_files()` in
+`scripts/code_rules_fast.py` scans only `modules/`. The largest file in the repo is
+therefore invisible to its own size gate.
+
+1. Extend file discovery to include root `*.py` entry files (`mc.py`, `admin.py`,
+   `services.py`, `tui.py`) for the file-size check (and any other checks that safely
+   apply — verify each check's assumptions before widening its scope; some rules are
+   module-specific by design).
+2. Split `admin.py` the same way `mc.py` already works: command groups live in
+   `modules/clients/cli/` (the `admin_cmds.py` / `execution_cmds.py` / `workflow_cmds.py`
+   family already exists — move the inline command bodies still living in root `admin.py`
+   into those homes or new siblings), keeping root `admin.py` as wiring + the `tree`
+   command (rule 010.1). Pure moves; the `tree` output must be identical before/after
+   (capture `python admin.py tree` output before starting and diff after).
+3. Same treatment for any other root entry file over 1000 lines (`mc.py` was 1,380 at
+   re-baseline — same pattern, command bodies into `modules/clients/cli/`).
+
 ### Verification (after each sub-phase and at end)
 
 ```bash
 python scripts/code_rules_fast.py --all
 pytest tests/unit tests/integration -q
-awk 'END{}' ; find modules -name "*.py" | xargs wc -l | sort -rn | head -5   # nothing above 1000
+find modules -name "*.py" -not -path "*node_modules*" | xargs wc -l | sort -rn | head -5   # nothing above 1000
+wc -l mc.py admin.py services.py tui.py    # nothing above 1000 (5.5)
+python admin.py tree && python mc.py tree  # trees identical to pre-split capture
 ```
 
 ---
@@ -627,6 +777,16 @@ python scripts/code_rules_fast.py --all
 3. Re-run `python scripts/code_quality.py` and record the Ce delta in the commit message. If
    the metric doesn't move meaningfully, revert rather than keep churn.
 
+### 8.2 Schema-layer enum imports (optional, v1.1 addition)
+
+`modules/backend/schemas/mission_plan.py:12-13` imports `VALID_GATE_MODES`,
+`MissionPlanStatus`, `TaskStatus` from `models.*` — the only schema module importing from
+the models package. These are enums/constants, not mapped classes, so the coupling is mild.
+If Phase 8.1 happens anyway: move the shared status enums to a neutral home both layers
+import (candidate: a small `modules/backend/models/enums.py` imported by schemas, or
+`core/`), preserving the `Enum(native_enum=False)` stored-by-NAME contract exactly —
+enum member NAMES must not change. If Phase 8 is skipped, skip this too.
+
 ---
 
 ## 10. Completion checklist
@@ -638,12 +798,16 @@ python scripts/code_rules_fast.py --all
 | 3 | Full test suite green | `pytest tests/unit tests/integration -q` |
 | 4 | CI workflow green on GitHub | `gh run list --limit 1` |
 | 5 | No `asyncio.create_task` in endpoints | `grep -rn "asyncio.create_task" modules/backend/api/` |
-| 6 | No file > 1000 lines | `find modules -name "*.py" -not -path "*node_modules*" \| xargs wc -l \| awk '$1>1000'` |
+| 6 | No file > 1000 lines, including root entry files | `find modules -name "*.py" -not -path "*node_modules*" \| xargs wc -l \| awk '$1>1000'` + `wc -l mc.py admin.py services.py tui.py` |
 | 7 | PQI re-run; score recorded (expect Robustness and Modularity to move) | `python scripts/code_quality.py` |
 | 8 | TODO.md entries closed for: Temporal async dispatch, ProviderError wiring, rate limiter, scopes, SSE fail-open, dead code | manual edit |
 | 9 | Restart-survival smoke test performed and noted | manual (Phase 3 verification) |
-| 10 | Note to Herman: enable branch protection requiring CI | completion notes |
+| 10 | Decision for Herman: branch protection requires GitHub Pro or public repo (403 verified 2026-07-23) | completion notes |
+| 11 | Tree-wide flake8 in CI lint job (or documented residue + count if 1.3 stopped early) | `flake8 modules/backend modules/clients tests scripts mc.py admin.py services.py tui.py` |
+| 12 | `compute_cost_usd` raises on missing pricing; tests prove it | `pytest tests/unit -k cost -q` |
+| 13 | No `node_modules` in codemap/PQI/rule output; example scaffolding gone | `python scripts/code_quality.py` output + `ls modules/backend/tasks/example.py` fails |
+| 14 | Broad-except residue count for scoped paths recorded (4.2b) | completion notes |
 
 **Explicitly not done by this plan (by design):** operability audit
 (`/prompt-production-readiness-review`), live `--watch` progress UX, plan version history,
-coverage ratcheting, horizontal-scale rate limiting.
+coverage ratcheting, horizontal-scale rate limiting, execution-engine convergence (Plan 71).
