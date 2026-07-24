@@ -145,6 +145,7 @@ class TestUserServiceSetCurrentMission:
                 TEST_USER_ID,
                 current_mission_id=None,
             )
+            assert result is updated_user
 
     @pytest.mark.asyncio
     async def test_mission_not_found(self):

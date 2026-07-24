@@ -242,7 +242,7 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
             status = "[green]enabled[/green]" if wf.enabled else "[dim]disabled[/dim]"
             console.print(f"    {wf.workflow_name}  {status}")
     else:
-        console.print(f"\n  [dim]No workflows mapped to this mission.[/dim]")
+        console.print("\n  [dim]No workflows mapped to this mission.[/dim]")
 
 
 async def _action_archive(cli_logger, *, mission_id, **_):

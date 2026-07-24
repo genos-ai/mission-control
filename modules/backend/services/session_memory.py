@@ -9,7 +9,7 @@ Delegates to system.summarization.agent.summarize_session_span().
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger

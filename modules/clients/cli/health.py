@@ -14,9 +14,9 @@ def check_health(logger, output_format: str = "human") -> None:
     checks = []
 
     try:
-        from modules.backend.core.config import get_app_config, get_settings
-        from modules.backend.core.exceptions import ApplicationError
-        from modules.backend.core.logging import get_logger
+        from modules.backend.core.config import get_app_config, get_settings  # noqa: F401
+        from modules.backend.core.exceptions import ApplicationError  # noqa: F401
+        from modules.backend.core.logging import get_logger  # noqa: F401
 
         checks.append(("Core imports", True, None))
         logger.debug("Core imports successful")
@@ -62,7 +62,7 @@ def check_health(logger, output_format: str = "human") -> None:
         logger.error("Database models failed", extra={"error": str(e)})
 
     try:
-        from modules.backend.schemas.base import ApiResponse, ErrorResponse
+        from modules.backend.schemas.base import ApiResponse, ErrorResponse  # noqa: F401
 
         checks.append(("API schemas", True, None))
         logger.debug("Schemas loaded")

@@ -14,7 +14,7 @@ class MissionLearningCreate(BaseModel):
 
     kind: str = Field(
         ...,
-        description="failure_pattern | success_pattern | anti_pattern | retry_strategy | capability_gap",
+        description="failure_pattern | success_pattern | anti_pattern | retry_strategy | capability_gap",  # noqa: E501
     )
     title: str = Field(
         ...,

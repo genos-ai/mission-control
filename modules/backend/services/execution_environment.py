@@ -353,7 +353,7 @@ class ExecutionEnvironmentService:
         if not self._db:
             return 0
 
-        from sqlalchemy import select, text
+        from sqlalchemy import select
 
         from modules.backend.models.execution_environment import (
             EnvironmentStatus,

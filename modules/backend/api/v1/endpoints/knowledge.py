@@ -16,7 +16,6 @@ from fastapi import APIRouter, Query
 from modules.backend.core.dependencies import AdminRole, DbSession
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_learning import (
-    MissionLearningListResponse,
     MissionLearningResponse,
 )
 from modules.backend.services.knowledge import KnowledgeService
@@ -85,7 +84,10 @@ async def list_platform_learnings(
     learnings = await svc.list_platform(kind=kind, domain_tags=tags, limit=limit, offset=offset)
     return ApiResponse(
         data={
-            "items": [MissionLearningResponse.model_validate(l).model_dump() for l in learnings],
+            "items": [
+                MissionLearningResponse.model_validate(learning).model_dump()
+                for learning in learnings
+            ],
             "total": len(learnings),
         }
     )

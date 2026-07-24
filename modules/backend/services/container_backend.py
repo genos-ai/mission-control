@@ -86,7 +86,7 @@ class ContainerBackend:
             memory_limit_mb: Memory limit in MB (default: 2048)
             extra_volumes: Additional bind mounts beyond the worktree.
                 List of dicts with keys: host_path, container_path, mode (ro|rw).
-                Example: [{"host_path": "/data/target", "container_path": "/workspace/target", "mode": "ro"}]
+                Example: [{"host_path": "/data/target", "container_path": "/workspace/target", "mode": "ro"}]  # noqa: E501
             network_mode: Docker network mode (default: None → Docker default)
 
         Args:

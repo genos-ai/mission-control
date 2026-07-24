@@ -297,7 +297,7 @@ async def check_dependencies(
         issues.append(f"Missing packages: {', '.join(missing)}")
     if mismatches:
         issues.append(
-            f"Version mismatches: "
+            "Version mismatches: "
             + ", ".join(
                 f"{m['package']} (want {m['required']}, have {m['installed']})" for m in mismatches
             )

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import BudgetExceededError, NotFoundError
 from modules.backend.models.mission import Mission
-from modules.backend.models.session import Session, SessionStatus
+from modules.backend.models.session import SessionStatus
 from modules.backend.models.user import User
 from modules.backend.schemas.session import SessionCreate
 from modules.backend.services.session import SessionService

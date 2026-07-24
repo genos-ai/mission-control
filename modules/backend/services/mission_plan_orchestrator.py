@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_default_budget_usd
-from modules.backend.core.exceptions import ConflictError, ValidationError
+from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import (
@@ -30,7 +30,7 @@ from modules.backend.events.types import (
     SystemEvent,
 )
 from modules.backend.models.mission_plan import VALID_GATE_MODES, MissionPlanStatus
-from modules.backend.models.task import TERMINAL_TASK_STATUSES, Task, TaskStatus
+from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.task import TaskRepository

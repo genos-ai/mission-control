@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 import yaml
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from modules.backend.agents.deliberation.critic.agent import create_agent

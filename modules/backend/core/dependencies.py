@@ -4,6 +4,7 @@ FastAPI Dependencies.
 Shared dependencies for request handling.
 """
 
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends, Header, Security
@@ -11,7 +12,10 @@ from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.database import get_db_session
+from modules.backend.core.exceptions import AuthenticationError, AuthorizationError
+from modules.backend.core.idempotency import IdempotencyGuard
 from modules.backend.core.logging import get_logger
+from modules.backend.models.user import User
 
 logger = get_logger(__name__)
 
@@ -45,9 +49,6 @@ async def get_event_bus():
 # ---------------------------------------------------------------------------
 # User-based authentication and authorization
 # ---------------------------------------------------------------------------
-
-from modules.backend.core.exceptions import AuthenticationError, AuthorizationError
-from modules.backend.models.user import User
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -266,10 +267,6 @@ async def require_session_access(db, session_id: str, user) -> None:
 # ---------------------------------------------------------------------------
 # Idempotency key support
 # ---------------------------------------------------------------------------
-
-from collections.abc import AsyncIterator
-
-from modules.backend.core.idempotency import IdempotencyGuard
 
 
 async def get_idempotency(

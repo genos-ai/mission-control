@@ -57,7 +57,7 @@ async def _action_chat(cli_logger, *, mission_id, message, output_format, **_):
         )
 
     response = result.get("response", "")
-    console.print(f"\n[bold]Workflow Architect:[/bold]\n")
+    console.print("\n[bold]Workflow Architect:[/bold]\n")
     console.print(response)
 
     usage = result.get("usage")

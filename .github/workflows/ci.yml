@@ -1,8 +1,7 @@
-# CI gate for main — Plan 84 Phase 1.1.
+# CI gate for main — Plan 84 Phase 1.1 / 1.3.
 #
 # Jobs:
-#   lint  — black + isort checks (revs MUST match .pre-commit-config.yaml;
-#           tree-wide flake8 joins once the pre-existing backlog exits 0)
+#   lint  — black + isort + flake8 checks (revs MUST match .pre-commit-config.yaml)
 #   rules — the project rule checker over the full tree
 #   tests — unit + integration suites against real Postgres/Redis (P12)
 #
@@ -25,7 +24,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install pinned formatters
-        run: pip install black==26.3.1 isort==8.0.1
+        run: pip install black==26.3.1 isort==8.0.1 flake8==7.3.0
       - name: black --check
         run: >
           black --check --line-length=100
@@ -34,6 +33,11 @@ jobs:
       - name: isort --check-only
         run: >
           isort --check-only
+          modules/backend modules/clients tests scripts
+          mc.py admin.py services.py tui.py
+      - name: flake8
+        run: >
+          flake8
           modules/backend modules/clients tests scripts
           mc.py admin.py services.py tui.py
 

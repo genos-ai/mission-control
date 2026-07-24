@@ -1,7 +1,5 @@
 """Unit tests for session models and state machine."""
 
-import pytest
-
 from modules.backend.models.session import (
     VALID_TRANSITIONS,
     Session,

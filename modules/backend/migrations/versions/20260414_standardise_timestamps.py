@@ -10,7 +10,6 @@ Revision ID: standardise_timestamps
 Revises: workflow_run_exec_record
 """
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = "standardise_timestamps"

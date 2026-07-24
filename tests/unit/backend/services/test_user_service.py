@@ -196,6 +196,7 @@ class TestUpdateUser:
             user,
             display_name="New Name",
         )
+        assert result == updated
         service.user_repo.update.assert_called_once_with(
             "self-1",
             display_name="New Name",

@@ -13,7 +13,6 @@ from pydantic_ai.models.test import TestModel
 
 from modules.backend.agents.mission_control.mission_control import handle
 from modules.backend.events.types import (
-    AgentResponseChunkEvent,
     AgentResponseCompleteEvent,
     AgentThinkingEvent,
     CostUpdateEvent,

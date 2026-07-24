@@ -47,8 +47,8 @@ COMPARATOR_LAYOUTS = {
 
 QUESTIONS = {
     "q1": "What will agentic AI do to UK knowledge-work employment by 2030?",
-    "q2": "Will the EU AI Act be substantially weakened by enforcement gaps and sectoral carve-outs by end-2027?",
-    "q3": "Will commercial nuclear fusion deliver utility-grade electricity at competitive cost before 2040?",
+    "q2": "Will the EU AI Act be substantially weakened by enforcement gaps and sectoral carve-outs by end-2027?",  # noqa: E501
+    "q3": "Will commercial nuclear fusion deliver utility-grade electricity at competitive cost before 2040?",  # noqa: E501
 }
 
 
@@ -170,7 +170,7 @@ def main(reveal: bool, comparator: str, seed: int | None) -> None:
         f"\nKey saved to {key_file.relative_to(PROJECT_ROOT)} (do not open until scoring is done)."
     )
     print(f"\nBlind deliverables: {blind_dir.relative_to(PROJECT_ROOT)}/")
-    print(f"  Read in pairs (e.g. q1_A.md and q1_B.md) and score each.")
+    print("  Read in pairs (e.g. q1_A.md and q1_B.md) and score each.")
     print(
         f"  Then run: python scripts/think_tank_anonymise.py --comparator {comparator} --reveal\n"
     )

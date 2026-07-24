@@ -13,7 +13,6 @@ Two modes:
 import asyncio
 import json as _json
 import sys
-from pathlib import Path
 
 from modules.backend.core.config import find_project_root
 from modules.backend.core.utils import estimate_tokens
@@ -124,7 +123,7 @@ def _action_show(cli_logger, *, output_format, mission_id=None, **_):
         cycles = find_circular_deps(import_graph)
         total_edges = sum(len(deps) for deps in import_graph.values())
 
-        console.print(f"[bold cyan]Dependency Graph[/bold cyan]")
+        console.print("[bold cyan]Dependency Graph[/bold cyan]")
         console.print(f"  Modules: {len(import_graph)}")
         console.print(f"  Edges:   {total_edges}")
         if cycles:
@@ -132,7 +131,7 @@ def _action_show(cli_logger, *, output_format, mission_id=None, **_):
             for cycle in cycles:
                 console.print(f"    [yellow]{'  →  '.join(cycle)}[/yellow]")
         else:
-            console.print(f"  Cycles:  [green]0[/green]")
+            console.print("  Cycles:  [green]0[/green]")
 
     # Token budget summary
     console.print()
@@ -201,7 +200,7 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
                 )
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 console.print(
-                    f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n"
+                    f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n"  # noqa: E501
                 )
                 packet = await assembler.build(
                     mission_id=mission_id,
@@ -222,7 +221,7 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
     if pcd:
         pcd_tokens = estimate_tokens(pcd)
         console.print(
-            f"[bold cyan]Layer 0: Project Context Document (PCD)[/bold cyan]  ~{pcd_tokens:,} tokens"
+            f"[bold cyan]Layer 0: Project Context Document (PCD)[/bold cyan]  ~{pcd_tokens:,} tokens"  # noqa: E501
         )
         # Show top-level keys
         if isinstance(pcd, dict):
@@ -244,7 +243,7 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
     if task:
         task_tokens = estimate_tokens(task)
         console.print(f"[bold cyan]Layer 1: Task Definition[/bold cyan]  ~{task_tokens:,} tokens")
-        console.print(f"  (preview stub — real task injected at dispatch time)")
+        console.print("  (preview stub — real task injected at dispatch time)")
         console.print()
 
     # Layer 1: Inputs
@@ -263,7 +262,7 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
         cm_tokens = estimate_tokens(code_map)
         lines = code_map.count("\n") if isinstance(code_map, str) else 0
         console.print(
-            f"[bold cyan]Layer 3: Code Map Markdown[/bold cyan]  ~{cm_tokens:,} tokens ({lines} lines)"
+            f"[bold cyan]Layer 3: Code Map Markdown[/bold cyan]  ~{cm_tokens:,} tokens ({lines} lines)"  # noqa: E501
         )
         # Show first 5 lines as preview
         if isinstance(code_map, str):
@@ -272,7 +271,7 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
         console.print()
     else:
         console.print(
-            "[bold cyan]Layer 3: Code Map[/bold cyan] [dim](not included for these domain tags)[/dim]\n"
+            "[bold cyan]Layer 3: Code Map[/bold cyan] [dim](not included for these domain tags)[/dim]\n"  # noqa: E501
         )
 
     # Layer 2: History
@@ -384,7 +383,7 @@ def _action_pqi(cli_logger, *, output_format, **_):
 
     console.print(
         f"[bold]PyQuality Index:[/bold]  "
-        f"[{color} bold]{result.composite:.1f}/100  ({result.quality_band.value.upper()})[/{color} bold]"
+        f"[{color} bold]{result.composite:.1f}/100  ({result.quality_band.value.upper()})[/{color} bold]"  # noqa: E501
     )
     console.print(f"  Files:     {result.file_count}")
     console.print(f"  Lines:     {result.line_count:,}")
@@ -461,7 +460,7 @@ def _action_deps(cli_logger, *, output_format, **_):
         )
         return
 
-    console.print(f"[bold]Dependency Graph[/bold]")
+    console.print("[bold]Dependency Graph[/bold]")
     console.print(f"  Modules: {len(import_graph)}")
     console.print(f"  Edges:   {total_edges}")
     console.print()

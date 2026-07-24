@@ -17,8 +17,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from modules.backend.services.container_backend import ContainerBackend
-from modules.backend.services.execution_environment import ExecutionEnvironmentService
+from modules.backend.services.container_backend import ContainerBackend  # noqa: E402
+from modules.backend.services.execution_environment import ExecutionEnvironmentService  # noqa: E402
 
 
 async def main() -> None:
@@ -53,7 +53,7 @@ async def main() -> None:
         print(f"\n✗ Container creation failed: {e}")
         print("  Make sure Docker is running and code-workspace image is built:")
         print(
-            "  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile ."
+            "  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile ."  # noqa: E501
         )
         sys.exit(1)
 

@@ -22,7 +22,6 @@ Commands:
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from modules.clients.cli.api_client import ApiError, CliApiClient, resolve_short_id

@@ -20,11 +20,8 @@ from modules.backend.core.dependencies import (
 )
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
-
-logger = get_logger(__name__)
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.execution_record import (
-    ExecutionCostBreakdown,
     ExecutionDecisionResponse,
     ExecutionListResponse,
     ExecutionRecordDetailResponse,
@@ -32,6 +29,7 @@ from modules.backend.schemas.execution_record import (
 )
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
+logger = get_logger(__name__)
 router = APIRouter()
 
 
@@ -279,7 +277,6 @@ async def execute_execution(
         from redis.asyncio import Redis as AsyncRedis
 
         from modules.backend.agents.mission_control.mission_dispatch import handle_mission
-        from modules.backend.agents.mission_control.models import NoOpEventBus
         from modules.backend.core.config import get_default_budget_usd, get_redis_url
         from modules.backend.core.database import get_async_session
         from modules.backend.services.session import SessionService

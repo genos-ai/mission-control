@@ -6,7 +6,6 @@ from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatu
 from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
 from modules.clients.tui.widgets.mission_panel import (
     MissionPanel,
-    TaskNode,
     _agent_short_name,
     _task_status_icon,
 )
@@ -161,7 +160,6 @@ class TestMissionPanel:
         """Loading a plan should render layer headings and task nodes."""
         from textual.app import App, ComposeResult
         from textual.containers import VerticalScroll
-        from textual.widgets import Label
 
         plan = _make_plan(3)
         layers = _make_layers(plan)

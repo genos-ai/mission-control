@@ -16,7 +16,6 @@ pipeline is the authoritative runtime path. This service is retained for:
   - Upstream context resolution (resolve_upstream_context)
 """
 
-from pathlib import Path
 from typing import Any
 
 import yaml

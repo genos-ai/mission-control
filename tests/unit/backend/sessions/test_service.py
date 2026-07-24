@@ -6,7 +6,7 @@ import pytest
 
 from modules.backend.core.exceptions import BudgetExceededError, NotFoundError, ValidationError
 from modules.backend.models.session import SessionStatus
-from modules.backend.schemas.session import SessionCreate, SessionMessageCreate, SessionUpdate
+from modules.backend.schemas.session import SessionCreate, SessionMessageCreate
 from modules.backend.services.session import SessionService
 from tests.conftest import TEST_USER_ID
 

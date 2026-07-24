@@ -30,7 +30,6 @@ from modules.backend.agents.mission_control.models import (
     NoOpEventBus,
 )
 from modules.backend.agents.mission_control.outcome import (
-    GateDecisionRecord,
     TaskResult,
     TaskStatus,
     TaskTokenUsage,

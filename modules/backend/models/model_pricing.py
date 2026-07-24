@@ -7,7 +7,7 @@ to the change date. Old rows stay for historical cost accuracy.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Numeric, String
+from sqlalchemy import DateTime, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from modules.backend.models.base import Base

@@ -18,7 +18,6 @@ from modules.backend.agents.security.models import (
     Finding,
     HttpResponseSummary,
     OWASPCategory,
-    RemediationItem,
     SecurityAssessmentReport,
     SeverityLevel,
     TriageVerdict,

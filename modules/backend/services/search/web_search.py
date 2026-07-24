@@ -119,7 +119,7 @@ class WebSearchService:
                 status = getattr(getattr(e, "response", None), "status_code", None)
                 logger.warning(
                     f"{p.capitalize()} search failed"
-                    + (f", falling back" if len(errors) < len(_PROVIDER_CHAIN) - 1 else ""),
+                    + (", falling back" if len(errors) < len(_PROVIDER_CHAIN) - 1 else ""),
                     extra={
                         "provider": p,
                         "query": query[:80],

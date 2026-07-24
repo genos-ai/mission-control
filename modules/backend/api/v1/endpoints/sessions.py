@@ -272,7 +272,7 @@ async def get_messages(
     pagination: PaginationParams = Depends(get_pagination_params),
     sender_id: str | None = Query(
         default=None,
-        description="Filter to messages from this sender (plus user/system messages). Used for agent-scoped views in shared sessions.",
+        description="Filter to messages from this sender (plus user/system messages). Used for agent-scoped views in shared sessions.",  # noqa: E501
     ),
 ) -> dict:
     await require_session_access(db, session_id, current_user)

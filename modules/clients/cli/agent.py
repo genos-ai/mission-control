@@ -136,7 +136,9 @@ def _print_jsonl(result: dict) -> None:
     list is emitted as its own JSONL line. The summary line contains
     everything else (metadata, scalar fields, thinking).
     """
-    _dump = lambda obj: click.echo(json.dumps(obj, separators=(",", ":"), default=str))
+
+    def _dump(obj):
+        click.echo(json.dumps(obj, separators=(",", ":"), default=str))
 
     raw = result["output"]
     try:

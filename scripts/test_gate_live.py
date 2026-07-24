@@ -23,7 +23,7 @@ import click
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from modules.backend.core.logging import get_logger, setup_logging
+from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
 
 logger = get_logger(__name__)
 

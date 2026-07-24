@@ -33,7 +33,7 @@ async def extract_mission_learnings(mission_id: str) -> dict:
     result = {
         "mission_id": mission_id,
         "learnings_created": len(created),
-        "learning_ids": [l.id for l in created],
+        "learning_ids": [learning.id for learning in created],
     }
     logger.info("Learning extraction complete", extra=result)
     return result

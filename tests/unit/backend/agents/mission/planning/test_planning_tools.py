@@ -1,10 +1,7 @@
 """Unit tests for planning tools — verify tool registration and delegation."""
 
-import json
 from dataclasses import dataclass, field
-from unittest.mock import MagicMock
 
-import pytest
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 

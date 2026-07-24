@@ -173,7 +173,7 @@ class ChatTab(Static):
             )
             self.app.state.chat.messages = messages
             self._render_messages(messages)
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load messages", exc_info=True)
 
     def _render_messages(self, messages: list[dict]) -> None:

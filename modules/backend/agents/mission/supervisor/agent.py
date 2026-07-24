@@ -17,7 +17,6 @@ Both register the same three read-only tools via _register_tools().
 """
 
 import json
-from typing import Any
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model

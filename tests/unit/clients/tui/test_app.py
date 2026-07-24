@@ -3,7 +3,7 @@
 These tests mock the ServiceBridge so no real DB is needed.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

@@ -7,7 +7,6 @@ and scope, delegate to CodeMapLoader and PQI scorer.
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 
 from modules.backend.agents.deps.base import FileScope

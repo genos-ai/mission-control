@@ -13,7 +13,7 @@ from modules.backend.agents.mission_control.models import (
     MissionControlRequest,
     MissionControlResponse,
 )
-from modules.backend.agents.mission_control.registry import AgentRegistry, get_registry
+from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.agents.mission_control.router import RuleBasedRouter
 
 

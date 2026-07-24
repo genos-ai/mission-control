@@ -34,9 +34,7 @@ from modules.clients.tui.messages import (
     MissionCreated,
     MissionSelected,
     MissionStartRequested,
-    ScreenChanged,
     SessionEventReceived,
-    TabSwitched,
 )
 from modules.clients.tui.screens.admin import AdminScreen
 from modules.clients.tui.screens.catalog import CatalogScreen

@@ -4,8 +4,6 @@ Unit tests for domain tag taxonomy.
 No database, no mocks — pure function tests against the public interface.
 """
 
-import pytest
-
 from modules.backend.core.domain_tags import (
     CROSS_CUTTING_TAGS,
     infer_tags_from_manifest,

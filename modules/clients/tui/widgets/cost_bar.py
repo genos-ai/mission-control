@@ -125,7 +125,7 @@ class CostBar(Widget):
         try:
             label = self.query_one("#notification-label", Label)
             if count > 0:
-                label.update(f"[bold yellow]\\N{BELL} {count}[/bold yellow]")
+                label.update(f"[bold yellow]\N{BELL} {count}[/bold yellow]")
             else:
                 label.update("")
         except NoMatches:

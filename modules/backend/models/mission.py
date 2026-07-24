@@ -8,12 +8,16 @@ agents operate within a single mission at a time.
 """
 
 import enum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, Float, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from modules.backend.models.user import User
 
 
 class MissionTier(str, enum.Enum):
@@ -111,7 +115,7 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         String(20),
         nullable=True,
         default=None,
-        comment="Default execution environment for this mission: local, worktree, container. NULL = local.",
+        comment="Default execution environment for this mission: local, worktree, container. NULL = local.",  # noqa: E501
     )
 
     # Relationships

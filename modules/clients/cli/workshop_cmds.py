@@ -71,7 +71,7 @@ async def _action_run(cli_logger, *, agent_name, inputs_json, prompt_override, *
             prompt_override=prompt_override,
         )
 
-    console.print(f"\n[bold green]Workshop run completed[/bold green]")
+    console.print("\n[bold green]Workshop run completed[/bold green]")
     console.print(f"  Agent: {result['agent_name']}")
     console.print(f"  Cost: ${result['cost_usd']:.4f}")
     console.print(f"  Tokens: {result['input_tokens']} in / {result['output_tokens']} out")

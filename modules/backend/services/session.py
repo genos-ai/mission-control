@@ -235,7 +235,10 @@ class SessionService(BaseService):
         output_tokens: int,
         cost_usd: float,
     ) -> None:
-        """Add token usage and cost to a session. Does NOT check budget — use enforce_budget() first."""
+        """Add token usage and cost to a session.
+
+        Does NOT check budget — use enforce_budget() first.
+        """
         session = await self.repo.get_by_id(session_id)
         await self._execute_db_operation(
             "update_cost",

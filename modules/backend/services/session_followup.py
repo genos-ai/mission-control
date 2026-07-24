@@ -40,7 +40,7 @@ Design notes:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -300,7 +300,6 @@ class SessionFollowupService(BaseService):
             return []
 
         mission_id = payload.get("mission_id")
-        session_id_filter = payload.get("session_id")
 
         # Narrow by consumed/expired at SQL level, then filter by
         # trigger_event_types in Python (JSON array containment is

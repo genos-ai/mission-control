@@ -163,6 +163,7 @@ class TestAdminGroup:
             result = runner.invoke(cli, ["admin", "roles"])
         mock_fn.assert_called_once()
         assert mock_fn.call_args[0][1] == "roles"
+        assert result.exit_code == 0
 
     def test_admin_bootstrap_user_dispatches(self, runner):
         from admin import admin_cli as cli
@@ -209,6 +210,7 @@ class TestAdminGroup:
         mock_fn.assert_called_once()
         assert mock_fn.call_args[0][1] == "reset-password"
         assert mock_fn.call_args[1]["email"] == "user@test.com"
+        assert result.exit_code == 0
 
     def test_admin_update_prompt_requires_agent(self, runner):
         from admin import admin_cli as cli
@@ -231,6 +233,7 @@ class TestAdminGroup:
             )
         mock_fn.assert_called_once()
         assert mock_fn.call_args[0][1] == "toggle-agent"
+        assert result.exit_code == 0
         assert mock_fn.call_args[1]["agent_name"] == "test.agent"
 
 

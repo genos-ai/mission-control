@@ -6,12 +6,17 @@ Persistent user identity for authentication and authorization.
 
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from modules.backend.models.api_key import ApiKey
+    from modules.backend.models.mission import Mission
 
 
 class SystemRole(str, enum.Enum):

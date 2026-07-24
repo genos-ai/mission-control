@@ -85,7 +85,9 @@ def filter_catalog_agents(
     ]
 
 
-def gate_header(ctx: "GateContext", title: str) -> str:
+# GateContext is duck-typed here (string annotation) — this module deliberately has no
+# backend imports (see module docstring), so the type is never actually imported.
+def gate_header(ctx: "GateContext", title: str) -> str:  # noqa: F821
     """Format a gate panel header with title, mission ID, and cost."""
     cc = cost_color(ctx.total_cost_usd, ctx.budget_usd)
     return (

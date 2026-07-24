@@ -17,11 +17,9 @@ from modules.backend.core.dependencies import CurrentUser, DbSession, require_mi
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_intent import (
     MissionIntentCreate,
-    MissionIntentListResponse,
     MissionIntentResponse,
 )
 from modules.backend.schemas.mission_learning import (
-    MissionLearningListResponse,
     MissionLearningResponse,
 )
 from modules.backend.services.knowledge import KnowledgeService
@@ -80,7 +78,10 @@ async def list_mission_learnings(
     total = await svc.count_by_mission(mission_id)
     return ApiResponse(
         data={
-            "items": [MissionLearningResponse.model_validate(l).model_dump() for l in learnings],
+            "items": [
+                MissionLearningResponse.model_validate(learning).model_dump()
+                for learning in learnings
+            ],
             "total": total,
         }
     )

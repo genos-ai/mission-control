@@ -38,10 +38,8 @@ from modules.backend.agents.mission_control.gate_models import (
     GateAction,
     GateContext,
     GateDecision,
-    GateReviewer,
 )
 from modules.backend.core.logging import get_logger
-from modules.backend.core.utils import utc_now
 
 logger = get_logger(__name__)
 
@@ -387,11 +385,16 @@ class AutonomousPostRunReviewer:
             )
 
             # Build the prompt with context the Haiku agent needs.
+            recent_outcomes_json = json.dumps(
+                context.recent_run_outcomes[:3], indent=2, default=str
+            )
+            plan_task_summary_json = json.dumps(context.plan_task_summary, indent=2, default=str)
             prompt = (
                 f"Mission brief: {context.mission_brief or 'not available'}\n\n"
-                f"Recent run outcomes:\n{json.dumps(context.recent_run_outcomes[:3], indent=2, default=str)}\n\n"
-                f"Plan task summary: {json.dumps(context.plan_task_summary, indent=2, default=str)}\n\n"
-                f"Budget: spent ${context.total_cost_usd:.4f} of ${context.budget_usd:.4f} ceiling.\n\n"
+                f"Recent run outcomes:\n{recent_outcomes_json}\n\n"
+                f"Plan task summary: {plan_task_summary_json}\n\n"
+                f"Budget: spent ${context.total_cost_usd:.4f} "
+                f"of ${context.budget_usd:.4f} ceiling.\n\n"
                 "Based on the above, classify this situation."
             )
 

@@ -541,7 +541,7 @@ class _TestGateDispatchIntegrationRemoved:
 
         gate = RecordingGate()
 
-        outcome = await dispatch(
+        await dispatch(
             plan=_plan("test-record"),
             roster=roster,
             execute_agent_fn=mock_executor,

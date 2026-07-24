@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 from modules.backend.agents.security.tool_registry import (
-    CapabilityMode,
     SecurityToolRegistry,
     SecurityToolSpec,
     SurfaceDetectionResult,

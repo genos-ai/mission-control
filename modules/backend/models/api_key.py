@@ -5,6 +5,7 @@ Per-user, named, revocable API keys with optional expiry.
 """
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
@@ -12,6 +13,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.core.utils import utc_now
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from modules.backend.models.user import User
 
 
 class ApiKey(UUIDMixin, TimestampMixin, Base):

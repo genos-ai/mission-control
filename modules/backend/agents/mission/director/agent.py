@@ -541,7 +541,10 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                     "workflow_name": clean_name,
                     "mission_id": mission_id,
                     "status": "started_in_background",
-                    "message": "Workflow started in background. Check progress via check_background_tasks.",
+                    "message": (
+                        "Workflow started in background. "
+                        "Check progress via check_background_tasks."
+                    ),
                 },
                 indent=2,
                 default=str,
@@ -1274,7 +1277,6 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         mission_id = ctx.deps.mission_id
 
         try:
-            from modules.backend.models.task import TaskStatus
             from modules.backend.services.mission_plan import MissionPlanService
 
             plan_svc = MissionPlanService(ctx.deps.db_session)
@@ -1288,7 +1290,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 counts[s] = counts.get(s, 0) + 1
 
             gate = plan.gate_mode or "autonomous"
-            parts.append(f"[Plan State]")
+            parts.append("[Plan State]")
             parts.append(f"Version: {plan.version} | Gate: {gate} | Tasks: {len(tasks)}")
             if counts:
                 parts.append("Status: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))

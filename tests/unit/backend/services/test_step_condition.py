@@ -9,8 +9,6 @@ Validates that WorkflowRunWavesMixin._should_skip correctly handles:
 - Skip propagation from a conditionally-skipped parent
 """
 
-import pytest
-
 from modules.backend.schemas.workflow import WorkflowStepSchema
 from modules.backend.services.workflow_run_waves import WorkflowRunWavesMixin
 

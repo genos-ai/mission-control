@@ -18,11 +18,11 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widget import Widget
+from textual.widgets import Button, Label, Static
 
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
-from textual.widgets import Button, Label, Static
 
 # ── Severity levels ──────────────────────────────────────────────────
 

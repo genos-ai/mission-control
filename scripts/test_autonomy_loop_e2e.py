@@ -23,8 +23,6 @@ import asyncio
 import json
 import os
 import sys
-import time
-from pathlib import Path
 
 import httpx
 
@@ -437,8 +435,7 @@ class E2ETestRunner:
             for f in self._failures:
                 print(f"  {FAIL} {f}")
             return False
-        total = 8 - len([f for f in self._failures])
-        print(f"PASSED — all checks passed")
+        print("PASSED — all checks passed")
         return True
 
 

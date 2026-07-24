@@ -159,11 +159,11 @@ class CatalogScreen(Screen):
                 f"[bold]Keywords:[/bold] {', '.join(keywords)}",
             )
         if tools:
-            lines.append(f"\n[bold]Tools:[/bold]")
+            lines.append("\n[bold]Tools:[/bold]")
             for tool in tools:
                 lines.append(f"  - {tool}")
         if constraints:
-            lines.append(f"\n[bold]Constraints:[/bold]")
+            lines.append("\n[bold]Constraints:[/bold]")
             for k, v in constraints.items():
                 lines.append(f"  {k}: {v}")
 

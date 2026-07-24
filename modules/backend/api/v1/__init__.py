@@ -61,7 +61,7 @@ router.include_router(streams.router, prefix="/streams", tags=["streams"])
 # Client error reporting (frontend → server logs)
 router.include_router(client_errors.router, prefix="/client-errors", tags=["client-errors"])
 
-# Knowledge platform (Plan 57) — mission-scoped endpoints (mounted at root for /missions/{id}/... paths)
+# Knowledge platform (Plan 57) — mission-scoped endpoints (mounted at root for /missions/{id}/... paths)  # noqa: E501
 router.include_router(mission_knowledge.router, tags=["knowledge"])
 
 # Knowledge platform (Plan 57) — platform-scoped endpoints (admin only)

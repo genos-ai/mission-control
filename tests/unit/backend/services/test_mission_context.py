@@ -21,7 +21,11 @@ from modules.backend.services.mission_context import (
 from tests.conftest import TEST_USER_ID
 
 _TEST_NS = UUID("00000000-0000-0000-0000-000000000000")
-_MID = lambda tag: str(uuid5(_TEST_NS, f"mission:ctx-{tag}"))
+
+
+def _MID(tag):
+    return str(uuid5(_TEST_NS, f"mission:ctx-{tag}"))
+
 
 # Tags used in this file that need Mission parent rows.
 # "nonexistent" and "nonexistent-mission" are deliberately omitted

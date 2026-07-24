@@ -185,7 +185,7 @@ def merge_sarif(paths: list[str], output_path: str) -> str:
         results.append(result)
 
     merged_sarif = {
-        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",  # noqa: E501
         "version": "2.1.0",
         "runs": [
             {
@@ -253,7 +253,7 @@ def convert_to_sarif(
         return
 
     sarif = {
-        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",  # noqa: E501
         "version": "2.1.0",
         "runs": [
             {

@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from modules.backend.agents.deps.base import FileScope
 from modules.backend.agents.schemas import QaAuditResult, Violation
 from modules.backend.services.compliance import ComplianceScannerService
 

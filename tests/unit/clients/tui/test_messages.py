@@ -1,11 +1,7 @@
 """Tests for TUI Textual Message types."""
 
-import pytest
-
 from modules.clients.tui.messages import (
     AgentSelected,
-    GateReviewCompleted,
-    GateReviewRequested,
     MissionCancelRequested,
     MissionCreated,
     MissionSelected,

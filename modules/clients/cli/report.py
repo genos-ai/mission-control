@@ -24,21 +24,16 @@ from modules.backend.core.logging import get_logger
 # Re-export display primitives so existing CLI files don't need changes yet.
 from modules.clients.common.display import (
     DOTTED_ROWS,
-    OUTPUT_FORMATS,
     SEVERITY_ORDER,
     build_table,
-    cost_line,
     format_json_body,
     get_console,
     info_panel,
     output_panel,
     primary_panel,
     severity_color,
-    status_color,
     status_panel,
     styled_status,
-    summary_table,
-    thinking_panel,
 )
 
 logger = get_logger(__name__)
@@ -284,7 +279,7 @@ def _build_pqi_panel(pqi: dict) -> Panel:
 
     lines: list[str] = []
     lines.append(
-        f"  Composite Score:  [{color} bold]{composite:.1f} / 100[/{color} bold]  [{color}][{band}][/{color}]"
+        f"  Composite Score:  [{color} bold]{composite:.1f} / 100[/{color} bold]  [{color}][{band}][/{color}]"  # noqa: E501
     )
     lines.append(f"    [{color}]{bar}[/{color}] {composite:.1f}%")
     lines.append("")
@@ -359,7 +354,7 @@ async def render_execution(execution: Any, output_format: str = "human") -> None
     else:
         await _render_summary(
             title="Execution Summary",
-            status_line=f"  Status: {_styled_status(execution.status)}    Cost: ${execution.total_cost_usd:.4f}",
+            status_line=f"  Status: {_styled_status(execution.status)}    Cost: ${execution.total_cost_usd:.4f}",  # noqa: E501
             data=_execution_to_dict(execution),
         )
 
@@ -548,7 +543,7 @@ def _render_workflow_detail(run: Any, executions: list[Any]) -> None:
         f"[bold]Status:[/bold]    {styled_status(run.status)}",
         f"[bold]Cost:[/bold]      ${run.total_cost_usd:.4f}"
         + (
-            f"  ({(run.total_cost_usd / run.budget_usd) * 100:.0f}% of ${run.budget_usd:.2f} budget)"
+            f"  ({(run.total_cost_usd / run.budget_usd) * 100:.0f}% of ${run.budget_usd:.2f} budget)"  # noqa: E501
             if run.budget_usd
             else ""
         ),

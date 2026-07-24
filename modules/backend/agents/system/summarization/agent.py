@@ -139,7 +139,9 @@ async def summarize_session_span(
     )
 
     formatted_messages = "\n".join(
-        f"[{msg.get('role', 'unknown')}{':' + msg['sender_id'] if msg.get('sender_id') else ''}] {msg.get('content', '')[:500]}"
+        f"[{msg.get('role', 'unknown')}"
+        f"{':' + msg['sender_id'] if msg.get('sender_id') else ''}] "
+        f"{msg.get('content', '')[:500]}"
         for msg in messages
     )
 

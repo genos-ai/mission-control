@@ -10,19 +10,17 @@ from typing import Any
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import (
     Button,
     DataTable,
     Footer,
     Header,
-    Input,
     Label,
     Static,
     TabbedContent,
     TabPane,
-    TextArea,
 )
 
 from modules.backend.core.logging import get_logger
@@ -72,7 +70,7 @@ class _AdminCatalogTab(Static):
                     a.get("visibility", "public"),
                     key=a.get("agent_name", ""),
                 )
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load admin catalog", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -384,7 +382,7 @@ class _AdminUsersTab(Static):
                     svc,
                     key=u.get("id", ""),
                 )
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load users", exc_info=True)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:

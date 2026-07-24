@@ -202,7 +202,6 @@ async def _maybe_create_artifact(
     extracts content from the task output and writes an artifact row.
     No heuristics — the catalog flag is the single source of truth.
     """
-    import re
 
     from modules.backend.agents.mission_control.registry import get_registry
 

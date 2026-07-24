@@ -136,9 +136,6 @@ async def trace_workflow(
 
     # Summary
     console.print()
-    still_running = [
-        a for aid, a in activities.items() if activities[aid] in ("scheduled", "running")
-    ]
     # (activities dict stores type strings, not dicts — skip summary for now)
 
     # Research phase breakdown
@@ -148,7 +145,6 @@ async def trace_workflow(
 
 async def _show_research_phases(console, mission_id: str) -> None:
     """Query mission_events for research phase timings."""
-    from datetime import datetime
 
     from sqlalchemy import text
 
@@ -191,7 +187,6 @@ async def _show_research_phases(console, mission_id: str) -> None:
 
         first_ts = _parse_ts(run_events[0][1])
         prev_ts = first_ts
-        prev_phase = "started"
 
         PHASE_LABELS = {
             "research.started": "Started",
@@ -216,17 +211,16 @@ async def _show_research_phases(console, mission_id: str) -> None:
                 dur_str = (
                     f"{duration:.0f}s"
                     if duration < 60
-                    else f"{int(duration)//60}m{int(duration)%60}s"
+                    else f"{int(duration) // 60}m{int(duration) % 60}s"
                 )
                 console.print(f"    [dim]{m:02d}:{s:02d}[/dim]  {label:20s}  [dim]+{dur_str}[/dim]")
             else:
                 console.print(f"    [dim]{m:02d}:{s:02d}[/dim]  {label}")
 
             prev_ts = ts
-            prev_phase = event_type
 
         total = (prev_ts - first_ts).total_seconds()
-        console.print(f"    [bold]Total: {int(total)//60}m{int(total)%60}s[/bold]")
+        console.print(f"    [bold]Total: {int(total) // 60}m{int(total) % 60}s[/bold]")
         console.print()
 
 
@@ -242,7 +236,7 @@ def _parse_ts(ts):
 def _elapsed_from_str(start, ts_str: str) -> str:
     """Format elapsed time from workflow start."""
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         if isinstance(ts_str, str) and ts_str:
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))

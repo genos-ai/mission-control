@@ -21,7 +21,6 @@ from modules.backend.core.utils import utc_now
 from modules.backend.models.execution_record import (
     ExecutionRecord,
     ExecutionRecordStatus,
-    TaskExecution,
 )
 from modules.backend.models.mission_history import DecisionStatus
 from modules.backend.repositories.mission_history import (

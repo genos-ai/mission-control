@@ -8,7 +8,6 @@ Revision ID: fix_timestamps
 Revises: plan51_004
 """
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = "fix_timestamps"

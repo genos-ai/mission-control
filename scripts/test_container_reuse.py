@@ -12,7 +12,6 @@ Usage:
 import asyncio
 import sys
 from pathlib import Path
-from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -100,7 +99,7 @@ async def main() -> None:
 
         r = await db.execute(
             text(
-                "SELECT id, status, execution_count, last_execution_at FROM execution_environments WHERE mission_id = :mid"
+                "SELECT id, status, execution_count, last_execution_at FROM execution_environments WHERE mission_id = :mid"  # noqa: E501
             ),
             {"mid": mission_id},
         )

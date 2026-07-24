@@ -111,7 +111,7 @@ async def _action_create(
 
     click.echo(click.style("Execution record created", fg="green", bold=True))
     click.echo(f"  ID:        {record.id}")
-    click.echo(f"  Status:    pending")
+    click.echo("  Status:    pending")
     click.echo(f"  Roster:    {roster}")
     click.echo(f"  Budget:    ${budget:.2f}" if budget else "  Budget:    default")
     click.echo(f"  Objective: {objective[:100]}")
@@ -312,7 +312,7 @@ async def _action_detail(
     info_lines = [
         f"[bold]ID:[/bold]        {record.id}",
         f"[bold]Status:[/bold]    {styled_status(status)}",
-        f"[bold]Created:[/bold]   {record.created_at.strftime('%Y-%m-%d %H:%M:%S') if record.created_at else '—'}",
+        f"[bold]Created:[/bold]   {record.created_at.strftime('%Y-%m-%d %H:%M:%S') if record.created_at else '—'}",  # noqa: E501
         f"[bold]Started:[/bold]   {record.started_at or '—'}",
         f"[bold]Finished:[/bold]  {record.completed_at or '—'}",
         f"[bold]Roster:[/bold]    {record.roster_name or '—'}",
@@ -386,8 +386,8 @@ async def _action_plan(
         f"[bold]Execution:[/bold]    {execution_id}",
         f"[bold]Status:[/bold]       {styled_status(outcome.get('status', '—'))}",
         f"[bold]Summary:[/bold]      {plan.get('summary', '—')}",
-        f"[bold]Est. Cost:[/bold]    ${plan.get('estimated_cost_usd', 0):.4f}    [bold]Actual:[/bold] ${actual_cost:.4f}",
-        f"[bold]Est. Duration:[/bold] {plan.get('estimated_duration_seconds', 0)}s      [bold]Actual:[/bold] {actual_duration:.1f}s",
+        f"[bold]Est. Cost:[/bold]    ${plan.get('estimated_cost_usd', 0):.4f}    [bold]Actual:[/bold] ${actual_cost:.4f}",  # noqa: E501
+        f"[bold]Est. Duration:[/bold] {plan.get('estimated_duration_seconds', 0)}s      [bold]Actual:[/bold] {actual_duration:.1f}s",  # noqa: E501
         f"[bold]Version:[/bold]      {plan.get('version', '—')}",
     ]
     hints = plan.get("execution_hints", {})
@@ -481,7 +481,7 @@ async def _action_plan(
             detail_lines.append(f"[bold]T2 Checks:[/bold] {', '.join(checks)}")
         if t3.get("requires_ai_evaluation"):
             detail_lines.append(
-                f"[bold]T3 Eval:[/bold]  {t3.get('evaluator_agent', '—')} (min: {t3.get('min_evaluation_score', '—')})"
+                f"[bold]T3 Eval:[/bold]  {t3.get('evaluator_agent', '—')} (min: {t3.get('min_evaluation_score', '—')})"  # noqa: E501
             )
 
         retry_history = result.get("retry_history", [])

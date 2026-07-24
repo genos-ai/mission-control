@@ -135,7 +135,7 @@ class TestListWorkflows:
     @pytest.mark.asyncio
     async def test_list_enabled(self, service, db_session):
         mission = await _seed_mission(db_session)
-        wf1 = await service.create_workflow(
+        await service.create_workflow(
             mission.id,
             "a",
             "desc",

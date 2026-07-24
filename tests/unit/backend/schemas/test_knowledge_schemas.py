@@ -122,15 +122,15 @@ class TestMissionIntentCreate:
 
 class TestMissionLearningCreate:
     def test_valid(self):
-        l = MissionLearningCreate(
+        learning = MissionLearningCreate(
             kind="failure_pattern",
             title="Agent X fails on Y",
             body="Details here",
             recommendation="Use Z instead",
         )
-        assert l.kind == "failure_pattern"
-        assert l.confidence == 0.0
-        assert l.occurrence_count == 1
+        assert learning.kind == "failure_pattern"
+        assert learning.confidence == 0.0
+        assert learning.occurrence_count == 1
 
     def test_confidence_bounds(self):
         with pytest.raises(ValidationError):
@@ -153,13 +153,13 @@ class TestMissionLearningCreate:
             )
 
     def test_evidence_default(self):
-        l = MissionLearningCreate(
+        learning = MissionLearningCreate(
             kind="retry_strategy",
             title="t",
             body="b",
             recommendation="r",
         )
-        assert l.evidence.task_attempt_ids == []
+        assert learning.evidence.task_attempt_ids == []
 
 
 # ── MissionLearningFilter ────────────────────────────────────

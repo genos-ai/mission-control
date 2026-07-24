@@ -48,10 +48,7 @@ from modules.backend.core.model_providers import (  # noqa: E402
     get_foundry_project_provider,
 )
 from modules.backend.schemas.research import SearchResult  # noqa: E402
-from modules.backend.services.search.bing_grounding_search import (  # noqa: E402
-    FoundryBingGroundingSearch,
-    _parse_response,
-)
+from modules.backend.services.search.bing_grounding_search import _parse_response  # noqa: E402
 from modules.backend.services.search.web_search import WebSearchService  # noqa: E402
 
 logger = get_logger(__name__)

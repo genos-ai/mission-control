@@ -10,7 +10,6 @@ and listing. Caches results after first load. Call reload() to
 refresh from DB after admin changes.
 """
 
-import asyncio
 import importlib
 import inspect
 from functools import lru_cache

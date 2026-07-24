@@ -47,7 +47,6 @@ async def _seed_workflow_definition(
     mission_id: str,
 ) -> WorkflowDefinition:
     """Create a minimal workflow definition for schedule tests."""
-    from modules.backend.core.utils import utc_now
 
     wf = WorkflowDefinition(
         mission_id=mission_id,
@@ -242,6 +241,7 @@ class TestUpdateSchedule:
             cron_expression="0 12 * * *",
         )
         assert updated.cron_expression == "0 12 * * *"
+        assert updated.next_fire_at != original_next
 
 
 class TestDeleteSchedule:

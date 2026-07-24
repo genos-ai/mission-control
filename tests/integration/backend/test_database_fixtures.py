@@ -81,7 +81,7 @@ class TestDatabaseSession:
 
         # The item exists within this test
         result = await db_session.execute(select(SampleItem))
-        items = result.scalars().all()
+        result.scalars().all()
         # May have items from this test, but not from previous tests
         # (each test gets a fresh session that's rolled back)
 

@@ -1,7 +1,5 @@
 """Tests for workflow design tool implementations."""
 
-import pytest
-
 from modules.backend.agents.adapters.workflow_design import (
     build_graph_structure,
     validate_workflow_proposal,

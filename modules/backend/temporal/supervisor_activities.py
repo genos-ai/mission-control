@@ -12,7 +12,7 @@ Activities for the MissionRunWorkflow's post-run supervisor loop:
 Each activity opens its own DB session and commits independently.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from temporalio import activity
 
@@ -188,7 +188,6 @@ async def approve_proposed_tasks(mission_id: str) -> int:
     approved (from a replay), returns 0 without error.
     """
     from modules.backend.core.database import get_async_session
-    from modules.backend.models.task import TaskStatus
     from modules.backend.services.mission_plan import MissionPlanService
 
     activity.logger.info("Approving proposed tasks", extra={"mission_id": mission_id})
@@ -398,7 +397,7 @@ async def start_director_turn(
 
     workflow_id = f"director-followup-{mission_id[:12]}-{uuid.uuid4().hex[:8]}"
 
-    handle = await client.start_workflow(
+    await client.start_workflow(
         ChatTurnWorkflow.run,
         input_data,
         id=workflow_id,

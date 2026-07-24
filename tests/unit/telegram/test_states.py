@@ -4,7 +4,6 @@ Unit tests for Telegram FSM states.
 Tests state definitions and state groups.
 """
 
-import pytest
 from aiogram.fsm.state import State, StatesGroup
 
 

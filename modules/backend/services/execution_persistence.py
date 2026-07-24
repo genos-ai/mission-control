@@ -20,19 +20,6 @@ from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import WorkflowOutputMappingError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
-
-
-def _to_datetime(value: str | datetime | None) -> datetime | None:
-    """Coerce a string or datetime to a datetime. Returns None if empty."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str) and value:
-        return datetime.fromisoformat(value)
-    return None
-
-
 from modules.backend.models.execution_record import (
     DecisionType,
     ExecutionDecision,
@@ -49,6 +36,17 @@ from modules.backend.schemas.execution_record import ExecutionCostBreakdown
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
+
+
+def _to_datetime(value: str | datetime | None) -> datetime | None:
+    """Coerce a string or datetime to a datetime. Returns None if empty."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value:
+        return datetime.fromisoformat(value)
+    return None
 
 
 class ExecutionPersistenceService(BaseService):

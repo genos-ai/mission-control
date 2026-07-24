@@ -13,8 +13,8 @@ from click.testing import CliRunner
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from admin import admin_cli as cli
-from modules.backend.core.config import validate_project_root
+from admin import admin_cli as cli  # noqa: E402
+from modules.backend.core.config import validate_project_root  # noqa: E402
 
 
 class TestValidateProjectRoot:

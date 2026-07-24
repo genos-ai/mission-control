@@ -7,8 +7,6 @@ follows best practices.
 Expected: 0 TRUE_POSITIVE after triage.
 """
 
-import os
-
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

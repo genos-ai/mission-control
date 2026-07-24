@@ -6,7 +6,6 @@ Current intent = most recent row for a mission_id.
 """
 
 from sqlalchemy import desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission_intent import MissionIntent
 from modules.backend.repositories.base import BaseRepository

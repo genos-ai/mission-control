@@ -27,7 +27,7 @@ async def find_ready_plans() -> list[dict]:
     but returns richer data so the workflow can start child workflows
     without additional DB queries.
     """
-    from sqlalchemy import and_, func, or_, select
+    from sqlalchemy import func, or_, select
 
     from modules.backend.core.database import get_async_session
     from modules.backend.models.mission import Mission, MissionStatus

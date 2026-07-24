@@ -11,14 +11,11 @@ from typing import AsyncGenerator
 
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from modules.backend.core.domain_tags import normalize_tag, validate_tags
+from modules.backend.core.domain_tags import validate_tags
 from modules.backend.core.logging import get_logger
-from modules.backend.core.utils import utc_now
 from modules.backend.models.execution_record import (
     ExecutionRecord,
-    ExecutionRecordStatus,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,
@@ -40,8 +37,6 @@ def _schedule_embed(source_table: str, source_id: str) -> None:
 
             client = await get_temporal_client()
             config = get_temporal_config()
-
-            from modules.backend.temporal.knowledge_activities import embed_source
 
             await client.execute_workflow(
                 "no-op",  # Not a workflow — use start_activity pattern
@@ -454,7 +449,7 @@ class MissionLearningExtractor:
             for attempt, execution in items:
                 if attempt.feedback_provided:
                     return f"Retry with feedback: {attempt.feedback_provided[:300]}"
-            return "Agent eventually succeeded — review the successful attempt for the working approach."
+            return "Agent eventually succeeded — review the successful attempt for the working approach."  # noqa: E501
         return "Recurring failure pattern — consider a different agent or approach."
 
     @staticmethod

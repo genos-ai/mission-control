@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.clients.common.event_rendering import is_noisy, summarize_event
+from modules.clients.common.event_rendering import summarize_event
 
 # ── summarize_event (pure function) ──────────────────────────────────
 

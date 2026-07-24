@@ -42,7 +42,6 @@ import asyncio
 import json
 import subprocess
 import sys
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -61,7 +60,10 @@ API_BASE = "http://localhost:8100/api/v1"
 BENCH_CLI_MISSION = "e2e-bench-cli"
 BENCH_API_MISSION = "e2e-bench-api"
 BENCH_DESCRIPTION = "E2E test bench for Plan 62 unified execution path"
-BENCH_BRIEF = "Test autonomous execution via plan infrastructure. Verify supervisor loop, budget tracking, and knowledge accumulation."
+BENCH_BRIEF = (
+    "Test autonomous execution via plan infrastructure. "
+    "Verify supervisor loop, budget tracking, and knowledge accumulation."
+)
 BENCH_BUDGET_USD = 5.0
 BENCH_GATE_MODE = "autonomous"
 
@@ -656,7 +658,7 @@ async def main(
     need_cli = not api_only
     need_api = not cli_only
 
-    print(f"=== Plan 62 E2E Test Bench ===")
+    print("=== Plan 62 E2E Test Bench ===")
     if need_cli:
         print(f"  CLI mission: {BENCH_CLI_MISSION}")
     if need_api:
@@ -683,8 +685,8 @@ async def main(
         print("ABORT: Failed to get auth token")
         return 99
 
-    print(f"  Backend:     healthy")
-    print(f"  Auth:        token acquired\n")
+    print("  Backend:     healthy")
+    print("  Auth:        token acquired\n")
 
     sections: list[Section] = []
 

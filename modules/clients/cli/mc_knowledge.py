@@ -122,7 +122,7 @@ async def learnings_list(
     items = extract_list(data, "items")
 
     if items:
-        console.print(render_learning_list([_normalize_learning(l) for l in items]))
+        console.print(render_learning_list([_normalize_learning(item) for item in items]))
     else:
         console.print("[dim]No learnings extracted yet.[/dim]")
 

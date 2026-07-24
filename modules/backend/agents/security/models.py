@@ -308,7 +308,7 @@ class ValidationResult(BaseModel):
     finding_id: str
     validated: bool
     primitive: str = Field(
-        description="canary_read | canary_write | oob_dns | time_based | reflected_callback | status_diff",
+        description="canary_read | canary_write | oob_dns | time_based | reflected_callback | status_diff",  # noqa: E501
     )
     reproduction_request: str
     expected_observable: str

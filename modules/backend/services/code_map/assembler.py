@@ -12,7 +12,7 @@ Plus a convenience compositor:
 from __future__ import annotations
 
 from modules.backend.core.utils import utc_now
-from modules.backend.services.code_map.types import ModuleInfo, SymbolInfo, SymbolKind
+from modules.backend.services.code_map.types import ModuleInfo
 
 
 def assemble_code_map(

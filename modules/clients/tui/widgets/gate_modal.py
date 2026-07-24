@@ -211,7 +211,6 @@ class GateReviewModal(ModalScreen[GateDecision]):
             # Action buttons
             with Horizontal(id="gate-actions"):
                 for action in self._available_actions:
-                    color = ACTION_COLORS.get(action.value, "default")
                     variant = "error" if action == GateAction.ABORT else "default"
                     if action == GateAction.CONTINUE:
                         variant = "success"

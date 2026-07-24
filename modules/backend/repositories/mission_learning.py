@@ -6,7 +6,6 @@ all vector operations go through EmbeddingRepository.
 """
 
 from sqlalchemy import and_, desc, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.utils import utc_now
 from modules.backend.models.mission_learning import LearningStatus, MissionLearning

@@ -17,11 +17,9 @@ call, which is what the function under test cares about.
 from __future__ import annotations
 
 import asyncio
-import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 

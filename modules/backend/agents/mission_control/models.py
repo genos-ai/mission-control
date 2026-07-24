@@ -21,7 +21,6 @@ from modules.backend.core.protocols import (
     NoOpEventBus,
     SessionServiceProtocol,
 )
-from modules.backend.events.types import SessionEvent
 
 logger = get_logger(__name__)
 

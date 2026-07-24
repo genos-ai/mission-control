@@ -23,25 +23,20 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from datetime import datetime, timezone
 
 from rich import box
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from modules.backend.agents.mission_control.models import EventBusProtocol
 from modules.backend.events.types import SessionEvent
 from modules.clients.common.display import styled_status
 from modules.clients.common.event_rendering import (
-    DEFAULT_STYLE,
-    EVENT_STYLES,
     format_event_line,
     is_noisy,
     is_streaming,
-    summarize_event,
 )
 
 

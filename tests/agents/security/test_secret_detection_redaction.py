@@ -7,8 +7,6 @@ tool return values when redact_output is True.
 import json
 from pathlib import Path
 
-import pytest
-
 from modules.backend.agents.security.tool_runner import strip_secret_values
 
 
@@ -24,7 +22,7 @@ class TestStripSecretValues:
                         {
                             "ruleId": "generic-api-key",
                             "message": {
-                                "text": "Found API key: sk-live-abc123def456ghi789jkl012mno345pqr678"
+                                "text": "Found API key: sk-live-abc123def456ghi789jkl012mno345pqr678"  # noqa: E501
                             },
                             "locations": [
                                 {
@@ -33,7 +31,7 @@ class TestStripSecretValues:
                                         "region": {
                                             "startLine": 5,
                                             "snippet": {
-                                                "text": 'API_KEY = "sk-live-abc123def456ghi789jkl012mno345pqr678"'
+                                                "text": 'API_KEY = "sk-live-abc123def456ghi789jkl012mno345pqr678"'  # noqa: E501
                                             },
                                         },
                                     },
@@ -94,7 +92,7 @@ class TestStripSecretValues:
                         {
                             "ruleId": "jwt-token",
                             "message": {
-                                "text": "JWT found: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjg"
+                                "text": "JWT found: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjg"  # noqa: E501
                             },
                             "locations": [],
                         }

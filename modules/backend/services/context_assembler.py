@@ -250,21 +250,21 @@ class ContextAssembler:
             # Merge, dedup by id, sort by confidence desc
             seen: set[str] = set()
             merged: list[dict] = []
-            for l in sorted(
+            for learning in sorted(
                 learnings + platform,
                 key=lambda x: x.confidence,
                 reverse=True,
             ):
-                if l.id in seen:
+                if learning.id in seen:
                     continue
-                seen.add(l.id)
+                seen.add(learning.id)
                 merged.append(
                     {
-                        "kind": l.kind,
-                        "title": l.title,
-                        "recommendation": l.recommendation,
-                        "confidence": l.confidence,
-                        "domain_tags": l.domain_tags,
+                        "kind": learning.kind,
+                        "title": learning.title,
+                        "recommendation": learning.recommendation,
+                        "confidence": learning.confidence,
+                        "domain_tags": learning.domain_tags,
                     }
                 )
                 if len(merged) >= max_entries:

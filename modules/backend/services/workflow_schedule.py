@@ -55,11 +55,18 @@ def _validate_cron(expression: str) -> None:
     pattern = re.compile(r"^(\*|[0-9]+)(-[0-9]+)?(\/[0-9]+)?$")
 
     for i, field in enumerate(fields):
+        lo, hi = field_ranges[i]
         for part in field.split(","):
             if not pattern.match(part):
                 raise ValidationError(
                     f"Invalid cron {field_names[i]} field: '{part}' in '{expression}'"
                 )
+            for value in re.findall(r"\d+", part):
+                if not (lo <= int(value) <= hi):
+                    raise ValidationError(
+                        f"Cron {field_names[i]} field '{part}' out of range "
+                        f"[{lo}-{hi}] in '{expression}'"
+                    )
 
 
 def _compute_next_fire(cron_expression: str, after: datetime) -> datetime | None:

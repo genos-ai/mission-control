@@ -52,7 +52,7 @@ async def monitor(
         f"[bold cyan]Console Monitor[/bold cyan] — {mission_name}" f"  [dim]({view} view)[/dim]"
     )
     console.print(f"[dim]Streaming events from {mission_id}[/dim]")
-    console.print(f"[dim]Press Ctrl+C to stop.[/dim]\n")
+    console.print("[dim]Press Ctrl+C to stop.[/dim]\n")
 
     developer = view == "developer"
 

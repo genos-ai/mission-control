@@ -6,7 +6,6 @@ and effort columns introduced by Plan 55. Also tests the prompt loader.
 Uses a real in-memory SQLite database, no mocks.
 """
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.services.agent_catalog import AgentCatalogService

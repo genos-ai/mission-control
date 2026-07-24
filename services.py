@@ -5,14 +5,14 @@ Mission Control Service Manager
 Manage all development services from one script.
 
 Usage:
-    python services.py start                  # Start everything (checks, migrate, seed, backend, frontend)
+    python services.py start                  # Start everything (checks, migrate, seed, backend, frontend)  # noqa: E501
     python services.py start --daemon       # Start detached; logs in var/logs/services-*.log
     python services.py start --backend-only   # Backend only
     python services.py start --no-migrate     # Skip migrations
     python services.py stop                   # Stop backend + frontend
     python services.py stop --backend-only    # Stop backend only
     python services.py restart                # Stop then start
-    python services.py restart --log-level WARNING --log-format console  # Errors/warnings only, colored
+    python services.py restart --log-level WARNING --log-format console  # Errors/warnings only, colored  # noqa: E501
     python services.py status                 # Show what's running
     python services.py check                  # Preflight checks only
 
@@ -106,7 +106,7 @@ def kill_pids(pids: list[int], label: str) -> int:
 
     if killed:
         print(
-            f"  {label}: sent SIGTERM to {killed} process(es) (PID {', '.join(str(p) for p in pids)})"
+            f"  {label}: sent SIGTERM to {killed} process(es) (PID {', '.join(str(p) for p in pids)})"  # noqa: E501
         )
 
         # Wait for processes to die, force-kill survivors
@@ -303,7 +303,7 @@ def preflight(backend_port: int, check_frontend: bool = True) -> bool:
         return False
     if not port_ok:
         print(
-            f"\nPort {backend_port} is in use. Run 'python services.py stop' first or use --port <other>."
+            f"\nPort {backend_port} is in use. Run 'python services.py stop' first or use --port <other>."  # noqa: E501
         )
         return False
     if not docker_ok:
@@ -568,7 +568,7 @@ class DevRunner:
                         is_backend = proc is self._backend_proc
                         if is_backend and self._reload_enabled and get_pids_on_port(BACKEND_PORT):
                             print(
-                                f"\nBackend process exited (code {ret}) — reloader respawned. Continuing."
+                                f"\nBackend process exited (code {ret}) — reloader respawned. Continuing."  # noqa: E501
                             )
                             self.procs.remove(proc)
                             self._backend_proc = None
@@ -728,7 +728,7 @@ def cmd_start_daemon(args):
     print(f"  Temporal UI:    http://localhost:{TEMPORAL_UI_PORT}")
     if not args.backend_only:
         print(f"  Frontend:       http://localhost:{FRONTEND_PORT}")
-    print(f"  Login:          admin@missioncontrol.dev / admin")
+    print("  Login:          admin@missioncontrol.dev / admin")
     print("  Stop:           python services.py stop")
     print("-" * 50)
     print("Daemon processes are running; this terminal is free.\n")
@@ -740,7 +740,7 @@ def cmd_start(args):
         if not args.no_reload:
             print(
                 "Note: daemon mode always runs without uvicorn --reload "
-                "(the reloader uses an extra supervisor process and is unsuitable for detached startup).\n"
+                "(the reloader uses an extra supervisor process and is unsuitable for detached startup).\n"  # noqa: E501
             )
         cmd_start_daemon(args)
         return
@@ -782,7 +782,7 @@ def cmd_start(args):
     print(f"  Temporal UI:    http://localhost:{TEMPORAL_UI_PORT}")
     if not args.backend_only:
         print(f"  Frontend:       http://localhost:{FRONTEND_PORT}")
-    print(f"  Login:          admin@missioncontrol.dev / admin")
+    print("  Login:          admin@missioncontrol.dev / admin")
     print("-" * 50)
     print("Press Ctrl+C to stop all services\n")
 
@@ -824,7 +824,7 @@ def cmd_stop(args):
         )
         if remaining:
             print(
-                f"\n  Warning: {len(remaining)} process(es) still running. Try again or kill manually."
+                f"\n  Warning: {len(remaining)} process(es) still running. Try again or kill manually."  # noqa: E501
             )
         else:
             print(f"\n  Stopped {total} process(es).")
@@ -847,7 +847,7 @@ def cmd_status(args):
     backend_pids = get_pids_on_port(args.port)
     if backend_pids:
         print(
-            f"\n  Backend (:{args.port})  .... RUNNING (PID {', '.join(str(p) for p in backend_pids)})"
+            f"\n  Backend (:{args.port})  .... RUNNING (PID {', '.join(str(p) for p in backend_pids)})"  # noqa: E501
         )
     else:
         print(f"\n  Backend (:{args.port})  .... stopped")
@@ -855,7 +855,7 @@ def cmd_status(args):
     temporal_pids = get_pids_on_port(TEMPORAL_PORT)
     if temporal_pids:
         print(
-            f"  Temporal (:{TEMPORAL_PORT})  ... RUNNING (PID {', '.join(str(p) for p in temporal_pids)})"
+            f"  Temporal (:{TEMPORAL_PORT})  ... RUNNING (PID {', '.join(str(p) for p in temporal_pids)})"  # noqa: E501
         )
     else:
         print(f"  Temporal (:{TEMPORAL_PORT})  ... stopped")
@@ -876,7 +876,7 @@ def cmd_status(args):
     frontend_pids = get_pids_on_port(FRONTEND_PORT)
     if frontend_pids:
         print(
-            f"  Frontend (:{FRONTEND_PORT}) ... RUNNING (PID {', '.join(str(p) for p in frontend_pids)})"
+            f"  Frontend (:{FRONTEND_PORT}) ... RUNNING (PID {', '.join(str(p) for p in frontend_pids)})"  # noqa: E501
         )
     else:
         print(f"  Frontend (:{FRONTEND_PORT}) ... stopped")
@@ -893,18 +893,16 @@ def cmd_status(args):
         redis_ok = False  # probe failed — service reported as stopped
     print(f"  Redis ............. {'RUNNING' if redis_ok else 'stopped'}")
 
-    docker_ok = False
     docker_label = "stopped"
     try:
         import docker as _docker
 
         _client = _docker.from_env()
         _client.ping()
-        docker_ok = True
         _info = _client.info()
         docker_label = f"RUNNING ({_info.get('ServerVersion', 'unknown')})"
     except Exception:
-        docker_ok = False  # probe failed — service reported as stopped
+        pass  # probe failed — service reported as stopped
     print(f"  Docker ............ {docker_label}")
 
     pg_ok = False
@@ -1025,7 +1023,7 @@ Logging:
   python services.py restart --log-level WARNING                  Errors/warnings only (no INFO)
   python services.py restart --log-level WARNING --log-format console  Colored + quiet
   python services.py restart --log-level DEBUG --log-format console   Full debug, colored
-  python services.py restart --trace                              Trace agent prompts + responses (DEBUG + event bus)
+  python services.py restart --trace                              Trace agent prompts + responses (DEBUG + event bus)  # noqa: E501
         """,
     )
 

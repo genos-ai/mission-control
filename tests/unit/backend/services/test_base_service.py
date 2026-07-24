@@ -4,7 +4,7 @@ Unit Tests for Base Service.
 Tests the BaseService class methods and error handling.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError

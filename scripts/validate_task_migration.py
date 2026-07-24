@@ -23,7 +23,6 @@ import click
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from modules.backend.core.config import find_project_root  # noqa: E402
 from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
 
 logger = get_logger(__name__)

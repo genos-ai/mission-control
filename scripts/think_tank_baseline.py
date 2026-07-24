@@ -36,13 +36,13 @@ import httpx
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from pydantic_ai import Agent, UsageLimits
+from pydantic_ai import Agent, UsageLimits  # noqa: E402
 
-from modules.backend.agents.deps.base import FileScope
-from modules.backend.agents.research.deps import ResearchAgentDeps
-from modules.backend.core.copilot_model import CopilotModel
-from modules.backend.core.logging import get_logger, setup_logging
-from modules.backend.schemas.deliberation import FinalDeliverable, ResearchPacket
+from modules.backend.agents.deps.base import FileScope  # noqa: E402
+from modules.backend.agents.research.deps import ResearchAgentDeps  # noqa: E402
+from modules.backend.core.copilot_model import CopilotModel  # noqa: E402
+from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
+from modules.backend.schemas.deliberation import FinalDeliverable, ResearchPacket  # noqa: E402
 
 logger = get_logger(__name__)
 

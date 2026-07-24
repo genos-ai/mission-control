@@ -19,8 +19,6 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-import click
-
 from modules.clients.cli.api_client import ApiError, CliApiClient, resolve_short_id
 from modules.clients.common.display import build_table, get_console, styled_status
 
@@ -129,20 +127,20 @@ async def task_detail(
         console.print(f"  [dim]retries: {task['retry_count']}[/dim]")
     if task.get("approved_at"):
         console.print(f"  [dim]approved: {task['approved_at']}[/dim]")
-    console.print(f"\n[bold]Description:[/bold]")
+    console.print("\n[bold]Description:[/bold]")
     console.print(f"  {task.get('description') or '(none)'}")
     if task.get("instructions"):
-        console.print(f"\n[bold]Instructions:[/bold]")
+        console.print("\n[bold]Instructions:[/bold]")
         console.print(f"  {task['instructions'][:2000]}")
         if len(task["instructions"]) > 2000:
             console.print(f"  [dim]... ({len(task['instructions'])} chars total)[/dim]")
     if task.get("dependencies"):
         console.print(f"\n[bold]Dependencies:[/bold]  {', '.join(task['dependencies'])}")
     if task.get("failure_reason"):
-        console.print(f"\n[bold red]Failure reason:[/bold red]")
+        console.print("\n[bold red]Failure reason:[/bold red]")
         console.print(f"  {task['failure_reason']}")
     if task.get("result_summary"):
-        console.print(f"\n[bold]Result summary:[/bold]")
+        console.print("\n[bold]Result summary:[/bold]")
         console.print(f"  {task['result_summary'][:1000]}")
 
 
@@ -289,7 +287,7 @@ async def dispatch(
     approved = result.get("approved_count") or result.get("dispatched_count")
     if approved is not None:
         console.print(
-            f"[green]Dispatched[/green] {approved} approved task(s) — workflow: [cyan]{wf_id}[/cyan]"
+            f"[green]Dispatched[/green] {approved} approved task(s) — workflow: [cyan]{wf_id}[/cyan]"  # noqa: E501
         )
     else:
         console.print(f"[green]Dispatched.[/green] Workflow: [cyan]{wf_id}[/cyan]")

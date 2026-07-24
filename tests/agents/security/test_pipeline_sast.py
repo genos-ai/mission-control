@@ -11,8 +11,6 @@ Docker image (Phase 2).
 import json
 from pathlib import Path
 
-import pytest
-
 from modules.backend.agents.security.evidence import EvidenceManifest
 from modules.backend.agents.security.sarif import load_sarif, merge_sarif
 from modules.backend.agents.security.tool_registry import detect_surface

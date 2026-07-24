@@ -165,7 +165,7 @@ class AutonomyLoopVerifier:
                 )
             await db.commit()
         self._log(
-            f"Cleaned up {len(self._created_er_ids)} ERs + {len(self._created_decision_ids)} decisions"
+            f"Cleaned up {len(self._created_er_ids)} ERs + {len(self._created_decision_ids)} decisions"  # noqa: E501
         )
 
     # ── Checks ───────────────────────────────────────────────────────

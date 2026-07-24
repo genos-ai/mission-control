@@ -5,7 +5,7 @@ Serializable dataclasses for DesignWorkflowWorkflow and RunWorkflowWorkflow.
 Same convention as chat_models.py — no ORM objects, JSON-safe, Temporal-friendly.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

@@ -5,7 +5,7 @@ that involve tool loops produce multiple rows. This is the source of
 truth for token economics — all dashboard queries read from here.
 """
 
-from sqlalchemy import Float, Index, Integer, Numeric, String
+from sqlalchemy import Index, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 

@@ -1,7 +1,5 @@
 """Tests for TaskPlan validation — all 11 rules."""
 
-import pytest
-
 from modules.backend.agents.mission_control.plan_validator import validate_plan
 from modules.backend.agents.mission_control.roster import (
     Roster,

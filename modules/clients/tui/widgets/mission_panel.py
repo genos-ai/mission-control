@@ -12,7 +12,7 @@ from textual.css.query import NoMatches
 from textual.widget import Widget
 from textual.widgets import Label, Static
 
-from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus
+from modules.backend.agents.mission_control.outcome import TaskResult
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 from modules.clients.common.gate_helpers import STATUS_ICONS, safe_css_id
 

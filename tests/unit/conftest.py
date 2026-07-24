@@ -11,7 +11,7 @@ haven't been migrated yet. New tests MUST use real connections.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

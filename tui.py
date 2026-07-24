@@ -20,10 +20,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import click
+import click  # noqa: E402
 
-from modules.backend.core.config import validate_project_root
-from modules.backend.core.logging import bind_context, get_logger, setup_logging
+from modules.backend.core.config import validate_project_root  # noqa: E402
+from modules.backend.core.logging import bind_context, get_logger, setup_logging  # noqa: E402
 
 
 @click.group(invoke_without_command=True)

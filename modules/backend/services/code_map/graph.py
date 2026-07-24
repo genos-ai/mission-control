@@ -13,7 +13,6 @@ from modules.backend.services.code_map.types import (
     ReferenceGraph,
     ReferenceKind,
     SymbolInfo,
-    SymbolKind,
 )
 
 

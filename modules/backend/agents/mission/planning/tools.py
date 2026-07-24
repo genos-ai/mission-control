@@ -317,7 +317,10 @@ def register_planning_tools(agent: Agent) -> None:
                 {
                     "status": "invalid",
                     "validation_errors": result["errors"],
-                    "hint": "Fix the errors above with update_task/remove_task, then call finalise_plan again.",
+                    "hint": (
+                        "Fix the errors above with update_task/remove_task, "
+                        "then call finalise_plan again."
+                    ),
                 }
             )
         task_count = len(session.tasks)

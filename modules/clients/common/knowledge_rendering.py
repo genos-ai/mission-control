@@ -83,19 +83,19 @@ def render_learning_card(learning: dict) -> Panel:
     color = kind_colors.get(kind, "white")
 
     body = Text()
-    body.append(f"Recommendation: ", style="bold")
+    body.append("Recommendation: ", style="bold")
     body.append(learning.get("recommendation", "?"))
-    body.append(f"\n\nEvidence:\n", style="dim")
+    body.append("\n\nEvidence:\n", style="dim")
     body.append(learning.get("body", "?")[:500])
 
     tags = learning.get("domain_tags", [])
     if tags:
-        body.append(f"\n\nTags: ", style="dim")
+        body.append("\n\nTags: ", style="dim")
         body.append(", ".join(tags))
 
     agents = learning.get("agent_names", [])
     if agents:
-        body.append(f"\nAgents: ", style="dim")
+        body.append("\nAgents: ", style="dim")
         body.append(", ".join(agents))
 
     subtitle = f"conf: {confidence:.0%} | {count}x"
@@ -124,18 +124,18 @@ def render_learning_list(learnings: list[dict]) -> Table:
     table.add_column("Tags", min_width=15)
     table.add_column("Status", width=10)
 
-    for l in learnings:
-        kind = l.get("kind", "?")
-        conf = l.get("confidence", 0)
-        promoted = l.get("platform_promoted", False)
-        status = "[magenta]platform[/magenta]" if promoted else l.get("status", "?")
+    for learning in learnings:
+        kind = learning.get("kind", "?")
+        conf = learning.get("confidence", 0)
+        promoted = learning.get("platform_promoted", False)
+        status = "[magenta]platform[/magenta]" if promoted else learning.get("status", "?")
 
         table.add_row(
             kind,
-            l.get("title", "?")[:50],
+            learning.get("title", "?")[:50],
             f"{conf:.0%}",
-            str(l.get("occurrence_count", 1)),
-            ", ".join(l.get("domain_tags", [])[:3]),
+            str(learning.get("occurrence_count", 1)),
+            ", ".join(learning.get("domain_tags", [])[:3]),
             status,
         )
 

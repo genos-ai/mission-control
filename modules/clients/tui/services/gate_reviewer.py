@@ -15,7 +15,6 @@ import asyncio
 from textual.app import App
 
 from modules.backend.agents.mission_control.gate import (
-    GateAction,
     GateContext,
     GateDecision,
     GateReviewer,

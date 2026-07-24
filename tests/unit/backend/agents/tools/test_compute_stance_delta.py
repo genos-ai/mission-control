@@ -7,8 +7,6 @@ mission state.
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from modules.backend.tools.compute_stance_delta import (

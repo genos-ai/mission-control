@@ -4,7 +4,6 @@ Unit Tests for gateway rate limiter.
 Tests use a real GatewayRateLimiter with mocked config.
 """
 
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest

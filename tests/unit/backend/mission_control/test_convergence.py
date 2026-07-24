@@ -22,7 +22,7 @@ from modules.backend.agents.mission_control.dispatch.convergence import (
     _to_task_result,
     execute_convergence_loop,
 )
-from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
+from modules.backend.agents.mission_control.gate import GateAction, GateDecision
 from modules.backend.agents.mission_control.outcome import TaskStatus
 
 # ---------------------------------------------------------------------------

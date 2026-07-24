@@ -79,7 +79,10 @@ def create_agent(
 
     @agent.tool
     async def check_services(ctx: RunContext[HealthAgentDeps]) -> dict:
-        """Check backend service connectivity (PostgreSQL, Redis). Returns status and latency per service."""
+        """Check backend service connectivity (PostgreSQL, Redis).
+
+        Returns status and latency per service.
+        """
         return await system.check_system_health()
 
     logger.info(

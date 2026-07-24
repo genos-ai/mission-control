@@ -12,7 +12,6 @@ from tests.conftest import TEST_USER_ID
 
 async def _seed_mission(db_session: AsyncSession) -> Mission:
     """Create a minimal mission for team tests."""
-    from modules.backend.core.utils import utc_now
 
     mission = Mission(
         name="test-mission",

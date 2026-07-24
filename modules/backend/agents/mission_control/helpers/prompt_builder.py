@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from modules.backend.agents.mission_control.roster import Roster
 
 logger = get_logger(__name__)
 

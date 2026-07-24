@@ -96,7 +96,7 @@ class ContextTab(Static):
         try:
             context = await self.app.bridge.get_mission_context(mission_id)
             self._render_context(context)
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load context", exc_info=True)
             self._show_empty_state()
 
@@ -106,7 +106,7 @@ class ContextTab(Static):
                 limit=50,
             )
             self._render_history(history)
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load context history", exc_info=True)
 
         # Load size info

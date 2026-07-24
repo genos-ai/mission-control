@@ -6,9 +6,14 @@ Built by joining mission_team_members + agent_catalog.
 Planning Agent and Verification Agent are auto-included in every roster.
 """
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from modules.backend.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -101,7 +106,6 @@ async def derive_roster_from_team(
 
     Raises ValueError if no team members are assigned.
     """
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from modules.backend.repositories.agent_catalog import AgentCatalogRepository
     from modules.backend.repositories.mission_team import MissionTeamRepository

@@ -7,12 +7,11 @@ other research agents (strategist, analyst, synthesizer, verifier)
 use BaseAgentDeps since they have no tools.
 """
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 
 import httpx
 
-from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
+from modules.backend.agents.deps.base import BaseAgentDeps
 
 
 @dataclass

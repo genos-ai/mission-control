@@ -6,7 +6,6 @@ Each activity calls the existing plain async function — no logic duplication.
 """
 
 from dataclasses import dataclass
-from typing import Any
 
 from temporalio import activity
 

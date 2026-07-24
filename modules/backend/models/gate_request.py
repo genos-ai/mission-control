@@ -65,7 +65,7 @@ class GateRequest(UUIDMixin, Base):
         String(50),
         nullable=False,
         index=True,
-        comment="pre_dispatch | pre_layer | post_task | verification_failed | post_layer | post_run",
+        comment="pre_dispatch | pre_layer | post_task | verification_failed | post_layer | post_run",  # noqa: E501
     )
     context_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,

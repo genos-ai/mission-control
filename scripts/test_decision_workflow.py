@@ -2,7 +2,7 @@
 """Create and run a test workflow with a decision node.
 
 Usage:
-    python scripts/test_decision_workflow.py --mission <mission_name_or_id> [--topic "quantum computing"]
+    python scripts/test_decision_workflow.py --mission <mission_name_or_id> [--topic "quantum computing"]  # noqa: E501
 
 Creates a workflow with:
   1. check-mcd     (tool_call)  — checks whether the mission MCD exists
@@ -410,7 +410,7 @@ STEPS = [
             "tool_args": {
                 "title": "Decision routing result: {{@context.topic}}",
                 "body": "{{@node.summarize.output}}",
-                "recommendation": "Use the {{@node.route.chosen}} path for topics classified as {{@node.classify.output}}.",
+                "recommendation": "Use the {{@node.route.chosen}} path for topics classified as {{@node.classify.output}}.",  # noqa: E501
                 "kind": "learning",
                 "domain_tags": ["workflow", "decision-routing"],
                 "confidence": 0.8,
@@ -438,7 +438,7 @@ STEPS = [
             "tool_name": "update_context",
             "tool_args": {
                 "path": "workflow.last_decision_routing",
-                "value": "topic={{@context.topic}} classification={{@node.classify.output}} path={{@node.route.chosen}}",
+                "value": "topic={{@context.topic}} classification={{@node.classify.output}} path={{@node.route.chosen}}",  # noqa: E501
                 "reason": "Decision workflow completed — recording routing outcome",
             },
         },
@@ -561,7 +561,7 @@ async def main():
                 step["decision_config"] = {
                     "resolver": "human",
                     "prompt_message": (
-                        "The topic '{{@context.topic}}' was classified as: {{@node.classify.output}}\n\n"
+                        "The topic '{{@context.topic}}' was classified as: {{@node.classify.output}}\n\n"  # noqa: E501
                         "Which path should we take?"
                     ),
                     "channel": "chat",
@@ -644,7 +644,7 @@ async def main():
         await db.commit()
 
         if args.create_only:
-            print(f"\nWorkflow created. Open the editor to inspect it:")
+            print("\nWorkflow created. Open the editor to inspect it:")
             print(f"  /missions/{mission_id}/workflows/{workflow_id}")
             return
 
@@ -658,7 +658,7 @@ async def main():
                 print(f"  -> Starting: {event.get('step_id')}")
             elif etype == "step_done":
                 print(
-                    f"  <- Done: {event.get('step_id')} ({event.get('status')}) ${event.get('cost_usd', 0):.4f}"
+                    f"  <- Done: {event.get('step_id')} ({event.get('status')}) ${event.get('cost_usd', 0):.4f}"  # noqa: E501
                 )
             elif etype == "step_skipped":
                 print(f"  -- Skipped: {event.get('step_id')} ({event.get('reason')})")

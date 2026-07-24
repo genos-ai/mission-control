@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic_ai.models import Model
+from pydantic_ai.models import Model, ModelSettings
 from pydantic_ai.models.anthropic import AnthropicModel
 
 from modules.backend.core.exceptions import ValidationError

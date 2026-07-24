@@ -106,7 +106,6 @@ class TestContainerBackendExtraVolumes:
 
     def _build_volumes(self, extra_volumes: list[dict]) -> dict:
         """Simulate the volume-building logic from ContainerBackend.create()."""
-        from modules.backend.services.container_backend import ContainerBackend
 
         # We can't call create() without Docker, but we can test the validation
         # logic by calling the same code path inline.

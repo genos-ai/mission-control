@@ -119,7 +119,7 @@ class ComplianceScannerService:
                             "rule_id": "no_direct_logging",
                             "file": rel_path,
                             "line": i,
-                            "message": "Direct 'import logging' — use get_logger() from core.logging",
+                            "message": "Direct 'import logging' — use get_logger() from core.logging",  # noqa: E501
                         }
                     )
 

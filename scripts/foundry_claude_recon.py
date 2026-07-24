@@ -182,8 +182,8 @@ def render(sub: dict, rows: list[dict], candidates: list[dict]) -> None:
             console.print(cand_table)
         console.print(
             "\nNext steps:"
-            "\n  • To deploy: ai.azure.com → Models + endpoints → Deploy model → Anthropic → claude-opus-4-7 (or sonnet/haiku)."
-            "\n  • To search other subscriptions: `az account set --subscription <name>` then re-run."
+            "\n  • To deploy: ai.azure.com → Models + endpoints → Deploy model → Anthropic → claude-opus-4-7 (or sonnet/haiku)."  # noqa: E501
+            "\n  • To search other subscriptions: `az account set --subscription <name>` then re-run."  # noqa: E501
         )
         return
 

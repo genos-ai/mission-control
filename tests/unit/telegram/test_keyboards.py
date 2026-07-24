@@ -4,8 +4,6 @@ Unit tests for Telegram keyboard builders.
 Tests keyboard construction and button layout.
 """
 
-import pytest
-
 
 class TestMainMenuKeyboard:
     """Tests for main menu keyboard builder."""

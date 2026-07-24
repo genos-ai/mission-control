@@ -30,7 +30,7 @@ import click
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from modules.clients.cli.cli_context import CliContext, ShowHelpOnMissingArgs
+from modules.clients.cli.cli_context import CliContext, ShowHelpOnMissingArgs  # noqa: E402
 
 # Unified output format for all commands — single source of truth.
 OUTPUT_FORMATS = click.Choice(["human", "json", "jsonl"])
@@ -1231,7 +1231,7 @@ def catalog_set_model(ctx, agent_name, model):
     "--model-map",
     type=str,
     default=None,
-    help="Comma-separated old=new model mappings, e.g. 'haiku-4-5=claude-haiku-4.5,sonnet-4-6=claude-sonnet-4.6'",
+    help="Comma-separated old=new model mappings, e.g. 'haiku-4-5=claude-haiku-4.5,sonnet-4-6=claude-sonnet-4.6'",  # noqa: E501
 )
 @click.option("--dry-run", is_flag=True, help="Show changes without applying them")
 @click.pass_obj

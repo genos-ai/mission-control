@@ -12,7 +12,7 @@ Two modes:
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic_ai import Agent, RunContext

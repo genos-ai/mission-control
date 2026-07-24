@@ -33,7 +33,6 @@ import argparse
 import asyncio
 import contextlib
 import sys
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -93,7 +92,7 @@ class IsolationVerifier:
             )
             self._log(f"Container: {self._handle.environment_id}")
             self._log(
-                f"Container ID: {self._handle.container_id[:12] if self._handle.container_id else 'N/A'}..."
+                f"Container ID: {self._handle.container_id[:12] if self._handle.container_id else 'N/A'}..."  # noqa: E501
             )
             self._log(f"host_working_dir: {self._handle.host_working_dir}")
             self._log(f"working_dir (container): {self._handle.working_dir}")
@@ -102,7 +101,7 @@ class IsolationVerifier:
             print(f"\n{FAIL} Setup failed: {exc}")
             print("  Make sure Docker is running and the image is built:")
             print(
-                "  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile ."
+                "  docker build -t code-workspace:latest -f config/dockerfiles/code-workspace.Dockerfile ."  # noqa: E501
             )
             return False
 
@@ -404,7 +403,7 @@ class IsolationVerifier:
             main_repo_file.unlink()
             self._fail(
                 "Write does NOT appear in main repo root",
-                f"File appeared at {main_repo_file} — worktree bind-mount may be pointed at main repo",
+                f"File appeared at {main_repo_file} — worktree bind-mount may be pointed at main repo",  # noqa: E501
             )
         else:
             self._pass("Write does NOT appear in main repo root")
@@ -432,7 +431,6 @@ class IsolationVerifier:
 
     async def check_platform_agent_unaffected(self) -> None:
         """Platform-tier agent deps: project_root is NOT redirected."""
-        from modules.backend.agents.config_schema import AgentConfigSchema
         from modules.backend.agents.mission_control.helpers.agent_setup import _build_agent_deps
         from modules.backend.core.config import find_project_root
 

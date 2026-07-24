@@ -9,9 +9,7 @@ Unlike the QA compliance agent (regex scanners), this agent READS code and
 REASONS about it. No deterministic scanners — pure AI judgment.
 """
 
-import json
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
 from pydantic_ai import Agent, ModelRetry, RunContext, UsageLimits
 from pydantic_ai.models import Model
@@ -98,11 +96,13 @@ def create_agent(
             problems.append("files_reviewed must be >= 1 — set it to the number of files you read")
         if output.total_findings != len(output.findings):
             problems.append(
-                f"total_findings ({output.total_findings}) must equal len(findings) ({len(output.findings)})"
+                f"total_findings ({output.total_findings}) "
+                f"must equal len(findings) ({len(output.findings)})"
             )
         if output.new_findings + output.baseline_findings != output.total_findings:
             problems.append(
-                f"new_findings ({output.new_findings}) + baseline_findings ({output.baseline_findings}) "
+                f"new_findings ({output.new_findings}) + "
+                f"baseline_findings ({output.baseline_findings}) "
                 f"must equal total_findings ({output.total_findings})"
             )
         for i, f in enumerate(output.findings):

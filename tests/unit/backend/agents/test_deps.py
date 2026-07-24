@@ -4,7 +4,7 @@ Unit Tests for agent dependency injection (FileScope, BaseAgentDeps).
 
 import pytest
 
-from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
+from modules.backend.agents.deps.base import FileScope
 
 
 class TestFileScope:

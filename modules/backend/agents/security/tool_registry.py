@@ -15,7 +15,6 @@ from __future__ import annotations
 import shutil
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field

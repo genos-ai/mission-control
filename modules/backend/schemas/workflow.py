@@ -330,7 +330,7 @@ class WorkflowStepSchema(BaseModel):
     description: str | None = Field(None, max_length=500)
     node_type: str = Field(
         default="agent_step",
-        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call|branch|merge|sub_workflow|decision)$",
+        pattern=r"^(agent_step|condition|notification|human_input|tool_call|llm_call|branch|merge|sub_workflow|decision)$",  # noqa: E501
     )
     capability: str | None = Field(
         None,

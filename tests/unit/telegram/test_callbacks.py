@@ -4,8 +4,6 @@ Unit tests for Telegram callback data factories.
 Tests callback data serialization and deserialization.
 """
 
-import pytest
-
 
 class TestActionCallback:
     """Tests for ActionCallback."""

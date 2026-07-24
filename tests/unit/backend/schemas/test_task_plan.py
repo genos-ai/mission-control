@@ -3,9 +3,7 @@
 import pytest
 
 from modules.backend.schemas.task_plan import (
-    ExecutionHints,
     FromUpstreamRef,
-    TaskDefinition,
     TaskPlan,
 )
 

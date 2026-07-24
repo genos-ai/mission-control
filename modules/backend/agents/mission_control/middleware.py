@@ -8,12 +8,8 @@ with_cost_tracking has been removed. Cost computation lives in cost.py.
 
 import functools
 import re
-from functools import lru_cache
-
-import yaml
 
 from modules.backend.agents.config_schema import AgentConfigSchema, MissionControlConfigSchema
-from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)

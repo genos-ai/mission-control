@@ -2,7 +2,7 @@
 
 import pytest
 
-from modules.clients.tui.widgets.workflow_progress import StepNode, WorkflowProgressWidget
+from modules.clients.tui.widgets.workflow_progress import WorkflowProgressWidget
 
 
 def _make_waves() -> list[list[str]]:

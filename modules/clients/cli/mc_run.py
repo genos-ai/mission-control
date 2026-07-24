@@ -179,7 +179,7 @@ async def _run_workflow(
             console.print(f"  {step.get('id', '')}: {step.get('capability', '')}{deps}")
         if context_overrides:
             console.print(f"\n  Context: {context_overrides}")
-        console.print(f"\n[dim]Run without --dry-run to execute.[/dim]")
+        console.print("\n[dim]Run without --dry-run to execute.[/dim]")
         return
 
     console.print(f"[bold]Running workflow:[/bold] {wf_name}\n")
@@ -229,7 +229,7 @@ async def _run_adhoc(
         console.print(f"  Mission: {mission_id}")
         if budget:
             console.print(f"  Budget: ${budget:.2f}")
-        console.print(f"\n[dim]Run without --dry-run to execute.[/dim]")
+        console.print("\n[dim]Run without --dry-run to execute.[/dim]")
         return
 
     console.print(f"[bold]Running:[/bold] {objective}\n")

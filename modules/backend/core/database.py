@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import create_engine as _create_sync_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from modules.backend.core.logging import get_logger
 

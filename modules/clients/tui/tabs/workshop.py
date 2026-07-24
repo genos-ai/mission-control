@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, Label, Select, Static, TextArea
 
 from modules.backend.core.logging import get_logger
@@ -138,7 +138,7 @@ class WorkshopTab(Static):
                 select.set_options(options)
             except Exception:
                 logger.debug("workshop agent select population failed", exc_info=True)
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load team for workshop", exc_info=True)
 
     def _show_empty_state(self) -> None:
@@ -203,7 +203,7 @@ class WorkshopTab(Static):
                 mission_id=mission_id,
             )
             self._render_cached_inputs()
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load cached inputs", exc_info=True)
 
         # Load previous workshop runs
@@ -212,7 +212,7 @@ class WorkshopTab(Static):
                 agent_name=self._selected_agent,
             )
             self._render_prev_runs()
-        except Exception as exc:
+        except Exception:
             logger.warning("Could not load workshop runs", exc_info=True)
 
     def _render_cached_inputs(self) -> None:

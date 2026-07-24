@@ -14,24 +14,6 @@ from typing import Any
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_ai.exceptions import IncompleteToolCall, UnexpectedModelBehavior, UsageLimitExceeded
 
-from modules.backend.core.exceptions import (
-    QuotaExhaustedError,
-    RateLimitedError,
-    TransientProviderError,
-    log_provider_error,
-)
-
-# PydanticAI-native validation failures — the model responded but with
-# wrong-shape output. PydanticAI has already retried internally before
-# surfacing these. We keep catching them as the original exception
-# types (not wrapped) because PydanticAI raises them; wrapping would
-# require boundary code in every provider adapter.
-_CONTRACT_FAILURE_EXCEPTIONS = (
-    PydanticValidationError,
-    UnexpectedModelBehavior,
-    IncompleteToolCall,
-)
-
 from modules.backend.agents.mission_control.dispatch.result_builders import (
     append_feedback,
     failed_result,
@@ -52,10 +34,27 @@ from modules.backend.agents.mission_control.outcome import (
     build_verification_outcome,
 )
 from modules.backend.agents.mission_control.roster import RosterAgentEntry
+from modules.backend.core.exceptions import (
+    QuotaExhaustedError,
+    RateLimitedError,
+    TransientProviderError,
+    log_provider_error,
+)
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.task_plan import TaskDefinition
 
 logger = get_logger(__name__)
+
+# PydanticAI-native validation failures — the model responded but with
+# wrong-shape output. PydanticAI has already retried internally before
+# surfacing these. We keep catching them as the original exception
+# types (not wrapped) because PydanticAI raises them; wrapping would
+# require boundary code in every provider adapter.
+_CONTRACT_FAILURE_EXCEPTIONS = (
+    PydanticValidationError,
+    UnexpectedModelBehavior,
+    IncompleteToolCall,
+)
 
 
 async def execute_with_retry(
@@ -345,7 +344,10 @@ async def _handle_verification_failure(
     execution_id: str,
     session_id: str | None = None,
 ) -> TaskResult | str:
-    """Handle a verification failure. Returns TaskResult to stop, or str (new instructions) to retry."""
+    """Handle a verification failure.
+
+    Returns TaskResult to stop, or str (new instructions) to retry.
+    """
     from modules.backend.agents.mission_control.verification import build_retry_feedback
 
     feedback = build_retry_feedback(verification, attempt=attempt + 1)
@@ -440,7 +442,10 @@ async def _handle_post_task_gate(
     execution_id: str,
     session_id: str | None = None,
 ) -> TaskResult | str:
-    """Handle the post-task gate review. Returns TaskResult to finish, or str (new instructions) to retry."""
+    """Handle the post-task gate review.
+
+    Returns TaskResult to finish, or str (new instructions) to retry.
+    """
     gate_decision = await gate.review(
         GateContext(
             gate_type="post_task",

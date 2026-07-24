@@ -822,8 +822,8 @@ def _render_module(lines: list[str], path: str, mod: dict) -> None:
         bases_str = f"({', '.join(cls_data.get('bases', []))})" if cls_data.get("bases") else ""
         lines.append(f"\u2502class {cls_name}{bases_str}:")
 
-        for field in cls_data.get("fields", []):
-            lines.append(f"\u2502    {field}")
+        for field_name in cls_data.get("fields", []):
+            lines.append(f"\u2502    {field_name}")
 
         for method_sig in cls_data.get("methods", []):
             lines.append(f"\u2502    def {method_sig}")

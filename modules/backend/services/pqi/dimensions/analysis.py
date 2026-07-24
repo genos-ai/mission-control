@@ -144,7 +144,7 @@ def score_maintainability(
 
     if doc_coverage < 50:
         recommendations.append(
-            f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes"
+            f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes"  # noqa: E501
         )
     if p90_size > 500:
         recommendations.append(f"P90 file size is {p90_size} lines — split large files")

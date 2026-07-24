@@ -36,7 +36,6 @@ async def query_knowledge(
         mode: Search mode (structured | hybrid | semantic).
         limit: Max results to return.
     """
-    import json
 
     from modules.backend.services.knowledge import KnowledgeService
 

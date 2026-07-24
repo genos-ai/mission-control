@@ -14,7 +14,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from pydantic_ai import UsageLimits, UserError
+from pydantic_ai import UserError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,6 @@ from modules.backend.agents.mission_control.helpers import (
     _get_model_name,
     _get_usage_limits,
     _import_agent_module,
-    assemble_instructions,
 )
 from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.config import get_app_config
@@ -97,12 +96,6 @@ class WorkshopService(BaseService):
 
         module = _import_agent_module(agent_name)
         model = _build_model(agent_config.model)
-
-        if prompt_override:
-            system_prompt = prompt_override
-        else:
-            category, name = self._parse_agent_path(agent_name)
-            system_prompt = assemble_instructions(category, name)
 
         agent = module.create_agent(model)
         if prompt_override:
@@ -307,7 +300,7 @@ class WorkshopService(BaseService):
         input_tokens: int,
         output_tokens: int,
         cost_usd: float,
-        started_at: Any,  # datetime — passed directly to ExecutionRecord.started_at (DateTime column)
+        started_at: Any,  # datetime — passed directly to ExecutionRecord.started_at (DateTime column)  # noqa: E501
         completed_at: Any,  # datetime
         inputs: dict | None,
         had_prompt_override: bool,

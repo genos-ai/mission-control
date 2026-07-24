@@ -46,7 +46,6 @@ import argparse
 import asyncio
 import sys
 import uuid
-from datetime import timedelta
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).parent.parent
@@ -532,7 +531,7 @@ class FollowupVerifier:
         )
         async with get_async_session() as db:
             svc = SessionFollowupService(db)
-            fired = await svc.fire_matching(event, agent_turn_runner=runner)
+            await svc.fire_matching(event, agent_turn_runner=runner)
             await db.commit()
 
         # The [C] row is already consumed and must not appear.
@@ -556,7 +555,6 @@ class FollowupVerifier:
     async def check_runner_failure_recorded(self) -> None:
         """[F] Runner exception → failure_reason recorded, consumed stamped."""
         from modules.backend.core.database import get_async_session
-        from modules.backend.events.types import MissionPlanDispatchedEvent
         from modules.backend.services.session_followup import SessionFollowupService
 
         bus = _RecordingBus()
@@ -589,7 +587,7 @@ class FollowupVerifier:
 
         async with get_async_session() as db:
             svc = SessionFollowupService(db, event_bus=bus)
-            fired = await svc.fire_matching(
+            await svc.fire_matching(
                 event_dict,
                 agent_turn_runner=runner,
             )
@@ -661,7 +659,7 @@ class FollowupVerifier:
         }
         async with get_async_session() as db:
             svc = SessionFollowupService(db)
-            fired = await svc.fire_matching(event, agent_turn_runner=runner)
+            await svc.fire_matching(event, agent_turn_runner=runner)
             await db.commit()
 
         if not runner.calls:

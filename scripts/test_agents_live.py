@@ -26,8 +26,8 @@ import click
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from modules.backend.core.config import find_project_root
-from modules.backend.core.logging import get_logger, setup_logging
+from modules.backend.core.config import find_project_root  # noqa: E402
+from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -127,7 +127,7 @@ async def run_health_agent() -> dict:
     agent = create_agent(model)
 
     result = await run_agent(
-        user_message="Run a full platform health audit. Check logs, config, dependencies, and file structure.",
+        user_message="Run a full platform health audit. Check logs, config, dependencies, and file structure.",  # noqa: E501
         deps=deps,
         agent=agent,
         usage_limits=UsageLimits(request_limit=15),

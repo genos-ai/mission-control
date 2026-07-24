@@ -9,7 +9,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widget import Widget
-from textual.widgets import Label, RichLog, Static, TabbedContent, TabPane
+from textual.widgets import Label, RichLog, TabbedContent, TabPane
 
 
 class AgentDetailWidget(Widget):

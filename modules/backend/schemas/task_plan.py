@@ -70,7 +70,7 @@ def _parse_upstream_shorthand(value: str) -> dict:
 
     Accepted forms:
         "v1-task-001.findings"           → {source_task: "v1-task-001", source_field: "findings"}
-        "v1-task-001.sub_questions[0]"   → {source_task: "v1-task-001", source_field: "sub_questions"}
+        "v1-task-001.sub_questions[0]"   → {source_task: "v1-task-001", source_field: "sub_questions"}  # noqa: E501
 
     The task_id portion is everything up to the LAST dot that precedes an
     identifier (not a number), since task_ids themselves can contain dots.

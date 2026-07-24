@@ -90,7 +90,7 @@ async def _resolve_shared_session(
     "/chat",
     response_model=ApiResponse[ChatResponse],
     summary="Chat with an agent",
-    description="Send a message to an agent via single-agent routing. Auto-creates a session if none provided.",
+    description="Send a message to an agent via single-agent routing. Auto-creates a session if none provided.",  # noqa: E501
 )
 async def agent_chat(
     data: ChatRequest,

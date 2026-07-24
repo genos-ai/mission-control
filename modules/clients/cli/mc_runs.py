@@ -13,8 +13,6 @@ Commands:
 
 from __future__ import annotations
 
-from typing import Any
-
 from modules.clients.cli.api_client import ApiError, CliApiClient
 from modules.clients.common.display import build_table, get_console
 
@@ -86,10 +84,10 @@ async def show_run(
     if data.get("triggered_by"):
         console.print(f"  triggered_by: {data['triggered_by']}")
     if data.get("error_data"):
-        console.print(f"\n[bold red]Error:[/bold red]")
+        console.print("\n[bold red]Error:[/bold red]")
         console.print(f"  {data['error_data']}")
     if data.get("result_summary"):
-        console.print(f"\n[bold]Result:[/bold]")
+        console.print("\n[bold]Result:[/bold]")
         console.print(f"  {data['result_summary']}")
 
 

@@ -7,7 +7,7 @@ prompt overrides and cached inputs from previous workflow runs.
 
 from typing import Any
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from modules.backend.core.dependencies import AdminRole, DbSession, RequestId

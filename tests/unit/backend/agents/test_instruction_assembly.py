@@ -1,7 +1,5 @@
 """Tests for assemble_instructions with mission brief and user prompt layers."""
 
-import os
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest

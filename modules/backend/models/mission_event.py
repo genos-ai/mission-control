@@ -6,7 +6,7 @@ by SessionEventBus.publish() for event types in the persist set.
 Read by the /narrative endpoint for historical timeline display.
 """
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 

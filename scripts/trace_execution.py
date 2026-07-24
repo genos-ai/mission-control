@@ -28,26 +28,25 @@ import click
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import String as SAString
-from sqlalchemy import and_, cast, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy import String as SAString  # noqa: E402
+from sqlalchemy import and_, cast, select  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+from sqlalchemy.orm import selectinload  # noqa: E402
 
-from modules.backend.core.database import get_async_session
-from modules.backend.core.logging import get_logger, setup_logging
-from modules.backend.models.execution_record import (
+from modules.backend.core.database import get_async_session  # noqa: E402
+from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
+from modules.backend.models.execution_record import (  # noqa: E402
     ExecutionDecision,
     ExecutionRecord,
-    TaskAttempt,
     TaskExecution,
 )
-from modules.backend.models.llm_call import LlmCall
-from modules.backend.models.mission import Mission
-from modules.backend.models.mission_event import MissionEvent
-from modules.backend.models.mission_plan import MissionPlan
-from modules.backend.models.session import Session, SessionMessage
-from modules.backend.models.session_followup import SessionFollowup
-from modules.backend.models.task import Task
+from modules.backend.models.llm_call import LlmCall  # noqa: E402
+from modules.backend.models.mission import Mission  # noqa: E402
+from modules.backend.models.mission_event import MissionEvent  # noqa: E402
+from modules.backend.models.mission_plan import MissionPlan  # noqa: E402
+from modules.backend.models.session import Session, SessionMessage  # noqa: E402
+from modules.backend.models.session_followup import SessionFollowup  # noqa: E402
+from modules.backend.models.task import Task  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -271,7 +270,7 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
         TraceEvent(
             record.created_at,
             "DB",
-            f"ExecutionRecord created  id={_short_id(record.id)}  status={record.status.name if hasattr(record.status, 'name') else record.status}",
+            f"ExecutionRecord created  id={_short_id(record.id)}  status={record.status.name if hasattr(record.status, 'name') else record.status}",  # noqa: E501
             [
                 f"mission_id={_short_id(record.mission_id)}",
                 f"roster={record.roster_name}",
@@ -308,7 +307,7 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
                 TraceEvent(
                     attempt.created_at,
                     "DISPATCH",
-                    f"Task {te.task_id} attempt #{attempt.attempt_number}  status={attempt.status.name if hasattr(attempt.status, 'name') else attempt.status}",
+                    f"Task {te.task_id} attempt #{attempt.attempt_number}  status={attempt.status.name if hasattr(attempt.status, 'name') else attempt.status}",  # noqa: E501
                     [
                         f"failure_tier={attempt.failure_tier}" if attempt.failure_tier else None,
                         (
@@ -326,7 +325,7 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
                 TraceEvent(
                     te.completed_at,
                     "DISPATCH",
-                    f"Task {te.task_id} completed  status={te_status}  cost=${te.cost_usd or 0:.4f}  duration={te.duration_seconds or 0:.1f}s",
+                    f"Task {te.task_id} completed  status={te_status}  cost=${te.cost_usd or 0:.4f}  duration={te.duration_seconds or 0:.1f}s",  # noqa: E501
                     is_error=str(te_status).upper() == "FAILED",
                 )
             )
@@ -351,9 +350,9 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
             TraceEvent(
                 record.completed_at,
                 "DB",
-                f"ExecutionRecord completed  status={status}  cost=${record.total_cost_usd or 0:.4f}",
+                f"ExecutionRecord completed  status={status}  cost=${record.total_cost_usd or 0:.4f}",  # noqa: E501
                 [
-                    f"completed_tasks={record.completed_task_count or 0}  failed_tasks={record.failed_task_count or 0}",
+                    f"completed_tasks={record.completed_task_count or 0}  failed_tasks={record.failed_task_count or 0}",  # noqa: E501
                 ],
                 is_error=str(status).upper() in {"FAILED", "TIMED_OUT"},
             )
@@ -389,12 +388,12 @@ def build_plan_metadata_events(plan: MissionPlan) -> list[TraceEvent]:
         TraceEvent(
             plan.created_at,
             "PLAN",
-            f"MissionPlan  id={_short_id(plan.id)}  v{plan.version}  status={plan_status}  gate_mode={plan.gate_mode}",
+            f"MissionPlan  id={_short_id(plan.id)}  v{plan.version}  status={plan_status}  gate_mode={plan.gate_mode}",  # noqa: E501
             [
-                f"budget_ceiling=${plan.budget_usd_ceiling or 0:.2f}  spent=${plan.total_spent_usd or 0:.4f}",
+                f"budget_ceiling=${plan.budget_usd_ceiling or 0:.2f}  spent=${plan.total_spent_usd or 0:.4f}",  # noqa: E501
                 f"tasks ({len(tasks)}): {', '.join(task_ids[:10])}"
                 + ("..." if len(task_ids) > 10 else ""),
-                f"supervisor_iterations={plan.supervisor_iteration_count}/{plan.max_supervisor_iterations}",
+                f"supervisor_iterations={plan.supervisor_iteration_count}/{plan.max_supervisor_iterations}",  # noqa: E501
             ],
         )
     )
@@ -511,7 +510,7 @@ def build_message_events(messages: list[SessionMessage]) -> list[TraceEvent]:
                 TraceEvent(
                     msg.created_at,
                     "DIRECTOR",
-                    f"Response rendered",
+                    "Response rendered",
                     [f"→ {snippet}"],
                 )
             )
@@ -521,7 +520,7 @@ def build_message_events(messages: list[SessionMessage]) -> list[TraceEvent]:
                 TraceEvent(
                     msg.created_at,
                     "DIRECTOR",
-                    f"User message",
+                    "User message",
                     [f"→ {snippet}"],
                 )
             )
@@ -531,7 +530,7 @@ def build_message_events(messages: list[SessionMessage]) -> list[TraceEvent]:
                 TraceEvent(
                     msg.created_at,
                     "DIRECTOR",
-                    f"System message",
+                    "System message",
                     [f"→ {snippet}"],
                 )
             )
@@ -558,7 +557,7 @@ def build_followup_events(followups: list[SessionFollowup]) -> list[TraceEvent]:
                 TraceEvent(
                     fu.consumed_at,
                     "FOLLOWUP",
-                    f"Followup consumed (fired)",
+                    "Followup consumed (fired)",
                     [f"prompt_template={fu.prompt_template[:150]}"] if fu.prompt_template else [],
                 )
             )
@@ -575,7 +574,7 @@ def build_llm_events(calls: list[LlmCall]) -> list[TraceEvent]:
                 "LLM",
                 f"LLM call  agent={c.agent_name}  model={c.model}  cost=${c.cost_usd or 0:.4f}",
                 [
-                    f"tokens: in={c.input_tokens} out={c.output_tokens} cache_read={c.cache_read_tokens} total={total_tokens}",
+                    f"tokens: in={c.input_tokens} out={c.output_tokens} cache_read={c.cache_read_tokens} total={total_tokens}",  # noqa: E501
                     f"latency={c.latency_ms}ms" if c.latency_ms else None,
                 ],
             )
@@ -626,7 +625,7 @@ def build_log_events(
                         [
                             f"logger={entry.get('logger', '')}",
                             (
-                                f"extra={json.dumps({k: v for k, v in extra.items() if k != 'mission_id'})}"
+                                f"extra={json.dumps({k: v for k, v in extra.items() if k != 'mission_id'})}"  # noqa: E501
                                 if extra
                                 else None
                             ),
@@ -1121,7 +1120,7 @@ async def run_trace(
     "--filter",
     "-f",
     "filter_str",
-    help="Comma-separated filters: errors,transitions,director,temporal,llm,sse,followup,dispatch,log,planning",
+    help="Comma-separated filters: errors,transitions,director,temporal,llm,sse,followup,dispatch,log,planning",  # noqa: E501
 )
 @click.option("--json", "output_json", is_flag=True, help="JSON output for piping")
 @click.option(

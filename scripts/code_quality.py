@@ -816,7 +816,7 @@ def score_maintainability(
 
     if doc_coverage < 50:
         recommendations.append(
-            f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes"
+            f"Documentation coverage is {doc_coverage:.0f}% — add docstrings to public functions and classes"  # noqa: E501
         )
     if p90_size > 500:
         recommendations.append(f"P90 file size is {p90_size} lines — split large files")
@@ -1639,7 +1639,7 @@ def _print_report(result: PQIResult, show_recommendations: bool = False) -> None
     bar = _score_bar(result.composite)
 
     print(f"\n{'=' * 60}")
-    print(f"  PyQuality Index (PQI)")
+    print("  PyQuality Index (PQI)")
     print(f"{'=' * 60}")
     print(f"\n  Composite Score:  {result.composite:.1f} / 100  [{band}]")
     print(f"  {bar}")
@@ -1758,8 +1758,8 @@ def _render_markdown_report(result: PQIResult) -> str:
     lines.append("")
     lines.append(f"**Score: {result.composite:.1f} / 100 — {band}**")
     lines.append("")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|------:|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|------:|")
     lines.append(f"| Files | {result.file_count} |")
     lines.append(f"| Lines | {result.line_count:,} |")
     if result.floor_penalty < 1.0:
@@ -1817,8 +1817,8 @@ def _render_markdown_report(result: PQIResult) -> str:
 
         lines.append("## Issues")
         lines.append("")
-        lines.append(f"| Severity | Count |")
-        lines.append(f"|----------|------:|")
+        lines.append("| Severity | Count |")
+        lines.append("|----------|------:|")
         lines.append(f"| HIGH | {high} |")
         lines.append(f"| MEDIUM | {medium} |")
         lines.append(f"| LOW | {low} |")

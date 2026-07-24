@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.utils import utc_now
-from modules.backend.models.session import Session, SessionChannel, SessionMessage, SessionStatus
+from modules.backend.models.session import Session, SessionStatus
 from modules.backend.repositories.session import SessionRepository
 from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 

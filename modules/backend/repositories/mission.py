@@ -5,7 +5,6 @@ Data access for missions and mission membership.
 """
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission import Mission, MissionMember, MissionStatus
 from modules.backend.repositories.base import BaseRepository

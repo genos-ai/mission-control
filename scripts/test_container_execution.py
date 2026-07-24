@@ -29,14 +29,12 @@ async def main() -> None:
     )
     from modules.backend.core.config import get_redis_url
     from modules.backend.events.bus import SessionEventBus
-    from modules.backend.services.execution import ExecutionService
     from modules.backend.services.session import SessionService
 
     redis = AsyncRedis.from_url(get_redis_url())
     event_bus = SessionEventBus(redis)
 
     # Find the platform-test mission
-    from sqlalchemy import text
 
     from modules.backend.core.database import get_async_session
     from modules.backend.repositories.mission import MissionRepository
@@ -49,7 +47,7 @@ async def main() -> None:
         if not mission:
             print("\nNo platform mission found. Create one first:")
             print(
-                "  python admin.py mission create --name platform-test --description 'Test' --tier platform --repo-root ."
+                "  python admin.py mission create --name platform-test --description 'Test' --tier platform --repo-root ."  # noqa: E501
             )
             sys.exit(1)
 

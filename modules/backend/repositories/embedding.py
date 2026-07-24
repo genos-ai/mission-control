@@ -10,7 +10,6 @@ Structured queries go through the ORM as usual.
 """
 
 from sqlalchemy import delete, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.logging import get_logger
 from modules.backend.models.embedding import Embedding

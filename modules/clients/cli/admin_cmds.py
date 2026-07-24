@@ -345,11 +345,11 @@ async def _action_bootstrap_user(cli_logger, *, email, display_name, password, *
         console.print(f"[red]{e}[/red]")
         sys.exit(1)
 
-    console.print(f"\n[green]Admin user created:[/green]")
+    console.print("\n[green]Admin user created:[/green]")
     console.print(f"  Email: {user.email}")
     console.print(f"  Name:  {user.display_name}")
     console.print(f"  ID:    {user.id}")
-    console.print(f"\n[yellow]API Key (save this — it will not be shown again):[/yellow]")
+    console.print("\n[yellow]API Key (save this — it will not be shown again):[/yellow]")
     console.print(f"  {api_key}")
     console.print()
 

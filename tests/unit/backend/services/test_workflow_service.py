@@ -5,7 +5,6 @@ Tests workflow loading, validation, capability resolution,
 mission brief generation, output mapping, and workflow matching.
 """
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest

@@ -23,9 +23,8 @@ full design rationale.
 """
 
 import enum
-from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,12 +39,12 @@ class ArtifactType(str, enum.Enum):
     are user-facing deliverables, not intermediate execution data.
 
     Domain-specific report types:
-    ``research_report``           — research synthesizer output (executive summary, sections, sources)
+    ``research_report``           — research synthesizer output (executive summary, sections, sources)  # noqa: E501
     ``vulnerability_report``      — pentest/security scan findings with severity and remediation
     ``quality_audit``             — code quality assessment with scores and issues
     ``architecture_review``       — architecture analysis with recommendations
-    ``deliberation_deliverable``  — Think Tank synthesiser FinalDeliverable (Plan 79; cruxes, minority position, committed answer)
-    ``deliberation_transcript``   — Think Tank full debate transcript (Plan 79; rounds, critic reports, stance deltas)
+    ``deliberation_deliverable``  — Think Tank synthesiser FinalDeliverable (Plan 79; cruxes, minority position, committed answer)  # noqa: E501
+    ``deliberation_transcript``   — Think Tank full debate transcript (Plan 79; rounds, critic reports, stance deltas)  # noqa: E501
 
     Generic types (for agents that don't fit a specific domain):
     ``report``    — general-purpose report
