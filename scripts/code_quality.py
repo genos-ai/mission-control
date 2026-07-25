@@ -293,7 +293,8 @@ def _collect_files(
 
 def _matches_exclude(rel_path: str, pattern: str) -> bool:
     if pattern.endswith("/"):
-        return rel_path.startswith(pattern) or rel_path.startswith(pattern.rstrip("/"))
+        segment = pattern.rstrip("/")
+        return segment in rel_path.split("/")[:-1]
     if "*" in pattern or "?" in pattern or "[" in pattern:
         from fnmatch import fnmatch
 
@@ -1933,8 +1934,17 @@ def main() -> None:
     parser.add_argument(
         "--exclude",
         nargs="*",
-        default=["**/migrations/*"],
-        help="Patterns to exclude (default: migrations)",
+        default=[
+            "**/migrations/*",
+            ".venv/",
+            "__pycache__/",
+            ".git/",
+            "node_modules/",
+            ".mypy_cache/",
+            ".pytest_cache/",
+            ".ruff_cache/",
+        ],
+        help="Patterns to exclude (default: migrations and non-source/vendor dirs)",
     )
     parser.add_argument(
         "--profile",
@@ -1994,15 +2004,7 @@ def main() -> None:
     log_level = "DEBUG" if args.debug else ("INFO" if args.verbose else "WARNING")
     setup_logging(level=log_level, format_type="console")
 
-    exclude = args.exclude or [
-        ".venv/",
-        "__pycache__/",
-        ".git/",
-        "node_modules/",
-        ".mypy_cache/",
-        ".pytest_cache/",
-        ".ruff_cache/",
-    ]
+    exclude = args.exclude
 
     code_map = None
     if not args.no_code_map:

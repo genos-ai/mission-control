@@ -47,7 +47,7 @@ def _collect_files(
 ) -> list[Path]:
     """Collect Python files matching scope/exclude patterns."""
     exclude = exclude or []
-    exclude_set = set(exclude)
+    exclude_set = set(exclude) | {"node_modules/"}
 
     if scope:
         files: list[Path] = []
@@ -80,12 +80,14 @@ def _matches_exclude(rel_path: str, pattern: str) -> bool:
     """Check if a relative path matches an exclusion pattern.
 
     Supports three styles:
-    - Directory prefix: ``tests/`` matches any path under tests/
+    - Directory name: ``tests/`` matches any path with a ``tests``
+      directory component, at any depth (e.g. ``modules/tests/foo.py``)
     - Exact prefix: ``modules/backend/core/config.py`` matches that file
     - Glob/fnmatch: ``**/config_schema.py`` or ``*.generated.py``
     """
     if pattern.endswith("/"):
-        return rel_path.startswith(pattern) or rel_path.startswith(pattern.rstrip("/"))
+        segment = pattern.rstrip("/")
+        return segment in rel_path.split("/")[:-1]
     if "*" in pattern or "?" in pattern or "[" in pattern:
         from fnmatch import fnmatch
 

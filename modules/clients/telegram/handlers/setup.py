@@ -7,7 +7,6 @@ Collects all routers for inclusion in the aiogram dispatcher.
 from aiogram import Router
 
 from modules.clients.telegram.handlers.common import router as common_router
-from modules.clients.telegram.handlers.example import router as example_router
 
 
 def get_all_routers() -> list[Router]:
@@ -24,5 +23,4 @@ def get_all_routers() -> list[Router]:
     """
     return [
         common_router,
-        example_router,
     ]

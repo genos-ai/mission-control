@@ -912,8 +912,12 @@ def get_staged_py_files() -> list[Path]:
 
 
 def get_all_module_files() -> list[Path]:
-    """Get all Python files under modules/."""
-    return sorted((PROJECT_ROOT / "modules").rglob("*.py"))
+    """Get all Python files under modules/, excluding vendored node_modules."""
+    return sorted(
+        f
+        for f in (PROJECT_ROOT / "modules").rglob("*.py")
+        if "node_modules" not in f.relative_to(PROJECT_ROOT).parts
+    )
 
 
 # ── Output ────────────────────────────────────────────────────────────────

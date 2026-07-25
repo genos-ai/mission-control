@@ -24,8 +24,4 @@ Example:
         await state.set_state(MyForm.step_2)
 """
 
-from modules.clients.telegram.states.example import FeedbackForm
-
-__all__ = [
-    "FeedbackForm",
-]
+__all__: list[str] = []
