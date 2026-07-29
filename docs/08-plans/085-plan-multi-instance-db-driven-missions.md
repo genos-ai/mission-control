@@ -1,9 +1,10 @@
 # Plan 85 — Multi-Instance Deployment on a Universal Core
 
-**Version:** 1.1.0
-**Date:** 2026-07-29 (v1.0) · revised same day after `/prompt-adversarial-review`
+**Version:** 1.2.0
+**Date:** 2026-07-29 (v1.0) · revised same day after `/prompt-adversarial-review` (v1.1) and
+`/prompt-check-plan-quality` (v1.2)
 **Author:** Herman + Opus 5 design session (`/prompt-get-context` → ideation → `/prompt-make-plan`
-→ `/prompt-adversarial-review`)
+→ `/prompt-adversarial-review` → `/prompt-check-plan-quality`)
 **Status:** Not started
 **Depends on:** None (all changes are to existing config resolution and seeding)
 **Unlocks:** Running N differentiated Mission Control instances (security / business / laptop-coworker)
@@ -105,6 +106,36 @@ re-derive it:
 7. **v1.0 Phase 6.3 deleted** — rewriting two tests' path construction had no failure mode and was
    scope creep.
 
+### v1.2 revision deltas
+
+`/prompt-check-plan-quality` found the plan structurally sound but not DRY: five "new" helpers already
+exist in some form, and one phase targeted the wrong function. No phase added or removed.
+
+1. **Phase 4.1b retargeted.** v1.1 put the container gate in
+   `ExecutionEnvironmentService.get_or_create_for_mission()`, which does not validate mode at all.
+   `agents/mission_control/dispatch/environment.py` → `resolve_execution_mode()` / `_validate_mode()`
+   is the existing feasibility gate, **and it already silently downgrades container/worktree → local**
+   with a bare `logger.warning`. The plan forbade exactly that while leaving it in place. 4.1b now fixes
+   the existing downgrade rather than adding a second gate beside it.
+2. **`reset_config_caches()` is an extraction, not a new function.** `cache_clear()` is hand-rolled in
+   two test files (6 calls). It replaces them.
+3. **One agent-module-resolution primitive.** `services/workflow_validator.py` already resolves and
+   imports agent modules, swallowing every failure. Phase 3.1 now introduces one shared
+   `resolve_agent_module()` that both call sites use, with the caller deciding whether absence is fatal.
+4. **`instance validate` reuses `validate_config_files()`** logic, which must first move out of the
+   agent-adapter layer into a service (a CLI cannot import an agent adapter — rules 001.7 / 008.x).
+5. **`instance show` extends `get_sanitized_config_view()`** and reuses
+   `PlatformMetricsService.get_overview()` for counts instead of re-deriving both.
+6. **One `matches_any()` pattern helper** shared by both seeders — `fnmatch` is already imported locally
+   in four places; do not add two more.
+7. **Reconcile-and-disable goes through existing service methods** (`AgentCatalogService.update_entry`,
+   `WorkflowDefinitionService.update_workflow`), not new queries — a seeder writing raw SQL breaks
+   rule 005.5.
+8. **Three root-resolution functions collapsed into one `paths()` accessor**, removing
+   `instance_var_root()`'s conditional special case.
+9. **New rule 001.8** makes the Phase 1.1 call-site classification a machine-checked invariant instead
+   of a one-time manual audit.
+
 ### Out of scope
 
 - **Plugin/extension architecture.** No entry points, no host SDK, no separate distributions, no
@@ -134,7 +165,7 @@ These override any instinct to improvise.
 2. **P3 applies — breaking changes are free.** No shims, no `_legacy` aliases, no deprecation wrappers.
    Delete replaced code in the same commit.
 3. **Backwards compatibility for the *existing checkout* is required, and is achieved by one
-   deliberate default, not by shims:** when no instance root is specified, `instance_root()` returns
+   deliberate default, not by shims:** when no instance root is specified, `paths().instance_root` is
    `<code_root>/config`. The current single-instance dev flow keeps working with zero file moves and
    zero env vars. Phase 1 must not relocate any file in this repo.
 4. **Line numbers in this document are hints only.** The tree moves. **Re-locate every target by symbol
@@ -204,34 +235,68 @@ marker-missing case now requires patching `__file__` resolution rather than cwd.
 `tests/unit/backend/core/test_logging.py` patches
 `modules.backend.core.logging.find_project_root` — unaffected.
 
-### 0.2 Add `instance_root()`
+### 0.2 Add one `paths()` accessor — not three root functions
 
-**New function in `modules/backend/core/config.py`:**
+v1.1 specified three separate functions (`instance_root()`, `instance_var_root()`, plus the existing
+`find_project_root()`), with `instance_var_root()` carrying a conditional exception for the default
+instance. Three interdependent functions with a special case is harder to reason about and to keep
+correct than one object resolved and validated once.
+
+**One accessor in `modules/backend/core/config.py`:**
 
 ```python
-def instance_root() -> Path:
-    """Resolve the instance root — where per-instance config, secrets and state live.
+@dataclass(frozen=True)
+class Paths:
+    """Resolved filesystem layout for this process. Built once, validated once.
 
-    Resolution order:
-      1. MC_INSTANCE_ROOT environment variable (set by the --instance CLI flag)
-      2. <code_root>/config   (the single-instance default — today's layout)
+    code_root      — the checkout. Alembic, migrations, frontend, code map,
+                     agent YAML seed data, workflow templates, profiles.
+    instance_root  — per-instance config and secrets: .env, settings/,
+                     prompts/organization/, instance.yaml.
+    var_root       — per-instance runtime state: logs, worktrees, cache.
+    """
 
-    The directory must exist. A configured-but-missing instance root is a
-    hard error, never a silent fall back to the default.
+    code_root: Path
+    instance_root: Path
+    var_root: Path
+
+
+@lru_cache(maxsize=1)
+def paths() -> Paths:
+    """Resolve the layout.
+
+    instance_root:  MC_INSTANCE_ROOT, else <code_root>/config
+    var_root:       MC_INSTANCE_VAR_ROOT, else <instance_root>/var,
+                    except when instance_root is the single-instance default
+                    (<code_root>/config) — then <code_root>/var, preserving
+                    today's layout.
+
+    Raises if MC_INSTANCE_ROOT is set and does not exist. var_root is state,
+    not config, so it is created if missing.
     """
 ```
 
 Requirements:
 
-- Not `@lru_cache`d on its own — cache it the same way `get_settings()` is cached, i.e. downstream
-  accessors cache, so tests can clear caches. Confirm: `get_settings`, `get_app_config`, and
-  `get_mission_control_config` are all `@lru_cache`. Any test that changes `MC_INSTANCE_ROOT` must
-  clear those caches; add a fixture in `tests/conftest.py` that does so.
+- `find_project_root()` stays as-is (0.1) and becomes `paths().code_root`'s implementation. Do **not**
+  delete it — ~90 call sites use it, and Phase 1.1 keeps most of them.
+- `paths()` is `@lru_cache(maxsize=1)`, consistent with `get_settings` / `get_app_config` /
+  `get_mission_control_config`, and is cleared by `reset_config_caches()` (below).
 - If `MC_INSTANCE_ROOT` is set and the path does not exist → raise, with the resolved path in the
   message. Do **not** fall back.
-- `MC_INSTANCE_ROOT` is read with plain `os.environ.get()` and *no* default value inside module code —
-  the default lives in this function's documented resolution order, which rule 003.5 permits because
-  the fallback is a computed path, not a literal. Keep it that way: no `os.getenv("X", "literal")`.
+- Both env vars are read with plain `os.environ.get()` and *no* literal default inside module code —
+  the defaults are computed paths, which rule 003.5 permits. No `os.getenv("X", "literal")`.
+- **The `var_root` exception is the one conditional in this design.** Keep it in `paths()` where it is
+  visible in a single docstring, not spread across call sites. The alternative — requiring every
+  non-default instance to declare `var` explicitly — was considered and rejected as more ceremony than
+  the exception costs.
+
+**`reset_config_caches()` — an extraction, not a new function.** `cache_clear()` is already hand-rolled
+in `tests/unit/backend/core/test_config.py` (4 calls) and `tests/unit/backend/events/test_config.py`
+(2 calls). Add one helper in `core/config.py` clearing `paths`, `get_settings`, `get_app_config`,
+`get_mission_control_config` and `get_instance_config`, and **replace those six inline calls with it**.
+Do not leave them alongside the helper — P14 is "write once, use everywhere", and this is the sixth use,
+not the second.
 
 **New `--instance` option on all four entry files** (`mc.py`, `admin.py`, `services.py`, `tui.py`):
 
@@ -248,11 +313,8 @@ getting it wrong makes the flag silently do nothing:**
 - In `services.py` (argparse), set it immediately after `parse_args()` and before any
   `modules.backend.core.config` accessor runs — note `services.py` reads `application.yaml` at module
   scope, so that read must move behind a function call.
-- **Belt and braces:** immediately after setting the env var, call `.cache_clear()` on `get_settings`,
-  `get_app_config`, `get_mission_control_config` and `get_instance_config`. This makes a late set
-  recoverable instead of silently wrong. Factor it as one helper in `core/config.py` —
-  `reset_config_caches()` — and use the same helper in the test fixture from 0.2 above (P14: extract on
-  second use, and this is the second use).
+- **Belt and braces:** immediately after setting the env var, call `reset_config_caches()` (0.2). This
+  makes a late set recoverable instead of silently wrong.
 - Rule 010.1: the `tree` output of every entry file must list the new option. `admin.py tree` and
   `services.py tree` introspect the real parser, so this is automatic; verify.
 - Rule 002.1 already requires `--verbose` and `--debug` on entry scripts — do not disturb them.
@@ -331,7 +393,7 @@ raises `FileNotFoundError` if absent. `AppConfig.__init__` calls it 18 times thr
   validate layers individually — a partial overlay will not satisfy `extra="forbid"` schemas with
   required fields.
 
-**Skip rule:** when `instance_root()` resolves to `<code_root>/config`, layer 3 is the same directory as
+**Skip rule:** when `paths().instance_root` resolves to `<code_root>/config`, layer 3 is the same directory as
 layer 1. Skip layer 3 in that case rather than merging a file with itself. Make this explicit in code
 with a comment, not incidental.
 
@@ -351,10 +413,10 @@ python -c "from modules.backend.core.config import find_project_root; print(find
 (cd /tmp && python -c "import sys; sys.path.insert(0,'$PWD'); from modules.backend.core.config import find_project_root; print(find_project_root())")
 
 # Default instance root == today's config dir
-python -c "from modules.backend.core.config import instance_root; print(instance_root())"
+python -c "from modules.backend.core.config import paths; print(paths().instance_root)"
 
 # Missing instance root is a hard error, not a fallback
-MC_INSTANCE_ROOT=/nonexistent python -c "from modules.backend.core.config import instance_root; instance_root()"  # must raise
+MC_INSTANCE_ROOT=/nonexistent python -c "from modules.backend.core.config import paths; paths()"  # must raise
 
 # tree lists --instance
 python mc.py tree | head -5
@@ -373,8 +435,8 @@ python admin.py --instance "$(pwd)/config" config | head -20
 
 **New tests required (`tests/unit/backend/core/test_config.py`):**
 - `find_project_root()` returns the same path from three different cwds
-- `instance_root()` returns `<code_root>/config` with `MC_INSTANCE_ROOT` unset
-- `instance_root()` raises when `MC_INSTANCE_ROOT` points at a missing directory
+- `paths().instance_root` is `<code_root>/config` with `MC_INSTANCE_ROOT` unset
+- `paths()` raises when `MC_INSTANCE_ROOT` points at a missing directory
 - three-layer merge: instance overlay wins over profile, profile wins over core default
 - recursive mapping merge (nested key preserved from a lower layer)
 - list replacement (not union)
@@ -403,19 +465,25 @@ grep -rn "find_project_root\|validate_project_root\|PROJECT_ROOT" --include='*.p
   modules/ scripts/ tests/ mc.py admin.py services.py tui.py | grep -v __pycache__
 ```
 
-**Convert to `instance_root()` — instance-owned config and state:**
+**Convert to `paths().instance_root` — instance-owned config:**
 
 | Site (re-locate by symbol) | What it resolves | Notes |
 |---|---|---|
 | `core/config.py` → `get_settings()` | `config/.env` | secrets are per-instance |
 | `core/config.py` → `load_yaml_config()` | `config/settings/*` | via Phase 0.3 layering |
-| `core/logging.py` → the log-path helper taking `configured_path` | log file path | logs are per-instance state |
 | `agents/mission_control/helpers/prompt_builder.py` | `config/prompts/organization/` **only** | see 1.3 |
 | `api/v1/endpoints/admin.py` → the `models.yaml` path constant | read **and write** target | see 1.4 |
 | `admin.py` → `catalog aliases set` handler | `config/settings/models.yaml` write | see 1.4 |
-| `clients/cli/api_client.py` → `_find_project_root()` usage for `application.yaml` | server host/port | CLI must read the instance's server config; also make this helper delegate to `core.config` rather than duplicating the walk |
-| `services.py` → `PROJECT_ROOT / "config" / "settings" / "application.yaml"` | server host/port | |
-| `services.py` → `SERVICE_LOG_DIR` | `var/logs` | per-instance state |
+| `clients/cli/api_client.py` → `_find_project_root()` usage for `application.yaml` | server host/port | CLI must read the instance's server config; delete the duplicate walk (Phase 6.2) |
+| `services.py` → `PROJECT_ROOT / "config" / "settings" / "application.yaml"` | server host/port | must move behind a function call — it currently runs at module scope, before `--instance` is parsed |
+
+**Convert to `paths().var_root` — instance-owned runtime state:**
+
+| Site | What it resolves |
+|---|---|
+| `core/logging.py` → the log-path helper taking `configured_path` | log file path |
+| `services.py` → `SERVICE_LOG_DIR` | `var/logs` |
+| `services/container_backend.py` → worktree base directory | `var/worktrees` |
 
 **Leave on `find_project_root()` — code paths:**
 
@@ -435,27 +503,26 @@ in `tests/`.
 path. If it holds secrets, per-instance identity, per-instance tuning, or runtime state, it is instance
 config.
 
-### 1.2 `var/` becomes instance state
+### 1.2 Make the classification a machine-checked invariant
 
-`SERVICE_LOG_DIR`, worktree base directory, and cache directories resolve under
-`instance_root()/var/`. With the default instance root that is `<code_root>/config/var/` — which is
-**wrong**, because today logs land in `<code_root>/var/logs/`.
+The table above is a one-time manual audit over ~90 call sites. Nothing stops a future call site from
+picking the wrong accessor, and the failure is silent — an instance quietly reading the wrong `.env`, or
+writing logs into the code checkout.
 
-**Resolution:** add a third accessor rather than nesting state under `config/`:
+**Add rule 001.8 to both rule engines** (`docs/04-rules/001_module_boundaries.jsonl` **and**
+`scripts/code_rules_fast.py` — per the house rule, every rule change goes in both places):
 
-```python
-def instance_var_root() -> Path:
-    """Runtime state root (logs, worktrees, cache).
+> **001.8 — Path accessors must match what they resolve.** `paths().instance_root` must not build paths
+> under `modules/`, `scripts/`, `tests/`, or `docs/`. `paths().code_root` / `find_project_root()` must
+> not build paths to `.env`, `settings/`, `prompts/organization/`, or `instance.yaml`.
+> `paths().var_root` is the only accessor permitted to build paths under `var/`.
 
-    MC_INSTANCE_VAR_ROOT, else <instance_root>/var, except when instance_root()
-    is the single-instance default (<code_root>/config) — then <code_root>/var,
-    preserving today's layout.
-    """
-```
+Implement as an AST check in `code_rules_fast.py`: find calls to the accessors, walk the enclosing
+expression for `/` operands that are string literals, and flag the forbidden combinations. Severity
+`error` — this is the invariant the whole phase rests on, and it is cheap to satisfy.
 
-Create the directory if missing (this is state, not config — creating it is correct; a *missing config
-file* is still an error). Document the exception in the docstring so the special case is visible rather
-than surprising.
+Adding it in Phase 1 rather than at the end means the rest of Phase 1's conversions are checked as they
+land, instead of audited afterwards.
 
 ### 1.3 Split the prompt layers
 
@@ -485,7 +552,7 @@ the other two, and the test should assert the split explicitly.
 
 With layering, a write must target the **instance overlay**, not the core default:
 
-- Write path: `instance_root()/settings/models.yaml`
+- Write path: `paths().instance_root / "settings" / "models.yaml"`
 - Create the file (and `settings/` directory) on first write, containing only the keys being set
 - The `registry:` block (provider → models) stays a **core default** and is not written by either path.
   If a write handler currently rewrites the whole file, change it to write only the `aliases:` mapping.
@@ -497,7 +564,7 @@ With layering, a write must target the **instance overlay**, not the core defaul
   the API response and the CLI output state that a restart is required to apply the change across all
   workers. Do not describe this as "takes effect without a restart".
 
-**When `instance_root()` is the default (`<code_root>/config`)**, the write target is
+**When `paths().instance_root` is the default (`<code_root>/config`)**, the write target is
 `config/settings/models.yaml` — exactly today's behaviour. Verify this explicitly; it is the case the
 existing tests cover.
 
@@ -515,13 +582,13 @@ python admin.py catalog aliases list      # reads models.yaml
 python mc.py status                       # CLI resolves server host/port
 
 # Log path unchanged for the default instance
-python -c "from modules.backend.core.config import instance_var_root; print(instance_var_root())"
+python -c "from modules.backend.core.config import paths; print(paths().var_root)"
 # expect: <repo>/var
 ```
 
 **New tests required:**
-- `instance_var_root()` returns `<code_root>/var` for the default instance and
-  `<instance_root>/var` for an explicit one
+- `paths().var_root` is `<code_root>/var` for the default instance and `<instance_root>/var` for an
+  explicit one
 - organization prompts resolve from instance root; category and agent prompts from code root
 - alias write targets the instance overlay and leaves the core default untouched (use `tmp_path` as
   `MC_INSTANCE_ROOT`)
@@ -532,7 +599,7 @@ python -c "from modules.backend.core.config import instance_var_root; print(inst
 
 ### 2.1 `instance.yaml` schema
 
-New file, read from `instance_root()/instance.yaml`. **Optional** — absent means "everything, `full`
+New file, read from `paths().instance_root / "instance.yaml"`. **Optional** — absent means "everything, `full`
 profile", which is today's behaviour and keeps the existing checkout working.
 
 ```yaml
@@ -601,7 +668,7 @@ Implementation requirements:
   `Literal["full", "solo"]`.
 - Accessor `get_instance_config()` in `core/config.py`, `@lru_cache`d like its siblings, returning the
   validated schema. Absent file → return the schema's defaults with `name` derived from
-  `instance_root().name` and `backend` resolving entirely from `database.yaml` / `temporal.yaml`
+  `paths().instance_root.name` and `backend` resolving entirely from `database.yaml` / `temporal.yaml`
   (today's behaviour). A **present but invalid** file → raise with the validation error. Absent is
   fine; malformed is not.
 - **`backend` is required when the file exists, optional when it does not.** Model this as
@@ -613,6 +680,11 @@ Implementation requirements:
   "solo"`. Enforce with a model validator, not a comment.
 - Pattern matching uses `fnmatch.fnmatch` against the full `agent_name` / `workflow_name`. Say so in the
   header comment so `security.*` semantics are unambiguous (`security.webapp.scanner.agent` matches).
+- **One shared helper, not a local import per caller.** `fnmatch` is already imported locally in
+  `agents/security/roe.py`, `services/code_map/parser.py`, `scripts/code_quality.py` and
+  `scripts/code_map.py`. This plan needs name matching in **two** seeders plus `instance validate`, so
+  add `matches_any(name: str, patterns: list[str]) -> bool` to `modules/backend/core/` once and use it
+  in all three. Do not add two more local `fnmatch` imports.
 
 ### 2.2 Filter `seed_catalog()`
 
@@ -647,6 +719,12 @@ After seeding, set `enabled = false` on every catalog row **not** matching the p
 narrowing take effect. Rows are never deleted, so re-widening the patterns re-enables them on the next
 seed.
 
+**Go through the existing service, not new queries.** Use
+`AgentCatalogService.list_catalog()` to enumerate and `AgentCatalogService.update_entry()` to flip
+`enabled`. A seeder issuing its own `select`/`update` would break rule 005.5 (no raw SQL in the service
+layer) and duplicate methods that already exist. If `update_entry()` cannot set `enabled` alone, extend
+it — do not bypass it.
+
 ### 2.3 Filter `seed_workflows()`
 
 Same shape in `services/workflow_seeder.py` → `seed_workflows(service, *, force=False)`.
@@ -656,7 +734,9 @@ Same shape in `services/workflow_seeder.py` → `seed_workflows(service, *, forc
 - Same unmatched-pattern error rule.
 - Same reconcile-and-disable step: `workflow_definitions.enabled = false` for non-matching **system
   templates** (`mission_id IS NULL`) only. Never touch mission-scoped definitions — those belong to a
-  mission, not to the instance manifest. Return a `"disabled"` count.
+  mission, not to the instance manifest. Return a `"disabled"` count. Use the existing
+  `WorkflowDefinitionService.list_templates(enabled_only=False)` and `update_workflow()` — both already
+  exist, so no new queries.
 - **Check whether `force` deletes here.** `seed_workflows`' docstring says force "delete[s] existing
   system templates before seeding", which — unlike `seed_catalog` — may genuinely delete. If it does,
   scope the delete to matching templates only, and verify nothing FKs to `workflow_definitions` in a way
@@ -677,9 +757,24 @@ Add to `admin.py` (Click group, `--options` not positional args, per house rules
   database name, Redis db index, Temporal namespace + task queue, sanitised database URL, pattern
   lists, and the counts of catalog rows and workflow definitions currently in the DB. The three
   isolation values must be visible here: an operator diagnosing cross-talk needs them in one place.
+
+  **Reuse, do not re-derive.** `core/config.py` already has `get_sanitized_config_view()` — the
+  established "expose configuration without leaking secrets" primitive, used by the admin config
+  endpoint. Add an `instance` block to it (name, profile, roots, resolved database name, Redis db,
+  Temporal namespace/queue — never the password) so `admin.py config`, the admin API and `instance show`
+  all get it from one place. For the DB counts, use `PlatformMetricsService.get_overview()`, which
+  already counts `AgentCatalog`, missions, sessions and workflow runs; extend it with a
+  `workflow_definitions` count rather than writing a new query.
 - `admin.py instance validate [--against PATH]...` — exits 1 on any problem, mutates nothing. Runs:
   1. `instance.yaml` schema validation
-  2. the unmatched-pattern check from 2.2 / 2.3
+  2. **config-file and secret validation** — `agents/adapters/system.py` → `validate_config_files()`
+     already checks that every `config/settings/*.yaml` exists and parses and that `.env` has non-empty
+     critical secrets, which is most of what this needs. It lives in the agent-adapter layer, and a CLI
+     handler must not import an agent (rules 001.7 / 008.x). **Move that logic into a service** (e.g.
+     `services/config_validation.py`), have the adapter call the service, and have `instance validate`
+     call the same service. Do not reimplement it, and do not import the adapter. Make it instance-aware
+     while moving it: the settings files come from the layered resolution, `.env` from
+     `paths().instance_root`.
   3. the Phase 3.1 catalog-vs-code reconciliation
   4. **the isolation collision checks from 0.2a** — fail when this instance's
      `(db.host, db.port, db.name)`, `(redis.host, redis.port, redis.db)` or
@@ -801,15 +896,43 @@ def verify_catalog_against_code() -> None:
     """
 ```
 
+**First extract the resolution primitive — this logic already exists twice.**
+`services/workflow_validator.py` → `_agent_output_fields()` already calls
+`AgentRegistry.resolve_module_path()` then `importlib.import_module()`, and swallows every failure with
+`except Exception` + a warning ("we lose only the seed-time guarantee for this specific agent"). Adding a
+third resolution site would make three places that each decide independently what a missing module
+means.
+
+Add one primitive to `core/agent_registry.py`:
+
+```python
+def resolve_agent_module(agent_name: str) -> ModuleType | None:
+    """Import an agent's module, or return None if it is not importable.
+
+    The single place that maps an agent_name to its module. Callers decide
+    whether None is fatal: verify_catalog_against_code() treats it as an
+    error; workflow_validator's output-field introspection treats it as
+    "no declared contract to enforce".
+    """
+```
+
+Then `verify_catalog_against_code()` uses `importlib.util.find_spec` via this primitive's existence
+check, and `_agent_output_fields()` uses it for its import — replacing its inline
+`resolve_module_path` + `import_module` pair. Neither caller keeps its own `except Exception`.
+
 Requirements:
 
-- Use `importlib.util.find_spec(AgentRegistry.resolve_module_path(name))`. Do **not** import the leaf
-  module. Be accurate about what this does and does not execute: the leaf is not executed, **parent
-  packages are**. Do not write a docstring claiming it executes no code.
+- The existence check uses `importlib.util.find_spec(AgentRegistry.resolve_module_path(name))`. Do
+  **not** import the leaf module. Be accurate about what this does and does not execute: the leaf is not
+  executed, **parent packages are**. Do not write a docstring claiming it executes no code.
 - `find_spec` raises `ModuleNotFoundError` when a *parent* package is missing, and can propagate any
   exception raised by a parent's `__init__.py`. Catch `ImportError` (which covers
   `ModuleNotFoundError`) plus `ValueError` (raised for a malformed name) and record the row as a
   failure — never let it crash the sweep and lose the other findings.
+- `_agent_output_fields()` keeps its current *behaviour* (introspection failure is non-fatal) — this is
+  a refactor to one primitive, not a semantic change to the workflow validator. Note in the commit
+  message that its silent-failure path is now visible in one place, which is what makes it fixable
+  later.
 - Error message lists each `agent_name` with its expected module path, and names the fix: either
   disable the row (`admin.py admin toggle-agent`) or narrow `instance.yaml.agents` and re-seed.
 - Call it from **both** process entry points, not just the API:
@@ -923,26 +1046,54 @@ grep -rn "environments.yaml\|EnvironmentsSchema\|default_mode" --include='*.py' 
 Must return nothing. If it returns anything, wire the file properly instead of deleting it and say so in
 the commit message.
 
-### 4.1b Add a real container gate
+### 4.1b Add a real container gate — in the resolver that already exists
 
 Because 4.1a removes the only (dead) global container switch, `solo` needs a live one. Add
 `execution_container_enabled: bool` to `FeaturesSchema` and `config/settings/features.yaml`
 (default `true`, under the existing "Agent Infrastructure" section with a comment explaining it).
 
-Honour it at the enforcement choke point — `ExecutionEnvironmentService.get_or_create_for_mission()` and
-any sibling entry point that accepts a `mode` argument (`grep -n 'mode: str\|mode=' modules/backend/services/execution_environment.py`).
-When the flag is `false` and a caller requests `mode="container"` or `mode="worktree"`, **raise with a
-clear message** naming the flag and the profile — do not silently downgrade to `local`. A silent
-downgrade would run an agent unisolated when the mission asked for isolation, which is worse than
-failing.
+**The gate belongs in `agents/mission_control/dispatch/environment.py`, not in
+`ExecutionEnvironmentService`.** v1.1 targeted `get_or_create_for_mission()`, which does not validate
+mode at all — it only branches on `local`. The real feasibility gate is `_validate_mode()`, called from
+every branch of `resolve_execution_mode()`'s documented 5-level chain (task override → agent YAML →
+mission default → tool-based auto → local fallback). Putting the new check anywhere else creates a
+second gate in a different layer while leaving the first one unguarded.
+
+**And fix the silent downgrade that is already there.** `_validate_mode()` currently does:
+
+```python
+if mode in ("worktree", "container") and not repo_root:
+    logger.warning("Execution mode '%s' requires repo_root ... falling back to local", mode)
+    return "local"
+```
+
+That is precisely the behaviour this plan forbids — an agent runs unisolated when the mission asked for
+isolation, and the only trace is a log line with no mission event (rule 014.1). The plan cannot state
+"never silently downgrade" as a principle and leave this in place.
+
+Required behaviour for `_validate_mode()`:
+
+- **`repo_root` missing** while `container`/`worktree` requested → raise, naming the mission and the
+  requested mode. This is a misconfigured mission, not a runtime condition.
+- **`execution_container_enabled` false** while `container`/`worktree` requested → raise, naming the flag
+  and the resolved profile.
+- Both must **emit a mission event**, not only log — a raised exception whose reason never reaches the
+  Console is the Plan 84 Phase 4 defect class. `_validate_mode()` is a pure function today with no event
+  bus; rather than threading one in, have it raise a typed exception (e.g. `ExecutionModeUnavailable`
+  carrying mode, reason and flag) and have the dispatch caller that already holds the event bus emit the
+  event. That keeps the resolver pure and the emission where the bus lives.
+- Auto-resolution (level 4) is the one case where falling back is legitimate — nobody asked for
+  container mode, the tool heuristic merely suggested it. Keep the fallback **only** on that path, and
+  say so in the docstring, so the distinction between "declined a request" and "chose a default" is
+  explicit rather than accidental.
 
 **Also validate at mission creation.** `mission.execution_environment` is set when the mission is
-created, but the check above only fires at first dispatch — so on a `solo` instance an operator can
-create a container-mode mission, approve a plan, and discover the failure mid-wave hours later. Add the
-same check to the mission-create service path (`services/mission.py`, and the create endpoint's schema
-validation if that is where `execution_environment` is accepted) so the mission is rejected up front
-with the identical message. Keep the dispatch-time check as the enforcement point — validation at
-creation is convenience, not a substitute.
+created, but `_validate_mode()` only runs at dispatch — so on a `solo` instance an operator can create a
+container-mode mission, approve a plan, and discover the failure mid-wave hours later. Add the same
+check to the mission-create service path (`services/mission.py`, and the create endpoint's schema
+validation if that is where `execution_environment` is accepted), reusing the flag check rather than
+duplicating the condition. Keep `_validate_mode()` as the enforcement point — validation at creation is
+convenience, not a substitute.
 
 ### 4.2 Honour the profile where Temporal is assumed
 
@@ -1019,8 +1170,9 @@ print(get_app_config().features.execution_container_enabled)               # Fal
 **New tests required:**
 - `solo` profile overlay sets `temporal.enabled=false`, `experimental_mission_plan_daemon_enabled=false`
   and `execution_container_enabled=false`; `full` leaves core defaults intact
-- `get_or_create_for_mission(mode="container")` raises when `execution_container_enabled` is false, and
-  the message names the flag — assert it does **not** fall back to `mode="local"`
+- `_validate_mode()` raises when `execution_container_enabled` is false and `container`/`worktree` is
+  requested, and when `repo_root` is missing — assert neither falls back to `local`, and that the
+  tool-heuristic auto-resolution path (level 4) still does
 - a Tier-4 dispatch attempt under `solo` raises with the profile named **and** emits a mission event
 - profile appears in `instance show` output
 
@@ -1206,16 +1358,38 @@ grep -rn "_find_project_root" --include='*.py' modules/        # must return not
 **Config resolution:**
 
 - [ ] `find_project_root()` is cwd-independent and resolves from `__file__`
-- [ ] `instance_root()`, `instance_var_root()`, `get_instance_config()`, `reset_config_caches()` exist,
-      are cached consistently with their siblings, and raise on a configured-but-missing path
+- [ ] One `paths()` accessor (`code_root` / `instance_root` / `var_root`) plus `get_instance_config()`
+      and `reset_config_caches()`; cached consistently with their siblings; raises on a
+      configured-but-missing instance root. No separate `instance_var_root()` function.
 - [ ] `--instance` on all four entry files, listed in each `tree` output, set **before `CliContext` is
       constructed**, with `reset_config_caches()` immediately after
 - [ ] Three-layer settings resolution (core default → profile → instance) with documented and tested
       merge semantics; layer 3 skipped when it equals layer 1
-- [ ] `.env`, settings overlay, `prompts/organization/`, and `var/` resolve from the instance root
+- [ ] `.env`, settings overlay, and `prompts/organization/` resolve from `paths().instance_root`;
+      logs, worktrees and cache from `paths().var_root`
 - [ ] `models.yaml` writes target the instance overlay; the API response and CLI output **state that a
       restart is required** under multi-worker deployment
 - [ ] Code paths still resolve from the code root — no config/code confusion in the converted list
+- [ ] **Rule 001.8 added to both `docs/04-rules/001_module_boundaries.jsonl` and
+      `scripts/code_rules_fast.py`**, severity `error`, so the classification is machine-checked rather
+      than a one-time audit
+
+**No duplication (the v1.2 checks):**
+
+- [ ] `reset_config_caches()` **replaces** the six hand-rolled `cache_clear()` calls in
+      `tests/unit/backend/core/test_config.py` and `tests/unit/backend/events/test_config.py` — they are
+      gone, not sitting alongside it
+- [ ] One `matches_any(name, patterns)` helper in `core/`, used by both seeders and `instance validate`;
+      no new local `fnmatch` imports
+- [ ] One `resolve_agent_module()` primitive in `core/agent_registry.py`, used by both
+      `verify_catalog_against_code()` and `workflow_validator._agent_output_fields()`; neither keeps its
+      own `except Exception` around resolution
+- [ ] `validate_config_files()` logic **moved** out of `agents/adapters/system.py` into a service; the
+      adapter and `instance validate` both call the service; the CLI imports no agent module
+- [ ] `instance show` extends `get_sanitized_config_view()` and reuses
+      `PlatformMetricsService.get_overview()` — no new config view, no new count queries
+- [ ] Reconcile-and-disable goes through `AgentCatalogService.update_entry()` and
+      `WorkflowDefinitionService.update_workflow()` — no raw SQL in a seeder (rule 005.5)
 
 **Seeding:**
 
@@ -1240,9 +1414,12 @@ grep -rn "_find_project_root" --include='*.py' modules/        # must return not
 
 - [ ] `config/profiles/{full,solo}/` exist with commented options headers and verified key names
 - [ ] Orphaned `config/settings/environments.yaml` deleted (nothing read it)
-- [ ] `execution_container_enabled` added to `FeaturesSchema`, honoured at the
-      `ExecutionEnvironmentService` choke point (raising, not downgrading to `local`) **and** validated
-      at mission creation
+- [ ] `execution_container_enabled` added to `FeaturesSchema` and enforced in
+      **`dispatch/environment.py` → `_validate_mode()`** — not in `ExecutionEnvironmentService` —
+      raising rather than downgrading to `local`, **and** validated at mission creation
+- [ ] **The pre-existing silent downgrade in `_validate_mode()` (missing `repo_root` → `local` with only
+      a warning) now raises and emits a mission event**, with the fallback retained *only* on the
+      tool-heuristic auto-resolution path
 - [ ] `solo` disables Temporal, containers and the daemon; a Tier-4 dispatch under `solo` fails with a
       clear message **and a mission event**
 - [ ] Instance name and profile logged at startup and shown in `instance show` and health output
