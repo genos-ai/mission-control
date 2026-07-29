@@ -1,8 +1,9 @@
 # Plan 85 — Multi-Instance Deployment on a Universal Core
 
-**Version:** 1.0.0
-**Date:** 2026-07-29
-**Author:** Herman + Opus 5 design session (`/prompt-get-context` → ideation → `/prompt-make-plan`)
+**Version:** 1.1.0
+**Date:** 2026-07-29 (v1.0) · revised same day after `/prompt-adversarial-review`
+**Author:** Herman + Opus 5 design session (`/prompt-get-context` → ideation → `/prompt-make-plan`
+→ `/prompt-adversarial-review`)
 **Status:** Not started
 **Depends on:** None (all changes are to existing config resolution and seeding)
 **Unlocks:** Running N differentiated Mission Control instances (security / business / laptop-coworker)
@@ -56,8 +57,53 @@ deployment is narrower than it first appears — four concrete defects:
    dispatches. Tolerable when code and catalog always ship together; a live failure mode once instances
    hold independent catalog state.
 
-This plan fixes exactly those four things and adds a `full` / `solo` profile so the laptop instance can
-run without Temporal or containers.
+And three **shared-backend collisions** — found by adversarial review of v1.0, which had assumed
+isolation was a configuration choice rather than a feature that must be built:
+
+5. **Nothing selects a per-instance database.** `config/settings/database.yaml` holds `host`, `port`,
+   **`name: "mission_control"`**, `user`, and the Redis block including **`db: 0`**.
+   `get_database_url()` and `get_redis_url()` read them from `AppConfig`. That file is a **core
+   default**, so absent an explicit per-instance override every instance resolves the *same* PostgreSQL
+   database and the *same* Redis db index — shared missions, shared pub/sub channels, shared SSE tokens,
+   shared idempotency keys. Isolation must be declared and validated, not left to the operator
+   remembering to shadow a file.
+
+6. **Temporal namespace and task queue are core defaults.** `config/settings/temporal.yaml` sets
+   `namespace: "default"` and `task_queue: "agent-missions"`; `temporal/worker.py` and
+   `temporal/client.py` read them directly. Two `full` instances on one Temporal server poll the same
+   queue and cross-consume each other's activities, which then execute against the wrong database.
+   Non-deterministic and load-dependent.
+
+7. **`AgentRegistry.reload()` destroys state before loading.** It calls `self._agents.clear()` then
+   `_ensure_loaded()`. Any change that makes loading raise (defect 4's fix) leaves a *running* process
+   with zero agents — strictly worse than the silent skip being removed.
+
+This plan fixes those seven things and adds a `full` / `solo` profile so the laptop instance can run
+without Temporal or containers.
+
+### v1.1 revision deltas
+
+`/prompt-adversarial-review` on v1.0 returned `REVISE`. What changed, so the implementing agent does not
+re-derive it:
+
+1. **Defects 5–7 added above.** Phase 0.2a (instance identity block), Phase 4.0 (Temporal scoping) and
+   Phase 3.0 (atomic reload) are new. Isolation is now a built, validated feature.
+2. **v1.0's `force` instruction was wrong and is deleted.** It said `force` should clear matching
+   catalog rows. `services/catalog_seeder.py` carries an explicit comment —
+   `# Never delete — that would cascade to mission team members` — and `mission_team_members` FKs to
+   `agent_catalog`. Deleting rows would cascade-break existing mission teams. Replaced by the
+   reconcile-and-disable step in Phase 2.2.
+3. **`--instance` ordering constraint restated.** v1.0 said "before the lazy handler import", which is
+   the wrong landmark. `CliContext.__init__` calls `setup_logging()`, which calls `load_yaml_config()`,
+   which populates the `@lru_cache` on `get_app_config()`. The constraint is "before `CliContext` is
+   constructed".
+4. **`find_spec` claim corrected.** It does not execute the *leaf* module, but it **does** import every
+   parent package.
+5. **`cache_clear()` claim corrected.** `@lru_cache` is per process, so it cannot make a `models.yaml`
+   write take effect "without a restart" under multiple uvicorn workers.
+6. **Container gate also validates at mission creation**, not only at dispatch.
+7. **v1.0 Phase 6.3 deleted** — rewriting two tests' path construction had no failure mode and was
+   scope creep.
 
 ### Out of scope
 
@@ -189,13 +235,78 @@ Requirements:
 
 **New `--instance` option on all four entry files** (`mc.py`, `admin.py`, `services.py`, `tui.py`):
 
-- `--instance PATH` — sets `MC_INSTANCE_ROOT` in `os.environ` **before** any `modules.backend.core.config`
-  import resolves configuration. In the Click entry files this means setting it in the group callback
-  before the lazy handler import; in `services.py` (argparse) before `sys.path` work triggers config
-  loading.
+`--instance PATH` sets `MC_INSTANCE_ROOT` in `os.environ`. **The ordering constraint is exact and
+getting it wrong makes the flag silently do nothing:**
+
+- In the Click entry files, set it **before `CliContext` is constructed** — not merely before the lazy
+  handler import. `CliContext.__init__` (`modules/clients/cli/cli_context.py`) calls
+  `validate_project_root()` and then `setup_logging()`; `setup_logging()` in
+  `modules/backend/core/logging.py` calls `find_project_root()` and `load_yaml_config()`, which
+  populates the `@lru_cache` on `get_app_config()`. A `CliContext` built before the env var is set
+  poisons every cached accessor with the *default* instance's configuration, and the CLI then operates
+  on the wrong instance while `instance show` reports the right one.
+- In `services.py` (argparse), set it immediately after `parse_args()` and before any
+  `modules.backend.core.config` accessor runs — note `services.py` reads `application.yaml` at module
+  scope, so that read must move behind a function call.
+- **Belt and braces:** immediately after setting the env var, call `.cache_clear()` on `get_settings`,
+  `get_app_config`, `get_mission_control_config` and `get_instance_config`. This makes a late set
+  recoverable instead of silently wrong. Factor it as one helper in `core/config.py` —
+  `reset_config_caches()` — and use the same helper in the test fixture from 0.2 above (P14: extract on
+  second use, and this is the second use).
 - Rule 010.1: the `tree` output of every entry file must list the new option. `admin.py tree` and
   `services.py tree` introspect the real parser, so this is automatic; verify.
 - Rule 002.1 already requires `--verbose` and `--debug` on entry scripts — do not disturb them.
+
+### 0.2a Instance identity: database, Redis, and Temporal scoping
+
+**This is the sub-phase that makes isolation real.** Without it every instance resolves the same
+PostgreSQL database (`database.yaml` → `name: "mission_control"`), the same Redis db index
+(`database.yaml` → `redis.db: 0`), and the same Temporal namespace and task queue
+(`temporal.yaml` → `default` / `agent-missions`). All three files are core defaults.
+
+The layering from 0.3 makes overriding them *possible*. It does not make it *required*, and an
+isolation guarantee that depends on the operator remembering to shadow a file is not a guarantee.
+
+**Add a required `backend` block to the `instance.yaml` schema** (full schema in Phase 2.1):
+
+```yaml
+backend:
+  database:
+    name: mission_control_security      # required — the isolation boundary
+    host: localhost                     # optional, defaults to database.yaml
+    port: 5432                          # optional, defaults to database.yaml
+    user: mission_control               # optional, defaults to database.yaml
+  redis:
+    db: 1                               # required — pub/sub, SSE tokens, idempotency keys
+  temporal:
+    namespace: default                  # optional, defaults to temporal.yaml
+    task_queue: agent-missions-security # required when profile is `full`
+```
+
+Requirements:
+
+- `get_database_url()` and `get_redis_url()` (`core/config.py`) resolve from `get_instance_config().backend`
+  first, falling back to `get_app_config().database` **only for the optional fields**. `database.name`
+  and `redis.db` have no fallback — see the default-instance rule below.
+- `temporal/client.py` (`namespace`) and `temporal/worker.py` (`task_queue`) resolve from
+  `get_instance_config().backend.temporal`, falling back to `temporal.yaml`.
+- **Default-instance rule.** When `instance.yaml` is absent (the single-instance default), `backend`
+  resolves entirely from `database.yaml` and `temporal.yaml` — today's behaviour, unchanged, no new
+  required file. The `backend` block is required only when `instance.yaml` **exists**. State this
+  explicitly in the schema docstring; it is what keeps this repo working untouched.
+- **Collision detection in `admin.py instance validate`** (Phase 2.4). Given a `--against PATH`
+  argument (repeatable) naming other instance roots, `validate` must fail when this instance's
+  `(database.host, database.port, database.name)` tuple, its `(redis.host, redis.port, redis.db)`
+  tuple, or its `(temporal.namespace, temporal.task_queue)` tuple matches any of them. Without
+  `--against`, it must still fail when `instance.yaml` exists and declares a `name` other than the
+  default while resolving to the **core-default** database name or Redis db — the single most likely
+  operator mistake, and the one that silently merges a new instance into the primary.
+
+**Why the Temporal tuple matters even though it looks like tuning:** `temporal/worker.py` polls
+`config.task_queue`. Two `full` instances sharing a queue means instance A's `execute_mission` activity
+can be picked up by instance B's worker, which resolves the mission ID against B's database, finds
+nothing, and fails — intermittently, under load, in a way that reads like data corruption rather than a
+configuration error.
 
 ### 0.3 Three-layer settings resolution
 
@@ -250,6 +361,14 @@ python mc.py tree | head -5
 python admin.py tree | head -5
 python services.py tree
 python tui.py tree
+
+# Default instance: backend resolution unchanged
+python -c "from modules.backend.core.config import get_database_url, get_redis_url; \
+print(get_database_url(async_driver=False)); print(get_redis_url())"
+# expect the same host/port/name/db as before this phase
+
+# --instance is honoured, not silently ignored (the finding-6 regression test)
+python admin.py --instance "$(pwd)/config" config | head -20
 ```
 
 **New tests required (`tests/unit/backend/core/test_config.py`):**
@@ -260,6 +379,12 @@ python tui.py tree
 - recursive mapping merge (nested key preserved from a lower layer)
 - list replacement (not union)
 - layer 3 skipped when it equals layer 1
+- `reset_config_caches()` clears all four cached accessors
+- **`get_database_url()` / `get_redis_url()` resolve from `instance.yaml.backend` when present, and from
+  `database.yaml` when `instance.yaml` is absent** — the isolation boundary, pinned by test
+- **Temporal `namespace` / `task_queue` resolve from `instance.yaml.backend.temporal` when present**
+- a `CliContext` constructed before `MC_INSTANCE_ROOT` is set, then `reset_config_caches()`, yields the
+  new instance's config — proves the belt-and-braces path works
 
 ---
 
@@ -364,9 +489,13 @@ With layering, a write must target the **instance overlay**, not the core defaul
 - Create the file (and `settings/` directory) on first write, containing only the keys being set
 - The `registry:` block (provider → models) stays a **core default** and is not written by either path.
   If a write handler currently rewrites the whole file, change it to write only the `aliases:` mapping.
-- After writing, invalidate the `get_app_config` cache so the change takes effect without a restart.
-  Check whether the current handlers already do this; if they rely on a process restart, keep that
-  behaviour but state it in the response/CLI output rather than leaving it implicit.
+- **Cache invalidation is per process, and the plan must not pretend otherwise.** `get_app_config` is
+  `@lru_cache`, so `reset_config_caches()` after a write affects only the worker that served the
+  request. Under `uvicorn --workers N` the other N-1 workers keep serving the old alias mapping —
+  roughly 1/N of subsequent agent runs pick up the change and the rest silently do not, with no error.
+  Required behaviour: call `reset_config_caches()` (so single-worker dev is correct) **and** have both
+  the API response and the CLI output state that a restart is required to apply the change across all
+  workers. Do not describe this as "takes effect without a restart".
 
 **When `instance_root()` is the default (`<code_root>/config`)**, the write target is
 `config/settings/models.yaml` — exactly today's behaviour. Verify this explicitly; it is the case the
@@ -418,6 +547,21 @@ profile", which is today's behaviour and keeps the existing checkout working.
 #   profile     - Runtime profile (string: full|solo, default: full)
 #                 full - Temporal, containers, plan daemon all available
 #                 solo - single-process, no Temporal, no containers, no daemon
+#   backend     - Backend isolation boundary (object, required when this file exists)
+#     database  - PostgreSQL selection (object, required)
+#       name    - Database name (string, required) — THE isolation boundary
+#       host    - Host (string, optional; defaults to database.yaml)
+#       port    - Port (integer, optional; defaults to database.yaml)
+#       user    - User (string, optional; defaults to database.yaml)
+#     redis     - Redis selection (object, required)
+#       db      - Redis database index (integer, required) — pub/sub, SSE
+#                 tokens and idempotency keys all live here
+#       host    - Host (string, optional; defaults to database.yaml)
+#       port    - Port (integer, optional; defaults to database.yaml)
+#     temporal  - Temporal scoping (object, required when profile is `full`)
+#       task_queue - Worker queue (string, required) — MUST be unique per
+#                 instance or workers cross-consume each other's activities
+#       namespace  - Namespace (string, optional; defaults to temporal.yaml)
 #   agents      - fnmatch patterns against agent_catalog.agent_name (list of strings,
 #                 default: ["*"]). Controls what `seed-catalog` inserts and enables.
 #   workflows   - fnmatch patterns against workflow_name (list of strings,
@@ -426,6 +570,15 @@ profile", which is today's behaviour and keeps the existing checkout working.
 
 name: security-prod
 profile: full
+
+backend:
+  database:
+    name: mission_control_security
+  redis:
+    db: 1
+  temporal:
+    task_queue: agent-missions-security
+
 agents:
   - "mission.*"
   - "system.*"
@@ -448,8 +601,16 @@ Implementation requirements:
   `Literal["full", "solo"]`.
 - Accessor `get_instance_config()` in `core/config.py`, `@lru_cache`d like its siblings, returning the
   validated schema. Absent file → return the schema's defaults with `name` derived from
-  `instance_root().name`. A **present but invalid** file → raise with the validation error. Absent is
+  `instance_root().name` and `backend` resolving entirely from `database.yaml` / `temporal.yaml`
+  (today's behaviour). A **present but invalid** file → raise with the validation error. Absent is
   fine; malformed is not.
+- **`backend` is required when the file exists, optional when it does not.** Model this as
+  `backend: BackendSchema | None = None` on the manifest schema, with a validator that raises if
+  `backend is None` while the file was loaded from disk. Do not give `backend` field defaults that
+  quietly resolve to the core-default database — that is exactly the silent-merge failure this block
+  exists to prevent.
+- `backend.temporal.task_queue` is required when `profile == "full"` and ignored when `profile ==
+  "solo"`. Enforce with a model validator, not a comment.
 - Pattern matching uses `fnmatch.fnmatch` against the full `agent_name` / `workflow_name`. Say so in the
   header comment so `security.*` semantics are unambiguous (`security.webapp.scanner.agent` matches).
 
@@ -470,10 +631,21 @@ Implementation requirements:
   security agent YAML exists in the deployment, that is a misconfigured instance — raise, listing the
   unmatched patterns. Silently seeding fewer agents than declared is exactly the failure this plan
   exists to prevent.
-- `force=True` currently clears and reloads. With filtering, `force` must clear only rows the patterns
-  match, or the semantics become "delete agents this instance was told to ignore". Decide explicitly,
-  document the choice in the docstring, and test it: **recommended** — `force` clears only matching
-  rows.
+- **Do not add row deletion under `force`.** `seed_catalog` deliberately never deletes — the code
+  carries the comment `# Never delete — that would cascade to mission team members`, and
+  `mission_team_members` has an FK to `agent_catalog`. Deleting rows would cascade-break the teams of
+  every existing mission using that agent, or fail on the constraint and make `--force` unusable.
+  `force` keeps its current upsert-and-reset-prompts semantics, unchanged.
+
+**Reconcile-and-disable (replaces what deletion was meant to achieve).** Filtering controls what gets
+*inserted*, so narrowing the manifest would otherwise have no effect: previously-seeded rows stay
+present **and enabled**, Phase 3's reconciliation passes because the modules exist, and `instance show`
+reports a narrow pattern list while the instance still dispatches agents it no longer declares.
+
+After seeding, set `enabled = false` on every catalog row **not** matching the patterns, and include a
+`"disabled"` count in the return dict. This is non-destructive (no FK cascade), idempotent, and makes
+narrowing take effect. Rows are never deleted, so re-widening the patterns re-enables them on the next
+seed.
 
 ### 2.3 Filter `seed_workflows()`
 
@@ -482,7 +654,15 @@ Same shape in `services/workflow_seeder.py` → `seed_workflows(service, *, forc
 - Add `workflow_patterns: list[str] | None = None`.
 - Filter on `workflow_name` from the parsed YAML (not the filename) — the two can differ.
 - Same unmatched-pattern error rule.
-- Same `force` scoping decision, documented and tested.
+- Same reconcile-and-disable step: `workflow_definitions.enabled = false` for non-matching **system
+  templates** (`mission_id IS NULL`) only. Never touch mission-scoped definitions — those belong to a
+  mission, not to the instance manifest. Return a `"disabled"` count.
+- **Check whether `force` deletes here.** `seed_workflows`' docstring says force "delete[s] existing
+  system templates before seeding", which — unlike `seed_catalog` — may genuinely delete. If it does,
+  scope the delete to matching templates only, and verify nothing FKs to `workflow_definitions` in a way
+  that cascades (`workflow_run`, `workflow_schedule` both reference it — check `ondelete` on each before
+  changing anything). If a cascade exists, switch `force` to upsert semantics here too and say so in the
+  commit message.
 - Callers to update: `modules/backend/main.py` lifespan, `admin.py` → `admin_seed_workflows`.
 - Note the existing guard: `seed_workflows` skips when any system template exists unless `force`. With
   filtering, "any template exists" is too coarse — an instance that added `security.*` later would be
@@ -493,15 +673,27 @@ Same shape in `services/workflow_seeder.py` → `seed_workflows(service, *, forc
 Add to `admin.py` (Click group, `--options` not positional args, per house rules), with handlers in
 `modules/clients/cli/` — no logic in the entry file:
 
-- `admin.py instance show` — resolved instance root, name, profile, code root, database URL (sanitised),
-  pattern lists, and the counts of catalog rows and workflow definitions currently in the DB.
-- `admin.py instance validate` — runs the Phase 3 reconciliation and the unmatched-pattern check
-  without mutating anything. Exit 1 on any problem. This is the command an operator runs after editing
-  `instance.yaml`.
-- `admin.py instance init --path PATH --name NAME --profile full|solo` — creates the directory
-  skeleton (`settings/`, `prompts/organization/`, `var/`), writes an `instance.yaml` with the given
-  values, and copies `config/.env.example` to `<path>/.env`. It must **not** write secrets and must
-  print the remaining manual steps (fill `.env`, create the database, run migrations, seed).
+- `admin.py instance show` — resolved instance root, name, profile, code root, resolved PostgreSQL
+  database name, Redis db index, Temporal namespace + task queue, sanitised database URL, pattern
+  lists, and the counts of catalog rows and workflow definitions currently in the DB. The three
+  isolation values must be visible here: an operator diagnosing cross-talk needs them in one place.
+- `admin.py instance validate [--against PATH]...` — exits 1 on any problem, mutates nothing. Runs:
+  1. `instance.yaml` schema validation
+  2. the unmatched-pattern check from 2.2 / 2.3
+  3. the Phase 3.1 catalog-vs-code reconciliation
+  4. **the isolation collision checks from 0.2a** — fail when this instance's
+     `(db.host, db.port, db.name)`, `(redis.host, redis.port, redis.db)` or
+     `(temporal.namespace, temporal.task_queue)` tuple matches any `--against` instance root; and fail
+     unconditionally when `instance.yaml` exists, declares a `name` other than the default, and still
+     resolves to the **core-default** database name or Redis db index
+- `admin.py instance init --path PATH --name NAME --profile full|solo --db-name NAME --redis-db N` —
+  creates the directory skeleton (`settings/`, `prompts/organization/`, `var/`), writes an
+  `instance.yaml` including the required `backend` block (deriving `temporal.task_queue` as
+  `agent-missions-{name}` when profile is `full`), and copies `config/.env.example` to `<path>/.env`.
+  `--db-name` and `--redis-db` are **required** — do not default them, and do not derive `--db-name`
+  from `--name` silently, because a typo would then create a real-looking but wrong database. It must
+  **not** write secrets, and must print the remaining manual steps (fill `.env`, create the database,
+  run migrations, seed, bootstrap-user) plus the `instance validate --against` command to run.
 
 Update `admin.py tree` output (automatic via introspection — verify) and `USAGE.md`.
 
@@ -523,15 +715,66 @@ python admin.py instance validate     # exit 0
 
 **New tests required:**
 - `tests/unit/backend/services/test_catalog_seeder.py` — pattern filtering seeds only matches;
-  unmatched pattern raises; `force` clears only matching rows; `"filtered"` count is correct
-- `tests/unit/backend/services/test_workflow_seeder.py` — same four cases, plus the reworked
-  already-seeded guard
+  unmatched pattern raises; `"filtered"` and `"disabled"` counts are correct; **no row is ever deleted**
+  (assert row count is non-decreasing across a narrowing re-seed); narrowing the patterns disables the
+  now-unmatched rows; re-widening re-enables them
+- `tests/unit/backend/services/test_workflow_seeder.py` — same cases, plus the reworked already-seeded
+  guard, plus: mission-scoped definitions (`mission_id IS NOT NULL`) are never touched
 - `tests/unit/backend/core/test_config.py` — `get_instance_config()` defaults when the file is absent;
-  raises when the file is present and invalid; `Literal` rejects an unknown profile
+  raises when the file is present and invalid; `Literal` rejects an unknown profile; **`backend` missing
+  while the file exists raises**; `temporal.task_queue` missing with `profile: full` raises but is
+  accepted with `profile: solo`
+- collision detection: two instance roots resolving the same `(host, port, db_name)` fail `validate`;
+  same for Redis db index; same for Temporal `(namespace, task_queue)`; and an `instance.yaml` naming a
+  non-default instance while resolving to the core-default database name fails without `--against`
 
 ---
 
 ## 4. Phase 3 — Fail fast on catalog/code drift
+
+### 3.0 Make `AgentRegistry.reload()` atomic — do this first
+
+**Prerequisite for 3.1 and 3.2.** The current implementation destroys state before loading:
+
+```python
+def reload(self) -> None:
+    self._agents.clear()
+    self._instances.clear()
+    self._loaded = False
+    self._ensure_loaded()
+```
+
+Once loading can raise (3.1, 3.2), a failed reload leaves a **running process with zero agents** and
+`_loaded = False`, so the next `_ensure_loaded()` either raises again or silently falls through to the
+YAML fallback and serves stale disk config. That is strictly worse than the silent per-row skip being
+removed: the current bug degrades one agent, this would degrade all of them, at runtime, in response to
+a routine admin `PATCH /admin/catalog/{agent_name}`.
+
+**Change:** build into locals, validate, swap only on success.
+
+```python
+def reload(self) -> None:
+    """Reload from DB. Atomic — on failure the existing registry is untouched.
+
+    Builds a fresh mapping and swaps it in only after a clean load, so a
+    malformed catalog row cannot leave a running process with no agents.
+    """
+```
+
+Requirements:
+
+- Load into a local `dict[str, AgentConfigSchema]`. Assign to `self._agents` only after the load
+  completes without raising.
+- `self._instances` (cached PydanticAI `Agent` objects) may only be cleared **after** the swap succeeds,
+  and only for names whose config actually changed — clearing all of them on every reload discards warm
+  instances unnecessarily. If comparing configs is awkward, clear all of them after a successful swap;
+  do not clear before.
+- Apply the same build-then-swap shape to `_ensure_loaded()`'s first load, so the DB-unavailable YAML
+  fallback still works from a clean state.
+- On failure, re-raise after logging, leaving `self._agents` and `self._loaded` as they were.
+
+**Test explicitly:** a reload that raises leaves `registry.get("mission.director.agent")` working with
+the pre-reload config. This is the regression test for the whole sub-phase.
 
 ### 3.1 Reconcile enabled catalog rows against deployed modules
 
@@ -547,17 +790,26 @@ raises **once** with the complete list.
 def verify_catalog_against_code() -> None:
     """Raise if any enabled catalog row has no importable agent module.
 
-    Uses importlib.util.find_spec — checks importability without executing
-    module code or paying import cost. Collects every failure and raises a
-    single error listing all of them; never raises on the first.
+    Uses importlib.util.find_spec, which resolves the leaf module's spec
+    WITHOUT executing it — but which does import every parent package on
+    the way (modules.backend.agents.<domain>...). Rule 001.3 keeps
+    __init__.py files minimal, so those imports are cheap and side-effect
+    free; do not move this check anywhere that assumption stops holding.
+
+    Collects every failure and raises a single error listing all of them;
+    never raises on the first.
     """
 ```
 
 Requirements:
 
-- Use `importlib.util.find_spec(AgentRegistry.resolve_module_path(name))`. Do **not** import.
-  `find_spec` raises `ModuleNotFoundError` for a missing *parent* package — catch that and treat it as
-  a failure for this row, not as a crash.
+- Use `importlib.util.find_spec(AgentRegistry.resolve_module_path(name))`. Do **not** import the leaf
+  module. Be accurate about what this does and does not execute: the leaf is not executed, **parent
+  packages are**. Do not write a docstring claiming it executes no code.
+- `find_spec` raises `ModuleNotFoundError` when a *parent* package is missing, and can propagate any
+  exception raised by a parent's `__init__.py`. Catch `ImportError` (which covers
+  `ModuleNotFoundError`) plus `ValueError` (raised for a malformed name) and record the row as a
+  failure — never let it crash the sweep and lose the other findings.
 - Error message lists each `agent_name` with its expected module path, and names the fix: either
   disable the row (`admin.py admin toggle-agent`) or narrow `instance.yaml.agents` and re-seed.
 - Call it from **both** process entry points, not just the API:
@@ -613,6 +865,23 @@ The laptop coworker must run without Temporal, containers, or the plan daemon. E
 exists in config; the profile bundles them so "solo" is defined once in core rather than copy-pasted
 into each laptop instance.
 
+### 4.0 Scope Temporal per instance
+
+Implements defect 6. `temporal/client.py` reads `config.namespace`; `temporal/worker.py` reads
+`config.task_queue`. Both come from `temporal.yaml`, a core default, so two `full` instances on one
+Temporal server poll the identical queue.
+
+- Both call sites resolve from `get_instance_config().backend.temporal` first, falling back to
+  `get_app_config().temporal` when `instance.yaml` is absent (default-instance behaviour, unchanged).
+- Log the resolved namespace and task queue at INFO on worker startup — `worker.py` already logs
+  `task_queue`; make sure it logs the *resolved* value, not the raw config one.
+- `admin.py instance validate` fails on a `(namespace, task_queue)` collision against any `--against`
+  instance (Phase 0.2a / 2.4).
+
+**Do not attempt to detect a live collision by querying Temporal.** Two workers on one queue is not
+observable from the client side without racing. The `validate --against` check is the guard; make its
+error message say plainly that sharing a queue causes cross-instance activity execution.
+
 ### 4.1 Profile overlay directories
 
 Create `config/profiles/full/` and `config/profiles/solo/`. Each contains **partial** settings YAML
@@ -660,12 +929,20 @@ Because 4.1a removes the only (dead) global container switch, `solo` needs a liv
 `execution_container_enabled: bool` to `FeaturesSchema` and `config/settings/features.yaml`
 (default `true`, under the existing "Agent Infrastructure" section with a comment explaining it).
 
-Honour it at the single choke point — `ExecutionEnvironmentService.get_or_create_for_mission()` and any
-sibling entry point that accepts a `mode` argument (`grep -n 'mode: str\|mode=' modules/backend/services/execution_environment.py`).
+Honour it at the enforcement choke point — `ExecutionEnvironmentService.get_or_create_for_mission()` and
+any sibling entry point that accepts a `mode` argument (`grep -n 'mode: str\|mode=' modules/backend/services/execution_environment.py`).
 When the flag is `false` and a caller requests `mode="container"` or `mode="worktree"`, **raise with a
 clear message** naming the flag and the profile — do not silently downgrade to `local`. A silent
 downgrade would run an agent unisolated when the mission asked for isolation, which is worse than
 failing.
+
+**Also validate at mission creation.** `mission.execution_environment` is set when the mission is
+created, but the check above only fires at first dispatch — so on a `solo` instance an operator can
+create a container-mode mission, approve a plan, and discover the failure mid-wave hours later. Add the
+same check to the mission-create service path (`services/mission.py`, and the create endpoint's schema
+validation if that is where `execution_environment` is accepted) so the mission is rejected up front
+with the identical message. Keep the dispatch-time check as the enforcement point — validation at
+creation is convenience, not a substitute.
 
 ### 4.2 Honour the profile where Temporal is assumed
 
@@ -719,14 +996,23 @@ pytest tests/integration -x -q
 python services.py check
 python services.py status
 
-# Solo resolves the overlay
+# Solo resolves the overlay.
+# NOTE: `backend` is required whenever instance.yaml exists (Phase 0.2a), and
+# temporal.task_queue is not required under `solo`.
 MC_INSTANCE_ROOT=$(mktemp -d) python -c "
-import os,pathlib,textwrap
-p=pathlib.Path(os.environ['MC_INSTANCE_ROOT'])
-(p/'instance.yaml').write_text('name: t\nprofile: solo\n')
+import os, pathlib
+p = pathlib.Path(os.environ['MC_INSTANCE_ROOT'])
+(p/'instance.yaml').write_text(
+    'name: t\nprofile: solo\n'
+    'backend:\n'
+    '  database:\n    name: mission_control_t\n'
+    '  redis:\n    db: 9\n'
+)
 from modules.backend.core.config import get_app_config, get_instance_config
-print(get_instance_config().profile)
-print(get_app_config().features.experimental_mission_plan_daemon_enabled)  # expect False
+print(get_instance_config().profile)                                       # solo
+print(get_app_config().features.experimental_mission_plan_daemon_enabled)  # False
+print(get_app_config().temporal.enabled)                                   # False
+print(get_app_config().features.execution_container_enabled)               # False
 "
 ```
 
@@ -748,16 +1034,26 @@ mission through it.
 ### 5.1 Create the laptop instance
 
 ```bash
-python admin.py instance init --path ~/instances/laptop --name laptop --profile solo
+python admin.py instance init --path ~/instances/laptop --name laptop --profile solo \
+  --db-name mission_control_laptop --redis-db 2
+
 # fill ~/instances/laptop/.env (own DB_PASSWORD, JWT_SECRET, API_KEY_SALT, provider key)
-# create its own database
+createdb mission_control_laptop     # or the equivalent for your Postgres setup
 ```
 
-`~/instances/laptop/instance.yaml`:
+`~/instances/laptop/instance.yaml` as written by `instance init`, then edited for content:
 
 ```yaml
 name: laptop
 profile: solo
+
+backend:
+  database:
+    name: mission_control_laptop
+  redis:
+    db: 2
+  # no temporal block — not required under `solo`
+
 agents:
   - "mission.*"
   - "system.*"
@@ -770,12 +1066,32 @@ workflows:
 `~/instances/laptop/settings/models.yaml` binds the aliases to cheaper models.
 `~/instances/laptop/prompts/organization/communication_style.md` gives it the coworker voice.
 
-### 5.2 End-to-end smoke
+### 5.2 Confirm isolation BEFORE touching the database
+
+**Run this before any migrate or seed.** Every destructive step below writes to whatever database the
+config resolves to, so verify the resolution first — this is the check whose absence in v1.0 would have
+pointed the laptop instance at the primary database.
 
 ```bash
 export MC_INSTANCE_ROOT=~/instances/laptop
-python admin.py instance show                     # laptop / solo
-python admin.py migrate upgrade head              # against the laptop DB
+
+python admin.py instance show
+#   MUST show: name=laptop, profile=solo,
+#              database=mission_control_laptop (NOT mission_control),
+#              redis db=2 (NOT 0), temporal=disabled
+
+python admin.py instance validate --against "$(git rev-parse --show-toplevel)/config"
+#   exit 0. Fails if the laptop instance resolves the same database, Redis db,
+#   or Temporal queue as the default instance.
+```
+
+If `instance show` reports `mission_control` or Redis db `0`, **stop** — the `backend` block is not
+being honoured, and continuing would merge this instance into the primary.
+
+### 5.3 End-to-end smoke
+
+```bash
+python admin.py migrate upgrade head              # against mission_control_laptop
 python admin.py admin seed-catalog --force        # only the declared subset
 python admin.py admin seed-workflows --force
 python admin.py catalog list                      # no security.* or deliberation.* rows
@@ -788,24 +1104,35 @@ python mc.py run --objective "run a system health check" --budget 1.00
 python mc.py status
 ```
 
-**Then switch back and confirm isolation:**
+**Then switch back and confirm isolation held:**
 
 ```bash
 unset MC_INSTANCE_ROOT
-python admin.py instance show      # default instance, full profile
-python admin.py catalog list       # full catalog, unaffected
+python admin.py instance show      # default instance, full profile, mission_control, redis 0
+python admin.py catalog list       # full catalog, unaffected — security.* still present and enabled
 python mc.py mission list          # laptop's mission is NOT here
 ```
 
-Both must hold. If the laptop mission appears in the default instance, the database separation is not
-actually in effect and the phase is not complete.
+All three must hold. If the laptop mission appears in the default instance, or the default instance's
+`security.*` rows were disabled by the laptop's narrower patterns, the isolation from Phase 0.2a is not
+in effect and the phase is **not** complete.
 
-### 5.3 Documentation
+**Also verify Redis isolation explicitly**, since it is silent when broken:
+
+```bash
+# with the laptop backend running, from the default instance:
+unset MC_INSTANCE_ROOT
+python mc.py console monitor    # must show NO events from the laptop instance's run
+```
+
+### 5.4 Documentation
 
 - **`README.md`** — new "Running multiple instances" section: what an instance directory holds, the
   `--instance` / `MC_INSTANCE_ROOT` mechanism, the `instance init` → fill `.env` → create DB →
-  migrate → seed → bootstrap-user sequence, and the `full` vs `solo` distinction. The existing
-  Quick Start must remain correct for the default single-instance flow.
+  **`instance validate --against`** → migrate → seed → bootstrap-user sequence, and the `full` vs
+  `solo` distinction. Call out prominently that `instance validate --against` must be run **before**
+  the first migrate, because every later step writes to whichever database the config resolves to. The
+  existing Quick Start must remain correct for the default single-instance flow.
 - **`USAGE.md`** — the `admin.py instance` command group.
 - **`docs/02-architecture/`** — a new document (next free number) recording the decision: instances are
   differentiated by database and configuration, not by code; a plugin architecture was considered and
@@ -815,7 +1142,13 @@ actually in effect and the phase is not complete.
 
 ### Verification (Phase 5)
 
-The 5.2 sequence is the verification. Record the commands run and their outcomes in the commit message.
+The 5.2 pre-flight and 5.3 smoke sequences **are** the verification, in that order. Record the commands
+run and their outcomes in the commit message — specifically the `instance show` output proving the
+laptop instance resolved `mission_control_laptop` / Redis db 2, and the post-switch checks proving the
+default instance's missions, catalog and event stream were untouched.
+
+Do not mark this phase complete on the smoke test alone. The smoke test passes just as happily when both
+instances share one database; only the isolation checks distinguish the two outcomes.
 
 ---
 
@@ -838,15 +1171,7 @@ rosters are wanted later they belong in the DB, not on disk.
 `core.config.find_project_root`. Delete it and import the shared one (P14 — write once, use
 everywhere). Verify the CLI still resolves the server host/port from the instance overlay.
 
-### 6.3 Tests that hardcode config paths
-
-Several tests construct config paths directly rather than through the accessors, e.g.
-`tests/unit/backend/agents/test_code_qa.py` and `tests/unit/backend/services/test_compliance.py` both
-use `Path(__file__).resolve().parents[4] / "config" / "agents" / ...`. These are code-root paths so they
-still work, but they bypass the resolution under test. Route them through `find_project_root()` so a
-future change to root resolution is caught by the suite rather than passing silently.
-
-### 6.4 Fix the misleading exception tuple
+### 6.3 Fix the misleading exception tuple
 
 `core/agent_registry.py` has `except (ValidationError, Exception)`. `Exception` subsumes
 `ValidationError`, so the tuple documents an intent the code does not have. Phase 3.2 replaces this
@@ -866,33 +1191,69 @@ grep -rn "_find_project_root" --include='*.py' modules/        # must return not
 
 ## 8. Completion checklist
 
+**Isolation (the part that makes this a multi-instance platform rather than a config refactor):**
+
+- [ ] `instance.yaml.backend` selects the PostgreSQL database name and Redis db index; `get_database_url()`
+      and `get_redis_url()` honour it; `backend` is required when the file exists and absent when it is not
+- [ ] Temporal `namespace` / `task_queue` resolve from `instance.yaml.backend.temporal`;
+      `task_queue` is required under `profile: full`
+- [ ] `admin.py instance validate --against` fails on a database, Redis-db or Temporal-queue collision,
+      **and** fails when a named non-default instance still resolves to the core-default database or Redis db
+- [ ] `admin.py instance show` displays the resolved database name, Redis db index, and Temporal
+      namespace + task queue
+- [ ] `admin.py instance init` requires `--db-name` and `--redis-db` and derives nothing silently
+
+**Config resolution:**
+
 - [ ] `find_project_root()` is cwd-independent and resolves from `__file__`
-- [ ] `instance_root()`, `instance_var_root()`, `get_instance_config()` exist, are cached consistently
-      with their siblings, and raise on a configured-but-missing path
-- [ ] `--instance` on all four entry files, listed in each `tree` output
+- [ ] `instance_root()`, `instance_var_root()`, `get_instance_config()`, `reset_config_caches()` exist,
+      are cached consistently with their siblings, and raise on a configured-but-missing path
+- [ ] `--instance` on all four entry files, listed in each `tree` output, set **before `CliContext` is
+      constructed**, with `reset_config_caches()` immediately after
 - [ ] Three-layer settings resolution (core default → profile → instance) with documented and tested
       merge semantics; layer 3 skipped when it equals layer 1
 - [ ] `.env`, settings overlay, `prompts/organization/`, and `var/` resolve from the instance root
-- [ ] `models.yaml` writes target the instance overlay
+- [ ] `models.yaml` writes target the instance overlay; the API response and CLI output **state that a
+      restart is required** under multi-worker deployment
 - [ ] Code paths still resolve from the code root — no config/code confusion in the converted list
+
+**Seeding:**
+
 - [ ] `instance.yaml` schema with `extra="forbid"`; absent is fine, malformed raises
 - [ ] `seed_catalog()` and `seed_workflows()` filter by pattern via explicit keyword params (no
-      `**kwargs`); unmatched patterns raise; `force` scoping decided, documented and tested
+      `**kwargs`); unmatched patterns raise
+- [ ] **No row deletion added under `force` for `seed_catalog`** — pinned by a test asserting the row
+      count never decreases across a narrowing re-seed
+- [ ] Reconcile-and-disable: rows not matching the patterns are set `enabled = false` (never deleted);
+      re-widening re-enables; mission-scoped workflow definitions are never touched
+
+**Fail-fast:**
+
+- [ ] `AgentRegistry.reload()` is atomic (build-then-swap); a failed reload leaves the previous registry
+      serving, pinned by a test
 - [ ] `verify_catalog_against_code()` runs at API boot, worker boot, and on `registry.reload()`, and
-      raises once with every failure listed
+      raises once with every failure listed; its docstring is accurate about `find_spec` importing parents
 - [ ] Malformed catalog rows raise instead of being logged and skipped; the DB-unavailable YAML
       fallback is preserved and pinned by a test
+
+**Profiles:**
+
 - [ ] `config/profiles/{full,solo}/` exist with commented options headers and verified key names
 - [ ] Orphaned `config/settings/environments.yaml` deleted (nothing read it)
-- [ ] `execution_container_enabled` added to `FeaturesSchema` and honoured at the
-      `ExecutionEnvironmentService` choke point, raising rather than downgrading to `local`
+- [ ] `execution_container_enabled` added to `FeaturesSchema`, honoured at the
+      `ExecutionEnvironmentService` choke point (raising, not downgrading to `local`) **and** validated
+      at mission creation
 - [ ] `solo` disables Temporal, containers and the daemon; a Tier-4 dispatch under `solo` fails with a
-      clear message and a mission event
+      clear message **and a mission event**
 - [ ] Instance name and profile logged at startup and shown in `instance show` and health output
-- [ ] A second instance runs a mission end-to-end, and neither instance sees the other's data
+
+**Acceptance:**
+
+- [ ] Isolation verified **before** the first migrate (Phase 5.2), not after
+- [ ] A second instance runs a mission end-to-end; neither instance sees the other's missions, catalog
+      state, or events
 - [ ] `README.md`, `USAGE.md`, and a new `docs/02-architecture/` decision record are updated
-- [ ] Phase 6 cleanups done: dead roster path, duplicated root walk, hardcoded test paths, exception
-      tuple
+- [ ] Phase 6 cleanups done: dead roster path, duplicated root walk, exception tuple
 - [ ] `python scripts/code_rules_fast.py --all` exits 0
 - [ ] `pytest tests/unit -q` and `pytest tests/integration -q` both green
 - [ ] No new rule warnings introduced (compare warning count against the pre-plan baseline of 148)
@@ -911,3 +1272,6 @@ Recorded so these are conscious deferrals rather than oversights.
 | Row-level tenancy (`instance_id` columns) | Separate database per instance makes it unnecessary | Instances must share one database or one API endpoint |
 | Per-instance capability overrides in `instance.yaml` | Depends on the capability generalisation above | That work lands |
 | Unused domain code shipping to every instance (~55 agent files) | Never imported, unreachable without a catalog row, zero runtime cost | Deployment size or attack surface becomes a measured problem, not a theoretical one |
+| Separate Temporal server or namespace per instance | Per-instance `task_queue` (Phase 4.0) is sufficient isolation on one server, and a shared namespace keeps the Temporal UI usable across instances | Instances need independent Temporal retention, RBAC, or resource limits |
+| Central registry of instances (so `validate` needs no `--against`) | Two or three instances make an explicit `--against` list honest and simple; a registry is state that can go stale and disagree with reality | The instance count reaches the point where an operator cannot list them from memory |
+| Automated detection of a live database or Redis collision at runtime | `instance validate --against` is a pre-flight guard; runtime detection would need a heartbeat table or key and is a different kind of mechanism | Instances are provisioned by automation rather than by hand |
