@@ -153,12 +153,16 @@ class RunWorkflowWorkflow:
             start_to_close_timeout=timedelta(seconds=30),
         )
 
-        await _notify_director(
-            input.mission_id,
-            input.session_id,
-            "run_workflow",
-            result,
-            followup_event_types=input.followup_event_types,
-        )
+        # Skip when there's no chat session to notify — e.g. an
+        # API-triggered run (Plan 84 Phase 3.1) with no conversational
+        # context to report back to.
+        if input.session_id:
+            await _notify_director(
+                input.mission_id,
+                input.session_id,
+                "run_workflow",
+                result,
+                followup_event_types=input.followup_event_types,
+            )
 
         return result

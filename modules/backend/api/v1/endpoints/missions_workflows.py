@@ -298,31 +298,67 @@ async def run_mission_workflow(
     event_bus = SessionEventBus(redis, mission_id=mission_id)
 
     if interactive:
-        # Fire-and-forget: the service is invoked in a background task so
-        # the endpoint can return immediately. The task survives until the
-        # backend process exits — for production resilience this should
-        # eventually move to a Temporal workflow (follow-up).
-        import asyncio
+        # The workflow proceeds durably in Temporal — no chat session to
+        # notify, no in-process background task that would die with the
+        # backend process on a crash or restart (Plan 84 Phase 3.1).
+        await redis.aclose()
 
-        async def _run_in_background() -> None:
-            try:
-                async with WorkflowRunService.factory(event_bus=event_bus) as svc:
-                    await svc.run_workflow(
-                        workflow_name=workflow_name,
-                        triggered_by=triggered_by,
-                        mission_id=mission_id,
-                        context_overrides=context_overrides,
-                    )
-            finally:
-                await redis.aclose()
+        from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+        from modules.backend.temporal.tool_fork_models import RunWorkflowInput
+        from modules.backend.temporal.tool_fork_workflow import RunWorkflowWorkflow
 
-        asyncio.create_task(_run_in_background())
+        try:
+            client = await get_temporal_client()
+        except RuntimeError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Temporal required for workflow execution: {e}",
+            )
+        config = get_temporal_config()
+
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+        async with ExecutionPersistenceService.factory() as svc:
+            record = await svc.create_background_record(
+                mission_id=mission_id,
+                session_id=None,
+                task_type="run_workflow",
+                objective=f"Run workflow: {workflow_name}",
+                params={"workflow_name": workflow_name, "context_overrides": context_overrides},
+            )
+            record_id = record.id
+
+        # Deterministic ID (no random suffix) so a retried request with the
+        # same Idempotency-Key (Phase 3.2) dedupes against the same
+        # Temporal execution instead of starting a second run.
+        workflow_id = f"workflow-run-{record_id}"
+        await client.start_workflow(
+            RunWorkflowWorkflow.run,
+            RunWorkflowInput(
+                mission_id=mission_id,
+                session_id=None,
+                execution_record_id=record_id,
+                workflow_name=workflow_name,
+                context_overrides=context_overrides,
+                triggered_by=triggered_by,
+            ),
+            id=workflow_id,
+            task_queue=config.task_queue,
+        )
+
+        async with ExecutionPersistenceService.factory() as svc:
+            existing = await svc.get_execution(record_id)
+            if existing is not None:
+                existing.temporal_workflow_id = workflow_id
+
         return ApiResponse(
             success=True,
             data={
                 "status": "pending_approval",
                 "workflow_name": workflow_name,
                 "gate_mode": effective_gate_mode,
+                "execution_record_id": record_id,
+                "temporal_workflow_id": workflow_id,
                 "next": "Approve tasks via `mc plan approve <task_id>` or "
                 "`mc plan approve --next`. View pending tasks with "
                 "`mc plan show --status proposed`.",

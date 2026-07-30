@@ -158,7 +158,7 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
             async with WorkflowRunService.factory(event_bus=event_bus) as svc:
                 await svc.run_workflow(
                     workflow_name=input.workflow_name,
-                    triggered_by="mission_director",
+                    triggered_by=input.triggered_by,
                     mission_id=input.mission_id,
                     context_overrides=input.context_overrides,
                 )

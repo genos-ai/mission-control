@@ -485,7 +485,7 @@ class ExecutionPersistenceService(BaseService):
         self,
         *,
         mission_id: str,
-        session_id: str,
+        session_id: str | None,
         task_type: str,
         objective: str,
         params: dict,

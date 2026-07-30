@@ -25,11 +25,15 @@ class RunWorkflowInput:
     """Input for RunWorkflowWorkflow (workflow execution fork)."""
 
     mission_id: str
-    session_id: str
+    session_id: str | None
     execution_record_id: str
     workflow_name: str
     context_overrides: dict | None = None  # Plan 40: override template context vars
     followup_event_types: list[str] | None = None  # event types to fire_matching on completion
+    # Origin of the run for attribution — the Director tool always passes
+    # its own name; API-triggered runs (Plan 84 Phase 3.1) pass the real
+    # caller (e.g. "user:api").
+    triggered_by: str = "mission_director"
 
 
 @dataclass
