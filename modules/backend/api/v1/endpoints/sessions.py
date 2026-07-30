@@ -310,6 +310,7 @@ async def send_message(
     data: SessionMessageCreate,
     db: DbSession,
     current_user: CurrentUser,
+    idempotency: Idempotency,
     target_agent: str | None = Query(default=None, description="Route to a specific agent"),
 ):
     """Send a message and stream agent events.
@@ -323,8 +324,19 @@ async def send_message(
     disconnects mid-stream, the background task continues —
     handle() completes, persists the response, and publishes
     to Redis. When the user comes back, the response is in the DB.
+
+    Supports Idempotency-Key header — safe to retry on network timeout.
+    A replayed request returns a plain ApiResponse (not a fresh stream)
+    since the point is to avoid launching the background agent twice;
+    the client can resume watching via the session's event stream.
     """
     await require_session_access(db, session_id, current_user)
+
+    # Return cached response if this message was already dispatched
+    if idempotency:
+        cached = await idempotency.get_cached_response()
+        if cached:
+            return ApiResponse(**cached)
 
     if target_agent:
         from modules.backend.agents.mission_control.registry import get_registry
@@ -389,6 +401,9 @@ async def send_message(
             await queue.put(None)  # sentinel — closes the SSE stream
 
     asyncio.create_task(_run_agent())
+
+    if idempotency:
+        await idempotency.cache_response({"success": True, "data": {"session_id": session_id}})
 
     # 4. SSE generator — reads from queue, yields to client.
     #    If client disconnects, this generator is cancelled but

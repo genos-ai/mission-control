@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from modules.backend.core.dependencies import (
     CurrentUser,
     DbSession,
+    Idempotency,
     RequestId,
     require_mission_access,
 )
@@ -259,6 +260,7 @@ async def run_mission_workflow(
     db: DbSession,
     current_user: CurrentUser,
     request_id: RequestId,
+    idempotency: Idempotency,
     body: dict | None = None,
 ) -> ApiResponse:
     """Run a workflow by name against a mission.
@@ -270,8 +272,17 @@ async def run_mission_workflow(
         triggered_by: str — trigger origin (default: "user:api")
         gate_mode: str — gate override (off, interactive, etc.)
         context_overrides: dict — merge into workflow context before execution
+
+    Supports Idempotency-Key header — safe to retry on network timeout.
     """
     await require_mission_access(db, mission_id, current_user)
+
+    # Return cached response if this run was already started
+    if idempotency:
+        cached = await idempotency.get_cached_response()
+        if cached:
+            return ApiResponse(**cached)
+
     from fastapi import HTTPException
     from redis.asyncio import Redis as AsyncRedis
 
@@ -351,7 +362,7 @@ async def run_mission_workflow(
             if existing is not None:
                 existing.temporal_workflow_id = workflow_id
 
-        return ApiResponse(
+        response = ApiResponse(
             success=True,
             data={
                 "status": "pending_approval",
@@ -365,6 +376,9 @@ async def run_mission_workflow(
             },
             metadata={"request_id": request_id},
         )
+        if idempotency:
+            await idempotency.cache_response(response.model_dump())
+        return response
 
     # Autonomous mode: synchronous (legacy behaviour).
     try:
@@ -380,7 +394,7 @@ async def run_mission_workflow(
     finally:
         await redis.aclose()
 
-    return ApiResponse(
+    response = ApiResponse(
         success=True,
         data={
             "run_id": run.id,
@@ -390,6 +404,9 @@ async def run_mission_workflow(
         },
         metadata={"request_id": request_id},
     )
+    if idempotency:
+        await idempotency.cache_response(response.model_dump())
+    return response
 
 
 @router.delete(

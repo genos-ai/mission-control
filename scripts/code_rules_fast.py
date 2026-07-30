@@ -594,10 +594,21 @@ def check_execution_triggers_need_idempotency(path: Path, rel: str) -> list[Viol
     func_name = ""
     func_body: list[str] = []
     in_func = False
+    # Multi-line signatures (one param per line) and multi-line decorators
+    # (e.g. @router.post("...", response_model=..., summary="...")) are the
+    # norm for FastAPI endpoints with many DI params — both close with a
+    # bare ")" at column 0. The "next top-level definition" heuristic below
+    # would mistake that closing line for the end of the function, either
+    # truncating func_body to just the signature (hiding a real body's
+    # asyncio.create_task from trigger_pattern) or resetting collection
+    # mid-body when the *next* function's decorator intrudes. Track paren
+    # depth continuously (carried across the loop, not reset per-branch) so
+    # the heuristic only fires on a genuinely top-level, bracket-balanced line.
+    paren_depth = 0
 
     for i, line in enumerate(lines):
         m = re.match(r"^async def (\w+)\s*\(", line)
-        if m:
+        if m and paren_depth <= 0:
             # Check the function we just finished collecting
             if in_func and func_body:
                 body = "\n".join(func_body)
@@ -617,13 +628,21 @@ def check_execution_triggers_need_idempotency(path: Path, rel: str) -> list[Viol
             func_start = i + 1
             func_name = m.group(1)
             func_body = [line]
+            paren_depth = line.count("(") - line.count(")")
         elif in_func:
-            # Stop collecting at the next top-level definition (not indented)
-            if line and not line[0].isspace() and line[0] not in ("#", "@", '"', "'"):
+            # Stop collecting at the next top-level definition (not indented,
+            # and not a continuation of an unclosed bracket from a prior line).
+            if (
+                paren_depth <= 0
+                and line
+                and not line[0].isspace()
+                and line[0] not in ("#", "@", '"', "'")
+            ):
                 in_func = False
                 func_body = []
             else:
                 func_body.append(line)
+            paren_depth += line.count("(") - line.count(")")
 
     # Check the last function in the file
     if in_func and func_body:
