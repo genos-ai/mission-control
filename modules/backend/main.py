@@ -219,6 +219,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from modules.backend.services.mission_plan_crash_recovery import (
             reconcile_orphaned_execution_records,
             reconcile_orphaned_task_states,
+            reconcile_orphaned_workflow_runs,
         )
 
         redis = AsyncRedis.from_url(get_redis_url())
@@ -228,6 +229,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 stats = await reconcile_orphaned_task_states(db, event_bus)
                 exec_orphans = await reconcile_orphaned_execution_records(db)
                 stats["execution_records_reconciled"] = exec_orphans
+                workflow_run_orphans = await reconcile_orphaned_workflow_runs(db, event_bus)
+                stats["workflow_runs_reconciled"] = workflow_run_orphans
                 await db.commit()
             logger.info("Crash recovery completed", extra=stats)
         finally:

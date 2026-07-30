@@ -147,6 +147,79 @@ async def reconcile_orphaned_task_states(
     }
 
 
+async def reconcile_orphaned_workflow_runs(
+    session: AsyncSession,
+    event_bus: Any | None = None,
+) -> int:
+    """Mark WorkflowRun rows stuck in RUNNING or PENDING as FAILED.
+
+    A workflow run transitions to RUNNING when dispatch starts and only
+    leaves that state when _execute_steps finishes — whether driven
+    in-process or, since Plan 84 Phase 3.1, by the RunWorkflowWorkflow
+    Temporal activity. Temporal resumes its own runs after a backend
+    restart, so this reconciler only catches the two cases Temporal
+    cannot: runs dispatched before Phase 3.1's Temporal routing existed,
+    and runs whose Temporal *worker* (not just the API process) died
+    mid-activity, leaving nothing to ever flip the row to a terminal
+    state.
+    """
+    from sqlalchemy import select
+
+    from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
+
+    result = await session.execute(
+        select(WorkflowRun).where(
+            WorkflowRun.status.in_([WorkflowRunState.RUNNING, WorkflowRunState.PENDING])
+        )
+    )
+    orphaned = list(result.scalars().all())
+    if not orphaned:
+        logger.info("Crash recovery: no orphaned workflow runs to reconcile")
+        return 0
+
+    for run in orphaned:
+        run.status = WorkflowRunState.FAILED
+        run.completed_at = utc_now()
+        run.error_data = {"message": ORPHAN_FAILURE_REASON, "type": "CrashRecovery"}
+        run.result_summary = f"Workflow failed: {ORPHAN_FAILURE_REASON}"
+
+    await session.flush()
+
+    count = len(orphaned)
+    logger.info(
+        "Crash recovery: reconciled orphaned workflow runs",
+        extra={"count": count},
+    )
+
+    # Emit events best-effort
+    if event_bus is not None:
+        from modules.backend.events.types import WorkflowRunFailedEvent
+
+        for run in orphaned:
+            if not run.mission_id:
+                continue
+            try:
+                session_id = uuid.UUID(run.session_id) if run.session_id else uuid.uuid4()
+                await event_bus.publish_to_mission(
+                    run.mission_id,
+                    WorkflowRunFailedEvent(
+                        session_id=session_id,
+                        source="mission_plan_crash_recovery",
+                        workflow_run_id=run.id,
+                        workflow_name=run.workflow_name,
+                        error=ORPHAN_FAILURE_REASON,
+                        total_cost_usd=run.total_cost_usd,
+                    ),
+                )
+            except Exception:
+                logger.debug(
+                    "Crash recovery: failed to publish workflow_run.failed event " "(best-effort)",
+                    exc_info=True,
+                )
+
+    return count
+
+
 async def reconcile_orphaned_execution_records(
     session: AsyncSession,
 ) -> int:
