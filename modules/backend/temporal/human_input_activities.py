@@ -102,6 +102,9 @@ async def notify_human_input_needed(input: HumanInputWorkflowInput) -> None:
             {"mission_id": input.mission_id, "request_id": input.request_id},
         )
     except Exception:
+        # best-effort — the mission event (WorkflowHumanInputRequestedEvent)
+        # was already published above; this only covers the secondary
+        # Telegram/SSE notification channel.
         activity.logger.warning(
             "Failed to dispatch notification for human input",
             extra={"request_id": input.request_id, "mission_id": input.mission_id},

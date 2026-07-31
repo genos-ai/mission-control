@@ -140,5 +140,7 @@ def _parse_action(action_str: str) -> GateAction:
     try:
         return GateAction(action_str.lower().strip())
     except ValueError:
+        # falling back to the safe default — pure parsing function, no
+        # context object or event_bus available here.
         logger.warning("Unknown gate action '%s', defaulting to CONTINUE", action_str)
         return GateAction.CONTINUE

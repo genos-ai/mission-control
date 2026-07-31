@@ -234,6 +234,11 @@ class MissionRunWorkflow:
                         ),
                     )
                 except TimeoutError:
+                    # best-effort — Temporal workflow code must stay
+                    # deterministic (rule 013.1); no event_bus/Redis I/O is
+                    # reachable from here. The subsequent proposed/approved
+                    # task counts fetched below still drive the workflow
+                    # forward, so this timeout does not silently stall.
                     workflow.logger.warning(
                         "Refinement signal not received within %ds",
                         config.refine_poll_max_seconds,

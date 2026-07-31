@@ -15,6 +15,7 @@ from modules.backend.agents.mission_control.cost import compute_cost_usd, estima
 from modules.backend.agents.mission_control.helpers import (
     _build_agent_deps,
     _build_model,
+    _emit,
     _get_model_name,
     _get_usage_limits,
     _persist_messages,
@@ -45,6 +46,7 @@ from modules.backend.events.types import (
     CostUpdateEvent,
     MissionArtifactFoundEvent,
     SessionEvent,
+    SystemEvent,
     UserMessageEvent,
 )
 from modules.backend.schemas.session import SessionMessageCreate
@@ -81,6 +83,8 @@ async def _prepend_mission_context(mission_id: str, message: str) -> str:
         async with MissionService.factory() as svc:
             mission = await svc.get_mission(mission_id)
     except Exception:
+        # best-effort — no event_bus available in this helper; the agent
+        # still runs, just without mission context prepended to the prompt.
         logger.warning("Could not load mission context", extra={"mission_id": mission_id})
         return message
 
@@ -175,13 +179,15 @@ async def handle(
             )
         except Exception as exc:
             logger.error("Mission dispatch error", extra={"mission_id": mission_id}, exc_info=True)
-            yield AgentResponseCompleteEvent(
+            error_event = AgentResponseCompleteEvent(
                 session_id=sid,
                 source=source,
                 agent_id="mission_control",
                 full_content=str(exc),
                 metadata={"error": True},
             )
+            yield error_event
+            await _publish(event_bus, error_event)
         return
 
     agent_name = "unknown"
@@ -475,6 +481,15 @@ async def handle(
                 exc_info=True,
                 extra={"mission_id": mission_id},
             )
+            await _emit(
+                event_bus,
+                SystemEvent,
+                session_id=sid,
+                source=source,
+                level="warning",
+                message=f"Cost tracking failed for {agent_name} — budget data may be inaccurate",
+                mission_id=mission_id,
+            )
 
         # Chunks are authoritative — they capture all text across all
         # turns (including the first token from PartStartEvent). Only
@@ -520,6 +535,15 @@ async def handle(
             logger.warning(
                 "Failed to update session cost", extra={"mission_id": mission_id}, exc_info=True
             )
+            await _emit(
+                event_bus,
+                SystemEvent,
+                session_id=sid,
+                source=source,
+                level="warning",
+                message="Failed to update session cost — budget data may be inaccurate",
+                mission_id=mission_id,
+            )
 
         # 10. Yield cost update event
         updated_session = await session_service.get_session(session_id)
@@ -564,6 +588,9 @@ async def handle(
                     thinking="\n\n".join(thinking_parts) if thinking_parts else None,
                 )
             except Exception:
+                # best-effort — the complete response was already yielded and
+                # published to the user via complete_event above; this only
+                # tidies up the persisted message's streaming/token metadata.
                 logger.warning(
                     "Failed to finalize streaming message",
                     extra={"mission_id": mission_id},
@@ -687,8 +714,6 @@ async def handle(
             await _persist_messages(session_service, session_id, [error_create])
         # Emit system error event to mission channel
         if mission_id:
-            from modules.backend.events.types import SystemEvent
-
             await _publish(
                 event_bus,
                 SystemEvent(

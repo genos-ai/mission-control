@@ -84,8 +84,10 @@ class ScheduledMissionCheckWorkflow:
                 )
                 dispatched += 1
             except Exception as exc:
-                # Workflow already running for this plan, or other error.
-                # Don't fail the scheduled check — log and continue.
+                # best-effort — Temporal workflow code must stay
+                # deterministic (rule 013.1); no event_bus/Redis I/O is
+                # reachable from here. Workflow already running for this
+                # plan, or other error — don't fail the scheduled check.
                 workflow.logger.warning(
                     "Failed to start MissionRunWorkflow for plan %s (mission %s): %s",
                     plan_info.get("plan_id", "?"),

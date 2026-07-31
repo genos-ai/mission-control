@@ -188,6 +188,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             cron_expressions=["15 4 * * *"],  # 04:15 UTC (after officer)
         )
     except Exception:  # noqa: BLE001
+        # best-effort — process startup, not scoped to any single mission;
+        # no event_bus/mission_id to emit a mission event through.
         logger.error("Failed to register Temporal dispatch schedule", exc_info=True)
 
     # Seed workflow templates from YAML on first boot.
@@ -204,6 +206,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await db.commit()
         logger.info("Workflow template seeding done", extra=seed_result)
     except Exception:  # noqa: BLE001
+        # best-effort — process startup, not scoped to any single mission;
+        # no event_bus/mission_id to emit a mission event through.
         logger.error("Workflow template seeding failed — continuing startup", exc_info=True)
 
     # Crash recovery: reconcile orphaned task states from prior crash.
@@ -236,6 +240,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         finally:
             await redis.close()
     except Exception:  # noqa: BLE001
+        # best-effort — startup crash-recovery spans all orphaned missions,
+        # not a single mission_id; no single mission channel to emit
+        # through even though an event_bus is constructed above.
         logger.error("Crash recovery failed — continuing startup", exc_info=True)
 
     yield
@@ -299,6 +306,9 @@ def _mount_channel_adapters(app: FastAPI, app_config) -> None:
                 logger.info("Telegram channel mounted via gateway adapter")
 
         except (ImportError, RuntimeError, OSError) as e:
+            # non-critical for mission-event visibility — process startup,
+            # no mission context; re-raises immediately below so the
+            # failure aborts startup loudly rather than being silent.
             logger.error(
                 "Failed to mount Telegram channel",
                 extra={"error": str(e)},

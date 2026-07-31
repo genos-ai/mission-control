@@ -88,6 +88,10 @@ async def schedule_followup(
         )
         return {"ok": False, "error": str(exc)}
     except Exception as exc:
+        # best-effort — this pure function has no event_bus (called from
+        # multiple agents with different deps shapes); the caller already
+        # gets the error back in the returned dict and its own tool
+        # wrapper decides whether to surface it further.
         logger.error(
             "schedule_followup unexpected error",
             extra={

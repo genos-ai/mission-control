@@ -52,6 +52,8 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
+            # best-effort — MissionSupervisorDeps has no event_bus; the
+            # error already returns to the calling LLM in the JSON result.
             logger.error(
                 "supervisor get_plan failed",
                 extra={"mission_id": ctx.deps.mission_id},
@@ -80,6 +82,8 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
+            # best-effort — MissionSupervisorDeps has no event_bus; the
+            # error already returns to the calling LLM in the JSON result.
             logger.error(
                 "supervisor get_recent_run_outcomes failed",
                 extra={"mission_id": ctx.deps.mission_id},
@@ -108,6 +112,8 @@ def _register_tools(agent: Agent) -> None:
             )
             return json.dumps(result, indent=2, default=str)
         except Exception as e:
+            # best-effort — MissionSupervisorDeps has no event_bus; the
+            # error already returns to the calling LLM in the JSON result.
             logger.error(
                 "supervisor get_past_decisions failed",
                 extra={"mission_id": ctx.deps.mission_id},

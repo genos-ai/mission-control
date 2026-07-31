@@ -139,6 +139,8 @@ class SessionFollowupService(BaseService):
         try:
             await self._event_bus.publish_to_mission(row.mission_id, event)
         except Exception as exc:  # noqa: BLE001
+            # best-effort — this IS the event-emission path; there is
+            # nowhere further to escalate to.
             self._logger.warning(
                 "Failed to publish SessionFollowupFiredEvent",
                 extra={

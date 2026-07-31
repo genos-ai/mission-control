@@ -23,6 +23,7 @@ from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import WorkflowOutputMappingError
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import (
+    SystemEvent,
     WorkflowBranchPassedEvent,
     WorkflowConditionEvaluatedEvent,
     WorkflowExecutionCompletedEvent,
@@ -764,6 +765,16 @@ class WorkflowRunWavesMixin:
                     "traceback": "".join(tb_str)[-500:],
                 },
             )
+            await self._publish_workflow_event(
+                run.mission_id,
+                SystemEvent(
+                    session_id=_uuid.UUID(session_id) if session_id else _uuid.uuid4(),
+                    source="workflow_run_waves",
+                    level="error",
+                    message=f"Step '{step.id}' execution failed: {type(e).__name__}: {e}"[:500],
+                    mission_id=run.mission_id,
+                ),
+            )
             raise RuntimeError(f"Step '{step.id}' execution failed: {type(e).__name__}: {e}") from e
 
         # 3. Extract outputs from the outcome.
@@ -802,6 +813,16 @@ class WorkflowRunWavesMixin:
                         "error": str(e),
                         "details": e.details,
                     },
+                )
+                await self._publish_workflow_event(
+                    run.mission_id,
+                    SystemEvent(
+                        session_id=_uuid.UUID(session_id) if session_id else _uuid.uuid4(),
+                        source="workflow_run_waves",
+                        level="error",
+                        message=f"Step '{step.id}' output mapping failed: {e}"[:500],
+                        mission_id=run.mission_id,
+                    ),
                 )
                 raise RuntimeError(f"Step '{step.id}' output mapping failed: {e}") from e
 
@@ -860,6 +881,16 @@ class WorkflowRunWavesMixin:
                     "step_id": step.id,
                     "error": str(e),
                 },
+            )
+            await self._publish_workflow_event(
+                run.mission_id,
+                SystemEvent(
+                    session_id=_uuid.UUID(run.session_id) if run.session_id else _uuid.uuid4(),
+                    source="workflow_run_waves",
+                    level="error",
+                    message=f"Condition '{step.id}' failed: {e}"[:500],
+                    mission_id=run.mission_id,
+                ),
             )
             raise RuntimeError(f"Condition '{step.id}' failed: {e}") from e
 
@@ -1114,6 +1145,8 @@ class WorkflowRunWavesMixin:
             )
             success = True
         except Exception:
+            # best-effort — the step continues with success=False, which is
+            # reported via the unconditional WorkflowNotificationSentEvent below.
             logger.warning("Notification step failed", extra={"step_id": step.id}, exc_info=True)
             success = False
 
@@ -1198,6 +1231,8 @@ class WorkflowRunWavesMixin:
         except RuntimeError:
             raise
         except Exception as e:
+            # best-effort — the step continues with success=False, which is
+            # reported via the unconditional WorkflowToolCallCompletedEvent below.
             logger.warning(
                 "Tool call step failed",
                 extra={"step_id": step.id, "tool": tool_name},
@@ -1256,6 +1291,8 @@ class WorkflowRunWavesMixin:
             cost = _extract_run_cost(result, config.model)
             success = True
         except Exception as e:
+            # best-effort — the step continues with success=False, which is
+            # reported via the unconditional WorkflowLlmCallCompletedEvent below.
             logger.warning(
                 "LLM call step failed",
                 extra={
@@ -1704,6 +1741,9 @@ class WorkflowRunWavesMixin:
                     )
                     return True
             except ConditionEvaluationError:
+                # best-effort — this is a static helper with no event_bus in
+                # scope; fails safe by treating the step as skipped rather
+                # than crashing the whole run.
                 logger.error(
                     "Inline condition evaluation failed — skipping step",
                     extra={

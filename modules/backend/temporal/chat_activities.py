@@ -149,6 +149,27 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
             },
         )
         error = str(exc)
+        try:
+            import uuid
+
+            from modules.backend.events.types import SystemEvent
+
+            await event_bus.publish_to_mission(
+                input.mission_id,
+                SystemEvent(
+                    session_id=uuid.UUID(input.session_id) if input.session_id else uuid.uuid4(),
+                    source="chat_turn",
+                    level="error",
+                    message=f"Chat turn failed: {error}",
+                    mission_id=input.mission_id,
+                ),
+            )
+        except Exception:
+            # best-effort — this IS the event-emission path; there is
+            # nowhere further to escalate to.
+            logger.debug(
+                "error event publish failed in Temporal activity (best-effort)", exc_info=True
+            )
     finally:
         await redis.aclose()
 

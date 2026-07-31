@@ -907,6 +907,9 @@ def deserialize_event(data: dict) -> SessionEvent | None:
     try:
         return event_cls(**data)
     except Exception:
+        # non-critical — this IS the event deserialization path; there is
+        # no event system left to report a broken event through. Caller
+        # (subscribe_mission) skips a None and keeps streaming.
         logger.warning(
             "Failed to deserialize event",
             extra={"event_type": event_type},

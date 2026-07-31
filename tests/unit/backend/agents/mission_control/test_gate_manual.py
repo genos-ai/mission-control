@@ -171,14 +171,21 @@ async def test_registry_cleaned_up_after_decision():
 
 @pytest.mark.asyncio
 async def test_opened_event_emitted_when_event_bus_provided():
-    """If event_bus is passed, _emit_opened publishes GateRequestOpenedEvent."""
+    """If event_bus is passed, _emit_opened publishes GateRequestOpenedEvent.
+
+    With timeout_seconds=1 and no decision ever fired, review() also hits
+    the timeout path, which publishes a second, error-level SystemEvent —
+    so the bus sees two publishes: opened, then timeout.
+    """
     bus = AsyncMock()
     reviewer = _make_reviewer(timeout=1)
     reviewer._event_bus = bus
     await reviewer.review(_context())
-    bus.publish.assert_awaited_once()
-    published_event = bus.publish.await_args.args[0]
-    assert published_event.event_type == "gate.request.opened"
+    assert bus.publish.await_count == 2
+    opened_event = bus.publish.await_args_list[0].args[0]
+    assert opened_event.event_type == "gate.request.opened"
+    timeout_event = bus.publish.await_args_list[1].args[0]
+    assert timeout_event.level == "error"
 
 
 @pytest.mark.asyncio

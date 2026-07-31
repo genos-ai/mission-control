@@ -263,6 +263,7 @@ class AutonomousPostRunReviewer:
                     full_reason,
                 )
             except Exception:
+                # best-effort — don't fail the decision if the audit write errors.
                 logger.warning(
                     "Failed to write post-run audit row",
                     extra={
@@ -475,6 +476,7 @@ class AutonomousPostRunReviewer:
                         full_reason,
                     )
                 except Exception:
+                    # best-effort — don't fail the decision if the audit write errors.
                     logger.warning(
                         "Failed to write Haiku audit row",
                         extra={
@@ -496,6 +498,8 @@ class AutonomousPostRunReviewer:
             return gate_decision
 
         except Exception as exc:
+            # falling back to the safe default (caller escalates to human
+            # review when this returns None) — no event_bus reachable here.
             logger.error(
                 "Haiku classification failed, falling through to ESCALATE",
                 extra={"error": str(exc), "mission_id": context.mission_id},

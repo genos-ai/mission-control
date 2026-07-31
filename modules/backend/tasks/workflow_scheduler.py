@@ -45,6 +45,9 @@ async def evaluate_workflow_schedules() -> dict[str, Any]:
             fired_schedules = await schedule_service.evaluate_due_schedules()
             await db.commit()
     except Exception as e:
+        # best-effort — this is the schedule-discovery phase, before any
+        # mission_id is known; no mission channel exists yet to emit
+        # through. Returned in the result dict for the cron caller to see.
         logger.error(
             "Failed to evaluate due schedules",
             extra={"error": str(e)},

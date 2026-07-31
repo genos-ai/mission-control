@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -209,6 +210,8 @@ def _make_agent_executor(
             try:
                 user_message, hook_data = await module.pre_execute(user_message, deps)
             except Exception:
+                # best-effort — the agent still runs with the unmodified
+                # user_message; only the hook's pre-processing is skipped.
                 logger.warning("pre_execute hook failed for %s", agent_name, exc_info=True)
 
         source = f"dispatch:{mission_id}"
@@ -271,6 +274,8 @@ def _make_agent_executor(
             try:
                 module.post_execute(output, hook_data)
             except Exception:
+                # best-effort — the agent already produced its output;
+                # only the hook's post-processing is skipped.
                 logger.warning(
                     "post_execute hook failed for %s",
                     agent_name,
@@ -342,6 +347,15 @@ def _make_agent_executor(
                 agent_name,
                 exc_info=True,
                 extra={"mission_id": mission_id},
+            )
+            await _emit(
+                event_bus,
+                SystemEvent,
+                session_id=session_id,
+                source=f"dispatch:{mission_id}",
+                level="warning",
+                message=f"Cost tracking failed for {agent_name} — budget data may be inaccurate",
+                mission_id=mission_id,
             )
 
         output_dict["_meta"] = {
@@ -622,6 +636,16 @@ async def _call_planning_agent(
             exc_info=True,
             extra={"mission_id": mission_id},
         )
+        if event_bus is not None:
+            await _emit(
+                event_bus,
+                SystemEvent,
+                session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+                source="mission_control:planning_agent",
+                level="warning",
+                message="Cost tracking failed for planning agent — budget data may be inaccurate",
+                mission_id=mission_id,
+            )
 
     return {
         "task_plan": plan_dict,

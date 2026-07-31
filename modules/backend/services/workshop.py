@@ -128,6 +128,9 @@ class WorkshopService(BaseService):
                 output = await stream.get_output()
                 usage = stream.usage()
         except Exception as e:
+            # non-critical for mission-event visibility — this service has
+            # no event_bus and re-raises immediately below, so the caller
+            # sees the failure directly.
             logger.error(
                 "Workshop agent execution failed",
                 extra={"agent_name": agent_name, "error": str(e)},

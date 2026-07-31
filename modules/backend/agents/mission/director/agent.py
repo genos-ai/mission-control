@@ -10,16 +10,44 @@ Entry point:
 """
 
 import json
+import uuid
 from typing import Any
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models import Model
 
 from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-from modules.backend.agents.mission_control.helpers import _build_model, assemble_instructions
+from modules.backend.agents.mission_control.helpers import (
+    _build_model,
+    _emit,
+    assemble_instructions,
+)
 from modules.backend.core.logging import get_logger
+from modules.backend.events.types import SystemEvent
 
 logger = get_logger(__name__)
+
+
+async def _emit_tool_failure(
+    ctx: RunContext[MissionDirectorDeps],
+    tool_name: str,
+    exc: Exception,
+) -> None:
+    """Mission event so a failed Director tool call is visible in the
+    Console — not just in the tool's own JSON error return to the LLM,
+    which the user may never see relayed verbatim in chat."""
+    if not ctx.deps.event_bus or not ctx.deps.mission_id:
+        return
+    session_id = uuid.UUID(ctx.deps.session_id) if ctx.deps.session_id else uuid.uuid4()
+    await _emit(
+        ctx.deps.event_bus,
+        SystemEvent,
+        session_id=session_id,
+        source=f"director:{tool_name}",
+        level="error",
+        message=f"{tool_name} failed: {exc}"[:500],
+        mission_id=ctx.deps.mission_id,
+    )
 
 
 # ── Plan 56 Phase B: Tool Fork Helpers ──────────────────────────────────
@@ -198,6 +226,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "get_mission_info failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "get_mission_info", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -239,6 +268,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "list_team failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "list_team", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -309,6 +339,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "browse_catalog failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "browse_catalog", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -350,6 +381,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 extra={"mission_id": ctx.deps.mission_id},
                 exc_info=True,
             )
+            await _emit_tool_failure(ctx, "get_execution_history", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -399,6 +431,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 extra={"mission_id": ctx.deps.mission_id},
                 exc_info=True,
             )
+            await _emit_tool_failure(ctx, "get_execution_detail", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -423,6 +456,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 extra={"mission_id": ctx.deps.mission_id},
                 exc_info=True,
             )
+            await _emit_tool_failure(ctx, "get_mission_context", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -476,6 +510,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "list_workflows failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "list_workflows", e)
             return json.dumps({"error": str(e)})
 
     # ── Action Tools ──────────────────────────────────────
@@ -553,6 +588,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "run_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "run_workflow", e)
             return json.dumps({"error": str(e)})
 
     # start_research removed (Plan 72): research goes through refine_plan
@@ -622,6 +658,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "get_artifacts failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "get_artifacts", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -683,6 +720,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "run_objective failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "run_objective", e)
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001
@@ -731,6 +769,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 extra={"mission_id": ctx.deps.mission_id},
                 exc_info=True,
             )
+            await _emit_tool_failure(ctx, "check_background_tasks", e)
             return json.dumps({"error": str(e)})
 
     # ── Mission Plan Tools (Plan 42) ──────────────────────────────────
@@ -764,6 +803,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "get_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "get_plan", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -863,6 +903,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "refine_plan failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "refine_plan", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -928,6 +969,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             logger.error(
                 "design_workflow failed", extra={"mission_id": ctx.deps.mission_id}, exc_info=True
             )
+            await _emit_tool_failure(ctx, "design_workflow", e)
             return json.dumps({"error": str(e)})
 
     @agent.tool
@@ -1025,7 +1067,10 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                         user_id=acting_user_id,
                     )
                     all_transitioned.extend(s.id for s in transitioned)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
+                    # best-effort — non-fatal, this task is simply skipped; the
+                    # aggregate outcome is already reported accurately via
+                    # transitioned_task_ids in the tool's own JSON return below.
                     logger.warning(
                         "approve_plan_tasks: skipping task",
                         extra={
@@ -1094,6 +1139,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 extra={"mission_id": ctx.deps.mission_id},
                 exc_info=True,
             )
+            await _emit_tool_failure(ctx, "approve_plan_tasks", e)
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001

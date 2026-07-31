@@ -78,6 +78,8 @@ class MissionPlanService(BaseService):
         try:
             await self._event_bus.publish_to_mission(mission_id, event)
         except Exception as e:  # noqa: BLE001
+            # best-effort — this IS the event-emission path; there is
+            # nowhere further to escalate to (see method docstring).
             self._logger.warning(
                 "Failed to publish mission_plan event",
                 extra={

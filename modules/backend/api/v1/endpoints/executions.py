@@ -9,6 +9,8 @@ Temporal endpoints (execute, approve, status) are gated by
 the temporal.enabled feature flag.
 """
 
+import uuid
+
 from fastapi import APIRouter
 
 from modules.backend.core.dependencies import (
@@ -307,8 +309,26 @@ async def execute_execution(
                     execution_record_id=exec_id,
                 )
                 await bg_db.commit()
-        except Exception:
+        except Exception as exc:
             logger.exception("Background execution failed", extra={"execution_id": exec_id})
+            try:
+                from modules.backend.events.types import SystemEvent
+
+                await event_bus.publish(
+                    SystemEvent(
+                        session_id=uuid.uuid4(),
+                        source="executions_endpoint:background_task",
+                        level="error",
+                        message=f"Background execution failed: {exc}",
+                        mission_id=_bg_mission_id,
+                    )
+                )
+            except Exception:
+                # best-effort — this IS the event-emission path; there is
+                # nowhere further to escalate to.
+                logger.warning(
+                    "Failed to emit background-execution-failure SystemEvent", exc_info=True
+                )
 
     asyncio.create_task(_run_in_background(execution_id))
 
@@ -488,6 +508,9 @@ async def get_execution_status(
             metadata={"request_id": request_id},
         )
     except Exception as e:
+        # non-critical for mission-event visibility — re-raises
+        # immediately below as a 404, which is visible to the caller
+        # via the HTTP error response.
         logger.warning(
             "Execution status lookup failed",
             extra={"execution_id": execution_id, "error": str(e)},

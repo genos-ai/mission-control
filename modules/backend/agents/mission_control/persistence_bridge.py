@@ -141,6 +141,9 @@ async def persist_mission_results(
                         task_result=task_result,
                     )
                 except Exception as artifact_exc:  # noqa: BLE001
+                    # best-effort — this whole module is best-effort persistence
+                    # (see module docstring); no event_bus is threaded through
+                    # this bridge to surface artifact-creation failures.
                     logger.warning(
                         "Failed to create artifact",
                         extra={
@@ -181,6 +184,9 @@ async def persist_mission_results(
         return record.id
 
     except (OSError, ValueError, RuntimeError) as e:
+        # best-effort — this function is documented best-effort persistence
+        # (see module/function docstrings); no event_bus is available here
+        # to surface the failure as a mission event.
         logger.error(
             "Failed to persist execution results",
             extra={"session_id": session_id, "error": str(e), "mission_id": mission_id},

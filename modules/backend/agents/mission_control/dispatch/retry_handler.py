@@ -134,6 +134,10 @@ async def execute_with_retry(
                 else "Previous attempt produced no response (infrastructure hiccup). Retry."
             )
             if is_timeout:
+                # best-effort — no event_bus reachable here (would require a
+                # signature change threading it through every caller); the
+                # eventual TaskResult (retry_history/status) is the
+                # established visibility mechanism, surfaced in the Plan tab.
                 logger.warning(
                     "Task execution: timeout, will retry",
                     extra={
@@ -191,6 +195,9 @@ async def execute_with_retry(
             # sees the actual schema delta instead of three identical
             # errors in a row.
             duration = time.monotonic() - task_start
+            # best-effort — no event_bus reachable here; the returned
+            # failed_result (retry_history/status) is the established
+            # visibility mechanism, surfaced in the Plan tab.
             logger.error(
                 "Task failed: output contract violation (no retry)",
                 extra={
@@ -220,6 +227,9 @@ async def execute_with_retry(
         except Exception as e:
             duration = time.monotonic() - task_start
             is_token_limit = isinstance(e, UsageLimitExceeded)
+            # best-effort — no event_bus reachable here; the eventual
+            # TaskResult (retry_history/status) is the established
+            # visibility mechanism, surfaced in the Plan tab.
             logger.error(
                 "Task execution failed",
                 extra={

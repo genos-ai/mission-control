@@ -77,6 +77,8 @@ class MissionPlanOrchestrator(BaseService):
         try:
             await self._event_bus.publish_to_mission(mission_id, event)
         except Exception as e:  # noqa: BLE001
+            # best-effort — this IS the event-emission path; there is nowhere
+            # further to escalate to.
             self._logger.warning(
                 "Failed to publish mission_plan event",
                 extra={
@@ -946,6 +948,8 @@ class MissionPlanOrchestrator(BaseService):
                     _exec_row.failed_task_count = _failed
                     await self._session.flush()
             except Exception:
+                # best-effort — denormalised display counts only; the real
+                # run-completed event below is emitted unconditionally.
                 self._logger.warning(
                     "Failed to persist task counts on execution_record",
                     extra={"execution_record_id": outcome.execution_record_id},
@@ -1040,6 +1044,19 @@ class MissionPlanOrchestrator(BaseService):
             )
         except Exception:
             self._logger.warning("Post-run supervisor evaluation failed", exc_info=True)
+            await self._emit(
+                plan.mission_id,
+                SystemEvent(
+                    session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+                    source="mission_plan_orchestrator",
+                    level="error",
+                    message=(
+                        "Post-run supervisor evaluation failed — the plan will not "
+                        "automatically advance; review and dispatch manually."
+                    ),
+                    mission_id=plan.mission_id,
+                ),
+            )
 
     async def _fire_followups(
         self,
@@ -1089,6 +1106,9 @@ class MissionPlanOrchestrator(BaseService):
                     agent_turn_runner=_agent_turn_runner,
                 )
             except Exception:
+                # best-effort — the dispatch/run itself already completed
+                # successfully; only the proactive Director chat notification
+                # failed to fire.
                 self._logger.warning(
                     "Failed to fire followups for event",
                     extra={
@@ -1185,6 +1205,16 @@ class MissionPlanOrchestrator(BaseService):
                     exc_info=True,
                 )
                 plan.status = MissionPlanStatus.PAUSED
+                await self._emit(
+                    plan.mission_id,
+                    SystemEvent(
+                        session_id=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+                        source="mission_plan_orchestrator",
+                        level="error",
+                        message=("Supervisor refinement failed — plan paused for human review."),
+                        mission_id=plan.mission_id,
+                    ),
+                )
             self._log_operation(
                 "Supervisor: ADVANCE_REFINE",
                 plan_id=plan.id,

@@ -397,6 +397,8 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
             )
             return json.dumps(result, default=str)
         except Exception as e:
+            # best-effort — ArchitectAgentDeps has no event_bus; the error
+            # already returns to the calling LLM in the JSON result.
             logger.error(
                 "Failed to save workflow",
                 extra={"error": str(e), "mission_id": ctx.deps.mission_id},
@@ -505,6 +507,8 @@ def create_agent(model: Model, tool_names: list[str] | None = None) -> Agent:
             )
             return json.dumps(result, default=str)
         except Exception as e:
+            # best-effort — ArchitectAgentDeps has no event_bus; the error
+            # already returns to the calling LLM in the JSON result.
             logger.error(
                 "Failed to update workflow",
                 extra={"error": str(e), "mission_id": ctx.deps.mission_id},

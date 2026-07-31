@@ -103,6 +103,9 @@ def _build_agent_deps(
                 config_path=find_project_root() / sec_config.tool_registry_path
             )
         except Exception:
+            # best-effort — this is a synchronous deps-construction function
+            # (no event_bus/await available); the agent still runs, just
+            # without scanner tools registered.
             logger.warning(
                 "Failed to load security tool registry — scanner tools will be unavailable",
                 extra={"agent_name": agent_name, "mission_id": mission_id},

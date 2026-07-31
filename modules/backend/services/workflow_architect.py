@@ -159,6 +159,8 @@ class WorkflowArchitectService(BaseService):
         try:
             recommendations = json.loads(response_text)
         except json.JSONDecodeError:
+            # falling back to an empty recommendation list — the caller
+            # still gets a usable (if incomplete) result.
             logger.warning(
                 "Failed to parse recommendation response",
                 extra={

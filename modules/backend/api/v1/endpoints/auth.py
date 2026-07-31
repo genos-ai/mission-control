@@ -111,6 +111,10 @@ async def create_sse_token(
         finally:
             await redis.aclose()
     except Exception as exc:
+        # non-critical for mission-event visibility — this has no
+        # mission_id/event_bus context (auth token issuance, not
+        # mission-scoped) and re-raises immediately below, so the
+        # failure is visible to the caller via the HTTP error response.
         logger.warning("Redis unavailable for SSE token storage", exc_info=True)
         raise ExternalServiceError("SSE token store unavailable, retry shortly") from exc
 

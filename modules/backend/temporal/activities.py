@@ -142,6 +142,26 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 "Mission execution cancelled",
                 extra={"mission_run_id": input.mission_run_id, "mission_id": input.mission_id},
             )
+            # Emit error event so it surfaces in the Console
+            try:
+                import uuid
+
+                from modules.backend.events.types import SystemEvent
+
+                await event_bus.publish_to_mission(
+                    input.mission_id,
+                    SystemEvent(
+                        session_id=uuid.uuid4(),
+                        source="mission_execution",
+                        level="error",
+                        message=f"Mission execution cancelled: {type(e).__name__}",
+                        mission_id=input.mission_id,
+                    ),
+                )
+            except Exception:
+                logger.debug(
+                    "error event publish failed in Temporal activity (best-effort)", exc_info=True
+                )
             return MissionExecutionResult(
                 mission_id=input.mission_run_id,
                 status="failed",

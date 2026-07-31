@@ -794,9 +794,11 @@ def check_silent_error_swallow(path: Path, rel: str) -> list[Violation]:
 
     # Patterns that indicate event emission
     emit_patterns = re.compile(
-        r"(publish_to_mission|publish\(|_emit\(|_emit_activity_error|"
-        r"_emit_supervisor_error|_emit_task_failure|SystemEvent|"
-        r"MissionNarrativeEvent|SystemExecutionCompletedEvent)"
+        r"(publish_to_mission|publish\(|_emit\(|_?emit_activity_error|"
+        r"_emit_supervisor_error|_emit_task_failure|_emit_tool_failure|"
+        r"_publish_workflow_event|_emit_fired|SystemEvent|"
+        r"MissionNarrativeEvent|SystemExecutionCompletedEvent|"
+        r"_notify_schedule_failure)"
     )
 
     i = 0

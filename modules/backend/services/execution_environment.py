@@ -467,6 +467,9 @@ class ExecutionEnvironmentService:
                     return None
 
             except docker.errors.NotFound:
+                # best-effort — this service has no event_bus; the caller
+                # sees the failure in-band via the None return (triggers
+                # fresh container creation) rather than a mission event.
                 logger.warning(
                     "Container no longer exists — state lost, creating new",
                     extra={
@@ -482,6 +485,9 @@ class ExecutionEnvironmentService:
                 return None
 
             except Exception as e:
+                # best-effort — this service has no event_bus; the caller
+                # sees the failure in-band via the None return (triggers
+                # fresh container creation) rather than a mission event.
                 logger.warning(
                     "Docker unreachable — cannot verify container, creating new",
                     extra={

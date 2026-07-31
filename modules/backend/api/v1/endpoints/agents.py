@@ -6,6 +6,8 @@ All chat goes through sessions. Auto-creates ephemeral session when none provide
 Multi-agent missions go through the missions API, not here.
 """
 
+import uuid
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
@@ -178,11 +180,27 @@ async def agent_chat_stream(
                 ):
                     await queue.put(event)
                 await bg_db.commit()
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Background agent task failed",
                 extra={"session_id": session_id},
             )
+            try:
+                from modules.backend.events.types import SystemEvent
+
+                await event_bus.publish(
+                    SystemEvent(
+                        session_id=(uuid.UUID(session_id) if session_id else uuid.uuid4()),
+                        source="agents_endpoint:background_task",
+                        level="error",
+                        message=f"Background agent task failed: {exc}",
+                        mission_id=data.mission_id,
+                    )
+                )
+            except Exception:
+                # best-effort — this IS the event-emission path; there is
+                # nowhere further to escalate to.
+                logger.warning("Failed to emit background-task-failure SystemEvent", exc_info=True)
         finally:
             await redis.aclose()
             await queue.put(None)

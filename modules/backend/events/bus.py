@@ -136,6 +136,9 @@ class SessionEventBus:
                 try:
                     data = json.loads(message["data"])
                 except (json.JSONDecodeError, TypeError):
+                    # non-critical — this IS the event bus; there is no
+                    # further event channel to escalate a broken event to.
+                    # Skips this one malformed message and keeps streaming.
                     logger.warning("Invalid JSON in event", extra={"channel": channel})
                     continue
 

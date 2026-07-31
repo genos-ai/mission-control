@@ -187,6 +187,9 @@ async def stream_notifications(
                 try:
                     data = json.loads(message["data"])
                 except (json.JSONDecodeError, TypeError):
+                    # non-critical — user-notification stream, not mission-
+                    # scoped; skips this one malformed message and keeps
+                    # streaming the rest.
                     logger.warning("Invalid JSON in notification event")
                     continue
 

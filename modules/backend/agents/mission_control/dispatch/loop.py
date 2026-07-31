@@ -42,7 +42,7 @@ from modules.backend.agents.mission_control.outcome import (
 )
 from modules.backend.agents.mission_control.roster import Roster
 from modules.backend.core.logging import get_logger
-from modules.backend.events.types import MissionNarrativeEvent, PlanCreatedEvent
+from modules.backend.events.types import MissionNarrativeEvent, PlanCreatedEvent, SystemEvent
 from modules.backend.schemas.task_plan import TaskPlan
 
 logger = get_logger(__name__)
@@ -540,6 +540,15 @@ async def _dispatch_convergence_loop(
             "convergence_loop task has invalid loop_config",
             extra={"task_id": task_id, "error": str(exc), "mission_id": mission_id},
         )
+        await _emit(
+            event_bus,
+            SystemEvent,
+            session_id=session_id,
+            source=f"dispatch:{mission_id}",
+            level="error",
+            message=f"Task '{task_id}' has invalid convergence loop_config: {exc}"[:500],
+            mission_id=mission_id,
+        )
         return TaskResult(
             task_id=task_id,
             agent_name="convergence",
@@ -605,6 +614,15 @@ async def _dispatch_research_loop(
         logger.warning(
             "research_loop task has invalid loop_config",
             extra={"task_id": task_id, "error": str(exc), "mission_id": mission_id},
+        )
+        await _emit(
+            event_bus,
+            SystemEvent,
+            session_id=session_id,
+            source=f"dispatch:{mission_id}",
+            level="error",
+            message=f"Task '{task_id}' has invalid research loop_config: {exc}"[:500],
+            mission_id=mission_id,
         )
         return TaskResult(
             task_id=task_id,
@@ -699,6 +717,8 @@ async def _dispatch_workflow_task(
             token_usage=TaskTokenUsage(),
         )
     except Exception as e:
+        # best-effort — the finally block below unconditionally emits
+        # PlanStepCompletedEvent with status="failed" for this case.
         logger.error(
             "Workflow task dispatch failed",
             extra={

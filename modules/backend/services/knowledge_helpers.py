@@ -56,6 +56,8 @@ async def get_embed_text(source_table: str, source_id: str) -> str | None:
                 return f"{row.title}\n{row.summary}"
 
         except Exception:
+            # best-effort — pure helper, no event_bus/service state (see
+            # module docstring); caller sees the None return.
             logger.warning(
                 "Failed to load embed text for source row",
                 extra={"source_table": source_table, "source_id": source_id},
@@ -100,6 +102,8 @@ async def get_source_mission_id(source_table: str, source_id: str) -> str | None
                 return row.mission_id
 
         except Exception:
+            # best-effort — pure helper, no event_bus/service state (see
+            # module docstring); caller sees the None return.
             logger.warning(
                 "Failed to resolve mission_id for source row",
                 extra={"source_table": source_table, "source_id": source_id},

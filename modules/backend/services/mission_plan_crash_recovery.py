@@ -110,6 +110,9 @@ async def reconcile_orphaned_task_states(
                     ),
                 )
             except Exception as exc:  # noqa: BLE001
+                # best-effort — this IS the event-emission path (see
+                # "Emit events best-effort" above); nowhere further to
+                # escalate to.
                 logger.warning(
                     "Crash recovery: failed to publish status_changed event",
                     extra={

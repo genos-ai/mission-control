@@ -119,6 +119,28 @@ class ManualGateReviewer:
                         "mission_id": context.mission_id,
                     },
                 )
+                if self._event_bus is not None:
+                    from modules.backend.events.types import SystemEvent
+
+                    try:
+                        await self._event_bus.publish(
+                            SystemEvent(
+                                session_id=context.session_id or context.mission_id,
+                                source=f"manual_gate:{request_id}",
+                                level="error",
+                                message=(
+                                    f"Manual gate timed out after "
+                                    f"{self._timeout_seconds}s — mission aborted for safety."
+                                ),
+                                mission_id=context.mission_id,
+                            )
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to emit gate-timeout SystemEvent",
+                            exc_info=True,
+                            extra={"request_id": request_id, "mission_id": context.mission_id},
+                        )
                 return GateDecision(
                     action=GateAction.ABORT,
                     reason=f"manual gate timeout after {self._timeout_seconds}s",
@@ -128,6 +150,9 @@ class ManualGateReviewer:
                 # Dispatcher coroutine was cancelled (mission abort, backend
                 # shutdown, Temporal activity cancel). Mark the row CANCELLED
                 # before re-raising so it doesn't sit PENDING forever.
+                # best-effort — this re-raises; the caller (mission abort,
+                # shutdown, or Temporal cancellation) owns visibility for
+                # its own cancellation path.
                 await self._persist_cancelled(request_id)
                 logger.warning(
                     "Manual gate cancelled mid-wait",
@@ -219,6 +244,8 @@ class ManualGateReviewer:
                 )
             )
         except Exception:
+            # best-effort — this IS the event-emission path; there is
+            # nowhere further to escalate to.
             logger.warning(
                 "Failed to emit GateRequestOpenedEvent",
                 exc_info=True,
