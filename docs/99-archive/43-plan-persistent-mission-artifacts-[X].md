@@ -7,7 +7,7 @@
 | **Closed** | 2026-04-11 — commits `2e21874` (design doc), `c42ae8c` (backend phases A–D + verification), `73d5859` (frontend phase E) |
 | **Graduated from** | `TODO.md` "Persistent mission artifacts (Plan 43 candidate)" |
 | **Depends on** | Plan 15 (Plan Persistence — done), Plan 42 (Mission Backlog Model — done) |
-| **Part of** | [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md) Phase 2 (Durable output) |
+| **Part of** | [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md) Phase 2 (Durable output) |
 | **Target** | `modules/backend/models/`, `modules/backend/services/`, `modules/backend/agents/mission_control/persistence_bridge.py`, `modules/backend/api/v1/endpoints/`, `modules/frontend/src/hooks/`, `modules/frontend/src/pages/mission/tabs/chat-tab.tsx` |
 
 ---
@@ -28,7 +28,7 @@ Landed in three commits (one design doc, one backend chain, one frontend chain):
 - `73d5859` — Phase E frontend ArtifactsPanel rewrite (react-query hook + SSE
   invalidation + Zustand `artifacts` slice removal + empty-state copy update)
 
-What this unlocks: [Plan 46 Phase 2 DoD item 4](../97-plans/46-plan-autonomous-mission-roadmap.md) —
+What this unlocks: [Plan 46 Phase 2 DoD item 4](../08-plans/046-plan-autonomous-mission-roadmap.md) —
 "every run produces artifacts that survive page refresh, session end, and backend
 restart" — is now observably satisfied end-to-end. A returning user can open a
 mission after an overnight autonomous run and actually see what the agents produced.
@@ -514,8 +514,8 @@ Reiterating for clarity — these are scope cuts, not future work commitments:
 
 ### Plan docs
 
-- [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md) §4 Phase 2 — the parent phase this plan graduates under.
-- [Plan 42 — Mission Backlog Model](../97-plans/42-plan-mission-backlog-model.md) — the ownership / cascade semantics (CASCADE on mission delete, SET NULL on execution/task_execution delete) mirror this plan's linkage pattern.
+- [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md) §4 Phase 2 — the parent phase this plan graduates under.
+- [Plan 42 — Mission Backlog Model](042-plan-mission-backlog-model-[SUPERSEDED].md) — the ownership / cascade semantics (CASCADE on mission delete, SET NULL on execution/task_execution delete) mirror this plan's linkage pattern.
 - [Plan 15 — Plan Persistence](15-plan-plan-persistence-[X].md) (done) — `ExecutionRecord` + `TaskExecution` tables we FK against.
 
 ### Files touched

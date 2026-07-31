@@ -59,7 +59,7 @@ default Docker network access, pre-existing `../` path-traversal weakness in
 FileScope, and `.git/worktrees/` pointer access — remain as documented. Network
 isolation is out of scope for Plan 47 and is a candidate for a future plan.
 
-**What this unblocks:** [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md)
+**What this unblocks:** [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md)
 Phase 1 work unit #1 (Plan 37 Phases 1–5 end-to-end verification) is complete.
 Phase 1 can resume with work units 2 (daemon crash recovery), 3 (daemon liveness
 heartbeat + `/admin/daemon/status`), and 4 (budget enforcement stress test).
@@ -591,10 +591,10 @@ All of the following must be **observably true** before Plan 47 can be marked Do
 ## §8 References
 
 ### Plan docs
-- [Plan 37 — Execution Environments](37-plan-execution-environments.md) (Phases 1–5 done)
-- [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md) §4 Phase 1 DoD item 3
-- [Plan 48 — Convergence Loop + Branch Automation](../97-plans/48-plan-convergence-loop-and-branch-automation.md) (explicitly out of scope)
-- [Plan 40 — Deep Research System](40-plan-deep-research-system.md) (downstream consumer)
+- [Plan 37 — Execution Environments](37-plan-execution-environments-[X].md) (Phases 1–5 done)
+- [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md) §4 Phase 1 DoD item 3
+- [Plan 48 — Convergence Loop + Branch Automation](../08-plans/048-plan-convergence-loop-and-branch-automation.md) (explicitly out of scope)
+- [Plan 40 — Deep Research System](40-plan-deep-research-system-[X].md) (downstream consumer)
 
 ### Files read during investigation
 - `modules/backend/services/execution_environment.py` — ExecutionEnvironmentService facade

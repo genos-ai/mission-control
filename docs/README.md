@@ -18,4 +18,4 @@ This directory contains all project documentation.
 - [Architecture](02-architecture/README.md)
 - [Implementation](03-implementation/README.md)
 - [External References](04-external-references/)
-- [Reference Architecture](99-reference-architecture/00-overview.md)
+- [Reference Architecture](10-reference-architecture/00-overview.md)

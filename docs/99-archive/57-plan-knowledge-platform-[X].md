@@ -8,7 +8,7 @@
 | **Depends on** | Plan 18 (Project Context Layer — done), Plan 51 (Session Followups — done), Plan 56 (Unified Async — done) |
 | **Closes TODO** | `Context management — continuous update of knowledge, intent, context, learnings`, `Investigate system.knowledge.officer.agent` |
 | **Scope** | Two new tables (`mission_intents`, `mission_learnings`), one new service (`KnowledgeService`), one new extractor (deterministic), one minimal system agent (governance only), pgvector hybrid retrieval for narrative content, full frontend + CLI + TUI surfaces |
-| **Companion** | [57a — Deferred Horizon](../97-plans/57a-plan-knowledge-horizon.md) tracks what we deliberately don't build yet |
+| **Companion** | [57a — Deferred Horizon](../08-plans/057a-plan-knowledge-horizon.md) tracks what we deliberately don't build yet |
 
 ---
 
@@ -342,7 +342,7 @@ Invalid tags are **logged and dropped**, not rejected (per P8 size-cap philosoph
   - `MissionLearningExtractedEvent`, `PlatformLearningPromotedEvent`, `LearningContradictionFlaggedEvent`, `MissionIntentRevisedEvent`.
 
 - `modules/backend/services/mission_learning.py` — MODIFY
-  - `MissionLearningExtractor` calls `KnowledgeService.similar()` before creating a new learning; if similarity > 0.92 against an active learning with same `kind`, it **increments `occurrence_count`** on the existing row instead of creating a duplicate. Per [doc 46 §Memory Extraction Pipeline](../99-reference-architecture/46-agentic-event-session-architecture.md#L1048) dedup pattern.
+  - `MissionLearningExtractor` calls `KnowledgeService.similar()` before creating a new learning; if similarity > 0.92 against an active learning with same `kind`, it **increments `occurrence_count`** on the existing row instead of creating a duplicate. Per [doc 46 §Memory Extraction Pipeline](../10-reference-architecture/46-agentic-event-session-architecture.md#L1048) dedup pattern.
   - `MissionLearningService.find_contradiction_candidates()` — deterministic query used by Officer Phase 1.
   - `MissionLearningService.promote()` / `retract()` — enforce gating rules, publish events. Idempotent.
 - `modules/backend/schemas/knowledge.py` — already created in Phase A. `Evidence` schema is uncapped at write time; API and UI render-paginate via `evidence_render_limit` config.
@@ -779,7 +779,7 @@ This plan adds as little new code as possible. Every piece of functionality that
 
 ## 11 · Out of Scope (Deferred)
 
-All deferred work is tracked in **[57a — Deferred Horizon](../97-plans/57a-plan-knowledge-horizon.md)**. Summary:
+All deferred work is tracked in **[57a — Deferred Horizon](../08-plans/057a-plan-knowledge-horizon.md)**. Summary:
 
 | Deferred | Why | Future trigger |
 |---|---|---|
@@ -828,9 +828,9 @@ The critical path is A → B → C → F. D and E can run in parallel with F onc
 
 - Architecture: [docs/02-architecture/001-project-context-layer.md](../02-architecture/001-project-context-layer.md)
 - Architecture: [docs/02-architecture/002-codebase-intelligence.md](../02-architecture/002-codebase-intelligence.md)
-- Reference: [docs/99-reference-architecture/46-agentic-event-session-architecture.md §Memory Architecture](../99-reference-architecture/46-agentic-event-session-architecture.md)
-- Reference: [docs/99-reference-architecture/47-agentic-module-organization.md §Layered Intent Engineering](../99-reference-architecture/47-agentic-module-organization.md)
-- Reference: [docs/99-reference-architecture/48-agentic-project-context.md](../99-reference-architecture/48-agentic-project-context.md)
+- Reference: [docs/99-reference-architecture/46-agentic-event-session-architecture.md §Memory Architecture](../10-reference-architecture/46-agentic-event-session-architecture.md)
+- Reference: [docs/99-reference-architecture/47-agentic-module-organization.md §Layered Intent Engineering](../10-reference-architecture/47-agentic-module-organization.md)
+- Reference: [docs/99-reference-architecture/48-agentic-project-context.md](../10-reference-architecture/48-agentic-project-context.md)
 - Principles: [docs/03-principles/01-project-principles.md](../03-principles/01-project-principles.md) — P2, P6, P10, P14
 - ADR: [docs/02-architecture/004-adr-unified-async-architecture.md](../02-architecture/004-adr-unified-async-architecture.md) — Temporal / Redis Pub/Sub / PostgreSQL
 - Closes: TODO.md "Context management — continuous update of knowledge, intent, context, learnings"

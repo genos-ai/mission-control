@@ -77,8 +77,8 @@ YAML) and should be removed in a cleanup commit.
 
 **Branch:** `feature/80-advocate-judge` (to be cut off `main`; do not extend `feature/79-think-tank-deliberation`)
 **Priority:** Medium-High (same user need as Plan 79; different architecture)
-**Reference research:** [docs/98-research/032-Think Tank-A Multi-Agent Deliberation System for Contested Questions.md](../98-research/032-Think%20Tank-A%20Multi-Agent%20Deliberation%20System%20for%20Contested%20Questions.md)
-**Reference validation:** [docs/98-research/033-Think-Tank-v2-Validation-Findings.md](../98-research/033-Think-Tank-v2-Validation-Findings.md)
+**Reference research:** [docs/98-research/032-Think Tank-A Multi-Agent Deliberation System for Contested Questions.md](../09-research/032-Think%20Tank-A%20Multi-Agent%20Deliberation%20System%20for%20Contested%20Questions.md)
+**Reference validation:** [docs/98-research/033-Think-Tank-v2-Validation-Findings.md](../09-research/033-Think-Tank-v2-Validation-Findings.md)
 **Supersedes:** Plan 79 (4-debater multi-round deliberation). Plan 79 is shelved per validation findings; v2 code in `feature/79-think-tank-deliberation` is reference only.
 
 **Dependencies (unchanged from Plan 79):**

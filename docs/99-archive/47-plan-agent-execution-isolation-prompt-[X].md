@@ -27,12 +27,12 @@ Mission Control is a platform that runs AI agents on behalf of users. Two agent 
   4. Autonomous overnight runs (Plan 42 daemon) can be trusted to run unattended
 
 The platform currently ships the *infrastructure* for container-based execution
-([Plan 37](docs/97-plans/37-plan-execution-environments.md) Phases 1–5 are done). But
+([Plan 37](37-plan-execution-environments-[X].md) Phases 1–5 are done). But
 **agents don't actually use it**. They still read files and run subprocesses directly on
 the host. The container gets provisioned, sits idle, and is torn down. This is the
 single blocker preventing Mission Control from safely running user missions unattended —
 and it blocks the current roadmap
-([Plan 46 — Autonomous Mission Roadmap](docs/97-plans/46-plan-autonomous-mission-roadmap.md))
+([Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md))
 from exiting Phase 1.
 
 Your job is to close this gap properly — investigation, design, plan doc, implementation,
@@ -49,14 +49,14 @@ with direct host access.
 Read these files first; they contain the existing infrastructure you'll be building on.
 
 **Plan docs (read in this order):**
-1. [docs/97-plans/46-plan-autonomous-mission-roadmap.md](docs/97-plans/46-plan-autonomous-mission-roadmap.md) —
+1. [docs/97-plans/46-plan-autonomous-mission-roadmap.md](../08-plans/046-plan-autonomous-mission-roadmap.md) —
    the standing roadmap. Pay attention to §4 Phase 1 (where this work belongs), §5
    (anti-drift rules you must honour), and §7 (out-of-scope items).
-2. [docs/97-plans/37-plan-execution-environments.md](docs/97-plans/37-plan-execution-environments.md) —
+2. [docs/97-plans/37-plan-execution-environments.md](37-plan-execution-environments-[X].md) —
    the original execution environments plan. Read §2–5 for the architectural intent and
    the Phase 1–5 commitments that were delivered. Note the close-out block at the top
    explaining what moved to Plan 48.
-3. [docs/97-plans/48-plan-convergence-loop-and-branch-automation.md](docs/97-plans/48-plan-convergence-loop-and-branch-automation.md) —
+3. [docs/97-plans/48-plan-convergence-loop-and-branch-automation.md](../08-plans/048-plan-convergence-loop-and-branch-automation.md) —
    so you understand what's deliberately **out** of the execution-environments remit
    and is owned by a follow-up plan. Do not absorb Plan 48 into Plan 47.
 
@@ -314,13 +314,13 @@ Required sections:
      read `/etc/passwd` or write to the host repo and observes the operation fail
      or land in the worktree only)
    - A platform-tier agent continues to run with direct host access unchanged
-   - The research agent from [Plan 40](docs/97-plans/40-plan-deep-research-system.md)
+   - The research agent from [Plan 40](40-plan-deep-research-system-[X].md)
      can be run end-to-end inside a container (if Plan 40's agent isn't
      implemented yet, prove the plan is compatible by walking through the flow)
    - An end-to-end verification script lives in `scripts/verify_isolation.py` (or
      equivalent) and can be re-run after any future change to prove the isolation
      still holds
-   - [Plan 46](docs/97-plans/46-plan-autonomous-mission-roadmap.md) Phase 1 DoD
+   - [Plan 46](../08-plans/046-plan-autonomous-mission-roadmap.md) Phase 1 DoD
      item 3 ("tasks run in isolated execution environments") is satisfied in fact,
      not just on paper
 8. **§7 What this plan does NOT do** — explicit scope cuts. Almost certainly out

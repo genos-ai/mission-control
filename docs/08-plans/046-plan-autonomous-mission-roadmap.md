@@ -105,7 +105,7 @@ The roadmap is complete when **all** of the following are observably true:
 7. When a run wave completes, the mission automatically routes to its next state —
    advancing approved tasks, refining the plan for a new wave, proposing completion,
    or escalating to the user — and Director chat updates surface the decision in
-   the Chat tab without user action. See [Plan 51](51-plan-autonomy-loop-supervisor.md).
+   the Chat tab without user action. See [Plan 51](../99-archive/51-plan-autonomy-loop-supervisor-[X].md).
 8. A plan can pause and resume across days — both via the UI button and via a
    `HumanInputNode` in a workflow.
 9. A plan task can be a workflow invocation (Plan 44), and that workflow can contain
@@ -176,7 +176,7 @@ that write code do so in isolation.
    byte of agent work still happened on the host filesystem via host tools. This
    turned out to be the single biggest threat to the roadmap's whole purpose, and
    was surfaced as a critical blocker that graduated into its own plan —
-   [Plan 47 — Agent Execution Isolation](47-plan-agent-execution-isolation.md).
+   [Plan 47 — Agent Execution Isolation](../99-archive/47-plan-agent-execution-isolation-[X].md).
    Plan 47 landed host-side git worktree + bind-mount isolation, a tier-guarded
    `project_root` redirect in the agent executor, and a repeatable verification
    script at [scripts/verify_isolation.py](../../scripts/verify_isolation.py) that
@@ -250,7 +250,7 @@ artifacts, costs, durations, and narrative survive page refresh and backend rest
 
 **Work units:**
 1. **✅ DONE (2026-04-11) — Graduate Plan 43 from TODO to plan doc + implement.**
-   Plan doc landed at [docs/97-plans/43-plan-persistent-mission-artifacts.md](43-plan-persistent-mission-artifacts.md).
+   Plan doc landed at [docs/97-plans/43-plan-persistent-mission-artifacts.md](../99-archive/43-plan-persistent-mission-artifacts-[X].md).
    `mission_artifacts` table created via migration `plan43_001`, linked via
    mission_id (CASCADE) + execution_record_id / task_execution_id (SET NULL) so
    artifacts survive run archival. Typed variants ready (`report`/`finding`/`code`/
@@ -614,7 +614,7 @@ deferred from:
   navigation — legacy tab routes + new workspace feed modes.* Surfaced 2026-04-11
   when the user noticed that `/missions/:id/*` (legacy tab bar) and `/missions/:id`
   (new workspace) showed overlapping content in parallel navigation systems. Filed
-  as a TODO + a handoff brief ([Plan 49](../97-plans-archive/49-plan-mission-nav-consolidation-prompt-[X].md)),
+  as a TODO + a handoff brief ([Plan 49](../99-archive/49-plan-mission-nav-consolidation-prompt-[X].md)),
   then handed off to another agent and **shipped in a 5-commit chain that same day**
   — ahead of its Phase 4 scheduling slot because a different session had bandwidth:
     - `ec981da` Delete Workshop tab (file, route, import, constant, tab entry)
@@ -685,12 +685,12 @@ the roadmap:
 
 ### Plan docs this roadmap coordinates
 
-- [Plan 37 — Execution Environments](37-plan-execution-environments.md) (Phases 1–5 only) ✅ Done 2026-04-11
-- [Plan 41 — Mission Workspace Redesign](41-plan-mission-workspace-redesign.md)
-- [Plan 42 — Mission Backlog Model](42-plan-mission-backlog-model.md)
-- [Plan 47 — Agent Execution Isolation](47-plan-agent-execution-isolation.md) ✅ Done 2026-04-11 (graduated mid-Phase-1)
-- [Plan 48 — Convergence Loop + Branch Automation](48-plan-convergence-loop-and-branch-automation.md) — extracted from Plan 37 Phases 6/7/9. Phase 6 (convergence loop runner) graduates inside Plan 51 Phase B; other phases remain out of roadmap scope.
-- [Plan 51 — Autonomy Loop + Mission Supervisor Agent](51-plan-autonomy-loop-supervisor.md) ✅ Done 2026-04-21 — implementing plan for Phase 3. Single Temporal execution path, supervisor loop, Director followups, escalation visibility, cross-wave result flow.
+- [Plan 37 — Execution Environments](../99-archive/37-plan-execution-environments-[X].md) (Phases 1–5 only) ✅ Done 2026-04-11
+- [Plan 41 — Mission Workspace Redesign](../99-archive/41-plan-mission-workspace-redesign-[X].md)
+- [Plan 42 — Mission Backlog Model](../99-archive/042-plan-mission-backlog-model-[SUPERSEDED].md)
+- [Plan 47 — Agent Execution Isolation](../99-archive/47-plan-agent-execution-isolation-[X].md) ✅ Done 2026-04-11 (graduated mid-Phase-1)
+- [Plan 48 — Convergence Loop + Branch Automation](048-plan-convergence-loop-and-branch-automation.md) — extracted from Plan 37 Phases 6/7/9. Phase 6 (convergence loop runner) graduates inside Plan 51 Phase B; other phases remain out of roadmap scope.
+- [Plan 51 — Autonomy Loop + Mission Supervisor Agent](../99-archive/51-plan-autonomy-loop-supervisor-[X].md) ✅ Done 2026-04-21 — implementing plan for Phase 3. Single Temporal execution path, supervisor loop, Director followups, escalation visibility, cross-wave result flow.
 
 ### TODO candidates that graduate inside the roadmap
 
@@ -700,9 +700,9 @@ the roadmap:
 
 ### Related but out of scope
 
-- [Plan 39 — Guardian Mission](39-plan-guardian-mission.md)
-- [Plan 40 — Deep Research System](40-plan-deep-research-system.md)
-- [Plan 16 — Temporal Integration](../97-plans-archive/16-plan-temporal-integration-[X].md)
+- [Plan 39 — Guardian Mission](039-plan-guardian-mission.md)
+- [Plan 40 — Deep Research System](../99-archive/40-plan-deep-research-system-[X].md)
+- [Plan 16 — Temporal Integration](../99-archive/16-plan-temporal-integration-[X].md)
 
 ### Commits cited as current state
 

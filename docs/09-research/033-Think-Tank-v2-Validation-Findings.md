@@ -3,7 +3,7 @@
 **Date:** 2026-05-24
 **Plan:** 79 (Think Tank multi-agent deliberation)
 **Compared:** v2 (7-agent orchestrated deliberation) vs single-call baseline (Opus 4.6, extended thinking, web search, same `FinalDeliverable` schema)
-**Recommendation:** v2 architecture is not load-bearing. Commit to a rewrite (Advocate-Judge — asymmetric multi-advocate + judge, per [022/032 architectural memo](../97-plans/79-plan-think-tank-deliberation-mission.md)).
+**Recommendation:** v2 architecture is not load-bearing. Commit to a rewrite (Advocate-Judge — asymmetric multi-advocate + judge, per [022/032 architectural memo](../99-archive/79-plan-think-tank-deliberation-mission-[X].md)).
 
 ---
 

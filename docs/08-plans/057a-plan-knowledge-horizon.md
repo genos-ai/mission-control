@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Parking lot — nothing scheduled |
 | **Created** | 2026-04-16 |
-| **Parent** | [Plan 57 — Knowledge, Intent & Learnings Platform](../97-plans-archive/57-plan-knowledge-platform-[X].md) (Done 2026-04-18) |
+| **Parent** | [Plan 57 — Knowledge, Intent & Learnings Platform](../99-archive/57-plan-knowledge-platform-[X].md) (Done 2026-04-18) |
 | **Purpose** | Catalogue work we deliberately don't build yet so we don't forget. Each item has a concrete trigger and design sketch. |
 
 ---
@@ -162,7 +162,7 @@ Requires careful opt-out — users must be able to silence proactive surfacing p
 
 **Trigger:** You operate more than one Mission Control instance (multiple tenants, regions, acquisitions). Probably never for this codebase unless productized.
 
-**What it adds (per [doc 13 research](../98-research/13-Scaling Open Brain to enterprise- a centralized knowledge architecture.md))**
+**What it adds (per [doc 13 research](../09-research/013-Scaling Open Brain to enterprise- a centralized knowledge architecture.md))**
 - Lightweight central control plane that holds **metadata only** — "what platform-promoted entries exist, where, under what tags" — not content.
 - Per-instance data plane unchanged.
 - Federated query: `knowledge.search(federated=true, instances=["a","b"])` routes through the control plane and aggregates.

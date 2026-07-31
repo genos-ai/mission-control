@@ -3,7 +3,7 @@
 **Version:** 1.3.0
 **Date:** 2026-04-01
 **Author:** Herman (Group CISO, Icarus) + Architecture Review
-**Status:** Phases 1–5 done (2026-04-11). Phases 6/7/9 extracted to [Plan 48](../97-plans/48-plan-convergence-loop-and-branch-automation.md). Phase 8 deferred per §5.
+**Status:** Phases 1–5 done (2026-04-11). Phases 6/7/9 extracted to [Plan 48](../08-plans/048-plan-convergence-loop-and-branch-automation.md). Phase 8 deferred per §5.
 **Target:** BFA Reference Architecture v3.5.0
 **Codebase alignment:** v1.1.0 — validated against mission-control repository 2026-04-01
 
@@ -11,7 +11,7 @@
 
 ## Close-out note (2026-04-11)
 
-During [Plan 46 (Autonomous Mission Roadmap)](../97-plans/46-plan-autonomous-mission-roadmap.md)
+During [Plan 46 (Autonomous Mission Roadmap)](../08-plans/046-plan-autonomous-mission-roadmap.md)
 Phase 1, a scope review surfaced that this plan bundled two logically separable
 concerns:
 
@@ -25,7 +25,7 @@ concerns:
    backend, not part of the isolation layer.
 
 Rather than block Plan 46 Phase 1 on the convergence loop work, concerns #2 have
-been extracted into their own plan doc ([Plan 48](../97-plans/48-plan-convergence-loop-and-branch-automation.md))
+been extracted into their own plan doc ([Plan 48](../08-plans/048-plan-convergence-loop-and-branch-automation.md))
 with the content of §5 Phases 6, 7, and 9 as its seed. Plan 48 is deliberately
 **out of Plan 46's roadmap scope** — it will be picked up opportunistically after
 the roadmap closes, or whenever the convergence loop becomes load-bearing for a

@@ -30,7 +30,7 @@ The product owner noticed this on 2026-04-11 while browsing `/missions/.../runs`
 
 The direction is: **keep the legacy tab-bar URL-route pattern as the outer navigation shell, move the new 3-panel workspace layout OUTWARD so every tab renders inside the same shell, delete Workshop entirely, and close the parallel-nav paper-cut.**
 
-This is NOT scheduled for immediate work — it sits in the deferred tracker of [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md) §5, slated for Phase 4 (kanban UX polish) or as a dedicated interstitial between Phase 3 and Phase 4. The reason it has its own handoff brief is that the product owner wants it implementable by a different agent in parallel, same pattern [Plan 47](47-plan-agent-execution-isolation-[X].md) followed.
+This is NOT scheduled for immediate work — it sits in the deferred tracker of [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md) §5, slated for Phase 4 (kanban UX polish) or as a dedicated interstitial between Phase 3 and Phase 4. The reason it has its own handoff brief is that the product owner wants it implementable by a different agent in parallel, same pattern [Plan 47](47-plan-agent-execution-isolation-[X].md) followed.
 
 **Outcome when you are done:** every mission URL (`/missions/:id/chat`, `/missions/:id/plan`, `/missions/:id/runs`, ...) renders the same outer shell (3-panel layout with left agent sidebar + top bar + tab bar + center content + collapsible right artifacts drawer), with tab-specific content in the center panel. The Zustand `feedMode` state is deleted. Workshop is gone. Each tab is a real URL route with browser-history support. A user bookmarking `/missions/abc/runs` gets taken straight to the Runs tab inside the new shell.
 
@@ -40,8 +40,8 @@ This is NOT scheduled for immediate work — it sits in the deferred tracker of 
 
 ### 2.1  Plan docs to read in this order
 
-1. [docs/97-plans/46-plan-autonomous-mission-roadmap.md](../97-plans/46-plan-autonomous-mission-roadmap.md) — standing roadmap; read §5 (anti-drift rules) and the §5 Deferred-from-phase tracker entry that points at this task. Understand that Phase 1 is closed, Phase 2 is "durable output", and this consolidation is scheduled for Phase 4 not now. You are the agent that gets handed the Phase 4 prep work early.
-2. [docs/97-plans/41-plan-mission-workspace-redesign.md](41-plan-mission-workspace-redesign.md) — the original workspace redesign spec. Read §3 (layout), §4 (routing), §3.5a (plan board spec, already implemented). This is where the 3-panel layout came from in the first place. Honour that design intent when moving the shell outward.
+1. [docs/97-plans/46-plan-autonomous-mission-roadmap.md](../08-plans/046-plan-autonomous-mission-roadmap.md) — standing roadmap; read §5 (anti-drift rules) and the §5 Deferred-from-phase tracker entry that points at this task. Understand that Phase 1 is closed, Phase 2 is "durable output", and this consolidation is scheduled for Phase 4 not now. You are the agent that gets handed the Phase 4 prep work early.
+2. [docs/97-plans/41-plan-mission-workspace-redesign.md](41-plan-mission-workspace-redesign-[X].md) — the original workspace redesign spec. Read §3 (layout), §4 (routing), §3.5a (plan board spec, already implemented). This is where the 3-panel layout came from in the first place. Honour that design intent when moving the shell outward.
 3. `TODO.md` entry at the end: **"Consolidate mission navigation: legacy tab routes + new workspace feed modes"**. This is the canonical design you are implementing; do NOT re-litigate it. It encodes all four user-confirmed decisions listed in §3 below.
 4. Plan 47 ([docs/97-plans/47-plan-agent-execution-isolation-[X].md](47-plan-agent-execution-isolation-[X].md)) and its Plan 47 prompt brief for reference — shows the pattern you're following for handoff + verification script discipline.
 

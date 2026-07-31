@@ -1073,5 +1073,5 @@ See `46-event-session-architecture.md`, Section 3 (Streaming Coordinator — Cha
 - [21-event-architecture.md](21-event-architecture.md) — Event types, WebSocket patterns
 - [05-authentication.md](05-authentication.md) — JWT authentication (extended for WebSocket)
 - [10-observability.md](10-observability.md) — Source-based logging, X-Frontend-ID
-- [98-research/07-Personal AI assistant architecture](../98-research/07-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md) — Analysis that motivated this module
+- [98-research/07-Personal AI assistant architecture](../09-research/07-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md) — Analysis that motivated this module
 - [46-event-session-architecture.md](46-event-session-architecture.md) — Channels as event subscribers, session-channel binding, unified session state

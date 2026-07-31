@@ -1,7 +1,7 @@
 # Premortem Transcript — Plan 77 (UK Client Onboarding Demo)
 
 **Date run:** 2026-05-22
-**Plan target:** [77-plan-demo-uk-onboarding.md](77-plan-demo-uk-onboarding.md)
+**Plan target:** [77-plan-demo-uk-onboarding.md](077-plan-demo-uk-onboarding.md)
 **Method:** Klein-style premortem (8 parallel deep-dives)
 
 ---

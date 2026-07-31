@@ -20,7 +20,7 @@ Project → Playbook → Mission → Mission Control → Agents
 - **Projects** were the top-level organizational boundary. All missions, playbook runs, context, and history belonged to a project. The PCD (Project Context Document) was scoped to the project.
 - **Playbooks** were multi-step YAML recipes. Each step spawned a mission. Steps formed a DAG with data flow between them via `output_mapping` and `upstream_context`.
 
-This design was documented in [002-platform-flow.md](../01-overview/002-platform-flow.md), [Plan 17](../97-plans/17-plan-playbooks-missions-[X].md), [Plan 18](../97-plans/18-plan-project-context-layer-[X].md), and [reference architecture doc 48](../99-reference-architecture/48-agentic-project-context.md).
+This design was documented in [002-platform-flow.md](../01-overview/002-platform-flow.md), [Plan 17](../99-archive/17-plan-playbooks-missions-[X].md), [Plan 18](../99-archive/18-plan-project-context-layer-[X].md), and [reference architecture doc 48](../10-reference-architecture/48-agentic-project-context.md).
 
 ### What happened during implementation
 

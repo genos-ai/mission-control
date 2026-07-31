@@ -4,16 +4,16 @@
 |-------|-------|
 | **Status** | Stub (not yet scheduled) |
 | **Created** | 2026-04-11 |
-| **Extracted from** | [Plan 37 — Execution Environments](37-plan-execution-environments.md) §5 Phases 6, 7, 9 |
+| **Extracted from** | [Plan 37 — Execution Environments](../99-archive/37-plan-execution-environments-[X].md) §5 Phases 6, 7, 9 |
 | **Depends on** | Plan 37 Phases 1–5 (✅ done), Plan 22 (Step-Through Gate, ✅ done), Plan 19 (Quality Agent / PQI, ✅ done) |
-| **Out of** | [Plan 46 — Autonomous Mission Roadmap](46-plan-autonomous-mission-roadmap.md) — deliberately out of scope; picked up opportunistically after the roadmap closes, or whenever the convergence loop becomes load-bearing for a specific mission |
+| **Out of** | [Plan 46 — Autonomous Mission Roadmap](046-plan-autonomous-mission-roadmap.md) — deliberately out of scope; picked up opportunistically after the roadmap closes, or whenever the convergence loop becomes load-bearing for a specific mission |
 | **Target** | `modules/backend/agents/mission_control/dispatch/convergence.py`, `modules/backend/schemas/task_plan.py`, `modules/backend/services/container_backend.py` |
 
 ---
 
 ## 1  Why this plan exists
 
-During [Plan 46](46-plan-autonomous-mission-roadmap.md) Phase 1 scope review, Plan 37
+During [Plan 46](046-plan-autonomous-mission-roadmap.md) Phase 1 scope review, Plan 37
 was found to bundle two logically separable concerns:
 
 1. **The execution environments foundation** — agent isolation via containers. This
@@ -50,7 +50,7 @@ behaviour.
 ## 2  What this plan contains
 
 The three phases extracted from Plan 37 §5. The content below is a pointer to
-the source material in [Plan 37](37-plan-execution-environments.md), not a
+the source material in [Plan 37](../99-archive/37-plan-execution-environments-[X].md), not a
 duplication — read the Plan 37 sections to get the full design. This file exists
 to own the work, not to re-specify it.
 
@@ -60,7 +60,7 @@ to own the work, not to re-specify it.
 convergence conditions, max iterations, per-cycle audit trails, and gate
 integration for human/AI override at cycle boundaries.
 
-**Source:** [Plan 37 §5 Phase 6](37-plan-execution-environments.md#phase-6-convergence-loop-pattern) —
+**Source:** [Plan 37 §5 Phase 6](../99-archive/37-plan-execution-environments-[X].md#phase-6-convergence-loop-pattern) —
 the file `modules/backend/agents/mission_control/dispatch/convergence.py` already
 exists on the current branch (~441 lines, not yet wired) and is the starting
 point.
@@ -91,7 +91,7 @@ when the convergence condition is met. Environment-agnostic.
 **Goal:** Agent branches follow `agent/{mission-id}/{task-type}` convention;
 PRs are opened automatically when missions complete; stale branches are pruned.
 
-**Source:** [Plan 37 §5 Phase 7](37-plan-execution-environments.md#phase-7-branch-strategy--pr-automation)
+**Source:** [Plan 37 §5 Phase 7](../99-archive/37-plan-execution-environments-[X].md#phase-7-branch-strategy--pr-automation)
 
 **Work units:**
 
@@ -113,7 +113,7 @@ correct reviewer assignment.
 **Goal:** The platform can prove a branch is deployable from zero before any
 human sees the PR.
 
-**Source:** [Plan 37 §5 Phase 9](37-plan-execution-environments.md#phase-9-final-verification-pattern)
+**Source:** [Plan 37 §5 Phase 9](../99-archive/37-plan-execution-environments-[X].md#phase-9-final-verification-pattern)
 
 **Work units:**
 
@@ -166,13 +166,13 @@ Only applies once the plan actually gets scheduled:
 
 ## 4  References
 
-- [Plan 37 — Execution Environments](37-plan-execution-environments.md) §5
+- [Plan 37 — Execution Environments](../99-archive/37-plan-execution-environments-[X].md) §5
   Phases 6, 7, 9 — source material for this plan
-- [Plan 46 — Autonomous Mission Roadmap](46-plan-autonomous-mission-roadmap.md) —
+- [Plan 46 — Autonomous Mission Roadmap](046-plan-autonomous-mission-roadmap.md) —
   the coordination document that carved this plan out
-- [Plan 22 — Step-Through Gate](../97-plans-archive/22-plan-step-through-gate-[X].md) — gate system
+- [Plan 22 — Step-Through Gate](../99-archive/22-plan-step-through-gate-[X].md) — gate system
   this plan reuses for convergence cycle decisions
-- [Plan 19 — Quality Agent + PQI](19-plan-quality-agent-pqi-codemap.md) — PQI
+- [Plan 19 — Quality Agent + PQI](../99-archive/19-plan-quality-agent-pqi-codemap-[X].md) — PQI
   scoring used for quality_threshold convergence conditions
-- [Plan 16 — Temporal Integration](../97-plans-archive/16-plan-temporal-integration-[X].md) — the
+- [Plan 16 — Temporal Integration](../99-archive/16-plan-temporal-integration-[X].md) — the
   eventual production path for the convergence executor

@@ -53,7 +53,7 @@
 
 **Priority:** Medium-High
 **Branch:** TBD — `feature/79-think-tank-deliberation`
-**Reference:** [docs/98-research/032-Think Tank-A Multi-Agent Deliberation System for Contested Questions.md](../98-research/032-Think%20Tank-A%20Multi-Agent%20Deliberation%20System%20for%20Contested%20Questions.md)
+**Reference:** [docs/98-research/032-Think Tank-A Multi-Agent Deliberation System for Contested Questions.md](../09-research/032-Think%20Tank-A%20Multi-Agent%20Deliberation%20System%20for%20Contested%20Questions.md)
 
 **Dependencies:**
 - Plan 45 (Rich Workflow Model)

@@ -960,9 +960,9 @@ graphs. No workflow is lost or broken.
 ### Plans
 
 - [Plan 29 — Frontend Design Specification](29-plan-frontend-design-[X].md) §5.7 (Workflows Tab wireframe)
-- [Plan 42 — Mission Backlog Model](../97-plans/42-plan-mission-backlog-model.md) (plan task dispatch)
+- [Plan 42 — Mission Backlog Model](042-plan-mission-backlog-model-[SUPERSEDED].md) (plan task dispatch)
 - [Plan 44 — Plan Tasks Invoke Workflows](TODO candidate) (discriminated task types)
-- [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md) §4 Phase 5
+- [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md) §4 Phase 5
 - [Plan 53 — Workflow DB + Plan Integration](53-plan-workflow-db-and-plan-integration-[X].md)
 
 ### Competitor analysis (informing UX decisions)

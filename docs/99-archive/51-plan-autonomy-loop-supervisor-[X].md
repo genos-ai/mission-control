@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | ✅ Done (2026-04-12) — Phases A-D shipped: session followup primitive, convergence loop wired, 8-branch post-run gate, Haiku supervisor agent with introspection tools. Phase E (Director followup) deferred. |
 | **Created** | 2026-04-11 |
-| **Part of** | [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md) Phase 3 (reframed from Signaling → Autonomy Loop) |
+| **Part of** | [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md) Phase 3 (reframed from Signaling → Autonomy Loop) |
 | **Depends on** | Plan 22 (Step-Through Gate — done), Plan 42 (Mission Backlog Model — done), Plan 43 (Persistent Artifacts — done), Plan 48 (Convergence Loop + Branch Automation — to be graduated for Phase B below) |
 | **Supersedes** | The deferred "Director proactive follow-up" TODO entry (folded in as §5 Phase A), and the "Supervisor Agent" proposal reviewed in conversation on 2026-04-11 |
 | **Target** | `modules/backend/agents/mission/supervisor/` (new), `modules/backend/agents/mission_control/gate*` (extension), `modules/backend/services/session_followup*` (new), `modules/backend/services/mission_plan.py` (emit `MissionPlanRunCompletedEvent` + in-process followup fire), `config/agents/mission/supervisor/` (new), `docs/97-plans/` |
@@ -17,7 +17,7 @@ Mission Control today dispatches runs. It does not iterate missions.
 
 A wave of approved tasks dispatches (Plan 42 §10.5), runs (Plan 47 isolation), writes back outcomes (Plan 42 §10.5), and then **the mission is inert** until a human reviews results, approves the next wave, and manually re-dispatches. The [`MissionPlanDaemon`](../../modules/backend/services/mission_plan_daemon.py) loops on already-approved tasks but has no authority to approve new ones. The `Director.refine_plan` tool can evolve plans but only fires in response to a user chat message. `mission_plan.run.completed` events are published to the event bus and consumed only by the SSE frontend — nothing intelligent reads them.
 
-This is the single missing load-bearing piece behind Plan 46's goal *"a human can describe an ambitious goal, walk away for days, and return to trustworthy, durable output"*. Without closing this gap, [Plan 46 Phase 6](../97-plans/46-plan-autonomous-mission-roadmap.md) (the endurance test — one real 7+ day unattended mission) is architecturally impossible.
+This is the single missing load-bearing piece behind Plan 46's goal *"a human can describe an ambitious goal, walk away for days, and return to trustworthy, durable output"*. Without closing this gap, [Plan 46 Phase 6](../08-plans/046-plan-autonomous-mission-roadmap.md) (the endurance test — one real 7+ day unattended mission) is architecturally impossible.
 
 The diagnosis came from a parallel session's design doc in conversation on 2026-04-11. This plan is the chosen architecture after that critique.
 
@@ -43,7 +43,7 @@ Every task declares a measurable exit condition. Deterministic loops run until t
 
 Three-layer architecture:
 
-- **Intra-task iteration** lives in convergence loops ([Plan 48](../97-plans/48-plan-convergence-loop-and-branch-automation.md)) with declarative exit conditions. Deterministic, no LLM in the feedback path. This handles the Karpathy "single measurable number" and IndyDevDan "till done" patterns cleanly for the 90% case.
+- **Intra-task iteration** lives in convergence loops ([Plan 48](../08-plans/048-plan-convergence-loop-and-branch-automation.md)) with declarative exit conditions. Deterministic, no LLM in the feedback path. This handles the Karpathy "single measurable number" and IndyDevDan "till done" patterns cleanly for the 90% case.
 - **Plan-level routing** lives in a thin supervisor (§4 below). **Mostly deterministic rules** — 7 of 8 decision branches are pure Python with no LLM call. The supervisor is framed as a new gate checkpoint (`post_run`) that reuses Plan 22's `GateReviewer` protocol. When an LLM *is* needed (ambiguous classification, unknown situations), it uses **Haiku** — fast, cheap, structured output. Never reasoning-class.
 - **Specialist delegation** for the real work. The supervisor *never* designs tasks itself and *never* writes chat messages itself. When plan evolution is needed, it wakes the existing **Planning Agent** via its `refine_plan` tool. When user-facing communication is needed, it wakes the existing **Mission Director** via the new session followup primitive (§5 Phase A).
 
@@ -96,7 +96,7 @@ Folds in the existing TODO.md entry *"Director proactive follow-up: wake on comp
 
 ### 3.2 Convergence loop runner (Phase B)
 
-Graduates [Plan 48](../97-plans/48-plan-convergence-loop-and-branch-automation.md) from stub to implementation for the intra-task iteration layer. The existing [`dispatch/convergence.py`](../../modules/backend/agents/mission_control/dispatch/convergence.py) scaffold (441 lines) already implements a pair-agent eval + remediation loop (e.g. `software.quality.agent` + `software.coder.agent`) with hardcoded convergence-condition strings (`all_tests_pass`, `zero_critical_findings`, `zero_findings`, `quality_threshold`). Its `ConvergenceConfig.from_dict` expects a `loop_config` dict from the task's `input_data`.
+Graduates [Plan 48](../08-plans/048-plan-convergence-loop-and-branch-automation.md) from stub to implementation for the intra-task iteration layer. The existing [`dispatch/convergence.py`](../../modules/backend/agents/mission_control/dispatch/convergence.py) scaffold (441 lines) already implements a pair-agent eval + remediation loop (e.g. `software.quality.agent` + `software.coder.agent`) with hardcoded convergence-condition strings (`all_tests_pass`, `zero_critical_findings`, `zero_findings`, `quality_threshold`). Its `ConvergenceConfig.from_dict` expects a `loop_config` dict from the task's `input_data`.
 
 Phase B's scope is **wiring, not redesign**: fork the dispatch path in `loop.py::_execute_layer` so tasks with `input_data['type'] == 'convergence_loop'` call `execute_convergence_loop()` instead of the standard single-agent execution. No new exit-condition DSL is invented — the existing `convergence_condition` + `convergence_threshold` fields are the shape a planner (or plan task JSON) targets. The "single measurable number" pattern maps to `quality_threshold` + `convergence_threshold`; the "till done" pattern maps to `zero_findings` / `all_tests_pass`.
 
@@ -656,10 +656,10 @@ A: Four independent circuit breakers in §4.6, all deterministic and evaluated b
 ### Plan docs
 
 - [Plan 22 — Step-Through Gate (X — done)](22-plan-step-through-gate-[X].md) — the gate protocol this plan extends
-- [Plan 42 — Mission Backlog Model](../97-plans/42-plan-mission-backlog-model.md) — §10.4 gate_mode, §10.5 write-back, §10.7 budget enforcement, all reused
-- [Plan 43 — Persistent Mission Artifacts](43-plan-persistent-mission-artifacts.md) — artifacts the supervisor reads when reasoning about completion
-- [Plan 46 — Autonomous Mission Roadmap](../97-plans/46-plan-autonomous-mission-roadmap.md) — this plan is the new Phase 3
-- [Plan 48 — Convergence Loop + Branch Automation](../97-plans/48-plan-convergence-loop-and-branch-automation.md) — Phase 6 graduates as part of Phase B here
+- [Plan 42 — Mission Backlog Model](042-plan-mission-backlog-model-[SUPERSEDED].md) — §10.4 gate_mode, §10.5 write-back, §10.7 budget enforcement, all reused
+- [Plan 43 — Persistent Mission Artifacts](43-plan-persistent-mission-artifacts-[X].md) — artifacts the supervisor reads when reasoning about completion
+- [Plan 46 — Autonomous Mission Roadmap](../08-plans/046-plan-autonomous-mission-roadmap.md) — this plan is the new Phase 3
+- [Plan 48 — Convergence Loop + Branch Automation](../08-plans/048-plan-convergence-loop-and-branch-automation.md) — Phase 6 graduates as part of Phase B here
 
 ### Files this plan creates
 

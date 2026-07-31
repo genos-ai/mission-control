@@ -714,7 +714,7 @@ Validate every A2A task message independently. Do not build accumulated trust ba
 
 Every security boundary in the platform must **fail closed** when configuration is missing. The system must refuse to start rather than silently degrade to open access. This principle applies to all external interfaces — MCP endpoints, A2A endpoints, messaging channel webhooks, WebSocket connections, and REST APIs.
 
-This addresses the most common vulnerability pattern in agent-first platforms (documented in [98-research/07](../98-research/07-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md)): when a security-relevant configuration value is missing or empty, the system defaults to allowing all access, and the developer never notices until the vulnerability is exploited.
+This addresses the most common vulnerability pattern in agent-first platforms (documented in [98-research/07](../09-research/07-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md)): when a security-relevant configuration value is missing or empty, the system defaults to allowing all access, and the developer never notices until the vulnerability is exploited.
 
 **Startup invariants** (checked before the application accepts traffic):
 
