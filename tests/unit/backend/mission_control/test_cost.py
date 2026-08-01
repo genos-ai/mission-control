@@ -4,7 +4,12 @@ Unit Tests for mission_control/cost.py.
 Tests exercise real config loading (model_pricing from mission_control.yaml).
 """
 
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from modules.backend.agents.mission_control.cost import compute_cost_usd, estimate_cost
+from modules.backend.schemas.agent_config import ModelPricingRateSchema
 
 
 class TestComputeCostUsd:
@@ -20,6 +25,38 @@ class TestComputeCostUsd:
     def test_unknown_model_uses_default(self):
         cost = compute_cost_usd(1_000_000, 1_000_000, "unknown:model")
         assert cost > 0
+
+    def test_unknown_model_with_default_warns(self):
+        """Plan 84 4.6: unknown model falling back to 'default' must warn
+        with the model name so pricing gaps are visible and get fixed."""
+        from modules.backend.agents.mission_control import cost as cost_module
+
+        default_rates = ModelPricingRateSchema(input=1.0, output=2.0)
+        fake_config = MagicMock()
+        fake_config.model_pricing = {"default": default_rates}
+        with (
+            patch(
+                "modules.backend.agents.mission_control.cost._load_mission_control_config",
+                return_value=fake_config,
+            ),
+            patch.object(cost_module.logger, "warning") as mock_warning,
+        ):
+            cost = compute_cost_usd(1_000_000, 1_000_000, "totally:unknown-model")
+        assert cost == 3.0  # 1.0 (input) + 2.0 (output) per million tokens
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.kwargs["extra"]["model"] == "totally:unknown-model"
+
+    def test_unknown_model_no_default_raises(self):
+        """Plan 84 4.6: no pricing and no 'default' entry must raise, not
+        silently return 0.0 (which would defeat budget enforcement)."""
+        fake_config = MagicMock()
+        fake_config.model_pricing = {}
+        with patch(
+            "modules.backend.agents.mission_control.cost._load_mission_control_config",
+            return_value=fake_config,
+        ):
+            with pytest.raises(ValueError, match="totally:unknown-model"):
+                compute_cost_usd(1_000, 1_000, "totally:unknown-model")
 
     def test_none_model_uses_default(self):
         cost = compute_cost_usd(1_000_000, 1_000_000, None)

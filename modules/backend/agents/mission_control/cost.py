@@ -26,12 +26,21 @@ def compute_cost_usd(
     """
     config = _load_mission_control_config()
     default_rates = config.model_pricing.get("default")
-    rates = config.model_pricing.get(model or "", default_rates)
+    rates = config.model_pricing.get(model or "")
     if rates is None:
+        if default_rates is None:
+            raise ValueError(
+                f"No pricing config found for model '{model}' and no 'default' "
+                "entry exists in config/agents/mission_control.yaml model_pricing — "
+                "add one or the other. Returning 0.0 would silently defeat budget "
+                "enforcement."
+            )
+        logger.warning(
+            "No pricing config for model, using 'default' rates — add a "
+            "model_pricing entry to stop seeing this warning",
+            extra={"model": model},
+        )
         rates = default_rates
-    if rates is None:
-        logger.warning("No pricing config found", extra={"model": model})
-        return 0.0
 
     input_cost = (input_tokens / 1_000_000) * rates.input
     output_cost = ((output_tokens + thinking_tokens) / 1_000_000) * rates.output
