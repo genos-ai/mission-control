@@ -9,10 +9,13 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from modules.backend.core.logging import get_logger
 from modules.backend.services.code_map.assembler import assemble_code_map
 from modules.backend.services.code_map.graph import build_reference_graph
 from modules.backend.services.code_map.parser import parse_modules
 from modules.backend.services.code_map.ranker import rank_symbols
+
+logger = get_logger(__name__)
 
 
 def generate_code_map(
@@ -81,5 +84,5 @@ def _get_git_commit(repo_root: Path) -> str:
         if result.returncode == 0:
             return result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        logger.debug("Could not determine git commit hash", exc_info=True)
     return ""

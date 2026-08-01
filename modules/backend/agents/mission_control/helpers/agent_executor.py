@@ -234,7 +234,9 @@ def _make_agent_executor(
                             content=text,
                         )
                 except UserError:
-                    pass  # Structured output agent — no text stream
+                    logger.debug(
+                        "Structured output agent — no text stream", extra={"agent_name": agent_name}
+                    )
 
                 output = await stream.get_output()
                 await _emit_tool_events(

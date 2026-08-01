@@ -208,7 +208,7 @@ class MissionControlApp(App):
             name = self.state.current_mission_name or "No Mission"
             label.update(f"[bold]{name}[/bold]")
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def _load_roster(self) -> None:
         """Load the agent roster and populate the sidebar."""
@@ -228,7 +228,7 @@ class MissionControlApp(App):
         try:
             self.screen.query_one("#mission-input", Input).focus()
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     async def on_mission_start_requested(
         self,
@@ -503,7 +503,7 @@ class MissionControlApp(App):
             stream = self.screen.query_one("#event-stream", EventStreamWidget)
             stream.add_event(event)
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def _active_detail_for(self, agent_id: str) -> AgentDetailWidget | None:
         """Return the agent detail widget if it's showing this agent."""
@@ -582,7 +582,7 @@ class MissionControlApp(App):
             )
             sidebar.set_active(agent_name, active)
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def _sidebar_set_status(
         self,
@@ -597,7 +597,7 @@ class MissionControlApp(App):
             )
             sidebar.set_agent_status(agent_name, status, cost)
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def _update_cost_bar(self) -> None:
         try:
@@ -620,7 +620,7 @@ class MissionControlApp(App):
                 len(self.state.workflow_progress) if self.state.workflow_progress else 0
             )
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def _notify(
         self,
@@ -654,7 +654,7 @@ class MissionControlApp(App):
             )
             stack.add_notification(message, severity=severity)
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def _update_notification_badge(self) -> None:
         """Update the notification count on the CostBar."""
@@ -663,7 +663,7 @@ class MissionControlApp(App):
             cost_bar = self.screen.query_one(CostBar)
             cost_bar.notification_count = count
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def _update_workflow_panel(
         self,
@@ -698,7 +698,7 @@ class MissionControlApp(App):
                 total_layers=len(self.state.task_layers),
             )
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     # ── Plan handling ──────────────────────────────────────────────────
 
@@ -776,7 +776,7 @@ class MissionControlApp(App):
             )
             sidebar.set_selected(event.agent_name)
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
         await self._show_agent_detail(event.agent_name)
 
     async def _show_agent_detail(self, agent_name: str) -> None:
@@ -880,11 +880,11 @@ class MissionControlApp(App):
             else:
                 panel.remove_class("loading")
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")
 
     def action_focus_input(self) -> None:
         """Focus the chat input (Ctrl+/)."""
         try:
             self.screen.query_one("#mission-input", Input).focus()
         except NoMatches:
-            pass
+            logger.debug("Widget not found on current screen — ignoring")

@@ -15,8 +15,11 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static, TextArea
 
 from modules.backend.agents.mission_control.gate import GateAction, GateContext, GateDecision
+from modules.backend.core.logging import get_logger
 from modules.clients.common.gate_helpers import ACTION_COLORS, cost_color, gate_header, status_icon
 from modules.clients.tui.messages import GateReviewCompleted
+
+logger = get_logger(__name__)
 
 # ── Gate type display names ──────────────────────────────────────────
 
@@ -246,7 +249,7 @@ class GateReviewModal(ModalScreen[GateDecision]):
                 if text:
                     modified_instructions = text
             except NoMatches:
-                pass
+                logger.debug("Retry input widget not found — using no modified instructions")
 
         decision = GateDecision(
             action=action,
@@ -272,7 +275,7 @@ class GateReviewModal(ModalScreen[GateDecision]):
                 self.query_one("#retry-input", TextArea).focus()
                 return
         except NoMatches:
-            pass
+            logger.debug("Retry section widget not found — resolving immediately")
         self._resolve(GateAction.RETRY)
 
     def action_gate_modify(self) -> None:

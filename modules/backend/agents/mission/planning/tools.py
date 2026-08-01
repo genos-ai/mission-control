@@ -218,7 +218,10 @@ def register_planning_tools(agent: Agent) -> None:
         try:
             parsed_value = json.loads(value)
         except (json.JSONDecodeError, TypeError):
-            pass
+            logger.debug(
+                "Static input value is not JSON — using as literal string",
+                extra={"task_id": task_id, "key": key},
+            )
         result = session.set_static_input(
             task_id=task_id,
             key=key,

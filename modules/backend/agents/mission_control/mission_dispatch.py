@@ -279,7 +279,9 @@ async def handle_mission(
                 try:
                     raw_plan = planning_result.get("task_plan") if planning_result else None
                 except AttributeError:
-                    pass
+                    logger.debug(
+                        "planning_result has no .get() — could not extract raw plan for diagnostics"
+                    )
                 await _phase("error", f"Attempt {attempt + 1} failed: {last_error}")
                 logger.warning(
                     "Planning Agent error, retrying",

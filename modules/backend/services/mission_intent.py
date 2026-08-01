@@ -29,7 +29,10 @@ def _schedule_embed(source_table: str, source_id: str) -> None:
 
         loop.create_task(_fire_embed_direct(source_table, source_id))
     except RuntimeError:
-        pass  # No event loop — skip
+        logger.debug(
+            "No event loop running — skipping embed-on-write",
+            extra={"source_table": source_table, "source_id": source_id},
+        )
 
 
 class MissionIntentService(BaseService):

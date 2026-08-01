@@ -80,7 +80,7 @@ async def get_current_user(
         try:
             return await auth_service.resolve_api_key(api_key)
         except AuthenticationError:
-            pass  # Fall through to legacy check
+            logger.debug("Per-user API key check failed, trying legacy key")
 
         # 3. Legacy ADMIN_API_KEY fallback
         user = await auth_service.resolve_legacy_key(api_key)
@@ -260,7 +260,10 @@ async def require_session_access(db, session_id: str, user) -> None:
             await require_mission_access(db, session.mission_id, user)
             return
         except AuthorizationError:
-            pass
+            logger.debug(
+                "Session owner check failed and mission-access check also denied",
+                extra={"session_id": session_id},
+            )
     raise AuthorizationError("You don't have access to this session")
 
 

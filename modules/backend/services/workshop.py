@@ -123,7 +123,9 @@ class WorkshopService(BaseService):
                     async for _ in stream.stream_text(delta=True):
                         pass
                 except UserError:
-                    pass
+                    logger.debug(
+                        "Structured output agent — no text stream", extra={"agent_name": agent_name}
+                    )
 
                 output = await stream.get_output()
                 usage = stream.usage()

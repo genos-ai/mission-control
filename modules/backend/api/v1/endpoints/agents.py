@@ -228,7 +228,9 @@ async def agent_chat_stream(
                 yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
             yield "event: done\ndata: {}\n\n"
         except asyncio.CancelledError:
-            pass
+            logger.debug(
+                "Chat SSE stream cancelled — client disconnected", extra={"session_id": session_id}
+            )
 
     return StreamingResponse(
         generate(),

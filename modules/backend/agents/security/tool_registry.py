@@ -218,7 +218,9 @@ def detect_surface(target_path: str) -> SurfaceDetectionResult:
                 if "flask" in text.lower():
                     frameworks.add("flask")
             except OSError:
-                pass
+                logger.debug(
+                    "Could not read file for framework detection", extra={"path": str(path)}
+                )
         elif suffix in (".js", ".ts", ".jsx", ".tsx"):
             result.has_javascript = True
         elif name.startswith("dockerfile"):

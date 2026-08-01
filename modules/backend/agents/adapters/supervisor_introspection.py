@@ -119,7 +119,7 @@ async def get_past_decisions(
             try:
                 meta = json.loads(raw_meta)
             except (json.JSONDecodeError, ValueError):
-                pass
+                logger.debug("Could not parse __META__ tail of decision reasoning")
         else:
             human_text = reasoning.strip()
 

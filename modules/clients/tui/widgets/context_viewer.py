@@ -14,7 +14,10 @@ from textual.css.query import NoMatches
 from textual.widget import Widget
 from textual.widgets import Label, RichLog, TabbedContent, TabPane
 
+from modules.backend.core.logging import get_logger
 from modules.clients.common.gate_helpers import STATUS_ICONS
+
+logger = get_logger(__name__)
 
 
 class ContextViewer(Widget):
@@ -117,7 +120,7 @@ class ContextViewer(Widget):
         try:
             self.query_one("#context-title", Label).update(f"[bold]{title}[/bold]")
         except NoMatches:
-            pass
+            logger.debug("Context title widget not yet mounted")
         self._load_json_tab(data)
 
     def clear(self) -> None:
@@ -126,4 +129,4 @@ class ContextViewer(Widget):
             try:
                 self.query_one(log_id, RichLog).clear()
             except NoMatches:
-                pass
+                logger.debug("Tab widget not yet mounted", extra={"log_id": log_id})

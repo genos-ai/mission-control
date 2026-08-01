@@ -109,7 +109,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
                 logger.info("Temporal schedule registered", extra={"schedule_id": sid})
             except ScheduleAlreadyRunningError:
-                pass  # Already exists — normal on restart
+                logger.debug(
+                    "Temporal schedule already exists — normal on restart",
+                    extra={"schedule_id": sid},
+                )
 
         # Plan dispatch — configurable interval
         await _register_schedule(

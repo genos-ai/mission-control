@@ -115,6 +115,7 @@ def _resolve_log_path(configured_path: str) -> Path:
 _mission_events_enabled = False
 _event_queue: asyncio.Queue | None = None
 _drain_task: asyncio.Task | None = None
+_dropped_mission_events = 0
 
 
 def mission_event_processor(
@@ -156,7 +157,12 @@ def mission_event_processor(
     try:
         _event_queue.put_nowait((str(mission_id), str(message), level, str(source)))
     except asyncio.QueueFull:
-        pass  # Drop under backpressure — logging must never block
+        # Drop under backpressure — logging must never block. Not calling
+        # logger.* here: this IS a structlog processor, so that would
+        # recurse back into this same function. Track the drop count
+        # instead of silently discarding it.
+        global _dropped_mission_events
+        _dropped_mission_events += 1
 
     return event_dict
 

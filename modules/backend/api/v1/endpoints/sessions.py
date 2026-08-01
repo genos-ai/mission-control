@@ -442,7 +442,9 @@ async def send_message(
                 yield f"event: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
             yield "event: done\ndata: {}\n\n"
         except asyncio.CancelledError:
-            pass  # client disconnected — background task continues
+            logger.debug(
+                "Chat SSE stream cancelled — client disconnected", extra={"session_id": session_id}
+            )
 
     return StreamingResponse(
         generate(),

@@ -283,7 +283,10 @@ class ComplianceScannerService:
                                         }
                                     )
                     except SyntaxError:
-                        pass
+                        logger.debug(
+                            "Could not parse file for cli_options_not_positional check",
+                            extra={"file": rel_path},
+                        )
 
             if "cli_verbose_debug" in self._enabled_rules:
                 has_verbose = "--verbose" in source

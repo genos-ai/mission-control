@@ -471,7 +471,10 @@ class SessionService(BaseService):
                 await self.expire_session(session.id)
                 count += 1
             except ValidationError:
-                pass  # Already in terminal state — skip
+                logger.debug(
+                    "Session already in terminal state — skipping expiry",
+                    extra={"session_id": session.id},
+                )
         if count > 0:
             logger.info(
                 "Expired inactive sessions",

@@ -12,7 +12,10 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Label
 
+from modules.backend.core.logging import get_logger
 from modules.clients.common.gate_helpers import cost_color
+
+logger = get_logger(__name__)
 
 
 def _fmt_tokens(n: int) -> str:
@@ -67,7 +70,7 @@ class CostBar(Widget):
         try:
             self.query_one("#cost-label", Label).update(f"[{color}]${cost:.4f}[/{color}]")
         except NoMatches:
-            pass
+            logger.debug("Status bar widget not yet mounted")
 
     def watch_input_tokens(self, tokens: int) -> None:
         self._update_tokens()
@@ -81,13 +84,13 @@ class CostBar(Widget):
                 f"{_fmt_tokens(self.input_tokens)} in / {_fmt_tokens(self.output_tokens)} out"
             )
         except NoMatches:
-            pass
+            logger.debug("Status bar widget not yet mounted")
 
     def watch_current_layer(self, layer: int) -> None:
         try:
             self.query_one("#layer-label", Label).update(f"Layer {layer}/{self.total_layers}")
         except NoMatches:
-            pass
+            logger.debug("Status bar widget not yet mounted")
 
     def watch_pending_gates(self, count: int) -> None:
         try:
@@ -97,7 +100,7 @@ class CostBar(Widget):
             else:
                 label.update("")
         except NoMatches:
-            pass
+            logger.debug("Status bar widget not yet mounted")
 
     def watch_workflow_name(self, name: str) -> None:
         self._update_workflow_label()
@@ -119,7 +122,7 @@ class CostBar(Widget):
             else:
                 label.update("")
         except NoMatches:
-            pass
+            logger.debug("Status bar widget not yet mounted")
 
     def watch_notification_count(self, count: int) -> None:
         try:
@@ -129,7 +132,7 @@ class CostBar(Widget):
             else:
                 label.update("")
         except NoMatches:
-            pass
+            logger.debug("Status bar widget not yet mounted")
 
     def watch_connected(self, connected: bool) -> None:
         try:
@@ -139,4 +142,4 @@ class CostBar(Widget):
             else:
                 label.update("[red]disconnected[/red]")
         except NoMatches:
-            pass
+            logger.debug("Status bar widget not yet mounted")

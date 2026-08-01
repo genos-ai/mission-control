@@ -138,7 +138,7 @@ class NotificationStack(Widget):
             entry = self.query_one(f"#{entry_id}", NotificationEntry)
             entry.remove()
         except NoMatches:
-            pass
+            logger.debug("Notification entry already gone", extra={"entry_id": entry_id})
         self._dismiss_timers.pop(entry_id, None)
 
     def clear_all(self) -> None:
@@ -147,7 +147,7 @@ class NotificationStack(Widget):
             container = self.query_one("#notification-container", Vertical)
             container.remove_children()
         except NoMatches:
-            pass
+            logger.debug("Notification container not mounted")
         for timer in self._dismiss_timers.values():
             timer.stop()
         self._dismiss_timers.clear()

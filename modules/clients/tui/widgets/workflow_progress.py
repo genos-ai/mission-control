@@ -13,7 +13,10 @@ from textual.css.query import NoMatches
 from textual.widget import Widget
 from textual.widgets import Label, Static
 
+from modules.backend.core.logging import get_logger
 from modules.clients.common.gate_helpers import STATUS_ICONS, cost_color, safe_css_id
+
+logger = get_logger(__name__)
 
 
 class StepNode(Static):
@@ -174,7 +177,7 @@ class WorkflowProgressWidget(Widget):
             title = self.query_one("#workflow-title", Label)
             title.update(title_text)
         except NoMatches:
-            pass
+            logger.debug("Workflow title widget not yet mounted")
 
     def _render_waves(self) -> None:
         """Render the full wave layout — called once on load."""

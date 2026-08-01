@@ -399,7 +399,7 @@ def _raise_for_error(status: int, body: bytes) -> None:
             detail = parsed.get("detail", str(err))
             raise ApiError(f"HTTP_{status}", str(detail), status)
     except (json.JSONDecodeError, UnicodeDecodeError):
-        pass
+        logger.debug("Error response body was not valid JSON", extra={"status": status})
     raise ApiError(f"HTTP_{status}", f"Request failed with status {status}", status)
 
 

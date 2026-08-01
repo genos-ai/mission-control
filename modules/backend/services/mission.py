@@ -335,7 +335,7 @@ class MissionService(BaseService):
             for container in containers:
                 container.remove(force=True)
         except ImportError:
-            pass
+            logger.debug("docker package not installed — skipping container cleanup")
         except Exception:
             logger.debug(
                 "Docker container cleanup failed for mission %s", mission_id, exc_info=True
@@ -397,7 +397,7 @@ class MissionService(BaseService):
             _UUID(id_or_name)
             mission = await self._mission_repo.get_by_id_or_none(id_or_name)
         except ValueError:
-            pass
+            logger.debug("'%s' is not a valid UUID — trying name lookup", id_or_name)
         if mission is None:
             mission = await self._mission_repo.get_by_name(id_or_name)
         if mission is None:

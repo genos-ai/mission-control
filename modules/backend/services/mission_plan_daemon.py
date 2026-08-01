@@ -85,7 +85,7 @@ class MissionPlanDaemon:
             try:
                 await self._task
             except asyncio.CancelledError:
-                pass
+                logger.debug("daemon task cancelled as requested")
             except Exception:
                 logger.debug("daemon task raised during cancellation", exc_info=True)
         finally:

@@ -52,7 +52,10 @@ def _schedule_embed(source_table: str, source_id: str) -> None:
         loop = asyncio.get_running_loop()
         loop.create_task(_fire_embed_direct(source_table, source_id))
     except RuntimeError:
-        pass  # No event loop — skip (e.g. CLI context)
+        logger.debug(
+            "No event loop running — skipping embed-on-write (e.g. CLI context)",
+            extra={"source_table": source_table, "source_id": source_id},
+        )
 
 
 async def _fire_embed_direct(source_table: str, source_id: str) -> None:

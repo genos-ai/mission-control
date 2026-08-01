@@ -15,8 +15,11 @@ from textual.widget import Widget
 from textual.widgets import Label, Static
 
 from modules.backend.agents.mission_control.roster import RosterAgentEntry
+from modules.backend.core.logging import get_logger
 from modules.clients.common.gate_helpers import status_icon
 from modules.clients.tui.messages import AgentSelected
+
+logger = get_logger(__name__)
 
 
 class AgentCard(Static):
@@ -115,7 +118,7 @@ class MissionSummary(Static):
             )
             self.query_one("#mission-cost", Label).update(f"Cost: ${total_cost:.4f}")
         except NoMatches:
-            pass  # Widget not yet mounted
+            logger.debug("Mission summary widget not yet mounted")
 
 
 class AgentSidebar(Widget):

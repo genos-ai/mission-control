@@ -70,7 +70,10 @@ async def _require_session_access(
             await _require_mission_access(db, session.mission_id, user)
             return
         except AuthorizationError:
-            pass
+            logger.debug(
+                "Session owner check failed and mission-access check also denied",
+                extra={"session_id": session_id},
+            )
     raise AuthorizationError("You don't have access to this session")
 
 

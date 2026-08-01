@@ -212,7 +212,7 @@ class AgentMissionWorkflow:
             )
             return
         except TimeoutError:
-            pass
+            workflow.logger.debug("Approval window elapsed — escalating")
 
         # Escalate: re-notify with critical urgency
         await workflow.execute_local_activity(

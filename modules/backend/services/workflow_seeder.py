@@ -131,7 +131,9 @@ async def seed_workflows(
                 counts["skipped"] += 1
                 continue
             except NotFoundError:
-                pass  # Expected — proceed to create
+                logger.debug(
+                    "No existing system template found — proceeding to create", extra={"name": name}
+                )
 
             await service.create_workflow(
                 mission_id=None,
