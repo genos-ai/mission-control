@@ -843,7 +843,7 @@ def check_silent_error_swallow(path: Path, rel: str) -> list[Violation]:
                 violations.append(
                     Violation(
                         "014.1",
-                        "warning",
+                        "error",
                         rel,
                         except_line,
                         "except block logs error/warning but does not emit a mission event — "
@@ -881,7 +881,7 @@ def check_noopbus_in_production(path: Path, rel: str) -> list[Violation]:
             violations.append(
                 Violation(
                     "012.1",
-                    "warning",
+                    "error",
                     rel,
                     i,
                     "NoOpEventBus() — events will be silently dropped. "
