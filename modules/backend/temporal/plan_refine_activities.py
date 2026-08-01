@@ -80,6 +80,10 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
                 approved_count=approved_count,
             )
     except Exception as exc:
+        # Catch-all justified: wraps plan refinement (LLM calls, DB
+        # writes) whose exception surface is unbounded — logged and
+        # emitted here for Console visibility, then re-raised so
+        # Temporal's retry/failure semantics still apply.
         activity.logger.error(
             "Plan refine failed",
             extra={"mission_id": input.mission_id, "plan_id": input.plan_id},

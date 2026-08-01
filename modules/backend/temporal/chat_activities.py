@@ -140,6 +140,10 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
             await db.commit()
 
     except Exception as exc:
+        # Catch-all justified: wraps handle(), a multi-step agent turn
+        # (LLM calls, tool calls, DB writes) whose exception surface is
+        # unbounded — must convert to a ChatTurnResult with error set
+        # rather than raise, so the Temporal activity completes cleanly.
         activity.logger.error(
             "Chat turn failed",
             extra={
@@ -165,8 +169,9 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
                 ),
             )
         except Exception:
-            # best-effort — this IS the event-emission path; there is
-            # nowhere further to escalate to.
+            # Catch-all justified: this IS the event-emission path
+            # (Redis publish can fail many ways) and there is nowhere
+            # further to escalate to. best-effort.
             logger.debug(
                 "error event publish failed in Temporal activity (best-effort)", exc_info=True
             )

@@ -119,6 +119,9 @@ async def execute_design_workflow(input: DesignWorkflowInput) -> ToolForkResult:
             cost_usd=result.usage().total_tokens * 0.00001 if result.usage() else 0.0,
         )
     except Exception as e:
+        # Catch-all justified: Temporal activity boundary wrapping an
+        # agent.run() call whose exception surface is unbounded — must
+        # convert to a failed ToolForkResult rather than raise.
         activity.logger.error(
             "execute_design_workflow failed",
             extra={"mission_id": input.mission_id, "error": str(e)},
@@ -171,6 +174,10 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
             summary=f"Workflow {input.workflow_name} completed",
         )
     except Exception as e:
+        # Catch-all justified: Temporal activity boundary wrapping
+        # WorkflowRunService.run_workflow() whose exception surface is
+        # unbounded — must convert to a failed ToolForkResult rather than
+        # raise.
         activity.logger.error(
             "execute_run_workflow failed",
             extra={"mission_id": input.mission_id, "error": str(e)},

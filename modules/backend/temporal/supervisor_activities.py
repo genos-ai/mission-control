@@ -91,6 +91,10 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     try:
         return await _do_evaluate_post_run(input)
     except Exception as e:
+        # Catch-all justified: Temporal activity boundary wrapping the
+        # AutonomousPostRunReviewer (LLM call) whose exception surface is
+        # unbounded — must convert to a failed PostRunEvalResult rather
+        # than raise.
         from modules.backend.temporal.activities import _format_activity_error
 
         clean_msg = _format_activity_error(e)

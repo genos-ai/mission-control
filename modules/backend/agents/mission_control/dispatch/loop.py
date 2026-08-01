@@ -717,6 +717,11 @@ async def _dispatch_workflow_task(
             token_usage=TaskTokenUsage(),
         )
     except Exception as e:
+        # Catch-all justified: this is a task-dispatch boundary wrapping
+        # a sub-workflow run (run_workflow) whose exception surface is
+        # unbounded — any failure must convert to a failed TaskResult so
+        # the dispatch loop can continue to the next task instead of
+        # crashing the whole mission.
         # best-effort — the finally block below unconditionally emits
         # PlanStepCompletedEvent with status="failed" for this case.
         logger.error(

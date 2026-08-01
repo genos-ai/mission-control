@@ -16,6 +16,8 @@ import json
 import uuid
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError as PydanticValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_default_budget_usd
@@ -77,8 +79,9 @@ class MissionPlanOrchestrator(BaseService):
         try:
             await self._event_bus.publish_to_mission(mission_id, event)
         except Exception as e:  # noqa: BLE001
-            # best-effort — this IS the event-emission path; there is nowhere
-            # further to escalate to.
+            # Catch-all justified: this IS the event-emission path (Redis
+            # publish can fail many ways) and there is nowhere further to
+            # escalate to. best-effort.
             self._logger.warning(
                 "Failed to publish mission_plan event",
                 extra={
@@ -195,7 +198,7 @@ class MissionPlanOrchestrator(BaseService):
             errors: list[str] = []
             try:
                 candidate = TaskPlan.model_validate(planning_result["task_plan"])
-            except Exception as e:
+            except (PydanticValidationError, KeyError, TypeError) as e:
                 errors.append(f"Schema validation failed: {e}")
                 candidate = None
 
@@ -426,7 +429,7 @@ class MissionPlanOrchestrator(BaseService):
         # Schema validation
         try:
             candidate = TaskPlan.model_validate(plan_dict)
-        except Exception as e:
+        except PydanticValidationError as e:
             raise ValidationError(f"TaskPlan schema validation failed: {e}") from e
 
         # Semantic validation (11 rules)
@@ -947,7 +950,7 @@ class MissionPlanOrchestrator(BaseService):
                     _exec_row.completed_task_count = _completed
                     _exec_row.failed_task_count = _failed
                     await self._session.flush()
-            except Exception:
+            except SQLAlchemyError:
                 # best-effort — denormalised display counts only; the real
                 # run-completed event below is emitted unconditionally.
                 self._logger.warning(
@@ -1043,6 +1046,11 @@ class MissionPlanOrchestrator(BaseService):
                 _decision_event,
             )
         except Exception:
+            # Catch-all justified: wraps the post-run supervisor
+            # evaluation (LLM review, DB writes, decision application,
+            # followups) whose exception surface is unbounded — logged
+            # and emitted here so the plan pauses visibly rather than
+            # advancing on a half-applied decision.
             self._logger.warning("Post-run supervisor evaluation failed", exc_info=True)
             await self._emit(
                 plan.mission_id,
@@ -1106,9 +1114,12 @@ class MissionPlanOrchestrator(BaseService):
                     agent_turn_runner=_agent_turn_runner,
                 )
             except Exception:
-                # best-effort — the dispatch/run itself already completed
-                # successfully; only the proactive Director chat notification
-                # failed to fire.
+                # Catch-all justified: _agent_turn_runner calls
+                # handle_mission() (an LLM-driven chat turn) whose
+                # exception surface is unbounded. best-effort — the
+                # dispatch/run itself already completed successfully;
+                # only the proactive Director chat notification failed
+                # to fire.
                 self._logger.warning(
                     "Failed to fire followups for event",
                     extra={
@@ -1199,6 +1210,10 @@ class MissionPlanOrchestrator(BaseService):
                     _mission_obj.owner_id,
                 )
             except Exception:
+                # Catch-all justified: wraps self.refine() (Planning Agent
+                # LLM call) whose exception surface is unbounded — the
+                # plan is paused and a SystemEvent emitted so a human can
+                # intervene rather than the mission silently stalling.
                 self._logger.warning(
                     "Supervisor ADVANCE_REFINE: refinement failed, "
                     "pausing plan for human review",
@@ -1526,7 +1541,7 @@ class MissionPlanOrchestrator(BaseService):
             self._session.add(record)
             await self._session.commit()
             return record
-        except Exception:
+        except SQLAlchemyError:
             await self._session.rollback()
             self._logger.warning(
                 "Failed to create early execution record (non-fatal)",

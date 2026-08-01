@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import WorkflowOutputMappingError
 from modules.backend.core.logging import get_logger
@@ -65,7 +67,11 @@ def _extract_run_cost(result: Any, model_name: str | None = None) -> float:
             cache_read_tokens=getattr(usage, "cache_read_tokens", 0),
             cache_write_5m_tokens=getattr(usage, "cache_write_tokens", 0),
         )
-    except Exception:
+    except (AttributeError, TypeError):
+        # Narrowed deliberately: result.usage() shape mismatches only.
+        # compute_cost_usd's own pricing errors (e.g. unknown model) must
+        # NOT be swallowed here — silently returning 0.0 for those would
+        # defeat budget enforcement (see Phase 4.6).
         logger.debug("Cost extraction failed", extra={"model": model_name}, exc_info=True)
         return 0.0
 
@@ -169,6 +175,9 @@ class WorkflowRunWavesMixin:
         try:
             await self._event_bus.publish_to_mission(mission_id, event)
         except Exception:
+            # Catch-all justified: this IS the event-emission path
+            # (Redis publish can fail many ways) and there is nowhere
+            # further to escalate to.
             logger.debug("Workflow event publish failed", exc_info=True)
 
     async def _resolve_workflow_plan_id(self, mission_id: str | None) -> str | None:
@@ -183,7 +192,10 @@ class WorkflowRunWavesMixin:
                 repo = MissionPlanRepository(db)
                 plan = await repo.get_by_mission_id(mission_id)
                 return plan.id if plan else None
-        except Exception:
+        except SQLAlchemyError:
+            logger.debug(
+                "Plan ID lookup failed for mission", extra={"mission_id": mission_id}, exc_info=True
+            )
             return None
 
     async def _sync_plan_task_states(
@@ -254,6 +266,10 @@ class WorkflowRunWavesMixin:
 
                 await db.commit()
         except Exception:
+            # Catch-all justified: this is a best-effort Kanban sync (see
+            # docstring) spanning DB writes and event publishes across a
+            # loop of steps — a partial failure must not break the main
+            # workflow run.
             logger.debug("Plan task state sync failed (non-fatal)", exc_info=True)
 
     async def _execute_steps(
@@ -751,6 +767,10 @@ class WorkflowRunWavesMixin:
             status_str = "completed" if success else "failed"
             total_cost = outcome.total_cost_usd
         except Exception as e:
+            # Catch-all justified: wraps handle_mission(), a full agent
+            # dispatch (LLM calls, tool calls, DB writes) whose exception
+            # surface is unbounded — logged and emitted here for Console
+            # visibility, then re-raised as RuntimeError below.
             import traceback
 
             tb_str = traceback.format_exception(e)
@@ -1145,8 +1165,11 @@ class WorkflowRunWavesMixin:
             )
             success = True
         except Exception:
-            # best-effort — the step continues with success=False, which is
-            # reported via the unconditional WorkflowNotificationSentEvent below.
+            # Catch-all justified: wraps an external notification dispatch
+            # whose failure modes are unbounded (network, auth, service
+            # down). best-effort — the step continues with success=False,
+            # which is reported via the unconditional
+            # WorkflowNotificationSentEvent below.
             logger.warning("Notification step failed", extra={"step_id": step.id}, exc_info=True)
             success = False
 
@@ -1231,8 +1254,10 @@ class WorkflowRunWavesMixin:
         except RuntimeError:
             raise
         except Exception as e:
-            # best-effort — the step continues with success=False, which is
-            # reported via the unconditional WorkflowToolCallCompletedEvent below.
+            # Catch-all justified: `impl` is an arbitrary tool function
+            # whose exception surface is unbounded. best-effort — the step
+            # continues with success=False, which is reported via the
+            # unconditional WorkflowToolCallCompletedEvent below.
             logger.warning(
                 "Tool call step failed",
                 extra={"step_id": step.id, "tool": tool_name},
@@ -1291,8 +1316,11 @@ class WorkflowRunWavesMixin:
             cost = _extract_run_cost(result, config.model)
             success = True
         except Exception as e:
-            # best-effort — the step continues with success=False, which is
-            # reported via the unconditional WorkflowLlmCallCompletedEvent below.
+            # Catch-all justified: wraps a raw LLM call whose exception
+            # surface is unbounded (network, auth, quota, provider bugs).
+            # best-effort — the step continues with success=False, which
+            # is reported via the unconditional
+            # WorkflowLlmCallCompletedEvent below.
             logger.warning(
                 "LLM call step failed",
                 extra={
@@ -1637,7 +1665,7 @@ class WorkflowRunWavesMixin:
                 if mission_obj:
                     mission_environment = mission_obj.execution_environment
                     mission_repo_root = mission_obj.repo_root
-            except Exception:
+            except SQLAlchemyError:
                 logger.debug("Could not load mission for env resolution", exc_info=True)
 
         resolved_mode = step.environment or resolve_execution_mode(

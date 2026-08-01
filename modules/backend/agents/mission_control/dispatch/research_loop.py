@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
+from pydantic import ValidationError
 from pydantic_ai import UsageLimits
 
 from modules.backend.agents.mission_control.gate import (
@@ -659,6 +660,11 @@ async def execute_research_loop(
         )
 
     except Exception as e:
+        # Catch-all justified: this wraps a multi-round research loop
+        # (strategist/searcher/synthesizer agent calls, tool calls, network
+        # I/O across many iterations) whose exception surface is
+        # unbounded — any failure must convert to a failed TaskResult with
+        # a ResearchFailedEvent rather than crash the dispatch loop.
         duration = time.monotonic() - start_time
         logger.error(
             "Research loop failed",
@@ -700,8 +706,8 @@ def _parse_output(result: dict, model_class: type) -> Any | None:
         if isinstance(output, str):
             return model_class.model_validate_json(output)
         return None
-    except Exception:
-        logger.debug("Failed to parse output as %s", model_class.__name__, exc_info=True)
+    except (ValidationError, TypeError) as exc:
+        logger.debug("Failed to parse output as %s: %s", model_class.__name__, exc, exc_info=True)
         return None
 
 
@@ -721,7 +727,8 @@ def _extract_findings(result: dict, sq_id: str) -> list[ResearchFinding]:
                 f.setdefault("sub_question_id", sq_id)
                 try:
                     findings.append(ResearchFinding.model_validate(f))
-                except Exception:
+                except ValidationError:
+                    logger.debug("Skipping malformed finding for %s", sq_id, exc_info=True)
                     continue
         return findings
     return []

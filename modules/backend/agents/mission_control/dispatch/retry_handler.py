@@ -225,6 +225,11 @@ async def execute_with_retry(
                 execution_id=execution_id,
             )
         except Exception as e:
+            # Catch-all justified: this wraps the actual agent/provider
+            # call (execute_task), whose exception surface is unbounded —
+            # network errors, auth failures, quota, or bugs in agent code
+            # all need to convert to a failed TaskResult rather than crash
+            # the dispatch loop for the whole mission.
             duration = time.monotonic() - task_start
             is_token_limit = isinstance(e, UsageLimitExceeded)
             # best-effort — no event_bus reachable here; the eventual

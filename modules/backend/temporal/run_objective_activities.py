@@ -67,6 +67,10 @@ async def execute_run_objective(input: RunObjectiveInput) -> RunObjectiveResult:
             workflow_id=result.get("workflow_id"),
         )
     except Exception as exc:
+        # Catch-all justified: wraps run_objective() (planning + dispatch,
+        # LLM calls, DB writes) whose exception surface is unbounded —
+        # logged and emitted here for Console visibility, then re-raised
+        # so Temporal's retry/failure semantics still apply.
         activity.logger.error(
             "run_objective failed",
             extra={"mission_id": input.mission_id},
