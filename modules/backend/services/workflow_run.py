@@ -11,9 +11,10 @@ each with its own DB session to avoid SQLAlchemy async flush conflicts.
 This is the bridge between the stateless WorkflowService (YAML loading)
 and the stateful ExecutionPersistenceService (execution lifecycle).
 
-Wave-execution methods (_execute_steps, _execute_wave, _execute_step,
-_build_step_objective, _compute_waves) live in workflow_run_waves.py
-and are mixed in via WorkflowRunWavesMixin.
+Wave-execution methods (_execute_steps, _execute_wave, _execute_step)
+live in workflow_run_waves.py and are mixed in via WorkflowRunWavesMixin.
+Per-node-type step executors and pure helpers live in the sibling
+workflow_run_steps/ package (Plan 84 Phase 5.1).
 """
 
 from collections.abc import AsyncGenerator

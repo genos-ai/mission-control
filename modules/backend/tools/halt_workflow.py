@@ -8,7 +8,7 @@ deliverable.
 
 Implementation: raises RuntimeError. The tool_call dispatcher's
 existing exception path explicitly re-raises RuntimeError (see
-workflow_run_waves.py exception handler in _execute_tool_call_step),
+workflow_run_steps/io.py exception handler in execute_tool_call_step),
 which then propagates up to the wave executor and triggers
 WorkflowRun.status = WorkflowRunState.FAILED (services/workflow_run.py
 catches RuntimeError/ValueError/OSError and marks failed).

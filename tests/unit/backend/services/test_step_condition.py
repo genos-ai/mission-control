@@ -1,7 +1,7 @@
 """
 Tests for step-level inline condition evaluation in the wave executor.
 
-Validates that WorkflowRunWavesMixin._should_skip correctly handles:
+Validates that workflow_run_steps.helpers.should_skip correctly handles:
 - Steps with no inline condition (backward-compatible)
 - Steps with a true inline condition (not skipped)
 - Steps with a false inline condition (skipped)
@@ -10,7 +10,7 @@ Validates that WorkflowRunWavesMixin._should_skip correctly handles:
 """
 
 from modules.backend.schemas.workflow import WorkflowStepSchema
-from modules.backend.services.workflow_run_waves import WorkflowRunWavesMixin
+from modules.backend.services.workflow_run_steps.helpers import should_skip
 
 
 def _step(
@@ -40,47 +40,47 @@ class TestInlineConditionSkip:
     def test_no_condition_runs(self):
         step = _step("a")
         step_map = {"a": step}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}) is False
+        assert should_skip("a", step_map, {}, {}) is False
 
     def test_true_condition_runs(self):
         step = _step("a", condition="@context.target_path != null")
         step_map = {"a": step}
         ctx = {"target_path": "/some/path"}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, ctx) is False
+        assert should_skip("a", step_map, {}, {}, ctx) is False
 
     def test_false_condition_skips(self):
         step = _step("a", condition="@context.target_path != null")
         step_map = {"a": step}
         ctx = {"target_path": None}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, ctx) is True
+        assert should_skip("a", step_map, {}, {}, ctx) is True
 
     def test_missing_context_key_skips(self):
         """If the referenced key is absent from context, it resolves to None."""
         step = _step("a", condition="@context.nonexistent != null")
         step_map = {"a": step}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, {}) is True
+        assert should_skip("a", step_map, {}, {}, {}) is True
 
     def test_condition_with_string_equality(self):
         step = _step("a", condition='@context.mode == "full"')
         step_map = {"a": step}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, {"mode": "full"}) is False
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, {"mode": "lite"}) is True
+        assert should_skip("a", step_map, {}, {}, {"mode": "full"}) is False
+        assert should_skip("a", step_map, {}, {}, {"mode": "lite"}) is True
 
     def test_condition_with_node_reference(self):
         """Condition referencing a completed upstream step's output."""
         step = _step("b", depends_on=["a"], condition="@node.a.score >= 0.7")
         step_map = {"a": _step("a"), "b": step}
         outcomes = {"a": {"score": 0.8}}
-        assert WorkflowRunWavesMixin._should_skip("b", step_map, outcomes, {}) is False
+        assert should_skip("b", step_map, outcomes, {}) is False
 
         outcomes_low = {"a": {"score": 0.3}}
-        assert WorkflowRunWavesMixin._should_skip("b", step_map, outcomes_low, {}) is True
+        assert should_skip("b", step_map, outcomes_low, {}) is True
 
     def test_malformed_condition_skips(self):
         """A condition that fails to parse should skip (fail safe)."""
         step = _step("a", condition="@@@@invalid")
         step_map = {"a": step}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, {}, {}, {}) is True
+        assert should_skip("a", step_map, {}, {}, {}) is True
 
 
 class TestGraphConditionUnchanged:
@@ -100,7 +100,7 @@ class TestGraphConditionUnchanged:
         step_map = {"cond": cond, "a": step}
         outcomes = {"cond": {"_branch": "Yes"}}
         edges = {("cond", "a"): "Yes"}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, outcomes, edges) is False
+        assert should_skip("a", step_map, outcomes, edges) is False
 
     def test_condition_branch_mismatch_skips(self):
         cond = _step(
@@ -116,14 +116,14 @@ class TestGraphConditionUnchanged:
         step_map = {"cond": cond, "a": step}
         outcomes = {"cond": {"_branch": "No"}}
         edges = {("cond", "a"): "Yes"}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, outcomes, edges) is True
+        assert should_skip("a", step_map, outcomes, edges) is True
 
     def test_skip_propagation(self):
         parent = _step("parent")
         child = _step("child", depends_on=["parent"])
         step_map = {"parent": parent, "child": child}
         outcomes = {"parent": {"_skipped": True}}
-        assert WorkflowRunWavesMixin._should_skip("child", step_map, outcomes, {}) is True
+        assert should_skip("child", step_map, outcomes, {}) is True
 
 
 class TestInlineAndGraphCombined:
@@ -145,7 +145,7 @@ class TestInlineAndGraphCombined:
         outcomes = {"cond": {"_branch": "Yes"}}
         edges = {("cond", "a"): "Yes"}
         ctx = {"enabled": None}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, outcomes, edges, ctx) is True
+        assert should_skip("a", step_map, outcomes, edges, ctx) is True
 
     def test_inline_true_but_graph_mismatch_skips(self):
         """Inline condition passes but graph branch doesn't match — still skipped."""
@@ -163,4 +163,4 @@ class TestInlineAndGraphCombined:
         outcomes = {"cond": {"_branch": "No"}}
         edges = {("cond", "a"): "Yes"}
         ctx = {"enabled": "yes"}
-        assert WorkflowRunWavesMixin._should_skip("a", step_map, outcomes, edges, ctx) is True
+        assert should_skip("a", step_map, outcomes, edges, ctx) is True

@@ -10,17 +10,10 @@ Tests for WorkflowRunWaves engine helpers introduced by Plan 79:
 from __future__ import annotations
 
 from modules.backend.schemas.workflow import WorkflowStepSchema
-from modules.backend.services.workflow_run_waves import (
-    WorkflowRunWavesMixin,
-    _extract_default_agent_output,
+from modules.backend.services.workflow_run_steps.helpers import (
+    build_step_objective,
+    extract_default_agent_output,
 )
-
-
-def _make_service():
-    # _build_step_objective only needs the bound method, not full service state.
-    # We construct a minimal instance via __new__ to avoid dependency-injection
-    # overhead.
-    return WorkflowRunWavesMixin.__new__(WorkflowRunWavesMixin)
 
 
 def _make_step(**overrides) -> WorkflowStepSchema:
@@ -43,24 +36,21 @@ class TestBuildStepObjectiveStructured:
     format inline."""
 
     def test_dict_value_json_encoded(self):
-        svc = _make_service()
         step = _make_step(description="Process")
-        obj = svc._build_step_objective(step, {"data": {"a": 1, "b": 2}})
+        obj = build_step_objective(step, {"data": {"a": 1, "b": 2}})
         assert "Process" in obj
         assert '"a": 1' in obj
         assert '"b": 2' in obj
 
     def test_list_value_json_encoded(self):
-        svc = _make_service()
         step = _make_step(description="Run")
-        obj = svc._build_step_objective(step, {"items": [1, 2, 3]})
+        obj = build_step_objective(step, {"items": [1, 2, 3]})
         assert "items: [1, 2, 3]" in obj
 
     def test_nested_dict_json_encoded(self):
         # Deliberation sparse-topology pattern: opponents_previous nested dict.
-        svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(
+        obj = build_step_objective(
             step,
             {
                 "opponents_previous": {
@@ -77,9 +67,8 @@ class TestBuildStepObjectiveStructured:
 
     def test_none_value_skipped(self):
         # Skipped predecessors resolve to None; should NOT appear as "key: None".
-        svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(
+        obj = build_step_objective(
             step,
             {
                 "round_2_position": None,
@@ -92,39 +81,33 @@ class TestBuildStepObjectiveStructured:
         assert "round_2_position" not in obj
 
     def test_scalar_int_formatted(self):
-        svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(step, {"round_index": 2})
+        obj = build_step_objective(step, {"round_index": 2})
         assert "round_index: 2" in obj
 
     def test_scalar_float_formatted(self):
-        svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(step, {"agreement_intensity": 0.2})
+        obj = build_step_objective(step, {"agreement_intensity": 0.2})
         assert "agreement_intensity: 0.2" in obj
 
     def test_scalar_bool_formatted(self):
-        svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(step, {"verified": True})
+        obj = build_step_objective(step, {"verified": True})
         assert "verified: True" in obj
 
     def test_string_value_inline(self):
-        svc = _make_service()
         step = _make_step()
-        obj = svc._build_step_objective(step, {"q": "What is X?"})
+        obj = build_step_objective(step, {"q": "What is X?"})
         assert "q: What is X?" in obj
 
     def test_empty_input_no_context_section(self):
-        svc = _make_service()
         step = _make_step(description="Just describe")
-        obj = svc._build_step_objective(step, {})
+        obj = build_step_objective(step, {})
         assert obj == "Just describe"
 
     def test_description_default_when_missing(self):
-        svc = _make_service()
         step = _make_step(description=None)
-        obj = svc._build_step_objective(step, {})
+        obj = build_step_objective(step, {})
         # Default falls back to "Execute step: <id>"
         assert "Execute step: step-a" in obj
 
@@ -132,9 +115,8 @@ class TestBuildStepObjectiveStructured:
         # Realistic deliberation debater input: question (str) + round_index
         # (int) + agreement_intensity (float) + research_packet (dict) +
         # opponents_previous (dict) + skipped_field (None).
-        svc = _make_service()
         step = _make_step(description="Debate")
-        obj = svc._build_step_objective(
+        obj = build_step_objective(
             step,
             {
                 "question": "Will X happen?",
@@ -168,12 +150,12 @@ class TestExtractDefaultAgentOutput:
     task_result + log warning (legacy multi-task safety net)."""
 
     def test_empty_outcome_returns_empty(self):
-        assert _extract_default_agent_output({}) == {}
-        assert _extract_default_agent_output(None) == {}
+        assert extract_default_agent_output({}) == {}
+        assert extract_default_agent_output(None) == {}
 
     def test_no_task_results_returns_empty(self):
-        assert _extract_default_agent_output({"task_results": []}) == {}
-        assert _extract_default_agent_output({"task_results": None}) == {}
+        assert extract_default_agent_output({"task_results": []}) == {}
+        assert extract_default_agent_output({"task_results": None}) == {}
 
     def test_single_task_result_with_agent_name_match(self):
         outcome = {
@@ -184,7 +166,7 @@ class TestExtractDefaultAgentOutput:
                 },
             ],
         }
-        result = _extract_default_agent_output(
+        result = extract_default_agent_output(
             outcome,
             expected_agent="deliberation.debater_systems.agent",
         )
@@ -210,7 +192,7 @@ class TestExtractDefaultAgentOutput:
         }
         # Without agent_name match, [-1] would return the synthesis output.
         # With it, we get the debater's actual output.
-        result = _extract_default_agent_output(
+        result = extract_default_agent_output(
             outcome,
             expected_agent="deliberation.debater_systems.agent",
         )
@@ -226,7 +208,7 @@ class TestExtractDefaultAgentOutput:
             ],
         }
         with caplog.at_level(logging.WARNING):
-            result = _extract_default_agent_output(
+            result = extract_default_agent_output(
                 outcome,
                 expected_agent="agent.nonexistent",
             )
@@ -241,7 +223,7 @@ class TestExtractDefaultAgentOutput:
                 {"agent_name": "two", "output_reference": {"b": 2}},
             ],
         }
-        result = _extract_default_agent_output(outcome)
+        result = extract_default_agent_output(outcome)
         assert result == {"output": {"b": 2}}
 
     def test_missing_output_reference_returns_empty_output(self):
@@ -250,13 +232,13 @@ class TestExtractDefaultAgentOutput:
                 {"agent_name": "agent.x"},  # no output_reference
             ],
         }
-        result = _extract_default_agent_output(outcome, expected_agent="agent.x")
+        result = extract_default_agent_output(outcome, expected_agent="agent.x")
         assert result == {"output": {}}
 
     def test_non_dict_task_result_falls_through(self):
         # Defensive: malformed task_results entries shouldn't crash.
         outcome = {"task_results": ["string-not-dict"]}
-        result = _extract_default_agent_output(outcome, expected_agent="agent.x")
+        result = extract_default_agent_output(outcome, expected_agent="agent.x")
         # Falls back to last (which is also non-dict), returns empty output.
         assert result == {"output": {}}
 
