@@ -47,7 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
-from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
+from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import SessionFollowupFiredEvent
 from modules.backend.models.session_followup import SessionFollowup
@@ -104,7 +104,10 @@ class SessionFollowupService(BaseService):
     ) -> None:
         super().__init__(session)
         self._repo = SessionFollowupRepository(session)
-        self._event_bus: EventBusProtocol = event_bus or NoOpEventBus()
+        # Optional: some callers (e.g. prompt-capture-only followup runs)
+        # never emit. _emit_fired() below tolerates None — do not
+        # construct a NoOpEventBus() stand-in here.
+        self._event_bus: EventBusProtocol | None = event_bus
 
     async def _emit_fired(
         self,

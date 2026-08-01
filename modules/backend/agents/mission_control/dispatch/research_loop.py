@@ -28,7 +28,6 @@ from modules.backend.agents.mission_control.helpers import _emit
 from modules.backend.agents.mission_control.models import (
     EventBusProtocol,
     ExecuteAgentFn,
-    NoOpEventBus,
 )
 from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus, TaskTokenUsage
 from modules.backend.core.logging import get_logger
@@ -178,7 +177,7 @@ async def execute_research_loop(
     execute_agent_fn: ExecuteAgentFn,
     mission_id: str | None = None,
     gate: GateReviewer | None = None,
-    event_bus: EventBusProtocol | None = None,
+    event_bus: EventBusProtocol,
     session_id: str | None = None,
 ) -> TaskResult:
     """Execute a deep research loop.
@@ -189,6 +188,9 @@ async def execute_research_loop(
     Phase 4: Synthesize — produce report with citations
     Phase 5: Verify — NLI citation verification
     Phase 6: Build result
+
+    event_bus is required — pass a real SessionEventBus; NoOpEventBus is
+    for tests only.
     """
     logger.info(
         "TRACE >>> execute_research_loop entered",
@@ -197,12 +199,12 @@ async def execute_research_loop(
             "query": query[:80],
             "depth": config.depth,
             "budget": config.budget_usd,
-            "event_bus_type": type(event_bus).__name__ if event_bus else "None",
+            "event_bus_type": type(event_bus).__name__,
             "session_id": session_id,
         },
     )
     _gate = gate or NoOpGate()
-    _bus = event_bus or NoOpEventBus()
+    _bus = event_bus
     _sid = session_id or ""
     start_time = time.monotonic()
 

@@ -31,7 +31,6 @@ from modules.backend.agents.mission_control.mission_dispatch import handle_missi
 from modules.backend.agents.mission_control.models import (
     CollectResult,
     EventBusProtocol,
-    NoOpEventBus,
 )
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.exceptions import ApplicationError, BudgetExceededError
@@ -135,7 +134,7 @@ async def handle(
     *,
     mission_id: str,
     session_service: SessionServiceProtocol,
-    event_bus: EventBusProtocol = NoOpEventBus(),
+    event_bus: EventBusProtocol,
     channel: str = "api",
     sender_id: str | None = None,
     target_agent: str | None = None,

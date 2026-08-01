@@ -12,6 +12,7 @@ import pytest
 from pydantic_ai.models.test import TestModel
 
 from modules.backend.agents.mission_control.mission_control import handle
+from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.events.types import (
     AgentResponseCompleteEvent,
     AgentThinkingEvent,
@@ -78,6 +79,7 @@ async def _collect_events(session_id, message, session_service):
             message,
             mission_id=STUB_MISSION_ID,
             session_service=session_service,
+            event_bus=NoOpEventBus(),
         ):
             events.append(event)
     return events
@@ -221,6 +223,7 @@ class TestHandleErrors:
                 "hello",
                 mission_id=STUB_MISSION_ID,
                 session_service=session_service,
+                event_bus=NoOpEventBus(),
             ):
                 events.append(event)
 
@@ -229,8 +232,10 @@ class TestHandleErrors:
         assert complete[0].metadata.get("error") is True
 
     @pytest.mark.asyncio
-    async def test_works_with_default_event_bus(self, session_service, health_session):
-        """handle() works with default NoOpEventBus."""
+    async def test_works_with_noop_event_bus(self, session_service, health_session):
+        """handle() works when passed an explicit NoOpEventBus (Plan 84 4.4:
+        event_bus is a required param, no default — this exercises the
+        no-op path deliberately rather than implicitly)."""
         events = await _collect_events(
             health_session.id,
             "check health",

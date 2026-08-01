@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ValidationError
-from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
+from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import (
     MissionPlanDispatchedEvent,
@@ -56,10 +56,10 @@ class MissionPlanOrchestrator(BaseService):
     def __init__(
         self,
         session: AsyncSession,
-        event_bus: EventBusProtocol | None = None,
+        event_bus: EventBusProtocol,
     ) -> None:
         super().__init__(session)
-        self._event_bus: EventBusProtocol = event_bus or NoOpEventBus()
+        self._event_bus: EventBusProtocol = event_bus
         self._repo = MissionPlanRepository(session)
         self._mission_repo = MissionRepository(session)
         self._task_repo = TaskRepository(session)

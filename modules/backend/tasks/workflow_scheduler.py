@@ -74,20 +74,30 @@ async def evaluate_workflow_schedules() -> dict[str, Any]:
         budget = schedule_info.get("budget_per_run_usd")
 
         try:
-            async with get_async_session() as db:
-                from modules.backend.services.workflow_run_waves import StepContext
+            from redis.asyncio import Redis as AsyncRedis
 
-                run_service = WorkflowRunService(
-                    db,
-                    step_context_factory=StepContext.factory,
-                )
-                run = await run_service.run_workflow_from_definition(
-                    workflow_definition_id,
-                    mission_id,
-                    triggered_by=f"scheduler:{schedule_id}",
-                    budget_usd=budget,
-                )
-                await db.commit()
+            from modules.backend.core.config import get_redis_url
+            from modules.backend.events.bus import SessionEventBus
+            from modules.backend.services.workflow_run_waves import StepContext
+
+            redis = AsyncRedis.from_url(get_redis_url())
+            try:
+                event_bus = SessionEventBus(redis, mission_id=mission_id)
+                async with get_async_session() as db:
+                    run_service = WorkflowRunService(
+                        db,
+                        step_context_factory=StepContext.factory,
+                        event_bus=event_bus,
+                    )
+                    run = await run_service.run_workflow_from_definition(
+                        workflow_definition_id,
+                        mission_id,
+                        triggered_by=f"scheduler:{schedule_id}",
+                        budget_usd=budget,
+                    )
+                    await db.commit()
+            finally:
+                await redis.aclose()
 
             runs_created += 1
             logger.info(

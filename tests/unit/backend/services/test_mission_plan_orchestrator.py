@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ValidationError
+from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import MissionPlan
 from modules.backend.models.task import Task, TaskStatus
@@ -53,7 +54,7 @@ def mission_id(mission_context: dict) -> str:
 
 @pytest.fixture
 def orchestrator(db_session: AsyncSession) -> MissionPlanOrchestrator:
-    return MissionPlanOrchestrator(db_session)
+    return MissionPlanOrchestrator(db_session, event_bus=NoOpEventBus())
 
 
 @pytest.fixture

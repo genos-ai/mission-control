@@ -17,7 +17,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
-from modules.backend.core.protocols import EventBusProtocol, NoOpEventBus
+from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import (
     MissionPlanGateModeChangedEvent,
@@ -65,7 +65,10 @@ class MissionPlanService(BaseService):
         self._repo = MissionPlanRepository(session)
         self._mission_repo = MissionRepository(session)
         self._task_repo = TaskRepository(session)
-        self._event_bus: EventBusProtocol = event_bus or NoOpEventBus()
+        # Optional: many callers only read/mutate plan state and never
+        # emit (admin ops, gate-request queries). _emit() below tolerates
+        # None — do not construct a NoOpEventBus() stand-in here.
+        self._event_bus: EventBusProtocol | None = event_bus
 
     # ── Event emission helpers ──────────────────────────────────────────
 

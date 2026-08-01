@@ -30,7 +30,6 @@ from modules.backend.agents.mission_control.models import (
     ContextCuratorProtocol,
     EventBusProtocol,
     ExecuteAgentFn,
-    NoOpEventBus,
 )
 from modules.backend.agents.mission_control.outcome import (
     ExecutionOutcome,
@@ -82,7 +81,7 @@ async def dispatch(
     mission_id: str | None = None,
     context_curator: ContextCuratorProtocol | None = None,
     context_assembler: ContextAssemblerProtocol | None = None,
-    event_bus: EventBusProtocol | None = None,
+    event_bus: EventBusProtocol,
     session_id: str | None = None,
     execution_mode: str = "local",
     prior_outputs: dict[str, dict] | None = None,
@@ -98,10 +97,12 @@ async def dispatch(
     6. Aggregate results into ExecutionOutcome
 
     When gate is provided, pauses at key decision points for review.
+    event_bus is required — pass a real SessionEventBus; NoOpEventBus is
+    for tests only.
     """
     start_time = time.monotonic()
     _gate = gate or NoOpGate()
-    _bus = event_bus or NoOpEventBus()
+    _bus = event_bus
     _sid = session_id or plan.mission_id
     layers = topological_sort(plan)
 

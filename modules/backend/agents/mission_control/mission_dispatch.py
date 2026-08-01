@@ -19,7 +19,7 @@ from modules.backend.agents.mission_control.helpers import (
     _make_agent_executor,
     _publish,
 )
-from modules.backend.agents.mission_control.models import EventBusProtocol, NoOpEventBus
+from modules.backend.agents.mission_control.models import EventBusProtocol
 from modules.backend.agents.mission_control.outcome import ExecutionOutcome, ExecutionStatus
 from modules.backend.agents.mission_control.persistence_bridge import persist_mission_results
 from modules.backend.agents.mission_control.plan_validator import validate_plan
@@ -47,7 +47,7 @@ async def handle_mission(
     mission_brief: str,
     *,
     session_service: SessionServiceProtocol,
-    event_bus: EventBusProtocol = NoOpEventBus(),
+    event_bus: EventBusProtocol,
     roster_name: str = "default",
     mission_budget_usd: float | None = None,
     upstream_context: dict | None = None,

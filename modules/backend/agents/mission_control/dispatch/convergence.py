@@ -27,7 +27,6 @@ from modules.backend.agents.mission_control.helpers import _emit
 from modules.backend.agents.mission_control.models import (
     EventBusProtocol,
     ExecuteAgentFn,
-    NoOpEventBus,
 )
 from modules.backend.agents.mission_control.outcome import (
     TaskResult,
@@ -79,7 +78,7 @@ async def execute_convergence_loop(
     execute_agent_fn: ExecuteAgentFn,
     mission_id: str | None = None,
     gate: GateReviewer | None = None,
-    event_bus: EventBusProtocol | None = None,
+    event_bus: EventBusProtocol,
     session_id: str | None = None,
 ) -> TaskResult:
     """Execute a bounded convergence loop.
@@ -93,14 +92,15 @@ async def execute_convergence_loop(
         execute_agent_fn: Function to execute a single agent task
         mission_id: Mission context
         gate: Gate reviewer for inter-cycle decisions
-        event_bus: Event bus for publishing convergence events
+        event_bus: Event bus for publishing convergence events. Required —
+            pass a real SessionEventBus; NoOpEventBus is for tests only.
         session_id: Session for event publishing
 
     Returns:
         TaskResult summarizing the convergence loop outcome
     """
     _gate = gate or NoOpGate()
-    _bus = event_bus or NoOpEventBus()
+    _bus = event_bus
     _sid = session_id or ""
 
     cycles: list[CycleResult] = []

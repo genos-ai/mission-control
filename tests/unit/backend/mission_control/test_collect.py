@@ -13,6 +13,7 @@ import pytest
 from pydantic_ai.models.test import TestModel
 
 from modules.backend.agents.mission_control.mission_control import collect
+from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.schemas.session import SessionCreate
 from modules.backend.services.session import SessionService
 
@@ -65,6 +66,7 @@ class TestCollect:
                 "check health",
                 mission_id=STUB_MISSION_ID,
                 session_service=session_service,
+                event_bus=NoOpEventBus(),
             )
         assert result["agent_name"] == "platform.health.agent"
 
@@ -76,6 +78,7 @@ class TestCollect:
                 "check health",
                 mission_id=STUB_MISSION_ID,
                 session_service=session_service,
+                event_bus=NoOpEventBus(),
             )
         assert isinstance(result["output"], str)
 
@@ -87,6 +90,7 @@ class TestCollect:
                 "check health",
                 mission_id=STUB_MISSION_ID,
                 session_service=session_service,
+                event_bus=NoOpEventBus(),
             )
         assert isinstance(result["cost_usd"], float)
         assert result["cost_usd"] >= 0
@@ -96,6 +100,10 @@ class TestCollect:
         sid = str(health_session.id)
         with _patch_build_model(), _patch_mission_context():
             result = await collect(
-                sid, "check health", mission_id=STUB_MISSION_ID, session_service=session_service
+                sid,
+                "check health",
+                mission_id=STUB_MISSION_ID,
+                session_service=session_service,
+                event_bus=NoOpEventBus(),
             )
         assert result["session_id"] == sid

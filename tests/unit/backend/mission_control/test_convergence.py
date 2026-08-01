@@ -24,6 +24,7 @@ from modules.backend.agents.mission_control.dispatch.convergence import (
 )
 from modules.backend.agents.mission_control.gate import GateAction, GateDecision
 from modules.backend.agents.mission_control.outcome import TaskStatus
+from modules.backend.core.protocols import NoOpEventBus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -269,6 +270,7 @@ class TestConvergenceLoopHappyPath:
             task_id="conv-1",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
         )
 
         assert result.status == TaskStatus.SUCCESS
@@ -299,6 +301,7 @@ class TestConvergenceLoopMultiCycle:
             task_id="conv-2",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
         )
 
         assert result.status == TaskStatus.SUCCESS
@@ -335,6 +338,7 @@ class TestConvergenceLoopMaxIterations:
             task_id="conv-3",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
         )
 
         assert result.status == TaskStatus.FAILED
@@ -361,6 +365,7 @@ class TestConvergenceLoopGateAbort:
             task_id="conv-4",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
             gate=gate,
         )
 
@@ -390,6 +395,7 @@ class TestConvergenceLoopCostAccumulation:
             task_id="conv-5",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
         )
 
         assert result.status == TaskStatus.SUCCESS
@@ -423,6 +429,7 @@ class TestConvergenceLoopFinalVerification:
             task_id="conv-6",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
         )
 
         assert result.status == TaskStatus.FAILED
@@ -444,6 +451,7 @@ class TestConvergenceLoopFinalVerification:
             task_id="conv-7",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
         )
 
         assert result.status == TaskStatus.SUCCESS
@@ -465,6 +473,7 @@ class TestConvergenceLoopFinalVerification:
             task_id="conv-8",
             config=config,
             execute_agent_fn=executor,
+            event_bus=NoOpEventBus(),
         )
 
         assert result.status == TaskStatus.FAILED

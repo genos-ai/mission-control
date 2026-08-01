@@ -100,20 +100,30 @@ async def agent_chat(
     request_id: RequestId,
 ) -> ApiResponse[ChatResponse]:
     """Send a message to an agent. Auto-creates ephemeral session when no session_id provided."""
+    from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.agents.mission_control.mission_control import collect
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.events.bus import SessionEventBus
     from modules.backend.services.session import SessionService
 
     service = SessionService(db)
     session_id = await _resolve_shared_session(service, data.session_id, data.mission_id)
 
-    result = await collect(
-        session_id,
-        data.message,
-        mission_id=data.mission_id,
-        target_agent=data.agent,
-        session_service=service,
-        db_session=db,
-    )
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        event_bus = SessionEventBus(redis, mission_id=data.mission_id)
+        result = await collect(
+            session_id,
+            data.message,
+            mission_id=data.mission_id,
+            target_agent=data.agent,
+            session_service=service,
+            db_session=db,
+            event_bus=event_bus,
+        )
+    finally:
+        await redis.aclose()
 
     return ApiResponse(
         data=ChatResponse(

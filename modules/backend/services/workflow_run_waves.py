@@ -694,7 +694,6 @@ class WorkflowRunWavesMixin:
         )
 
         # 2. Dispatch via handle_mission directly (no dispatch adapter)
-        from modules.backend.agents.mission_control.models import NoOpEventBus
         from modules.backend.core.config import get_default_budget_usd
         from modules.backend.services.session import SessionService
 
@@ -705,7 +704,14 @@ class WorkflowRunWavesMixin:
         )
 
         session_svc = SessionService(ctx.db)
-        event_bus = self._event_bus or NoOpEventBus()
+        if self._event_bus is None:
+            raise RuntimeError(
+                "WorkflowRunService.event_bus is required to dispatch an "
+                "agent_step (handle_mission needs a real SessionEventBus) — "
+                "construct the service with event_bus=... rather than "
+                "relying on a default."
+            )
+        event_bus = self._event_bus
         budget = cost_ceiling or get_default_budget_usd()
 
         # Build a 1-task precomputed_plan pointing at the workflow's task

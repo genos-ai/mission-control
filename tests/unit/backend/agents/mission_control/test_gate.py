@@ -36,6 +36,7 @@ from modules.backend.core.config_schema import (
     GatePointsSchema,
     GateSchema,
 )
+from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.schemas.task_plan import TaskPlan
 
 # ── Fixture helpers ───────────────────────────────────────────────
@@ -518,6 +519,7 @@ class _TestGateDispatchIntegrationRemoved:
             plan=_plan("test-abort"),
             roster=roster,
             execute_agent_fn=mock_executor,
+            event_bus=NoOpEventBus(),
             mission_budget_usd=10.0,
             gate=AlwaysAbortGate(),
         )
@@ -545,6 +547,7 @@ class _TestGateDispatchIntegrationRemoved:
             plan=_plan("test-record"),
             roster=roster,
             execute_agent_fn=mock_executor,
+            event_bus=NoOpEventBus(),
             mission_budget_usd=10.0,
             gate=gate,
         )
@@ -574,6 +577,7 @@ class _TestGateDispatchIntegrationRemoved:
             plan=_plan("test-no-gate"),
             roster=roster,
             execute_agent_fn=mock_executor,
+            event_bus=NoOpEventBus(),
             mission_budget_usd=10.0,
         )
 
@@ -599,6 +603,7 @@ class _TestGateDispatchIntegrationRemoved:
             plan=_plan("test-skip"),
             roster=roster,
             execute_agent_fn=mock_executor,
+            event_bus=NoOpEventBus(),
             mission_budget_usd=10.0,
             gate=SkipLayerGate(skip_layer=0),
         )
@@ -622,6 +627,7 @@ class _TestGateDispatchIntegrationRemoved:
             plan=_plan("test-reason"),
             roster=roster,
             execute_agent_fn=mock_executor,
+            event_bus=NoOpEventBus(),
             mission_budget_usd=10.0,
             gate=AlwaysAbortGate(),
         )
@@ -660,6 +666,7 @@ class _TestGateDispatchIntegrationRemoved:
             plan=_plan("test-post-abort"),
             roster=roster,
             execute_agent_fn=mock_executor,
+            event_bus=NoOpEventBus(),
             mission_budget_usd=10.0,
             gate=PostLayerAbortGate(),
         )

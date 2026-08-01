@@ -22,6 +22,7 @@ from modules.backend.agents.mission_control.roster import (
     RosterInterfaceSchema,
     RosterModelSchema,
 )
+from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import MissionPlan
 from modules.backend.models.task import Task
@@ -185,6 +186,7 @@ async def _dispatch_seeded(factory, plan: TaskPlan, *args, **kwargs):
     the test schema is only reset once per pytest session.
     """
     mission_id = await _seed_approved(factory, plan)
+    kwargs.setdefault("event_bus", NoOpEventBus())
     try:
         return await dispatch(plan, *args, session_factory=factory, **kwargs)
     finally:
@@ -546,7 +548,7 @@ class TestDispatch:
         async def mock_execute(agent_name, instructions, inputs, usage_limits):
             return {"result": "done", "confidence": 0.9, "_meta": {}}
 
-        outcome = await dispatch(plan, roster, mock_execute, 10.0)
+        outcome = await dispatch(plan, roster, mock_execute, 10.0, event_bus=NoOpEventBus())
         assert outcome.status == ExecutionStatus.FAILED
         assert outcome.task_results[0].status == TaskStatus.FAILED
 

@@ -16,6 +16,7 @@ from modules.backend.agents.mission_control.dispatch.research_loop import (
     should_stop,
 )
 from modules.backend.agents.mission_control.outcome import TaskStatus
+from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.schemas.research import CoverageAnalysisData, CoveredQuestion, ResearchFinding
 
 # ---------------------------------------------------------------------------
@@ -248,6 +249,7 @@ class TestExecuteResearchLoopHappyPath:
             task_id="research-1",
             query="what is X",
             config=config,
+            event_bus=NoOpEventBus(),
             execute_agent_fn=executor,
         )
 
@@ -281,6 +283,7 @@ class TestExecuteResearchLoopFailure:
             task_id="research-2",
             query="what is X",
             config=config,
+            event_bus=NoOpEventBus(),
             execute_agent_fn=_fn,
         )
 
@@ -299,6 +302,7 @@ class TestExecuteResearchLoopFailure:
             task_id="research-3",
             query="what is X",
             config=config,
+            event_bus=NoOpEventBus(),
             execute_agent_fn=_fn,
         )
 
