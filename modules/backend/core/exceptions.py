@@ -7,9 +7,12 @@ Every concrete subclass should be registered in
 boundary, so the FastAPI handler returns the correct HTTP status.
 """
 
+import re
 from typing import Any, ClassVar, Literal
 
 RetryPolicy = Literal["none", "backoff", "immediate"]
+
+_QUOTA_MESSAGE_PATTERN = re.compile(r"quota", re.IGNORECASE)
 
 
 class ApplicationError(Exception):
@@ -276,3 +279,72 @@ def log_provider_error(
     extra = exc.log_extra()
     extra.update({k: v for k, v in context.items() if v is not None})
     log.error(event or exc.log_event, extra=extra)
+
+
+def classify_provider_error(exc: BaseException, *, provider: str, model: str) -> BaseException:
+    """Classify a raw provider/SDK exception into a typed `ProviderError`.
+
+    Single home for cross-adapter classification (PydanticAI's
+    `ModelHTTPError` for Anthropic/OpenAI/Foundry models, plus the
+    Anthropic and OpenAI SDK exception types directly, since Foundry
+    runs through the OpenAI SDK path). SDK exception types are imported
+    lazily so this module doesn't hard-depend on every provider package
+    being installed.
+
+    Returns `exc` unchanged when no known pattern matches, so callers can
+    re-raise (or further handle) the original exception as-is — same
+    contract as `CopilotModel._classify_session_error`.
+    """
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    msg = str(exc)
+
+    if isinstance(exc, ModelHTTPError):
+        status = exc.status_code
+        body_msg = str(exc.body) if exc.body is not None else ""
+        if status == 402 or _QUOTA_MESSAGE_PATTERN.search(f"{msg} {body_msg}"):
+            return QuotaExhaustedError(msg, provider=provider, model=model, raw=msg)
+        if status == 429:
+            return RateLimitedError(msg, provider=provider, model=model, raw=msg)
+        if status >= 500 or status == 408:
+            return TransientProviderError(msg, provider=provider, model=model, raw=msg)
+        return exc
+
+    try:
+        import anthropic
+
+        if isinstance(exc, anthropic.RateLimitError):
+            return RateLimitedError(msg, provider=provider, model=model, raw=msg)
+        if isinstance(
+            exc,
+            (
+                anthropic.APIConnectionError,
+                anthropic.APITimeoutError,
+                anthropic.InternalServerError,
+            ),
+        ):
+            return TransientProviderError(msg, provider=provider, model=model, raw=msg)
+    except ImportError:
+        pass
+
+    try:
+        import openai
+
+        if isinstance(exc, openai.RateLimitError):
+            return RateLimitedError(msg, provider=provider, model=model, raw=msg)
+        if isinstance(
+            exc,
+            (openai.APIConnectionError, openai.APITimeoutError, openai.InternalServerError),
+        ):
+            return TransientProviderError(msg, provider=provider, model=model, raw=msg)
+    except ImportError:
+        pass
+
+    # Generic fallback: some adapters (e.g. Copilot) raise a plain
+    # Exception whose message embeds the failure reason rather than a
+    # typed SDK exception. A quota-pattern message is still a quota
+    # failure regardless of exception type.
+    if _QUOTA_MESSAGE_PATTERN.search(msg):
+        return QuotaExhaustedError(msg, provider=provider, model=model, raw=msg)
+
+    return exc

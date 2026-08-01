@@ -166,6 +166,7 @@ def _has_tool_returns(messages: list[ModelMessage]) -> list[ToolReturnPart]:
 from modules.backend.core.exceptions import (  # noqa: E402
     QuotaExhaustedError,
     TransientProviderError,
+    classify_provider_error,
     log_provider_error,
 )
 
@@ -189,10 +190,6 @@ class CopilotQuotaExhaustedError(QuotaExhaustedError):
     """
 
 
-_QUOTA_PATTERN = re.compile(
-    r"402.*(?:quota|monthly quota|exceeded)",
-    re.IGNORECASE | re.DOTALL,
-)
 _REQUEST_ID_PATTERN = re.compile(r"Request ID:\s*([A-Za-z0-9:.\-]+)")
 
 
@@ -448,9 +445,15 @@ class CopilotModel(Model):
         """Return a typed `ProviderError` subclass if the raw SDK
         exception matches a known pattern; otherwise return `exc`
         unchanged so the caller can re-raise as-is.
+
+        Generic classification (quota/rate-limit/transient patterns)
+        delegates to the shared `classify_provider_error` — one
+        classification home, no duplicate regexes. Only the Copilot
+        SDK's own request-ID format is Copilot-specific and stays local.
         """
         msg = str(exc)
-        if _QUOTA_PATTERN.search(msg):
+        classified = classify_provider_error(exc, provider="copilot", model=self._model_id)
+        if isinstance(classified, QuotaExhaustedError):
             rid_match = _REQUEST_ID_PATTERN.search(msg)
             return CopilotQuotaExhaustedError(
                 msg,
@@ -459,7 +462,7 @@ class CopilotModel(Model):
                 request_id=rid_match.group(1) if rid_match else None,
                 raw=msg,
             )
-        return exc
+        return classified
 
     def _raise_empty_session(
         self,

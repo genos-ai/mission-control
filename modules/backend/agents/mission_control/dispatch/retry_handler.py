@@ -38,6 +38,7 @@ from modules.backend.core.exceptions import (
     QuotaExhaustedError,
     RateLimitedError,
     TransientProviderError,
+    classify_provider_error,
     log_provider_error,
 )
 from modules.backend.core.logging import get_logger
@@ -224,12 +225,88 @@ async def execute_with_retry(
                 retry_history=retry_history,
                 execution_id=execution_id,
             )
-        except Exception as e:
+        except Exception as raw_e:
             # Catch-all justified: this wraps the actual agent/provider
             # call (execute_task), whose exception surface is unbounded —
             # network errors, auth failures, quota, or bugs in agent code
             # all need to convert to a failed TaskResult rather than crash
             # the dispatch loop for the whole mission.
+            #
+            # Anthropic/OpenAI/Foundry run through PydanticAI models whose
+            # SDK errors surface here unclassified (unlike Copilot, which
+            # classifies before raising). Reclassify so quota/transient
+            # failures get the same handling as the typed except clauses
+            # above instead of being treated as generic failures.
+            model_name = roster_entry.model.name if roster_entry.model else ""
+            provider = model_name.split(":", 1)[0] if ":" in model_name else model_name
+            e = classify_provider_error(raw_e, provider=provider, model=model_name)
+
+            if isinstance(e, QuotaExhaustedError):
+                log_provider_error(
+                    logger,
+                    e,
+                    event="Task failed (no retry): provider quota exhausted",
+                    task_id=task.task_id,
+                    agent=task.agent,
+                    mission_id=mission_id,
+                    attempt=attempt,
+                )
+                retry_history.append(
+                    RetryHistoryEntry(
+                        attempt=attempt + 1,
+                        failure_tier=0,
+                        failure_reason=f"{type(e).__name__}: {str(e)[:400]}",
+                        feedback_provided="",
+                    )
+                )
+                return failed_result(
+                    task,
+                    f"{type(e).__name__}: {str(e)[:300]}",
+                    retry_count=attempt,
+                    retry_history=retry_history,
+                    execution_id=execution_id,
+                )
+
+            if isinstance(e, (TransientProviderError, RateLimitedError)):
+                log_provider_error(
+                    logger,
+                    e,
+                    event="Task execution: transient provider failure, will retry",
+                    task_id=task.task_id,
+                    agent=task.agent,
+                    attempt=attempt,
+                    attempts_remaining=retry_budget - attempt,
+                    mission_id=mission_id,
+                )
+                feedback_msg = (
+                    "Previous attempt produced no response (infrastructure hiccup). Retry."
+                )
+                if attempt < retry_budget:
+                    retry_history.append(
+                        RetryHistoryEntry(
+                            attempt=attempt + 1,
+                            failure_tier=0,
+                            failure_reason=type(e).__name__,
+                            feedback_provided=feedback_msg,
+                        )
+                    )
+                    instructions = append_feedback(task.instructions, feedback_msg)
+                    continue
+
+                duration = time.monotonic() - task_start
+                return TaskResult(
+                    task_id=task.task_id,
+                    agent_name=task.agent,
+                    status=TaskStatus.FAILED,
+                    output_reference={},
+                    token_usage=TaskTokenUsage(),
+                    cost_usd=0.0,
+                    duration_seconds=round(duration, 2),
+                    retry_count=attempt,
+                    retry_history=retry_history,
+                    execution_id=execution_id,
+                )
+
             duration = time.monotonic() - task_start
             is_token_limit = isinstance(e, UsageLimitExceeded)
             # best-effort — no event_bus reachable here; the eventual
