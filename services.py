@@ -21,6 +21,11 @@ services.py will attempt to auto-start OrbStack (macOS) or Docker Desktop
 before continuing. Docker is not a hard requirement — local-mode missions run
 without it; only container-mode agent isolation (Plan 47) needs Docker.
 
+PostgreSQL is a hard requirement. If it is not listening, preflight asks
+whether to start the Homebrew launch agent (macOS) and clears a stale
+postmaster.pid left by an unclean shutdown. It never starts without
+confirmation; non-interactive runs just print the command to run.
+
 Daemon mode uses a new process session (no controlling terminal), stdin disconnected,
 stdout/stderr appended to per-service log files, and a TCP readiness check before exit.
 It cannot be combined with uvicorn --reload (multi-process supervisor).
@@ -249,8 +254,21 @@ def check_docker(*, try_start: bool = False) -> bool:
     return False
 
 
-def check_postgres() -> bool:
-    """Check PostgreSQL connectivity using config from database.yaml."""
+def _db_endpoint() -> tuple[str, int]:
+    """Read the database host/port from database.yaml, with safe defaults."""
+    try:
+        import yaml
+
+        config_path = PROJECT_ROOT / "config" / "settings" / "database.yaml"
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        return str(cfg.get("host", "localhost")), int(cfg.get("port", 5432))
+    except Exception:
+        return "localhost", 5432
+
+
+def _pg_connect() -> tuple[bool, str]:
+    """Attempt one PostgreSQL connection. Returns (ok, detail-or-error)."""
     try:
         from modules.backend.core.config import get_app_config, get_settings
 
@@ -271,11 +289,140 @@ def check_postgres() -> bool:
             await conn.close()
 
         asyncio.run(_check())
-        print(f"  PostgreSQL ........ OK ({db_cfg.host}:{db_cfg.port}/{db_cfg.name})")
-        return True
+        return True, f"{db_cfg.host}:{db_cfg.port}/{db_cfg.name}"
     except Exception as e:
-        print(f"  PostgreSQL ........ FAIL ({e})")
+        return False, str(e)
+
+
+def _prompt_yes(question: str) -> bool:
+    """Ask a y/N question. Answers "no" when stdin is not a terminal."""
+    if not sys.stdin.isatty():
         return False
+    try:
+        return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
+def _pg_launch_agent() -> str | None:
+    """Return the loaded Homebrew launchd label for PostgreSQL, if any."""
+    try:
+        out = subprocess.run(
+            ["launchctl", "list"], capture_output=True, text=True, timeout=5
+        ).stdout
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    for line in out.splitlines():
+        label = line.split("\t")[-1].strip()
+        if label.startswith("homebrew.mxcl.postgresql"):
+            return label
+    return None
+
+
+def _pg_data_dir(label: str) -> Path | None:
+    """Read the ``-D`` data directory out of a Homebrew launchd plist."""
+    import plistlib
+
+    plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+    try:
+        with open(plist_path, "rb") as f:
+            argv = plistlib.load(f).get("ProgramArguments", [])
+    except Exception:
+        return None
+    if "-D" in argv:
+        idx = argv.index("-D")
+        if idx + 1 < len(argv):
+            return Path(argv[idx + 1])
+    return None
+
+
+def _clear_stale_pidfile(data_dir: Path) -> None:
+    """Remove a postmaster.pid left behind by an unclean shutdown.
+
+    Postgres refuses to start while the lock file exists ("lock file
+    postmaster.pid already exists"), even after the PID it names has been
+    recycled by an unrelated process. Only removed once that PID is confirmed
+    dead or confirmed not to be a postmaster.
+    """
+    pidfile = data_dir / "postmaster.pid"
+    try:
+        pid = int(pidfile.read_text().splitlines()[0])
+    except (OSError, ValueError, IndexError):
+        return
+
+    try:
+        os.kill(pid, 0)
+        alive = True
+    except ProcessLookupError:
+        alive = False
+    except PermissionError:
+        alive = True
+
+    if alive:
+        comm = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="], capture_output=True, text=True
+        ).stdout
+        if "postgres" in comm:
+            return  # a real postmaster owns this data directory
+
+    pidfile.unlink(missing_ok=True)
+    print(f"    Removed stale lock file {pidfile} (PID {pid} is not a postmaster)")
+
+
+def _start_postgres(label: str) -> bool:
+    """Kickstart the Homebrew PostgreSQL launch agent and wait for the port."""
+    data_dir = _pg_data_dir(label)
+    if data_dir is not None:
+        _clear_stale_pidfile(data_dir)
+
+    print(f"  PostgreSQL ........ starting {label}...", flush=True)
+    subprocess.run(
+        ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{label}"],
+        capture_output=True,
+        timeout=30,
+    )
+    host, port = _db_endpoint()
+    return _wait_for_tcp(host, port, timeout_sec=20)
+
+
+def check_postgres(*, try_start: bool = False) -> bool:
+    """Check PostgreSQL connectivity using config from database.yaml.
+
+    With ``try_start=True`` on macOS, offers to start the Homebrew-managed
+    launch agent when nothing is listening on the database port. The server is
+    never started without confirmation — a non-interactive shell just prints
+    the command to run.
+    """
+    ok, detail = _pg_connect()
+    if ok:
+        print(f"  PostgreSQL ........ OK ({detail})")
+        return True
+
+    print(f"  PostgreSQL ........ FAIL ({detail})")
+
+    host, port = _db_endpoint()
+    label = _pg_launch_agent() if sys.platform == "darwin" else None
+    listening = _wait_for_tcp(host, port, timeout_sec=0.5)
+
+    # Something is already on the port — this is a credentials/database problem,
+    # not a stopped server, so starting anything would not help.
+    if listening or label is None or not try_start:
+        if not listening:
+            print("    Start PostgreSQL: brew services start postgresql")
+        return False
+
+    if not _prompt_yes(f"    PostgreSQL is not running. Start {label} now?"):
+        print(f"    Start PostgreSQL: launchctl kickstart -k gui/{os.getuid()}/{label}")
+        return False
+
+    if not _start_postgres(label):
+        print("  PostgreSQL ........ FAIL (did not accept connections within 20s)")
+        return False
+
+    ok, detail = _pg_connect()
+    print(f"  PostgreSQL ........ {f'OK ({detail})' if ok else f'FAIL ({detail})'}")
+    return ok
 
 
 def check_port_free(port: int) -> bool:
@@ -292,7 +439,7 @@ def preflight(backend_port: int, check_frontend: bool = True) -> bool:
     """Run all preflight checks. Returns True if all pass."""
     print("\nPreflight checks...")
     redis_ok = check_redis()
-    pg_ok = check_postgres()
+    pg_ok = check_postgres(try_start=True)
     docker_ok = check_docker(try_start=True)
     port_ok = check_port_free(backend_port)
     if check_frontend:
