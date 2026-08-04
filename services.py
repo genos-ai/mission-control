@@ -71,6 +71,8 @@ TEMPORAL_UI_PORT = 8233
 SERVICE_LOG_DIR = PROJECT_ROOT / "var" / "logs"
 DAEMON_START_TIMEOUT_SEC = 90.0
 DAEMON_LOG_TAIL_BYTES = 8000
+TEMPORAL_START_TIMEOUT_SEC = 45.0
+TEMPORAL_NAMESPACE = "default"  # must match config/settings/temporal.yaml
 
 
 # ---------------------------------------------------------------------------
@@ -580,6 +582,54 @@ def _spawn_detached(
         log_f.close()
 
 
+def _wait_for_temporal(log_path: Path | None = None) -> bool:
+    """Block until the Temporal dev server can serve workflow clients.
+
+    Binding the port is not enough — ``start-dev`` accepts TCP before it has
+    registered the default namespace, and a worker that connects in that window
+    dies on startup. Readiness is therefore "namespace describe succeeds".
+    """
+    if not _wait_for_tcp("localhost", TEMPORAL_PORT, timeout_sec=TEMPORAL_START_TIMEOUT_SEC):
+        print(f"  Temporal .......... FAIL (port {TEMPORAL_PORT} not accepting connections)")
+        if log_path is not None:
+            print(_read_log_tail(log_path))
+        return False
+
+    deadline = time.monotonic() + TEMPORAL_START_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        try:
+            probe = subprocess.run(
+                [
+                    "temporal",
+                    "operator",
+                    "namespace",
+                    "describe",
+                    "-n",
+                    TEMPORAL_NAMESPACE,
+                    "--address",
+                    f"localhost:{TEMPORAL_PORT}",
+                ],
+                capture_output=True,
+                timeout=15,
+            )
+        except FileNotFoundError:
+            print("  Temporal .......... FAIL (temporal CLI not found on PATH)")
+            print("    Install: brew install temporal")
+            return False
+        except subprocess.TimeoutExpired:
+            # Server is still coming up and left the RPC hanging — keep polling
+            # until the overall deadline rather than giving up on one slow call.
+            continue
+        if probe.returncode == 0:
+            return True
+        time.sleep(0.5)
+
+    print(f"  Temporal .......... FAIL (namespace '{TEMPORAL_NAMESPACE}' not ready)")
+    if log_path is not None:
+        print(_read_log_tail(log_path))
+    return False
+
+
 def _verify_daemon_ready(
     label: str,
     proc: subprocess.Popen,
@@ -632,6 +682,15 @@ class DevRunner:
         return proc
 
     def start_temporal_server(self) -> subprocess.Popen:
+        """Launch the Temporal dev server, tee-ing its output to var/logs.
+
+        Output goes to a file rather than DEVNULL so a failed start leaves
+        something to read — the server is otherwise silent about why it died.
+        The log is truncated per run so a failure tail shows this start, not
+        months of accumulated dev-server chatter.
+        """
+        SERVICE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log_handle = open(SERVICE_LOG_DIR / "services-temporal.log", "wb")
         proc = subprocess.Popen(
             [
                 "temporal",
@@ -645,9 +704,10 @@ class DevRunner:
                 "pretty",
             ],
             cwd=PROJECT_ROOT,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
         )
+        log_handle.close()
         self.procs.append(proc)
         return proc
 
@@ -812,6 +872,8 @@ def cmd_start_daemon(args):
     temporal_pids = get_pids_on_port(TEMPORAL_PORT)
     if not temporal_pids:
         temporal_log = SERVICE_LOG_DIR / "services-temporal.log"
+        temporal_log.parent.mkdir(parents=True, exist_ok=True)
+        temporal_log.write_text("")  # per-run log; a failure tail should show this start
         print("\nStarting Temporal server in background...")
         _spawn_detached(
             [
@@ -826,7 +888,8 @@ def cmd_start_daemon(args):
             PROJECT_ROOT,
             temporal_log,
         )
-        time.sleep(2)
+        if not _wait_for_temporal(temporal_log):
+            sys.exit(1)
         print(f"  Temporal server: http://localhost:{TEMPORAL_UI_PORT}")
     else:
         print(f"\n  Temporal server already running (PID {temporal_pids[0]})")
@@ -907,7 +970,9 @@ def cmd_start(args):
     if not temporal_pids:
         print(f"\nStarting Temporal server at localhost:{TEMPORAL_PORT} ...")
         runner.start_temporal_server()
-        time.sleep(2)  # Give server time to bind
+        if not _wait_for_temporal(SERVICE_LOG_DIR / "services-temporal.log"):
+            runner.shutdown()
+            sys.exit(1)
     else:
         print(f"\n  Temporal server already running (PID {temporal_pids[0]})")
 
