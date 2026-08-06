@@ -10,9 +10,12 @@ boundary, so the FastAPI handler returns the correct HTTP status.
 import re
 from typing import Any, ClassVar, Literal
 
+from modules.backend.core.logging import get_logger
+
 RetryPolicy = Literal["none", "backoff", "immediate"]
 
 _QUOTA_MESSAGE_PATTERN = re.compile(r"quota", re.IGNORECASE)
+_logger = get_logger(__name__)
 
 
 class ApplicationError(Exception):
@@ -325,7 +328,9 @@ def classify_provider_error(exc: BaseException, *, provider: str, model: str) ->
         ):
             return TransientProviderError(msg, provider=provider, model=model, raw=msg)
     except ImportError:
-        pass
+        _logger.debug(
+            "anthropic package not installed — skipping anthropic-specific classification"
+        )
 
     try:
         import openai
@@ -338,7 +343,7 @@ def classify_provider_error(exc: BaseException, *, provider: str, model: str) ->
         ):
             return TransientProviderError(msg, provider=provider, model=model, raw=msg)
     except ImportError:
-        pass
+        _logger.debug("openai package not installed — skipping openai-specific classification")
 
     # Generic fallback: some adapters (e.g. Copilot) raise a plain
     # Exception whose message embeds the failure reason rather than a
