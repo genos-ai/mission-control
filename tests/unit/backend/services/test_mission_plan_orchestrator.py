@@ -23,6 +23,7 @@ from modules.backend.schemas.execution_outcome import (
 )
 from modules.backend.schemas.execution_outcome import TaskStatus as OutcomeStatus
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
+from modules.backend.services import mission_plan_taskio
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
@@ -119,7 +120,7 @@ class TestReconcileTasks:
             ],
         )
 
-        stats = await orchestrator._reconcile_tasks(plan, new_plan)
+        stats = await mission_plan_taskio.reconcile_tasks(orchestrator, plan, new_plan)
 
         assert stats == {"cancelled": 1, "new": 1, "updated": 1}
 
@@ -206,8 +207,8 @@ class TestWriteBackTaskResults:
             ],
         )
 
-        updated_ids = await orchestrator._write_back_task_results(
-            plan, outcome, dispatched_task_ids={task.id}
+        updated_ids = await mission_plan_taskio.write_back_task_results(
+            orchestrator, plan, outcome, dispatched_task_ids={task.id}
         )
 
         assert updated_ids == [task.id]
@@ -235,8 +236,8 @@ class TestWriteBackTaskResults:
             task_results=[],
         )
 
-        updated_ids = await orchestrator._write_back_task_results(
-            plan, outcome, dispatched_task_ids={task.id}
+        updated_ids = await mission_plan_taskio.write_back_task_results(
+            orchestrator, plan, outcome, dispatched_task_ids={task.id}
         )
 
         assert updated_ids == [task.id]
@@ -279,8 +280,8 @@ class TestDeriveSubsetTaskPlan:
             ],
         )
 
-        subset = await orchestrator._derive_subset_task_plan(
-            full_plan, approved_task_ids={downstream.id}, mission_plan_id=plan.id
+        subset = await mission_plan_taskio.derive_subset_task_plan(
+            orchestrator, full_plan, approved_task_ids={downstream.id}, mission_plan_id=plan.id
         )
 
         assert [t.task_id for t in subset.tasks] == [downstream.id]
@@ -316,6 +317,6 @@ class TestDeriveSubsetTaskPlan:
         )
 
         with pytest.raises(ValidationError, match="neither approved nor completed"):
-            await orchestrator._derive_subset_task_plan(
-                full_plan, approved_task_ids={downstream.id}, mission_plan_id=plan.id
+            await mission_plan_taskio.derive_subset_task_plan(
+                orchestrator, full_plan, approved_task_ids={downstream.id}, mission_plan_id=plan.id
             )

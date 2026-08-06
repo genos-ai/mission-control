@@ -20,6 +20,7 @@ from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.models.mission_plan import MissionPlan
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.repositories.task import TaskRepository
+from modules.backend.services import mission_plan_dispatch
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
@@ -277,7 +278,9 @@ class TestRunObjectiveDispatch:
 
         with (
             patch.object(orchestrator, "refine", side_effect=mock_refine),
-            patch.object(orchestrator, "_start_temporal_run_workflow", side_effect=mock_temporal),
+            patch.object(
+                mission_plan_dispatch, "start_temporal_run_workflow", side_effect=mock_temporal
+            ),
         ):
             result = await orchestrator.run_objective(
                 mission_id=mission_id,
@@ -326,7 +329,9 @@ class TestRunObjectiveBudget:
 
         with (
             patch.object(orchestrator, "refine", side_effect=mock_refine),
-            patch.object(orchestrator, "_start_temporal_run_workflow", side_effect=mock_temporal),
+            patch.object(
+                mission_plan_dispatch, "start_temporal_run_workflow", side_effect=mock_temporal
+            ),
         ):
             await orchestrator.run_objective(
                 mission_id=mission_id,
