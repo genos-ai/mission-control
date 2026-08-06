@@ -1,6 +1,24 @@
 # Plan 78: Code Security Review Mission (SCAR → Mission Control)
 
-## Status: Draft v3 — extends WASA P1 under `security.code.*` namespace (2026-05-22)
+## Status: SUPERSEDED (2026-08-04) by [Plan 86 — Hypothesis-Driven Code Security Review](086-plan-hypothesis-driven-code-security-review.md)
+
+> **Why superseded.** This plan is tool-driven: scan first, then triage whatever the scanners emitted, with
+> a single human gate at the end conditional on new URGENT findings. Plan 86 inverts that premise — an agent
+> drafts a threat model first, a senior analyst rewrites it, and each approved hypothesis becomes a task.
+> Scope is then defined by the threat model rather than by tool output.
+>
+> Plan 86 **adopts** this plan's `context_data["security_code_review"]` MCD keyspace idea (creating it — it was
+> never built) and the container execution model. It **defers** the run-over-run baseline diff and fingerprint
+> FP suppression (still valuable — a follow-up on Plan 86's spine). It **drops** the `holistic` and
+> `config_review` agents, whose role the hypothesis tester subsumes, and **drops `clone_repo`** — a
+> containerised `tool_call` node is not something the wave engine supports (this plan flagged it as "requires
+> wave-engine extension"), and cloning an arbitrary URL in-process with unrestricted egress is not acceptable
+> in a security tool. Plan 86 takes `target_path` as a parameter instead.
+>
+> Never built, so nothing to unwind (P3). Retained for the design detail in §1.5, §2.6, §2.7 and the
+> container hardening in Phase 0, which Plan 86 cites rather than restates.
+
+## Original status: Draft v3 — extends WASA P1 under `security.code.*` namespace (2026-05-22)
 
 **Priority:** High
 **Branch:** TBD — `feature/78-code-security-review-mission`
