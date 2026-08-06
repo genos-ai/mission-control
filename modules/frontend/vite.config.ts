@@ -21,6 +21,12 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    // Bind all interfaces, not just [::1] — a container reaching the host via
+    // host.docker.internal (and curl on 127.0.0.1) needs a non-IPv6-loopback
+    // listener. Dev only; this exposes the dev server on the local network.
+    host: true,
+    // Vite's Host header check 403s anything not localhost or an IP literal.
+    allowedHosts: ['host.docker.internal'],
     proxy: {
       '/api': {
         target: 'http://localhost:8100',
