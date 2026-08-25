@@ -20,6 +20,14 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# Root entry scripts (mc.py, admin.py, services.py, tui.py) live outside
+# modules/, so get_all_module_files() never sees them and most checks
+# below correctly ignore them by design (their own guards are scoped to
+# modules/backend/, modules/clients/, etc.). check_file_size is the
+# exception: file size applies equally to a root CLI script, so it
+# checks membership in this set explicitly instead of a path prefix.
+ROOT_ENTRY_FILES = frozenset({"mc.py", "admin.py", "services.py", "tui.py"})
+
 
 @dataclass
 class Violation:
@@ -35,7 +43,7 @@ class Violation:
 
 def check_file_size(path: Path, rel: str) -> list[Violation]:
     """002.2 — Python files must not exceed 1000 lines."""
-    if not rel.startswith("modules/"):
+    if not rel.startswith("modules/") and rel not in ROOT_ENTRY_FILES:
         return []
     lines = path.read_text().splitlines()
     if len(lines) > 1000:
@@ -918,12 +926,22 @@ def get_staged_py_files() -> list[Path]:
 
 
 def get_all_module_files() -> list[Path]:
-    """Get all Python files under modules/, excluding vendored node_modules."""
-    return sorted(
+    """Get all Python files under modules/, plus the root entry scripts.
+
+    Excludes vendored node_modules. Root entry files (mc.py, admin.py,
+    services.py, tui.py) are included so check_file_size sees them —
+    rule 002.2 would otherwise never fire on the largest files in the
+    repo, since they live outside modules/.
+    """
+    module_files = (
         f
         for f in (PROJECT_ROOT / "modules").rglob("*.py")
         if "node_modules" not in f.relative_to(PROJECT_ROOT).parts
     )
+    root_files = (
+        PROJECT_ROOT / name for name in ROOT_ENTRY_FILES if (PROJECT_ROOT / name).exists()
+    )
+    return sorted(list(module_files) + list(root_files))
 
 
 # ── Output ────────────────────────────────────────────────────────────────
