@@ -46,15 +46,23 @@ def fake_api():
 
 @pytest.fixture
 def patched_mc(fake_api):
-    """Patch mc.api_client (async ctx-mgr) + mc.require_mission for wiring tests."""
+    """Patch api_client (async ctx-mgr) + require_mission for wiring tests.
+
+    `mc schedule`'s command bodies live in mc_groups/schedule.py (Plan 84
+    Phase 5.5), which imports api_client/require_mission into its own
+    module namespace — patch there, not on mc itself.
+    """
 
     @asynccontextmanager
     async def _fake_client(*_a, **_k):
         yield fake_api
 
     with (
-        patch("mc.api_client", _fake_client),
-        patch("mc.require_mission", AsyncMock(return_value=MISSION_ID)),
+        patch("modules.clients.cli.mc_groups.schedule.api_client", _fake_client),
+        patch(
+            "modules.clients.cli.mc_groups.schedule.require_mission",
+            AsyncMock(return_value=MISSION_ID),
+        ),
     ):
         yield fake_api
 
