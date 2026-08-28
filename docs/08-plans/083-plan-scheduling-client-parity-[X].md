@@ -1,6 +1,11 @@
 # Plan 83 — Scheduling Client Parity (Web + `mc.py`)
 
-**Status:** Ready for implementation (2026-07-04)
+**Status:** Complete (2026-08-28) — web (edit modal, per-workflow trigger, Schedules
+section) and `mc.py` (`mc schedule` group) were already implemented in an earlier WIP pass
+(commit `6ff9750`) and survived the Plan 84 `mc.py` split intact; this pass verified all of
+it against the Definition of Done and closed the one real gap — endpoint-level test coverage
+(`tests/unit/backend/api/test_mission_schedules_api.py`). §2.3 (`created_by`) intentionally
+not applied — see §11.
 **Owner:** unassigned
 **Depends on:** Plan 54 (unify-scheduling-under-temporal — shipped). No new backend infrastructure.
 **Related:** feedback_thin_clients (clients are thin; logic stays in the service layer), P18 (entry files expose `tree`), rule 008.x (thin-client enforcement), rule 010.1 (entry discoverability).
@@ -277,14 +282,45 @@ Scheduling binds to a **`workflow_definition_id`**, so only *defined workflows* 
 
 ## 9. Definition of Done
 
-- [ ] Web: clock trigger on each workflow row opens the create modal bound to that workflow.
-- [ ] Web: Schedules section lists all mission schedules with workflow name, cron, next fire, iterations; toggle, edit, delete all work with toasts; list auto-refreshes.
-- [ ] Web: `ScheduleModal` supports both create and edit; `useUpdateSchedule`/`useDeleteSchedule`/`useSchedules` are all now consumed (no orphaned hooks).
-- [ ] `mc.py`: `mc schedule list/create/enable/disable/delete` implemented as a thin API-client renderer; `mc_schedule.py` has zero backend-service imports.
-- [ ] `python mc.py tree` shows the `schedule` group and all subcommands/flags.
-- [ ] Backend endpoint integration tests pass against real Postgres; CLI + (optional) web tests pass.
-- [ ] `scripts/code_rules_fast.py --all` shows no new errors and no new warnings on touched files.
-- [ ] Delivery notes state the free-form-objective limitation (§8) and whether the optional `created_by` fix (§2.3) was applied.
+- [x] Web: clock trigger on each workflow row opens the create modal bound to that workflow.
+- [x] Web: Schedules section lists all mission schedules with workflow name, cron, next fire, iterations; toggle, edit, delete all work with toasts; list auto-refreshes.
+- [x] Web: `ScheduleModal` supports both create and edit; `useUpdateSchedule`/`useDeleteSchedule`/`useSchedules` are all now consumed (no orphaned hooks).
+- [x] `mc.py`: `mc schedule list/create/enable/disable/delete` implemented as a thin API-client renderer; `mc_schedule.py` has zero backend-service imports.
+- [x] `python mc.py tree` shows the `schedule` group and all subcommands/flags.
+- [x] Backend endpoint integration tests pass against real Postgres; CLI + (optional) web tests pass.
+- [x] `scripts/code_rules_fast.py --all` shows no new errors and no new warnings on touched files.
+- [x] Delivery notes state the free-form-objective limitation (§8) and whether the optional `created_by` fix (§2.3) was applied.
+
+---
+
+## 11. Delivery notes (2026-08-28)
+
+**What this pass found:** the web and `mc.py` client work (§5, §6) was already built in an
+earlier WIP commit (`6ff9750`, 2026-07-16) and remained intact through the Plan 84 `mc.py`
+file split. This plan's own Status/gap-analysis in §1 had gone stale — a documentation-status
+drift, not a code gap. Verified directly against source rather than trusting the doc:
+
+- `ScheduleModal` edit mode, per-workflow clock trigger, and `SchedulesSection`
+  (toggle/edit/delete, toasts, auto-refresh via query invalidation) all present in
+  `workflows-panel.tsx` / `schedule-modal.tsx`. `npx tsc --noEmit` is clean.
+- `mc schedule list/create/enable/disable/delete` present in `mc_groups/schedule.py` +
+  `mc_schedule.py`, zero backend-service imports, `mc.py tree` lists the group.
+- The one real gap: no endpoint-level test existed for
+  `GET/POST/PATCH/DELETE /missions/{id}/schedules*`. Added
+  `tests/unit/backend/api/test_mission_schedules_api.py`, mirroring the existing
+  `test_executions_api.py` convention (mocked service + real FastAPI app + `ApiResponse`
+  envelope assertions), including a 403-for-non-member case via `require_mission_access`.
+  Real-Postgres service-layer behaviour was already covered by
+  `tests/unit/backend/services/test_workflow_schedule.py` (P12) — not duplicated here.
+- No frontend test harness exists in this repo (`package.json` has no vitest/testing-library,
+  zero `*.test.ts*` files anywhere) — per §7's fallback, no harness was introduced; web
+  coverage relies on `tsc` + the backend/CLI tests above plus this note as the manual-check
+  record.
+- §2.3 (`created_by` hardcoded to `"user:api"` instead of `current_user.id`) was **not**
+  applied — left as a pre-existing, separately-fixable wart per the plan's own "optional,
+  keep in a separate commit" framing.
+- §8's free-form-objective limitation stands as documented — scheduling still binds to a
+  `workflow_definition_id`, not an ad-hoc mission objective.
 
 ## 10. Suggested commit sequence
 1. `mc.py schedule group + mc_schedule.py (thin API client)` + CLI test.
