@@ -66,8 +66,9 @@ def upgrade() -> None:
         ("session_messages", "status", MESSAGE_STATUS),
     ]:
         for old_val, new_val in mapping.items():
+            # table/col are literals from the static list above, never external input.
             conn.execute(
-                sa.text(f'UPDATE "{table}" SET "{col}" = :new WHERE "{col}" = :old'),
+                sa.text(f'UPDATE "{table}" SET "{col}" = :new WHERE "{col}" = :old'),  # nosec B608
                 {"old": old_val, "new": new_val},
             )
 
@@ -87,8 +88,9 @@ def downgrade() -> None:
         ("session_messages", "status", MESSAGE_STATUS),
     ]:
         for old_val, new_val in mapping.items():
+            # table/col are literals from the static list above, never external input.
             conn.execute(
-                sa.text(f'UPDATE "{table}" SET "{col}" = :old WHERE "{col}" = :new'),
+                sa.text(f'UPDATE "{table}" SET "{col}" = :old WHERE "{col}" = :new'),  # nosec B608
                 {"old": old_val, "new": new_val},
             )
 

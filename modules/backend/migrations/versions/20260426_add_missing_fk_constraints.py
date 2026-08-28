@@ -76,9 +76,11 @@ def upgrade() -> None:
     op.alter_column("executions", "session_id", nullable=True)
 
     # 2. Clean orphaned references before adding constraints.
+    # Table/column names below come from the static NEW_FKS constant defined
+    # in this file, never external input.
     for fk in NEW_FKS:
         conn.execute(
-            sa.text(
+            sa.text(  # nosec B608
                 f"UPDATE \"{fk['table']}\" SET \"{fk['column']}\" = NULL "
                 f"WHERE \"{fk['column']}\" IS NOT NULL "
                 f"AND NOT EXISTS ("

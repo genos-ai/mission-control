@@ -70,10 +70,11 @@ def upgrade() -> None:
             {"new_id": new_id, "old_id": old_id},
         )
 
-        # Update FK columns
+        # Update FK columns. table/column come from the static FK_CONSTRAINTS
+        # constant above, never external input.
         for fk in FK_CONSTRAINTS:
             conn.execute(
-                sa.text(
+                sa.text(  # nosec B608
                     f"UPDATE {fk['table']} SET {fk['column']} = :new_id "
                     f"WHERE {fk['column']} = :old_id"
                 ),
@@ -126,9 +127,11 @@ def downgrade() -> None:
             sa.text("UPDATE users SET id = :old_id WHERE id = :new_id"),
             {"old_id": old_id, "new_id": new_id},
         )
+        # table/column come from the static FK_CONSTRAINTS constant above,
+        # never external input.
         for fk in FK_CONSTRAINTS:
             conn.execute(
-                sa.text(
+                sa.text(  # nosec B608
                     f"UPDATE {fk['table']} SET {fk['column']} = :old_id "
                     f"WHERE {fk['column']} = :new_id"
                 ),

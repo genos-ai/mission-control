@@ -386,8 +386,13 @@ def upgrade() -> None:
 
     # 2. Clean up empty strings in nullable columns (legacy data)
     #    Empty strings can't be cast to UUID — set them to NULL.
+    #    table/column come from the static COLUMNS constant, never external input.
     for table, column in COLUMNS:
-        conn.execute(sa.text(f'UPDATE "{table}" SET "{column}" = NULL ' f"WHERE \"{column}\" = ''"))
+        conn.execute(
+            sa.text(  # nosec B608
+                f'UPDATE "{table}" SET "{column}" = NULL ' f"WHERE \"{column}\" = ''"
+            )
+        )
 
     # 3. ALTER every varchar(36) column to UUID
     for table, column in COLUMNS:

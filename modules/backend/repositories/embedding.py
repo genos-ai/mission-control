@@ -173,8 +173,11 @@ class EmbeddingRepository(BaseRepository[Embedding]):
 
         where_sql = (" AND " + " AND ".join(where_clauses)) if where_clauses else ""
 
+        # where_sql interpolates only fixed clause text ("source_table IN (...)",
+        # "mission_id = :mission_id") and bound-param placeholder names — actual
+        # values (source_tables, validated above; mission_id) are bound, not interpolated.
         sql = text(
-            f"SELECT source_table, source_id, "
+            f"SELECT source_table, source_id, "  # nosec B608
             f"embedding_data <=> CAST(:vec AS vector) AS distance "
             f"FROM embeddings "
             f"WHERE embedding_data IS NOT NULL{where_sql} "
@@ -233,8 +236,10 @@ class EmbeddingRepository(BaseRepository[Embedding]):
 
         where_sql = " OR ".join(or_conditions)
 
+        # where_sql interpolates only bound-param placeholder names (:t_N, :s_N) —
+        # the actual table/id values are bound via params, not string-interpolated.
         sql = text(
-            f"SELECT source_table, source_id, "
+            f"SELECT source_table, source_id, "  # nosec B608
             f"embedding_data <=> CAST(:vec AS vector) AS distance "
             f"FROM embeddings "
             f"WHERE embedding_data IS NOT NULL AND ({where_sql}) "
@@ -269,8 +274,9 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         absence across tables.
         """
         _validate_source_table(source_table)
+        # source_table is checked against VALID_SOURCE_TABLES above.
         sql = text(
-            f"SELECT :src_table AS source_table, t.id AS source_id "
+            f"SELECT :src_table AS source_table, t.id AS source_id "  # nosec B608
             f"FROM {source_table} t "
             f"LEFT JOIN embeddings e "
             f"  ON e.source_table = :src_table "

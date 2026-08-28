@@ -89,7 +89,10 @@ class DatabaseAdminService:
         """Return (table_name, row_count) for all application tables."""
         counts = []
         for tbl in ALL_TABLES:
-            result = await self._session.execute(text(f"SELECT COUNT(*) FROM {tbl}"))  # noqa: S608
+            # tbl comes from the fixed ALL_TABLES constant, never user input.
+            result = await self._session.execute(
+                text(f"SELECT COUNT(*) FROM {tbl}")  # noqa: S608 # nosec B608
+            )
             counts.append((tbl, result.scalar()))
         return counts
 
@@ -110,7 +113,10 @@ class DatabaseAdminService:
     async def get_table_row_count(self, table: str) -> int:
         """Return row count for a single table."""
         self._validate_table(table)
-        result = await self._session.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608
+        # table is checked against the allowlist in _validate_table above.
+        result = await self._session.execute(
+            text(f"SELECT COUNT(*) FROM {table}")  # noqa: S608 # nosec B608
+        )
         return result.scalar()
 
     async def query_recent_rows(
@@ -135,8 +141,12 @@ class DatabaseAdminService:
         columns = [row[0] for row in col_result.fetchall()]
 
         order_col = "created_at" if "created_at" in columns else columns[0]
+        # table is validated above; order_col is either the literal "created_at"
+        # or a column name read back from information_schema for this table.
         result = await self._session.execute(
-            text(f"SELECT * FROM {table} ORDER BY {order_col} DESC LIMIT :limit"),  # noqa: S608
+            text(
+                f"SELECT * FROM {table} ORDER BY {order_col} DESC LIMIT :limit"
+            ),  # noqa: S608 # nosec B608
             {"limit": limit},
         )
 

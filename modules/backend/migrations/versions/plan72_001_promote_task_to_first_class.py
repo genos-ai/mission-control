@@ -343,9 +343,10 @@ def upgrade() -> None:
     # Without this, the ::uuid cast below will crash on old-format
     # strings like "v1-task-001" from orphaned/deleted plans.
     _uuid_pattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    # table is a literal from the fixed tuple above, never external input.
     for table in ("task_executions", "execution_decisions", "context_changes"):
         conn.execute(
-            sa.text(
+            sa.text(  # nosec B608
                 f"UPDATE {table} SET task_id = NULL "
                 f"WHERE task_id IS NOT NULL AND task_id !~ :pattern"
             ),

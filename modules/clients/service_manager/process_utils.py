@@ -33,8 +33,10 @@ def get_pids_on_port(port: int) -> list[int]:
         )
         if result.returncode == 0 and result.stdout.strip():
             return [int(p) for p in result.stdout.strip().split("\n") if p.isdigit()]
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    except FileNotFoundError:
+        print("  Warning: 'lsof' not found on PATH — cannot detect processes on port")
+    except subprocess.TimeoutExpired:
+        print(f"  Warning: 'lsof' timed out checking port {port}")
     return []
 
 
@@ -49,6 +51,7 @@ def kill_pids(pids: list[int], label: str) -> int:
             os.kill(pid, signal.SIGTERM)
             killed += 1
         except ProcessLookupError:
+            # Already dead between the port scan and this kill — not an error.
             pass
         except PermissionError:
             print(f"  Permission denied killing PID {pid}")
@@ -67,6 +70,8 @@ def kill_pids(pids: list[int], label: str) -> int:
                     os.kill(pid, 0)
                     alive.append(pid)
                 except ProcessLookupError:
+                    # Signal 0 raising this IS the "process is dead" result —
+                    # not a failure, so no message per poll iteration.
                     pass
             if not alive:
                 break
@@ -76,8 +81,11 @@ def kill_pids(pids: list[int], label: str) -> int:
                 try:
                     os.kill(pid, signal.SIGKILL)
                     print(f"  Force-killed PID {pid}")
-                except (ProcessLookupError, PermissionError):
+                except ProcessLookupError:
+                    # Died on its own between the deadline check and SIGKILL.
                     pass
+                except PermissionError:
+                    print(f"  Permission denied force-killing PID {pid}")
 
     return killed
 
