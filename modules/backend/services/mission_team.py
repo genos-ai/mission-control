@@ -299,26 +299,23 @@ class MissionTeamService(BaseService):
         """List team members with full catalog detail.
 
         Returns dicts with agent_name, description, tools, scope, keywords
-        for each member — richer than list_team_with_names, intended for
-        context-injection paths that need full agent capabilities.
+        for each member — a projection of list_team_full's richer shape,
+        intended for context-injection paths that only need this subset.
         """
-        members = await self.list_team(mission_id, enabled_only=enabled_only)
+        full = await self.list_team_full(mission_id, enabled_only=enabled_only)
         result = []
-        for m in members:
-            entry = m.agent_catalog
-            if not entry:
-                continue
-            scope = entry.scope or {}
+        for entry in full:
+            scope = entry["scope"] or {}
             result.append(
                 {
-                    "agent_name": entry.agent_name,
-                    "description": entry.description or "",
-                    "tools": list(entry.tools or []),
+                    "agent_name": entry["agent_name"],
+                    "description": entry["description"] or "",
+                    "tools": list(entry["tools"] or []),
                     "scope": {
                         "read": scope.get("read", []),
                         "write": scope.get("write", []),
                     },
-                    "keywords": list(entry.keywords or []),
+                    "keywords": list(entry["keywords"] or []),
                 }
             )
         return result

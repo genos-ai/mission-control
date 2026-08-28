@@ -310,6 +310,21 @@ class ExecutionPersistenceService(BaseService):
 
         return attempt
 
+    @staticmethod
+    def _build_decision_row(
+        execution_record_id: str,
+        decision_type: str,
+        reasoning: str,
+        *,
+        task_id: str | None = None,
+    ) -> ExecutionDecision:
+        return ExecutionDecision(
+            execution_record_id=execution_record_id,
+            decision_type=DecisionType(decision_type),
+            task_id=task_id,
+            reasoning=reasoning,
+        )
+
     async def save_decision(
         self,
         execution_record_id: str,
@@ -319,11 +334,8 @@ class ExecutionPersistenceService(BaseService):
         task_id: str | None = None,
     ) -> ExecutionDecision:
         """Log a Mission Control decision."""
-        decision = ExecutionDecision(
-            execution_record_id=execution_record_id,
-            decision_type=DecisionType(decision_type),
-            task_id=task_id,
-            reasoning=reasoning,
+        decision = self._build_decision_row(
+            execution_record_id, decision_type, reasoning, task_id=task_id
         )
 
         self._session.add(decision)
@@ -399,11 +411,8 @@ class ExecutionPersistenceService(BaseService):
         write the audit row as a side effect of building a GateDecision,
         inside a transaction they don't want to prematurely flush.
         """
-        row = ExecutionDecision(
-            execution_record_id=execution_record_id,
-            decision_type=DecisionType(decision_type),
-            task_id=task_id,
-            reasoning=reasoning,
+        row = self._build_decision_row(
+            execution_record_id, decision_type, reasoning, task_id=task_id
         )
         self._session.add(row)
         return row
