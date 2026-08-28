@@ -124,9 +124,11 @@ async def get_optional_user(
 async def _resolve_sse_token(token: str) -> str | None:
     """Look up a short-lived SSE token in Redis and return the user_id.
 
-    The token is deleted after retrieval (single-use).  Returns ``None``
-    when the token is not found or on any Redis error (fail-open so the
-    caller can fall back to JWT resolution).
+    The token is deleted after retrieval (single-use). Returns ``None``
+    when the token is simply not found (caller falls back to treating it
+    as a raw JWT). Raises AuthenticationError on any Redis error instead
+    of falling through — a broken Redis must not silently downgrade the
+    auth check to "guess it's a JWT" (fail closed, per P16).
     """
     from redis.asyncio import Redis as AsyncRedis
 
@@ -138,8 +140,8 @@ async def _resolve_sse_token(token: str) -> str | None:
         user_id: bytes | None = await redis.getdel(redis_key)
         if user_id:
             return user_id.decode()
-    except Exception:
-        logger.debug("SSE token Redis lookup failed, falling back to auth header", exc_info=True)
+    except Exception as exc:
+        raise AuthenticationError("Unable to verify SSE token") from exc
     finally:
         await redis.aclose()
     return None

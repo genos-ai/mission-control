@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from modules.backend.core.config_schema import RoleSchema
-from modules.backend.core.dependencies import get_current_user, require_admin
+from modules.backend.core.dependencies import get_current_user, get_current_user_sse, require_admin
 from modules.backend.core.exceptions import AuthenticationError, AuthorizationError
 from modules.backend.models.user import User
 
@@ -146,6 +146,50 @@ class TestGetCurrentUser:
                     authorization=None,
                     api_key="bad-key",
                 )
+
+
+class TestGetCurrentUserSse:
+    """Tests for get_current_user_sse, in particular the fail-closed
+    behaviour when the Redis-backed SSE token lookup itself errors out
+    (must not be treated the same as token-not-found)."""
+
+    @pytest.mark.asyncio
+    async def test_redis_error_fails_closed(self):
+        """A Redis error during the token lookup must raise, not fall
+        back to treating the token as a raw JWT."""
+        mock_redis = MagicMock()
+        mock_redis.getdel = AsyncMock(side_effect=ConnectionError("redis unreachable"))
+        mock_redis.aclose = AsyncMock()
+
+        mock_auth_service = MagicMock()
+        mock_auth_service.resolve_jwt = AsyncMock(return_value=_make_user("admin"))
+
+        with (
+            patch("redis.asyncio.Redis.from_url", return_value=mock_redis),
+            patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service),
+        ):
+            with pytest.raises(AuthenticationError):
+                await get_current_user_sse(db=MagicMock(), token="some-token", authorization=None)
+        mock_auth_service.resolve_jwt.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_token_not_found_falls_back_to_jwt(self):
+        """A clean Redis miss (token absent, no error) still falls back
+        to treating the token value as a raw JWT."""
+        mock_redis = MagicMock()
+        mock_redis.getdel = AsyncMock(return_value=None)
+        mock_redis.aclose = AsyncMock()
+
+        user = _make_user("admin")
+        mock_auth_service = MagicMock()
+        mock_auth_service.resolve_jwt = AsyncMock(return_value=user)
+
+        with (
+            patch("redis.asyncio.Redis.from_url", return_value=mock_redis),
+            patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service),
+        ):
+            result = await get_current_user_sse(db=MagicMock(), token="raw-jwt", authorization=None)
+        assert result == user
 
 
 class TestRequireAdmin:
