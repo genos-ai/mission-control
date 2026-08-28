@@ -152,6 +152,7 @@ class FeaturesSchema(_StrictBase):
     auth_rate_limit_enabled: bool
     auth_require_api_authentication: bool
     auth_allow_self_registration: bool = False
+    legacy_admin_key_enabled: bool = False
     api_detailed_errors: bool
     api_request_logging: bool
     channel_telegram_enabled: bool

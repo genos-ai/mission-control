@@ -29,6 +29,10 @@ auth_allow_api_key_creation: true
 auth_rate_limit_enabled: true
 auth_require_api_authentication: true
 auth_allow_self_registration: false
+# Legacy ADMIN_API_KEY backdoor (grants the first active admin user on a
+# static env key). Off by default — enable only for break-glass recovery,
+# and retire the key as soon as normal auth is restored.
+legacy_admin_key_enabled: false
 
 # -----------------------------------------------------------------------------
 # API Behavior

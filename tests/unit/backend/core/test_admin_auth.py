@@ -73,13 +73,20 @@ class TestGetCurrentUser:
 
     @pytest.mark.asyncio
     async def test_legacy_key_fallback(self):
-        """Legacy ADMIN_API_KEY should fall back to resolve_legacy_key."""
+        """Legacy ADMIN_API_KEY should fall back to resolve_legacy_key,
+        but only when features.legacy_admin_key_enabled is on."""
         user = _make_user("admin")
         mock_auth_service = MagicMock()
         mock_auth_service.resolve_api_key = AsyncMock(side_effect=AuthenticationError("Invalid"))
         mock_auth_service.resolve_legacy_key = AsyncMock(return_value=user)
 
-        with patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service):
+        fake_config = MagicMock()
+        fake_config.features.legacy_admin_key_enabled = True
+
+        with (
+            patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service),
+            patch("modules.backend.core.config.get_app_config", return_value=fake_config),
+        ):
             result = await get_current_user(
                 request=MagicMock(),
                 db=MagicMock(),
@@ -87,6 +94,31 @@ class TestGetCurrentUser:
                 api_key="legacy-admin-key",
             )
         assert result == user
+
+    @pytest.mark.asyncio
+    async def test_legacy_key_blocked_when_flag_disabled(self):
+        """When legacy_admin_key_enabled is off (the default), the legacy
+        fallback must not even be attempted."""
+        user = _make_user("admin")
+        mock_auth_service = MagicMock()
+        mock_auth_service.resolve_api_key = AsyncMock(side_effect=AuthenticationError("Invalid"))
+        mock_auth_service.resolve_legacy_key = AsyncMock(return_value=user)
+
+        fake_config = MagicMock()
+        fake_config.features.legacy_admin_key_enabled = False
+
+        with (
+            patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service),
+            patch("modules.backend.core.config.get_app_config", return_value=fake_config),
+        ):
+            with pytest.raises(AuthenticationError):
+                await get_current_user(
+                    request=MagicMock(),
+                    db=MagicMock(),
+                    authorization=None,
+                    api_key="legacy-admin-key",
+                )
+        mock_auth_service.resolve_legacy_key.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_credentials_raises(self):

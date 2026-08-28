@@ -91,11 +91,19 @@ async def get_current_user(
         except AuthenticationError:
             logger.debug("Per-user API key check failed, trying legacy key")
 
-        # 3. Legacy ADMIN_API_KEY fallback
-        user = await auth_service.resolve_legacy_key(api_key)
-        if user:
-            request.state.auth_scopes = None
-            return user
+        # 3. Legacy ADMIN_API_KEY fallback — off by default (break-glass
+        # recovery only); see features.legacy_admin_key_enabled.
+        from modules.backend.core.config import get_app_config
+
+        if get_app_config().features.legacy_admin_key_enabled:
+            user = await auth_service.resolve_legacy_key(api_key)
+            if user:
+                logger.warning(
+                    "Legacy admin key used",
+                    extra={"user_id": user.id, "email": user.email},
+                )
+                request.state.auth_scopes = None
+                return user
 
     raise AuthenticationError("Authentication required")
 
