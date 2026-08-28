@@ -257,7 +257,18 @@
       "Bash(/opt/anaconda3/envs/mission-control/bin/flake8 modules/backend/api/v1/endpoints/admin.py modules/backend/api/v1/endpoints/missions_plan.py modules/backend/api/v1/endpoints/missions_team.py modules/backend/api/v1/endpoints/missions_workflows.py modules/backend/api/v1/endpoints/missions_gates.py modules/backend/services/mission_plan.py modules/backend/services/mission_team.py modules/backend/services/workflow_run.py)",
       "Bash(/opt/anaconda3/envs/mission-control/bin/black --line-length=100 --check modules/backend/api/v1/endpoints/admin.py modules/backend/api/v1/endpoints/missions_plan.py modules/backend/api/v1/endpoints/missions_team.py modules/backend/api/v1/endpoints/missions_workflows.py modules/backend/api/v1/endpoints/missions_gates.py modules/backend/services/mission_plan.py modules/backend/services/mission_team.py modules/backend/services/workflow_run.py)",
       "Bash(/opt/anaconda3/envs/mission-control/bin/pytest tests/unit/backend/services/test_mission_team.py -q -p no:cacheprovider)",
-      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import modules.clients.cli.api_client, modules.clients.cli.mission_context, modules.clients.cli.schedule_cmds, modules.clients.cli.workflow_cmds, modules.clients.cli.console_cmds, modules.clients.cli.mc_mission, modules.clients.tui.screens.profile, modules.clients.tui.services.service_bridge; print\\('imports OK'\\)\")"
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -c \"import modules.clients.cli.api_client, modules.clients.cli.mission_context, modules.clients.cli.schedule_cmds, modules.clients.cli.workflow_cmds, modules.clients.cli.console_cmds, modules.clients.cli.mc_mission, modules.clients.tui.screens.profile, modules.clients.tui.services.service_bridge; print\\('imports OK'\\)\")",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/black -q modules/backend/agents/mission/director/agent.py modules/backend/agents/mission/director/tool_helpers.py modules/backend/agents/mission/director/tools_mission.py modules/backend/agents/mission/director/tools_plan.py modules/backend/agents/mission/director/tools_workflow.py modules/backend/agents/mission/director/tools_knowledge.py)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/isort -q modules/backend/agents/mission/director/agent.py modules/backend/agents/mission/director/tool_helpers.py modules/backend/agents/mission/director/tools_mission.py modules/backend/agents/mission/director/tools_plan.py modules/backend/agents/mission/director/tools_workflow.py modules/backend/agents/mission/director/tools_knowledge.py)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/flake8 modules/backend/agents/mission/director/agent.py modules/backend/agents/mission/director/tool_helpers.py modules/backend/agents/mission/director/tools_mission.py modules/backend/agents/mission/director/tools_plan.py modules/backend/agents/mission/director/tools_workflow.py modules/backend/agents/mission/director/tools_knowledge.py)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -m pytest tests/unit/backend/agents/test_mission_director.py -v)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -m pytest tests/unit -q)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/python -m pytest tests/integration -q)",
+      "Bash(command -v gh)",
+      "Read(//usr/local/**)",
+      "Bash(/opt/homebrew/bin/gh --version)",
+      "Bash(unset AZURE_CONFIG_DIR)",
+      "Bash(/opt/anaconda3/envs/mission-control/bin/flake8 --select=F821,F401,E9 modules/clients/service_manager/*.py)"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
