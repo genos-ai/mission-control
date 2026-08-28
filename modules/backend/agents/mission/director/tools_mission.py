@@ -82,32 +82,10 @@ def register_mission_tools(agent: Agent) -> None:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.repositories.agent_catalog import AgentCatalogRepository
             from modules.backend.services.mission_team import MissionTeamService
 
             team_svc = MissionTeamService(ctx.deps.db_session)
-            catalog_repo = AgentCatalogRepository(ctx.deps.db_session)
-
-            members = await team_svc.list_team(ctx.deps.mission_id)
-            team_list = []
-            for member in members:
-                entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
-                if not entry:
-                    continue
-                team_list.append(
-                    {
-                        "agent_name": entry.agent_name,
-                        "description": entry.description,
-                        "agent_type": entry.agent_type,
-                        "tools": entry.tools or [],
-                        "keywords": entry.keywords or [],
-                        "scope": entry.scope or {},
-                        "interface": entry.interface,
-                        "constraints": entry.constraints or {},
-                        "enabled": entry.enabled,
-                        "chat_enabled": entry.chat_enabled,
-                    }
-                )
+            team_list = await team_svc.list_team_full(ctx.deps.mission_id)
 
             return json.dumps(team_list, indent=2, default=str)
         except Exception as e:
@@ -139,21 +117,17 @@ def register_mission_tools(agent: Agent) -> None:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+            from modules.backend.services.agent_catalog import AgentCatalogService
             from modules.backend.services.mission_team import MissionTeamService
 
-            catalog_repo = AgentCatalogRepository(ctx.deps.db_session)
+            catalog_svc = AgentCatalogService(ctx.deps.db_session)
             team_svc = MissionTeamService(ctx.deps.db_session)
 
             # Get all catalog entries
-            all_agents = await catalog_repo.get_all(limit=200)
+            all_agents = await catalog_svc.list_catalog(enabled_only=False)
             # Get current team for comparison
-            members = await team_svc.list_team(ctx.deps.mission_id)
-            team_names = set()
-            for m in members:
-                entry = await catalog_repo.get_by_id_or_none(m.agent_catalog_id)
-                if entry:
-                    team_names.add(entry.agent_name)
+            members = await team_svc.list_team_with_names(ctx.deps.mission_id)
+            team_names = {m["agent_name"] for m in members}
 
             results = []
             for agent_entry in all_agents:

@@ -160,41 +160,28 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 )
 
             # Active runs
-            from sqlalchemy import func, select
-
-            from modules.backend.models.execution_record import (
-                ExecutionRecord,
-                ExecutionRecordStatus,
+            from modules.backend.services.execution_persistence import (
+                ExecutionPersistenceService,
             )
 
-            stmt = (
-                select(func.count())
-                .select_from(ExecutionRecord)
-                .where(
-                    ExecutionRecord.mission_id == mission_id,
-                    ExecutionRecord.status == ExecutionRecordStatus.RUNNING,
-                )
-            )
-            active_count = (await ctx.deps.db_session.execute(stmt)).scalar() or 0
+            active_count = await ExecutionPersistenceService(
+                ctx.deps.db_session
+            ).count_running_for_mission(mission_id)
             if active_count:
                 parts.append(
                     f"Active runs: {active_count} (agents are executing — do NOT start new work)"
                 )
 
             # Recent artifacts
-            from modules.backend.models.mission_artifact import MissionArtifact
+            from modules.backend.services.mission_artifact import MissionArtifactService
 
-            stmt = (
-                select(MissionArtifact.title, MissionArtifact.artifact_type)
-                .where(MissionArtifact.mission_id == mission_id)
-                .order_by(MissionArtifact.created_at.desc())
-                .limit(3)
+            artifacts = await MissionArtifactService(ctx.deps.db_session).list_for_mission(
+                mission_id, limit=3
             )
-            artifacts = (await ctx.deps.db_session.execute(stmt)).all()
             if artifacts:
                 parts.append("Recent artifacts:")
-                for title, atype in artifacts:
-                    parts.append(f"  - [{atype}] {title}")
+                for a in artifacts:
+                    parts.append(f"  - [{a.artifact_type}] {a.title}")
 
             parts.append("[End Plan State]")
         except Exception:

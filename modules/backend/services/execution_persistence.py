@@ -384,6 +384,147 @@ class ExecutionPersistenceService(BaseService):
         """Get the decision audit trail for an execution."""
         return await self._repo.get_decisions(execution_id)
 
+    def add_decision_row(
+        self,
+        execution_record_id: str,
+        decision_type: str,
+        reasoning: str,
+        *,
+        task_id: str | None = None,
+    ) -> ExecutionDecision:
+        """Stage a new ExecutionDecision row without flushing.
+
+        Deliberately synchronous — session.add() is a memory operation;
+        the caller owns the flush/commit. Used by gate reviewers that
+        write the audit row as a side effect of building a GateDecision,
+        inside a transaction they don't want to prematurely flush.
+        """
+        row = ExecutionDecision(
+            execution_record_id=execution_record_id,
+            decision_type=DecisionType(decision_type),
+            task_id=task_id,
+            reasoning=reasoning,
+        )
+        self._session.add(row)
+        return row
+
+    async def get_cached_decision_by_type(
+        self,
+        execution_record_id: str,
+        decision_type: str,
+    ) -> ExecutionDecision | None:
+        """Return the first decision of a given type for an execution, if any.
+
+        Used by idempotency checks (e.g. the post-run gate reviewer) that
+        need to know whether a decision of a specific type was already
+        recorded for this execution.
+        """
+        decisions = await self.get_decisions(execution_record_id)
+        for decision in decisions:
+            if decision.decision_type == DecisionType(decision_type):
+                return decision
+        return None
+
+    async def list_recent_run_outcomes(
+        self,
+        mission_id: str,
+        *,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Read the last N execution records for a mission.
+
+        Returns a list of dicts with run metadata, task counts, cost,
+        and status. Used by the supervisor's chat mode to answer "what
+        happened in the last few waves?" and by the decision matrix to
+        feed GateContext.recent_run_outcomes.
+        """
+        from sqlalchemy import select
+
+        stmt = (
+            select(ExecutionRecord)
+            .where(ExecutionRecord.mission_id == mission_id)
+            .order_by(ExecutionRecord.created_at.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        rows = list(result.scalars().all())
+
+        return [
+            {
+                "execution_record_id": r.id,
+                "status": r.status if isinstance(r.status, str) else r.status.value,
+                "total_cost_usd": r.total_cost_usd,
+                "completed_task_count": getattr(r, "completed_task_count", 0),
+                "failed_task_count": getattr(r, "failed_task_count", 0),
+                "started_at": r.started_at,
+                "completed_at": r.completed_at,
+                "created_at": str(r.created_at),
+            }
+            for r in rows
+        ]
+
+    async def list_past_decisions(
+        self,
+        mission_id: str,
+        *,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Read post_run_supervisor decisions for a mission.
+
+        Queries execution_decisions joined through execution_records to
+        filter by mission_id. Returns the human-readable prefix and the
+        structured JSON tail from the reasoning field.
+        """
+        from sqlalchemy import and_, select
+
+        stmt = (
+            select(ExecutionDecision)
+            .join(
+                ExecutionRecord,
+                ExecutionDecision.execution_record_id == ExecutionRecord.id,
+            )
+            .where(
+                and_(
+                    ExecutionRecord.mission_id == mission_id,
+                    ExecutionDecision.decision_type == DecisionType.POST_RUN_SUPERVISOR.value,
+                )
+            )
+            .order_by(ExecutionDecision.created_at.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        rows = list(result.scalars().all())
+
+        decisions = []
+        for row in rows:
+            reasoning = row.reasoning or ""
+            # Split human-readable prefix from JSON tail (marked with __META__ prefix)
+            meta: dict[str, Any] = {}
+            if "__META__" in reasoning:
+                human_text, raw_meta = reasoning.split("__META__", 1)
+                human_text = human_text.strip()
+                try:
+                    meta = json.loads(raw_meta)
+                except (json.JSONDecodeError, ValueError):
+                    logger.debug("Could not parse __META__ tail of decision reasoning")
+            else:
+                human_text = reasoning.strip()
+
+            decisions.append(
+                {
+                    "decision_id": row.id,
+                    "execution_record_id": row.execution_record_id,
+                    "action": meta.get("action", "unknown"),
+                    "rule": meta.get("rule", "unknown"),
+                    "reviewer": meta.get("reviewer", "unknown"),
+                    "reason": human_text,
+                    "model_metadata": meta.get("model_metadata"),
+                    "created_at": str(row.created_at),
+                }
+            )
+
+        return decisions
+
     async def get_cost_breakdown(self, execution_id: str) -> ExecutionCostBreakdown:
         """Get detailed cost breakdown for an execution."""
         record = await self._repo.get_by_id_or_none(execution_id)
@@ -565,6 +706,35 @@ class ExecutionPersistenceService(BaseService):
 
         return runs, total
 
+    async def get_cross_mission_cost_breakdown(self) -> dict[str, Any]:
+        """Aggregate cost and execution count grouped by mission.
+
+        Used by the Platform Director's cost-analytics tool. Missions
+        with no mission_id (unscoped runs) group under "unscoped".
+        """
+        from sqlalchemy import func, select
+
+        result = await self._session.execute(
+            select(
+                ExecutionRecord.mission_id,
+                func.sum(ExecutionRecord.total_cost_usd).label("total_cost"),
+                func.count(ExecutionRecord.id).label("execution_count"),
+            ).group_by(ExecutionRecord.mission_id)
+        )
+        rows = result.all()
+
+        return {
+            "mission_costs": [
+                {
+                    "mission_id": str(row.mission_id) if row.mission_id else "unscoped",
+                    "total_cost_usd": float(row.total_cost or 0),
+                    "execution_count": row.execution_count,
+                }
+                for row in rows
+            ],
+            "platform_total_usd": sum(float(r.total_cost or 0) for r in rows),
+        }
+
     # ---- Concurrency limiter (Plan 71) ----
 
     async def count_active(self) -> int:
@@ -591,6 +761,25 @@ class ExecutionPersistenceService(BaseService):
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()
+
+    async def count_running_for_mission(self, mission_id: str) -> int:
+        """Count RUNNING execution records for one mission.
+
+        Narrower than count_active() — a single mission's in-flight runs,
+        used to warn agents not to start new work while one is executing.
+        """
+        from sqlalchemy import func, select
+
+        stmt = (
+            select(func.count())
+            .select_from(ExecutionRecord)
+            .where(
+                ExecutionRecord.mission_id == mission_id,
+                ExecutionRecord.status == ExecutionRecordStatus.RUNNING,
+            )
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar() or 0
 
     # ---- Output extraction (Plan 71 — moved from ExecutionService) ----
 

@@ -49,6 +49,19 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
+    async def get_domain_tags_by_ids(self, task_ids: list[str]) -> dict[str, list | None]:
+        """Batch-fetch domain_tags for a set of task ids in one query.
+
+        Used by the persistence bridge to annotate task_executions
+        without an N+1 query per task.
+        """
+        if not task_ids:
+            return {}
+        result = await self.session.execute(
+            select(Task.id, Task.domain_tags).where(Task.id.in_(task_ids))
+        )
+        return {tid: tags or None for tid, tags in result}
+
     async def get_by_mission_id(
         self,
         mission_id: str,

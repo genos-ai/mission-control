@@ -661,6 +661,12 @@ def check_agent_imports_models_repos(path: Path, rel: str) -> list[Violation]:
     Agents are thin clients — all DB access goes through the service layer.
     This prevents agents from bypassing business rules, transaction
     boundaries, and audit logic that services enforce.
+
+    Exempt: imports inside `if TYPE_CHECKING:` blocks. Those imports never
+    execute at runtime (annotations are strings under `from __future__
+    import annotations`, or the block is simply skipped) — they cannot
+    bypass the service layer, so they carry none of the risk this rule
+    exists to catch.
     """
     if not rel.startswith("modules/backend/agents/"):
         return []
@@ -671,18 +677,32 @@ def check_agent_imports_models_repos(path: Path, rel: str) -> list[Violation]:
     patterns = [
         (re.compile(r"from modules\.backend\.models\."), "models"),
         (re.compile(r"from modules\.backend\.repositories\."), "repositories"),
-        (re.compile(r"from sqlalchemy"), "sqlalchemy"),
+        # sqlalchemy.exc is exception types only (e.g. `except SQLAlchemyError`)
+        # — never touches the ORM/session, so it carries none of the
+        # service-layer-bypass risk this rule exists to catch.
+        (re.compile(r"from sqlalchemy(?!\.exc\b)"), "sqlalchemy"),
     ]
+    in_type_checking_block = False
+    type_checking_indent = 0
     for i, line in enumerate(path.read_text().splitlines(), 1):
         stripped = line.strip()
         if stripped.startswith(("#", '"""', "'''")):
+            continue
+        if in_type_checking_block:
+            if line.strip() and (len(line) - len(line.lstrip())) <= type_checking_indent:
+                in_type_checking_block = False
+        if re.match(r"^(\s*)if TYPE_CHECKING:\s*$", line):
+            in_type_checking_block = True
+            type_checking_indent = len(line) - len(line.lstrip())
+            continue
+        if in_type_checking_block:
             continue
         for pat, kind in patterns:
             if pat.search(line):
                 violations.append(
                     Violation(
                         "011.1",
-                        "warning",
+                        "error",
                         rel,
                         i,
                         f"Agent imports {kind} directly — use a service",

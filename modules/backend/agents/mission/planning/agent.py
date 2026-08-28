@@ -132,10 +132,9 @@ def _register_read_tools(agent: Agent) -> None:
         if not ctx.deps.mission_id or not ctx.deps.db_session:
             return json.dumps({"error": "No mission context available"})
 
-        from modules.backend.repositories.mission import MissionRepository
+        from modules.backend.services.mission import MissionService
 
-        repo = MissionRepository(ctx.deps.db_session)
-        mission = await repo.get_by_id(ctx.deps.mission_id)
+        mission = await MissionService(ctx.deps.db_session).get_mission(ctx.deps.mission_id)
         return json.dumps(
             {
                 "id": mission.id,

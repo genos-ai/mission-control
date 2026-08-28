@@ -107,13 +107,11 @@ async def derive_roster_from_team(
     Raises ValueError if no team members are assigned.
     """
 
-    from modules.backend.repositories.agent_catalog import AgentCatalogRepository
-    from modules.backend.repositories.mission_team import MissionTeamRepository
+    from modules.backend.services.mission_team import MissionTeamService
 
-    team_repo = MissionTeamRepository(session)
-    catalog_repo = AgentCatalogRepository(session)
+    team_svc = MissionTeamService(session)
 
-    members = await team_repo.list_by_mission(mission_id, enabled_only=True)
+    members = await team_svc.list_team(mission_id, enabled_only=True)
 
     if not members:
         raise ValueError(
@@ -123,7 +121,7 @@ async def derive_roster_from_team(
 
     entries: list[RosterAgentEntry] = []
     for member in members:
-        catalog_entry = await catalog_repo.get_by_id_or_none(member.agent_catalog_id)
+        catalog_entry = member.agent_catalog
         if not catalog_entry or not catalog_entry.enabled:
             logger.warning(
                 "Skipping disabled or missing catalog entry",

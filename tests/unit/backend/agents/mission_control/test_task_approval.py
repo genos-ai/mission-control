@@ -73,7 +73,10 @@ class _StubResult:
     def scalar_one_or_none(self):
         if self._value is None:
             return None
-        return SimpleNamespace(value=self._value)
+        # _current_status now goes through MissionPlanService.get_task(),
+        # which fetches the full Task row (not a bare status column) —
+        # mimic that shape: a task-like object with a .status attribute.
+        return SimpleNamespace(status=SimpleNamespace(value=self._value))
 
 
 @pytest.fixture(autouse=True)

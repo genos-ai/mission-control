@@ -43,13 +43,13 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         if not db:
             return {"error": "No database session available"}
 
-        from modules.backend.repositories.mission import MissionRepository
         from modules.backend.services.execution_persistence import ExecutionPersistenceService
+        from modules.backend.services.mission import MissionService
 
-        mission_repo = MissionRepository(db)
+        mission_svc = MissionService(db)
         exec_svc = ExecutionPersistenceService(db)
 
-        missions = await mission_repo.list_all()
+        missions = await mission_svc.list_missions(include_archived=True)
         recent_runs, total = await exec_svc.list_executions(limit=10)
 
         return {
@@ -69,10 +69,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         if not db:
             return [{"error": "No database session available"}]
 
-        from modules.backend.repositories.mission import MissionRepository
+        from modules.backend.services.mission import MissionService
 
-        repo = MissionRepository(db)
-        missions = await repo.list_all(limit=50)
+        missions = await MissionService(db).list_missions(include_archived=True, limit=50)
 
         return [
             {
@@ -95,30 +94,9 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         if not db:
             return {"error": "No database session available"}
 
-        from sqlalchemy import func, select
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
-        from modules.backend.models.execution_record import ExecutionRecord
-
-        result = await db.execute(
-            select(
-                ExecutionRecord.mission_id,
-                func.sum(ExecutionRecord.total_cost_usd).label("total_cost"),
-                func.count(ExecutionRecord.id).label("execution_count"),
-            ).group_by(ExecutionRecord.mission_id)
-        )
-        rows = result.all()
-
-        return {
-            "mission_costs": [
-                {
-                    "mission_id": str(row.mission_id) if row.mission_id else "unscoped",
-                    "total_cost_usd": float(row.total_cost or 0),
-                    "execution_count": row.execution_count,
-                }
-                for row in rows
-            ],
-            "platform_total_usd": sum(float(r.total_cost or 0) for r in rows),
-        }
+        return await ExecutionPersistenceService(db).get_cross_mission_cost_breakdown()
 
     @agent.tool
     async def get_system_agent_status(

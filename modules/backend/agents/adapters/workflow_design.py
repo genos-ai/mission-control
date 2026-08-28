@@ -6,14 +6,17 @@ receives a database session (or schema objects) and returns structured
 data. No PydanticAI dependency — tools in agent.py delegate here.
 """
 
-from typing import Any
+from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.logging import get_logger
 from modules.backend.services.agent_catalog import AgentCatalogService
 from modules.backend.services.mission_team import MissionTeamService
 from modules.backend.services.workflow_definition import WorkflowDefinitionService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -43,15 +46,9 @@ async def browse_agent_catalog(
     # Resolve team membership if mission_id is available
     team_names: set[str] = set()
     if mission_id:
-        from modules.backend.repositories.agent_catalog import AgentCatalogRepository
-
         team_svc = MissionTeamService(session)
-        catalog_repo = AgentCatalogRepository(session)
-        members = await team_svc.list_team(mission_id)
-        for m in members:
-            entry = await catalog_repo.get_by_id_or_none(m.agent_catalog_id)
-            if entry:
-                team_names.add(entry.agent_name)
+        members = await team_svc.list_team_with_names(mission_id)
+        team_names = {m["agent_name"] for m in members}
 
     return [
         {

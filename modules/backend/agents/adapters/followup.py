@@ -14,9 +14,7 @@ PydanticAI.
 
 from __future__ import annotations
 
-from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
@@ -24,6 +22,9 @@ from modules.backend.services.session_followup import (
     DEFAULT_EXPIRES_IN_SECONDS,
     SessionFollowupService,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

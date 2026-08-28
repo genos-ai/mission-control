@@ -80,18 +80,10 @@ async def persist_mission_results(
             )
 
         # Batch-fetch domain_tags for all tasks in one query (Plan 72)
-        from sqlalchemy import select
-
-        from modules.backend.models.task import Task as TaskModel
+        from modules.backend.services.mission_plan import MissionPlanService
 
         task_ids = [tr.task_id for tr in outcome.task_results if tr.task_id]
-        domain_tags_map: dict[str, list | None] = {}
-        if task_ids:
-            rows = await db_session.execute(
-                select(TaskModel.id, TaskModel.domain_tags).where(TaskModel.id.in_(task_ids))
-            )
-            for tid, tags in rows:
-                domain_tags_map[tid] = tags or None
+        domain_tags_map = await MissionPlanService(db_session).get_domain_tags_map(task_ids)
 
         task_status_map = {
             TaskStatus.SUCCESS: "completed",

@@ -38,21 +38,13 @@ def register_knowledge_tools(agent: Agent) -> None:
             if ctx.deps.db_session is None:
                 return json.dumps({"error": "No database session available"})
 
-            from sqlalchemy import select
+            from modules.backend.services.mission_artifact import MissionArtifactService
 
-            from modules.backend.models.mission_artifact import MissionArtifact
-
-            query = (
-                select(MissionArtifact)
-                .where(MissionArtifact.mission_id == ctx.deps.mission_id)
-                .order_by(MissionArtifact.created_at.desc())
-                .limit(5)
+            artifacts = await MissionArtifactService(ctx.deps.db_session).list_for_mission(
+                ctx.deps.mission_id,
+                limit=5,
+                artifact_type=artifact_type,
             )
-            if artifact_type:
-                query = query.where(MissionArtifact.artifact_type == artifact_type)
-
-            result = await ctx.deps.db_session.execute(query)
-            artifacts = result.scalars().all()
 
             if not artifacts:
                 return json.dumps(

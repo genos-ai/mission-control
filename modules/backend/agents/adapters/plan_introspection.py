@@ -13,12 +13,13 @@ Plan 72: reads tasks from the tasks table instead of task_plan_json.
 
 from __future__ import annotations
 
-from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from modules.backend.core.logging import get_logger
 from modules.backend.services.mission_plan import MissionPlanService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

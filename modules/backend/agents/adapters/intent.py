@@ -6,8 +6,12 @@ Thin wrappers registered as @agent.tool in the Director's agent.py.
 """
 
 from modules.backend.core.logging import get_logger
-from modules.backend.models.mission_intent import IntentSource
 from modules.backend.services.mission_intent import MissionIntentService
+
+# Mirrors modules.backend.models.mission_intent.IntentSource.DIRECTOR_INFERRED —
+# this adapter only ever captures director-inferred intent, so it takes the
+# literal value rather than importing the models-layer enum (rule 011.1).
+_DIRECTOR_INFERRED_SOURCE = "director_inferred"
 
 logger = get_logger(__name__)
 
@@ -30,7 +34,7 @@ async def capture_intent(
             mission_id,
             intent,
             scope=scope or {},
-            source=IntentSource.DIRECTOR_INFERRED.value,
+            source=_DIRECTOR_INFERRED_SOURCE,
             reason=reason,
             agent_id=agent_id,
             session_id=session_id,

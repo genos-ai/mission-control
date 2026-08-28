@@ -29,10 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
-
-from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from modules.backend.agents.mission_control.gate_models import (
     GateAction,
@@ -40,6 +37,10 @@ from modules.backend.agents.mission_control.gate_models import (
     GateDecision,
 )
 from modules.backend.core.logging import get_logger
+from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -297,15 +298,11 @@ class AutonomousPostRunReviewer:
         session.add() is a memory operation; the actual DB write
         happens at the next flush/commit by the caller.
         """
-        from modules.backend.models.execution_record import DecisionType, ExecutionDecision
-
-        row = ExecutionDecision(
-            execution_record_id=execution_record_id,
-            decision_type=DecisionType.POST_RUN_SUPERVISOR.value,
-            task_id=None,
-            reasoning=reasoning,
+        ExecutionPersistenceService(self._session).add_decision_row(
+            execution_record_id,
+            "post_run_supervisor",
+            reasoning,
         )
-        self._session.add(row)
 
     async def _get_cached_decision(
         self,
@@ -316,20 +313,10 @@ class AutonomousPostRunReviewer:
         If found, reconstruct the GateDecision from the audit row's
         JSON tail in the reasoning field (see §4.5 encoding).
         """
-        from modules.backend.models.execution_record import DecisionType, ExecutionDecision
-
-        stmt = (
-            select(ExecutionDecision)
-            .where(
-                and_(
-                    ExecutionDecision.execution_record_id == execution_record_id,
-                    ExecutionDecision.decision_type == DecisionType.POST_RUN_SUPERVISOR.value,
-                )
-            )
-            .limit(1)
+        row = await ExecutionPersistenceService(self._session).get_cached_decision_by_type(
+            execution_record_id,
+            "post_run_supervisor",
         )
-        result = await self._session.execute(stmt)
-        row = result.scalar_one_or_none()
         if row is None:
             return None
 

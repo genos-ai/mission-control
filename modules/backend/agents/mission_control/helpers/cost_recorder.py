@@ -61,8 +61,7 @@ async def record_llm_call(
     Raises on failure — silent data loss in cost tracking
     defeats the purpose of this system.
     """
-    from modules.backend.core.database import get_async_session
-    from modules.backend.models.llm_call import LlmCall
+    from modules.backend.services.token_economics import TokenEconomicsService
 
     provider = model.split(":")[0] if ":" in model else "unknown"
     fields = extract_usage(usage)
@@ -76,26 +75,23 @@ async def record_llm_call(
     if not cache_write_5m and not cache_write_1h:
         cache_write_1h = fields["cache_write_tokens"]
 
-    call = LlmCall(
-        session_id=session_id,
-        mission_id=mission_id,
-        execution_record_id=execution_record_id,
-        agent_name=agent_name,
-        agent_role=agent_role,
-        model=model,
-        provider=provider,
-        input_tokens=fields["input_tokens"],
-        output_tokens=fields["output_tokens"],
-        cache_read_tokens=fields["cache_read_tokens"],
-        cache_write_5m_tokens=cache_write_5m,
-        cache_write_1h_tokens=cache_write_1h,
-        thinking_tokens=fields["thinking_tokens"],
-        cost_usd=cost_usd,
-        latency_ms=latency_ms,
-        tool_count=tool_count,
-        tool_schema_tokens=tool_count * TOKENS_PER_TOOL_ESTIMATE,
-    )
-
-    async with get_async_session() as db_session:
-        db_session.add(call)
-        await db_session.commit()
+    async with TokenEconomicsService.factory() as svc:
+        await svc.record_call(
+            session_id=session_id,
+            mission_id=mission_id,
+            execution_record_id=execution_record_id,
+            agent_name=agent_name,
+            agent_role=agent_role,
+            model=model,
+            provider=provider,
+            input_tokens=fields["input_tokens"],
+            output_tokens=fields["output_tokens"],
+            cache_read_tokens=fields["cache_read_tokens"],
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
+            thinking_tokens=fields["thinking_tokens"],
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            tool_count=tool_count,
+            tool_schema_tokens=tool_count * TOKENS_PER_TOOL_ESTIMATE,
+        )

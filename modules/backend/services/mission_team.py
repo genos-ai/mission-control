@@ -216,6 +216,40 @@ class MissionTeamService(BaseService):
             )
         return result
 
+    async def list_team_full(
+        self,
+        mission_id: str,
+        enabled_only: bool = True,
+    ) -> list[dict]:
+        """List team members with the full catalog profile.
+
+        Richer than list_team_with_details — includes agent_type,
+        interface, constraints, enabled, and chat_enabled. Used by the
+        Director's list_team tool. Uses the joinedloaded agent_catalog
+        relationship — no extra queries.
+        """
+        members = await self.list_team(mission_id, enabled_only=enabled_only)
+        result = []
+        for m in members:
+            entry = m.agent_catalog
+            if not entry:
+                continue
+            result.append(
+                {
+                    "agent_name": entry.agent_name,
+                    "description": entry.description,
+                    "agent_type": entry.agent_type,
+                    "tools": entry.tools or [],
+                    "keywords": entry.keywords or [],
+                    "scope": entry.scope or {},
+                    "interface": entry.interface,
+                    "constraints": entry.constraints or {},
+                    "enabled": entry.enabled,
+                    "chat_enabled": entry.chat_enabled,
+                }
+            )
+        return result
+
     async def get_member(self, member_id: str) -> MissionTeamMember:
         """Get a specific team member. Raises NotFoundError."""
         member = await self._team_repo.get_by_id_or_none(member_id)

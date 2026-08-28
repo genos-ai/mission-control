@@ -47,6 +47,14 @@ logger = get_logger(__name__)
 _PENDING: dict[str, asyncio.Event] = {}
 _LOCK = asyncio.Lock()
 
+# Mirror modules.backend.models.task.TaskStatus's string values — this
+# module only ever compares against the plain string a service returns,
+# so it takes the literals rather than importing the models-layer enum
+# (rule 011.1).
+_STATUS_PROPOSED = "proposed"
+_STATUS_APPROVED = "approved"
+_STATUS_CANCELLED = "cancelled"
+
 
 async def notify_approved(task_id: str) -> None:
     """Wake the dispatcher (if any) that is waiting on this task's approval.
@@ -95,20 +103,15 @@ async def wait_until_approved(
             abort, backend shutdown). The task row is NOT auto-marked;
             the dispatcher's normal failure-handling deals with that.
     """
-    from sqlalchemy import select
-
-    from modules.backend.models.task import Task, TaskStatus
+    from modules.backend.services.mission_plan import MissionPlanService
 
     # Re-check current state — a race-free path for the already-approved case.
     async def _current_status() -> str | None:
         async with session_factory() as session:
-            result = await session.execute(
-                select(Task.status).where(Task.id == task_id),
-            )
-            row = result.scalar_one_or_none()
-            if row is None:
+            task = await MissionPlanService(session).get_task(task_id)
+            if task is None:
                 return None
-            return row.value if hasattr(row, "value") else str(row)
+            return task.status.value if hasattr(task.status, "value") else str(task.status)
 
     initial = await _current_status()
     if initial is None:
@@ -120,11 +123,11 @@ async def wait_until_approved(
     # SKIPPED) or an explicit no-go (CANCELLED). For the past-approval set
     # we proceed immediately; for CANCELLED we raise so the dispatcher
     # doesn't run cancelled work.
-    if initial == TaskStatus.CANCELLED.value:
+    if initial == _STATUS_CANCELLED:
         raise TaskApprovalCancelled(
             f"Task {task_id} is CANCELLED; refusing to dispatch.",
         )
-    if initial != TaskStatus.PROPOSED.value:
+    if initial != _STATUS_PROPOSED:
         return
 
     # Register the Event BEFORE re-checking state, so an approval that
@@ -137,7 +140,7 @@ async def wait_until_approved(
         # Re-check after registering — covers a tight race where the
         # approval committed between the initial check and the registry
         # insert. If APPROVED now, we're done.
-        if await _current_status() == TaskStatus.APPROVED.value:
+        if await _current_status() == _STATUS_APPROVED:
             return
 
         logger.info(

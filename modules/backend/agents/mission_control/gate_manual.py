@@ -33,8 +33,7 @@ from typing import Any
 
 from modules.backend.agents.mission_control.gate_models import GateAction, GateContext, GateDecision
 from modules.backend.core.logging import get_logger
-from modules.backend.core.utils import utc_now
-from modules.backend.models.gate_request import GateRequest, GateRequestStatus
+from modules.backend.services.mission_plan import MissionPlanService
 
 logger = get_logger(__name__)
 
@@ -164,7 +163,7 @@ class ManualGateReviewer:
                 )
                 raise
 
-            decision = await self._read_decision(request_id)
+            decision = await self._read_decision(request_id, mission_id=context.mission_id)
             logger.info(
                 "Manual gate decision received",
                 extra={
@@ -188,42 +187,23 @@ class ManualGateReviewer:
         context: GateContext,
     ) -> None:
         async with self._session_factory() as session:
-            row = GateRequest(
-                id=request_id,
+            await MissionPlanService(session).create_gate_request(
+                request_id,
                 mission_id=context.mission_id,
-                plan_id=None,  # GateContext has no plan_id; the dispatcher knows it
                 session_id=context.session_id,
                 gate_type=context.gate_type,
                 context_json=asdict(context),
-                status=GateRequestStatus.PENDING,
-                created_at=utc_now(),
             )
-            session.add(row)
             await session.commit()
 
     async def _persist_timeout(self, request_id: str) -> None:
-        from sqlalchemy import update
-
         async with self._session_factory() as session:
-            await session.execute(
-                update(GateRequest)
-                .where(GateRequest.id == request_id)
-                .values(
-                    status=GateRequestStatus.TIMED_OUT,
-                    timed_out_at=utc_now(),
-                ),
-            )
+            await MissionPlanService(session).mark_gate_request_timed_out(request_id)
             await session.commit()
 
     async def _persist_cancelled(self, request_id: str) -> None:
-        from sqlalchemy import update
-
         async with self._session_factory() as session:
-            await session.execute(
-                update(GateRequest)
-                .where(GateRequest.id == request_id)
-                .values(status=GateRequestStatus.CANCELLED),
-            )
+            await MissionPlanService(session).mark_gate_request_cancelled(request_id)
             await session.commit()
 
     async def _emit_opened(self, request_id: str, context: GateContext) -> None:
@@ -252,14 +232,14 @@ class ManualGateReviewer:
                 extra={"request_id": request_id, "mission_id": context.mission_id},
             )
 
-    async def _read_decision(self, request_id: str) -> GateDecision:
-        from sqlalchemy import select
+    async def _read_decision(self, request_id: str, *, mission_id: str) -> GateDecision:
+        from modules.backend.core.exceptions import NotFoundError
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(GateRequest).where(GateRequest.id == request_id),
-            )
-            row = result.scalar_one_or_none()
+            try:
+                row = await MissionPlanService(session).get_gate_request(mission_id, request_id)
+            except NotFoundError:
+                row = None
             if row is None or row.decision_json is None:
                 # Should not happen — the Event was fired so the row should be
                 # populated. Fail loud rather than silently continue.

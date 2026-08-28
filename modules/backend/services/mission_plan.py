@@ -156,6 +156,10 @@ class MissionPlanService(BaseService):
             status=status,
         )
 
+    async def get_task(self, task_id: str) -> Task | None:
+        """Get a single task by id, or None if it doesn't exist."""
+        return await self._task_repo.get_by_id_or_none(task_id)
+
     # ── Mutate plan-level config ────────────────────────────────────────
 
     async def set_gate_mode(
@@ -310,6 +314,55 @@ class MissionPlanService(BaseService):
             request_id=request_id,
             action=decision.get("action"),
         )
+
+    async def create_gate_request(
+        self,
+        request_id: str,
+        *,
+        mission_id: str,
+        session_id: str | None,
+        gate_type: str,
+        context_json: dict,
+    ) -> None:
+        """Persist a new PENDING gate request row.
+
+        Used by ManualGateReviewer to open a pause point before blocking
+        on the dispatcher's in-process Event. Caller commits.
+        """
+        row = GateRequest(
+            id=request_id,
+            mission_id=mission_id,
+            plan_id=None,  # GateContext has no plan_id; the dispatcher knows it
+            session_id=session_id,
+            gate_type=gate_type,
+            context_json=context_json,
+            status=GateRequestStatus.PENDING,
+            created_at=utc_now(),
+        )
+        self._session.add(row)
+
+    async def mark_gate_request_timed_out(self, request_id: str) -> None:
+        """Mark a gate request TIMED_OUT. Caller commits."""
+        await self._session.execute(
+            update(GateRequest)
+            .where(GateRequest.id == request_id)
+            .values(
+                status=GateRequestStatus.TIMED_OUT,
+                timed_out_at=utc_now(),
+            ),
+        )
+
+    async def mark_gate_request_cancelled(self, request_id: str) -> None:
+        """Mark a gate request CANCELLED. Caller commits."""
+        await self._session.execute(
+            update(GateRequest)
+            .where(GateRequest.id == request_id)
+            .values(status=GateRequestStatus.CANCELLED),
+        )
+
+    async def get_domain_tags_map(self, task_ids: list[str]) -> dict[str, list | None]:
+        """Batch-fetch domain_tags for a set of task ids in one query."""
+        return await self._task_repo.get_domain_tags_by_ids(task_ids)
 
     # ── Task state transitions ──────────────────────────────────────────
 

@@ -5,6 +5,8 @@ All queries read from the llm_calls table. Supports two scoping modes:
   - Per-mission: filtered by mission_id (mission costs tab)
 """
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -52,6 +54,60 @@ class TokenEconomicsService(BaseService):
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory() -> AsyncGenerator["TokenEconomicsService", None]:
+        """Create a TokenEconomicsService with its own DB session."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield TokenEconomicsService(db)
+            await db.commit()
+
+    async def record_call(
+        self,
+        *,
+        session_id: str | None,
+        mission_id: str | None,
+        agent_name: str,
+        agent_role: str,
+        model: str,
+        provider: str,
+        input_tokens: int,
+        output_tokens: int,
+        cache_read_tokens: int,
+        cache_write_5m_tokens: int,
+        cache_write_1h_tokens: int,
+        thinking_tokens: int,
+        cost_usd: float,
+        latency_ms: int = 0,
+        tool_count: int = 0,
+        tool_schema_tokens: int = 0,
+        execution_record_id: str | None = None,
+    ) -> LlmCall:
+        """Persist an LlmCall row. Caller commits (or use via factory())."""
+        call = LlmCall(
+            session_id=session_id,
+            mission_id=mission_id,
+            execution_record_id=execution_record_id,
+            agent_name=agent_name,
+            agent_role=agent_role,
+            model=model,
+            provider=provider,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_5m_tokens=cache_write_5m_tokens,
+            cache_write_1h_tokens=cache_write_1h_tokens,
+            thinking_tokens=thinking_tokens,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            tool_count=tool_count,
+            tool_schema_tokens=tool_schema_tokens,
+        )
+        self._session.add(call)
+        return call
 
     async def get_token_breakdown(
         self,
