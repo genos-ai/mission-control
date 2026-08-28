@@ -5,7 +5,7 @@
 Read `.codemap/map.md` for a structural overview of the codebase ranked by importance. Machine-readable version in `.codemap/map.json`.
 
 This file tells AI coding assistants how to work with this codebase.
-For full details, see `docs/99-reference-architecture/`.
+For full details, see `docs/10-reference-architecture/`.
 
 ## Design Principles
 
@@ -193,7 +193,7 @@ The YAML `tools` list defines everything the agent exposes. For a developer-faci
 
 ## Reference Architecture
 
-Full standards in `docs/99-reference-architecture/`:
+Full standards in `docs/10-reference-architecture/`:
 
 | Doc | Topic |
 |-----|-------|

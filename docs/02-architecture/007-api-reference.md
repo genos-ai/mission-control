@@ -524,7 +524,7 @@ Events are classified into three categories for frontend rendering:
 
 ## 24. Error Codes
 
-All errors are returned in the `ApiResponse` envelope with `success: false`. See `core/exceptions.py` and `docs/99-reference-architecture/09-core-error-codes.md`.
+All errors are returned in the `ApiResponse` envelope with `success: false`. See `core/exceptions.py` and `docs/10-reference-architecture/09-core-error-codes.md`.
 
 ### Exception → HTTP Status Mapping
 

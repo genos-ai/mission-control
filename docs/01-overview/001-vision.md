@@ -114,7 +114,7 @@ Three layers with clear boundaries:
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | FastAPI, Python 3.12+, SQLAlchemy 2.0 (async) |
+| Backend | FastAPI, Python 3.14+, SQLAlchemy 2.0 (async) |
 | Database | PostgreSQL 16+ (pgvector for embeddings) |
 | Cache / Events | Redis 7+ (pub/sub for SSE, caching) |
 | Durable Execution | Temporal.io (workflows, activities, schedules) |

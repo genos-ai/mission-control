@@ -50,4 +50,4 @@ This project follows a Backend-for-Frontend (BFF) pattern with a Python backend 
 
 ## Architecture Standards
 
-See [Architecture Standards](../04-references/architecture-standards/00-overview.md) for complete documentation.
+See [Architecture Standards](../10-reference-architecture/00-overview.md) for complete documentation.

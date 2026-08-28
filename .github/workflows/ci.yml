@@ -5,8 +5,10 @@
 #   rules — the project rule checker over the full tree
 #   tests — unit + integration suites against real Postgres/Redis (P12)
 #
-# Branch protection on main requiring these checks is a repo setting
-# (GitHub → Settings → Branches) — enable it to make this unskippable.
+# Branch protection would make these checks unskippable, but GitHub gates
+# it behind a Pro/Team plan or a public repo. Decision: staying private on
+# the free tier, so these checks remain advisory (CI runs, but a push to
+# main isn't blocked on failure). Revisit if the plan ever changes.
 
 name: ci
 

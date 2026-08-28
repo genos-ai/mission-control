@@ -4,12 +4,12 @@ AI-first autonomous agent platform. FastAPI backend, PydanticAI agents, PostgreS
 
 ## Architecture
 
-- **Backend**: Python 3.12+ with FastAPI
+- **Backend**: Python 3.14+ with FastAPI
 - **Frontend**: React with Vite, TypeScript, Tailwind CSS
 - **Database**: PostgreSQL with SQLAlchemy (async)
 - **Cache/Queue**: Redis with Taskiq
 
-See [Architecture Standards](docs/99-reference-architecture/00-overview.md) for complete documentation.
+See [Architecture Standards](docs/10-reference-architecture/00-overview.md) for complete documentation.
 
 ## Project Structure
 
@@ -42,7 +42,7 @@ See [Architecture Standards](docs/99-reference-architecture/00-overview.md) for 
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.14+
 - Node.js 20+
 - PostgreSQL 16+
 - Redis 7+
@@ -51,7 +51,7 @@ See [Architecture Standards](docs/99-reference-architecture/00-overview.md) for 
 
 ### Install
 
-Using **uv** (recommended for web apps - see [environment management](docs/99-reference-architecture/13-development-workflow.md#python-environment-management)):
+Using **uv** (recommended for web apps - see [environment management](docs/10-reference-architecture/12-core-development-workflow.md#python-environment-management)):
 
 ```bash
 # Install uv (one-time)
@@ -157,11 +157,11 @@ pytest -m integration
 
 This project follows documented architecture standards:
 
-- [Core Principles](docs/99-reference-architecture/01-core-principles.md)
-- [Backend Architecture](docs/99-reference-architecture/03-backend-architecture.md)
-- [Python Coding Standards](docs/99-reference-architecture/10-python-coding-standards.md)
-- [Frontend Architecture](docs/99-reference-architecture/07-frontend-architecture.md)
-- [TypeScript Standards](docs/99-reference-architecture/11-typescript-coding-standards.md)
+- [Core Principles](docs/10-reference-architecture/01-core-principles.md)
+- [Backend Architecture](docs/10-reference-architecture/03-core-backend-architecture.md)
+- [Python Coding Standards](docs/10-reference-architecture/08-core-python-coding-standards.md)
+- [Frontend Architecture](docs/10-reference-architecture/22-opt-frontend-architecture.md)
+- [TypeScript Standards](docs/10-reference-architecture/23-opt-typescript-coding-standards.md)
 
 ## License
 
