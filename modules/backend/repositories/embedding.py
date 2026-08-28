@@ -11,11 +11,32 @@ Structured queries go through the ORM as usual.
 
 from sqlalchemy import delete, select, text
 
+from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
 from modules.backend.models.embedding import Embedding
 from modules.backend.repositories.base import BaseRepository
 
 logger = get_logger(__name__)
+
+# Every embeddable source table (Plan 57 knowledge platform). source_table
+# values reach raw SQL below — semantic_search/hybrid_search bind them as
+# params, but list_missing interpolates one directly as a FROM-clause
+# identifier, which can't be parameterized. Validate against this allowlist
+# before any of the three touch raw SQL, so a bad table name never reaches
+# the query string.
+VALID_SOURCE_TABLES = frozenset(
+    {
+        "mission_learnings",
+        "mission_intents",
+        "mission_decisions",
+        "milestone_summaries",
+    }
+)
+
+
+def _validate_source_table(source_table: str) -> None:
+    if source_table not in VALID_SOURCE_TABLES:
+        raise ValidationError(f"Unknown source_table: '{source_table}'")
 
 
 class EmbeddingRepository(BaseRepository[Embedding]):
@@ -139,6 +160,8 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         params: dict = {"vec": vec_literal, "limit": limit}
 
         if source_tables:
+            for st in source_tables:
+                _validate_source_table(st)
             placeholders = ", ".join(f":st_{i}" for i in range(len(source_tables)))
             where_clauses.append(f"source_table IN ({placeholders})")
             for i, st in enumerate(source_tables):
@@ -191,6 +214,9 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         if not filter_ids:
             return []
 
+        for table in filter_ids:
+            _validate_source_table(table)
+
         # Build a flat list of (source_table, source_id) conditions
         or_conditions = []
         params: dict = {"vec": _to_pgvector_literal(query_vec), "limit": limit}
@@ -242,6 +268,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
         Uses a LEFT JOIN approach via raw SQL since we need to check
         absence across tables.
         """
+        _validate_source_table(source_table)
         sql = text(
             f"SELECT :src_table AS source_table, t.id AS source_id "
             f"FROM {source_table} t "
