@@ -15,7 +15,7 @@ from modules.backend.api.v1 import router as api_v1_router
 from modules.backend.core.config import get_app_config
 from modules.backend.core.exception_handlers import register_exception_handlers
 from modules.backend.core.logging import get_logger, setup_logging
-from modules.backend.core.middleware import RequestContextMiddleware
+from modules.backend.core.middleware import RateLimitMiddleware, RequestContextMiddleware
 
 logger = get_logger(__name__)
 
@@ -267,6 +267,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Added in this order so the actual request-processing sequence is:
+    # CORS (outermost, added last) -> RequestContextMiddleware (binds
+    # request_id/logging context) -> RateLimitMiddleware (innermost, so
+    # its own logging already has that context) -> route handlers.
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
 
     cors_origins = app_settings.cors.origins
