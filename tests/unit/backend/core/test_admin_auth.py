@@ -48,6 +48,7 @@ class TestGetCurrentUser:
 
         with patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service):
             result = await get_current_user(
+                request=MagicMock(),
                 db=MagicMock(),
                 authorization="Bearer some-jwt-token",
                 api_key=None,
@@ -63,6 +64,7 @@ class TestGetCurrentUser:
 
         with patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service):
             result = await get_current_user(
+                request=MagicMock(),
                 db=MagicMock(),
                 authorization=None,
                 api_key="app_test-key-12345",
@@ -79,6 +81,7 @@ class TestGetCurrentUser:
 
         with patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service):
             result = await get_current_user(
+                request=MagicMock(),
                 db=MagicMock(),
                 authorization=None,
                 api_key="legacy-admin-key",
@@ -90,6 +93,7 @@ class TestGetCurrentUser:
         """No auth headers should raise AuthenticationError."""
         with pytest.raises(AuthenticationError):
             await get_current_user(
+                request=MagicMock(),
                 db=MagicMock(),
                 authorization=None,
                 api_key=None,
@@ -105,6 +109,7 @@ class TestGetCurrentUser:
         with patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service):
             with pytest.raises(AuthenticationError):
                 await get_current_user(
+                    request=MagicMock(),
                     db=MagicMock(),
                     authorization=None,
                     api_key="bad-key",

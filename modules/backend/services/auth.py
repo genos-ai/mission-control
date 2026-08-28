@@ -113,7 +113,15 @@ class AuthService(BaseService):
         }
 
     async def resolve_api_key(self, raw_key: str) -> User:
-        """Resolve a raw API key to a User via prefix narrowing + bcrypt."""
+        """Resolve a raw API key to a User via prefix narrowing + bcrypt.
+
+        Stashes the key's `scopes` onto the returned User as a transient,
+        non-persisted attribute (`resolved_api_key_scopes`) so callers
+        that need to enforce scope restrictions (see
+        core.dependencies.require_scope) can read it without a second
+        lookup, while every existing caller that only cares about the
+        User itself is unaffected.
+        """
         if len(raw_key) < 8:
             raise AuthenticationError("Invalid API key")
 
@@ -131,6 +139,7 @@ class AuthService(BaseService):
                     raise AuthenticationError("Account deactivated")
 
                 await self.api_key_repo.update_last_used(candidate.id)
+                candidate.user.resolved_api_key_scopes = candidate.scopes
                 return candidate.user
 
         raise AuthenticationError("Invalid API key")

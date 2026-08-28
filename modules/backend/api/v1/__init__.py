@@ -4,7 +4,7 @@ API Version 1 Router.
 Aggregates all v1 endpoint routers.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from modules.backend.api.v1.endpoints import (
     admin,
@@ -22,6 +22,7 @@ from modules.backend.api.v1.endpoints import (
     workflows,
     workshop,
 )
+from modules.backend.core.dependencies import require_scope
 
 router = APIRouter()
 
@@ -49,11 +50,22 @@ router.include_router(workshop.router, prefix="/workshop", tags=["workshop"])
 # Auth endpoints (login, token refresh, API key management)
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
 
-# Admin endpoints (protected by admin role)
-router.include_router(admin.router, prefix="/admin", tags=["admin"])
+# Admin endpoints (protected by admin role; require_scope also lets a
+# scoped API key be restricted to non-admin use even for an admin user)
+router.include_router(
+    admin.router,
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_scope("admin"))],
+)
 
 # Admin user management endpoints
-router.include_router(admin_users.router, prefix="/admin/users", tags=["admin"])
+router.include_router(
+    admin_users.router,
+    prefix="/admin/users",
+    tags=["admin"],
+    dependencies=[Depends(require_scope("admin"))],
+)
 
 # SSE streaming endpoints (notifications, run events)
 router.include_router(streams.router, prefix="/streams", tags=["streams"])

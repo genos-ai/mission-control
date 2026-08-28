@@ -7,7 +7,7 @@ Shared dependencies for request handling.
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import Depends, Header, Security
+from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +54,7 @@ _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def get_current_user(
+    request: Request,
     db: DbSession,
     authorization: str | None = Header(None),
     api_key: str | None = Security(_api_key_header),
@@ -65,6 +66,11 @@ async def get_current_user(
         2. X-API-Key header → prefix lookup + bcrypt verify → load user
         3. X-API-Key matches legacy ADMIN_API_KEY → load first admin user from DB
         4. Else → raise AuthenticationError
+
+    Also stashes the resolved scope restriction (if any) on
+    request.state.auth_scopes, so require_scope() can enforce it without
+    re-resolving. JWT and legacy-key auth always carry full access
+    (None); only a per-user API key can have a non-empty scope list.
     """
     from modules.backend.services.auth import AuthService
 
@@ -73,31 +79,36 @@ async def get_current_user(
     # 1. Try JWT Bearer token
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:]
+        request.state.auth_scopes = None
         return await auth_service.resolve_jwt(token)
 
     # 2. Try per-user API key
     if api_key:
         try:
-            return await auth_service.resolve_api_key(api_key)
+            user = await auth_service.resolve_api_key(api_key)
+            request.state.auth_scopes = getattr(user, "resolved_api_key_scopes", None)
+            return user
         except AuthenticationError:
             logger.debug("Per-user API key check failed, trying legacy key")
 
         # 3. Legacy ADMIN_API_KEY fallback
         user = await auth_service.resolve_legacy_key(api_key)
         if user:
+            request.state.auth_scopes = None
             return user
 
     raise AuthenticationError("Authentication required")
 
 
 async def get_optional_user(
+    request: Request,
     db: DbSession,
     authorization: str | None = Header(None),
     api_key: str | None = Security(_api_key_header),
 ) -> User | None:
     """Like get_current_user but returns None instead of raising."""
     try:
-        return await get_current_user(db, authorization, api_key)
+        return await get_current_user(request, db, authorization, api_key)
     except AuthenticationError:
         return None
 
@@ -191,6 +202,26 @@ async def require_sysadmin(user: CurrentUser) -> User:
 
 AdminRole = Annotated[User, Depends(require_admin)]
 SysadminRole = Annotated[User, Depends(require_sysadmin)]
+
+
+def require_scope(scope: str):
+    """Dependency factory: require the resolved API key to carry `scope`.
+
+    Empty/NULL scopes on the key (the common case — every key created
+    before this feature, and any key created without an explicit scope
+    list) means full access of the owning user; this is a deliberate,
+    documented decision, not a silent fallback. A non-empty scope list
+    restricts the key to exactly that set, regardless of the owning
+    user's role.
+    """
+
+    async def _check(request: Request, user: CurrentUser) -> User:
+        scopes = getattr(request.state, "auth_scopes", None)
+        if scopes and scope not in scopes:
+            raise AuthorizationError(f"API key does not have the required '{scope}' scope.")
+        return user
+
+    return _check
 
 
 # ---------------------------------------------------------------------------
