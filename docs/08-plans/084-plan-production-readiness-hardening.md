@@ -3,7 +3,11 @@
 **Version:** 1.1.0
 **Date:** 2026-07-05 (v1.0) · re-baselined 2026-07-23 (v1.1, `/prompt-get-context` re-run)
 **Author:** Herman + Fable 5 context review (`/prompt-get-context`, 2026-07-05)
-**Status:** In progress — Phases 0, 1.0, 1.1 complete. Next: Phase 1.3, then Phase 2.
+**Status:** Complete (2026-08-28) — Phases 0–7 committed and CI-green on `main` (last commit
+`b14aa6e`). Phase 8 skipped, as the plan itself marks it optional/lowest-priority. Gate 5
+("no `asyncio.create_task` in endpoints") and gate 10 (branch protection) have documented,
+accepted exceptions rather than clean passes — see `TODO.md` and the completion checklist in
+§10 for the full accounting.
 **Depends on:** None (all changes harden existing code)
 **Unlocks:** Production deployment from a code & architecture standpoint
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
