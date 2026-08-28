@@ -84,25 +84,34 @@ def valid_output():
 
 @pytest.fixture
 def mock_verification_agent():
-    """Mock execute_agent_fn that returns a passing evaluation."""
+    """Mock execute_agent_fn that returns a passing evaluation.
+
+    Returns the real executor envelope — {"output": ..., "_meta": ...} — as
+    produced by helpers/agent_executor.execute_agent. These fixtures previously
+    returned the inner dict flat, which no production caller ever emits; that
+    hid a bug where _run_tier_3 read overall_score off the envelope and scored
+    every evaluation 0.00.
+    """
 
     async def _execute(agent_name, instructions, inputs, **kwargs):
         return {
-            "overall_score": 0.92,
-            "passed": True,
-            "criteria_results": [
-                {
-                    "criterion": "Analysis covers all critical code paths",
-                    "score": 0.95,
-                    "passed": True,
-                    "evidence": "All code paths analyzed",
-                    "issues": [],
-                },
-            ],
-            "blocking_issues": [],
-            "recommendations": [],
-            "_thinking_trace": "I evaluated the output...",
-            "_cost_usd": 0.05,
+            "output": {
+                "overall_score": 0.92,
+                "passed": True,
+                "criteria_results": [
+                    {
+                        "criterion": "Analysis covers all critical code paths",
+                        "score": 0.95,
+                        "passed": True,
+                        "evidence": "All code paths analyzed",
+                        "issues": [],
+                    },
+                ],
+                "blocking_issues": [],
+                "recommendations": [],
+                "_thinking_trace": "I evaluated the output...",
+            },
+            "_meta": {"cost_usd": 0.05, "input_tokens": 900, "output_tokens": 120},
         }
 
     return _execute
@@ -110,17 +119,19 @@ def mock_verification_agent():
 
 @pytest.fixture
 def mock_failing_verification_agent():
-    """Mock execute_agent_fn that returns a failing evaluation."""
+    """Mock execute_agent_fn that returns a failing evaluation (real envelope)."""
 
     async def _execute(agent_name, instructions, inputs, **kwargs):
         return {
-            "overall_score": 0.45,
-            "passed": False,
-            "criteria_results": [],
-            "blocking_issues": ["Critical code path missed"],
-            "recommendations": ["Expand analysis scope"],
-            "_thinking_trace": "The output is insufficient...",
-            "_cost_usd": 0.05,
+            "output": {
+                "overall_score": 0.45,
+                "passed": False,
+                "criteria_results": [],
+                "blocking_issues": ["Critical code path missed"],
+                "recommendations": ["Expand analysis scope"],
+                "_thinking_trace": "The output is insufficient...",
+            },
+            "_meta": {"cost_usd": 0.05, "input_tokens": 900, "output_tokens": 120},
         }
 
     return _execute
@@ -305,6 +316,55 @@ class TestTier3:
         assert result.tier_3.status == TierStatus.FAIL
         assert result.passed is False
         assert result.failed_tier == 3
+
+    @pytest.mark.asyncio
+    async def test_unwraps_executor_envelope(
+        self,
+        task_with_tier3,
+        valid_output,
+        mock_verification_agent,
+    ):
+        """The score and cost come from inside the executor envelope.
+
+        Regression: _run_tier_3 used to read overall_score straight off
+        {"output": ..., "_meta": ...}, so it always resolved to 0.0 and every
+        Tier 3 evaluation failed with "Score: 0.00" no matter what the evaluator
+        returned. Asserting the actual values — not just PASS — is what catches
+        a re-flattening of this contract.
+        """
+        result = await run_verification_pipeline(
+            output=valid_output,
+            task=task_with_tier3,
+            agent_interface=None,
+            execute_agent_fn=mock_verification_agent,
+        )
+        assert result.tier_3.overall_score == 0.92
+        assert result.tier_3.cost_usd == 0.05  # from _meta, not a top-level _cost_usd
+        assert result.tier_3.status == TierStatus.PASS
+
+    @pytest.mark.asyncio
+    async def test_fails_loudly_when_evaluator_returns_non_dict(
+        self,
+        task_with_tier3,
+        valid_output,
+    ):
+        """A non-dict evaluation must FAIL with a clear reason, not score 0.0.
+
+        Scoring an unparseable evaluation as 0.0 is the failure mode this whole
+        regression came from — silence that looks like a verdict.
+        """
+
+        async def _execute(agent_name, instructions, inputs, **kwargs):
+            return {"output": "I could not evaluate this.", "_meta": {"cost_usd": 0.01}}
+
+        result = await run_verification_pipeline(
+            output=valid_output,
+            task=task_with_tier3,
+            agent_interface=None,
+            execute_agent_fn=_execute,
+        )
+        assert result.tier_3.status == TierStatus.FAIL
+        assert "expected a dict" in result.tier_3.details
 
     @pytest.mark.asyncio
     async def test_skipped_when_not_required(self, basic_task, valid_output):

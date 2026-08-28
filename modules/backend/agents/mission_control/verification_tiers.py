@@ -11,6 +11,7 @@ from modules.backend.agents.mission_control.verification_models import (
     TierResult,
     TierStatus,
 )
+from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -202,7 +203,13 @@ async def _run_tier_3(
 
     evaluation_criteria = tier_3_config.get("evaluation_criteria", [])
     evaluator_agent = tier_3_config.get("evaluator_agent", "verification_agent")
-    min_score = tier_3_config.get("min_evaluation_score", 0.8)
+    # Per-task override wins; otherwise the configured platform threshold.
+    # No literal fallback here (rule 002.5) — executions.yaml is the single
+    # source of truth. Note TaskVerification defaults min_evaluation_score to
+    # 0.7 at the schema layer, so a task-supplied value normally shadows this.
+    min_score = tier_3_config.get("min_evaluation_score")
+    if min_score is None:
+        min_score = get_app_config().executions.tier3_min_evaluation_score
 
     # Pre-flight validation (P2: deterministic over non-deterministic)
     if not evaluation_criteria:
@@ -277,16 +284,36 @@ async def _run_tier_3(
     try:
         from pydantic_ai import UsageLimits
 
-        evaluation = await execute_agent_fn(
+        raw_evaluation = await execute_agent_fn(
             agent_name=evaluator_agent,
             instructions="Evaluate the agent output against the provided criteria.",
             inputs=evaluation_context,
             usage_limits=UsageLimits(request_limit=10),
         )
 
+        # The executor returns {"output": <agent data>, "_meta": <tokens/cost>}.
+        # Unwrap exactly as retry_handler._execute_with_retry does for task output.
+        # Reading overall_score straight off the envelope always yielded 0.0, so
+        # every Tier 3 evaluation failed with "Score: 0.00" regardless of what the
+        # evaluator actually said.
+        evaluation = raw_evaluation.get("output", raw_evaluation)
+        meta = raw_evaluation.get("_meta", {})
+
+        if not isinstance(evaluation, dict):
+            return TierResult(
+                tier=3,
+                status=TierStatus.FAIL,
+                details=(
+                    f"Evaluator '{evaluator_agent}' returned "
+                    f"{type(evaluation).__name__}, expected a dict with "
+                    "overall_score and blocking_issues"
+                ),
+                execution_time_ms=_elapsed_ms(start),
+            )
+
         overall_score = evaluation.get("overall_score", 0.0)
         blocking_issues = evaluation.get("blocking_issues", [])
-        cost_usd = evaluation.get("_cost_usd", 0.0)
+        cost_usd = meta.get("cost_usd", 0.0)
 
         passed = overall_score >= min_score and len(blocking_issues) == 0
 
