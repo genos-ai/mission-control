@@ -268,7 +268,9 @@
       "Read(//usr/local/**)",
       "Bash(/opt/homebrew/bin/gh --version)",
       "Bash(unset AZURE_CONFIG_DIR)",
-      "Bash(/opt/anaconda3/envs/mission-control/bin/flake8 --select=F821,F401,E9 modules/clients/service_manager/*.py)"
+      "Bash(/opt/anaconda3/envs/mission-control/bin/flake8 --select=F821,F401,E9 modules/clients/service_manager/*.py)",
+      "mcp__claude_ai_Wiz_io__list_cicd_scan_policies",
+      "mcp__claude_ai_Wiz_io__list_code_repositories"
     ],
     "additionalDirectories": [
       "/Users/herman.young/.claude/projects/-Users-herman-young-development-mission-control",
