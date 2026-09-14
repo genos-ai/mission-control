@@ -96,9 +96,9 @@ Reviews are constructive. Block only for significant issues.
 
 ## CI/CD Pipeline
 
-### Standard: GitHub Actions
+### Standard: Azure Pipelines
 
-All projects use GitHub Actions for CI/CD.
+All projects use Azure Pipelines for CI/CD, on Azure Repos Git.
 
 ### Pipeline Stages
 
@@ -122,10 +122,19 @@ All projects use GitHub Actions for CI/CD.
 
 ### Pipeline Configuration
 
-Store workflow files in `.github/workflows/`:
-- `ci.yml` - Pull request checks
-- `deploy-staging.yml` - Staging deployment
-- `deploy-production.yml` - Production deployment
+Store pipeline definitions at the repository root:
+- `azure-pipelines.yml` - Pull request and main-branch checks
+- `azure-pipelines-staging.yml` - Staging deployment
+- `azure-pipelines-production.yml` - Production deployment
+
+A YAML file is inert until a pipeline definition in Azure DevOps points at it
+(Pipelines → New → Azure Repos Git → Existing Azure Pipelines YAML file).
+Committing the file alone runs nothing.
+
+PR validation is not configured in YAML. Azure Repos Git ignores the `pr:`
+trigger key; add the pipeline as a build validation branch policy instead
+(Repos → Branches → *branch* → Branch policies → Build validation) and mark it
+Required to make the check unskippable.
 
 ### Secrets Management
 

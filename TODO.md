@@ -59,19 +59,39 @@ Open follow-ups:
 ## Code Size Violations
 
 Files exceeding the 1,000-line hard limit (AGENTS.md rule: target ~400-500, max 1,000).
+Re-measured 2026-09-08 against the tracked tree.
 
-- [ ] `modules/backend/services/mission_plan_orchestrator.py` — **1,388 lines** (39% over limit). Highest-PageRank service in the codebase. Needs decomposition into focused submodules (dispatch prep, plan lifecycle, budget enforcement, etc.).
-- [ ] `modules/backend/agents/mission/director/agent.py` — **1,291 lines** (29% over limit). Monolithic director agent. Extract tool fork handling, chat routing, and plan refinement into separate modules.
-- [ ] `modules/backend/services/workflow_run_waves.py` — **1,101 lines** (10% over limit). Wave execution engine. Extract human input handling, condition evaluation dispatch, and notification logic.
-- [ ] `admin.py` — **~1,300 lines**. Entry point CLI. Lower risk but still exceeds limit. Consider lazy-loading command groups from separate modules.
+**Resolved.** Every violation previously listed here has been decomposed:
+
+| File | Was | Now |
+|------|-----|-----|
+| `modules/backend/services/mission_plan_orchestrator.py` | 1,388 | 517 |
+| `modules/backend/agents/mission/director/agent.py` | 1,291 | 208 |
+| `modules/backend/services/workflow_run_waves.py` | 1,101 | 784 |
+| `admin.py` | ~1,300 | 270 |
+
+`modules/` now has no file over the limit. The remaining violations are all in
+tooling and tests, which the earlier audit did not scope:
+
+- [ ] `scripts/code_quality.py` — **2,071 lines** (107% over). The quality
+  scorer is the largest single file in the repo, which is its own comment on
+  the standard. Split the seven dimension scorers into a package.
+- [ ] `tests/unit/backend/mission_control/test_dispatch.py` — **1,377 lines**
+  (38% over). Split by concern (DAG traversal, budget enforcement, retry).
+- [ ] `scripts/trace_execution.py` — **1,175 lines** (18% over). Extract the
+  per-source collectors and the diagnosis section.
+- [ ] `scripts/code_map.py` — **1,163 lines** (16% over). Extract the AST walk,
+  the PageRank pass, and the renderers.
+- [ ] `scripts/code_rules_fast.py` — **1,017 lines** (2% over). Marginal; split
+  the rule implementations from the runner if it grows again.
 
 ### Approaching Limits (monitor)
 
-- `modules/clients/tui/services/service_bridge.py` — 893 lines
-- `modules/backend/events/types.py` — 872 lines
-- `modules/backend/agents/mission_control/dispatch/loop.py` — 834 lines
-- `modules/backend/api/v1/endpoints/admin.py` — 791 lines
-- `modules/backend/agents/mission_control/dispatch/research_loop.py` — 734 lines
+Several files grew while the large ones were being split. Re-measured 2026-09-08:
+
+- `modules/clients/tui/services/service_bridge.py` — 971 lines (was 893)
+- `modules/backend/api/v1/endpoints/missions_workflows.py` — 945 lines
+- `modules/backend/events/types.py` — 918 lines (was 872)
 
 ---
 

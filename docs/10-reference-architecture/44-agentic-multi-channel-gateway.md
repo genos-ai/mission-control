@@ -1063,15 +1063,15 @@ See `46-event-session-architecture.md`, Section 3 (Streaming Coordinator — Cha
 
 ## Related Documentation
 
-- [03-backend-architecture.md](03-backend-architecture.md) — FastAPI application where WebSocket endpoint is mounted
-- [25-telegram-bot-integration.md](25-telegram-bot-integration.md) — Telegram module (first channel adapter)
+- [03-backend-architecture.md](03-core-backend-architecture.md) — FastAPI application where WebSocket endpoint is mounted
+- [25-telegram-bot-integration.md](25-opt-telegram-bot-integration.md) — Telegram module (first channel adapter)
 - [40-agentic-architecture.md](40-agentic-architecture.md) — Agent orchestration, session concepts, cost tracking
 - [41-agentic-pydanticai.md](41-agentic-pydanticai.md) — Coordinator `handle()`, entry points, streaming
-- [42-agent-first-infrastructure.md](42-agent-first-infrastructure.md) — MCP/A2A (external agent interop, independent of messaging channels)
-- [27-tui-architecture.md](27-tui-architecture.md) — TUI client (connects via WebSocket defined here)
-- [22-frontend-architecture.md](22-frontend-architecture.md) — React web frontend, CLI
-- [21-event-architecture.md](21-event-architecture.md) — Event types, WebSocket patterns
-- [05-authentication.md](05-authentication.md) — JWT authentication (extended for WebSocket)
-- [10-observability.md](10-observability.md) — Source-based logging, X-Frontend-ID
-- [98-research/07-Personal AI assistant architecture](../09-research/07-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md) — Analysis that motivated this module
-- [46-event-session-architecture.md](46-event-session-architecture.md) — Channels as event subscribers, session-channel binding, unified session state
+- [42-agent-first-infrastructure.md](42-agentic-first-infrastructure.md) — MCP/A2A (external agent interop, independent of messaging channels)
+- [27-tui-architecture.md](27-opt-tui-architecture.md) — TUI client (connects via WebSocket defined here)
+- [22-frontend-architecture.md](22-opt-frontend-architecture.md) — React web frontend, CLI
+- [21-event-architecture.md](21-opt-event-architecture.md) — Event types, WebSocket patterns
+- [05-authentication.md](05-core-authentication.md) — JWT authentication (extended for WebSocket)
+- [10-observability.md](10-core-observability.md) — Source-based logging, X-Frontend-ID
+- [98-research/07-Personal AI assistant architecture](../09-research/007-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md) — Analysis that motivated this module
+- [46-event-session-architecture.md](46-agentic-event-session-architecture.md) — Channels as event subscribers, session-channel binding, unified session state

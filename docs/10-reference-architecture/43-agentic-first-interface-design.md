@@ -1031,7 +1031,7 @@ async def test_create_note_parity(adapter, note_data):
 
 ## Related Documentation
 
-- [46-event-session-architecture.md](46-event-session-architecture.md) — Session context for service factory, event-driven interaction model
+- [46-event-session-architecture.md](46-agentic-event-session-architecture.md) — Session context for service factory, event-driven interaction model
 
 ---
 

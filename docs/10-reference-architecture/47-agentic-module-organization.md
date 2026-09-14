@@ -1287,9 +1287,9 @@ This document depends on docs 40, 41, 04, and 08. It does not depend on docs 42,
 
 - [40-agentic-architecture.md](40-agentic-architecture.md) — Conceptual architecture (phases, orchestration patterns, AgentTask primitive)
 - [41-agentic-pydanticai.md](41-agentic-pydanticai.md) — PydanticAI implementation (coordinator, middleware, testing, database)
-- [42-agent-first-infrastructure.md](42-agent-first-infrastructure.md) — External agent interop (MCP, A2A, agent identity)
-- [43-ai-first-interface-design.md](43-ai-first-interface-design.md) — Adapter registry, service factory, discovery endpoints
-- [44-multi-channel-gateway.md](44-multi-channel-gateway.md) — Channel delivery, sessions, WebSocket, security
-- [46-event-session-architecture.md](46-event-session-architecture.md) — Session model, event bus, streaming, plans, memory, approval gates
-- [04-module-structure.md](04-module-structure.md) — Module boundaries and communication
-- [08-python-coding-standards.md](08-python-coding-standards.md) — Python conventions (absolute imports, logging, file size limits)
+- [42-agent-first-infrastructure.md](42-agentic-first-infrastructure.md) — External agent interop (MCP, A2A, agent identity)
+- [43-ai-first-interface-design.md](43-agentic-first-interface-design.md) — Adapter registry, service factory, discovery endpoints
+- [44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md) — Channel delivery, sessions, WebSocket, security
+- [46-event-session-architecture.md](46-agentic-event-session-architecture.md) — Session model, event bus, streaming, plans, memory, approval gates
+- [04-module-structure.md](04-core-module-structure.md) — Module boundaries and communication
+- [08-python-coding-standards.md](08-core-python-coding-standards.md) — Python conventions (absolute imports, logging, file size limits)

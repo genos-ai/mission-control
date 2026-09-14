@@ -15,27 +15,39 @@ See [Architecture Standards](docs/10-reference-architecture/00-overview.md) for 
 
 ```
 .
-├── config/                 # Configuration files
+├── config/                 # Configuration (secrets in .env, settings in YAML)
 │   ├── .env.example       # Environment variables template
-│   └── settings/          # YAML configuration files
+│   ├── agents/            # Per-agent YAML (seed data for the agent catalog)
+│   ├── prompts/           # Layered system prompts
+│   ├── settings/          # YAML application settings
+│   └── workflow_templates/
 ├── docs/                   # Documentation
 ├── modules/
 │   ├── backend/           # FastAPI backend
 │   │   ├── agents/        # AI agent system (mission control, planning, QA, health)
 │   │   ├── api/           # HTTP endpoints
-│   │   ├── cli/           # CLI command implementations (playbook, gate, report)
 │   │   ├── core/          # Configuration, logging, protocols
+│   │   ├── events/        # Event bus and typed event definitions
+│   │   ├── gateway/       # Channel adapter registry and security
+│   │   ├── migrations/    # Alembic migrations
 │   │   ├── models/        # Database models
 │   │   ├── repositories/  # Data access layer
 │   │   ├── schemas/       # Pydantic schemas
 │   │   ├── services/      # Business logic (PQI, code map, context assembly)
-│   │   └── tasks/         # Background tasks
-│   ├── tui/               # Terminal UI (Textual-based, in progress)
+│   │   ├── tasks/         # Background tasks
+│   │   ├── temporal/      # Workflows, activities and worker
+│   │   └── tools/         # Shared agent tool implementations
+│   ├── clients/           # Thin presentation layers — no business logic
+│   │   ├── cli/           # CLI command implementations and report.py primitives
+│   │   ├── common/        # Shared client helpers
+│   │   ├── service_manager/
+│   │   ├── telegram/      # Telegram bot (aiogram v3)
+│   │   └── tui/           # Terminal UI (Textual-based)
 │   └── frontend/          # React frontend
 │       └── src/
-├── tests/                  # Test suite
-├── scripts/                # Utility scripts
-└── data/                   # Runtime data (logs, cache, uploads)
+├── tests/                  # Test suite (unit, integration, e2e)
+├── scripts/                # Utility scripts (code map, PQI, execution trace)
+└── var/                    # Runtime data (logs, cache, tmp) — not tracked
 ```
 
 ## Quick Start

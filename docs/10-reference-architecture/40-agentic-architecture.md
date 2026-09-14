@@ -663,7 +663,7 @@ For concrete agent definition YAML schema and registry implementation, see **[41
 The orchestrator is the entry point for all agent work. Every request flows through it.
 
 **Responsibilities:**
-- Receive user requests from any entry point (API, CLI, Telegram, Slack, WebSocket, scheduled task). When requests arrive through channel adapters (**[44-multi-channel-gateway.md](44-multi-channel-gateway.md)**), the gateway has already enforced security, resolved the session, and set the `tool_access_level` before the orchestrator sees the request.
+- Receive user requests from any entry point (API, CLI, Telegram, Slack, WebSocket, scheduled task). When requests arrive through channel adapters (**[44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md)**), the gateway has already enforced security, resolved the session, and set the `tool_access_level` before the orchestrator sees the request.
 - Route to the appropriate agent using hybrid routing (deterministic rules first, LLM classification fallback)
 - Compose horizontal middleware (guardrails, memory, cost tracking, output validation) around agents
 - Enforce `tool_access_level` from the session — filter the agent's available tools based on the session's access level (`full`, `sandbox`, `readonly`) before execution
@@ -1358,12 +1358,12 @@ Follow the phase-by-phase implementation checklist in **[41-agentic-pydanticai.m
 ## Related Documentation
 
 - [41-agentic-pydanticai.md](41-agentic-pydanticai.md) — **Implementation guide** using PydanticAI (module structure, code patterns, testing, configuration)
-- [44-multi-channel-gateway.md](44-multi-channel-gateway.md) — Multi-channel delivery, session management, channel adapters, real-time push
-- [02-primitive-identification.md](02-primitive-identification.md) — Primitive definition process
-- [24-llm-integration.md](24-llm-integration.md) — LLM provider, prompts, cost management
-- [21-event-architecture.md](21-event-architecture.md) — Event bus for agent events
-- [14-background-tasks.md](14-background-tasks.md) — Taskiq for scheduled agent work
-- [10-observability.md](10-observability.md) — Logging standards
-- [05-authentication.md](05-authentication.md) — RBAC for agent API access
-- [04-module-structure.md](04-module-structure.md) — Module boundaries and communication
-- [46-event-session-architecture.md](46-event-session-architecture.md) — Concrete implementation of session model, plan management (mutable DAGs with dependency tracking), memory architecture (episodic/semantic/procedural with anchored rolling summaries), and approval gates (unified responder pattern with Temporal Signals). Read this for implementation; read doc 40 for concepts.
+- [44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md) — Multi-channel delivery, session management, channel adapters, real-time push
+- [02-primitive-identification.md](02-core-primitive-identification.md) — Primitive definition process
+- [24-llm-integration.md](24-opt-llm-integration.md) — LLM provider, prompts, cost management
+- [21-event-architecture.md](21-opt-event-architecture.md) — Event bus for agent events
+- [14-background-tasks.md](14-core-background-tasks.md) — Taskiq for scheduled agent work
+- [10-observability.md](10-core-observability.md) — Logging standards
+- [05-authentication.md](05-core-authentication.md) — RBAC for agent API access
+- [04-module-structure.md](04-core-module-structure.md) — Module boundaries and communication
+- [46-event-session-architecture.md](46-agentic-event-session-architecture.md) — Concrete implementation of session model, plan management (mutable DAGs with dependency tracking), memory architecture (episodic/semantic/procedural with anchored rolling summaries), and approval gates (unified responder pattern with Temporal Signals). Read this for implementation; read doc 40 for concepts.

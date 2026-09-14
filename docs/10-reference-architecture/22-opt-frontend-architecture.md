@@ -210,8 +210,8 @@ When adopting this module:
 
 ## Related Documentation
 
-- [23-typescript-coding-standards.md](23-typescript-coding-standards.md) — TypeScript coding standards (required)
-- [03-backend-architecture.md](03-backend-architecture.md) — API conventions consumed by the frontend
-- [09-error-codes.md](09-error-codes.md) — Error code registry for client-side mapping
+- [23-typescript-coding-standards.md](23-opt-typescript-coding-standards.md) — TypeScript coding standards (required)
+- [03-backend-architecture.md](03-core-backend-architecture.md) — API conventions consumed by the frontend
+- [09-error-codes.md](09-core-error-codes.md) — Error code registry for client-side mapping
 - [01-core-principles.md](01-core-principles.md) — Thin client mandate (P1, P2)
-- [27-tui-architecture.md](27-tui-architecture.md) — Terminal UI alternative (Textual + Textual Web)
+- [27-tui-architecture.md](27-opt-tui-architecture.md) — Terminal UI alternative (Textual + Textual Web)

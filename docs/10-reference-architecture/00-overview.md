@@ -275,7 +275,7 @@ Definitive technology choices across all docs. When building or modifying code, 
 | Azure frontend | **Azure Static Web Apps** | 16 |
 | Azure monitoring | **Application Insights** + **Log Analytics** | 16 |
 | Azure IaC | **Terraform** (Azure provider, state in Storage Account) | 16 |
-| CI/CD | **GitHub Actions** (bare metal) or **Azure DevOps Pipelines** (Azure) | 12, 16 |
+| CI/CD | **Azure Pipelines** on Azure Repos Git | 12, 16 |
 
 ### Observability (Production)
 

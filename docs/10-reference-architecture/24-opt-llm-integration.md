@@ -600,6 +600,6 @@ If also adopting **40-agentic-architecture.md**:
 
 - **40-agentic-architecture.md** — Agentic AI conceptual architecture (phases, principles, patterns)
 - **41-agentic-pydanticai.md** — Agentic AI implementation using PydanticAI
-- [21-event-architecture.md](21-event-architecture.md) — Event bus for async processing
-- [10-observability.md](10-observability.md) — Logging and monitoring standards
-- [14-background-tasks.md](14-background-tasks.md) — Background task processing
+- [21-event-architecture.md](21-opt-event-architecture.md) — Event bus for async processing
+- [10-observability.md](10-core-observability.md) — Logging and monitoring standards
+- [14-background-tasks.md](14-core-background-tasks.md) — Background task processing

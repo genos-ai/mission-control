@@ -664,33 +664,70 @@ async def test_complex_workflow():
 All test stages connect to real PostgreSQL and Redis. CI provisions these as services:
 
 ```yaml
-# .github/workflows/ci.yml
+# azure-pipelines.yml
+
+resources:
+  containers:
+    - container: postgres
+      image: postgres:16
+      ports:
+        - 5432:5432
+      env:
+        POSTGRES_DB: test_db
+        POSTGRES_USER: test
+        POSTGRES_PASSWORD: test
+    - container: redis
+      image: redis:7
+      ports:
+        - 6379:6379
 
 jobs:
-  tests:
-    runs-on: ubuntu-latest
+  - job: Tests
+    pool:
+      vmImage: ubuntu-latest
     services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        ports:
-          - 5432:5432
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
+      postgres: postgres
+      redis: redis
     steps:
-      - uses: actions/checkout@v4
-      - name: Run unit tests
-        run: pytest tests/unit --cov=modules/backend --cov-fail-under=80
-      - name: Run integration tests
-        run: pytest tests/integration
-      - name: Run E2E tests
-        run: pytest tests/e2e
+      # Azure starts the job without waiting for service-container health, so
+      # poll before touching them or the suite races the database. The postgres
+      # image runs initdb on a unix socket and only listens on TCP once ready,
+      # so an accepted connection is a sound readiness signal.
+      - script: |
+          python - <<'PY'
+          import socket, sys, time
+          for name, port in (("postgres", 5432), ("redis", 6379)):
+              for _ in range(60):
+                  try:
+                      with socket.create_connection(("localhost", port), timeout=2):
+                          break
+                  except OSError:
+                      time.sleep(2)
+              else:
+                  sys.exit(f"{name} never became reachable on port {port}")
+          PY
+        displayName: Wait for Postgres and Redis
+
+      - script: pytest tests/unit --cov=modules/backend --cov-fail-under=80 --junitxml=junit/unit.xml
+        displayName: Unit tests
+      - script: pytest tests/integration --junitxml=junit/integration.xml
+        displayName: Integration tests
+      - script: pytest tests/e2e --junitxml=junit/e2e.xml
+        displayName: E2E tests
+
+      - task: PublishTestResults@2
+        displayName: Publish test results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: junit/*.xml
+          failTaskOnFailedTests: true
 ```
+
+Avoid `$(...)` shell command substitution inside `script:` blocks. Azure
+resolves `$(...)` as pipeline-variable syntax before the shell sees the line,
+so secrets or values generated that way silently break. Use Python or assign
+via `${VAR}` instead.
 
 ### Test Order in CI
 

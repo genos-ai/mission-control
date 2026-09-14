@@ -123,13 +123,14 @@ Two scripts in `scripts/` provide structural and quality analysis:
 
 ```bash
 # Code map — structural overview for LLM context
-python scripts/generate_code_map.py --scope modules/ --format markdown --stats
+python scripts/code_map.py --scope modules/ --format markdown --stats
 
 # PQI score — composite 0-100 quality metric across 7 dimensions
-python scripts/score_quality.py --scope modules/ tests/
+python scripts/code_quality.py --scope modules/ tests/
 
-# Full-fidelity PQI with external tools and code map
-python scripts/score_quality.py --scope modules/ tests/ --use-bandit --use-radon --with-code-map --recommendations
+# PQI with actionable recommendations. Bandit, Radon and the code map all run
+# by default; opt out with --no-bandit, --no-radon, --no-code-map.
+python scripts/code_quality.py --scope modules/ tests/ --recommendations
 ```
 
 Use these as quick-reference tools when assessing code quality, planning refactors, or understanding module structure. The code map shows symbol importance (PageRank), cross-references, and import graphs. PQI breaks down into: Maintainability, Security, Modularity, Testability, Robustness, Elegance, Reusability.

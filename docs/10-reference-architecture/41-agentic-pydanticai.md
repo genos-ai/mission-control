@@ -73,7 +73,7 @@ PydanticAI is chosen because:
 - MIT license, model-agnostic (20+ providers), minimal abstraction tax
 - Tools are plain Python functions with type annotations — no custom DSL
 
-For the full framework evaluation, see **[Why PydanticAI is the right agent framework](../../09-research/04-Why%20PydanticAI%20is%20the%20right%20agent%20framework%20for%20your%20FastAPI%20stack.md)**.
+For the full framework evaluation, see **[Why PydanticAI is the right agent framework](../09-research/004-Why%20PydanticAI%20is%20the%20right%20agent%20framework%20for%20your%20FastAPI%20stack.md)**.
 
 ---
 
@@ -569,7 +569,7 @@ Four complementary layers prevent runaway delegation:
 
 The coordinator exposes a single async function: `handle(request: CoordinatorRequest) -> CoordinatorResponse`. All entry points construct a `CoordinatorRequest` and call it.
 
-`CoordinatorRequest` carries gateway context from **[44-multi-channel-gateway.md](44-multi-channel-gateway.md)**:
+`CoordinatorRequest` carries gateway context from **[44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md)**:
 
 - `channel` — originating channel (`telegram`, `slack`, `websocket`, `cli`, `tui`, `api`)
 - `session_type` — `direct` or `group` (controls session isolation)
@@ -705,11 +705,11 @@ async def websocket_agent_endpoint(websocket: WebSocket, session_id: str) -> Non
         pass
 ```
 
-This is the primary transport for the TUI (**[27-tui-architecture.md](27-tui-architecture.md)**) and the real-time web frontend. Token-by-token streaming via `run_stream()` gives the user immediate feedback as the agent reasons.
+This is the primary transport for the TUI (**[27-tui-architecture.md](27-opt-tui-architecture.md)**) and the real-time web frontend. Token-by-token streaming via `run_stream()` gives the user immediate feedback as the agent reasons.
 
 **Channel adapters (gateway-mediated):**
 
-When requests arrive through the multi-channel gateway (**[44-multi-channel-gateway.md](44-multi-channel-gateway.md)**), the gateway constructs the `CoordinatorRequest` after enforcing security, resolving the session, and setting `channel`, `session_type`, and `tool_access_level`. Individual channel adapters (Telegram, Slack, Discord) do not call `handle()` directly — they go through the gateway's router, which adds the gateway context and delivers the response back through the originating channel.
+When requests arrive through the multi-channel gateway (**[44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md)**), the gateway constructs the `CoordinatorRequest` after enforcing security, resolving the session, and setting `channel`, `session_type`, and `tool_access_level`. Individual channel adapters (Telegram, Slack, Discord) do not call `handle()` directly — they go through the gateway's router, which adds the gateway context and delivers the response back through the originating channel.
 
 ---
 
@@ -1660,13 +1660,13 @@ No coordinator changes needed. The registry auto-discovers the new agent by scan
 ## Related Documentation
 
 - [40-agentic-architecture.md](40-agentic-architecture.md) — **Conceptual architecture** (phases, principles, patterns, primitive)
-- [44-multi-channel-gateway.md](44-multi-channel-gateway.md) — Multi-channel delivery, session management, channel adapters, WebSocket real-time push
-- [Why PydanticAI is the right agent framework](../../09-research/08-Why%20PydanticAI%20is%20the%20right%20agent%20framework%20for%20your%20FastAPI%20stack.md) — Framework selection rationale
-- [Multi-agent systems on FastAPI](../../09-research/03-Multi-agent%20systems%20on%20FastAPI-%20a%20prescriptive%20reference%20architecture.md) — PydanticAI pattern reference
-- [24-llm-integration.md](24-llm-integration.md) — LLM provider interface, cost tracking, prompt management
-- [21-event-architecture.md](21-event-architecture.md) — Redis Streams for agent events
-- [14-background-tasks.md](14-background-tasks.md) — Taskiq for scheduled agent work
-- [10-observability.md](10-observability.md) — Logging standards
-- [05-authentication.md](05-authentication.md) — RBAC for agent API access
-- [04-module-structure.md](04-module-structure.md) — Module boundaries and communication
-- [46-event-session-architecture.md](46-event-session-architecture.md) — Session-aware agent invocation, streaming coordinator, event-driven interaction model
+- [44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md) — Multi-channel delivery, session management, channel adapters, WebSocket real-time push
+- [Why PydanticAI is the right agent framework](../09-research/004-Why%20PydanticAI%20is%20the%20right%20agent%20framework%20for%20your%20FastAPI%20stack.md) — Framework selection rationale
+- [Multi-agent systems on FastAPI](../09-research/003-Multi-agent%20systems%20on%20FastAPI-%20a%20prescriptive%20reference%20architecture.md) — PydanticAI pattern reference
+- [24-llm-integration.md](24-opt-llm-integration.md) — LLM provider interface, cost tracking, prompt management
+- [21-event-architecture.md](21-opt-event-architecture.md) — Redis Streams for agent events
+- [14-background-tasks.md](14-core-background-tasks.md) — Taskiq for scheduled agent work
+- [10-observability.md](10-core-observability.md) — Logging standards
+- [05-authentication.md](05-core-authentication.md) — RBAC for agent API access
+- [04-module-structure.md](04-core-module-structure.md) — Module boundaries and communication
+- [46-event-session-architecture.md](46-agentic-event-session-architecture.md) — Session-aware agent invocation, streaming coordinator, event-driven interaction model

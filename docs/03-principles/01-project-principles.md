@@ -261,7 +261,7 @@ This means:
 - `python <entry>.py tree` succeeds (exit 0) on every entry file in the repo root.
 - Output enumerates subcommands and their flags, suitable for piping into context assembly.
 - The implementation introspects the actual parser (Click group or argparse subparsers) — it is never a hand-maintained list that can drift from the real command surface.
-- Rule 010.1 (`docs/04-rules/010_entry_discoverability.jsonl`) enforces it across all root entry files.
+- Rule 010.1 (`docs/04-rules/010_entry_discoverability.jsonl`) states the rule but **is not machine-checked**. It appears in no pre-commit hook, no CI job, and not in `scripts/code_rules_fast.py`. The contract currently holds by convention: `mc.py`, `admin.py`, `services.py` and `tui.py` all pass `tree` as of 2026-09-08. Verify manually when adding an entry file, or implement the check.
 
 **Test:** Can a new developer (or an LLM context prompt) discover every feature of every CLI by running `tree` on each root entry file? If any entry file fails or omits a feature, the contract is broken.
 

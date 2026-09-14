@@ -1513,11 +1513,11 @@ temporal:
 
 ## Related Documentation
 
-- [03-backend-architecture.md](03-backend-architecture.md) — Service layer, repository pattern (unchanged by this module)
-- [21-event-architecture.md](21-event-architecture.md) — Event primitives (extended with session events)
+- [03-backend-architecture.md](03-core-backend-architecture.md) — Service layer, repository pattern (unchanged by this module)
+- [21-event-architecture.md](21-opt-event-architecture.md) — Event primitives (extended with session events)
 - [40-agentic-architecture.md](40-agentic-architecture.md) — Agent concepts, orchestration patterns
 - [41-agentic-pydanticai.md](41-agentic-pydanticai.md) — PydanticAI agent implementation
-- [42-agent-first-infrastructure.md](42-agent-first-infrastructure.md) — MCP, A2A, agent identity
-- [27-tui-architecture.md](27-tui-architecture.md) — TUI rendering (becomes event consumer)
-- [44-multi-channel-gateway.md](44-multi-channel-gateway.md) — Channel adapters (become event subscribers)
-- [43-ai-first-interface-design.md](43-ai-first-interface-design.md) — Service factory, discovery endpoints
+- [42-agent-first-infrastructure.md](42-agentic-first-infrastructure.md) — MCP, A2A, agent identity
+- [27-tui-architecture.md](27-opt-tui-architecture.md) — TUI rendering (becomes event consumer)
+- [44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md) — Channel adapters (become event subscribers)
+- [43-ai-first-interface-design.md](43-agentic-first-interface-design.md) — Service factory, discovery endpoints

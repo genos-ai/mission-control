@@ -806,10 +806,10 @@ success_count = sum(1 for r in results if r.success)
 
 ## Related Documentation
 
-- [Telegram Client Integration](26-telegram-client-integration.md) - Client API (MTProto) for channel scraping and history
-- [Background Tasks](14-background-tasks.md) - Taskiq integration
-- [Observability](10-observability.md) - Logging and monitoring
-- [Authentication](05-authentication.md) - Security patterns
+- [Telegram Client Integration](26-opt-telegram-client-integration.md) - Client API (MTProto) for channel scraping and history
+- [Background Tasks](14-core-background-tasks.md) - Taskiq integration
+- [Observability](10-core-observability.md) - Logging and monitoring
+- [Authentication](05-core-authentication.md) - Security patterns
 
 ---
 

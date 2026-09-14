@@ -386,7 +386,7 @@ The request/response patterns above apply to stateless CRUD operations — the m
 
 ## Background Tasks
 
-For background task processing and scheduled jobs, see [14-background-tasks.md](14-background-tasks.md).
+For background task processing and scheduled jobs, see [14-background-tasks.md](14-core-background-tasks.md).
 
 Summary:
 - **Standard**: Taskiq with Redis

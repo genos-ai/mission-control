@@ -485,9 +485,9 @@ When adopting this module:
 
 ## Related Documentation
 
-- [08-python-coding-standards.md](08-python-coding-standards.md) — Python conventions (imports, logging, file size)
-- [03-backend-architecture.md](03-backend-architecture.md) — API design patterns consumed by CLI
-- [10-observability.md](10-observability.md) — X-Frontend-ID, log sources, structured logging
+- [08-python-coding-standards.md](08-core-python-coding-standards.md) — Python conventions (imports, logging, file size)
+- [03-backend-architecture.md](03-core-backend-architecture.md) — API design patterns consumed by CLI
+- [10-observability.md](10-core-observability.md) — X-Frontend-ID, log sources, structured logging
 - [01-core-principles.md](01-core-principles.md) — Thin client mandate (P1, P2)
-- [27-tui-architecture.md](27-tui-architecture.md) — Interactive terminal interface (Textual) for persistent sessions
-- [22-frontend-architecture.md](22-frontend-architecture.md) — Web frontend (React)
+- [27-tui-architecture.md](27-opt-tui-architecture.md) — Interactive terminal interface (Textual) for persistent sessions
+- [22-frontend-architecture.md](22-opt-frontend-architecture.md) — Web frontend (React)

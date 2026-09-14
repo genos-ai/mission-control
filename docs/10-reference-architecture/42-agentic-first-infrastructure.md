@@ -714,7 +714,7 @@ Validate every A2A task message independently. Do not build accumulated trust ba
 
 Every security boundary in the platform must **fail closed** when configuration is missing. The system must refuse to start rather than silently degrade to open access. This principle applies to all external interfaces — MCP endpoints, A2A endpoints, messaging channel webhooks, WebSocket connections, and REST APIs.
 
-This addresses the most common vulnerability pattern in agent-first platforms (documented in [98-research/07](../09-research/07-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md)): when a security-relevant configuration value is missing or empty, the system defaults to allowing all access, and the developer never notices until the vulnerability is exploited.
+This addresses the most common vulnerability pattern in agent-first platforms (documented in [98-research/07](../09-research/007-Personal%20AI%20assistant%20architecture-%20lessons%20from%20OpenClaw%20for%20agent-first%20platforms.md)): when a security-relevant configuration value is missing or empty, the system defaults to allowing all access, and the developer never notices until the vulnerability is exploited.
 
 **Startup invariants** (checked before the application accepts traffic):
 
@@ -735,7 +735,7 @@ These checks are implemented as a startup validation function called during Fast
 
 ### DM Pairing for Messaging Channels
 
-When the platform is exposed through messaging channels (Telegram, Slack, Discord, WhatsApp) via **[44-multi-channel-gateway.md](44-multi-channel-gateway.md)**, unknown senders must be authenticated before their messages reach the agent coordinator. Three policies are available, configured per channel in `config/settings/gateway.yaml`:
+When the platform is exposed through messaging channels (Telegram, Slack, Discord, WhatsApp) via **[44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md)**, unknown senders must be authenticated before their messages reach the agent coordinator. Three policies are available, configured per channel in `config/settings/gateway.yaml`:
 
 | Policy | Behavior | When to Use |
 |--------|----------|-------------|
@@ -755,7 +755,7 @@ The pairing protocol:
 
 This pattern originates from messaging platform security practices and prevents the class of vulnerabilities where a public-facing bot processes messages from any sender — enabling prompt injection, resource exhaustion, and unauthorized access to agent capabilities.
 
-For the full gateway security implementation, see **[44-multi-channel-gateway.md](44-multi-channel-gateway.md)**.
+For the full gateway security implementation, see **[44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md)**.
 
 ### Channel-Level Rate Limiting
 
@@ -776,7 +776,7 @@ rate_limiting:
     messages_per_hour: 1000
 ```
 
-Rate limiting is enforced at the gateway level (**[44-multi-channel-gateway.md](44-multi-channel-gateway.md)**) using Redis for distributed state. When a limit is exceeded, the gateway responds with a channel-appropriate cooldown message and does not forward the message to the agent coordinator. Rate-limited messages do not consume agent budget.
+Rate limiting is enforced at the gateway level (**[44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md)**) using Redis for distributed state. When a limit is exceeded, the gateway responds with a channel-appropriate cooldown message and does not forward the message to the agent coordinator. Rate-limited messages do not consume agent budget.
 
 This is distinct from MCP/A2A rate limiting (token-based cost budgets) — channel rate limiting is message-count-based because messaging channel abuse is volumetric, not cost-based.
 
@@ -959,10 +959,10 @@ security_schemes:
 
 - [40-agentic-architecture.md](40-agentic-architecture.md) — Internal agent orchestration (conceptual)
 - [41-agentic-pydanticai.md](41-agentic-pydanticai.md) — Internal agent implementation (PydanticAI)
-- [44-multi-channel-gateway.md](44-multi-channel-gateway.md) — Multi-channel delivery, DM pairing, channel rate limiting, session management
-- [03-backend-architecture.md](03-backend-architecture.md) — FastAPI application where MCP/A2A is mounted
-- [05-authentication.md](05-authentication.md) — Base authentication (extended by agent identity layers)
-- [10-observability.md](10-observability.md) — Logging standards (extended by OTel GenAI conventions)
-- [09-error-codes.md](09-error-codes.md) — Error code registry (extended by recovery hints)
-- [24-llm-integration.md](24-llm-integration.md) — LLM provider interface
-- [06-security-standards.md](06-security-standards.md) — Application security standards
+- [44-multi-channel-gateway.md](44-agentic-multi-channel-gateway.md) — Multi-channel delivery, DM pairing, channel rate limiting, session management
+- [03-backend-architecture.md](03-core-backend-architecture.md) — FastAPI application where MCP/A2A is mounted
+- [05-authentication.md](05-core-authentication.md) — Base authentication (extended by agent identity layers)
+- [10-observability.md](10-core-observability.md) — Logging standards (extended by OTel GenAI conventions)
+- [09-error-codes.md](09-core-error-codes.md) — Error code registry (extended by recovery hints)
+- [24-llm-integration.md](24-opt-llm-integration.md) — LLM provider interface
+- [06-security-standards.md](06-core-security-standards.md) — Application security standards

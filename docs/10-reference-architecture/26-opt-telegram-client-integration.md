@@ -820,7 +820,7 @@ When adopting this module:
 
 ## Related Documentation
 
-- [25-telegram-bot-integration.md](25-telegram-bot-integration.md) - Bot API integration (aiogram)
-- [21-event-architecture.md](21-event-architecture.md) - Message queue patterns
-- [24-llm-integration.md](24-llm-integration.md) - LLM integration patterns
-- [10-observability.md](10-observability.md) - Logging standards
+- [25-telegram-bot-integration.md](25-opt-telegram-bot-integration.md) - Bot API integration (aiogram)
+- [21-event-architecture.md](21-opt-event-architecture.md) - Message queue patterns
+- [24-llm-integration.md](24-opt-llm-integration.md) - LLM integration patterns
+- [10-observability.md](10-core-observability.md) - Logging standards
