@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
 
 from pydantic_ai import RunContext
 
@@ -36,6 +38,19 @@ class ToolRefusal(Exception):
         super().__init__(message)
         self.message = message
         self.details = details or {}
+
+
+@dataclass(frozen=True)
+class CompactResult:
+    """A payload to serialise without indentation.
+
+    Several tools indent their main result but returned their "nothing
+    found" case compactly. Wrapping that case preserves the exact output
+    the model saw before the implementations were extracted, instead of
+    silently reformatting it.
+    """
+
+    payload: Any
 
 
 async def _emit_tool_failure(
@@ -63,10 +78,11 @@ async def _emit_tool_failure(
 async def run_tool(
     ctx: RunContext[MissionDirectorDeps],
     tool_name: str,
-    operation: Callable[[], Awaitable[dict]],
+    operation: Callable[[], Awaitable[Any]],
     *,
     indent: int | None = 2,
     rollback_on_error: bool = False,
+    requires_session: bool = True,
 ) -> str:
     """Run a tool implementation and serialise its result for the LLM.
 
@@ -80,16 +96,23 @@ async def run_tool(
         ctx: The PydanticAI run context, for deps and event emission.
         tool_name: Name used in log records and the failure event.
         operation: The implementation call to run.
-        indent: `json.dumps` indent for a successful result. Refusals and
-            errors are never indented, matching the pre-refactor output.
+        indent: `json.dumps` indent for a successful result. Refusals,
+            errors and `CompactResult` payloads are never indented,
+            matching the pre-refactor output.
         rollback_on_error: Roll the session back on failure. Set for tools
             that write before they can fail.
+        requires_session: Guard on a missing session. Clear it for tools
+            that never touch `deps.db_session`, such as pure
+            introspection or those opening their own session via a
+            service factory.
     """
-    if ctx.deps.db_session is None:
+    if requires_session and ctx.deps.db_session is None:
         return json.dumps({"error": "No database session available"})
 
     try:
         result = await operation()
+        if isinstance(result, CompactResult):
+            return json.dumps(result.payload, default=str)
         return json.dumps(result, indent=indent, default=str)
     except ToolRefusal as refusal:
         return json.dumps({"error": refusal.message, **refusal.details})
@@ -100,7 +123,7 @@ async def run_tool(
             exc_info=True,
         )
         await _emit_tool_failure(ctx, tool_name, exc)
-        if rollback_on_error:
+        if rollback_on_error and ctx.deps.db_session is not None:
             try:
                 await ctx.deps.db_session.rollback()
             except Exception:  # noqa: BLE001
