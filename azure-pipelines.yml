@@ -90,6 +90,12 @@ jobs:
       - script: python scripts/code_rules_fast.py --all
         displayName: Code rules (full tree)
 
+      # Guards the two defect classes behind every finding in the September 2026
+      # documentation audit: relative links broken by a file rename, and
+      # documented `python x.py` commands naming files that do not exist.
+      - script: python scripts/check_docs.py
+        displayName: Documentation references
+
   - job: Tests
     displayName: Tests
     pool:

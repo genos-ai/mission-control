@@ -4,6 +4,14 @@
 *Author: Architecture Team*
 *Created: 2026-03-10*
 
+> **Partially superseded.** This document predates
+> [ADR-005](005-adr-mission-primitive-no-projects-playbooks.md), which removed
+> Projects and Playbooks in favour of the mission as the sole domain primitive.
+> Read every reference to a `project` or `project_id` below as scoped to a
+> mission instead. The Code Map, Exemplar Registry and Task File Manifest
+> designs remain current; the project-scoped storage and addressing model does
+> not.
+
 ## Changelog
 
 - 1.2.0 (2026-03-10): Internal decomposition — typed stage interfaces, cross-reference resolution boundary, separated trim/render, incremental update API, moved exemplar validation to PCD layer
@@ -1209,7 +1217,7 @@ If still over budget after all passes, remove the lowest-ranked files.
 |---------|-----------|
 | Git commit | Post-commit hook: `python -m modules.backend.tools.code_map --project <id>`. tree-sitter incremental parsing means only changed files are re-parsed (<100ms). |
 | Before mission planning | The dispatch adapter checks if the code map commit matches HEAD. If not, regenerates. |
-| CLI command | `python cli.py project code-map <project_id>` — regenerate and display (Markdown tree format) |
+| CLI command | `python admin.py context codemap --generate` — regenerate and display (Markdown tree format) |
 | On project creation | Generated as part of the initial project setup alongside the seed PCD |
 
 ### Storage
@@ -1417,7 +1425,7 @@ The existing Agent Contract (defined in [001-project-context-layer.md](001-proje
 
 ### Phase 1: Code Map Generator (tree-sitter + PageRank)
 
-Build the four stage functions (`parse_modules()`, `build_reference_graph()`, `rank_symbols()`, `assemble_code_map()`) and the orchestrator (`generate_code_map()`). Include `ast` fallback for `parse_modules()`. Build the presentation layer (`trim_by_rank()`, `render_markdown_tree()`, `render_for_agent()`). Each stage function is independently testable. Test against the current codebase. Verify output matches expected structure. Add CLI command: `python cli.py project code-map <project_id>`.
+Build the four stage functions (`parse_modules()`, `build_reference_graph()`, `rank_symbols()`, `assemble_code_map()`) and the orchestrator (`generate_code_map()`). Include `ast` fallback for `parse_modules()`. Build the presentation layer (`trim_by_rank()`, `render_markdown_tree()`, `render_for_agent()`). Each stage function is independently testable. Test against the current codebase. Verify output matches expected structure. Add CLI command: `python admin.py context codemap --generate`.
 
 **Deliverable:** Code Map can be generated (JSON), trimmed, rendered (Markdown tree), viewed, and stored. Each pipeline stage is testable in isolation. Not yet used by agents.
 

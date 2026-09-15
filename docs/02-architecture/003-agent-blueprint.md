@@ -463,19 +463,22 @@ After creating all files, verify:
 
 ```bash
 # Agent appears in the registry
-python cli.py agent --list
+python admin.py agent --list
 
-# Keyword routing works
-python cli.py agent "run a security scan" --verbose
+# Agent appears in the catalog (the runtime source of truth)
+python admin.py catalog detail security.pentest.agent
+
+# Keyword routing works (--verbose lives on the root group, per P18)
+python admin.py --verbose agent "run a security scan"
 
 # Direct targeting works
-python cli.py agent "test headers" --name security.pentest.agent --verbose
+python admin.py --verbose agent "test headers" --name security.pentest.agent
 
 # Health check still passes
-python cli.py health
+python admin.py health
 
 # All tests pass
-python cli.py test unit
+python admin.py test unit
 ```
 
 ---

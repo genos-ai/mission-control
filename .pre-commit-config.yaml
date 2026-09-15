@@ -43,3 +43,10 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+      - id: check-docs
+        name: documentation references (links + documented commands)
+        entry: python scripts/check_docs.py
+        language: system
+        types: [markdown]
+        pass_filenames: false

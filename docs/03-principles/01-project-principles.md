@@ -10,7 +10,43 @@ These are **project-specific principles** for the Mission Control agentic platfo
 
 The reference architecture principles are universal software engineering rules. The principles below are specific to how *this project* builds its agentic platform — platform structure, agent behavior, and development process.
 
-**Numbering note:** This document uses P1–P14. The reference architecture also uses P1–P8 for different principles. When referencing principles from this document in plans or code, include the name (e.g., "P12: Test Against Real Infrastructure") to avoid ambiguity with reference architecture P-numbers.
+**Numbering note:** This document uses P1–P18. Two other sets share the same
+`P` prefix for different things: the reference architecture uses P1–P8
+(`docs/10-reference-architecture/01-core-principles.md`) and
+`docs/04-rules/007_principles.jsonl` uses P1–P15. The numbers were not
+renamespaced because P-numbers are cited in production source comments, in
+migrations, and throughout `docs/99-archive/`, and a partial rename would leave
+worse ambiguity than the collision. **Always cite by number and name together**,
+for example "P12: Test Against Real Infrastructure". The index below resolves any
+number in this document.
+
+---
+
+## Index
+
+The body groups principles by theme, so the numbers below are not in document
+order. This table is the lookup.
+
+| # | Principle | Theme |
+|---|-----------|-------|
+| [P1](#p1-infrastructure-before-agents) | Infrastructure Before Agents | Platform Architecture |
+| [P2](#p2-deterministic-over-non-deterministic) | Deterministic Over Non-Deterministic | Agent Design |
+| [P3](#p3-breaking-changes-are-free-during-dev) | Breaking Changes Are Free (During Dev) | **Temporary** |
+| [P4](#p4-scope-is-configuration-not-code) | Scope Is Configuration, Not Code | Agent Design |
+| [P5](#p5-streaming-is-the-default-path) | Streaming Is the Default Path | Platform Architecture |
+| [P6](#p6-mission-control-is-infrastructure-not-intelligence) | Mission Control Is Infrastructure, Not Intelligence | Platform Architecture |
+| [P7](#p7-separate-implementation-from-registration) | Separate Implementation from Registration | Agent Design |
+| [P8](#p8-plan-revision-over-replanning) | Plan Revision Over Replanning | Agent Design |
+| [P9](#p9-temporal-owns-orchestration-postgresql-owns-domain) | Temporal Owns Orchestration, PostgreSQL Owns Domain | Platform Architecture |
+| [P10](#p10-every-phase-is-an-expansion-not-a-rewrite) | Every Phase Is an Expansion, Not a Rewrite | Platform Architecture |
+| [P11](#p11-test-without-llms) | Test Without LLMs | Development Process |
+| [P12](#p12-test-against-real-infrastructure) | Test Against Real Infrastructure | Development Process |
+| [P13](#p13-no-agent-self-evaluation) | No Agent Self-Evaluation | Agent Design |
+| [P14](#p14-modular-reusable-elegant-robust) | Modular, Reusable, Elegant, Robust | Development Process |
+| [P15](#p15-the-mission-is-the-domain-primitive-the-session-is-the-transport-primitive) | The Mission Is the Domain Primitive, the Session Is the Transport Primitive | Platform Architecture |
+| [P16](#p16-idempotency-for-expensive-mutations) | Idempotency for Expensive Mutations | Development Process |
+| [P17](#p17-tools-over-structured-output-for-complex-schemas) | Tools Over Structured Output for Complex Schemas | Agent Design |
+| [P18](#p18-entry-files-are-self-describing) | Entry Files Are Self-Describing | Development Process |
 
 ---
 
