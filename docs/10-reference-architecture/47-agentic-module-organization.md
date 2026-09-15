@@ -118,7 +118,15 @@ A `code.coder.agent` deployed for Project X has the same identity as one deploye
 
 ### Tools
 
-Shared tool implementations use dotted names matching their file and function: `{domain}.{action}`.
+**One module per tool, in `modules/backend/tools/`.** The module name, the
+implementation function name and the registered tool name are all the same
+string: `read_file.py` holds `read_file()` and registers a `read_file` tool.
+Lookup is mechanical in both directions.
+
+The domain is not part of the path. It is declared as the `category` field of
+the module's `TOOL_DEF`, which is what the registry and the agent catalog read.
+The dotted `{domain}.{action}` form below is a reference and grouping notation,
+not a filesystem layout.
 
 ```
 filesystem.read_file
@@ -414,14 +422,15 @@ config/
 |----------|-------------|---------|
 | Vertical agent | `agents/vertical/{category}/{name}/agent.py` | `agents/vertical/code/qa/agent.py` |
 | Horizontal agent | `agents/horizontal/{name}/agent.py` | `agents/horizontal/pm/agent.py` |
-| Shared tool | `agents/tools/{domain}.py` | `agents/tools/filesystem.py` |
+| Shared tool | `modules/backend/tools/{tool_name}.py` | `modules/backend/tools/read_file.py` |
+| Agent-specific tool | `agents/{category}/{name}/tools/{tool_name}.py` | `agents/mission/director/tools/get_plan.py` |
 | Deps dataclass | `agents/deps/base.py` | `agents/deps/base.py` |
 | Agent YAML config | `config/agents/{category}/{name}/agent.yaml` | `config/agents/code/qa/agent.yaml` |
 | Organization prompt | `config/prompts/organization/{name}.md` | `config/prompts/organization/principles.md` |
 | Category prompt | `config/prompts/categories/{category}.md` | `config/prompts/categories/code.md` |
 | Agent prompt | `config/prompts/agents/{category}/{name}/system.md` | `config/prompts/agents/code/qa/system.md` |
 | Agent unit test | `tests/unit/backend/agents/test_{category}_{name}.py` | `tests/unit/backend/agents/test_code_qa.py` |
-| Tool unit test | `tests/unit/backend/agents/tools/test_{domain}.py` | `tests/unit/backend/agents/tools/test_filesystem.py` |
+| Tool unit test | `tests/unit/backend/agents/tools/test_{tool_name}.py` | `tests/unit/backend/agents/tools/test_store_artifact.py` |
 
 ### Registry Discovery
 
@@ -437,22 +446,45 @@ A `read_file` tool is needed by 20+ agents. Each agent may have different filesy
 
 ### The Solution: Separate Implementation from Registration
 
-**Tool implementations** are pure async functions in `agents/tools/`. They accept explicit parameters (file path, scope object, project root) and return results. They have no PydanticAI dependency, no `RunContext`, no agent awareness. They are testable as plain functions.
+**Tool implementations** are async functions accepting explicit parameters (file path, scope object, project root) and returning results. They have no PydanticAI dependency, no `RunContext`, no agent awareness. They are testable as plain functions.
 
-**Tool registrations** are thin `@agent.tool` wrappers in each agent's `agent.py`. They extract scope and dependencies from `ctx.deps` and delegate to the shared implementation. They are 2-4 lines each.
+They are not pure in the functional sense: most touch a database, call a service or emit events. The property that matters is narrower and worth stating precisely — **callable without an agent or a `RunContext`**. That is what makes them testable.
+
+**Tool registrations** are thin `@agent.tool` wrappers. They extract scope and dependencies from `ctx.deps` and delegate to the implementation. They are 2-4 lines each.
+
+**The wrapper's docstring is a live contract, not documentation.** PydanticAI compiles it into the tool schema the model sees. It must stay on the decorated wrapper. Moving it down to the implementation silently strips the model's guidance, and no test will catch it.
 
 ### Shared Tool Implementation Pattern
 
+One module per tool, holding the implementation, its registry metadata and its
+registration together.
+
 ```python
-# modules/backend/agents/tools/filesystem.py
-"""Shared filesystem tool implementations. Pure functions, no PydanticAI dependency."""
+# modules/backend/tools/read_file.py
+"""
+Tool: read_file
+
+Read a file within the allowed scope and return content with line numbers.
+"""
 
 from pathlib import Path
+
+from pydantic_ai import RunContext
+
 from modules.backend.agents.deps.base import FileScope
 
 
 async def read_file(project_root: Path, file_path: str, scope: FileScope) -> str:
-    """Read a file within the allowed scope. Returns content with line numbers."""
+    """Read a file within the allowed scope. Returns content with line numbers.
+
+    Args:
+        project_root: Absolute path to the project root.
+        file_path: Path relative to project root.
+        scope: FileScope defining allowed read paths.
+
+    Raises:
+        PermissionError: If the path is not in the read scope.
+    """
     scope.check_read(file_path)
     full_path = project_root / file_path
     if not full_path.is_file():
@@ -462,28 +494,34 @@ async def read_file(project_root: Path, file_path: str, scope: FileScope) -> str
     return "\n".join(numbered)
 
 
-async def write_file(
-    project_root: Path, file_path: str, content: str, scope: FileScope,
-) -> dict:
-    """Write content to a file within the allowed scope."""
-    scope.check_write(file_path)
-    full_path = project_root / file_path
-    full_path.write_text(content, encoding="utf-8")
-    return {"success": True, "file": file_path}
+# ── Registry integration ─────────────────────────────────
+
+TOOL_DEF = {
+    "name": "read_file",
+    "description": "Read a file within the allowed scope",
+    "category": "filesystem",
+    "deps": ["project_root", "scope"],
+}
+
+_impl = read_file
 
 
-async def list_files(
-    project_root: Path, directory: str, pattern: str, scope: FileScope,
-) -> list[str]:
-    """List files matching a pattern within scope."""
-    scope.check_read(directory)
-    target = project_root / directory
-    return sorted(
-        str(p.relative_to(project_root))
-        for p in target.rglob(pattern)
-        if scope.is_readable(str(p.relative_to(project_root)))
-    )
+def register(agent):
+    """Register this tool on a PydanticAI agent."""
+
+    @agent.tool
+    async def read_file(ctx: RunContext, file_path: str) -> str:
+        """Read a file and return its contents with line numbers."""
+        return await _impl(ctx.deps.project_root, file_path, ctx.deps.scope)
 ```
+
+`_impl` is bound before `register()` defines the wrapper of the same name, so
+the wrapper does not shadow the implementation it calls.
+
+`ToolRegistry` auto-discovers any module under `modules.backend.tools` that
+exports `TOOL_DEF`. Agent-specific tools live in the agent's own directory and
+are therefore **not** discovered, so they should omit `TOOL_DEF` rather than
+carry metadata nothing reads.
 
 ### Tool Registration Pattern (in agent.py)
 
@@ -513,7 +551,7 @@ async def scan_imports(ctx: RunContext[QaAgentDeps]) -> list[dict]:
 - **One implementation, many registrations.** Change `filesystem.read_file()` once — all 40 agents that use it get the fix.
 - **Different scopes, same code.** The QA agent's wrapper passes a scope that allows `modules/` and `config/`. The architect agent's wrapper passes a scope that allows only `docs/`. Same implementation, different permissions.
 - **Testable without PydanticAI.** Tool implementations are plain functions. Test them with `pytest` and real/temp files. No `TestModel`, no `RunContext` mocking.
-- **Discoverable.** Given tool name `filesystem.read_file`, the file is `agents/tools/filesystem.py`, the function is `read_file`. Mechanical lookup.
+- **Discoverable.** Given tool name `read_file`, the file is `modules/backend/tools/read_file.py` and the function is `read_file`. Mechanical lookup in both directions, with no domain-to-path mapping to remember.
 
 ### When to Create an Agent-Specific Tool
 
@@ -522,7 +560,22 @@ Create a tool in the agent's own directory only when:
 2. The tool's logic is tightly coupled to the agent's specific output schema
 3. Moving it to `agents/tools/` would require generalizing it beyond its useful scope
 
-Agent-specific tools do not need the dotted naming convention. They are imported directly in the agent's `agent.py`.
+Agent-specific tools do not need the dotted naming convention, and they omit
+`TOOL_DEF` since the shared registry does not scan the agent's directory. They
+otherwise follow the same one-module-per-tool layout, under a `tools/`
+subpackage in the agent's own directory, with a thin per-group aggregator so the
+agent's `agent.py` keeps a single `register_{group}_tools(agent)` call:
+
+```
+agents/mission/director/
+├── agent.py                    # calls register_plan_tools(agent)
+├── tools_plan.py               # aggregator: 4 register() calls
+└── tools/
+    ├── get_plan.py             # get_plan() + register(agent)
+    ├── refine_plan.py
+    ├── approve_plan_tasks.py
+    └── run_objective.py
+```
 
 ---
 
