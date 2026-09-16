@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING
 from pydantic_ai import RunContext
 
 from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-from modules.backend.agents.mission.director.tool_helpers import ToolRefusal, run_tool
+from modules.backend.agents.mission.director.tool_helpers import (
+    ToolRefusal,
+    run_tool,
+    schedule_director_followup,
+)
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -121,9 +125,6 @@ async def approve_plan_tasks(
         ToolRefusal: The reason is missing or too long, or the plan's gate
             mode does not permit auto-approval.
     """
-    from modules.backend.agents.mission.director.tools_workflow import (
-        _schedule_director_followup,
-    )
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan import MissionPlanService
 
@@ -168,7 +169,7 @@ async def approve_plan_tasks(
     # Wake the Director when the supervisor decides, so it reports back
     # to the user unprompted (Plan 51 Phase E).
     if unique_transitioned:
-        await _schedule_director_followup(
+        await schedule_director_followup(
             db_session=db_session,
             session_id=session_id,
             mission_id=mission_id,

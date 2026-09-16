@@ -75,6 +75,43 @@ async def _emit_tool_failure(
     )
 
 
+async def schedule_director_followup(
+    *,
+    db_session,
+    session_id: str | None,
+    mission_id: str | None,
+    trigger_event_types: list[str],
+    prompt_template: str,
+) -> None:
+    """Schedule a session followup so the Director wakes on a future event.
+
+    Best-effort — failures are logged but never block the calling tool.
+    Used by approve_plan_tasks and run_objective so the Director
+    proactively reports outcomes to the user (Plan 51 Phase E).
+    """
+    if db_session is None or session_id is None:
+        return
+    try:
+        from modules.backend.agents.adapters.followup import schedule_followup
+
+        await schedule_followup(
+            db_session,
+            session_id=session_id,
+            mission_id=mission_id,
+            trigger_event_types=trigger_event_types,
+            prompt_template=prompt_template,
+            created_by_agent="mission.director.agent",
+        )
+    except Exception:  # noqa: BLE001
+        # best-effort — non-fatal, the tool's own result is unaffected and
+        # the Director simply will not wake early (rule 014.1).
+        logger.warning(
+            "Director followup scheduling failed (non-fatal)",
+            extra={"session_id": session_id, "mission_id": mission_id},
+            exc_info=True,
+        )
+
+
 async def run_tool(
     ctx: RunContext[MissionDirectorDeps],
     tool_name: str,

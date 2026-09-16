@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING, Any
 from pydantic_ai import RunContext
 
 from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-from modules.backend.agents.mission.director.tool_helpers import run_tool
+from modules.backend.agents.mission.director.tool_helpers import (
+    run_tool,
+    schedule_director_followup,
+)
 
 # Guarded so the agent layer does not import sqlalchemy at runtime (rule 011.1).
 if TYPE_CHECKING:
@@ -39,9 +42,6 @@ async def run_objective(
     Returns:
         The orchestrator's result, including `outcome_status`.
     """
-    from modules.backend.agents.mission.director.tools_workflow import (
-        _schedule_director_followup,
-    )
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
@@ -57,7 +57,7 @@ async def run_objective(
 
     # Wake the Director when the supervisor decides on the dispatched run.
     if result.get("outcome_status") == "dispatching":
-        await _schedule_director_followup(
+        await schedule_director_followup(
             db_session,
             session_id=session_id,
             mission_id=mission_id,
