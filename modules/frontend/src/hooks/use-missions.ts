@@ -100,4 +100,3 @@ export function useMissionCosts(id: string | undefined, timeframe?: string) {
     enabled: !!id,
   })
 }
-

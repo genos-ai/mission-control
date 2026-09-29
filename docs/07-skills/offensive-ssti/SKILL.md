@@ -344,4 +344,3 @@ SSTI often leads directly to RCE, but can also be used for:
 - Harden runtime: enable seccomp/AppArmor or gVisor so that even a successful RCE has minimal kernel attack surface.
 - CI guardrails: block usage of dangerous APIs (e.g., `render_template_string`, `Template.compile`, `eval` filters) via linters/semgrep; add approve‑list of safe helpers
 - For Node: disable `with` in EJS, avoid `compileDebug`, and run with `vm` sandbox only when fully locked down (no `require` or `Function` reachable)
-

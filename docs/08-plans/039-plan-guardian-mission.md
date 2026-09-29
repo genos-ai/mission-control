@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0
 **Date:** 2026-04-08
-**Author:** Herman (Group CISO, Icarus) + Architecture Review
+**Author:** Herman (Group CISO) + Architecture Review
 **Status:** Draft — ideation
 **Target:** BFA Reference Architecture v3.6.0
 **Codebase alignment:** v1.1.0 — validated against mission-control repository 2026-04-08

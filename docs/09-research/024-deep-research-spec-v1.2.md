@@ -1,16 +1,16 @@
-# Genos AI Deep Research Agent Platform — Production Specification
+# Deep Research Agent Platform — Production Specification
 
 **Version:** 1.2
 **Date:** 12 April 2026
-**Author:** Herman (Group CISO, Icarus)
-**Classification:** Internal — Genos AI Engineering
+**Author:** Herman (Group CISO)
+**Classification:** Internal
 **Revision:** v1.1 → v1.2. Added: specification governance (0.1), security boundaries (2.7), AGE client specification (3.8), depth-to-config mapping (6.2.1). Fixed: architecture contradiction between distributed workers and in-process asyncio.gather (resolved to single-process orchestrator with task-level NATS distribution), SSE race condition (now NATS-backed), Tavily SDK parameter error, NLI label ordering assumption, undefined `execute_cypher` interface, missing spaCy dependency, graph write-back performance (batched Cypher), token budget sizing, `depends_on` indexing convention, `SynthesisStrategy` enum case sensitivity, `expected_output_length` disconnection from orchestrator behaviour, cost/compaction observability gaps.
 
 ---
 
 ## 0.1 Specification Governance
 
-This specification is the authoritative source of truth for the Genos AI Research Agent Platform. It lives in the same git repository as the implementation code, at `docs/spec.md`.
+This specification is the authoritative source of truth for the Deep Research Agent Platform. It lives in the same git repository as the implementation code, at `docs/spec.md`.
 
 **Modification rules:**
 
@@ -83,8 +83,8 @@ services:
     image: apache/age:PG16_latest
     ports: ["5432:5432"]
     environment:
-      POSTGRES_DB: genos_research
-      POSTGRES_USER: genos
+      POSTGRES_DB: deep_research
+      POSTGRES_USER: research
       POSTGRES_PASSWORD: ${PG_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -118,7 +118,7 @@ SET search_path = ag_catalog, "$user", public;
 SELECT * FROM ag_catalog.create_graph('research_kg');
 
 -- Set search_path at database level (avoids per-connection LOAD issue with PgBouncer)
-ALTER DATABASE genos_research SET search_path = ag_catalog, "$user", public;
+ALTER DATABASE deep_research SET search_path = ag_catalog, "$user", public;
 ```
 
 ### 1.4 Unified Configuration Model
@@ -135,12 +135,12 @@ from pydantic import Field
 class AppConfig(BaseSettings):
     """Single source of truth for all configuration.
 
-    Values are loaded from environment variables (prefixed GENOS_),
+    Values are loaded from environment variables (prefixed RESEARCH_),
     a .env file, or defaults defined here. Every parameter includes
     its valid range and rationale as a comment.
     """
 
-    model_config = {"env_prefix": "GENOS_"}
+    model_config = {"env_prefix": "RESEARCH_"}
 
     # ── LLM Providers ──
     anthropic_api_key: str
@@ -204,7 +204,7 @@ class AppConfig(BaseSettings):
     nats_pull_batch_size: int = Field(default=5, ge=1, le=20)
 
     # ── PostgreSQL ──
-    pg_dsn: str = "postgresql://genos@localhost:5432/genos_research"
+    pg_dsn: str = "postgresql://research@localhost:5432/deep_research"
     pg_pool_min_size: int = Field(default=5, ge=1, le=20)
     pg_pool_max_size: int = Field(default=20, ge=5, le=100)
 
@@ -508,7 +508,7 @@ class TokenUsageSummary(BaseModel):
 ### 2.4 Directory Structure
 
 ```
-genos-research/
+deep-research/
 ├── pyproject.toml
 ├── requirements.txt
 ├── docker-compose.yml

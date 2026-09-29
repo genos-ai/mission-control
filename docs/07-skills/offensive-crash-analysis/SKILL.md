@@ -12461,4 +12461,3 @@ This adds a **network-accessible** vulnerability to your report and demonstrates
 Next week, we cross the Rubicon. You have the crash, you have the PoC, and you know it's exploitable. Now, we **build the exploit**. We will start with basic stack overflows, defeat simple mitigations, and learn to turn that instruction pointer overwrite into code execution.
 
 <!-- Written by AnotherOne from @Pwn3rzs Telegram channel -->
-

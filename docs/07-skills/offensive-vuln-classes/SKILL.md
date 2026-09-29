@@ -1224,4 +1224,3 @@ For each CVE below, determine:
 - Mitigation/detection guidance and remediation priority
 
 <!-- Written by AnotherOne from @Pwn3rzs Telegram channel -->
-

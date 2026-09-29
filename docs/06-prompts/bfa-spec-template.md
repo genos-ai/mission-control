@@ -2,8 +2,8 @@
 
 **Version:** 0.1
 **Date:** [Date]
-**Author:** Herman (Group CISO, Icarus)
-**Classification:** Internal — Genos AI Engineering
+**Author:** Herman (Group CISO)
+**Classification:** Internal
 **Revision:** Initial draft.
 
 ---
@@ -23,7 +23,7 @@ This specification is the authoritative source of truth for [System Name]. It li
 
 <!--
 3-5 sentences. First sentence: name the system and state its purpose.
-Second sentence: name the architectural pattern (orchestrator-worker, pipeline, 
+Second sentence: name the architectural pattern (orchestrator-worker, pipeline,
 request-response, event-driven). Remaining sentences: primary technology choices
 and data flow. No adjectives that don't carry information.
 -->

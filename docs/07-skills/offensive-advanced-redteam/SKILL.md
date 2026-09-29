@@ -32,7 +32,7 @@ On Cloudflare, you can use `Zero Trust` to create a tunnel.
 Here's how to host your CStrike **teamserver** behind a redirector.
 1. Start your server on your VPS:
 	`./TeamServerImage -Dcobaltstrike.server_port=50050 -Dcobaltstrike.server_bindto=127.0.0.1 -Djavax.net.ssl.keyStore=./cobaltstrike.store -Djavax.net.ssl.keyStorePassword=0123456 teamserver 127.0.0.100 lovestrange` ; change lovestrange with your PW. This will bind CS to 127.0.0.1:50050.
-	
+
 2. CStrike teamservers and clients (not beacons) use raw TCP. We can't host that directly behind Cloudflare, so we smuggle it within WebSocket traffic with `websocat`:
 	1. `websocat -E -b ws-l:SOURCE tcp:DESTINATION &`
 	2. source = where `websocat` will listen/where you will point your tunnel. i.e., 127.0.0.1:40000
@@ -76,9 +76,9 @@ Never use the default CStrike profile; always edit it as much as you can.
 Never run all operations from one VPS or domain; use a tiered approach so that burning one asset doesn't kill the engagement:
 
 - **Tier 1 - Phishing/Delivery:** High-reputation domains, typically short-lived. Used ONLY to get the initial payload to the target. Once an email is flagged, this tier is burned. Warm up the domain for ~2 weeks.
-    
+
 - **Tier 2 - Interactive C2 (Short-haul):** Used for active hands-on-keyboard work. Higher risk of detection due to frequent traffic.
-    
+
 - **Tier 3 - Long-haul C2 (Persistence):** Low and slow. Connects back once a day/week. Used only to respawn Tier 2 access if it gets burned. NEVER run active commands through this if avoidable. Uses DNS or another stealthy protocol.
 
 For more mature operations, you could use different C2 frameworks for different tiers. A lightweight, lesser-known C2 could be used for long-haul persistence, while a more feature-rich framework like Cobalt Strike could be reserved for active, short-haul operations.
@@ -86,7 +86,7 @@ For more mature operations, you could use different C2 frameworks for different 
 ## Malwareful Operations
 **Phish or vish** -> get an employee to run your payload.
 
-Your stage 0 payload is an extremely light, self-contained loader (>30kb). 
+Your stage 0 payload is an extremely light, self-contained loader (>30kb).
 - It should NOT be a .exe because these are very often blocked.
 	- I won't reveal our TTPs or anything that could help EDR vendors, so figure this out on your own ))
 		- Know your target's stack tho: will your payload not get blocked?
@@ -124,7 +124,7 @@ Your stage 0 payload is an extremely light, self-contained loader (>30kb).
 	- **Smart Redirector:** Use Nginx or Apache with specific rules.
     - Filtering: Only forward traffic to the team server if it matches your specific Malleable C2 User-Agent and URIs *(hint: use a custom HTTP header like `session_id` to transmit your data and filter beacons from blue-teamers.)*
     - Deflection: If traffic doesn't match (e.g., a Shodan scanner or blue team hitting your domain), proxy pass it to a legitimate site (like generic Microsoft or Amazon pages).
-- **Avoid "Easy" Built-ins:** `psexec` (even the Cobalt Strike version) creates very predictable service installation artifacts (Event ID 7045). Avoid it unless you absolutely know logging is disabled. 
+- **Avoid "Easy" Built-ins:** `psexec` (even the Cobalt Strike version) creates very predictable service installation artifacts (Event ID 7045). Avoid it unless you absolutely know logging is disabled.
 - **WinRM Preferred:** If you have credentials, WinRM is generally cleaner and blends in better with admin traffic than SMB service creation.
 - **Bring Your Own Tools (BYOT) Carefully:** Don't drop a standard compiled Mimikatz to disk. Use sleep-masked in-memory execution, or better yet, use alternative credential dumping methods (like dumping LSASS via legitimate Microsoft binaries (`comsvcs.dll`), though this is heavily watched now too).
 	- Ideally, NEVER write any tooling to disk.

@@ -1,6 +1,6 @@
 # Cutting Anthropic spend on the BFA platform
 
-**Bottom line up front.** The cheapest and most compliant way to reduce Anthropic costs on your PydanticAI-based Genos AI deep-research platform is not to reroute Claude Max through OAuth proxies (that pattern is now explicitly banned, technically blocked, and economically nullified) but to **re-architect BFA around a self-hosted LiteLLM gateway**, push most agent steps to **Gemini 2.5 Flash, GPT-5.4-mini, or DeepSeek V3.2 via Fireworks**, keep **Claude Sonnet 4.6 only for planning and final synthesis with aggressive prompt caching**, and offload cheap sub-tasks (reranking, summarisation, classification) to **local MLX inference on your M4 Max**. Realistic saving versus your current all-Anthropic baseline is **65–85 percent per research run** with no meaningful quality loss, and every element of the recommended stack sits inside sanctioned terms of service.
+**Bottom line up front.** The cheapest and most compliant way to reduce Anthropic costs on your PydanticAI-based Mission Control deep-research platform is not to reroute Claude Max through OAuth proxies (that pattern is now explicitly banned, technically blocked, and economically nullified) but to **re-architect BFA around a self-hosted LiteLLM gateway**, push most agent steps to **Gemini 2.5 Flash, GPT-5.4-mini, or DeepSeek V3.2 via Fireworks**, keep **Claude Sonnet 4.6 only for planning and final synthesis with aggressive prompt caching**, and offload cheap sub-tasks (reranking, summarisation, classification) to **local MLX inference on your M4 Max**. Realistic saving versus your current all-Anthropic baseline is **65–85 percent per research run** with no meaningful quality loss, and every element of the recommended stack sits inside sanctioned terms of service.
 
 The rest of this briefing gives you the regulatory, technical, and commercial evidence behind that conclusion, in a structure you can hand to engineering and to procurement without modification.
 
@@ -63,7 +63,7 @@ Codex **is included** with ChatGPT Plus, Pro, Business, Edu, and Enterprise subs
 
 ### 2.4 Can you run BFA on a ChatGPT Enterprise Codex seat?
 
-Technically yes via `codex exec` and the TS SDK. Contractually there is **no explicit ToS clause forbidding non-coding use of Codex**, and the 16 April announcement explicitly expands sanctioned scope. But three structural constraints make this a poor backend substrate for Genos AI:
+Technically yes via `codex exec` and the TS SDK. Contractually there is **no explicit ToS clause forbidding non-coding use of Codex**, and the 16 April announcement explicitly expands sanctioned scope. But three structural constraints make this a poor backend substrate for Mission Control:
 
 - **Rate limits** are 5-hour rolling and weekly; a production deep-research platform under any non-trivial load will exhaust Plus or Business Codex quota. Enterprise overflow is billed at workspace-credit rates that approximate the API rate card — the apparent "free at the margin" advantage collapses at scale.
 - **Model tuning** of `gpt-5.3-codex` is optimised for code. OpenAI's own guidance routes non-coding work to plain `gpt-5.4`. You would be using the wrong model and paying for it with Codex quota.
@@ -167,7 +167,7 @@ agent = Agent(FallbackModel(primary, secondary))
 
 ### 5.3 CISO-appropriate picks
 
-For Genos AI specifically, a **two-layer gateway** is the right shape. **LiteLLM self-hosted in your VPC** is the data-plane: MIT-licensed, cosign-signed images, virtual keys per tenant or agent role, per-key budgets, Redis cache, Prometheus/OTEL/Langfuse sinks, and the reference integration for PydanticAI's OpenAI-compatible client path. Layer a **policy and guardrails component** on top: either **Portkey OSS** (50+ sync guardrails including PII, prompt injection, schema validation, Palo Alto AIRS) or the **Pydantic AI Gateway on Logfire** if you are already committed to Logfire observability. Both give SSO, RBAC, and auditability that a CISO needs for compliance.
+For Mission Control specifically, a **two-layer gateway** is the right shape. **LiteLLM self-hosted in your VPC** is the data-plane: MIT-licensed, cosign-signed images, virtual keys per tenant or agent role, per-key budgets, Redis cache, Prometheus/OTEL/Langfuse sinks, and the reference integration for PydanticAI's OpenAI-compatible client path. Layer a **policy and guardrails component** on top: either **Portkey OSS** (50+ sync guardrails including PII, prompt injection, schema validation, Palo Alto AIRS) or the **Pydantic AI Gateway on Logfire** if you are already committed to Logfire observability. Both give SSO, RBAC, and auditability that a CISO needs for compliance.
 
 **Avoid for compliance-first deployment:** OpenRouter and Vercel AI Gateway (SaaS only, prompts leave your network; OpenRouter is SOC 2 Type I only); RouteLLM (unmaintained); Not Diamond and Martian as primary gateways. **Bifrost** is worth piloting only if throughput becomes the binding constraint.
 
@@ -204,13 +204,13 @@ Verified against official pricing pages April 2026. All figures USD per 1M token
 
 *Gemini long-context tier doubles above 200K input; OpenAI separates above 270K; Claude Sonnet long-context >200K is 2×.
 
-### 6.2 Top three combinations for Genos AI
+### 6.2 Top three combinations for Mission Control
 
 **Rank 1 — Gemini 2.5 Flash primary, 2.5 Pro for hard steps, on Vertex AI.** A 10-step research workflow at ~100K input plus ~3K output per step costs roughly **£0.35–0.70 per run with caching**, versus ~£3.45 uncached on Sonnet 4.5 direct. That is 70–85 percent cheaper. Flash is below Sonnet on nuanced synthesis; Pro sits within 5 percent. Vertex gives SOC2, HIPAA, ISO27001, FedRAMP High, VPC-SC, CMEK, and regional residency. PydanticAI's `GoogleModel` with `vertexai=True` handles this natively, including server-side `WebSearchTool` and `CodeExecutionTool`.
 
 **Rank 2 — GPT-5.4-mini for the agent loop, GPT-5.4 for synthesis, OpenAI direct with ZDR.** Blended cost **~£0.60–1.10 per run**, roughly 50 percent cheaper than Sonnet-with-caching. Structured output via the Responses API is the most reliable for Pydantic validation in production. PydanticAI's `OpenAIResponsesModel` is the most mature integration path in the framework.
 
-**Rank 3 — DeepSeek V3.2 via Fireworks for loop steps, Sonnet 4.6 for final synthesis.** Blended **~£0.40–0.80 per run** (~75 percent cheaper). V3.2's agent-post-training gives it τ²-Bench scores competitive with GPT-5-High and "thinking-in-tool-use" for multi-step reasoning. **Never use DeepSeek direct for Genos AI** — PRC data residency is disqualifying. Fireworks is SOC2 Type II plus HIPAA and US-hosted; Azure AI Foundry is the enterprise-DPA alternative. Structured output reliability is 5–10 percent below Sonnet, so validate with PydanticAI retry prompts.
+**Rank 3 — DeepSeek V3.2 via Fireworks for loop steps, Sonnet 4.6 for final synthesis.** Blended **~£0.40–0.80 per run** (~75 percent cheaper). V3.2's agent-post-training gives it τ²-Bench scores competitive with GPT-5-High and "thinking-in-tool-use" for multi-step reasoning. **Never use DeepSeek direct for Mission Control** — PRC data residency is disqualifying. Fireworks is SOC2 Type II plus HIPAA and US-hosted; Azure AI Foundry is the enterprise-DPA alternative. Structured output reliability is 5–10 percent below Sonnet, so validate with PydanticAI retry prompts.
 
 **Honourable mentions:** Groq with Kimi K2 0905 for latency-bound paths; Gemini 3.1 Pro as a Sonnet-equivalent step up; Grok 4.1 Fast for workloads that can stuff raw Tavily corpora into a 2M context rather than compressing.
 
@@ -228,7 +228,7 @@ Anthropic processes requests in order `tools → system → messages`, and **too
 
 ### 7.2 Batch API and context compression
 
-The **Batch API** remains at a 50 percent discount, 24-hour SLA (most batches complete in under an hour), 100,000 requests or 256 MB per batch, with Opus 4.6 and Sonnet 4.6 supporting 300K output tokens per request via the `output-300k-2026-03-24` beta header. For Genos AI this fits nightly research digests, corpus-wide enrichment, and eval runs — not interactive user queries.
+The **Batch API** remains at a 50 percent discount, 24-hour SLA (most batches complete in under an hour), 100,000 requests or 256 MB per batch, with Opus 4.6 and Sonnet 4.6 supporting 300K output tokens per request via the `output-300k-2026-03-24` beta header. For Mission Control this fits nightly research digests, corpus-wide enrichment, and eval runs — not interactive user queries.
 
 **Context editing and the memory tool** (launched 29 September 2025, beta header `context-management-2025-06-27`) are the biggest 2025-vintage feature most teams haven't adopted. `clear_tool_uses_20250919` auto-clears old tool results when a threshold is hit; `memory_20250818` gives client-controlled file-based memory outside the context window. Anthropic's internal evals show context-editing alone delivers **+29 percent** task performance over baseline and **84 percent token reduction** on web-search agents. Combined with the memory tool, **+39 percent** versus baseline. For a deep-research agent this is arguably more valuable than caching — caching cuts cost on stable prefixes, context editing cuts cost on long tool histories.
 
@@ -299,7 +299,7 @@ The dummy `api_key` on the OpenAI provider is a known PydanticAI quirk (issues #
 
 ### 9.1 Target topology
 
-The recommended Genos AI BFA architecture has four layers:
+The recommended Mission Control BFA architecture has four layers:
 
 1. **PydanticAI agents** using `FallbackModel` for per-role model selection. Planning agent uses Sonnet 4.6; research-loop agents use Gemini 2.5 Flash or GPT-5.4-mini; synthesis agent uses Sonnet 4.6 with heavy caching (Opus 4.7 only on explicit escalation).
 2. **LiteLLM self-hosted gateway** in your VPC as the unified data-plane. Virtual keys per agent role, per-key budgets, Redis cache, Prometheus/OTEL/Langfuse sinks, cosign-signed images.
@@ -327,4 +327,4 @@ Against a baseline 10-step research run at ~100K input plus ~3K output per step 
 
 First, **turn on Anthropic prompt caching in the existing BFA codebase today**. If it is not already in use, this is a one-afternoon change that recoups the largest single saving and requires no architectural churn. Second, **stand up LiteLLM self-hosted in-VPC** as the unified gateway, virtual-keyed per BFA agent role, with Redis cache and Langfuse observability. Third, **migrate the research-loop agents from Sonnet to Gemini 2.5 Flash on Vertex AI** behind a FallbackModel that escalates to Sonnet on quality-check failure; keep planning and synthesis on Sonnet with full caching. Fourth, **add a local MLX endpoint** (LM Studio on the M4 Max exposing Qwen3-Coder-30B-A3B and Qwen3-8B over the OpenAI API) for reranking and compaction sub-tasks, routed by LiteLLM rules. Fifth, **adopt the Anthropic context-editing and memory tool** (beta header `context-management-2025-06-27`) — on web-search agents this alone cuts token consumption by 84 percent. Sixth, **run any nightly eval, digest, or corpus-enrichment workload through the Batch API** for the compounding 50 percent discount.
 
-Every element of this plan is contractually sanctioned, operationally stable, and empirically shown to stack for 80–90 percent reductions in Anthropic spend without sacrificing the quality Genos AI's users expect.
+Every element of this plan is contractually sanctioned, operationally stable, and empirically shown to stack for 80–90 percent reductions in Anthropic spend without sacrificing the quality Mission Control's users expect.

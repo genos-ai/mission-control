@@ -20,4 +20,3 @@ When working with this codebase, follow these standards without exception:
 - **`__init__.py` files must be minimal.** Docstring and necessary exports only. No business logic.
 - **Layered architecture is strict.** API → Service → Repository → Model. Never skip layers.
 - **Tools are thin adapters.** Tool functions call service methods. No business logic in tools.
-

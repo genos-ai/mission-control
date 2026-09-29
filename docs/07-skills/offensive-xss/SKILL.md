@@ -740,9 +740,9 @@ app.use((req, res, next) => {
 });
 ```
 
-Combine with  
-`Cross-Origin-Resource-Policy: same-origin`,  
-`Cross-Origin-Embedder-Policy: require-corp`, and  
+Combine with
+`Cross-Origin-Resource-Policy: same-origin`,
+`Cross-Origin-Embedder-Policy: require-corp`, and
 `Cross-Origin-Opener-Policy: same-origin`.
 
 ### Service‑Worker & Wasm‑assisted XSS
@@ -753,8 +753,8 @@ Combine with
 
 ### Prototype‑pollution‑to‑XSS Chains
 
-Libraries that merge JSON into the DOM may allow  
-`%7B"__proto__":{"innerHTML":"<img src=x onerror=alert(1)>"}%7D`  
+Libraries that merge JSON into the DOM may allow
+`%7B"__proto__":{"innerHTML":"<img src=x onerror=alert(1)>"}%7D`
 to poison future writes and achieve DOM‑XSS. Test wherever `Object.assign` or deep‑merge utilities are used.
 
 ### Framework‑specific Gotchas
@@ -779,4 +779,3 @@ to poison future writes and achieve DOM‑XSS. Test wherever `Object.assign` or
 | **Burp Suite 2024.8**  | “DAST+AI” context‑aware scan mode |
 | **XSSInspector AI/ML** | RL‑based payload generator        |
 | **ParamSpider 3**      | LLM‑enhanced parameter discovery  |
-

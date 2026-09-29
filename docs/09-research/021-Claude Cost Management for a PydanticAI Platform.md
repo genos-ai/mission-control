@@ -32,7 +32,7 @@ from pydantic_ai import Agent
 from pydantic_ai.instrumentation import InstrumentationSettings
 
 logfire.configure(
-    service_name='genos-ai',
+    service_name='mission-control',
     send_to_logfire=True,  # free tier
 )
 
@@ -367,13 +367,13 @@ Provision the datasource automatically:
 # grafana/provisioning/datasources/postgres.yaml
 apiVersion: 1
 datasources:
-  - name: genos-postgres
+  - name: mission-control-postgres
     type: postgres
     access: proxy
     url: host.docker.internal:5432
     user: grafana_ro
     jsonData:
-      database: genos
+      database: mission_control
       sslmode: disable
       postgresVersion: 1600
     secureJsonData:
@@ -385,13 +385,13 @@ Create the read-only role in Postgres:
 
 ```sql
 CREATE ROLE grafana_ro LOGIN PASSWORD 'CHANGE_ME';
-GRANT CONNECT ON DATABASE genos TO grafana_ro;
+GRANT CONNECT ON DATABASE mission_control TO grafana_ro;
 GRANT USAGE ON SCHEMA public TO grafana_ro;
 GRANT SELECT ON runs, llm_calls, model_pricing TO grafana_ro;
 GRANT SELECT ON v_llm_calls_costed TO grafana_ro;
 ```
 
-Import the companion `genos-cost-dashboard.json` via the Grafana UI (Dashboards > Import). The dashboard UID is `genos-cost-v1` so it survives re-imports.
+Import the companion `mc-cost-dashboard.json` via the Grafana UI (Dashboards > Import). The dashboard UID is `mc-cost-v1` so it survives re-imports.
 
 ---
 

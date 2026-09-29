@@ -648,7 +648,7 @@ foreach ($ver in '3447','3525') {
    - Email the generated HTML report to quickly spot new attack surface.
 
 > [!TIP]
-> For large modules like **ntoskrnl.exe**, diff only the `.text` section to save RAM:  
+> For large modules like **ntoskrnl.exe**, diff only the `.text` section to save RAM:
 > bindiff --primary ntoskrnl_pre.i64 --secondary ntoskrnl_post.i64 --section .text
 
 #### Linux Kernel Patch Diffing
@@ -1251,4 +1251,3 @@ Provide: 1) Root cause hypothesis 2) Exploitability assessment 3) Suggested expl
 | Radamsa   | LibAFL mutators    | Better coverage awareness  |
 | BinDiff 7 | BinDiff 8/Ghidriff | Improved algorithms        |
 | IDA 7.x   | IDA 8.x/Ghidra 11  | Better decompilation       |
-

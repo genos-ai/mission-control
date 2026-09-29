@@ -1346,4 +1346,3 @@ flowchart LR
     FutureMitigations --> MTE
     FutureMitigations --> CFI
 ```
-

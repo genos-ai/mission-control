@@ -1,6 +1,6 @@
 # Agentic AI Harness for Continuous Web Application Security Assurance: BFA Reference Architecture
 
-This document is the foundational technical research for an agentic AI harness intended to run as a `horizontal.{name}.agent` family on the Mission Control platform, implemented on the BFA stack (FastAPI, FastStream/NATS, PydanticAI, PostgreSQL/TimescaleDB, Apache AGE, pgvector, multi-provider LLM routing, Tavily). It leads with white-box assessment of internal Icarus web applications, adds black-box as a secondary mode, and is constrained to continuous assurance: find, triage, feed to Jira. Humans handle exploitation. SARIF is the canonical interchange format. Ephemeral containers are the execution primitive.
+This document is the foundational technical research for an agentic AI harness intended to run as a `horizontal.{name}.agent` family on the Mission Control platform, implemented on the BFA stack (FastAPI, FastStream/NATS, PydanticAI, PostgreSQL/TimescaleDB, Apache AGE, pgvector, multi-provider LLM routing, Tavily). It leads with white-box assessment of internal Group web applications, adds black-box as a secondary mode, and is constrained to continuous assurance: find, triage, feed to Jira. Humans handle exploitation. SARIF is the canonical interchange format. Ephemeral containers are the execution primitive.
 
 ---
 
@@ -12,7 +12,7 @@ This document is the foundational technical research for an agentic AI harness i
 4. **Application mapping**: triple-source (OpenAPI/Swagger ground truth, Katana plus ZAP Client Spider observed reality, source-derived routes from framework reflection) reconciled into an Apache AGE knowledge graph; coverage tracked as `endpoint × vuln_class × auth_zone × payload_class` in TimescaleDB with continuous aggregates.
 5. **Tool inventory**: SARIF-native where possible (Semgrep, CodeQL, Bandit, Trivy, Grype, OSV-Scanner, govulncheck, Nuclei, ZAP via report add-on, Snyk Code, Gitleaks, Nosey Parker). Wrap as ephemeral containers behind typed PydanticAI tools; do not wrap w3af, Arachni, Astra (unmaintained or archived); do not wrap AutoGPT-style frameworks.
 6. **Verification**: every candidate finding is verified by an agent that did not produce it (often a different model entirely). Producer-as-verifier is forbidden by policy.
-7. **Triage**: CVSS v4.0 base from the producer, threat and environmental enrichment from EPSS v4 plus the Icarus CMDB, deterministic business-risk weighting, SSVC outcome stored alongside, then mapped to Jira priority with cluster-batched ticketing.
+7. **Triage**: CVSS v4.0 base from the producer, threat and environmental enrichment from EPSS v4 plus the Group CMDB, deterministic business-risk weighting, SSVC outcome stored alongside, then mapped to Jira priority with cluster-batched ticketing.
 8. **Safety rails**: deterministic egress proxy with per-target allowlist, kill switch over NATS, per-engagement tenant isolation in pgvector, append-only audit trail, write-operation block by default, untrusted-content tagging on every byte read from a target.
 
 ---
@@ -88,7 +88,7 @@ class KnowledgePack(BaseModel):
     verifier_prompt_fragment: str
 ```
 
-Packs are loaded via Python entry points so Icarus business-line teams can ship internal extensions (mainframe SSO, bespoke RBAC, in-house ORM) without forking the harness.
+Packs are loaded via Python entry points so Group business-line teams can ship internal extensions (mainframe SSO, bespoke RBAC, in-house ORM) without forking the harness.
 
 ---
 
@@ -179,7 +179,7 @@ class AuthStrategy(Protocol):
 
 Concrete strategies follow this shape: `OIDCAuthCodeStrategy` drives Playwright for SSO and MFA (using `pyotp` for TOTP), `SAMLPostStrategy` captures `SAMLResponse` via Playwright and POSTs to ACS, `JWTBearerStrategy` accepts a static or vended token, `SessionCookieStrategy` does form POST with optional CSRF prefetch, `MTLSStrategy` configures `httpx.AsyncClient(verify=ca, cert=(cert_pem, key_pem))` at transport level, `HMACSigV4Strategy` signs each outgoing request with the AWS SigV4 algorithm via `botocore.auth.SigV4Auth`, `HMACGenericStrategy` computes `HMAC(secret, METHOD\npath\nbody_sha256\ntimestamp)` set in `X-Signature` and `X-Timestamp`, and `GraphQLPersistedStrategy` replaces the body with `{"id": "<sha256>", "variables": {...}}` while preserving auth from another strategy via composition.
 
-A `CompositeStrategy` chains transport (mTLS) → identity (OIDC/JWT) → request signing (HMAC) → CSRF (per-request) so the harness models real Icarus middlewares (mTLS to the API gateway plus JWT plus HMAC). The strategy registry is exposed as a single PydanticAI tool to the planner; the LLM picks among registered strategies and explains its choice, but does not implement the protocol.
+A `CompositeStrategy` chains transport (mTLS) → identity (OIDC/JWT) → request signing (HMAC) → CSRF (per-request) so the harness models real Group middlewares (mTLS to the API gateway plus JWT plus HMAC). The strategy registry is exposed as a single PydanticAI tool to the planner; the LLM picks among registered strategies and explains its choice, but does not implement the protocol.
 
 ### 3.3 Logout detection and recovery
 
@@ -191,7 +191,7 @@ Prefetch a known authenticated page; extract token from `<meta name="csrf-token"
 
 ### 3.5 Architecture
 
-The Auth Service is a separate FastAPI module fronted by the BFA control plane and consumed by FastStream/NATS workers. The strategy registry ships in `horizontal.auth` discovered via entry points so Icarus business lines can add bespoke strategies. Vault integration uses HashiCorp Vault dynamic secrets engine for service accounts, KV2 for static credentials, and Transit for TOTP seed encryption. The session store is `auth_sessions(target, role, state JSONB encrypted, expires_at, fingerprint)` with `pgcrypto.pgp_sym_encrypt` and Vault Transit keys. A dedicated FastStream worker issues validity probes every N requests or on response heuristic match, emitting `auth.session.invalid` to NATS so all workers drop and re-attach. Per-request middleware in the HTTP client applies `apply()`, short-circuits on `detect_logout()`, enqueues refresh, and retries.
+The Auth Service is a separate FastAPI module fronted by the BFA control plane and consumed by FastStream/NATS workers. The strategy registry ships in `horizontal.auth` discovered via entry points so Group business lines can add bespoke strategies. Vault integration uses HashiCorp Vault dynamic secrets engine for service accounts, KV2 for static credentials, and Transit for TOTP seed encryption. The session store is `auth_sessions(target, role, state JSONB encrypted, expires_at, fingerprint)` with `pgcrypto.pgp_sym_encrypt` and Vault Transit keys. A dedicated FastStream worker issues validity probes every N requests or on response heuristic match, emitting `auth.session.invalid` to NATS so all workers drop and re-attach. Per-request middleware in the HTTP client applies `apply()`, short-circuits on `detect_logout()`, enqueues refresh, and retries.
 
 ---
 
@@ -506,7 +506,7 @@ Playwright (Python async API, 1.58+) is the default. Run in disposable container
 
 PentestGPT informs the design (Reasoning + Generation + Parsing modules, Pentest Task Tree) but is wrapped by no one in production. AutoGPT-style frameworks must be avoided: no state discipline, unbounded tool execution, no separation of trusted instructions from untrusted scanner output. AutoGen and CrewAI duplicate what NATS and FastStream already provide. LangGraph is a useful design reference but PydanticAI suffices.
 
-### 5.11 LLM-native security (for securing Icarus's own LLM apps)
+### 5.11 LLM-native security (for securing the Group's own LLM apps)
 
 Garak (NVIDIA, 0.14.0) for nightly scans, Promptfoo for OWASP/MITRE/EU AI Act mapping per pull request, PyRIT (Microsoft) for bi-weekly multi-turn campaigns. Vigil and Rebuff sit at runtime as request-time guards. None emit SARIF; standardise on a wrapper `LLMFinding` Pydantic model keyed on `probe_id`, `attack_class`, `verified`, `severity`.
 
@@ -526,7 +526,7 @@ The harness pattern: LLM proposes payload candidates, deterministic mutator (AFL
 
 ### 6.3 Exploit chain reasoning for prioritisation only
 
-The harness does not execute exploit chains. It produces a chained-finding score: reachability from public ingress, auth-bypass present, data-class touched, blast radius from AGE traversal. ZeroPath's per-class verification agents compute CVSS 4.0 heuristics before patch generation; Icarus uses the same logic with patch generation disabled.
+The harness does not execute exploit chains. It produces a chained-finding score: reachability from public ingress, auth-bypass present, data-class touched, blast radius from AGE traversal. ZeroPath's per-class verification agents compute CVSS 4.0 heuristics before patch generation; the Group uses the same logic with patch generation disabled.
 
 ### 6.4 RAG over codebase
 
@@ -538,7 +538,7 @@ What works: modular role separation (planner/scout/executor/fuzzer/verifier/repo
 
 What fails: monolithic ReAct agents (long-horizon coherence loss); pure LLM planning without structured memory (logically inconsistent plans); centralised LLM orchestrators (single point of prompt injection failure); naive in-context CTF training (poor generalisation to bug bounty diversity).
 
-For the Icarus harness:
+For the Group harness:
 
 ```
 Coordinator (deterministic Python, not an LLM)
@@ -578,7 +578,7 @@ The lethal trifecta (Simon Willison, June 2025): any agent with private data acc
 Concrete defences:
 
 1. **CaMeL pattern (Google DeepMind, April 2025)**: a privileged controller LLM never sees untrusted content; an isolated LLM processes untrusted content but cannot call tools.
-2. **Avoid the lethal trifecta**: the scanner agent has no Icarus-private data while processing untrusted web responses.
+2. **Avoid the lethal trifecta**: the scanner agent has no Group-private data while processing untrusted web responses.
 3. **Tool-call gating**: every tool call requires a structured Pydantic schema; free text from web responses cannot directly become a tool argument.
 4. **Untrusted-content tagging**: tag every byte from the target as `untrusted=true`; the planner is instructed never to follow instructions from untrusted content.
 5. **Output filtering**: scrub Markdown links and images and HTML in agent context to prevent exfiltration via image-bait.
@@ -622,14 +622,14 @@ Published by FIRST on 1 November 2023. Four metric groups: Base (CVSS-B), Threat
 Computation pattern in the harness:
 
 1. The producer agent emits a Base vector only.
-2. A separate enrichment service overlays Threat metrics from EPSS and CISA KEV, then Environmental metrics from the Icarus CMDB.
+2. A separate enrichment service overlays Threat metrics from EPSS and CISA KEV, then Environmental metrics from the Group CMDB.
 3. The final stored score is CVSS-BTE; persist the full vector string, not just the numeric.
 
 ### 7.2 EPSS v4
 
 Current model is EPSS v4 (v2025.03.14), publishing since 17 March 2025. v4 expands exploitation telemetry to over 10,000 CVEs observed monthly, ingests RSS and web mentions, adds Shodan and HackerOne Hacktivity signals, normalises CWE to 22 categories, and excludes REJECTED CVEs. Refresh: daily for both score and percentile via FIRST. API base: `https://api.first.org/data/v1/epss`. NIST has now published Likely Exploited Vulnerabilities (LEV) which back-propagates EPSS to estimate past exploitation.
 
-For Icarus, an EPSS percentile of 0.90 to 0.95 combined with KEV listing is a defensible expedite trigger. A daily NATS-driven job pulls CVEs intersecting the asset inventory, joins to existing findings, and recomputes risk.
+For the Group, an EPSS percentile of 0.90 to 0.95 combined with KEV listing is a defensible expedite trigger. A daily NATS-driven job pulls CVEs intersecting the asset inventory, joins to existing findings, and recomputes risk.
 
 ### 7.3 SSVC
 
@@ -722,7 +722,7 @@ Custom fields (IDs discovered per tenant via `GET /rest/api/3/field`):
     "customfield_10101": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
     "customfield_10102": "CWE-89",
     "customfield_10103": "run-2026-04-26-7af3",
-    "customfield_10104": "github.com/icarus/payments-api",
+    "customfield_10104": "github.com/example-org/payments-api",
     "customfield_10105": "9f8e7d6c5b4a",
     "customfield_10106": 0.97,
     "customfield_10107": "Act"
@@ -743,7 +743,7 @@ The curl bug bounty terminated effective 31 January 2026 because only ~5% of sub
     - fingerprint: 7c3e...d9a1
       reason: "Internal admin endpoint, network ACL enforced at L3"
       expires: 2026-09-30
-      approved_by: app-sec-lead@icarus
+      approved_by: app-sec-lead@example.com
   ```
 - **Recurrence**: re-open canonical tickets when a `Done` ticket re-matches within a window; comment the new scan id and evidence delta.
 - **SLAs** (calendar days, paused during change freezes): Critical 7, High 30, Medium 90, Low 180, Info best-effort. SSVC `Act` overrides to 7 regardless of CVSS.
@@ -781,7 +781,7 @@ class ScanRequest(BaseModel):
     application_id: UUID
     repo_url: str | None = None
     repo_ref: str | None = None
-    targets: list[str]                          # https://app.icarus.example
+    targets: list[str]                          # https://app.example.com
     scope: dict                                 # allowlist, ratelimits, exclusions
     auth_refs: list[str]                        # credential handles (vault refs)
     knowledge_packs: list[str]                  # populated post-fingerprint
@@ -974,7 +974,7 @@ These are forbidden by policy.
 
 ## 10.0 Conclusion: what changes in operational reality
 
-This harness inverts the failure mode of first-generation agentic security tooling. First-generation tools either let one LLM agent do everything (producing high-confidence garbage that the curl and HackerOne post-mortems demonstrate is unworkable at any scale) or wrapped existing scanners as a thin LLM front-end (producing slower scans with no quality gain). The Icarus design is different in three structural ways.
+This harness inverts the failure mode of first-generation agentic security tooling. First-generation tools either let one LLM agent do everything (producing high-confidence garbage that the curl and HackerOne post-mortems demonstrate is unworkable at any scale) or wrapped existing scanners as a thin LLM front-end (producing slower scans with no quality gain). This design is different in three structural ways.
 
 First, **the LLM is the smallest possible part of the loop**. The coordinator is deterministic Python. Scope, kill switches, rate limits, and idempotency are enforced in code, not prompts. PydanticAI agents are invoked as typed functions inside FastStream consumers, never as autonomous loops. This matches what XBOW, ZeroPath, and Semgrep have all converged on after their public failure modes.
 

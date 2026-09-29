@@ -2,7 +2,7 @@
 
 **Version:** 1.3.0
 **Date:** 2026-04-01
-**Author:** Herman (Group CISO, Icarus) + Architecture Review
+**Author:** Herman (Group CISO) + Architecture Review
 **Status:** Phases 1–5 done (2026-04-11). Phases 6/7/9 extracted to [Plan 48](../08-plans/048-plan-convergence-loop-and-branch-automation.md). Phase 8 deferred per §5.
 **Target:** BFA Reference Architecture v3.5.0
 **Codebase alignment:** v1.1.0 — validated against mission-control repository 2026-04-01

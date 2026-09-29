@@ -947,7 +947,7 @@ SecRule REQUEST_BODY "@rx <!DOCTYPE.*\[" \
 
 ### Cloud-metadata nuance
 
-AWS IMDSv2 now requires a session token. To exploit metadata via XXE you must first obtain a token with  
+AWS IMDSv2 now requires a session token. To exploit metadata via XXE you must first obtain a token with
 `PUT /latest/api/token` and then pass it in the `X-aws-ec2-metadata-token` header of subsequent requests.
 
 ### Secure Parser Configuration (practical snippets)
@@ -991,4 +991,3 @@ $old = libxml_disable_entity_loader(true);
 $xml = simplexml_load_string($data, "SimpleXMLElement", LIBXML_NONET | LIBXML_NOENT);
 libxml_disable_entity_loader($old);
 ```
-

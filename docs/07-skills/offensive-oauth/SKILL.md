@@ -361,4 +361,3 @@ sequenceDiagram
 - Pin trusted issuers in client configuration
 - Conduct regular OAuth security audits
 - Keep libraries and dependencies updated
-

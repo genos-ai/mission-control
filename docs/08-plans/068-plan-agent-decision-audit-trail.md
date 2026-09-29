@@ -397,7 +397,7 @@ This is harness-level enforcement. The agent cannot override it.
 - `outcome = DecisionOutcome.ESCALATED`
 - `error_code = "KILL_SWITCH_ACTIVATED"`
 - `intent.source = "kill_switch"`
-- `intent.text` = scope and actor (e.g. `"operator herman@icarus.com cancelled plan abc123"`)
+- `intent.text` = scope and actor (e.g. `"operator herman@example.com cancelled plan abc123"`)
 
 This record is written by the harness, not by the agent. It appears in the hash chain for the mission.
 

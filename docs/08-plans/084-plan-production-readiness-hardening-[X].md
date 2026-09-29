@@ -200,7 +200,7 @@ python -c "import modules.backend.api.v1.endpoints.auth"   # imports clean
 ## 2. Phase 1 — Server-side CI gate
 
 > **Goal:** One unskippable gate between code and `main`. The repo pushes to GitHub
-> (`github.com/genos-ai/mission-control`) and currently has **no** `.github/workflows/`.
+> and currently has **no** `.github/workflows/`.
 
 ### 1.0 Repair the unit test suite (prerequisite — CI cannot be green without it)
 
