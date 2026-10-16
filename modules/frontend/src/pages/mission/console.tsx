@@ -527,15 +527,15 @@ function ArtifactRow({ event }: { event: ConsoleEvent }) {
   const ts = formatTime(event.timestamp)
 
   return (
-    <details className="group rounded border border-violet-500/20 bg-violet-500/5 px-2 py-1.5">
+    <details className="group rounded border border-violet/20 bg-violet/5 px-2 py-1.5">
       <summary className="flex cursor-pointer list-none items-center gap-2">
-        <Package className="h-3 w-3 shrink-0 text-violet-400" />
+        <Package className="h-3 w-3 shrink-0 text-violet" />
         <span className="flex-1 text-xs font-medium text-foreground">{title}</span>
         <Badge variant="outline" className="text-[9px] h-4">{artifactType}</Badge>
         <span className="text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
         <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
-      <div className="mt-2 border-t border-violet-500/20 pt-2">
+      <div className="mt-2 border-t border-violet/20 pt-2">
         <MarkdownRenderer content={content} />
       </div>
     </details>

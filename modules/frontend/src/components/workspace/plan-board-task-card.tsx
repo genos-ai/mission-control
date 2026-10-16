@@ -216,7 +216,7 @@ export function TaskCard({
           className={cn(
             'inline-flex max-w-[120px] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
             isWorkflow
-              ? 'bg-violet-500/10 text-violet-400 ring-1 ring-inset ring-violet-500/30'
+              ? 'bg-violet/10 text-violet ring-1 ring-inset ring-violet/30'
               : getAgentBadgeClass(effectiveStatus, task.agent),
           )}
           title={task.agent}

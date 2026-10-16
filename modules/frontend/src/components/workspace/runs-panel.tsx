@@ -386,7 +386,7 @@ function HistoryDetail({
           {detail.decisions.length}
         </span>
         {artifacts.length > 0 && (
-          <span className="rounded border border-violet-500/30 px-2 py-0.5 text-violet-400">
+          <span className="rounded border border-violet/30 px-2 py-0.5 text-violet">
             <Package className="mr-1 inline h-2.5 w-2.5" />
             {artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''}
           </span>
@@ -451,9 +451,9 @@ function HistoryDetail({
           {artifacts.slice(0, 5).map((a) => (
             <div
               key={a.id}
-              className="flex items-center gap-2 rounded border border-violet-500/20 bg-violet-500/5 px-2.5 py-1.5 text-xs"
+              className="flex items-center gap-2 rounded border border-violet/20 bg-violet/5 px-2.5 py-1.5 text-xs"
             >
-              <Package className="h-3 w-3 shrink-0 text-violet-400" />
+              <Package className="h-3 w-3 shrink-0 text-violet" />
               <span className="flex-1 truncate font-medium">{a.title}</span>
               <Badge variant="outline" className="h-3.5 text-[9px] shrink-0">
                 {a.artifact_type}

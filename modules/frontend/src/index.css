@@ -2,77 +2,146 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design tokens. Values are HSL triplets (no hsl() wrapper) so Tailwind
+ * opacity modifiers work (bg-success/10). Component code never contains a
+ * colour literal: every colour and shadow comes from a variable below via
+ * tailwind.config.js. Fonts are imported in src/main.tsx.
+ */
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+  /* ───────────── Warm white (light) — also the :root fallback ───────────── */
+  :root,
+  .warm-white {
+    /* shadcn-compatible names */
+    --background: 36 35.7% 94.5%;          /* #f6f2ec  app root */
+    --foreground: 32.7 19.3% 11.2%;        /* #221d17 */
+    --card: 37.5 50% 96.9%;                /* #fbf8f3  = panel */
+    --card-foreground: 32.7 19.3% 11.2%;
+    --popover: 37.5 50% 96.9%;
+    --popover-foreground: 32.7 19.3% 11.2%;
+    --primary: 32.7 19.3% 11.2%;           /* #221d17  primary button bg */
+    --primary-foreground: 40 60% 98%;      /* #fdfbf7 */
+    --secondary: 36.9 37.1% 93.1%;         /* #f4efe7  = raised */
+    --secondary-foreground: 32.7 19.3% 11.2%;
+    --muted: 36.9 37.1% 93.1%;
+    --muted-foreground: 32.7 11.7% 36.9%;  /* #695f53 */
+    --accent: 37.9 32.2% 88.4%;            /* #ebe4d8  hover/selected bg (shadcn meaning) */
+    --accent-foreground: 32.7 19.3% 11.2%;
+    --destructive: 3.2 60% 49%;            /* #c83a32 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 37.9 27.5% 86.5%;            /* #e6dfd3 */
+    --input: 37.5 23.5% 80%;               /* #d8cfc0 */
+    --ring: 21.3 62.3% 46.9%;              /* = brand */
+    --radius: 0.625rem;                    /* 10px */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* surfaces */
+    --well: 35.3 34.7% 90.4%;              /* #efe8de  behind floating panels */
+    --panel: 37.5 50% 96.9%;               /* #fbf8f3 */
+    --panel-border: 37.1 30.4% 86.5%;      /* #e7dfd2 */
+    --raised: 36.9 37.1% 93.1%;            /* #f4efe7  inset blocks inside panels */
+    --raised-2: 37.5 32% 90.2%;            /* #eee8de  progress tracks */
+    --field: 40 60% 98%;                   /* #fdfbf7  inputs, secondary buttons */
+    --hover: 36.9 35.1% 92.7%;             /* #f3eee6  row hover */
+    --sidebar: 37.5 50% 96.9%;             /* #fbf8f3 */
+    --sidebar-active: 37.9 32.2% 88.4%;    /* #ebe4d8 */
+    --line: 37.1 25.3% 83.7%;              /* #e0d8cb  timeline connectors */
+    --border-strong: 37.5 23.5% 80%;       /* #d8cfc0  input + secondary button border */
+    --border-hover: 37.2 21.8% 73.9%;      /* #cbc0ae */
+    --canvas-dot: 36.5 28.4% 84.1%;        /* #e2d9cb  workflow canvas grid */
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    /* text */
+    --text-2: 34.3 17.9% 15.3%;            /* #2e2820  body copy in messages */
+    --text-3: 34.7 15.7% 23.7%;            /* #463e33  secondary emphasised */
+    --subtle: 32.5 9.7% 48.6%;             /* #887d70  labels, meta, timestamps */
+    --faint: 36 18.5% 68.2%;               /* #bdb19f  separators "/", disabled */
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* brand + semantic */
+    --brand: 21.3 62.3% 46.9%;             /* #c2622d  terracotta */
+    --brand-text: 22.2 69% 39.2%;          /* #a9521f  brand on light bg (counts, links) */
+    --success: 145.1 49.2% 36.3%;          /* #2f8a55 */
+    --warning: 35.7 100% 32.9%;            /* #a86400 */
+    --danger: 3.2 60% 49%;                 /* #c83a32 */
+    --info: 200.7 73.2% 38%;               /* #1a77a8 */
+    --violet: 261.1 53% 54.9%;             /* #7a4fc9 */
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* elevation */
+    --shadow-node: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-
-    --radius: 0.5rem;
+    color-scheme: light;
   }
 
+  /* ───────────────────────────── Dark ───────────────────────────── */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 240 4.8% 4.1%;           /* #0a0a0b */
+    --foreground: 240 5.9% 93.3%;          /* #ededef */
+    --card: 240 6.3% 6.3%;                 /* #0f0f11 */
+    --card-foreground: 240 5.9% 93.3%;
+    --popover: 240 6.7% 5.9%;              /* #0e0e10 */
+    --popover-foreground: 240 5.9% 93.3%;
+    --primary: 240 5.9% 93.3%;             /* #ededef */
+    --primary-foreground: 240 4.8% 4.1%;   /* #0a0a0b */
+    --secondary: 240 6.1% 9.6%;            /* #17171a */
+    --secondary-foreground: 240 5.9% 93.3%;
+    --muted: 240 6.1% 9.6%;
+    --muted-foreground: 240 4.4% 64.3%;    /* #a0a0a8 */
+    --accent: 240 7.1% 11%;                /* #1a1a1e */
+    --accent-foreground: 240 5.9% 93.3%;
+    --destructive: 358.1 85.8% 64.1%;      /* #f2555a */
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6.7% 11.8%;              /* #1c1c20 */
+    --input: 240 6.2% 15.9%;               /* #26262b */
+    --ring: 229.8 100% 78%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --well: 240 6.7% 2.9%;                 /* #070708 */
+    --panel: 240 6.3% 6.3%;                /* #0f0f11 */
+    --panel-border: 240 6.3% 6.3%;         /* same as panel → invisible edge in dark */
+    --raised: 240 6.1% 9.6%;               /* #17171a */
+    --raised-2: 240 5.9% 10%;              /* #18181b */
+    --field: 240 5.6% 7.1%;                /* #111113 */
+    --hover: 240 7.7% 7.6%;                /* #121215 */
+    --sidebar: 240 6.7% 5.9%;              /* #0e0e10 */
+    --sidebar-active: 240 7.1% 11%;        /* #1a1a1e */
+    --line: 240 6.7% 14.7%;                /* #232328 */
+    --border-strong: 240 6.2% 15.9%;       /* #26262b */
+    --border-hover: 240 6.1% 19.2%;        /* #2e2e34 */
+    --canvas-dot: 240 7.5% 13.1%;          /* #1f1f24 */
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --text-2: 240 6.1% 87.1%;              /* #dcdce0 */
+    --text-3: 240 5.8% 79.6%;              /* #c8c8ce */
+    --subtle: 240 4% 43.7%;                /* #6b6b74 */
+    --faint: 240 4.9% 23.9%;               /* #3a3a40 */
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --brand: 229.8 100% 78%;               /* #8fa2ff  periwinkle */
+    --brand-text: 230.6 100% 82.5%;        /* #a6b4ff */
+    --success: 153.1 60.2% 52.7%;          /* #3ecf8e */
+    --warning: 37 91.3% 55.1%;             /* #f5a524 */
+    --danger: 358.1 85.8% 64.1%;           /* #f2555a */
+    --info: 200.4 100% 64.9%;              /* #4cc2ff */
+    --violet: 259.3 100% 77.5%;            /* #b18cff */
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --shadow-node: 0 1px 2px 0 rgb(0 0 0 / 0.4);
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    color-scheme: dark;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
+  html, body, #root { height: 100%; }
   body {
-    @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif;
+    @apply bg-background text-foreground font-sans antialiased;
     font-size: 13px;
+    font-feature-settings: 'ss01', 'cv11';
   }
+  a { color: inherit; text-decoration: none; }
+  a:hover { opacity: .85; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--subtle) / .35);
+    border-radius: 10px; border: 3px solid transparent; background-clip: padding-box;
+  }
+}
+
+@layer utilities {
+  .tabular { font-variant-numeric: tabular-nums; }
 }

@@ -226,15 +226,15 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
     const content = String(d.content ?? '')
     const artifactType = String(d.artifact_type ?? 'report')
     return (
-      <details className="group rounded border border-violet-500/20 bg-violet-500/5 px-3 py-2">
+      <details className="group rounded border border-violet/20 bg-violet/5 px-3 py-2">
         <summary className="flex cursor-pointer list-none items-center gap-2">
-          <Package className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+          <Package className="h-3.5 w-3.5 shrink-0 text-violet" />
           <span className="flex-1 text-sm font-medium">{title}</span>
           <Badge variant="outline" className="h-4 text-[9px]">{artifactType}</Badge>
           <span className="text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
         </summary>
-        <div className="mt-2 border-t border-violet-500/20 pt-2">
+        <div className="mt-2 border-t border-violet/20 pt-2">
           <MarkdownRenderer content={content} className="text-sm" />
         </div>
       </details>

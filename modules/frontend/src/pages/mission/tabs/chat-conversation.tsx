@@ -454,8 +454,8 @@ export function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
     const title = String(d.title ?? 'Artifact')
     const artifactType = String(d.artifact_type ?? 'report')
     return (
-      <div className="mx-8 flex items-center gap-2 rounded border border-violet-500/20 bg-violet-500/5 px-3 py-1.5 text-xs">
-        <Package className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+      <div className="mx-8 flex items-center gap-2 rounded border border-violet/20 bg-violet/5 px-3 py-1.5 text-xs">
+        <Package className="h-3.5 w-3.5 shrink-0 text-violet" />
         <span className="font-medium">{title}</span>
         <Badge variant="outline" className="h-4 text-[9px]">{artifactType}</Badge>
         <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>

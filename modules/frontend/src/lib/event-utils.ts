@@ -25,7 +25,7 @@ import { createElement } from 'react'
 
 const EVENT_ICONS: Record<string, React.ReactNode> = {
   'mission.narrative': createElement(Radio, { className: 'h-3 w-3 text-sky-400' }),
-  'mission.artifact.found': createElement(Package, { className: 'h-3 w-3 text-violet-400' }),
+  'mission.artifact.found': createElement(Package, { className: 'h-3 w-3 text-violet' }),
   'plan.created': createElement(FileText, { className: 'h-3 w-3 text-blue-400' }),
   'plan.step.started': createElement(Zap, { className: 'h-3 w-3 text-amber-400' }),
   'plan.step.completed': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),

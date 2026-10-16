@@ -113,6 +113,8 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C14 | §7 is "the single source" for colour maps | Colour maps and colour functions exist in `components/workspace/plan-board-types.ts` (`AGENT_DOMAIN_COLORS`, `getAgentDomainClass`, `getAgentBadgeClass`, the task-border function above them, and `edgeColor`, which returns `rgb()` literals), `components/workspace/plan-board-task-card.tsx` (`StatusIcon`), `pages/mission/tabs/chat-constants.ts` (`AGENT_ICONS`, `getAgentIcon`), `pages/mission/tabs/knowledge-tab.tsx` (`KIND_CONFIG`), `pages/mission/layout.tsx` (`STATUS_VARIANT`), `pages/mission/console.tsx`, `lib/event-utils.ts`, `components/workflow/workflow-editor-types.ts` | Create `lib/status-tone.ts` (statuses) and `lib/agent-tone.ts` (agent → icon + tone). `agent-tone` keeps today's resolution rule from `getAgentDomainClass` (first `.`-segment of the agent name) and today's fallback from `getAgentIcon` (`Bot`, `neutral`). Every function and map listed here is deleted once its callers use the new modules. One map per concept. |
 | C34 | §4.5 `IconTile` tone `bg-{tone}/12`; §6.5 running bar `bg-warning/12` | Installed Tailwind is 3.4.19; its opacity scale is multiples of 5, so `/12` is not a class (and `bg-{tone}` built from a template is invisible to Tailwind and to the D8 lint rule) | Use `/10`. `IconTile` selects from a map of whole class literals per tone. |
 | C35 | §6.9 node shadow `shadow-[0_1px_2px_rgba(0,0,0,.4)]` in dark, `shadow-sm` in light | An `rgba()` literal in a component breaks Constraint 4 | Define `--shadow-node` per theme in `src/index.css` and `boxShadow: { node: 'var(--shadow-node)' }` in `tailwind.config.js`; nodes use `shadow-node`. Colour literals live only in `index.css`. |
+| C36 | §2.2 defines `violet` as a single token colour | Tailwind's built-in `violet` palette (`violet-400`, `violet-500/20` …) is replaced by a single colour, so existing `violet-*` classes stop matching and render nothing. 22 usages in 8 files, 6 of them inside string constants that `no-custom-classname` cannot see | Done in Phase 1.1: `violet-400` → `violet`, `violet-500/N` → `violet/N` across `src/`. The old/new CSS selector diff in §6.1.4 is the check that catches classes the lint rule cannot see. |
+| C37 | §2.2 `fontSize`, `borderRadius` overrides | Confirmed in Phase 1.1: no class from the old build is missing from the new one after C36 (selector diff, 666 old vs 673 new) | No further action. |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -467,6 +469,17 @@ screen description is now wrong. Rename this file with the `-[X]` suffix and set
 
 ## 5. Out of Scope
 
+**Pre-existing defects found while verifying (confirmed present before this plan's changes by
+baseline screenshots; not fixed here — each needs its own decision):**
+
+| Where | Defect |
+|---|---|
+| `/admin/metrics` | Page crashes into the error boundary. `GET /admin/metrics/costs` returns `by_agent[].total_cost_usd` but `pages/admin/metrics.tsx:77` reads `entry.cost_usd`, so `.toFixed` runs on `undefined`. |
+| `/admin/users` | Page is blank. `GET /admin/users` answers `307` (redirect), and the page renders nothing. |
+| `/missions/:id/context` | Size indicator reads `3.2KB / NaNKB`: `max_characters` is not in the response the page reads. |
+| Plan board | Agent tag pill clips its last letter (`RESEARCH.SYNTHESIZE`); the card is rebuilt in Phase 5.2. |
+| Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
+
 - ⌘K command palette and the sidebar search trigger (C31).
 - Tab-bar navigation option (C32).
 - `light-neutral` theme; server-side theme persistence.
@@ -482,17 +495,33 @@ screen description is now wrong. Rename this file with the `-[X]` suffix and set
 
 1. `cd modules/frontend && npm run build` succeeds.
 2. `cd modules/frontend && npm run lint` exits 0 (no warnings).
-3. Colour gate, run on files touched by the commit — no output:
+3. Colour gate, run on the files the commit restyles, excluding `src/index.css` (the token
+   file, where colour literals live by design, C35) — no output. A commit that only fixes a
+   lint warning or renames a class (Phases 0 and 1) is gated on the lines it changes, not on
+   the whole file; whole-file clean is required once a phase restyles the file:
    `grep -nE "(slate|zinc|gray|red|green|blue|yellow|amber|emerald|orange|purple|violet|rose|sky|cyan)-[0-9]{2,3}|#[0-9a-fA-F]{3,8}\b|rgba?\(" <files>`
 4. Undefined-class gate: enforced by `tailwindcss/no-custom-classname` inside gate 2 (D8).
-   Classes built dynamically (template strings) are invisible to the rule, so token classes
-   are written as whole literals or selected from maps of whole literals (as `status-tone`
-   does) — never assembled from fragments such as `` `bg-${tone}/10` ``.
+   Classes built dynamically (template strings) or held in plain string constants are invisible
+   to the rule, so token classes are written as whole literals or selected from maps of whole
+   literals (as `status-tone` does) — never assembled from fragments such as
+   `` `bg-${tone}/10` ``. For any commit that changes `tailwind.config.js` or `index.css`,
+   also diff emitted selectors: build the CSS with the previous config and with the new one
+   over the same `src/` (`npx tailwindcss -c <config> -i <css> -o <out>`), extract the class
+   selectors from both, and confirm no selector present in the old build is absent from the
+   new one.
 5. Layout gate on touched workspace files: no full-height `border-l`/`border-r` (sidebar edge
    excepted) and no `border-b` header strips.
 6. Size gate: new files within doc 23 limits; touched files not larger than before.
 
 ### 6.2 Visual check
+
+Method (no test framework is added, D2): start the stack with
+`python services.py start --daemon --no-migrate --no-seed`, log in with the documented dev user,
+and screenshot each route in both themes with headless Chrome driven by a throwaway
+`puppeteer-core` script kept outside the repo. Setting `document.documentElement.className` to
+`dark` or `warm-white` switches theme before the theme store exists. Pages must load without
+writing to the database; session creation in Chat is click-only. Reviewers read the PNGs; each
+flagged issue is checked by a second reader before it is acted on.
 
 For each screen the commit touches: compare against the matching `data-screen-label` in the
 reference, in **both** themes, at 1024, 1280, 1440 and 1920 px widths. Responsive rules from

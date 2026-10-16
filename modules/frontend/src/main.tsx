@@ -8,6 +8,8 @@ import { ErrorBoundary, installGlobalErrorReporter } from '@/components/error-bo
 import '@fontsource/geist/400.css'
 import '@fontsource/geist/500.css'
 import '@fontsource/geist/600.css'
+import '@fontsource/geist-mono/400.css'
+import '@fontsource/geist-mono/500.css'
 import './index.css'
 
 installGlobalErrorReporter()
