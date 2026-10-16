@@ -1,0 +1,539 @@
+# Plan 87 — Web UI Redesign, Grounded in the Current Repo
+
+**Version:** 1.3.0
+**Date:** 2026-10-16 (v1.0) · revised same day after `/prompt-check-plan-quality` (v1.1: reuse
+inventory §2.4, phase-order fixes so no action is unreachable between commits, backend reuse);
+v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
+v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
+**Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
+**Status:** Not started
+**Depends on:** None
+**Unlocks:** One consistent visual system (dark + warm-white) across every web screen
+**Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
+
+---
+
+## 0. Problem Statement
+
+`docs/09-research/035-ui-redesign-handoff.md` (the **handoff**) and
+`docs/09-research/035-ui-redesign-reference.html` (the **reference**) describe a full reskin of the
+web client. Claude Design produced both without access to this repo. The visual intent is sound,
+but the handoff makes assumptions about the code, the data and the process that are wrong here.
+Executing it literally would delete working features, emit Tailwind classes that do not exist,
+show data the backend does not provide, and break the project rules.
+
+This plan keeps the handoff's visual design and replaces its assumptions with the facts of the
+current tree. Where this plan and the handoff disagree, **this plan wins**. Where this plan is
+silent on a visual detail, the handoff's value applies. Where the handoff and the reference
+disagree on a visual detail, the reference wins (it is the rendered design).
+
+### Sources and precedence
+
+| Source | Authority |
+|---|---|
+| Project rules (`AGENTS.md`, `docs/03-principles/`, `docs/04-rules/`) | Binding. Overrides everything below. |
+| Reference architecture docs 01, 22, 23 | Binding for the web client. |
+| This plan | Binding for scope, sequence and every correction in §2. |
+| Reference HTML | Visual source of truth (colours, spacing, layout per screen). |
+| Handoff | Visual detail where this plan and the reference are silent. |
+
+### How to view the reference
+
+The reference is a self-extracting bundle. It loads React 18.3.1 from unpkg and Geist from Google
+Fonts, then renders a `<x-dc>` template with 20 screens marked `data-screen-label="…"`
+(Login, Dashboard, New mission, Overview, Chat, Plan, Runs, Run live, Workflow editor, Costs,
+Admin, Team, Narrative, Context, Knowledge, Artifacts, Console, Catalog, plus the shell).
+Open it in a browser; the Tweaks panel switches theme (`dark`, `warm-white`, `light-neutral`)
+and start screen. `light-neutral` is out of scope. The mock data in it (`daily-cti-brief`,
+costs, agent names) is placeholder content, not a data contract.
+
+---
+
+## 1. Constraints
+
+These apply to every phase. A phase is not done until all of them hold for the files it touched.
+
+1. **Thin client (P1, P2, doc 22).** No business logic, calculation or aggregation in the
+   frontend. Presentation mapping (status → tone, agent → icon) is allowed. Cross-mission
+   aggregation is not: it belongs in a backend service (§3, Phase 8).
+2. **No fabricated data.** A UI element that needs data the API does not return is either
+   dropped or blocked on Phase 8. Never render placeholder numbers, and never compute
+   a value the backend should own.
+3. **No dead controls.** No buttons, inputs or menu items that do nothing. No `TODO` stubs
+   (rule 002.6).
+4. **Tokens only.** No raw hex, no `rgb()`/`rgba()` literals and no Tailwind palette classes
+   (`slate-*`, `zinc-*`, `gray-*`, `red-*`, `green-*`, `blue-*`, `amber-*`, `emerald-*`,
+   `rose-*`, `violet-*`, `cyan-*`, `orange-*`, `purple-*`, `sky-*`, `yellow-*`) in touched
+   files. Every colour comes from a CSS variable in `src/index.css` via `tailwind.config.js`.
+5. **Every class must exist.** Any utility that references a custom token (`bg-well`,
+   `border-panel-border` …) must be defined in `tailwind.config.js`. Tailwind silently drops
+   unknown classes, so the §6 grep gate checks this explicitly.
+6. **File size (doc 23, AGENTS.md).** New components ≤ 300 lines, new hooks ≤ 150, new
+   stores ≤ 200. Existing files over those limits must not grow. AGENTS.md's hard limit of
+   1000 lines applies to everything.
+7. **Fail fast.** No silent fallbacks. A stored theme value that is not a known theme is
+   removed and replaced by the system preference — never cast with `as Theme`.
+8. **Behaviour parity.** Every route, mutation, drag-and-drop, keyboard shortcut, drawer and
+   modal that works today still works after each commit.
+9. **Accessibility (doc 23).** Icon-only buttons have `aria-label` (not only `title`).
+   Contrast: WCAG AA (4.5:1 body, 3:1 large). Pulse, shimmer and spin animations carry
+   `motion-reduce:animate-none`.
+10. **Backend changes follow the layers.** Endpoint → service → repository → model, responses
+    wrapped in `ApiResponse`, config from YAML, tests against real Postgres (P12).
+
+---
+
+## 2. Corrections to the Handoff
+
+Each row is a verified fact about the current tree. The implementing agent applies the
+**Correction** column instead of the handoff text.
+
+### 2.1 Paths, files and process
+
+| # | Handoff says | Fact in repo | Correction |
+|---|---|---|---|
+| C1 | Scope is `frontend/` | Frontend lives at `modules/frontend/` | All paths are relative to `modules/frontend/`. |
+| C2 | Reference is `Mission Control - Redesign.dc.html` | File is `docs/09-research/035-ui-redesign-reference.html` | Use the real path. |
+| C3 | One PR per step | Project commits directly to `main`, no PRs | One commit per sub-phase. |
+| C4 | Each PR passes the §10 checklist | `npm run lint` already fails (3 warnings vs `--max-warnings 0`); frontend is not in CI; no frontend tests exist | Phase 0 makes lint green first. Gates are in §6. |
+| C5 | §5.1 `AppShell` renders `<Sidebar/>` + `<main>` only | `components/layout/app-shell.tsx:15` mounts `<RightDrawer/>`, which hosts six panels (agent detail, prompt history, event log, output preview, cost breakdown, run events) | Keep `RightDrawer`. Restyle it as a Panel (Phase 3.1). |
+| C6 | §2.1 adds `@fontsource/geist` `@import` lines to `index.css` | Geist is already imported in `src/main.tsx:8-10`, but `src/index.css:75` overrides `body` to the system font stack, so Geist is loaded and unused | Keep font imports in `main.tsx` only. Add `@fontsource/geist-mono` 400/500 there. Remove the `font-family` override from `body`. |
+| C7 | §5.4 tab list lives in `layout.tsx` | It does (`pages/mission/layout.tsx:64-79`), and `lib/constants.ts` already holds `ROUTES` | Move the grouped nav definition to `lib/constants.ts`, referencing `ROUTES`. |
+| C8 | §5.4 brief moves to Overview, "reusing `InlineBrief`" | `InlineBrief` is a private function inside `layout.tsx:430-516` | Move it to `components/mission/inline-brief.tsx`, import it from Overview. |
+
+### 2.2 Tokens and styling
+
+| # | Handoff says | Fact | Correction |
+|---|---|---|---|
+| C9 | §6 uses `bg-active` (§6.4), `border-border-x` (§6.2), `border-border-card` and `border-row` (§6.6) | None of these is defined in handoff §2.2 | Map: `bg-active` → `bg-sidebar-active`; `border-border-x` → `border-border-strong`; `border-border-card` → `border-panel-border`; `border-row` → `border-border/60`. |
+| C10 | PR1 "app keeps working, just recolours" | §2.2 replaces the global `fontSize` scale (`sm` 14→12.5px, `lg` 18→15px, `2xl` 24→22px) and `borderRadius` (`sm`, `md`); `CardTitle` changes size in §4.3 | Phase 1 resizes and re-rounds every screen. Its verification is a visual check of all routes, not just colour. |
+| C11 | §10 QA bans `#[0-9a-f]{6}`, but §6.9 keeps per-type workflow colours from `workflow-editor-types.ts` | That file holds 44 hard-coded colour occurrences | Convert workflow step-type colours to the semantic tones (`brand`, `info`, `warning`, `success`, `danger`, `violet`, `neutral`). No exemption. |
+| C12 | §3 defaults theme to `dark`; reads `localStorage` with `\|\| 'dark'` and `as Theme` | Doc 23: "Respect system preference by default". Constraint 7 forbids the cast fallback | Default to `prefers-color-scheme` (`dark` → `dark`, else `warm-white`) when nothing valid is stored. Validate stored values against the theme list; remove invalid ones. Decided (D1). |
+| C13 | §4.2 restyles `Badge` `default` + `outline` only | `badge.tsx` has `default`, `secondary`, `destructive`, `outline`, `success`, `warning`; `success`/`warning` use `emerald-500`/`amber-500`; 57 files import `Card` or `Badge` | In the same commit as the restyle, every state usage moves to `StatusPill`, and every remaining variant gets a token-based style. No variant may be left using palette classes. |
+| C14 | §7 is "the single source" for colour maps | Colour maps and colour functions exist in `components/workspace/plan-board-types.ts` (`AGENT_DOMAIN_COLORS`, `getAgentDomainClass`, `getAgentBadgeClass`, the task-border function above them, and `edgeColor`, which returns `rgb()` literals), `components/workspace/plan-board-task-card.tsx` (`StatusIcon`), `pages/mission/tabs/chat-constants.ts` (`AGENT_ICONS`, `getAgentIcon`), `pages/mission/tabs/knowledge-tab.tsx` (`KIND_CONFIG`), `pages/mission/layout.tsx` (`STATUS_VARIANT`), `pages/mission/console.tsx`, `lib/event-utils.ts`, `components/workflow/workflow-editor-types.ts` | Create `lib/status-tone.ts` (statuses) and `lib/agent-tone.ts` (agent → icon + tone). `agent-tone` keeps today's resolution rule from `getAgentDomainClass` (first `.`-segment of the agent name) and today's fallback from `getAgentIcon` (`Bot`, `neutral`). Every function and map listed here is deleted once its callers use the new modules. One map per concept. |
+| C34 | §4.5 `IconTile` tone `bg-{tone}/12`; §6.5 running bar `bg-warning/12` | Installed Tailwind is 3.4.19; its opacity scale is multiples of 5, so `/12` is not a class (and `bg-{tone}` built from a template is invisible to Tailwind and to the D8 lint rule) | Use `/10`. `IconTile` selects from a map of whole class literals per tone. |
+| C35 | §6.9 node shadow `shadow-[0_1px_2px_rgba(0,0,0,.4)]` in dark, `shadow-sm` in light | An `rgba()` literal in a component breaks Constraint 4 | Define `--shadow-node` per theme in `src/index.css` and `boxShadow: { node: 'var(--shadow-node)' }` in `tailwind.config.js`; nodes use `shadow-node`. Colour literals live only in `index.css`. |
+| C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
+
+### 2.3 Data contracts
+
+| # | Handoff says | Fact | Correction |
+|---|---|---|---|
+| C15 | §7 `taskTone` has `proposed, approved, running, completed, failed, skipped, vetoed` | Real `TaskStatus` (`modules/backend/models/task.py:48-55`, `PlanTaskStatus` in `hooks/use-mission-plan.ts`): `proposed, approved, queued, running, completed, failed, skipped, cancelled`. There is no `vetoed`. | `taskTone`: proposed `neutral`, approved `brand`, queued `brand`, running `warning`, completed `success`, failed `danger`, skipped `neutral`, cancelled `neutral`. Type it as `Record<PlanTaskStatus, Tone>` so a new status fails compilation. |
+| C16 | §6.5 gate `Segmented` has Manual / AI-assisted / Autonomous | `VALID_GATE_MODES` (`modules/backend/models/mission_plan.py:48`) and `GateMode` (`hooks/use-mission-plan.ts:29`) have four: `interactive`, `manual`, `ai_assisted`, `autonomous` | Four segments: Interactive / Manual / AI-assisted / Autonomous. |
+| C17 | §7 `missionTone` keys | `MissionStatus` = `active, paused, archived` (`types/mission.ts:8`) | Matches. Type as `Record<MissionStatus, Tone>`. |
+| C18 | §6.5 board columns | `COLUMN_DEFS` (`plan-board-types.ts`) already put `queued` in Approved and `completed, failed, skipped, cancelled` in Done | Keep `COLUMN_DEFS`. Restyle only. |
+| C19 | §6.16 Costs range: 7 days / 30 days / All time | `costs-tab.tsx:12-14` and the API support `24h`, `7d`, `30d`, all-time | Four segments: Today / 7 days / 30 days / All time. |
+| C20 | §6.16 stat "Avg per call (−8% vs prior)" | The costs endpoint (`api/v1/endpoints/missions_costs.py`) returns `summary`, `by_agent`, `cache_performance`, `output_efficiency`, `expensive_calls`; no prior-period figure | Show only fields the response contains. Drop the "vs prior" delta. |
+| C21 | §6.7 Run live summary shows Tokens | `stores/live-run.ts` tracks cost per agent, not tokens | Show Elapsed, Cost, Steps. Show Tokens only if the run response already contains a token total; verify before implementing, never estimate. |
+| C22 | §6.12 Context size "18.4 / 32 KB" | `hooks/use-context.ts` returns `size_characters`, `size_tokens`, `max_characters`; `context-panel.tsx:50` already renders KB from characters | Keep the existing computation and fields. Bar = `size_characters / max_characters`. |
+| C23 | §6.14 artifact groups: Reports, Findings, Responses, Data, Code | `ArtifactType` = `report, finding, response, code, data, file` (`hooks/use-mission-artifacts.ts:22`) | Six groups; add Files (`File` icon). |
+| C24 | §6.13 learning kinds | `KIND_CONFIG` keys match: `failure_pattern, success_pattern, anti_pattern, retry_strategy, capability_gap` | Matches. Move the map to tokens. |
+| C25 | §9.3 needs a new `useAgentStates` selector | `stores/workspace.ts` already holds `agentStatuses: Record<string, AgentStatusEntry>` with `idle, thinking, running, done, failed` and `currentTool` | Use the existing store selector. No new hook. |
+| C26 | §6.10 Team card has an enable/disable `Switch` | `MissionTeamMember.enabled` exists and dispatch honours it (`agents/mission_control/roster.py:114` lists `enabled_only=True`). `MissionTeamService.toggle_enabled` (`services/mission_team.py:286`) exists but no endpoint calls it, and `hooks/use-team.ts` has no mutation. `GET /missions/{id}/team` defaults to `enabled_only=True` and `useTeam` does not override it, so a disabled member disappears from the Team page and could never be re-enabled | Decided (D6): build the switch. Backend in §3.3, frontend in Phase 10.1. |
+| C27 | §6.2 New mission has a "1 Details — 2 Team" stepper | `pages/mission/new.tsx` has no team step | Per the handoff's own fallback: single step, no stepper. |
+| C28 | §6.5 "+ Add task" row per column | `AddTaskForm` exists in `plan-board-task-card.tsx:500-584`, wired to `useAddPlanTask` | Reuse it. Move it to its own file (`plan-board-add-task.tsx`) so the card file shrinks below its current 584 lines. |
+| C29 | §9.1 attention items, "or derive client-side (N calls)" | No backend endpoint exists. Client derivation is aggregation in the client, against Constraint 1 | Build the backend endpoint (Phase 8). No client-side derivation. Decided (D3): build it. |
+| C30 | §9.2 `spent_usd` on mission list | `MissionResponse` (`schemas/mission.py:97`) has `budget_ceiling_usd` but no spend; plans carry `total_spent_usd` per plan | Add `spent_usd` to the mission list response from a backend service (Phase 8). |
+| C31 | §5.2 search / ⌘K trigger, "otherwise a TODO stub" | No command palette exists | Omit the search box (Constraint 3). Decided (D4). |
+| C32 | §5.2 optional `NAV_STYLE = 'sidebar' \| 'tabs'` | Not required by any screen | Do not build it (no extra features). Decided (D5). |
+
+### 2.4 Existing code to reuse — do not recreate
+
+The handoff asks for several things the tree already has. The implementing agent promotes or
+reuses these; it does not write a second version. "Promote" means move the existing code to
+the shared location, update every caller, and delete the original.
+
+| Need in the handoff | Already exists | Action |
+|---|---|---|
+| Task status icon in columns, cards, timelines | `StatusIcon` in `plan-board-task-card.tsx:78` | Promote to `components/ui/status-icon.tsx`, driven by `lib/status-tone.ts` (status → tone + lucide icon). Runs table, Run live timeline and plan columns all use it. No per-screen icon switch. |
+| Icon buttons (Reject `X`, History, Trash) | `IconButton` in `plan-board-task-card.tsx:103` (palette-coloured `tone` prop) | Delete it. Use `Button` `size="icon"` / `"icon-sm"`. |
+| Filter chips (Runs filters, Knowledge filters, Narrative) | `FilterChip` in `knowledge-tab.tsx:329` | Promote to `components/ui/filter-chip.tsx`, restyled per handoff §6.6, with optional `count`. |
+| `Segmented` control | Hand-rolled segment groups: console category tabs (`console.tsx:124` `FilterBar`), Costs timeframe buttons (`costs-tab.tsx:50`), plan gate `<select>` (`plan-board-top-bar.tsx:113`) | Create `components/ui/segmented.tsx` once and replace all three in their phases. |
+| Confirmation before Archive / Delete | `ConfirmDialog` in `pages/dashboard.tsx:23`, private; the only confirm dialog in the frontend | Promote to `components/ui/confirm-dialog.tsx` in Phase 3.3, where the settings-drawer Archive becomes its second caller. |
+| Hover `⋯` menus (dashboard cards, plan cards) | Inline menu with click-outside in `plan-board-task-card.tsx:154-167` | Promote to `components/ui/menu.tsx`. |
+| Click-outside handling | Duplicated in `notification-dropdown.tsx`, `plan-board-task-card.tsx`, `slash-command-popover.tsx`, `variable-autocomplete.tsx` | Extract `hooks/use-click-outside.ts` when `menu.tsx` is created (third+ use, P14). Migrate each file in the phase that touches it. |
+| Cost formatting (`$0.0412`) | `toFixed(4)` inlined 40 times | Add `fmtCost` to `lib/format.ts`; replace inline formatting in every touched file. |
+| Durations and elapsed time | `formatDuration` (`workflow-run-history.tsx:26`), `formatElapsed` (`live-footer.tsx:15`) | Move both to `lib/format-date.ts` before `live-footer.tsx` is deleted (Phase 6). |
+| Relative time ("2h ago") | None; `date-fns` is already a dependency but unused | Add `formatRelative` to `lib/format-date.ts` using `date-fns`. |
+| Cron in words (§6.8) | `describeCronExpression` in `lib/cron.ts:150` | Use it. |
+| User avatar initials (sidebar footer) | `components/ui/avatar.tsx` | Restyle and use it. |
+| Plan Stop/Resume (§5.3, §6.5) | `handlePlanPauseToggle` in `plan-board-top-bar.tsx:70`; a duplicate in `layout.tsx:128-136` | Keep the toolbar one, restyle it, delete the `layout.tsx` copy (Phase 3.3). |
+| Live agent state (§9.3) | `useWorkspaceStore` `agentStatuses` (C25) | Use it. |
+| Error reporting from client code | `reportError` in `components/error-boundary.tsx:13` (posts to `/client-errors`), private | Export it; the theme store uses it on storage failure. |
+| Polling while work is active | `refetchInterval` callback pattern in `use-executions.ts:38` | Follow the same pattern in `use-attention.ts`. |
+| Mission spend aggregate (§9.2) | `TokenEconomicsService.get_summary(mission_id=…)` sums `llm_calls.cost_usd` through `_scope_filters`; it is the figure the Costs tab shows | Add one grouped method to the same service (§3.1). No new repository query path. |
+| Pending gates / human input (§9.1) | `MissionPlanService.list_pending_gate_requests(mission_id)` (`services/mission_plan.py:237`), `WorkflowRunService.list_pending_human_input(mission_id)` (`services/workflow_run.py:721`); each has exactly one caller (`missions_gates.py:122`, `missions_workflows.py:870`) | Change each signature to `mission_ids: list[str]` and update its one caller to pass `[mission_id]`. No single-mission wrapper (P3: no shims). |
+| Tasks by status (§9.1) | `TaskRepository.get_by_mission_id(mission_id, status=…)` (`repositories/task.py:65`) is single-mission and cross-plan, so it would return failed tasks from archived plans | Add one repository method, `list_by_status_for_missions(mission_ids, statuses)`, joined to `mission_plans` and limited to plans in `active` or `paused` status. `get_by_mission_id` stays as is for its existing callers. |
+| Progress bars | Inline bars in `plan-board-top-bar.tsx:166` (budget) and `context-panel.tsx:52-61` (context size) | `components/ui/progress.tsx` replaces both in the phases that restyle those files. |
+| Enable toggles | Button-style toggles in `workflows-panel.tsx:377` (workflow enabled) and `pages/admin/catalog.tsx:76` (catalog agent enabled) | `components/ui/switch.tsx` is created in Phase 7 with its first caller (`workflows-panel.tsx`) and reused by Team (10.1) and Admin catalog (11.2). One toggle style. |
+| Shared attention data | Dashboard list and sidebar badges both need it | One `use-attention` query key; TanStack Query deduplicates, so the two consumers make one request. |
+
+---
+
+## 3. Backend Data (only backend scope in this plan)
+
+Two read-only additions (§3.1, §3.2) and one write endpoint (§3.3). All follow Constraint 10
+and reuse existing services (§2.4).
+
+**3.1 Mission spend.** `MissionResponse` gains `spent_usd: float` (never null; 0.0 means no
+calls recorded). Add `TokenEconomicsService.get_cost_by_mission(mission_ids: list[str])`, built
+on the existing `_scope_filters` with an all-time scope, returning `{mission_id: total}` from one
+grouped query. `MissionResponse` is returned by four endpoints in `api/v1/endpoints/missions.py`
+(create, list, get, update: lines 77, 112, 136, 206). Add one `MissionService` method that
+takes missions and returns their responses with `spent_usd` attached, calling
+`get_cost_by_mission` once; all four endpoints use it, so no path returns a response without
+the field. The list endpoint therefore issues one cost query per page. Do not use
+`ExecutionPersistenceService.get_cross_mission_cost_breakdown()`: it sums
+`execution_records.total_cost_usd`, a different source from the Costs tab, so the two screens
+would disagree. Decided (D7): `spent_usd` is the `llm_calls` total.
+
+**3.2 Attention items.** New `GET /api/v1/attention` returns, for missions the current user can
+access:
+
+```
+{ mission_id, mission_name, kind: 'task_approval' | 'gate' | 'human_input' | 'retry',
+  title, detail, created_at, href }[]
+```
+
+- `task_approval`: tasks in `proposed`, in an active or paused plan whose gate mode needs a
+  human to approve (via `list_by_status_for_missions`, §2.4).
+- `gate`: pending `GateRequest` rows, via the generalised `list_pending_gate_requests`.
+- `human_input`: pending `HumanInputRequest` rows, via the generalised
+  `list_pending_human_input`.
+- `retry`: tasks in `failed`, in an active or paused plan. Failed tasks in completed or archived
+  plans are not attention items.
+
+`href` is built by the backend so the client renders it without logic. The response also returns
+per-mission pending counts for the sidebar badge. Every list is fetched for all accessible
+missions in one query per kind, never per mission.
+
+Which gate modes need a human is defined today only as a private tuple,
+`_AUTO_APPROVE_GATE_MODES = ("ai_assisted", "autonomous")`, in
+`agents/mission/director/tools/approve_plan_tasks.py:26`. A service must not import a private
+constant from an agent tool. Move it to `models/mission_plan.py` as `AUTO_APPROVE_GATE_MODES`
+next to `VALID_GATE_MODES`, import it in `approve_plan_tasks.py` and in the attention service,
+and delete the private tuple. Note for the owner, not part of this plan:
+`api/v1/endpoints/missions_workflows.py:306` uses a different grouping
+(`("manual", "interactive", "ai_assisted")`) for workflow dispatch.
+
+**3.3 Team member enable/disable (D6).** New
+`PATCH /api/v1/missions/{mission_id}/team/{member_id}/enabled` with a typed request schema
+`TeamMemberEnabledUpdate { enabled: bool }` in `schemas/mission_team.py` (not `data: dict`).
+The endpoint calls `require_mission_access`, then `MissionTeamService.get_member` and rejects
+with `NotFoundError` if the member's `mission_id` is not the path's `mission_id`, then calls the
+existing `toggle_enabled`. It returns `MissionTeamMemberResponse` in `ApiResponse`. No new
+service method. Note for the owner, not part of this plan: the existing
+`PATCH …/team/{member_id}/constraints` (`missions_team.py:236`) and `PUT …/prompt` do not check
+that the member belongs to the mission in the path.
+
+---
+
+## 4. Phases
+
+Each sub-phase is one commit. Each commit passes every gate in §6 before it is made.
+
+### Phase 0 — Green baseline
+
+**0.1 Fix the three lint warnings.**
+- `components/workspace/plan-board-task-card.tsx:54` — `react-refresh/only-export-components`:
+  move the non-component export to `plan-board-types.ts`.
+- `pages/mission/tabs/chat-conversation.tsx:57` — `agentTools` is rebuilt every render and
+  breaks the dependency arrays of the `useMemo` (line 65) and `useCallback` (line 191).
+  Wrap its initialisation in `useMemo`.
+- Done when `npm run lint` exits 0 and `npm run build` succeeds.
+
+### Phase 1 — Tokens, fonts, theme (handoff §2, §3)
+
+**1.1 Tokens and Tailwind.**
+- Replace `src/index.css` token blocks with handoff §2.1 values, keeping the shadcn variable
+  names. Apply C6 (no font `@import` in CSS; drop the `body` font-family override).
+- Replace `tailwind.config.js` `theme.extend` with handoff §2.2, applying C9 (no class used in
+  §6 may be missing from this config).
+- Install `@fontsource/geist-mono`; import 400 and 500 in `src/main.tsx`.
+- Decided (D8): install `eslint-plugin-tailwindcss` (a release whose peer range covers
+  Tailwind 3.4 and ESLint 8; confirm at install) and enable `tailwindcss/no-custom-classname`
+  as an error in `.eslintrc.cjs`, pointed at `tailwind.config.js`, with no whitelist entries.
+  Do not enable the plugin's other rules (class ordering would reformat every file). Fix any
+  existing violations it reports in this commit; if the count is large, list them in the
+  commit message and fix them all before committing — `npm run lint` must exit 0.
+- Done when every existing screen renders in both themes with no unreadable text. Because of C10,
+  check every route.
+
+**1.2 Theme switching.**
+- `src/stores/theme.ts` (new): `Theme = 'dark' | 'warm-white'`, `THEMES` constant, storage key
+  `mc.theme`. Initial value: a stored value if it is in `THEMES`; otherwise remove the stored
+  value and use `prefers-color-scheme` (C12). Wrap `localStorage` access in try/catch; on
+  failure use the system preference and send one report through `reportError`, exported from
+  `components/error-boundary.tsx` (§2.4).
+- `index.html`: remove `class="dark"`; add the boot script from handoff §3.2 with the same
+  validation and system-preference default (decided, D1), so there is no flash.
+- `App.tsx` Toaster: handoff §3.4 classes.
+- The toggle button itself ships with the sidebar footer (Phase 3.2) and Login (Phase 9.1).
+- Done when reload keeps the chosen theme and an invalid stored value is replaced.
+
+### Phase 2 — UI primitives (handoff §4)
+
+**2.1 Tone maps.** `lib/status-tone.ts` defines the one `Tone` type
+(`success | warning | danger | info | brand | violet | neutral`) and, per C15–C17, `missionTone`,
+`taskTone`, `runTone` and `consoleCategoryTone` (`execution`, `chat`, `system` — the categories
+`layout.tsx:87-103` produces), each mapping a status to `{ tone, icon }`. Primitives import
+`Tone` from here; `lib` never imports from `components`. `lib/agent-tone.ts` per C14. In this
+sub-phase the new modules replace `getAgentIcon` and `AGENT_ICONS`; the plan-board functions
+are replaced in Phase 5.2, where their callers are restyled.
+
+**2.2 New primitives.** `status-pill.tsx`, `segmented.tsx`, `icon-tile.tsx`, `progress.tsx`,
+`kbd.tsx` per handoff §4, plus the promotions in §2.4 that later phases depend on:
+`status-icon.tsx`, `filter-chip.tsx`, `menu.tsx` with `hooks/use-click-outside.ts`, and the
+`fmtCost` / `formatRelative` / `formatDuration` / `formatElapsed` helpers. Each promotion
+updates its original callers in the same commit and deletes the original. `progress.tsx` and
+`switch.tsx` are built with their first caller (Phases 5.1 and 7), so no unused primitive
+lands early. Each new primitive has typed props (interfaces named `<Component>Props`, doc 23) and
+`aria-label` support where icon-only. `IconTile` takes `{ icon, tone }`, exactly what
+`agent-tone` returns, so callers pass the result through without mapping.
+
+**2.3 Restyle existing primitives.** One name per concept, no aliases (P3: no shims, no legacy
+aliases). The handoff's `Card = Panel` aliases and its `outline` alias of `secondary` are not
+built:
+- `button.tsx` per handoff §4.1, `destructive` tinted. `outline` and `secondary` would be
+  identical, so delete `outline` and change its 63 call sites to `secondary` in this commit.
+- `card.tsx` becomes `panel.tsx` exporting `Panel`, `PanelHeader` (title / meta / actions,
+  §4.3) and `PanelContent`. Change the 16 files that import `card` in this commit and delete
+  `card.tsx`. Existing `CardTitle` uses become `PanelHeader` `title`.
+- Restyle `input.tsx`, `textarea.tsx`, `stat-card.tsx`, `empty-state.tsx`, `spinner.tsx`,
+  `avatar.tsx`.
+Remove `mr-1.5` from icons inside `Button` at call sites only when the file is otherwise touched.
+
+**2.4 Badge migration.** Restyle `badge.tsx` and migrate every state usage to `StatusPill` in
+the same commit (C13). Done when `grep -rn "variant=\"\(success\|warning\)\"" src/` finds no
+`Badge`, and `badge.tsx` contains no palette class.
+
+### Phase 3 — Shell (handoff §5)
+
+**3.1 AppShell.** Handoff §5.1 layout, keeping `RightDrawer` (C5): it renders as a right Panel
+inside the gutter (`rounded-panel bg-panel border border-panel-border`), not a full-height
+`border-l` strip. Delete `status-bar.tsx` and its import.
+
+**3.2 Sidebar.** Rewrite per handoff §5.2 with C31 (no search box) and C32 (no tab option).
+Split to stay under 300 lines: `sidebar.tsx` (frame, primary nav, missions list),
+`sidebar-mission-nav.tsx` (grouped sub-nav for the active mission, from `lib/constants.ts`),
+`sidebar-footer.tsx` (run indicator from `useExecutions({ status: 'running' })`, which today
+feeds `StatusBar`; user row with `Avatar`; `NotificationDropdown`, restyled and migrated to
+`use-click-outside`; theme toggle; log-out). The per-mission pending badge waits for Phase 8
+and is added in Phase 8.3.
+
+**3.3 Top bar and mission layout.** `components/layout/top-bar.tsx` (new) per handoff §5.3.
+It is generic: props are `segments: { label, to? }[]`, an optional `status` node and an
+`actions` node. It contains no mission logic, so Dashboard, Catalog, Admin and mission pages
+all use it. In `pages/mission/layout.tsx`: remove the header and tab bar, render `TopBar`, keep
+the SSE fan-out, `MissionSettingsDrawer` and `RunModal` unchanged in behaviour. The plan pill
+uses `plan.status`, `plan.gate_mode` and task counts already loaded by `useMissionPlan`.
+`missions/:id` must still redirect to the last tab (`App.tsx:42-52`).
+
+Every action the old header held must have its new home **in this same commit**, so nothing is
+unreachable between commits:
+- Pause / Resume mission and Run: in `TopBar` actions.
+- Archive: `MissionSettingsDrawer` has no archive or status control today; add an Archive
+  action to it, calling the existing `useUpdateMission` with `{ status: 'archived' }` after
+  the same confirmation the Dashboard asks for. Promote `ConfirmDialog` (§2.4) in this commit
+  and point `dashboard.tsx` at the shared copy.
+- Stop / Resume plan: delete the header copy (`layout.tsx:128-136`, `350-363`); the Plan
+  toolbar's `handlePlanPauseToggle` already does this.
+- Brief: move `InlineBrief` (C8) and render it at the top of `pages/mission/overview.tsx` now;
+  Phase 9.4 restyles it.
+- Background-task indicator: fold into the plan pill tooltip (handoff §5.3).
+
+Done when every mission route renders with the new shell and every former header action is
+reachable.
+
+### Phase 4 — Chat (handoff §6.4)
+
+Restyle `chat-tab.tsx`, `chat-conversation.tsx`, `chat-artifacts-panel.tsx`. Live agent state in
+the roster comes from `useWorkspaceStore` `agentStatuses` (C25). Keep sessions, `chat/:threadId`,
+slash commands and ⌘↵ send (`slash-command-popover.tsx` migrates to `use-click-outside`).
+Agent icons and tones come from `agent-tone` via `IconTile`. `use-resizable` handles stay,
+invisible until hover.
+`chat-conversation.tsx` (667 lines) must not grow.
+
+### Phase 5 — Plan board (handoff §6.5)
+
+**5.1 Toolbar.** `plan-board-top-bar.tsx`: create `components/ui/progress.tsx` and use it for
+the budget bar at line 166; replace the `<select>` with a four-segment
+`Segmented` (C16). Restyle the existing `handlePlanPauseToggle` button as Stop plan
+(destructive tinted) / Resume plan. Replace the inline `toFixed(4)` with `fmtCost`.
+
+**5.2 Columns and cards.** `plan-board.tsx`, `plan-board-task-card.tsx` per handoff §6.5 with
+C18 and C28. Inline Approve/Reject on proposed cards and Retry on failed cards call the same
+mutations the detail panel uses — find them in `hooks/use-mission-plan.ts` and reuse; add none.
+Veto countdown uses the existing `VetoState`. Drag-and-drop unchanged. Replace
+`getAgentDomainClass`, `getAgentBadgeClass` and the task-border function with
+`agent-tone` / `status-tone`, and `edgeColor`'s `rgb()` literals with
+`hsl(var(--token) / alpha)` strings; then delete the old functions and `AGENT_DOMAIN_COLORS`.
+
+**5.3 Detail panel.** `plan-board-detail-panel.tsx` as a right Panel inside the gutter.
+
+### Phase 6 — Runs and Run live (handoff §6.6, §6.7)
+
+`runs-panel.tsx`, `run-detail-panel.tsx`, `run-live.tsx`, `components/live/*`. Apply C21. Fold
+`live-footer.tsx` stats into the summary Panel (its `formatElapsed` has already moved to
+`lib/format-date.ts` in Phase 2.2), then delete `live-footer.tsx`. Status icons use
+`StatusIcon` with `runTone`. Filter chips use `FilterChip`. Verify the run status values in `types/workflow.ts` and `types/execution.ts` and type
+`runTone` against them.
+
+### Phase 7 — Workflows list and editor (handoff §6.8, §6.9)
+
+`workflows-panel.tsx`, `workflow-editor.tsx`, `workflow-editor-node.tsx`,
+`workflow-editor-toolbar.tsx`, `node-palette.tsx`, `step-detail.tsx`, `workflow-editor-types.ts`.
+Create `components/ui/switch.tsx` (handoff §4.6, `role="switch"`, `aria-checked`) and use it
+for the workflow enable toggle in `workflows-panel.tsx:377`, and for the inspector toggles in
+`step-detail.tsx`. Apply C11. React Flow `Background`, `Controls`, `MiniMap` use tokens (`workflow-editor.tsx:842`
+already uses one). Trigger summaries use `describeCronExpression`; `variable-autocomplete.tsx`
+migrates to `use-click-outside`. `workflow-editor.tsx` (914) and `step-detail.tsx` (812) must not grow; if the
+restyle cannot fit, split by responsibility before restyling, in its own commit.
+
+### Phase 8 — Backend data (§3) and client hooks
+
+Decided (D3): build both additions.
+
+**8.1 Mission spend.** Repository aggregate, service method, `spent_usd` on `MissionResponse`,
+`types/mission.ts` updated. Integration test against real Postgres: a mission with recorded LLM
+calls returns their sum; a mission with none returns 0.0; the list endpoint issues one aggregate
+query.
+
+**8.2 Attention endpoint.** Move `AUTO_APPROVE_GATE_MODES` (§3.2). Change
+`list_pending_gate_requests` and `list_pending_human_input` to take mission-id lists and update
+their one caller each (§2.4). Add `TaskRepository.list_by_status_for_missions`. Then schema,
+service, endpoint,
+router registration, `ApiResponse` envelope, auth scoped to accessible missions. Integration
+tests: each `kind`; access scoping; and the existing per-mission gate and human-input endpoints
+still return what they did. `hooks/use-attention.ts` (new, ≤ 150 lines) is a TanStack Query
+passthrough. Inside a mission it is invalidated by the SSE events that already invalidate
+`planKeys.plan` and `['executions']` in `layout.tsx`. The Dashboard has no mission SSE stream,
+so the hook also polls, using the `refetchInterval` pattern from `use-executions.ts:38`, with
+the interval as a named constant in `lib/constants.ts` (no inline number).
+
+**8.3 Sidebar badge.** Add the per-mission pending count to `sidebar.tsx`.
+
+**8.4 Team member enable endpoint (§3.3).** Endpoint and schema. Integration tests against real
+Postgres: toggling off removes the member from `list_team(enabled_only=True)` (the roster
+input); toggling on restores it; a member id from another mission returns 404; a user without
+mission access is refused.
+
+Gates for this phase include `pytest tests/unit tests/integration` and
+`python scripts/code_rules_fast.py --all`.
+
+### Phase 9 — Login, Dashboard, New mission, Overview (handoff §6.0–§6.3)
+
+**9.1 Login.** Handoff §6.0 plus the theme toggle.
+**9.2 Dashboard.** Handoff §6.1. "Needs your attention" from `use-attention`, hidden when empty;
+the icon and tone per `kind` come from an `attentionTone` map in `lib/status-tone.ts`
+(`task_approval` and `gate` → brand `Check`; `human_input` → warning `User`; `retry` → danger
+`RotateCcw`). Ages use `formatRelative`. The card `⋯` menu uses `components/ui/menu.tsx`.
+Mission cards show `spent_usd` of `budget_ceiling_usd` and the progress bar only when a ceiling
+is set. The greeting summary counts come from data already loaded (missions, running executions,
+attention items) — counting is presentation; no other derivation. Archive and Delete move into a
+hover `⋯` menu, keeping the existing confirmation dialog.
+**9.3 New mission.** Handoff §6.2 with C27. Keep the existing validation and fields.
+**9.4 Overview.** Handoff §6.3. Brief via `InlineBrief` (C8). Active run card reuses
+`components/mission/active-run-card.tsx`. `overview.tsx` (678) must not grow.
+
+### Phase 10 — Mission secondary screens (handoff §6.10–§6.16)
+
+One commit each: **10.1** Team (C26): use `components/ui/switch.tsx` (built in Phase 7); add
+`useToggleTeamMember` to `hooks/use-team.ts`, calling
+the §3.3 endpoint and invalidating `teamKeys.all`; the Team page fetches with
+`enabled_only=false` through a new optional argument on `useTeam` (part of the query key, so
+enabled-only callers such as the chat roster keep their cached list unchanged); disabled cards
+render at `opacity-60`. **10.2** Narrative (C33), **10.3** Context (C22; the size bar uses `Progress`),
+**10.4** Knowledge (C24, `FilterChip`), **10.5** Artifacts (C23), **10.6** Console
+(`consoleCategoryTone`, `Segmented` replacing `FilterBar`'s category tabs), **10.7** Costs
+(C19, C20, `Segmented` replacing the timeframe buttons). `team.tsx` (535), `console.tsx` (677), `narrative-tab.tsx` (494) and
+`knowledge-tab.tsx` (350) must not grow.
+
+### Phase 11 — Catalog, Admin, Profile, Not found (handoff §6.17–§6.20)
+
+**11.1** Catalog. **11.2** Admin layout and pages (`pages/admin/*`; the catalog agent toggle at
+`pages/admin/catalog.tsx:76` uses `Switch`; `pages/admin/catalog.tsx` is
+685 lines and must not grow). **11.3** Profile, including the theme `Segmented` bound to the
+theme store. **11.4** Not found.
+
+### Phase 12 — QA sweep
+
+Run every gate in §6 across the whole of `src/`, not just touched files. Fix every finding.
+Walk the behaviour-parity list in §6.4 in both themes. Update `docs/01-overview/` only where a
+screen description is now wrong. Rename this file with the `-[X]` suffix and set Status.
+
+---
+
+## 5. Out of Scope
+
+- ⌘K command palette and the sidebar search trigger (C31).
+- Tab-bar navigation option (C32).
+- `light-neutral` theme; server-side theme persistence.
+- Layouts below 768px.
+- Splitting existing files that exceed doc 23 limits, except where a phase says so.
+- Frontend test framework and frontend CI job (D2: decided against).
+
+---
+
+## 6. Verification Gates
+
+### 6.1 Every commit
+
+1. `cd modules/frontend && npm run build` succeeds.
+2. `cd modules/frontend && npm run lint` exits 0 (no warnings).
+3. Colour gate, run on files touched by the commit — no output:
+   `grep -nE "(slate|zinc|gray|red|green|blue|yellow|amber|emerald|orange|purple|violet|rose|sky|cyan)-[0-9]{2,3}|#[0-9a-fA-F]{3,8}\b|rgba?\(" <files>`
+4. Undefined-class gate: enforced by `tailwindcss/no-custom-classname` inside gate 2 (D8).
+   Classes built dynamically (template strings) are invisible to the rule, so token classes
+   are written as whole literals or selected from maps of whole literals (as `status-tone`
+   does) — never assembled from fragments such as `` `bg-${tone}/10` ``.
+5. Layout gate on touched workspace files: no full-height `border-l`/`border-r` (sidebar edge
+   excepted) and no `border-b` header strips.
+6. Size gate: new files within doc 23 limits; touched files not larger than before.
+
+### 6.2 Visual check
+
+For each screen the commit touches: compare against the matching `data-screen-label` in the
+reference, in **both** themes, at 1024, 1280, 1440 and 1920 px widths. Responsive rules from
+handoff §10 Layout apply (roster hides < 960, outputs < 1200, palette < 1100, inspector < 960,
+history < 960, Runs table scrolls horizontally, plan pill shortens < 1100).
+
+### 6.3 Backend commits (Phase 8)
+
+`pytest tests/unit -q` and `pytest tests/integration -q` pass;
+`python scripts/code_rules_fast.py --all` reports no new error or warning.
+
+### 6.4 Behaviour parity (run at the end of Phases 3, 5, 7 and 12)
+
+All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
+from card and panel hit the same mutations; drag-and-drop works; chat threads, slash commands and
+⌘↵ work; RunModal, MissionSettingsDrawer, NotificationDropdown and every RightDrawer panel open;
+workflow editor drag, connect, select, save, run and schedule work.
+
+---
+
+## 7. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Global font-size and radius change (C10) breaks layouts on screens restyled late | Phase 1 checks every route; any breakage is fixed in Phase 1, not deferred. |
+| Renames ripple widely: `Card` → `Panel` (16 files), button `outline` → `secondary` (63 call sites), Badge states → `StatusPill` (41 files) | Phases 2.3 and 2.4 each migrate in one commit; `tsc` fails on any missed import or variant, and a grep confirms no `outline` variant or `ui/card` import remains. |
+| Large files grow during restyle | Size gate 6.1.6 on every commit. |
+| No automated frontend tests, so regressions rely on manual checks | §6.4 parity list at fixed points. D2 decided against frontend CI, so local build and lint are the only automated checks. |
+| Removing `layout.tsx` header loses actions | Phase 3.3 done criteria: every former header action is reachable. |
+
+---
+
+## 8. Decisions Needed (ask the owner one at a time before the phase that needs it)
+
+| # | Decision | Needed before | Recommendation |
+|---|---|---|---|
+| D1 | Theme default when nothing is stored: system preference (doc 23) or always dark (handoff) | Phase 1.2 | **Decided 2026-10-16:** system preference. |
+| D2 | Add a frontend CI job (`npm ci`, `npm run build`, `npm run lint`) and a Playwright screenshot pass per screen in both themes (doc 22 names Playwright) | Phase 1 | **Decided 2026-10-16:** no CI change. Build and lint run locally before every commit (§6.1); nothing server-side checks the frontend. |
+| D3 | Build the two backend endpoints (§3) or drop the attention panel and spend bars | Phase 8 | **Decided 2026-10-16:** build both. |
+| D4 | Omit the ⌘K search trigger until a palette exists | Phase 3.2 | **Decided 2026-10-16:** omit. |
+| D5 | Drop the optional tab-bar navigation style | Phase 3.2 | **Decided 2026-10-16:** drop. |
+| D6 | Team enable/disable: read-only now, or add a backend `PATCH` and a `Switch` | Phase 10.1 | **Decided 2026-10-16:** build the switch (§3.3, Phases 8.4 and 10.1). |
+| D7 | Definition of "spent" against the mission budget: `llm_calls` total (what the Costs tab shows) or `execution_records` total (what the Platform Director's cost tool uses). Budget enforcement itself is per plan (`MissionPlan` budget ceiling seeded from the mission ceiling in `services/mission_plan.py:137`), so neither figure is the enforced one | Phase 8.1 | **Decided 2026-10-16:** `llm_calls`, so Dashboard, Overview and Costs show one number. |
+| D8 | Add `eslint-plugin-tailwindcss` with `no-custom-classname`, so undefined classes fail `npm run lint` instead of needing gate 6.1.4 by hand | Phase 1.1 | **Decided 2026-10-16:** add it (Phase 1.1). |
