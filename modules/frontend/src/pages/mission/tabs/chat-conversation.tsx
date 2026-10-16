@@ -54,7 +54,7 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
   const [slashFilter, setSlashFilter] = useState<string | null>(null)
   const [slashIndex, setSlashIndex] = useState(0)
   const { data: agentDetail } = useCatalogAgent(targetAgent)
-  const agentTools: string[] = agentDetail?.tools ?? []
+  const agentTools = useMemo<string[]>(() => agentDetail?.tools ?? [], [agentDetail])
   // Pre-filtered tool list — single computation point used by both the
   // popover and the keyboard handler so they always agree on what's visible.
   const filteredTools = useMemo(() => {

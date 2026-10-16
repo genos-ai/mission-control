@@ -42,13 +42,6 @@ export interface Edge {
   state: 'grey' | 'amber' | 'green' | 'failed'
 }
 
-export interface VetoState {
-  /** Whole seconds remaining until the window expires. 0 when expired. */
-  remainingSec: number
-  /** True once the timestamp has passed — veto is no longer available. */
-  expired: boolean
-}
-
 // ── Constants ─────────────────────────────────────────────────────────────
 
 export const COLUMN_DEFS: ColumnDef[] = [
