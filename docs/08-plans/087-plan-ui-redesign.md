@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** Not started
+**Status:** In progress — Phases 0, 1.1, 1.2 complete (2026-10-18)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -108,7 +108,7 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C9 | §6 uses `bg-active` (§6.4), `border-border-x` (§6.2), `border-border-card` and `border-row` (§6.6) | None of these is defined in handoff §2.2 | Map: `bg-active` → `bg-sidebar-active`; `border-border-x` → `border-border-strong`; `border-border-card` → `border-panel-border`; `border-row` → `border-border/60`. |
 | C10 | PR1 "app keeps working, just recolours" | §2.2 replaces the global `fontSize` scale (`sm` 14→12.5px, `lg` 18→15px, `2xl` 24→22px) and `borderRadius` (`sm`, `md`); `CardTitle` changes size in §4.3 | Phase 1 resizes and re-rounds every screen. Its verification is a visual check of all routes, not just colour. |
 | C11 | §10 QA bans `#[0-9a-f]{6}`, but §6.9 keeps per-type workflow colours from `workflow-editor-types.ts` | That file holds 44 hard-coded colour occurrences | Convert workflow step-type colours to the semantic tones (`brand`, `info`, `warning`, `success`, `danger`, `violet`, `neutral`). No exemption. |
-| C12 | §3 defaults theme to `dark`; reads `localStorage` with `\|\| 'dark'` and `as Theme` | Doc 23: "Respect system preference by default". Constraint 7 forbids the cast fallback | Default to `prefers-color-scheme` (`dark` → `dark`, else `warm-white`) when nothing valid is stored. Validate stored values against the theme list; remove invalid ones. Decided (D1). |
+| C12 | §3 defaults theme to `dark`; reads `localStorage` with `\|\| 'dark'` and `as Theme` | Doc 23: "Respect system preference by default". Constraint 7 forbids the cast fallback | Default to `prefers-color-scheme` (`dark` → `dark`, else `warm-white`) when nothing valid is stored, effective from Phase 12 (D1 re-timed: `dark` until then). Validate stored values against the theme list; remove invalid ones. Decided (D1). |
 | C13 | §4.2 restyles `Badge` `default` + `outline` only | `badge.tsx` has `default`, `secondary`, `destructive`, `outline`, `success`, `warning`; `success`/`warning` use `emerald-500`/`amber-500`; 57 files import `Card` or `Badge` | In the same commit as the restyle, every state usage moves to `StatusPill`, and every remaining variant gets a token-based style. No variant may be left using palette classes. |
 | C14 | §7 is "the single source" for colour maps | Colour maps and colour functions exist in `components/workspace/plan-board-types.ts` (`AGENT_DOMAIN_COLORS`, `getAgentDomainClass`, `getAgentBadgeClass`, the task-border function above them, and `edgeColor`, which returns `rgb()` literals), `components/workspace/plan-board-task-card.tsx` (`StatusIcon`), `pages/mission/tabs/chat-constants.ts` (`AGENT_ICONS`, `getAgentIcon`), `pages/mission/tabs/knowledge-tab.tsx` (`KIND_CONFIG`), `pages/mission/layout.tsx` (`STATUS_VARIANT`), `pages/mission/console.tsx`, `lib/event-utils.ts`, `components/workflow/workflow-editor-types.ts` | Create `lib/status-tone.ts` (statuses) and `lib/agent-tone.ts` (agent → icon + tone). `agent-tone` keeps today's resolution rule from `getAgentDomainClass` (first `.`-segment of the agent name) and today's fallback from `getAgentIcon` (`Bot`, `neutral`). Every function and map listed here is deleted once its callers use the new modules. One map per concept. |
 | C34 | §4.5 `IconTile` tone `bg-{tone}/12`; §6.5 running bar `bg-warning/12` | Installed Tailwind is 3.4.19; its opacity scale is multiples of 5, so `/12` is not a class (and `bg-{tone}` built from a template is invisible to Tailwind and to the D8 lint rule) | Use `/10`. `IconTile` selects from a map of whole class literals per tone. |
@@ -263,16 +263,24 @@ Each sub-phase is one commit. Each commit passes every gate in §6 before it is 
   check every route.
 
 **1.2 Theme switching.**
-- `src/stores/theme.ts` (new): `Theme = 'dark' | 'warm-white'`, `THEMES` constant, storage key
-  `mc.theme`. Initial value: a stored value if it is in `THEMES`; otherwise remove the stored
-  value and use `prefers-color-scheme` (C12). Wrap `localStorage` access in try/catch; on
-  failure use the system preference and send one report through `reportError`, exported from
-  `components/error-boundary.tsx` (§2.4).
-- `index.html`: remove `class="dark"`; add the boot script from handoff §3.2 with the same
-  validation and system-preference default (decided, D1), so there is no flash.
+- `index.html` boot script is the single place the initial theme is validated and applied
+  (it must run before first paint). A stored value that is not a known theme is removed. When
+  nothing valid is stored the default applies. Per D1 as re-timed below, the default is `dark`
+  until Phase 12, which replaces it with the `prefers-color-scheme` result (`dark` OS → `dark`,
+  otherwise `warm-white`). If `localStorage` is unreadable it sets `window.__mcThemeStorageError`.
+- `src/stores/theme.ts` (new): `Theme = 'dark' | 'warm-white'`, `THEMES`, storage key
+  `mc.theme`. It reads the applied class from `<html>` instead of resolving the theme a second
+  time, and throws at start-up if no theme class is present (boot script missing or out of
+  sync). `setTheme` applies the class, persists, and reports a write failure through
+  `reportError`, exported from `components/error-boundary.tsx` (§2.4). Reads the boot error
+  once and reports it.
 - `App.tsx` Toaster: handoff §3.4 classes.
 - The toggle button itself ships with the sidebar footer (Phase 3.2) and Login (Phase 9.1).
-- Done when reload keeps the chosen theme and an invalid stored value is replaced.
+  Until then the store has no importer by design.
+- Done when reload keeps the chosen theme and an invalid stored value is replaced. Verified by
+  a 12-case browser test run against the dev server (default, persisted theme, invalid value
+  removed, class set before DOMContentLoaded, toggle/setTheme, storage unreadable reported once,
+  store fails fast without the boot script).
 
 ### Phase 2 — UI primitives (handoff §4)
 
@@ -558,7 +566,7 @@ workflow editor drag, connect, select, save, run and schedule work.
 
 | # | Decision | Needed before | Recommendation |
 |---|---|---|---|
-| D1 | Theme default when nothing is stored: system preference (doc 23) or always dark (handoff) | Phase 1.2 | **Decided 2026-10-16:** system preference. |
+| D1 | Theme default when nothing is stored: system preference (doc 23) or always dark (handoff) | Phase 1.2 | **Decided 2026-10-16:** system preference. **Re-timed 2026-10-18:** the default stays `dark` until every screen is migrated, because several screens still use dark-designed colour classes that are unreadable in warm-white (confirmed by the Phase 1.1 visual review); Phase 12 switches it to system preference. The stored choice, validation and toggle work from the start. |
 | D2 | Add a frontend CI job (`npm ci`, `npm run build`, `npm run lint`) and a Playwright screenshot pass per screen in both themes (doc 22 names Playwright) | Phase 1 | **Decided 2026-10-16:** no CI change. Build and lint run locally before every commit (§6.1); nothing server-side checks the frontend. |
 | D3 | Build the two backend endpoints (§3) or drop the attention panel and spend bars | Phase 8 | **Decided 2026-10-16:** build both. |
 | D4 | Omit the ⌘K search trigger until a palette exists | Phase 3.2 | **Decided 2026-10-16:** omit. |

@@ -8,3 +8,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface Window {
+  /** Set by the theme boot script in index.html when localStorage was unreadable. */
+  __mcThemeStorageError?: string
+}

@@ -1,10 +1,37 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mission Control</title>
+    <script>
+      // Resolves and applies the theme before first paint so there is no flash.
+      // THEMES and the storage key must match src/stores/theme.ts, which reads
+      // the class set here. A stored value that is not a known theme is removed.
+      // Plan 87 phase 12: replace DEFAULT with the prefers-color-scheme result
+      // (dark OS -> 'dark', otherwise 'warm-white').
+      (function () {
+        var THEMES = ['dark', 'warm-white'];
+        var KEY = 'mc.theme';
+        var DEFAULT = 'dark';
+        var theme = DEFAULT;
+        try {
+          var stored = localStorage.getItem(KEY);
+          if (stored !== null) {
+            if (THEMES.indexOf(stored) === -1) {
+              localStorage.removeItem(KEY);
+            } else {
+              theme = stored;
+            }
+          }
+        } catch (err) {
+          // Handed to the theme store, which reports it through the client error endpoint.
+          window.__mcThemeStorageError = String(err);
+        }
+        document.documentElement.classList.add(theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

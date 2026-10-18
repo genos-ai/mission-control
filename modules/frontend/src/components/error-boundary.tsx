@@ -10,7 +10,7 @@ interface State {
   error: Error | null
 }
 
-function reportError(payload: {
+export function reportError(payload: {
   message: string
   stack?: string
   component_stack?: string

@@ -113,7 +113,7 @@ export default function App() {
       <Toaster
         position="bottom-right"
         toastOptions={{
-          className: 'bg-card text-card-foreground border shadow-lg',
+          className: 'bg-panel text-foreground border border-panel-border rounded-card shadow-lg text-sm',
           duration: 8000,
         }}
       />
