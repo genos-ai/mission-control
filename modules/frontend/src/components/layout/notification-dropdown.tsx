@@ -1,96 +1,84 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Bell } from 'lucide-react'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { StatusPill } from '@/components/ui/status-pill'
+import { useClickOutside } from '@/hooks/use-click-outside'
+import { cn } from '@/lib/cn'
 import { formatUtc } from '@/lib/format-date'
 import { useNotificationStore } from '@/stores/notifications'
-import { Badge } from '@/components/ui/badge'
-import { StatusPill } from '@/components/ui/status-pill'
-import { Button } from '@/components/ui/button'
 
 export function NotificationDropdown() {
-  const { notifications, unreadCount, markRead, markAllRead } =
-    useNotificationStore()
+  const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  // Close on click outside
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+  useClickOutside(ref, () => setOpen(false), open)
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    <div
+      ref={ref}
+      className="relative"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setOpen(false)
+      }}
+    >
+      <Button
+        variant="ghost"
+        size="icon"
+        className="relative"
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-[15px] w-[15px]" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
+          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-brand ring-[1.5px] ring-sidebar" />
         )}
-      </button>
+      </Button>
 
       {open && (
-        <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 w-80 rounded-lg border bg-card shadow-lg">
-          <div className="flex items-center justify-between border-b px-3 py-2">
-            <span className="text-sm font-semibold">Notifications</span>
+        <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-card border border-panel-border bg-popover shadow-lg">
+          <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
+            <span className="text-sm font-medium">Notifications</span>
             {unreadCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs"
-                onClick={markAllRead}
-              >
+              <Button variant="ghost" size="sm" onClick={markAllRead}>
                 Mark all read
               </Button>
             )}
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto pb-1">
             {notifications.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                No notifications
-              </p>
+              <p className="py-8 text-center text-sm text-subtle">No notifications</p>
             ) : (
-              notifications.slice(0, 20).map((n) => (
-                <button
-                  key={n.id}
-                  className={`flex w-full flex-col gap-0.5 border-b px-3 py-2 text-left transition-colors hover:bg-accent last:border-b-0 ${
-                    !n.read ? 'bg-primary/5' : ''
-                  }`}
-                  onClick={() => {
-                    markRead(n.id)
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{n.title}</span>
-                    {n.type === 'run_failed' || n.type === 'gate_approval' ? (
-                      <StatusPill
-                        tone={n.type === 'run_failed' ? 'danger' : 'warning'}
-                        dot={false}
-                      >
-                        {n.type.replace(/_/g, ' ')}
-                      </StatusPill>
-                    ) : (
-                      <Badge>{n.type.replace(/_/g, ' ')}</Badge>
+              <div className="divide-y divide-border/60">
+                {notifications.slice(0, 20).map((n) => (
+                  <button
+                    key={n.id}
+                    className={cn(
+                      'flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors duration-150 hover:bg-hover',
+                      !n.read && 'bg-brand/5',
                     )}
-                  </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2">
-                    {n.body}
-                  </p>
-                  <span className="text-[10px] text-muted-foreground">
-                    {formatUtc(n.created_at)}
-                  </span>
-                </button>
-              ))
+                    onClick={() => markRead(n.id)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{n.title}</span>
+                      {n.type === 'run_failed' || n.type === 'gate_approval' ? (
+                        <StatusPill tone={n.type === 'run_failed' ? 'danger' : 'warning'} dot={false}>
+                          {n.type.replace(/_/g, ' ')}
+                        </StatusPill>
+                      ) : (
+                        <Badge>{n.type.replace(/_/g, ' ')}</Badge>
+                      )}
+                    </div>
+                    <p className="line-clamp-2 text-xs text-muted-foreground">{n.body}</p>
+                    <span className="font-mono text-2xs text-subtle">{formatUtc(n.created_at)}</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>

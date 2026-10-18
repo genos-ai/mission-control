@@ -14,17 +14,22 @@ const MONTHS = [
 ]
 
 /**
+ * Parse a backend timestamp. Backend timestamps are UTC but may lack the Z
+ * suffix; append it when missing so the browser reads them as UTC and converts
+ * to local time correctly. An unparseable string yields an Invalid Date.
+ */
+export function parseUtc(value: string | Date): Date {
+  if (typeof value !== 'string') return value
+  return new Date(value.endsWith('Z') || value.includes('+') ? value : value + 'Z')
+}
+
+/**
  * Format a timestamp as "MMM d HH:mm" in the user's local timezone.
  * Input: ISO string or Date from the backend (always UTC).
  */
 export function formatUtc(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  // Backend timestamps are UTC but may lack the Z suffix.
-  // Append Z if missing so the browser converts to local time correctly.
-  const raw = typeof value === 'string'
-    ? (value.endsWith('Z') || value.includes('+') ? value : value + 'Z')
-    : value
-  const d = typeof raw === 'string' ? new Date(raw) : raw
+  const d = parseUtc(value)
   if (isNaN(d.getTime())) return '—'
 
   const mon = MONTHS[d.getMonth()]
@@ -40,10 +45,7 @@ export function formatUtc(value: string | Date | null | undefined): string {
  */
 export function formatUtcTime(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  const raw = typeof value === 'string'
-    ? (value.endsWith('Z') || value.includes('+') ? value : value + 'Z')
-    : value
-  const d = typeof raw === 'string' ? new Date(raw) : raw
+  const d = parseUtc(value)
   if (isNaN(d.getTime())) return '—'
 
   const h = String(d.getHours()).padStart(2, '0')

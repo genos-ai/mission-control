@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1 complete (2026-10-18)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1, 3.2 complete (2026-10-18)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -358,7 +358,7 @@ surface, so elements not yet rebuilt as panels read as sunk — the mission head
 in 3.3), dashed empty-state and template boxes (Phase 7), and unselected filter chips and the intent
 callout (Phase 10.4). Text stays legible throughout.
 
-**3.2 Sidebar.** Rewrite per handoff §5.2 with C31 (no search box) and C32 (no tab option).
+**3.2 Sidebar (done).** Rewrite per handoff §5.2 with C31 (no search box) and C32 (no tab option).
 Split to stay under 300 lines: `sidebar.tsx` (frame, primary nav, missions list) and
 `sidebar-footer.tsx` (run indicator from `useExecutions({ status: 'running' })`, which today
 feeds `StatusBar`; user row with `Avatar`; `NotificationDropdown`, restyled and migrated to
@@ -366,6 +366,13 @@ feeds `StatusBar`; user row with `Avatar`; `NotificationDropdown`, restyled and 
 everywhere (the 48px rail is removed); inside a mission it shows the missions list, and the
 mission tab bar stays in the mission layout until 3.3. The per-mission pending badge waits for
 Phase 8 and is added in Phase 8.3.
+Built: the run indicator links to the longest-running run and shows its elapsed time; `parseUtc` was
+extracted into `lib/format-date.ts` (it replaced the same UTC-suffix fix copied into `formatUtc` and
+`formatUtcTime`). The notification popover is anchored `left-0` so it cannot clip off the screen
+edge in the narrower footer, and shows an unread dot instead of a count (handoff §5.2).
+Known effect, reviewed: inside a mission the sidebar is 236px (was a 48px rail), so the conversation
+column in Chat is narrower; Phase 4 must wrap long unbroken strings (URLs) in message bubbles
+(`overflow-wrap: anywhere`), which the narrower width exposed.
 
 **3.3 Top bar and mission layout.** `components/layout/sidebar-mission-nav.tsx` (grouped sub-nav
 for the active mission, from `lib/constants.ts`) arrives in this commit, together with the removal

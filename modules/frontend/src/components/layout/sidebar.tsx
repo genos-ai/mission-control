@@ -1,224 +1,91 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Plus,
-  BookOpen,
-  Shield,
-  Settings,
-  LogOut,
-} from 'lucide-react'
-import { NotificationDropdown } from './notification-dropdown'
+import { Link, useLocation } from 'react-router-dom'
+import { BookOpen, Home, Plus, Shield, type LucideIcon } from 'lucide-react'
+
+import { SidebarFooter } from './sidebar-footer'
 import { cn } from '@/lib/cn'
-import { useAuthStore } from '@/stores/auth'
-import { useMissions } from '@/hooks/use-missions'
 import { ROUTES } from '@/lib/constants'
+import { missionTone, type Tone } from '@/lib/status-tone'
+import { useMissions } from '@/hooks/use-missions'
+import { useAuthStore } from '@/stores/auth'
+import type { MissionStatus } from '@/types'
 
-export function Sidebar() {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const { user, isAdmin } = useAuthStore()
+// Whole class literals per tone (Tailwind cannot see assembled class names).
+const DOT_CLASS: Record<Tone, string> = {
+  success: 'bg-success',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+  info: 'bg-info',
+  brand: 'bg-brand',
+  violet: 'bg-violet',
+  neutral: 'bg-muted-foreground/35',
+}
 
-  const { data: missions } = useMissions()
+const ITEM_BASE =
+  'flex h-[30px] shrink-0 items-center gap-2.5 rounded-control px-2.5 text-base transition-colors duration-150'
 
-  const currentMissionId = user?.current_mission_id
+function itemClass(active: boolean) {
+  return cn(ITEM_BASE, active ? 'bg-sidebar-active text-foreground' : 'text-muted-foreground hover:text-foreground')
+}
 
-  const isActive = (path: string) => location.pathname === path
-  const isMissionActive = (id: string) =>
-    location.pathname.startsWith(`/missions/${id}`)
-
-  // Collapse to icon rail inside any mission workspace
-  const isMissionRoute =
-    /^\/missions\/[^/]+/.test(location.pathname) &&
-    !location.pathname.startsWith('/missions/new')
-
-  if (isMissionRoute) {
-    return (
-      <aside className="flex h-full w-12 shrink-0 flex-col items-center border-r bg-card py-3">
-        <Link
-          to={ROUTES.DASHBOARD}
-          className="mb-4 flex h-8 w-8 items-center justify-center rounded-md text-[10px] font-bold tracking-tight hover:bg-accent"
-          title="Dashboard"
-        >
-          MC
-        </Link>
-        <Link
-          to={ROUTES.CATALOG}
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
-            isActive(ROUTES.CATALOG) && 'bg-accent text-foreground',
-          )}
-          title="Catalog"
-        >
-          <BookOpen className="h-4 w-4" />
-        </Link>
-        {isAdmin && (
-          <Link
-            to={ROUTES.ADMIN}
-            className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
-              location.pathname.startsWith(ROUTES.ADMIN) && 'bg-accent text-foreground',
-            )}
-            title="Admin"
-          >
-            <Shield className="h-4 w-4" />
-          </Link>
-        )}
-        <div className="flex-1" />
-        <button
-          onClick={() => navigate(ROUTES.PROFILE)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Settings"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            useAuthStore.getState().logout()
-            navigate(ROUTES.LOGIN)
-          }}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive"
-          title="Logout"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
-      </aside>
-    )
-  }
-
+function NavItem({ to, icon: Icon, label, active }: { to: string; icon: LucideIcon; label: string; active: boolean }) {
   return (
-    <aside className="flex h-full w-60 flex-col border-r bg-card">
-      {/* Logo */}
-      <div className="flex h-14 items-center px-4">
-        <Link to={ROUTES.DASHBOARD} className="text-lg font-bold tracking-tight">
-          MISSION CONTROL
-        </Link>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2">
-        <SidebarLink
-          to={ROUTES.DASHBOARD}
-          icon={<LayoutDashboard className="h-4 w-4" />}
-          label="Dashboard"
-          active={isActive(ROUTES.DASHBOARD)}
-        />
-
-        <div className="mt-6 mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Missions
-        </div>
-
-        {missions?.map((mission) => (
-          <button
-            key={mission.id}
-            onClick={() => navigate(ROUTES.MISSION(mission.id))}
-            className={cn(
-              'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent',
-              isMissionActive(mission.id) && 'bg-accent text-accent-foreground',
-            )}
-          >
-            <span
-              className={cn(
-                'h-2 w-2 rounded-full',
-                isMissionActive(mission.id)
-                  ? 'bg-primary'
-                  : currentMissionId === mission.id
-                    ? 'bg-primary/50'
-                    : 'bg-muted-foreground/30',
-              )}
-            />
-            <span className="truncate">{mission.name}</span>
-          </button>
-        ))}
-
-        <button
-          onClick={() => navigate('/missions/new')}
-          className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-        >
-          <Plus className="h-4 w-4" />
-          New Mission
-        </button>
-
-        <div className="mt-6 mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Platform
-        </div>
-
-        <SidebarLink
-          to={ROUTES.CATALOG}
-          icon={<BookOpen className="h-4 w-4" />}
-          label="Catalog"
-          active={isActive(ROUTES.CATALOG)}
-        />
-
-        {isAdmin && (
-          <SidebarLink
-            to={ROUTES.ADMIN}
-            icon={<Shield className="h-4 w-4" />}
-            label="Admin"
-            active={location.pathname.startsWith(ROUTES.ADMIN)}
-          />
-        )}
-      </nav>
-
-      {/* Footer */}
-      <div className="border-t p-3">
-        {user && (
-          <div className="mb-2 flex items-center gap-2 px-1">
-            <div className="flex-1 truncate">
-              <p className="truncate text-xs font-medium">{user.display_name || user.email}</p>
-              <p className="text-[10px] text-muted-foreground">
-                {isAdmin ? 'Admin' : 'User'}
-              </p>
-            </div>
-          </div>
-        )}
-        <div className="flex items-center justify-around">
-          <button
-            onClick={() => navigate(ROUTES.PROFILE)}
-            className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-
-          <NotificationDropdown />
-
-          <button
-            onClick={() => {
-              useAuthStore.getState().logout()
-              navigate(ROUTES.LOGIN)
-            }}
-            className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-destructive"
-            title="Logout"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </aside>
+    <Link to={to} className={itemClass(active)}>
+      <Icon className="h-[15px] w-[15px]" strokeWidth={1.75} />
+      {label}
+    </Link>
   )
 }
 
-function SidebarLink({
-  to,
-  icon,
-  label,
-  active,
-}: {
-  to: string
-  icon: React.ReactNode
-  label: string
-  active: boolean
-}) {
+export function Sidebar() {
+  const { pathname } = useLocation()
+  const isAdmin = useAuthStore((s) => s.isAdmin)
+  const { data: missions } = useMissions()
+
   return (
-    <Link
-      to={to}
-      className={cn(
-        'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent',
-        active && 'bg-accent text-accent-foreground font-medium',
-      )}
-    >
-      {icon}
-      {label}
-    </Link>
+    <aside className="flex h-full w-[236px] shrink-0 flex-col border-r border-border bg-sidebar">
+      <Link to={ROUTES.DASHBOARD} className="flex h-[52px] shrink-0 items-center gap-2.5 px-3.5">
+        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-primary font-mono text-[8.5px] font-semibold text-primary-foreground">
+          MC
+        </span>
+        <span className="text-md font-semibold tracking-tight">Mission Control</span>
+      </Link>
+
+      <nav className="flex flex-1 flex-col gap-px overflow-y-auto overflow-x-hidden px-2.5 pb-3 pt-1.5">
+        <NavItem to={ROUTES.DASHBOARD} icon={Home} label="Home" active={pathname === ROUTES.DASHBOARD} />
+        <NavItem to={ROUTES.CATALOG} icon={BookOpen} label="Catalog" active={pathname.startsWith(ROUTES.CATALOG)} />
+        {isAdmin && (
+          <NavItem to={ROUTES.ADMIN} icon={Shield} label="Admin" active={pathname.startsWith(ROUTES.ADMIN)} />
+        )}
+
+        <div className="flex items-center justify-between px-2.5 pb-1.5 pt-[18px] text-xs font-medium text-subtle">
+          Missions
+          <Link
+            to="/missions/new"
+            aria-label="New mission"
+            title="New mission"
+            className="rounded-chip p-0.5 transition-colors duration-150 hover:bg-raised hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        {missions?.map((mission) => {
+          const active = pathname.startsWith(`/missions/${mission.id}`)
+          return (
+            <Link key={mission.id} to={ROUTES.MISSION(mission.id)} className={itemClass(active)}>
+              <span
+                className={cn(
+                  'h-[7px] w-[7px] shrink-0 rounded-full',
+                  DOT_CLASS[missionTone[mission.status as MissionStatus].tone],
+                )}
+              />
+              <span className="truncate">{mission.name}</span>
+            </Link>
+          )
+        })}
+      </nav>
+
+      <SidebarFooter />
+    </aside>
   )
 }
