@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1, 2.2, 2.3, 2.4 complete (2026-10-18)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1 complete (2026-10-18)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -346,19 +346,31 @@ label badges in the warm-white console are faint on its fixed dark scrim (Phase 
 
 ### Phase 3 — Shell (handoff §5)
 
-**3.1 AppShell.** Handoff §5.1 layout, keeping `RightDrawer` (C5): it renders as a right Panel
-inside the gutter (`rounded-panel bg-panel border border-panel-border`), not a full-height
-`border-l` strip. Delete `status-bar.tsx` and its import.
+**3.1 AppShell (done).** Handoff §5.1 layout, keeping `RightDrawer` (C5): it renders as a right
+Panel inside the gutter (`rounded-panel bg-panel border border-panel-border`, 400px, 8px inset),
+not a full-height `border-l` strip. `main` stays a scrolling column on the `bg-well` surface until
+every page has its own top bar and scroll container (the shell's `overflow-y-auto` is removed in
+Phase 12 once the last page is migrated; `TopBar` is `sticky` so it works either way).
+`StatusBar` stays in this commit and is deleted in 3.2, in the commit that moves its run indicator
+into the sidebar footer, so the indicator is never missing.
+Known transitional effect (reviewed, accepted): in warm-white the well is darker than the old page
+surface, so elements not yet rebuilt as panels read as sunk — the mission header and tab bar (replaced
+in 3.3), dashed empty-state and template boxes (Phase 7), and unselected filter chips and the intent
+callout (Phase 10.4). Text stays legible throughout.
 
 **3.2 Sidebar.** Rewrite per handoff §5.2 with C31 (no search box) and C32 (no tab option).
-Split to stay under 300 lines: `sidebar.tsx` (frame, primary nav, missions list),
-`sidebar-mission-nav.tsx` (grouped sub-nav for the active mission, from `lib/constants.ts`),
+Split to stay under 300 lines: `sidebar.tsx` (frame, primary nav, missions list) and
 `sidebar-footer.tsx` (run indicator from `useExecutions({ status: 'running' })`, which today
 feeds `StatusBar`; user row with `Avatar`; `NotificationDropdown`, restyled and migrated to
-`use-click-outside`; theme toggle; log-out). The per-mission pending badge waits for Phase 8
-and is added in Phase 8.3.
+`use-click-outside`; theme toggle; log-out). Delete `StatusBar` here. The sidebar is the same 236px
+everywhere (the 48px rail is removed); inside a mission it shows the missions list, and the
+mission tab bar stays in the mission layout until 3.3. The per-mission pending badge waits for
+Phase 8 and is added in Phase 8.3.
 
-**3.3 Top bar and mission layout.** `components/layout/top-bar.tsx` (new) per handoff §5.3.
+**3.3 Top bar and mission layout.** `components/layout/sidebar-mission-nav.tsx` (grouped sub-nav
+for the active mission, from `lib/constants.ts`) arrives in this commit, together with the removal
+of the tab bar, so there is never both or neither. `components/layout/top-bar.tsx` (new) per
+handoff §5.3.
 It is generic: props are `segments: { label, to? }[]`, an optional `status` node and an
 `actions` node. It contains no mission logic, so Dashboard, Catalog, Admin and mission pages
 all use it. In `pages/mission/layout.tsx`: remove the header and tab bar, render `TopBar`, keep

@@ -5,11 +5,12 @@ import { RightDrawer } from './right-drawer'
 
 export function AppShell() {
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-screen min-h-[640px] flex-col bg-background text-foreground">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
-        <div className="flex flex-1 overflow-hidden">
-          <main className="flex-1 overflow-y-auto">
+        {/* The well: floating panels sit on this darker surface. */}
+        <div className="flex min-w-0 flex-1 overflow-hidden bg-well">
+          <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
             <Outlet />
           </main>
           <RightDrawer />
