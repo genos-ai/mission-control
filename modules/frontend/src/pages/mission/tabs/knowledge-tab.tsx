@@ -125,7 +125,7 @@ export default function KnowledgeTab() {
                       {intents.length - i}
                     </span>
                     <span className="flex-1 truncate">{rev.intent_summary}</span>
-                    <Badge variant="secondary" className="text-[9px] shrink-0">
+                    <Badge className="shrink-0">
                       {SOURCE_LABELS[rev.source] ?? rev.source}
                     </Badge>
                     <span className="text-muted-foreground/40 shrink-0">
@@ -241,7 +241,7 @@ function CollapsibleSection({
         <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
         <span className="text-sm font-semibold">{title}</span>
         {badge && (
-          <Badge variant="secondary" className="text-[10px]">{badge}</Badge>
+          <Badge>{badge}</Badge>
         )}
         {headerRight && (
           <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
@@ -285,7 +285,7 @@ function LearningCard({ learning }: { learning: MissionLearning }) {
             )}
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="secondary" className="text-[10px]">{cfg.label}</Badge>
+            <Badge>{cfg.label}</Badge>
             <span>conf: {(learning.confidence * 100).toFixed(0)}%</span>
             <span>&middot; {learning.occurrence_count}x</span>
           </div>
@@ -307,7 +307,7 @@ function LearningCard({ learning }: { learning: MissionLearning }) {
           {learning.domain_tags.length > 0 && (
             <div className="flex gap-1 flex-wrap">
               {learning.domain_tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
+                <Badge key={tag} variant="outline">{tag}</Badge>
               ))}
             </div>
           )}

@@ -22,6 +22,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
@@ -195,31 +196,26 @@ function TeamMemberCard({
           <>
             <div className="flex items-center gap-2 flex-wrap">
               {agent?.agent_type && (
-                <Badge variant="secondary" className="text-[11px]">
+                <Badge>
                   {agent.agent_type}
                 </Badge>
               )}
-              <Badge
-                variant={member.enabled ? 'success' : 'outline'}
-                className="text-[11px]"
-              >
+              <StatusPill tone={member.enabled ? 'success' : 'neutral'}>
                 {member.enabled ? 'Active' : 'Disabled'}
-              </Badge>
+              </StatusPill>
               {agent?.model?.name && modelProvider(agent.model.name) && (
-                <Badge variant="outline" className="text-[11px]" title={agent.model.name}>
+                <Badge variant="outline" title={agent.model.name}>
                   {modelProvider(agent.model.name)}
                 </Badge>
               )}
               {agent?.model?.name && (
-                <Badge variant="outline" className="text-[11px] gap-1" title={agent.model.name}>
+                <Badge variant="outline" className="gap-1" title={agent.model.name}>
                   <Cpu className="h-2.5 w-2.5" />
                   {modelLabel(agent.model.name)}
                 </Badge>
               )}
               {agent?.engine && agent.engine !== 'pydantic_ai' && (
-                <Badge variant="outline" className="text-[11px] px-1.5 py-0 border-green-500/40 text-green-400">
-                  {agent.engine.replace('_', ' ')}
-                </Badge>
+                <Badge variant="outline">{agent.engine.replace('_', ' ')}</Badge>
               )}
             </div>
             <div className="flex items-center gap-1">
@@ -295,7 +291,7 @@ function TeamMemberCard({
                   <ConfigRow icon={<Wrench className="h-3 w-3" />} label="Tools">
                     <div className="flex flex-wrap gap-1">
                       {agent.tools.map((t) => (
-                        <Badge key={t} variant="secondary" className="text-[10px] font-mono">
+                        <Badge key={t} className="font-mono">
                           {t}
                         </Badge>
                       ))}
@@ -493,12 +489,12 @@ function ConstraintsEditor({
           {Object.keys(constraints).length > 0 ? (
             <span className="flex flex-wrap gap-2">
               {constraints.depth ? (
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline">
                   depth: {String(constraints.depth)}
                 </Badge>
               ) : null}
               {Array.isArray(constraints.include_domains) && constraints.include_domains.length > 0 ? (
-                <Badge variant="outline" className="text-[10px] font-mono">
+                <Badge variant="outline" className="font-mono">
                   {(constraints.include_domains as string[]).join(', ')}
                 </Badge>
               ) : null}

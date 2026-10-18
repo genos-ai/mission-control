@@ -8,6 +8,7 @@ import { useExecution, useExecutionCost } from '@/hooks/use-executions'
 import { useResizable } from '@/hooks/use-resizable'
 import { OutputPreviewContent } from '@/components/drawer/output-preview-panel'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Spinner } from '@/components/ui/spinner'
 
 export type RunDetailView = {
@@ -126,18 +127,11 @@ function EventLogContent({ executionId }: { executionId: string }) {
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1">
-              <Badge
-                variant={
-                  ev.type === 'success'
-                    ? 'success'
-                    : ev.type === 'error'
-                      ? 'destructive'
-                      : 'secondary'
-                }
-                className="h-3.5 px-1 text-[9px]"
-              >
-                {ev.type}
-              </Badge>
+              {ev.type === 'success' || ev.type === 'error' ? (
+                <StatusPill tone={ev.type === 'success' ? 'success' : 'danger'}>{ev.type}</StatusPill>
+              ) : (
+                <Badge>{ev.type}</Badge>
+              )}
               <span className="truncate">{ev.label}</span>
             </div>
             {ev.detail && (

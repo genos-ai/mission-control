@@ -20,12 +20,6 @@ function modelLabel(name: string | undefined): string {
   return bare
 }
 
-const TYPE_COLORS: Record<string, 'default' | 'secondary' | 'warning'> = {
-  vertical: 'default',
-  horizontal: 'secondary',
-  system: 'warning',
-}
-
 export default function CatalogPage() {
   const { data: agents, isLoading } = useCatalog()
   const [search, setSearch] = useState('')
@@ -144,7 +138,7 @@ function CatalogCard({
       <PanelHeader
         title={agent.agent_name}
         actions={
-          <Badge variant={TYPE_COLORS[agent.agent_type] ?? 'secondary'}>
+          <Badge>
             {agent.agent_type}
           </Badge>
         }
@@ -179,7 +173,7 @@ function CatalogCard({
         {agent.keywords.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1">
             {agent.keywords.slice(0, 4).map((kw) => (
-              <Badge key={kw} variant="outline" className="text-[10px]">
+              <Badge key={kw} variant="outline">
                 {kw}
               </Badge>
             ))}

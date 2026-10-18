@@ -67,7 +67,7 @@ function AgentDetail({
       <div>
         <h3 className="text-lg font-semibold">{agent.agent_name}</h3>
         <div className="mt-1 flex items-center gap-2">
-          <Badge variant="secondary">{agent.agent_type}</Badge>
+          <Badge>{agent.agent_type}</Badge>
           <span className="text-xs text-muted-foreground">v{agent.version}</span>
         </div>
       </div>
@@ -81,7 +81,7 @@ function AgentDetail({
           </h4>
           <div className="flex flex-wrap gap-1">
             {agent.tools.map((t) => (
-              <Badge key={t} variant="outline" className="text-[10px]">
+              <Badge key={t} variant="outline">
                 {t}
               </Badge>
             ))}
@@ -96,7 +96,7 @@ function AgentDetail({
           </h4>
           <div className="flex flex-wrap gap-1">
             {agent.keywords.map((k) => (
-              <Badge key={k} variant="outline" className="text-[10px]">
+              <Badge key={k} variant="outline">
                 {k}
               </Badge>
             ))}
@@ -339,11 +339,11 @@ function CatalogPickCard({
           <span className="text-sm font-medium">{agent.agent_name}</span>
           <div className="flex items-center gap-1.5 shrink-0">
             {alreadyAdded && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline">
                 Added
               </Badge>
             )}
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge>
               {agent.agent_type}
             </Badge>
           </div>

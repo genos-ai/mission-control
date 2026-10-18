@@ -20,7 +20,8 @@ import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { useExecutions, useExecution } from '@/hooks/use-executions'
 import { Spinner } from '@/components/ui/spinner'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
+import { runTone, styleFor } from '@/lib/status-tone'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -220,18 +221,12 @@ export default function OverviewPage() {
                     }
                   >
                     <div className="flex items-center gap-2">
-                      <Badge
-                        variant={
-                          run.status === 'completed'
-                            ? 'success'
-                            : run.status === 'failed'
-                              ? 'destructive'
-                              : 'secondary'
-                        }
-                        className="text-[10px]"
+                      <StatusPill
+                        tone={styleFor(runTone, run.status, 'run').tone}
+                        pulse={run.status === 'running'}
                       >
                         {run.status}
-                      </Badge>
+                      </StatusPill>
                       <span className="font-mono text-xs">
                         {run.id.slice(0, 8)}
                       </span>

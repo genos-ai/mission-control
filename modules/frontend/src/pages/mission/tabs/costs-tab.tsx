@@ -4,6 +4,7 @@ import { Loader2, DollarSign, Zap, TrendingUp, AlertTriangle } from 'lucide-reac
 import { useMissionCosts } from '@/hooks/use-missions'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { StatCard } from '@/components/ui/stat-card'
 import { fmtTokens } from '@/lib/format'
 
@@ -96,7 +97,7 @@ export default function CostsTab() {
                 <div key={a.agent_name} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="truncate max-w-[180px]">{a.agent_name}</span>
-                    <Badge variant="secondary" className="text-[9px]">
+                    <Badge>
                       {a.call_count}
                     </Badge>
                   </div>
@@ -119,12 +120,11 @@ export default function CostsTab() {
               {cache_performance.map((c) => (
                 <div key={c.agent_name} className="flex items-center justify-between text-sm">
                   <span className="truncate max-w-[180px]">{c.agent_name}</span>
-                  <Badge
-                    variant={c.cache_hit_rate >= 0.6 ? 'success' : c.cache_hit_rate >= 0.3 ? 'warning' : 'destructive'}
-                    className="text-[9px]"
+                  <StatusPill
+                    tone={c.cache_hit_rate >= 0.6 ? 'success' : c.cache_hit_rate >= 0.3 ? 'warning' : 'danger'}
                   >
                     {(c.cache_hit_rate * 100).toFixed(0)}% hit
-                  </Badge>
+                  </StatusPill>
                 </div>
               ))}
               {!cache_performance.length && (
@@ -149,11 +149,11 @@ export default function CostsTab() {
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-muted-foreground">{e.output_input_ratio}x</span>
                       {e.flag === 'critical' ? (
-                        <Badge variant="destructive" className="text-[9px]">
-                          <AlertTriangle className="h-3 w-3 mr-0.5" />critical
-                        </Badge>
+                        <StatusPill tone="danger" dot={false}>
+                          <AlertTriangle className="h-3 w-3" />critical
+                        </StatusPill>
                       ) : (
-                        <Badge variant="warning" className="text-[9px]">high</Badge>
+                        <StatusPill tone="warning" dot={false}>high</StatusPill>
                       )}
                     </div>
                   </div>

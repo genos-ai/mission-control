@@ -26,6 +26,7 @@ import { useMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
@@ -195,18 +196,15 @@ function MemberCard({
             <p className="truncate font-medium">{agentName}</p>
             <div className="mt-0.5 flex items-center gap-1 flex-wrap">
               {agent?.agent_type && (
-                <Badge variant="secondary" className="h-3.5 text-[9px] px-1">
+                <Badge>
                   {agent.agent_type}
                 </Badge>
               )}
-              <Badge
-                variant={member.enabled ? 'success' : 'outline'}
-                className="h-3.5 text-[9px] px-1"
-              >
+              <StatusPill tone={member.enabled ? 'success' : 'neutral'}>
                 {member.enabled ? 'active' : 'disabled'}
-              </Badge>
+              </StatusPill>
               {agent?.model?.name && (
-                <Badge variant="outline" className="h-3.5 text-[9px] px-1 gap-0.5">
+                <Badge variant="outline" className="gap-0.5">
                   <Cpu className="h-2 w-2" />
                   {modelLabel(agent.model.name)}
                 </Badge>
@@ -278,7 +276,7 @@ function MemberCard({
                 <ConfigRow icon={<Wrench className="h-2.5 w-2.5" />} label="Tools">
                   <div className="flex flex-wrap gap-0.5">
                     {agent.tools.map((t) => (
-                      <Badge key={t} variant="secondary" className="h-3.5 text-[9px] px-1 font-mono">
+                      <Badge key={t} className="font-mono">
                         {t}
                       </Badge>
                     ))}

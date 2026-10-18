@@ -107,7 +107,7 @@ export function PlanTopBar({
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
         Plan
       </span>
-      <Badge variant="secondary" className="h-4 text-[9px]">v{plan.version}</Badge>
+      <Badge>v{plan.version}</Badge>
 
       <div className="relative">
         <select

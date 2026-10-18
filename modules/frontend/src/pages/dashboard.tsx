@@ -6,19 +6,14 @@ import { useMissions, useDeleteMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { ROUTES } from '@/lib/constants'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
+import { missionTone } from '@/lib/status-tone'
 import { Button } from '@/components/ui/button'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
-import type { MissionListItem, MissionStatus } from '@/types'
+import type { MissionListItem } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { missionKeys } from '@/hooks/use-missions'
-
-const statusVariant: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {
-  active: 'success',
-  paused: 'warning',
-  archived: 'secondary',
-}
 
 function ConfirmDialog({
   title,
@@ -124,9 +119,9 @@ function MissionCard({ mission, isAdmin }: { mission: MissionListItem; isAdmin: 
           actions={
             <>
               {mission.tier === 'platform' && (
-                <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">platform</Badge>
+                <StatusPill tone="warning" dot={false}>platform</StatusPill>
               )}
-              <Badge variant={statusVariant[mission.status]}>{mission.status}</Badge>
+              <StatusPill tone={missionTone[mission.status].tone}>{mission.status}</StatusPill>
             </>
           }
         />

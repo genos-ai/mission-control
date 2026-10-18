@@ -38,6 +38,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import {
@@ -143,7 +144,7 @@ function MissionWorkflowsSection({
           Mission Workflows
         </span>
         {workflows && (
-          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+          <Badge>
             {workflows.length}
           </Badge>
         )}
@@ -231,16 +232,16 @@ function MissionWorkflowRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-[13px] font-medium">{workflow.name}</p>
-          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+          <Badge>
             v{workflow.version}
           </Badge>
-          <Badge variant="outline" className="h-4 px-1.5 text-[9px]">
+          <Badge variant="outline">
             {workflow.step_count} step{workflow.step_count === 1 ? '' : 's'}
           </Badge>
           {workflow.locked_at && (
-            <Badge variant="outline" className="h-4 px-1.5 text-[9px]">
+            <StatusPill tone="neutral">
               locked
-            </Badge>
+            </StatusPill>
           )}
         </div>
         {workflow.description && (
@@ -327,7 +328,7 @@ function SchedulesSection({
           Schedules
         </span>
         {schedules && (
-          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+          <Badge>
             {schedules.length}
           </Badge>
         )}
@@ -418,7 +419,7 @@ function ScheduleRow({
           <p className="truncate text-[13px] font-medium">
             {workflowName ?? schedule.workflow_definition_id}
           </p>
-          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+          <Badge>
             {describeCronExpression(schedule.cron_expression)}
           </Badge>
         </div>
@@ -497,7 +498,7 @@ function TemplatesSection({
           Templates (clone to use)
         </span>
         {templates && (
-          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+          <Badge>
             {templates.length}
           </Badge>
         )}
@@ -552,7 +553,7 @@ function TemplateRow({
           <p className="truncate text-[13px] font-medium">
             {template.workflow_name}
           </p>
-          <Badge variant="outline" className="h-4 px-1.5 text-[9px]">
+          <Badge variant="outline">
             {template.step_count} step{template.step_count === 1 ? '' : 's'}
           </Badge>
         </div>

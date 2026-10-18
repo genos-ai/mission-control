@@ -9,6 +9,7 @@ import {
 } from '@/hooks/use-admin'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { StatCard } from '@/components/ui/stat-card'
 import { fmtTokens } from '@/lib/format'
 
@@ -90,7 +91,7 @@ export default function TokenEconomicsPage() {
                 <div key={a.agent_name} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="truncate max-w-[180px]">{a.agent_name}</span>
-                    <Badge variant="secondary" className="text-[9px]">
+                    <Badge>
                       {a.call_count}
                     </Badge>
                   </div>
@@ -140,12 +141,9 @@ export default function TokenEconomicsPage() {
                 <div key={c.agent_name} className="flex items-center justify-between text-sm">
                   <span className="truncate max-w-[180px]">{c.agent_name}</span>
                   <div className="flex items-center gap-3 text-xs">
-                    <Badge
-                      variant={c.cache_hit_rate >= 0.6 ? 'success' : c.cache_hit_rate >= 0.3 ? 'warning' : 'destructive'}
-                      className="text-[9px]"
-                    >
+                    <StatusPill tone={c.cache_hit_rate >= 0.6 ? 'success' : c.cache_hit_rate >= 0.3 ? 'warning' : 'danger'}>
                       {(c.cache_hit_rate * 100).toFixed(0)}% hit
-                    </Badge>
+                    </StatusPill>
                     <span className="text-muted-foreground">
                       w/r {c.write_to_read_ratio.toFixed(2)}
                     </span>
@@ -170,13 +168,13 @@ export default function TokenEconomicsPage() {
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-muted-foreground">{e.output_input_ratio}x</span>
                     {e.flag === 'critical' && (
-                      <Badge variant="destructive" className="text-[9px]">
-                        <AlertTriangle className="h-3 w-3 mr-0.5" />
+                      <StatusPill tone="danger" dot={false}>
+                        <AlertTriangle className="h-3 w-3" />
                         critical
-                      </Badge>
+                      </StatusPill>
                     )}
                     {e.flag === 'high' && (
-                      <Badge variant="warning" className="text-[9px]">high</Badge>
+                      <StatusPill tone="warning" dot={false}>high</StatusPill>
                     )}
                   </div>
                 </div>

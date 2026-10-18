@@ -45,7 +45,7 @@ export function ContextPanel({ missionId }: { missionId: string }) {
               updated by <span className="font-medium">{String(mcd.context_data.last_updated_by)}</span>
             </span>
           )}
-          <Badge variant="secondary" className="text-[9px]">v{mcd.version}</Badge>
+          <Badge>v{mcd.version}</Badge>
           <span className="text-[10px] text-muted-foreground">
             {(mcd.size_characters / 1024).toFixed(1)}KB / {(mcd.max_characters / 1024).toFixed(0)}KB
           </span>
@@ -156,7 +156,7 @@ function DynamicValue({ value, depth = 0 }: { value: unknown; depth?: number }) 
     return (
       <div className="flex flex-wrap gap-1">
         {(value as string[]).map((item, i) => (
-          <Badge key={i} variant="outline" className="text-[10px] h-5 px-1.5 font-normal">
+          <Badge key={i} variant="outline" className="font-normal">
             {item}
           </Badge>
         ))}

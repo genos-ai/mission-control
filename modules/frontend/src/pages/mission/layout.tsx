@@ -46,7 +46,8 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { planKeys, useMissionPlan, useUpdatePlan } from '@/hooks/use-mission-plan'
 import { artifactKeys } from '@/hooks/use-mission-artifacts'
 import { queryClient } from '@/lib/query-client'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
+import { missionTone } from '@/lib/status-tone'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { useBackgroundTasks } from '@/hooks/use-executions'
@@ -77,12 +78,6 @@ const tabs = [
   { label: 'Costs',     icon: DollarSign,    path: 'costs' },
   { label: 'Console',   icon: Terminal,      path: 'console' },
 ]
-
-const STATUS_VARIANT: Record<MissionStatus, 'success' | 'warning' | 'secondary'> = {
-  active: 'success',
-  paused: 'warning',
-  archived: 'secondary',
-}
 
 function categorize(eventType: string): ConsoleEvent['category'] {
   if (eventType.startsWith('knowledge.')) return 'system'
@@ -291,13 +286,13 @@ export default function MissionLayout() {
                 <>
                   <h1 className="truncate text-lg font-bold">{mission.name}</h1>
                   {mission.tier === 'platform' && (
-                    <Badge variant="outline" className="border-amber-500 text-[10px] text-amber-600">
+                    <StatusPill tone="warning" dot={false}>
                       platform
-                    </Badge>
+                    </StatusPill>
                   )}
-                  <Badge variant={STATUS_VARIANT[mission.status as MissionStatus]}>
+                  <StatusPill tone={missionTone[mission.status as MissionStatus].tone}>
                     {mission.status}
-                  </Badge>
+                  </StatusPill>
                 </>
               ) : (
                 <p className="text-muted-foreground">Mission not found</p>

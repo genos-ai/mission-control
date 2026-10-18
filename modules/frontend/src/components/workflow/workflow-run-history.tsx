@@ -6,21 +6,21 @@
  */
 
 import { X } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { formatDuration, formatUtc } from '@/lib/format-date'
-import type { WorkflowRunRecord } from '@/types'
+import { runTone, styleFor } from '@/lib/status-tone'
+import type { RunStatus, WorkflowRunRecord } from '@/types'
 
-const STATUS_BADGE: Record<
-  string,
-  { variant: 'success' | 'destructive' | 'warning' | 'secondary'; label: string }
-> = {
-  COMPLETED: { variant: 'success', label: 'Completed' },
-  FAILED: { variant: 'destructive', label: 'Failed' },
-  RUNNING: { variant: 'warning', label: 'Running' },
-  PENDING: { variant: 'secondary', label: 'Pending' },
-  AWAITING_INPUT: { variant: 'warning', label: 'Awaiting' },
+const STATUS_LABEL: Record<RunStatus, string> = {
+  pending: 'Pending',
+  running: 'Running',
+  awaiting_input: 'Awaiting',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  timed_out: 'Timed out',
 }
 
 interface WorkflowRunHistoryProps {
@@ -49,7 +49,7 @@ export function WorkflowRunHistory({
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-[4rem_3.5rem_3.5rem_1fr] gap-1.5 border-b px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="grid grid-cols-[6rem_3.5rem_3.5rem_1fr] gap-1.5 border-b px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
         <span>Status</span>
         <span className="text-right">Cost</span>
         <span className="text-right">Dur</span>
@@ -68,23 +68,24 @@ export function WorkflowRunHistory({
           </p>
         ) : (
           runs.map((run) => {
-            const badge = STATUS_BADGE[run.status] ?? STATUS_BADGE.PENDING
+            const status = run.status.toLowerCase() as RunStatus
+            const { tone } = styleFor(runTone, status, 'run')
             const isSelected = selectedRunId === run.id
             return (
               <button
                 key={run.id}
                 onClick={() => onSelectRun(run.id)}
                 className={[
-                  'grid w-full grid-cols-[4rem_3.5rem_3.5rem_1fr] items-center gap-1.5 border-b px-3 py-2 text-left text-[11px] transition-colors last:border-b-0',
+                  'grid w-full grid-cols-[6rem_3.5rem_3.5rem_1fr] items-center gap-1.5 border-b px-3 py-2 text-left text-[11px] transition-colors last:border-b-0',
                   isSelected
                     ? 'bg-primary/10'
                     : 'hover:bg-muted/50',
                 ].join(' ')}
               >
                 <span>
-                  <Badge variant={badge.variant} className="text-[9px] h-3.5 px-1">
-                    {badge.label}
-                  </Badge>
+                  <StatusPill tone={tone} pulse={status === 'running'}>
+                    {STATUS_LABEL[status]}
+                  </StatusPill>
                 </span>
                 <span className="text-right tabular-nums text-muted-foreground">
                   ${run.total_cost_usd.toFixed(4)}

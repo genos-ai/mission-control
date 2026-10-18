@@ -269,25 +269,21 @@ export default function AdminCatalogPage() {
                     <span className="text-sm font-medium">
                       {agent.agent_name}
                     </span>
-                    <Badge variant="secondary" className="text-[9px]">
+                    <Badge>
                       {agent.agent_type}
                     </Badge>
-                    <Badge variant="outline" className="text-[9px]">
+                    <Badge variant="outline">
                       v{agent.version}
                     </Badge>
                     {agent.model_config_json?.name && (
-                      <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400">
-                        {agent.model_config_json.name}
-                      </Badge>
+                      <Badge variant="outline">{agent.model_config_json.name}</Badge>
                     )}
                     {agent.engine && agent.engine !== 'pydantic_ai' && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-500/40 text-green-400">
-                        {agent.engine.replace('_', ' ')}
-                      </Badge>
+                      <Badge variant="outline">{agent.engine.replace('_', ' ')}</Badge>
                     )}
                     {agent.thinking_budget_json && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-purple-500/40 text-purple-400">
-                        <Brain className="h-2.5 w-2.5 mr-0.5" />
+                      <Badge variant="outline">
+                        <Brain className="h-2.5 w-2.5" />
                         {agent.thinking_budget_json.max_thinking_tokens > 0
                           ? `${(agent.thinking_budget_json.max_thinking_tokens / 1000).toFixed(0)}k`
                           : 'adaptive'}

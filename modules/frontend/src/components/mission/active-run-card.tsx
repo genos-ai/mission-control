@@ -3,7 +3,7 @@ import { Activity, CheckCircle, XCircle, Circle, Pause } from 'lucide-react'
 import { useRunStream } from '@/hooks/use-sse'
 import { useDrawerStore } from '@/stores/drawer'
 import { Panel, PanelHeader, PanelContent } from '@/components/ui/panel'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { GateApproval } from '@/components/mission/gate-approval'
 import type { ExecutionRecord } from '@/types'
@@ -48,9 +48,9 @@ export function ActiveRunCard({ execution, onClick }: ActiveRunCardProps) {
         actions={
           <>
             {connected && (
-              <Badge variant="success" className="text-[10px]">
+              <StatusPill tone="success" pulse>
                 Live
-              </Badge>
+              </StatusPill>
             )}
             <Button
               variant="ghost"

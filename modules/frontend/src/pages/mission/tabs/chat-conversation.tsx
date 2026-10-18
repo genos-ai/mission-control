@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { queryClient } from '@/lib/query-client'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
@@ -457,7 +458,7 @@ export function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
       <div className="mx-8 flex items-center gap-2 rounded border border-violet/20 bg-violet/5 px-3 py-1.5 text-xs">
         <Package className="h-3.5 w-3.5 shrink-0 text-violet" />
         <span className="font-medium">{title}</span>
-        <Badge variant="outline" className="h-4 text-[9px]">{artifactType}</Badge>
+        <Badge variant="outline">{artifactType}</Badge>
         <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
       </div>
     )
@@ -496,7 +497,13 @@ export function InlineNarrativeRow({ event }: { event: ConsoleEvent }) {
       <div className="mx-8 flex items-center gap-2 px-1 text-xs text-muted-foreground/60">
         <Search className={cn('h-3 w-3', isSearching ? 'text-sky-400 animate-pulse' : isCovered ? 'text-emerald-400' : 'text-muted-foreground/40')} />
         <span className="truncate">{text}</span>
-        <Badge variant="outline" className="h-4 shrink-0 text-[9px]">{status}</Badge>
+        <StatusPill
+          tone={isSearching ? 'info' : isCovered ? 'success' : 'neutral'}
+          pulse={isSearching}
+          className="shrink-0"
+        >
+          {status}
+        </StatusPill>
         <span className="ml-auto shrink-0 text-[10px] tabular-nums">{ts}</span>
       </div>
     )
@@ -653,12 +660,12 @@ export function MessageBubble({ message }: { message: SessionMessage }) {
         )}>
           <span>{formatUtc(message.created_at)}</span>
           {!isUser && message.sender_id && (
-            <Badge variant="outline" className="text-[9px]">
+            <Badge variant="outline">
               {message.sender_id.replace('.agent', '').split('.').pop()}
             </Badge>
           )}
           {message.cost_usd != null && (
-            <Badge variant="secondary" className="text-[9px]">${message.cost_usd.toFixed(4)}</Badge>
+            <Badge>${message.cost_usd.toFixed(4)}</Badge>
           )}
         </div>
       </div>

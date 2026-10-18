@@ -83,7 +83,7 @@ export function LiveResultsPanel({ onCollapse }: { onCollapse?: () => void }) {
                     {icon}
                     <span className="text-xs font-semibold">{r.stepId}</span>
                     {r.agent && (
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge>
                         {agentShortName(r.agent)}
                       </Badge>
                     )}

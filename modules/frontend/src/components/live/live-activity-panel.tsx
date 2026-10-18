@@ -8,7 +8,7 @@ import {
   Database,
   ChevronLeft,
 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { useLiveRunStore } from '@/stores/live-run'
 import { getEventIcon, eventLabel, eventDetail } from '@/lib/event-utils'
 
@@ -83,9 +83,9 @@ export function LiveActivityPanel({ onCollapse }: { onCollapse?: () => void }) {
                     <span className="text-xs font-medium truncate">
                       {agentId}
                     </span>
-                    <Badge variant="secondary" className="text-[10px]">
+                    <StatusPill tone="neutral">
                       {agentState}
-                    </Badge>
+                    </StatusPill>
                   </div>
                   {thinkingBuffers.get(agentId) && (
                     <p className="mt-1 ml-5 max-h-40 overflow-y-auto text-[11px] italic text-muted-foreground font-mono whitespace-pre-wrap">
@@ -109,9 +109,9 @@ export function LiveActivityPanel({ onCollapse }: { onCollapse?: () => void }) {
                 <span className="text-xs font-medium truncate">
                   {agentId}
                 </span>
-                <Badge variant="secondary" className="text-[10px]">
+                <StatusPill tone="neutral">
                   {agentState}
-                </Badge>
+                </StatusPill>
               </div>
               {thinkingBuffers.get(agentId) && (
                 <p className="mt-1 ml-5 text-[11px] italic text-muted-foreground font-mono line-clamp-3 whitespace-pre-wrap">

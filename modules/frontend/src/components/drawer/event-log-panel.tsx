@@ -1,7 +1,14 @@
 import { useExecution } from '@/hooks/use-executions'
 import { useDrawerStore } from '@/stores/drawer'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Spinner } from '@/components/ui/spinner'
+import type { Tone } from '@/lib/status-tone'
+
+function eventTone(type: string): Tone {
+  if (type === 'success') return 'success'
+  if (type === 'error') return 'danger'
+  return 'neutral'
+}
 
 export function EventLogPanel() {
   const { context } = useDrawerStore()
@@ -55,18 +62,7 @@ export function EventLogPanel() {
           </span>
           <div>
             <div className="flex items-center gap-1">
-              <Badge
-                variant={
-                  ev.type === 'success'
-                    ? 'success'
-                    : ev.type === 'error'
-                      ? 'destructive'
-                      : 'secondary'
-                }
-                className="text-[10px]"
-              >
-                {ev.type}
-              </Badge>
+              <StatusPill tone={eventTone(ev.type)}>{ev.type}</StatusPill>
               <span>{ev.label}</span>
             </div>
             {ev.detail && (

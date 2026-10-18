@@ -1,5 +1,5 @@
 import { useResearchStore } from '@/stores/research'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { NarrativeFeed } from './narrative-feed'
 import { SubQuestionTree } from './sub-question-tree'
 import { CoverageRing } from './coverage-ring'
@@ -40,12 +40,9 @@ export function ResearchLiveView() {
       {/* Header bar */}
       <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
         <div className="flex items-center gap-3">
-          <Badge
-            variant={isActive ? 'warning' : 'success'}
-            className={`text-[10px] ${isActive ? 'animate-pulse' : ''}`}
-          >
+          <StatusPill tone={isActive ? 'warning' : 'success'} pulse={isActive}>
             {phase}
-          </Badge>
+          </StatusPill>
           <span className="text-sm font-medium text-foreground truncate max-w-md">
             {query}
           </span>

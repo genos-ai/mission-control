@@ -3,7 +3,7 @@ import { Loader2, CheckCircle, XCircle, RefreshCw, StopCircle } from 'lucide-rea
 import toast from 'react-hot-toast'
 import { useHealthCheck, useEmergencyStop } from '@/hooks/use-admin'
 import { Panel, PanelContent } from '@/components/ui/panel'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 
 
@@ -24,11 +24,9 @@ export default function AdminHealthPage() {
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold">System Health</h2>
           {health && (
-            <Badge
-              variant={health.status === 'healthy' ? 'success' : 'destructive'}
-            >
+            <StatusPill tone={health.status === 'healthy' ? 'success' : 'danger'}>
               {health.status}
-            </Badge>
+            </StatusPill>
           )}
         </div>
         <Button
@@ -67,16 +65,15 @@ export default function AdminHealthPage() {
                   {check.latency_ms != null && (
                     <span>{check.latency_ms.toFixed(0)}ms</span>
                   )}
-                  <Badge
-                    variant={
+                  <StatusPill
+                    tone={
                       check.status === 'healthy' || check.status === 'ok'
                         ? 'success'
-                        : 'destructive'
+                        : 'danger'
                     }
-                    className="text-[9px]"
                   >
                     {check.status}
-                  </Badge>
+                  </StatusPill>
                   {check.error && (
                     <span className="text-destructive truncate max-w-[200px]">
                       {check.error}

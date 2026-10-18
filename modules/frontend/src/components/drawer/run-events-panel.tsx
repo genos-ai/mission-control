@@ -1,6 +1,7 @@
 import { useRunStream } from '@/hooks/use-sse'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 
 export function RunEventsPanel() {
   const { context } = useDrawerStore()
@@ -18,16 +19,16 @@ export function RunEventsPanel() {
           {events.length} events
         </p>
         {connected && (
-          <Badge variant="success" className="text-[10px]">
+          <StatusPill tone="success" pulse>
             Live
-          </Badge>
+          </StatusPill>
         )}
       </div>
 
       <div className="space-y-1">
         {events.map((ev, i) => (
           <div key={i} className="flex gap-2 text-xs">
-            <Badge variant="secondary" className="text-[9px] shrink-0">
+            <Badge className="shrink-0">
               {ev.event_type.split('.').pop()}
             </Badge>
             <span className="text-muted-foreground truncate">

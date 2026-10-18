@@ -11,7 +11,8 @@ import { useRunStream } from '@/hooks/use-sse'
 import { useLiveRunStore } from '@/stores/live-run'
 import { useResearchStore } from '@/stores/research'
 import { ROUTES } from '@/lib/constants'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
+import { runTone, styleFor } from '@/lib/status-tone'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { LiveActivityPanel } from '@/components/live/live-activity-panel'
@@ -162,19 +163,15 @@ export default function RunLivePage() {
             </Button>
           )}
           {connected && (
-            <Badge variant="success" className="text-[10px]">
-              <Radio className="mr-1 h-3 w-3 animate-pulse" />
+            <StatusPill tone="success" pulse>
+              <Radio className="mr-1 h-3 w-3" />
               Live
-            </Badge>
+            </StatusPill>
           )}
           {isTerminal && (
-            <Badge
-              variant={
-                execution.status === 'completed' ? 'success' : 'destructive'
-              }
-            >
+            <StatusPill tone={styleFor(runTone, execution.status, 'run').tone}>
               {execution.status}
-            </Badge>
+            </StatusPill>
           )}
         </div>
       </div>

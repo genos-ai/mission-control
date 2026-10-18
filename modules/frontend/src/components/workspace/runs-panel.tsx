@@ -15,7 +15,6 @@ import {
   DollarSign,
   List,
   Package,
-  Radio,
   StopCircle,
 } from 'lucide-react'
 import { formatUtc } from '@/lib/format-date'
@@ -31,22 +30,18 @@ import {
   type MissionArtifact,
 } from '@/hooks/use-mission-artifacts'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { RunModal } from '@/components/mission/run-modal'
 import { ROUTES } from '@/lib/constants'
+import { runTone, styleFor, taskTone } from '@/lib/status-tone'
 import type { RunDetailView } from '@/components/workspace/run-detail-panel'
 import type { ExecutionRecord } from '@/types'
 
-const STATUS_BADGE: Record<
-  string,
-  { variant: 'success' | 'destructive' | 'warning' | 'secondary'; label: string }
-> = {
-  completed: { variant: 'success', label: 'Completed' },
-  failed: { variant: 'destructive', label: 'Failed' },
-  running: { variant: 'warning', label: 'Running' },
-  pending: { variant: 'secondary', label: 'Pending' },
-  cancelled: { variant: 'secondary', label: 'Cancelled' },
+/** Display text for a run status: "completed" -> "Completed", "timed_out" -> "Timed out". */
+function statusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +189,7 @@ function HistoryRow({
   activeDetail?: RunDetailView | null
   onOpenDetail?: (view: RunDetailView) => void
 }) {
-  const badge = STATUS_BADGE[execution.status] ?? STATUS_BADGE.pending
+  const { tone } = styleFor(runTone, execution.status, 'run')
   const isRunning =
     execution.status === 'running' || execution.status === 'pending'
 
@@ -228,10 +223,9 @@ function HistoryRow({
               {execution.id.slice(0, 8)}
             </span>
             {isRunning && (
-              <Badge variant="warning" className="text-[9px] h-3.5 px-1">
-                <Radio className="mr-0.5 h-2 w-2 animate-pulse" />
+              <StatusPill tone="warning" pulse>
                 Live
-              </Badge>
+              </StatusPill>
             )}
           </button>
           {/* Plan 46 Phase 2 #3 metrics sub-line: task count ·
@@ -247,9 +241,9 @@ function HistoryRow({
         </div>
 
         <span className="flex items-center">
-          <Badge variant={badge.variant} className="text-[9px] h-3.5 px-1">
-            {badge.label}
-          </Badge>
+          <StatusPill tone={tone} pulse={execution.status === 'running'}>
+            {statusLabel(execution.status)}
+          </StatusPill>
         </span>
 
         <span className="flex items-center justify-end text-muted-foreground">
@@ -404,16 +398,22 @@ function HistoryDetail({
       {detail.task_executions.length > 0 && (
         <div className="mb-3 space-y-1">
           {detail.task_executions.map((task) => {
-            const tb = STATUS_BADGE[task.status] ?? STATUS_BADGE.pending
+            // Task executions end as completed / failed / skipped (TaskExecutionStatus), a
+            // different set from the run's own status, so they use taskTone, not runTone.
+            const { tone: taskStatusTone } = styleFor(taskTone, task.status, 'task execution')
             return (
               <div
                 key={task.id}
                 className="flex items-center justify-between rounded border px-2.5 py-1.5 text-xs"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Badge variant={tb.variant} className="text-[9px] h-3.5 px-1 shrink-0">
-                    {tb.label}
-                  </Badge>
+                  <StatusPill
+                    tone={taskStatusTone}
+                    pulse={task.status === 'running'}
+                    className="shrink-0"
+                  >
+                    {statusLabel(task.status)}
+                  </StatusPill>
                   <span className="truncate font-medium">{task.agent_name}</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground shrink-0">
@@ -436,7 +436,7 @@ function HistoryDetail({
               key={d.id}
               className="flex items-center gap-2 rounded border px-2.5 py-1.5 text-xs"
             >
-              <Badge variant="outline" className="text-[9px] h-3.5 px-1 shrink-0">
+              <Badge variant="outline" className="shrink-0">
                 {d.decision_type}
               </Badge>
               <span className="truncate text-muted-foreground">{d.reasoning}</span>
@@ -455,7 +455,7 @@ function HistoryDetail({
             >
               <Package className="h-3 w-3 shrink-0 text-violet" />
               <span className="flex-1 truncate font-medium">{a.title}</span>
-              <Badge variant="outline" className="h-3.5 text-[9px] shrink-0">
+              <Badge variant="outline" className="shrink-0">
                 {a.artifact_type}
               </Badge>
             </div>

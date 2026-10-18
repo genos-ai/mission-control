@@ -22,6 +22,7 @@ import {
 } from '@/hooks/use-admin'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { cn } from '@/lib/cn'
 import type { UserResponse, ApiKeyCreateResponse } from '@/types'
@@ -197,11 +198,11 @@ function UserRow({
                 <span className="text-sm font-medium">
                   {user.display_name}
                 </span>
-                <Badge variant="secondary" className="text-[9px]">
+                <Badge>
                   {user.system_role}
                 </Badge>
                 {user.is_service_account && (
-                  <Badge variant="outline" className="text-[9px]">
+                  <Badge variant="outline">
                     service
                   </Badge>
                 )}
@@ -359,9 +360,9 @@ function ApiKeySection({ userId }: { userId: string }) {
                 <span className="font-medium">{k.name}</span>
                 <code className="text-muted-foreground">{k.key_prefix}...</code>
                 {k.revoked_at && (
-                  <Badge variant="destructive" className="text-[9px]">
+                  <StatusPill tone="danger">
                     revoked
-                  </Badge>
+                  </StatusPill>
                 )}
               </div>
               {!k.revoked_at && (

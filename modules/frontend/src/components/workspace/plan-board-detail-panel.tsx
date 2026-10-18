@@ -105,7 +105,7 @@ export function TaskDetailPanel({
           <Section label="Tags">
             <div className="flex flex-wrap gap-1">
               {task.domain_tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-[9px]">{tag}</Badge>
+                <Badge key={tag}>{tag}</Badge>
               ))}
             </div>
           </Section>

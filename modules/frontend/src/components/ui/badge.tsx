@@ -1,17 +1,15 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/cn'
 
+// Badge is for labels (a type, a version, a count). A state — success, failure,
+// running — is a StatusPill, which carries a tone.
 const badgeVariants = cva(
-  'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors',
+  'inline-flex h-[18px] items-center gap-1 rounded-sm px-1.5 text-2xs font-medium whitespace-nowrap',
   {
     variants: {
       variant: {
-        default: 'border-transparent bg-primary text-primary-foreground',
-        secondary: 'border-transparent bg-secondary text-secondary-foreground',
-        destructive: 'border-transparent bg-destructive text-destructive-foreground',
-        outline: 'text-foreground',
-        success: 'border-transparent bg-emerald-500/15 text-emerald-500',
-        warning: 'border-transparent bg-amber-500/15 text-amber-500',
+        default: 'bg-raised text-muted-foreground',
+        outline: 'border border-border-strong text-muted-foreground',
       },
     },
     defaultVariants: { variant: 'default' },

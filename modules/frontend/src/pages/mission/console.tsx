@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Spinner } from '@/components/ui/spinner'
 import { useConsoleHistory } from '@/hooks/use-console'
 import { useMissionStream } from '@/hooks/use-sse'
@@ -320,7 +321,7 @@ function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolea
           {preview || '(empty)'}
         </span>
         {model && (
-          <Badge variant="outline" className="text-[9px] h-4 shrink-0">{model.split(':').pop()?.split('-').slice(0, 2).join('-')}</Badge>
+          <Badge variant="outline" className="shrink-0">{model.split(':').pop()?.split('-').slice(0, 2).join('-')}</Badge>
         )}
         {cost != null && cost > 0 && (
           <span className="flex items-center text-[10px] text-muted-foreground shrink-0">
@@ -370,12 +371,9 @@ function ExecutionRecordRow({ event }: { event: ConsoleEvent }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-foreground">Run</span>
-          <Badge
-            variant={isFailed ? 'destructive' : 'success'}
-            className="text-[9px] h-4"
-          >
+          <StatusPill tone={isFailed ? 'danger' : 'success'}>
             {status}
-          </Badge>
+          </StatusPill>
           {cost != null && (
             <span className="flex items-center text-[10px] text-muted-foreground">
               <DollarSign className="h-2.5 w-2.5" />
@@ -416,13 +414,10 @@ function TaskResultRow({ event, isError }: { event: ConsoleEvent; isError: boole
           {getEventIcon(event.event_type, event.data as Record<string, unknown>)}
         </span>
         <span className="text-xs font-medium text-foreground">{agent}</span>
-        <Badge variant="outline" className="text-[9px] h-4">{taskId}</Badge>
-        <Badge
-          variant={isError ? 'destructive' : 'success'}
-          className="text-[9px] h-4"
-        >
+        <Badge variant="outline">{taskId}</Badge>
+        <StatusPill tone={isError ? 'danger' : 'success'}>
           {status}
-        </Badge>
+        </StatusPill>
         {cost != null && (
           <span className="flex items-center text-[10px] text-muted-foreground">
             <DollarSign className="h-2.5 w-2.5" />{cost.toFixed(4)}
@@ -531,7 +526,7 @@ function ArtifactRow({ event }: { event: ConsoleEvent }) {
       <summary className="flex cursor-pointer list-none items-center gap-2">
         <Package className="h-3 w-3 shrink-0 text-violet" />
         <span className="flex-1 text-xs font-medium text-foreground">{title}</span>
-        <Badge variant="outline" className="text-[9px] h-4">{artifactType}</Badge>
+        <Badge variant="outline">{artifactType}</Badge>
         <span className="text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
         <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>

@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { formatElapsed } from '@/lib/format-date'
+import type { Tone } from '@/lib/status-tone'
 import { useLiveRunStore } from '@/stores/live-run'
 
 const STATUS_STYLES: Record<
   string,
-  { variant: 'warning' | 'success' | 'destructive' | 'secondary'; label: string; pulse?: boolean }
+  { tone: Tone; label: string; pulse?: boolean }
 > = {
-  planning: { variant: 'warning', label: 'PLANNING', pulse: true },
-  running: { variant: 'warning', label: 'RUNNING', pulse: true },
-  success: { variant: 'success', label: 'SUCCESS' },
-  failed: { variant: 'destructive', label: 'FAILED' },
+  planning: { tone: 'warning', label: 'PLANNING', pulse: true },
+  running: { tone: 'warning', label: 'RUNNING', pulse: true },
+  success: { tone: 'success', label: 'SUCCESS' },
+  failed: { tone: 'danger', label: 'FAILED' },
 }
 
 export function LiveFooter() {
@@ -43,12 +44,9 @@ export function LiveFooter() {
       </div>
 
       <div className="flex items-center gap-4">
-        <Badge
-          variant={style.variant}
-          className={`text-[10px] ${style.pulse ? 'animate-pulse' : ''}`}
-        >
+        <StatusPill tone={style.tone} pulse={style.pulse}>
           {style.label}
-        </Badge>
+        </StatusPill>
         <span className="text-muted-foreground/60">|</span>
         <span className="font-mono">{formatElapsed(elapsed)}</span>
       </div>

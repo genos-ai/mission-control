@@ -67,7 +67,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
         </Button>
       </div>
 
-      <Badge variant="outline" className="mb-3 text-[10px]">
+      <Badge variant="outline" className="mb-3">
         {nodeType.replace('_', ' ')}
       </Badge>
 

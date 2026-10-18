@@ -308,7 +308,7 @@ function Column({
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {def.label}
         </span>
-        <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+        <Badge>
           {rows.length}
         </Badge>
         {parallelism && (

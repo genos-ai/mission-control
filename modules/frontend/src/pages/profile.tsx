@@ -7,6 +7,7 @@ import { useOwnApiKeys, useCreateOwnApiKey, useRevokeOwnApiKey } from '@/hooks/u
 import { Button } from '@/components/ui/button'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import type { ApiKeyCreateResponse, ChangePasswordRequest } from '@/types'
 
 export default function ProfilePage() {
@@ -57,7 +58,7 @@ function DisplayNameCard() {
       <PanelContent className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{user?.email}</span>
-          <Badge variant="secondary" className="text-[9px]">
+          <Badge>
             {user?.system_role}
           </Badge>
         </div>
@@ -267,9 +268,9 @@ function ApiKeysCard({ userId: _userId }: { userId: string }) {
                     {k.key_prefix}...
                   </code>
                   {k.revoked_at && (
-                    <Badge variant="destructive" className="text-[9px]">
+                    <StatusPill tone="danger">
                       revoked
-                    </Badge>
+                    </StatusPill>
                   )}
                 </div>
                 {!k.revoked_at && (

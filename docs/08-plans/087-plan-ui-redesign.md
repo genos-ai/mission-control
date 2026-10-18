@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1, 2.2, 2.3 complete (2026-10-18)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1, 2.2, 2.3, 2.4 complete (2026-10-18)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -320,9 +320,29 @@ built:
   `avatar.tsx`. `EmptyState` keeps a plain icon wrapper until `IconTile` exists (Phase 4).
 Remove `mr-1.5` from icons inside `Button` at call sites only when the file is otherwise touched.
 
-**2.4 Badge migration.** Restyle `badge.tsx` and migrate every state usage to `StatusPill` in
-the same commit (C13). Done when `grep -rn "variant=\"\(success\|warning\)\"" src/` finds no
-`Badge`, and `badge.tsx` contains no palette class.
+**2.4 Badge migration (done).** `badge.tsx` is restyled and accepts only `default` and `outline`, so
+the type checker fails on any site using a removed variant. 103 `Badge` sites in 41 files became 99
+elements: 32 `StatusPill` (states) and 67 `Badge` (labels); the totals differ because some sites
+were merged when their conditionals were rewritten (not itemised). Rules applied: a state (status, health, severity, live, enabled, revoked, success/error
+outcome) is a pill, tone-mapped success→success, warning→warning, destructive→danger,
+secondary→neutral; a label (type, version, count, tag, model, engine, artifact type, event type
+name) is a `Badge`. Colour-coded labels (blue model, green engine, purple thinking budget) lost
+their colour rather than become pills with no state. Run and mission statuses use the shared
+`runTone` / `missionTone` maps, with `styleFor` throwing on an unknown value.
+
+Findings from the verifier pass that changed the code: task executions end as
+completed/failed/skipped (`TaskExecutionStatus`), a different set from a run's own status, so the
+runs panel uses `taskTone` for them (`runTone` has no `skipped` and would have crashed the detail
+panel); only `success` / `error` events are states in the run-detail event log, while `start` /
+`decision` are event-type labels; only the `run_failed` and `gate_approval` notifications carry
+severity, the other notification types are labels.
+
+Known consequence: `styleFor` throws at render on a status it does not know. The only error
+boundary is the one around the whole app (`main.tsx`), so an unexpected status from the API shows
+the app-level error screen rather than failing one panel. Today every status the backend can emit
+is covered. Follow-up for the owner, not in this plan: a per-panel error boundary.
+Also left for later phases: `live-footer.tsx` keeps its own status map (deleted in Phase 6), and the
+label badges in the warm-white console are faint on its fixed dark scrim (Phase 10.6).
 
 ### Phase 3 — Shell (handoff §5)
 

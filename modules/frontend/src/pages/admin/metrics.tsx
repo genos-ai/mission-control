@@ -67,7 +67,7 @@ export default function AdminMetricsPage() {
                 >
                   <div className="flex items-center gap-2">
                     <span>{entry.agent_name}</span>
-                    <Badge variant="secondary" className="text-[9px]">
+                    <Badge>
                       {entry.run_count} runs
                     </Badge>
                   </div>

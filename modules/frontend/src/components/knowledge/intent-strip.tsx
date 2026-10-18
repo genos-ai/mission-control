@@ -47,7 +47,7 @@ export function IntentStrip({ missionId }: { missionId: string }) {
         <span className="font-medium text-amber-800 dark:text-amber-300 truncate">
           {intent.intent_summary}
         </span>
-        <Badge variant="secondary" className="ml-auto shrink-0 text-xs">
+        <Badge className="ml-auto shrink-0">
           {sourceLabel}
         </Badge>
       </button>

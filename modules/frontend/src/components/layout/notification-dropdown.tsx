@@ -3,6 +3,7 @@ import { Bell } from 'lucide-react'
 import { formatUtc } from '@/lib/format-date'
 import { useNotificationStore } from '@/stores/notifications'
 import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 
 export function NotificationDropdown() {
@@ -71,18 +72,16 @@ export function NotificationDropdown() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{n.title}</span>
-                    <Badge
-                      variant={
-                        n.type === 'run_failed'
-                          ? 'destructive'
-                          : n.type === 'gate_approval'
-                            ? 'warning'
-                            : 'secondary'
-                      }
-                      className="text-[10px]"
-                    >
-                      {n.type.replace(/_/g, ' ')}
-                    </Badge>
+                    {n.type === 'run_failed' || n.type === 'gate_approval' ? (
+                      <StatusPill
+                        tone={n.type === 'run_failed' ? 'danger' : 'warning'}
+                        dot={false}
+                      >
+                        {n.type.replace(/_/g, ' ')}
+                      </StatusPill>
+                    ) : (
+                      <Badge>{n.type.replace(/_/g, ' ')}</Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">
                     {n.body}

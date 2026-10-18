@@ -51,7 +51,7 @@ export function ArtifactViewerPanel({ artifact }: { artifact: MissionArtifact | 
       <div className="shrink-0 border-b px-5 py-3">
         <h2 className="text-sm font-semibold leading-snug">{artifact.title}</h2>
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/70">
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge>
             {artifact.artifact_type}
           </Badge>
           <span>{agentShort}</span>

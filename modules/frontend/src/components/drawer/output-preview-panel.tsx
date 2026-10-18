@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, AlertTriangle, XCircle, Info } from 'lucide-react'
 import { useDrawerStore } from '@/stores/drawer'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
+import type { Tone } from '@/lib/status-tone'
 import { cn } from '@/lib/cn'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
@@ -11,13 +12,13 @@ const SEVERITY_ICON: Record<string, React.ReactNode> = {
   info: <Info className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />,
 }
 
-const STATUS_VARIANT: Record<string, 'success' | 'destructive' | 'warning' | 'secondary'> = {
+const STATUS_TONE: Record<string, Tone> = {
   success: 'success',
   completed: 'success',
   healthy: 'success',
-  failed: 'destructive',
+  failed: 'danger',
   degraded: 'warning',
-  error: 'destructive',
+  error: 'danger',
 }
 
 export function OutputPreviewPanel() {
@@ -95,9 +96,9 @@ function ExecutionOutcomeView({ data }: { data: Record<string, unknown> }) {
     <div className="space-y-4">
       {/* Status */}
       <div className="flex items-center gap-2">
-        <Badge variant={STATUS_VARIANT[status] ?? 'secondary'} className="capitalize">
+        <StatusPill tone={STATUS_TONE[status] ?? 'neutral'} className="capitalize">
           {status}
-        </Badge>
+        </StatusPill>
         {summary && (
           <span className="text-xs text-muted-foreground">{summary}</span>
         )}
@@ -190,7 +191,7 @@ function FindingsList({
 
 function TaskResultCard({ task }: { task: TaskResult }) {
   const [expanded, setExpanded] = useState(task.status === 'failed')
-  const statusVariant = STATUS_VARIANT[task.status] ?? 'secondary'
+  const statusTone = STATUS_TONE[task.status] ?? 'neutral'
   const summary =
     task.summary ??
     (task.output_reference?.summary as string | undefined) ??
@@ -216,9 +217,7 @@ function TaskResultCard({ task }: { task: TaskResult }) {
         className="flex w-full items-center justify-between text-left"
       >
         <div className="flex items-center gap-2">
-          <Badge variant={statusVariant} className="text-[10px]">
-            {task.status}
-          </Badge>
+          <StatusPill tone={statusTone}>{task.status}</StatusPill>
           <span className="text-xs font-medium">{task.agent_name}</span>
           <span className="text-[10px] text-muted-foreground">{task.task_id}</span>
         </div>

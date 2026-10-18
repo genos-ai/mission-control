@@ -114,7 +114,7 @@ export default function NarrativeTab() {
           <Filter className="h-3 w-3" />
           Filters
           {hiddenTypes.size > 0 && (
-            <Badge variant="secondary" className="ml-1 h-4 px-1 text-[9px]">
+            <Badge className="ml-1">
               {hiddenTypes.size} hidden
             </Badge>
           )}
@@ -230,7 +230,7 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
         <summary className="flex cursor-pointer list-none items-center gap-2">
           <Package className="h-3.5 w-3.5 shrink-0 text-violet" />
           <span className="flex-1 text-sm font-medium">{title}</span>
-          <Badge variant="outline" className="h-4 text-[9px]">{artifactType}</Badge>
+          <Badge variant="outline">{artifactType}</Badge>
           <span className="text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
         </summary>
@@ -340,11 +340,9 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
           <span className="font-medium">{shortName(agent)}</span>
           <span className="text-muted-foreground/50">responded</span>
           {thinking && (
-            <Badge variant="outline" className="h-4 text-[9px] border-purple-500/40 text-purple-400">
-              thinking
-            </Badge>
+            <Badge variant="outline">thinking</Badge>
           )}
-          {cost && <Badge variant="outline" className="h-4 text-[9px]">{cost}</Badge>}
+          {cost && <Badge variant="outline">{cost}</Badge>}
           <ChevronDown className="h-3 w-3 text-muted-foreground/40 transition-transform group-open:rotate-180" />
           <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
         </summary>
@@ -440,7 +438,7 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
           <LevelIcon level={level} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="h-4 shrink-0 text-[9px] font-mono">
+              <Badge variant="outline" className="shrink-0 font-mono">
                 {event.event_type}
               </Badge>
               {event.source && (
@@ -463,7 +461,7 @@ function NarrativeEventRow({ event }: { event: ConsoleEvent }) {
       <LevelIcon level={level} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="h-4 shrink-0 text-[9px] font-mono">
+          <Badge variant="outline" className="shrink-0 font-mono">
             {event.event_type}
           </Badge>
           {event.source && (
