@@ -7,7 +7,7 @@ import {
   useModelDistribution,
   useOutputEfficiency,
 } from '@/hooks/use-admin'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { fmtTokens } from '@/lib/format'
@@ -82,11 +82,9 @@ export default function TokenEconomicsPage() {
 
       <div className="grid grid-cols-2 gap-4">
         {/* Token Breakdown */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Token Breakdown by Agent</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Token Breakdown by Agent" />
+          <PanelContent>
             <div className="space-y-2">
               {breakdown?.agents.map((a) => (
                 <div key={a.agent_name} className="flex items-center justify-between text-sm">
@@ -107,15 +105,13 @@ export default function TokenEconomicsPage() {
                 <p className="text-xs text-muted-foreground">No data yet.</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
 
         {/* Model Distribution */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Model Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Model Distribution" />
+          <PanelContent>
             <div className="space-y-2">
               {models?.map((m) => (
                 <div key={m.model} className="flex items-center justify-between text-sm">
@@ -132,15 +128,13 @@ export default function TokenEconomicsPage() {
                 <p className="text-xs text-muted-foreground">No data yet.</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
 
         {/* Cache Performance */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Cache Performance</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Cache Performance" />
+          <PanelContent>
             <div className="space-y-2">
               {cache?.map((c) => (
                 <div key={c.agent_name} className="flex items-center justify-between text-sm">
@@ -162,15 +156,13 @@ export default function TokenEconomicsPage() {
                 <p className="text-xs text-muted-foreground">No cache data yet.</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
 
         {/* Output Efficiency */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Output Efficiency</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Output Efficiency" />
+          <PanelContent>
             <div className="space-y-2">
               {efficiency?.map((e) => (
                 <div key={e.agent_name} className="flex items-center justify-between text-sm">
@@ -193,16 +185,14 @@ export default function TokenEconomicsPage() {
                 <p className="text-xs text-muted-foreground">No data yet.</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       </div>
 
       {/* Expensive Calls */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Most Expensive Calls</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Panel>
+        <PanelHeader title="Most Expensive Calls" />
+        <PanelContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -238,8 +228,8 @@ export default function TokenEconomicsPage() {
               <p className="text-xs text-muted-foreground py-4 text-center">No calls recorded yet.</p>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </Panel>
     </div>
   )
 }

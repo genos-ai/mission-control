@@ -16,7 +16,7 @@ export function Avatar({ name, className }: AvatarProps) {
   return (
     <div
       className={cn(
-        'flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary',
+        'flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-line text-[10.5px] font-semibold text-text-3',
         className,
       )}
     >

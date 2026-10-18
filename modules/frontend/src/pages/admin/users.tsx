@@ -22,7 +22,7 @@ import {
 } from '@/hooks/use-admin'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { cn } from '@/lib/cn'
 import type { UserResponse, ApiKeyCreateResponse } from '@/types'
 
@@ -70,11 +70,9 @@ export default function AdminUsersPage() {
 
       {/* Create form */}
       {creating && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Create User</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <Panel>
+          <PanelHeader title="Create User" />
+          <PanelContent className="space-y-3">
             <input
               value={newUser.email}
               onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))}
@@ -116,8 +114,8 @@ export default function AdminUsersPage() {
                 Cancel
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       )}
 
       {/* User list */}
@@ -181,8 +179,8 @@ function UserRow({
   }
 
   return (
-    <Card className={cn(!user.is_active && 'opacity-50')}>
-      <CardContent className="py-3 px-4">
+    <Panel className={cn(!user.is_active && 'opacity-50')}>
+      <PanelContent className="py-3 px-4">
         <div className="flex items-center justify-between">
           <button
             onClick={onToggle}
@@ -248,8 +246,8 @@ function UserRow({
             <ApiKeySection userId={user.id} />
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 
@@ -338,7 +336,7 @@ function ApiKeySection({ userId }: { userId: string }) {
         />
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           onClick={handleCreate}
           disabled={!newKeyName.trim() || createKey.isPending}
           className="text-xs h-7"

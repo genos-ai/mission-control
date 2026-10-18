@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { Search, BookOpen, Cpu, FolderOpen } from 'lucide-react'
 import { useCatalog } from '@/hooks/use-catalog'
 import { useDrawerStore } from '@/stores/drawer'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelHeader, PanelContent } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -140,16 +140,16 @@ function CatalogCard({
   onViewDetails: () => void
 }) {
   return (
-    <Card className="flex flex-col">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-base">{agent.agent_name}</CardTitle>
+    <Panel className="flex flex-col">
+      <PanelHeader
+        title={agent.agent_name}
+        actions={
           <Badge variant={TYPE_COLORS[agent.agent_type] ?? 'secondary'}>
             {agent.agent_type}
           </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
+        }
+      />
+      <PanelContent className="flex flex-1 flex-col">
         <p className="flex-1 text-sm text-muted-foreground line-clamp-2">
           {agent.description}
         </p>
@@ -193,11 +193,11 @@ function CatalogCard({
 
         <div className="mt-4 flex items-center justify-between">
           <span className="text-xs text-muted-foreground">v{agent.version}</span>
-          <Button variant="outline" size="sm" onClick={onViewDetails}>
+          <Button variant="secondary" size="sm" onClick={onViewDetails}>
             Details
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }

@@ -380,7 +380,7 @@ function AgentChatPanel({
             <p className="text-center text-sm text-muted-foreground">
               Start a conversation with <span className="font-medium">{agentShort}</span>.
             </p>
-            <Button variant="outline" size="sm" onClick={onNewThread}>
+            <Button variant="secondary" size="sm" onClick={onNewThread}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />New Chat
             </Button>
           </div>

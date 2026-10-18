@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { useAdminConfig } from '@/hooks/use-admin'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 
 export default function AdminConfigPage() {
   const { data: config, isLoading } = useAdminConfig()
@@ -21,16 +21,14 @@ export default function AdminConfigPage() {
       </p>
 
       {config && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Current Config</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Current Config" />
+          <PanelContent>
             <pre className="rounded-md bg-muted/50 p-4 text-xs font-mono overflow-auto max-h-[600px]">
               {JSON.stringify(config, null, 2)}
             </pre>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       )}
     </div>
   )

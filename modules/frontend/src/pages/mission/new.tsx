@@ -6,7 +6,7 @@ import { ROUTES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
 
 const MISSION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
@@ -73,11 +73,9 @@ export default function NewMissionPage() {
 
   return (
     <div className="flex justify-center p-8">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle>Create Mission</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Panel className="w-full max-w-lg">
+        <PanelHeader title="Create Mission" />
+        <PanelContent className="pt-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Name</label>
@@ -167,7 +165,7 @@ export default function NewMissionPage() {
             <div className="flex justify-end gap-3 pt-2">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={() => navigate(-1)}
               >
                 Cancel
@@ -181,8 +179,8 @@ export default function NewMissionPage() {
               </Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </Panel>
     </div>
   )
 }

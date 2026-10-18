@@ -8,7 +8,7 @@ import { api } from '@/lib/api'
 import { ROUTES } from '@/lib/constants'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
 import type { MissionListItem, MissionStatus } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
@@ -115,22 +115,22 @@ function MissionCard({ mission, isAdmin }: { mission: MissionListItem; isAdmin: 
           onCancel={() => setDialog(null)}
         />
       )}
-      <Card
+      <Panel
         className="cursor-pointer transition-colors hover:border-primary/40"
         onClick={() => navigate(ROUTES.MISSION_OVERVIEW(mission.id))}
       >
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-base">{mission.name}</CardTitle>
+        <PanelHeader
+          title={mission.name}
+          actions={
+            <>
               {mission.tier === 'platform' && (
                 <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">platform</Badge>
               )}
-            </div>
-            <Badge variant={statusVariant[mission.status]}>{mission.status}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
+              <Badge variant={statusVariant[mission.status]}>{mission.status}</Badge>
+            </>
+          }
+        />
+        <PanelContent>
           <p className="line-clamp-2 text-sm text-muted-foreground">
             {mission.description}
           </p>
@@ -162,8 +162,8 @@ function MissionCard({ mission, isAdmin }: { mission: MissionListItem; isAdmin: 
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </Panel>
     </>
   )
 }

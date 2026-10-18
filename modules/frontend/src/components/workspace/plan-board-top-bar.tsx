@@ -298,7 +298,7 @@ function PreRunGateModal({
         </label>
 
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onCancel} className="h-7 text-xs">
+          <Button variant="secondary" size="sm" onClick={onCancel} className="h-7 text-xs">
             Cancel
           </Button>
           <Button

@@ -516,7 +516,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
             </Field>
             {draft.sub_workflow_config.workflow_id && missionId && (
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 className="w-full gap-1.5 text-xs"
                 onClick={() =>
@@ -635,7 +635,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                   </div>
                 ))}
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   className="w-full text-xs"
                   onClick={() => {

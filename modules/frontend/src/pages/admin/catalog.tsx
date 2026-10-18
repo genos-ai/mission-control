@@ -23,7 +23,7 @@ import {
 import { useCatalogAgent } from '@/hooks/use-catalog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/cn'
 import type { AgentCatalogItem } from '@/types'
@@ -118,7 +118,7 @@ export default function AdminCatalogPage() {
         <h2 className="text-lg font-semibold">Agent Catalog</h2>
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={handleSeed}
             disabled={seedCatalog.isPending}
@@ -150,11 +150,9 @@ export default function AdminCatalogPage() {
 
       {/* Create form */}
       {creating && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Create Agent</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <Panel>
+          <PanelHeader title="Create Agent" />
+          <PanelContent className="space-y-3">
             <input
               value={newAgent.agent_name}
               onChange={(e) =>
@@ -204,8 +202,8 @@ export default function AdminCatalogPage() {
                 Cancel
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       )}
 
       {/* Prompt editor modal */}
@@ -255,8 +253,8 @@ export default function AdminCatalogPage() {
       {/* Agent list */}
       <div className="space-y-2">
         {filtered?.map((agent) => (
-          <Card key={agent.id}>
-            <CardContent className="flex items-center justify-between py-3 px-4">
+          <Panel key={agent.id}>
+            <PanelContent className="flex items-center justify-between py-3 px-4">
               <div className="flex items-center gap-3 min-w-0">
                 <button
                   onClick={() => handleToggle(agent)}
@@ -335,8 +333,8 @@ export default function AdminCatalogPage() {
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </PanelContent>
+          </Panel>
         ))}
       </div>
     </div>
@@ -407,11 +405,11 @@ function AgentEditor({
   const modelSupportsThinking = THINKING_CAPABLE_MODELS.has(model)
 
   return (
-    <Card className="border-primary/30">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm">Edit — {agent.agent_name}</CardTitle>
-          <div className="flex items-center gap-2">
+    <Panel className="border-primary/30">
+      <PanelHeader
+        title={`Edit — ${agent.agent_name}`}
+        actions={
+          <>
             <Button
               size="sm"
               onClick={() => {
@@ -450,10 +448,10 @@ function AgentEditor({
             <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
             </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+          </>
+        }
+      />
+      <PanelContent className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Provider</label>
@@ -617,8 +615,8 @@ function AgentEditor({
             </p>
           </div>
         </label>
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 
@@ -646,13 +644,11 @@ function PromptEditor({
   }, [agentDetail, loaded])
 
   return (
-    <Card className="border-primary/30">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm">
-            System Prompt — {agentName}
-          </CardTitle>
-          <div className="flex items-center gap-2">
+    <Panel className="border-primary/30">
+      <PanelHeader
+        title={`System Prompt — ${agentName}`}
+        actions={
+          <>
             <Button
               size="sm"
               onClick={() => onSave(content)}
@@ -663,10 +659,10 @@ function PromptEditor({
             <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
             </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
+          </>
+        }
+      />
+      <PanelContent>
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -679,7 +675,7 @@ function PromptEditor({
             className="font-mono text-xs"
           />
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }

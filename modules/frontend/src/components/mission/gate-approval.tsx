@@ -64,7 +64,7 @@ export function GateApproval({
           Approve
         </Button>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => {
             if (!showFeedback) {

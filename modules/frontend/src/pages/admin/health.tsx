@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Loader2, CheckCircle, XCircle, RefreshCw, StopCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useHealthCheck, useEmergencyStop } from '@/hooks/use-admin'
-import { Card, CardContent } from '@/components/ui/card'
+import { Panel, PanelContent } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -32,7 +32,7 @@ export default function AdminHealthPage() {
           )}
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => refetch()}
           disabled={isFetching}
@@ -53,8 +53,8 @@ export default function AdminHealthPage() {
       {health?.checks && (
         <div className="space-y-2">
           {Object.entries(health.checks).map(([name, check]) => (
-            <Card key={name}>
-              <CardContent className="flex items-center justify-between py-3 px-4">
+            <Panel key={name}>
+              <PanelContent className="flex items-center justify-between py-3 px-4">
                 <div className="flex items-center gap-3">
                   {check.status === 'healthy' || check.status === 'ok' ? (
                     <CheckCircle className="h-4 w-4 text-emerald-500" />
@@ -83,8 +83,8 @@ export default function AdminHealthPage() {
                     </span>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+              </PanelContent>
+            </Panel>
           ))}
         </div>
       )}
@@ -110,8 +110,8 @@ function EmergencyStopSection() {
   }
 
   return (
-    <Card className="border-destructive/50">
-      <CardContent className="flex items-center justify-between py-4 px-4">
+    <Panel className="border-destructive/50">
+      <PanelContent className="flex items-center justify-between py-4 px-4">
         <div>
           <h3 className="text-sm font-semibold">Emergency Stop</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -127,7 +127,7 @@ function EmergencyStopSection() {
               </span>
               <Button
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 className="h-7 text-xs"
                 onClick={() => setConfirming(false)}
                 disabled={emergencyStop.isPending}
@@ -161,7 +161,7 @@ function EmergencyStopSection() {
             </Button>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }

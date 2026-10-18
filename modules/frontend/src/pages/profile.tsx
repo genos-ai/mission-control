@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { useOwnApiKeys, useCreateOwnApiKey, useRevokeOwnApiKey } from '@/hooks/use-profile'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import type { ApiKeyCreateResponse, ChangePasswordRequest } from '@/types'
 
@@ -52,11 +52,9 @@ function DisplayNameCard() {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm">Display Name</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Panel>
+      <PanelHeader title="Display Name" />
+      <PanelContent className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{user?.email}</span>
           <Badge variant="secondary" className="text-[9px]">
@@ -81,8 +79,8 @@ function DisplayNameCard() {
             )}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 
@@ -115,11 +113,9 @@ function ChangePasswordCard() {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm">Change Password</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Panel>
+      <PanelHeader title="Change Password" />
+      <PanelContent className="space-y-3">
         <input
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
@@ -151,8 +147,8 @@ function ChangePasswordCard() {
           ) : null}
           Change Password
         </Button>
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 
@@ -193,14 +189,16 @@ function ApiKeysCard({ userId: _userId }: { userId: string }) {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <Key className="h-4 w-4 text-muted-foreground" />
-          <CardTitle className="text-sm">API Keys</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Panel>
+      <PanelHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Key className="h-4 w-4 text-muted-foreground" />
+            API Keys
+          </span>
+        }
+      />
+      <PanelContent className="space-y-3">
         {/* Created key banner */}
         {createdKey && (
           <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 space-y-1">
@@ -245,7 +243,7 @@ function ApiKeysCard({ userId: _userId }: { userId: string }) {
           />
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={handleCreate}
             disabled={!newKeyName.trim() || createKey.isPending}
           >
@@ -291,7 +289,7 @@ function ApiKeysCard({ userId: _userId }: { userId: string }) {
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }

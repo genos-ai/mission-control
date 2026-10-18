@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Activity, CheckCircle, XCircle, Circle, Pause } from 'lucide-react'
 import { useRunStream } from '@/hooks/use-sse'
 import { useDrawerStore } from '@/stores/drawer'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelHeader, PanelContent } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GateApproval } from '@/components/mission/gate-approval'
@@ -34,17 +34,19 @@ export function ActiveRunCard({ execution, onClick }: ActiveRunCardProps) {
   const showGate = latestGate && !gateResolved
 
   return (
-    <Card
+    <Panel
       className="border-amber-500/30 bg-amber-500/5 cursor-pointer"
       onClick={onClick}
     >
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      <PanelHeader
+        title={
+          <span className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-amber-500 animate-pulse" />
-            <CardTitle className="text-base">Active Run</CardTitle>
-          </div>
-          <div className="flex items-center gap-2">
+            Active Run
+          </span>
+        }
+        actions={
+          <>
             {connected && (
               <Badge variant="success" className="text-[10px]">
                 Live
@@ -62,11 +64,11 @@ export function ActiveRunCard({ execution, onClick }: ActiveRunCardProps) {
             >
               View Events
             </Button>
-          </div>
-        </div>
-      </CardHeader>
+          </>
+        }
+      />
 
-      <CardContent className="space-y-3">
+      <PanelContent className="space-y-3">
         {/* Run info */}
         <div className="flex items-center justify-between text-sm">
           <span className="font-mono text-xs text-muted-foreground">
@@ -103,7 +105,7 @@ export function ActiveRunCard({ execution, onClick }: ActiveRunCardProps) {
             />
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }

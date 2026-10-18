@@ -312,17 +312,17 @@ export default function MissionLayout() {
             {isOwner && mission && (
               <>
                 {mission.status === 'active' && (
-                  <Button variant="outline" size="sm" onClick={() => setStatus('paused')}>
+                  <Button variant="secondary" size="sm" onClick={() => setStatus('paused')}>
                     <Pause className="mr-1.5 h-3.5 w-3.5" />Pause
                   </Button>
                 )}
                 {mission.status === 'paused' && (
-                  <Button variant="outline" size="sm" onClick={() => setStatus('active')}>
+                  <Button variant="secondary" size="sm" onClick={() => setStatus('active')}>
                     <RotateCcw className="mr-1.5 h-3.5 w-3.5" />Resume
                   </Button>
                 )}
                 {mission.status !== 'archived' && (
-                  <Button variant="outline" size="sm" onClick={() => setStatus('archived')}>
+                  <Button variant="secondary" size="sm" onClick={() => setStatus('archived')}>
                     <Archive className="mr-1.5 h-3.5 w-3.5" />Archive
                   </Button>
                 )}
@@ -350,7 +350,7 @@ export default function MissionLayout() {
             {(planIsAutonomous || planIsPaused) && (
               <Button
                 size="sm"
-                variant={planIsPaused ? 'outline' : 'destructive'}
+                variant={planIsPaused ? 'secondary' : 'destructive'}
                 onClick={handlePlanPauseResume}
                 disabled={updatePlan.isPending}
               >

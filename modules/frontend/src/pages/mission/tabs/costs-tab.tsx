@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Loader2, DollarSign, Zap, TrendingUp, AlertTriangle } from 'lucide-react'
 import { useMissionCosts } from '@/hooks/use-missions'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { fmtTokens } from '@/lib/format'
@@ -88,11 +88,9 @@ export default function CostsTab() {
 
       <div className="grid grid-cols-2 gap-4">
         {/* Agent Breakdown */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Cost by Agent</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Cost by Agent" />
+          <PanelContent>
             <div className="space-y-2">
               {by_agent.map((a) => (
                 <div key={a.agent_name} className="flex items-center justify-between text-sm">
@@ -110,15 +108,13 @@ export default function CostsTab() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
 
         {/* Cache Performance */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Cache Performance</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Cache Performance" />
+          <PanelContent>
             <div className="space-y-2">
               {cache_performance.map((c) => (
                 <div key={c.agent_name} className="flex items-center justify-between text-sm">
@@ -135,17 +131,15 @@ export default function CostsTab() {
                 <p className="text-xs text-muted-foreground">No cache data.</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       </div>
 
       {/* Output Efficiency */}
       {output_efficiency.some((e) => e.flag !== 'ok') && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Output Efficiency Warnings</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Output Efficiency Warnings" />
+          <PanelContent>
             <div className="space-y-2">
               {output_efficiency
                 .filter((e) => e.flag !== 'ok')
@@ -165,16 +159,14 @@ export default function CostsTab() {
                   </div>
                 ))}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       )}
 
       {/* Expensive Calls */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Most Expensive Calls</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Panel>
+        <PanelHeader title="Most Expensive Calls" />
+        <PanelContent>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-muted-foreground border-b">
@@ -206,8 +198,8 @@ export default function CostsTab() {
           {!expensive_calls.length && (
             <p className="text-xs text-muted-foreground py-4 text-center">No calls yet.</p>
           )}
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </Panel>
     </div>
   )
 }

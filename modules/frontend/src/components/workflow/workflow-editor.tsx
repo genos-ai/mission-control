@@ -216,7 +216,7 @@ function HumanInputRequest({
           {req.choices.map((choice) => (
             <Button
               key={choice}
-              variant="outline"
+              variant="secondary"
               size="sm"
               disabled={isPending}
               onClick={() => onSubmit(choice)}
@@ -244,7 +244,7 @@ function HumanInputRequest({
           />
           <Button
             size="icon"
-            variant="outline"
+            variant="secondary"
             disabled={!freeText.trim() || isPending}
             onClick={() => onSubmit(freeText.trim())}
             className="h-auto border-orange-400/30 hover:bg-orange-500/10"

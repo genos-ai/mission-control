@@ -1,4 +1,4 @@
-import { Card, CardContent } from '@/components/ui/card'
+import { Panel } from '@/components/ui/panel'
 
 export function StatCard({
   icon,
@@ -10,18 +10,12 @@ export function StatCard({
   value: string | number
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-3 py-4 px-4">
-        {icon && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
-            {icon}
-          </div>
-        )}
-        <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-lg font-semibold">{value}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <Panel className="flex flex-col gap-2 p-4">
+      <div className="flex items-center gap-1.5 text-xs text-subtle">
+        {icon}
+        {label}
+      </div>
+      <p className="text-3xl font-medium tracking-[-0.03em]">{value}</p>
+    </Panel>
   )
 }

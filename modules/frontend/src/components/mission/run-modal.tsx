@@ -137,7 +137,7 @@ export function RunModal({
 
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={onClose}>
+            <Button variant="secondary" type="button" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={runObjective.isPending}>

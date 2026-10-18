@@ -479,7 +479,7 @@ function HistoryDetail({
         ).map(({ type, icon, label, view }) => (
           <Button
             key={type}
-            variant={activeDetail?.type === type ? 'secondary' : 'outline'}
+            variant={activeDetail?.type === type ? 'secondary' : 'secondary'}
             size="sm"
             className="h-6 px-2 text-[10px]"
             onClick={() => onOpenDetail?.(view)}

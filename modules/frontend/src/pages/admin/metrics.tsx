@@ -1,6 +1,6 @@
 import { Loader2, DollarSign, Users, Briefcase, Cpu } from 'lucide-react'
 import { useMetricsOverview, useMetricsCosts, useMetricsAgents } from '@/hooks/use-admin'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 
 export default function AdminMetricsPage() {
@@ -56,11 +56,9 @@ export default function AdminMetricsPage() {
 
       {/* Cost breakdown */}
       {!loadingCosts && costs && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Cost by Agent</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Cost by Agent" />
+          <PanelContent>
             <div className="space-y-2">
               {costs.by_agent.map((entry) => (
                 <div
@@ -82,17 +80,15 @@ export default function AdminMetricsPage() {
                 <p className="text-xs text-muted-foreground">No cost data yet.</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       )}
 
       {/* Agent utilisation */}
       {!loadingAgents && agents && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Agent Utilisation</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader title="Agent Utilisation" />
+          <PanelContent>
             <div className="space-y-2">
               {agents.map((agent) => (
                 <div
@@ -115,8 +111,8 @@ export default function AdminMetricsPage() {
                 <p className="text-xs text-muted-foreground">No agent data yet.</p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       )}
     </div>
   )
@@ -132,8 +128,8 @@ function StatCard({
   value: string | number
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-3 py-4 px-4">
+    <Panel>
+      <PanelContent className="flex items-center gap-3 py-4 px-4">
         {icon && (
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
             {icon}
@@ -143,7 +139,7 @@ function StatCard({
           <p className="text-xs text-muted-foreground">{label}</p>
           <p className="text-lg font-semibold">{value}</p>
         </div>
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }

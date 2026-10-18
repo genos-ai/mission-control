@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1, 2.2 complete (2026-10-18)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1, 2.2, 2.3 complete (2026-10-18)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -304,16 +304,20 @@ Phase 7, `formatRelative` in Phase 9.2. Each new primitive has typed props (inte
 `{ icon, tone }`, exactly what `agent-tone` returns, so callers pass the result through without
 mapping.
 
-**2.3 Restyle existing primitives.** One name per concept, no aliases (P3: no shims, no legacy
+**2.3 Restyle existing primitives (done).** One name per concept, no aliases (P3: no shims, no legacy
 aliases). The handoff's `Card = Panel` aliases and its `outline` alias of `secondary` are not
 built:
-- `button.tsx` per handoff §4.1, `destructive` tinted. `outline` and `secondary` would be
-  identical, so delete `outline` and change its 63 call sites to `secondary` in this commit.
-- `card.tsx` becomes `panel.tsx` exporting `Panel`, `PanelHeader` (title / meta / actions,
-  §4.3) and `PanelContent`. Change the 16 files that import `card` in this commit and delete
-  `card.tsx`. Existing `CardTitle` uses become `PanelHeader` `title`.
-- Restyle `input.tsx`, `textarea.tsx`, `stat-card.tsx`, `empty-state.tsx`, `spinner.tsx`,
-  `avatar.tsx`.
+- `button.tsx` per handoff §4.1: `default`, `secondary`, `ghost`, `destructive` (tinted), `link`;
+  sizes `sm`, `default`, `lg`, `icon`. `outline` is deleted. `variant="outline"` exists on both
+  `Button` and `Badge`; only the 26 `Button` uses changed (an AST codemod, not a text replace —
+  the other 40 are `Badge`, which keeps `outline`; the "63 call sites" in earlier versions of
+  this plan wrongly counted both). The handoff's `pill` and `xl` variants and `icon-sm` size are
+  added with their first callers (Phases 4, 9.1, 5.2).
+- `card.tsx` became `panel.tsx` exporting `Panel`, `PanelHeader` (title / meta / actions, §4.3)
+  and `PanelContent`. 15 files migrated (37 cards) by one agent per file, each checked by a second
+  reader; `StatCard` was rewritten by hand; `card.tsx` is deleted and no `ui/card` import remains.
+- Restyled `input.tsx`, `textarea.tsx`, `stat-card.tsx`, `empty-state.tsx`, `spinner.tsx`,
+  `avatar.tsx`. `EmptyState` keeps a plain icon wrapper until `IconTile` exists (Phase 4).
 Remove `mr-1.5` from icons inside `Button` at call sites only when the file is otherwise touched.
 
 **2.4 Badge migration.** Restyle `badge.tsx` and migrate every state usage to `StatusPill` in
@@ -560,7 +564,7 @@ workflow editor drag, connect, select, save, run and schedule work.
 | Risk | Mitigation |
 |---|---|
 | Global font-size and radius change (C10) breaks layouts on screens restyled late | Phase 1 checks every route; any breakage is fixed in Phase 1, not deferred. |
-| Renames ripple widely: `Card` → `Panel` (16 files), button `outline` → `secondary` (63 call sites), Badge states → `StatusPill` (41 files) | Phases 2.3 and 2.4 each migrate in one commit; `tsc` fails on any missed import or variant, and a grep confirms no `outline` variant or `ui/card` import remains. |
+| Renames ripple widely: `Card` → `Panel` (16 files), button `outline` → `secondary` (26 `Button` call sites; 40 `Badge` uses keep `outline`), Badge states → `StatusPill` (41 files) | Phases 2.3 and 2.4 each migrate in one commit; `tsc` fails on any missed import or variant, and a grep confirms no `outline` variant or `ui/card` import remains. |
 | Large files grow during restyle | Size gate 6.1.6 on every commit. |
 | No automated frontend tests, so regressions rely on manual checks | §6.4 parity list at fixed points. D2 decided against frontend CI, so local build and lint are the only automated checks. |
 | Removing `layout.tsx` header loses actions | Phase 3.3 done criteria: every former header action is reachable. |

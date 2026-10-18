@@ -19,7 +19,7 @@ import { useTeam } from '@/hooks/use-team'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { useExecutions, useExecution } from '@/hooks/use-executions'
 import { Spinner } from '@/components/ui/spinner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -69,7 +69,7 @@ export default function OverviewPage() {
       <div className="flex items-center justify-end gap-2">
         <DeleteMissionButton missionId={id!} missionName={mission.name} />
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => setShowEditModal(true)}
         >
@@ -164,8 +164,8 @@ export default function OverviewPage() {
 
       {/* Brief + Description */}
       {(mission.brief || mission.description) && (
-        <Card>
-          <CardContent className="pt-4">
+        <Panel>
+          <PanelContent className="pt-4">
             {mission.brief && (
               <MarkdownRenderer content={mission.brief} />
             )}
@@ -175,8 +175,8 @@ export default function OverviewPage() {
             <p className="text-sm text-muted-foreground">
               {mission.description}
             </p>
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       )}
 
       {/* Recent errors */}
@@ -191,20 +191,12 @@ export default function OverviewPage() {
         {/* Recent runs */}
 
         {/* Recent runs */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Recent Runs
-              </CardTitle>
-              {executions.length > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  ${totalCost.toFixed(4)} total
-                </span>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
+        <Panel>
+          <PanelHeader
+            title="Recent Runs"
+            meta={executions.length > 0 && `$${totalCost.toFixed(4)} total`}
+          />
+          <PanelContent>
             {recentRuns.length === 0 ? (
               <div className="py-4 text-center">
                 <p className="text-sm text-muted-foreground">No runs yet.</p>
@@ -256,8 +248,8 @@ export default function OverviewPage() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       </div>
     </div>
   )
@@ -301,16 +293,16 @@ function RecentErrors({
   if (errors.length === 0) return null
 
   return (
-    <Card className="border-destructive/20">
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          <CardTitle className="text-sm font-medium text-destructive">
+    <Panel className="border-destructive/20">
+      <PanelHeader
+        title={
+          <span className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-4 w-4" />
             Recent Errors ({errors.length})
-          </CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2">
+          </span>
+        }
+      />
+      <PanelContent className="space-y-2">
         {errors.slice(0, 5).map((err, i) => (
           <button
             key={i}
@@ -333,8 +325,8 @@ function RecentErrors({
             </div>
           </button>
         ))}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 
@@ -351,13 +343,9 @@ function StatCard({
 }) {
   const isEmpty = value === '0' && emptyAction
   return (
-    <Card className={isEmpty ? 'border-dashed' : ''}>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {label}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+    <Panel className={isEmpty ? 'border-dashed' : ''}>
+      <PanelHeader title={label} />
+      <PanelContent>
         <p
           className={`text-2xl font-bold ${capitalize ? 'capitalize' : ''} ${isEmpty ? 'text-muted-foreground' : ''}`}
         >
@@ -373,8 +361,8 @@ function StatCard({
             {emptyAction.label} &rarr;
           </Button>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 
@@ -415,13 +403,9 @@ function SetupChecklist({
   const completedCount = steps.filter((s) => s.done).length
 
   return (
-    <Card className="border-primary/20 bg-primary/5">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">
-          Get started ({completedCount}/{steps.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Panel className="border-primary/20 bg-primary/5">
+      <PanelHeader title={`Get started (${completedCount}/${steps.length})`} />
+      <PanelContent className="space-y-3">
         {steps.map((step, i) => (
           <button
             key={i}
@@ -448,8 +432,8 @@ function SetupChecklist({
             </div>
           </button>
         ))}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 
@@ -559,7 +543,7 @@ function MissionEditModal({
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={onClose}>
+            <Button variant="secondary" type="button" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={updateMission.isPending}>
@@ -591,14 +575,16 @@ function EnvironmentStatusCard({ missionId }: { missionId: string }) {
       : 'No container'
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <Container className="h-4 w-4 text-muted-foreground" />
-          <CardTitle className="text-sm">Execution Environment</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <Panel>
+      <PanelHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Container className="h-4 w-4 text-muted-foreground" />
+            Execution Environment
+          </span>
+        }
+      />
+      <PanelContent>
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -622,8 +608,8 @@ function EnvironmentStatusCard({ missionId }: { missionId: string }) {
             )}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 

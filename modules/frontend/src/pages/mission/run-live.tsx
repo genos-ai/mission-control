@@ -151,7 +151,7 @@ export default function RunLivePage() {
         <div className="flex items-center gap-2">
           {!isTerminal && (
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={handleCancel}
               disabled={cancelMutation.isPending}

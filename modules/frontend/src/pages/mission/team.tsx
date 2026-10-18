@@ -20,7 +20,7 @@ import { useTeam, useRemoveFromTeam, useUpdatePrompt, useUpdateConstraints, useS
 import { useMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -180,15 +180,20 @@ function TeamMemberCard({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
-            {agentName.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <CardTitle className="text-base">{agentName}</CardTitle>
-            <div className="mt-1 flex items-center gap-2 flex-wrap">
+    <Panel>
+      <PanelHeader
+        title={
+          <span className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
+              {agentName.charAt(0).toUpperCase()}
+            </span>
+            {agentName}
+          </span>
+        }
+        meta={`v${member.user_prompt_version}`}
+        actions={
+          <>
+            <div className="flex items-center gap-2 flex-wrap">
               {agent?.agent_type && (
                 <Badge variant="secondary" className="text-[11px]">
                   {agent.agent_type}
@@ -216,39 +221,35 @@ function TeamMemberCard({
                   {agent.engine.replace('_', ' ')}
                 </Badge>
               )}
-              <span className="text-xs text-muted-foreground">
-                v{member.user_prompt_version}
-              </span>
             </div>
-          </div>
-        </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Prompt history"
+                onClick={() =>
+                  openDrawer('prompt-history', { missionId, memberId: member.id })
+                }
+              >
+                <History className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive"
+                title="Remove from team"
+                onClick={handleRemove}
+                disabled={removeMutation.isPending}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        }
+      />
 
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            title="Prompt history"
-            onClick={() =>
-              openDrawer('prompt-history', { missionId, memberId: member.id })
-            }
-          >
-            <History className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            title="Remove from team"
-            onClick={handleRemove}
-            disabled={removeMutation.isPending}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-3">
+      <PanelContent className="space-y-3">
         {/* Agent description */}
         {agent?.description && (
           <p className="text-xs text-muted-foreground">{agent.description}</p>
@@ -396,8 +397,8 @@ function TeamMemberCard({
             {member.user_prompt || 'Click to add mission-specific prompt...'}
           </button>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   )
 }
 

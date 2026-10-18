@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { ROUTES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
 import type { LoginResponse } from '@/types'
 
@@ -42,16 +42,15 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold tracking-tight">
-            MISSION CONTROL
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            AI-first autonomous agent platform
-          </p>
-        </CardHeader>
-        <CardContent>
+      <Panel className="w-full max-w-sm">
+        <PanelHeader
+          title={<span className="text-2xl font-bold tracking-tight">MISSION CONTROL</span>}
+          className="justify-center"
+        />
+        <p className="px-4 pb-6 text-center text-sm text-muted-foreground">
+          AI-first autonomous agent platform
+        </p>
+        <PanelContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Input
@@ -90,7 +89,7 @@ export default function LoginPage() {
             </p>
             <div className="flex gap-2">
               <Button
-                variant="outline"
+                variant="secondary"
                 className="flex-1 border-red-500/30 text-red-600 hover:bg-red-50"
                 disabled={loading}
                 onClick={() => {
@@ -104,7 +103,7 @@ export default function LoginPage() {
                 Sysadmin
               </Button>
               <Button
-                variant="outline"
+                variant="secondary"
                 className="flex-1 border-amber-500/30 text-amber-600 hover:bg-amber-50"
                 disabled={loading}
                 onClick={() => {
@@ -118,7 +117,7 @@ export default function LoginPage() {
                 Admin
               </Button>
               <Button
-                variant="outline"
+                variant="secondary"
                 className="flex-1"
                 disabled={loading}
                 onClick={() => {
@@ -133,8 +132,8 @@ export default function LoginPage() {
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </Panel>
     </div>
   )
 }
