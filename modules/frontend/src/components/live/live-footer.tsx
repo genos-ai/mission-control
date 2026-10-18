@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { formatElapsed } from '@/lib/format-date'
 import { useLiveRunStore } from '@/stores/live-run'
 
 const STATUS_STYLES: Record<
@@ -10,13 +11,6 @@ const STATUS_STYLES: Record<
   running: { variant: 'warning', label: 'RUNNING', pulse: true },
   success: { variant: 'success', label: 'SUCCESS' },
   failed: { variant: 'destructive', label: 'FAILED' },
-}
-
-function formatElapsed(ms: number): string {
-  const totalSec = Math.floor(ms / 1000)
-  const min = Math.floor(totalSec / 60)
-  const sec = totalSec % 60
-  return `${min}:${sec.toString().padStart(2, '0')}`
 }
 
 export function LiveFooter() {

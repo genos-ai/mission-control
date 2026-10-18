@@ -25,6 +25,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { FilterChip } from '@/components/ui/filter-chip'
 import { Spinner } from '@/components/ui/spinner'
 import { useMissionLearnings, type MissionLearning } from '@/hooks/use-mission-learnings'
 import { useCurrentIntent, useIntentHistory } from '@/hooks/use-mission-intent'
@@ -319,32 +320,5 @@ function LearningCard({ learning }: { learning: MissionLearning }) {
         </div>
       )}
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// FilterChip
-// ---------------------------------------------------------------------------
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
-        active
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-muted text-muted-foreground hover:bg-muted/80'
-      }`}
-      onClick={onClick}
-    >
-      {children}
-    </button>
   )
 }

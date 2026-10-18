@@ -9,7 +9,7 @@ import { X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import { formatUtc } from '@/lib/format-date'
+import { formatDuration, formatUtc } from '@/lib/format-date'
 import type { WorkflowRunRecord } from '@/types'
 
 const STATUS_BADGE: Record<
@@ -21,17 +21,6 @@ const STATUS_BADGE: Record<
   RUNNING: { variant: 'warning', label: 'Running' },
   PENDING: { variant: 'secondary', label: 'Pending' },
   AWAITING_INPUT: { variant: 'warning', label: 'Awaiting' },
-}
-
-function formatDuration(startedAt: string | null, completedAt: string | null): string {
-  if (!startedAt || !completedAt) return '—'
-  const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime()
-  if (ms < 0) return '—'
-  const sec = ms / 1000
-  if (sec < 60) return `${sec.toFixed(1)}s`
-  const min = Math.floor(sec / 60)
-  const rem = Math.round(sec % 60)
-  return `${min}m ${rem}s`
 }
 
 interface WorkflowRunHistoryProps {

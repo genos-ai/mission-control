@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1 complete (2026-10-18)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1, 2.2 complete (2026-10-18)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -149,15 +149,15 @@ the shared location, update every caller, and delete the original.
 | Need in the handoff | Already exists | Action |
 |---|---|---|
 | Task status icon in columns, cards, timelines | `StatusIcon` in `plan-board-task-card.tsx:78` | Promote to `components/ui/status-icon.tsx`, driven by `lib/status-tone.ts` (status → tone + lucide icon). Runs table, Run live timeline and plan columns all use it. No per-screen icon switch. |
-| Icon buttons (Reject `X`, History, Trash) | `IconButton` in `plan-board-task-card.tsx:103` (palette-coloured `tone` prop) | Delete it. Use `Button` `size="icon"` / `"icon-sm"`. |
+| Icon buttons (Reject `X`, History, Trash) | `IconButton` in `plan-board-task-card.tsx` (palette-coloured `tone` prop) and a second private `IconButton` in `workflows-panel.tsx:585` | Delete both. Use `Button` `size="icon"` / `"icon-sm"` (task card in Phase 5.2, workflows panel in Phase 7). |
 | Filter chips (Runs filters, Knowledge filters, Narrative) | `FilterChip` in `knowledge-tab.tsx:329` | Promote to `components/ui/filter-chip.tsx`, restyled per handoff §6.6, with optional `count`. |
 | `Segmented` control | Hand-rolled segment groups: console category tabs (`console.tsx:124` `FilterBar`), Costs timeframe buttons (`costs-tab.tsx:50`), plan gate `<select>` (`plan-board-top-bar.tsx:113`) | Create `components/ui/segmented.tsx` once and replace all three in their phases. |
 | Confirmation before Archive / Delete | `ConfirmDialog` in `pages/dashboard.tsx:23`, private; the only confirm dialog in the frontend | Promote to `components/ui/confirm-dialog.tsx` in Phase 3.3, where the settings-drawer Archive becomes its second caller. |
 | Hover `⋯` menus (dashboard cards, plan cards) | Inline menu with click-outside in `plan-board-task-card.tsx:154-167` | Promote to `components/ui/menu.tsx`. |
 | Click-outside handling | Duplicated in `notification-dropdown.tsx`, `plan-board-task-card.tsx`, `slash-command-popover.tsx`, `variable-autocomplete.tsx` | Extract `hooks/use-click-outside.ts` when `menu.tsx` is created (third+ use, P14). Migrate each file in the phase that touches it. |
-| Cost formatting (`$0.0412`) | `toFixed(4)` inlined 40 times | Add `fmtCost` to `lib/format.ts`; replace inline formatting in every touched file. |
-| Durations and elapsed time | `formatDuration` (`workflow-run-history.tsx:26`), `formatElapsed` (`live-footer.tsx:15`) | Move both to `lib/format-date.ts` before `live-footer.tsx` is deleted (Phase 6). |
-| Relative time ("2h ago") | None; `date-fns` is already a dependency but unused | Add `formatRelative` to `lib/format-date.ts` using `date-fns`. |
+| Cost formatting | `toFixed(4)` inlined 40 times for per-call and per-task costs (`$0.0412`), `toFixed(2)` for totals and budgets (`$212.40`) | `fmtCost` (4 decimals) and `fmtUsd` (2 decimals) in `lib/format.ts` (added in 2.2); replace inline formatting in every file a phase restyles. |
+| Durations and elapsed time | `formatDuration` (`workflow-run-history.tsx`), `formatElapsed` (`live-footer.tsx`) | Moved to `lib/format-date.ts` in Phase 2.2. `runs-panel.tsx:204` still computes a duration inline; use `formatDuration` when Phase 6 restyles it. |
+| Relative time ("2h ago") | None; `date-fns` is already a dependency but unused | Add `formatRelative` to `lib/format-date.ts` using `date-fns`, in Phase 9.2 with its first caller. |
 | Cron in words (§6.8) | `describeCronExpression` in `lib/cron.ts:150` | Use it. |
 | User avatar initials (sidebar footer) | `components/ui/avatar.tsx` | Restyle and use it. |
 | Plan Stop/Resume (§5.3, §6.5) | `handlePlanPauseToggle` in `plan-board-top-bar.tsx:70`; a duplicate in `layout.tsx:128-136` | Keep the toolbar one, restyle it, delete the `layout.tsx` copy (Phase 3.3). |
@@ -292,15 +292,17 @@ Each sub-phase is one commit. Each commit passes every gate in §6 before it is 
 sub-phase the new modules replace `getAgentIcon` and `AGENT_ICONS`; the plan-board functions
 are replaced in Phase 5.2, where their callers are restyled.
 
-**2.2 New primitives.** `status-pill.tsx`, `segmented.tsx`, `icon-tile.tsx`, `progress.tsx`,
-`kbd.tsx` per handoff §4, plus the promotions in §2.4 that later phases depend on:
-`status-icon.tsx`, `filter-chip.tsx`, `menu.tsx` with `hooks/use-click-outside.ts`, and the
-`fmtCost` / `formatRelative` / `formatDuration` / `formatElapsed` helpers. Each promotion
-updates its original callers in the same commit and deletes the original. `progress.tsx` and
-`switch.tsx` are built with their first caller (Phases 5.1 and 7), so no unused primitive
-lands early. Each new primitive has typed props (interfaces named `<Component>Props`, doc 23) and
-`aria-label` support where icon-only. `IconTile` takes `{ icon, tone }`, exactly what
-`agent-tone` returns, so callers pass the result through without mapping.
+**2.2 New primitives and promotions (done).** Built now, each with a caller in this phase:
+`status-pill.tsx` (first caller: 2.4), and the promotions from §2.4 — `status-icon.tsx`,
+`filter-chip.tsx`, `menu.tsx` with `hooks/use-click-outside.ts` — plus the `fmtCost` / `fmtUsd`
+helpers in `lib/format.ts` and `formatDuration` / `formatElapsed` in `lib/format-date.ts`. Each
+promotion updated its original callers in the same commit and deleted the original. Every other
+primitive is built with its first caller, so nothing lands unused and unverified: `icon-tile.tsx`
+and `kbd.tsx` in Phase 4, `progress.tsx` and `segmented.tsx` in Phase 5.1, `switch.tsx` in
+Phase 7, `formatRelative` in Phase 9.2. Each new primitive has typed props (interfaces named
+`<Component>Props`, doc 23) and `aria-label` support where icon-only. `IconTile` takes
+`{ icon, tone }`, exactly what `agent-tone` returns, so callers pass the result through without
+mapping.
 
 **2.3 Restyle existing primitives.** One name per concept, no aliases (P3: no shims, no legacy
 aliases). The handoff's `Card = Panel` aliases and its `outline` alias of `secondary` are not
@@ -361,8 +363,9 @@ reachable.
 Restyle `chat-tab.tsx`, `chat-conversation.tsx`, `chat-artifacts-panel.tsx`. Live agent state in
 the roster comes from `useWorkspaceStore` `agentStatuses` (C25). Keep sessions, `chat/:threadId`,
 slash commands and ⌘↵ send (`slash-command-popover.tsx` migrates to `use-click-outside`).
-Agent icons and tones come from `agent-tone` via `IconTile`. `use-resizable` handles stay,
-invisible until hover.
+Create `components/ui/icon-tile.tsx` and `components/ui/kbd.tsx` here (first callers: the
+roster and the composer hint). Agent icons and tones come from `agent-tone` via `IconTile`.
+`use-resizable` handles stay, invisible until hover.
 `chat-conversation.tsx` (667 lines) must not grow.
 
 ### Phase 5 — Plan board (handoff §6.5)
@@ -439,7 +442,8 @@ Gates for this phase include `pytest tests/unit tests/integration` and
 **9.2 Dashboard.** Handoff §6.1. "Needs your attention" from `use-attention`, hidden when empty;
 the icon and tone per `kind` come from an `attentionTone` map in `lib/status-tone.ts`
 (`task_approval` and `gate` → brand `Check`; `human_input` → warning `User`; `retry` → danger
-`RotateCcw`). Ages use `formatRelative`. The card `⋯` menu uses `components/ui/menu.tsx`.
+`RotateCcw`). Ages use `formatRelative`, added to `lib/format-date.ts` in this phase. The card
+`⋯` menu uses `components/ui/menu.tsx`.
 Mission cards show `spent_usd` of `budget_ceiling_usd` and the progress bar only when a ceiling
 is set. The greeting summary counts come from data already loaded (missions, running executions,
 attention items) — counting is presentation; no other derivation. Archive and Delete move into a

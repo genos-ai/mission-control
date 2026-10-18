@@ -2,17 +2,14 @@
  * PlanBoard — TaskCard, AddTaskForm, ShimmerCard, and IconButton components.
  */
 
-import { useEffect, useRef, useState, type RefCallback } from 'react'
+import { useState, type RefCallback } from 'react'
 import {
   Loader2,
-  CheckCircle2,
-  XCircle,
   RotateCcw,
   StopCircle,
   Check,
   X,
   Sparkles,
-  Circle,
   Clock,
   Lock,
   Wrench,
@@ -24,7 +21,11 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
+import { fmtCost } from '@/lib/format'
+import { taskTone } from '@/lib/status-tone'
 import { Button } from '@/components/ui/button'
+import { Menu, type MenuItem } from '@/components/ui/menu'
+import { StatusIcon } from '@/components/ui/status-icon'
 import { Textarea } from '@/components/ui/textarea'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import {
@@ -32,38 +33,12 @@ import {
   useRejectTask,
   useRetryTask,
   useAddPlanTask,
-  type PlanTaskStatus,
 } from '@/hooks/use-mission-plan'
 import { useTeam } from '@/hooks/use-team'
 import { useVetoCountdown } from '@/hooks/use-veto-countdown'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { AnnotatedTask } from './plan-board-types'
 import { getBorderClass, getAgentBadgeClass } from './plan-board-types'
-
-// ── StatusIcon ────────────────────────────────────────────────────────────
-
-export function StatusIcon({ status }: { status: PlanTaskStatus }) {
-  switch (status) {
-    case 'proposed':
-      return <Circle className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-    case 'approved':
-      return <Circle className="h-3 w-3 shrink-0 fill-primary/40 text-primary" />
-    case 'queued':
-      return <Circle className="h-3 w-3 shrink-0 fill-amber-500/30 text-amber-500" />
-    case 'running':
-      return <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-400" />
-    case 'completed':
-      return <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" />
-    case 'failed':
-      return <XCircle className="h-3 w-3 shrink-0 text-destructive" />
-    case 'skipped':
-      return <Circle className="h-3 w-3 shrink-0 text-muted-foreground/30" />
-    case 'cancelled':
-      return <X className="h-3 w-3 shrink-0 text-muted-foreground/40" />
-    default:
-      return <Circle className="h-3 w-3 shrink-0 text-muted-foreground/30" />
-  }
-}
 
 // ── IconButton ────────────────────────────────────────────────────────────
 
@@ -118,20 +93,9 @@ export function TaskCard({
   onSelect?: (taskId: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const approve = useApproveTask(missionId)
   const reject = useRejectTask(missionId)
   const retry = useRetryTask(missionId)
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const handler = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [menuOpen])
 
   const { task, effectiveStatus, blocked, blockingDeps } = row
   const isWorkflow = task.agent.startsWith('workflow:')
@@ -198,6 +162,34 @@ export function TaskCard({
   const clickable =
     onSelect && (effectiveStatus === 'failed' || effectiveStatus === 'completed')
 
+  const canCancel =
+    effectiveStatus === 'proposed' || effectiveStatus === 'approved' || effectiveStatus === 'queued'
+  const menuItems: MenuItem[] = [
+    ...(canCancel
+      ? [
+          {
+            label: effectiveStatus === 'proposed' ? 'Reject' : 'Cancel',
+            icon: X,
+            destructive: true,
+            disabled: reject.isPending,
+            onSelect: handleReject,
+          },
+        ]
+      : []),
+    ...(effectiveStatus === 'failed'
+      ? [{ label: 'Retry', icon: RotateCcw, disabled: retry.isPending, onSelect: handleRetry }]
+      : []),
+    {
+      label: 'Copy task ID',
+      icon: Copy,
+      separatorBefore: canCancel || effectiveStatus === 'failed',
+      onSelect: () => {
+        navigator.clipboard.writeText(task.id)
+        toast.success(`Copied ${task.id}`)
+      },
+    },
+  ]
+
   return (
     <div
       ref={cardRef}
@@ -243,53 +235,8 @@ export function TaskCard({
               {veto.remainingSec}s
             </span>
           )}
-          <StatusIcon status={effectiveStatus} />
-          {/* ⋮ card menu */}
-          <div ref={menuRef} className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v) }}
-              className="rounded p-0.5 text-muted-foreground/25 hover:text-muted-foreground/70 hover:bg-accent"
-              title="More actions"
-            >
-              <MoreVertical className="h-3 w-3" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-5 z-50 min-w-[130px] rounded-md border bg-popover shadow-md py-0.5 text-[11px]">
-                {(effectiveStatus === 'proposed' || effectiveStatus === 'approved' || effectiveStatus === 'queued') && (
-                  <button
-                    onClick={() => { setMenuOpen(false); handleReject() }}
-                    disabled={reject.isPending}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-accent disabled:opacity-40"
-                  >
-                    <X className="h-3 w-3" />
-                    {effectiveStatus === 'proposed' ? 'Reject' : 'Cancel'}
-                  </button>
-                )}
-                {effectiveStatus === 'failed' && (
-                  <button
-                    onClick={() => { setMenuOpen(false); handleRetry() }}
-                    disabled={retry.isPending}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    Retry
-                  </button>
-                )}
-                <div className="mx-2 my-0.5 border-t border-border/50" />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(task.id)
-                    toast.success(`Copied ${task.id}`)
-                    setMenuOpen(false)
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-muted-foreground hover:bg-accent"
-                >
-                  <Copy className="h-3 w-3" />
-                  Copy task ID
-                </button>
-              </div>
-            )}
-          </div>
+          <StatusIcon {...taskTone[effectiveStatus]} />
+          <Menu label="More actions" trigger={<MoreVertical className="h-3 w-3" />} items={menuItems} />
         </div>
       </div>
 
@@ -333,7 +280,7 @@ export function TaskCard({
           <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground/60">
             {showMetrics && (
               <span className="tabular-nums" title="Cost · duration">
-                ${task.cost_usd.toFixed(4)} · {task.duration_seconds.toFixed(1)}s
+                {fmtCost(task.cost_usd)} · {task.duration_seconds.toFixed(1)}s
               </span>
             )}
             {task.retry_count > 0 && (
