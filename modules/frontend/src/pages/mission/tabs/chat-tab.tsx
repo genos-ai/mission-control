@@ -31,7 +31,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import { DEFAULT_CHAT_AGENT, getAgentIcon } from './chat-constants'
+import { agentStyle } from '@/lib/agent-tone'
+import { DEFAULT_CHAT_AGENT } from './chat-constants'
 import { Conversation } from './chat-conversation'
 import { ToolOutputPanel } from './chat-artifacts-panel'
 
@@ -206,7 +207,7 @@ function RosterRow({
 }) {
   const status = live?.status ?? 'idle'
   const isBusy = status === 'thinking' || status === 'running'
-  const CapabilityIcon = getAgentIcon(agentName)
+  const CapabilityIcon = agentStyle(agentName).icon
 
   const capabilityIconClass =
     status === 'running'  ? 'text-amber-400 animate-pulse' :

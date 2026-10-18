@@ -2,6 +2,21 @@
  * Execution / run types — records, tasks, decisions, cost breakdown.
  */
 
+/**
+ * Every status a run can have, across both run records the UI lists:
+ * ExecutionRecordStatus (backend/models/execution_record.py) adds `timed_out`;
+ * WorkflowRunStatus (backend/models/workflow_run.py) adds `awaiting_input`.
+ * The API returns a plain string, so `status-tone` checks it against this set.
+ */
+export type RunStatus =
+  | 'pending'
+  | 'running'
+  | 'awaiting_input'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out'
+
 // Execution / Run types
 export interface ExecutionRecord {
   id: string

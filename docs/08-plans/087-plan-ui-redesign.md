@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2 complete (2026-10-18)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1 complete (2026-10-18)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -284,7 +284,7 @@ Each sub-phase is one commit. Each commit passes every gate in §6 before it is 
 
 ### Phase 2 — UI primitives (handoff §4)
 
-**2.1 Tone maps.** `lib/status-tone.ts` defines the one `Tone` type
+**2.1 Tone maps (done).** `lib/status-tone.ts` defines the one `Tone` type
 (`success | warning | danger | info | brand | violet | neutral`) and, per C15–C17, `missionTone`,
 `taskTone`, `runTone` and `consoleCategoryTone` (`execution`, `chat`, `system` — the categories
 `layout.tsx:87-103` produces), each mapping a status to `{ tone, icon }`. Primitives import
@@ -387,8 +387,9 @@ Veto countdown uses the existing `VetoState`. Drag-and-drop unchanged. Replace
 `runs-panel.tsx`, `run-detail-panel.tsx`, `run-live.tsx`, `components/live/*`. Apply C21. Fold
 `live-footer.tsx` stats into the summary Panel (its `formatElapsed` has already moved to
 `lib/format-date.ts` in Phase 2.2), then delete `live-footer.tsx`. Status icons use
-`StatusIcon` with `runTone`. Filter chips use `FilterChip`. Verify the run status values in `types/workflow.ts` and `types/execution.ts` and type
-`runTone` against them.
+`StatusIcon` with `runTone`. Filter chips use `FilterChip`. `runTone` is typed against `RunStatus`
+(`types/execution.ts`, added in Phase 2.1 from the two backend enums); the API returns plain
+strings, so use `styleFor(runTone, status, 'run')`, which throws on an unknown value.
 
 ### Phase 7 — Workflows list and editor (handoff §6.8, §6.9)
 
