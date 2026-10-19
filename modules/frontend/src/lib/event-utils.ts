@@ -16,65 +16,83 @@ import {
   UserPlus,
   Radio,
   Package,
+  type LucideIcon,
 } from 'lucide-react'
 import { createElement } from 'react'
 
+import { cn } from '@/lib/cn'
+import type { Tone } from '@/lib/status-tone'
+import { TONE_TEXT } from '@/lib/tone-class'
+
 // ---------------------------------------------------------------------------
-// Static icon map — used for event types that don't need level-awareness
+// Icon and tone per event type — for event types that don't need level-awareness
 // ---------------------------------------------------------------------------
 
-const EVENT_ICONS: Record<string, React.ReactNode> = {
-  'mission.narrative': createElement(Radio, { className: 'h-3 w-3 text-sky-400' }),
-  'mission.artifact.found': createElement(Package, { className: 'h-3 w-3 text-violet' }),
-  'plan.created': createElement(FileText, { className: 'h-3 w-3 text-blue-400' }),
-  'plan.step.started': createElement(Zap, { className: 'h-3 w-3 text-amber-400' }),
-  'plan.step.completed': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
-  'agent.thinking.started': createElement(Brain, { className: 'h-3 w-3 text-purple-400' }),
-  'agent.response.complete': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
-  'agent.tool.called': createElement(Wrench, { className: 'h-3 w-3 text-cyan-400' }),
-  'agent.tool.returned': createElement(Wrench, { className: 'h-3 w-3 text-cyan-400' }),
-  'agent.approval.requested': createElement(XCircle, { className: 'h-3 w-3 text-amber-400' }),
-  // Execution history events
-  'execution.record': createElement(Play, { className: 'h-3 w-3 text-blue-400' }),
-  'task.completed': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
-  'task.failed': createElement(XCircle, { className: 'h-3 w-3 text-destructive' }),
-  'task.skipped': createElement(AlertTriangle, { className: 'h-3 w-3 text-amber-400' }),
-  'task.attempt.failed': createElement(RotateCcw, { className: 'h-3 w-3 text-destructive' }),
-  'decision.retry': createElement(RotateCcw, { className: 'h-3 w-3 text-amber-400' }),
-  'decision.fail': createElement(XCircle, { className: 'h-3 w-3 text-destructive' }),
-  'decision.pass': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
-  'decision.escalate': createElement(Scale, { className: 'h-3 w-3 text-amber-400' }),
-  // System events
-  'system.execution.created': createElement(Activity, { className: 'h-3 w-3 text-blue-400' }),
-  'system.execution.completed': createElement(CheckCircle, { className: 'h-3 w-3 text-emerald-400' }),
-  'system.budget.warning': createElement(DollarSign, { className: 'h-3 w-3 text-amber-400' }),
-  'system.session.created': createElement(UserPlus, { className: 'h-3 w-3 text-blue-400' }),
+interface EventStyle {
+  icon: LucideIcon
+  tone: Tone
 }
 
-/**
- * Get the appropriate icon for an event, taking into account its data.level field.
- * Events like system.info can be info/warning/error — the icon reflects the actual severity.
- */
-export function getEventIcon(eventType: string, data?: Record<string, unknown>): React.ReactNode {
+const EVENT_STYLES: Record<string, EventStyle> = {
+  'mission.narrative': { icon: Radio, tone: 'info' },
+  'mission.artifact.found': { icon: Package, tone: 'violet' },
+  'plan.created': { icon: FileText, tone: 'info' },
+  'plan.step.started': { icon: Zap, tone: 'warning' },
+  'plan.step.completed': { icon: CheckCircle, tone: 'success' },
+  'agent.thinking.started': { icon: Brain, tone: 'violet' },
+  'agent.response.complete': { icon: CheckCircle, tone: 'success' },
+  'agent.tool.called': { icon: Wrench, tone: 'info' },
+  'agent.tool.returned': { icon: Wrench, tone: 'info' },
+  'agent.approval.requested': { icon: XCircle, tone: 'warning' },
+  // Execution history events
+  'execution.record': { icon: Play, tone: 'info' },
+  'task.completed': { icon: CheckCircle, tone: 'success' },
+  'task.failed': { icon: XCircle, tone: 'danger' },
+  'task.skipped': { icon: AlertTriangle, tone: 'warning' },
+  'task.attempt.failed': { icon: RotateCcw, tone: 'danger' },
+  'decision.retry': { icon: RotateCcw, tone: 'warning' },
+  'decision.fail': { icon: XCircle, tone: 'danger' },
+  'decision.pass': { icon: CheckCircle, tone: 'success' },
+  'decision.escalate': { icon: Scale, tone: 'warning' },
+  // System events
+  'system.execution.created': { icon: Activity, tone: 'info' },
+  'system.execution.completed': { icon: CheckCircle, tone: 'success' },
+  'system.budget.warning': { icon: DollarSign, tone: 'warning' },
+  'system.session.created': { icon: UserPlus, tone: 'info' },
+}
+
+function eventStyle(eventType: string, data?: Record<string, unknown>): EventStyle {
   const level = String(data?.level ?? '')
 
   if (eventType === 'system.info') {
-    if (level === 'error') return createElement(AlertCircle, { className: 'h-3 w-3 text-red-400' })
-    if (level === 'warning') return createElement(AlertTriangle, { className: 'h-3 w-3 text-amber-400' })
-    return createElement(Info, { className: 'h-3 w-3 text-blue-400' })
+    if (level === 'error') return { icon: AlertCircle, tone: 'danger' }
+    if (level === 'warning') return { icon: AlertTriangle, tone: 'warning' }
+    return { icon: Info, tone: 'info' }
   }
 
   if (eventType === 'plan.phase') {
-    const step = String(data?.step ?? '')
-    if (step === 'error') return createElement(AlertCircle, { className: 'h-3 w-3 text-red-400' })
-    return createElement(Activity, { className: 'h-3 w-3 text-blue-400' })
+    if (String(data?.step ?? '') === 'error') return { icon: AlertCircle, tone: 'danger' }
+    return { icon: Activity, tone: 'info' }
   }
 
-  if (EVENT_ICONS[eventType]) return EVENT_ICONS[eventType]
+  if (EVENT_STYLES[eventType]) return EVENT_STYLES[eventType]
   if (eventType.includes('failed') || eventType.includes('error')) {
-    return createElement(XCircle, { className: 'h-3 w-3 text-red-400' })
+    return { icon: XCircle, tone: 'danger' }
   }
-  return createElement(Zap, { className: 'h-3 w-3 text-gray-400' })
+  return { icon: Zap, tone: 'neutral' }
+}
+
+/**
+ * The icon for an event, in its tone. Events like system.info can be
+ * info/warning/error — the icon reflects the actual severity (data.level).
+ */
+export function getEventIcon(
+  eventType: string,
+  data?: Record<string, unknown>,
+  className?: string,
+): React.ReactNode {
+  const { icon, tone } = eventStyle(eventType, data)
+  return createElement(icon, { className: cn('h-3 w-3', TONE_TEXT[tone], className) })
 }
 
 /**

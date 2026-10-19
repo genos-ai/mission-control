@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5 complete (2026-10-19)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5, 6 complete (2026-10-19)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -117,6 +117,8 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C37 | §2.2 `fontSize`, `borderRadius` overrides | Confirmed in Phase 1.1: no class from the old build is missing from the new one after C36 (selector diff, 666 old vs 673 new) | No further action. |
 | C38 | §6.5 "Drag-and-drop (`@hello-pangea/dnd`) unchanged", drop-target highlight `ring-2 ring-brand/30`; §10 parity "drag-and-drop still works" | There is no drag-and-drop anywhere: `@hello-pangea/dnd` is a dependency but no file imports it, and none did at the original baseline. Cards change status through their buttons | Nothing to preserve or restyle. Do not add drag-and-drop (out of scope). |
 | C39 | §3 Phase 5.2 "call the same mutations the detail panel uses"; §6.4 "approve/reject from card and panel" | The detail panel never had Approve, Reject or Retry (it is read-only). The mutations are `useApproveTask`, `useRejectTask` and `useRetryTask` in `hooks/use-mission-plan.ts`, and the card was already their only caller | The card keeps calling them; the detail panel stays read-only. Nothing was added to it. |
+| C40 | §6.6 Runs table has a "Workflow" column (`daily-brief`) | A run record has no workflow name. `roster_name` is `default` on 457 of 459 local runs; `objective_statement` is set on 457 and is what a run was asked to do. `task_type` and `temporal_workflow_id` are almost always null | The column is "Objective" (truncated, full text on hover). `ExecutionRecord` gained `objective_statement` (the list endpoint already returned it). |
+| C41 | §6.7 Steps "2 / 7", Elapsed, Cost from the live store | The store starts at page open, so a run joined late or finished shows 0 cost and 0 steps. `plan.created` is typed with `step_count`, but the store reads a `tasks` list, and no emitter of that event exists in `modules/` | Cost and finished steps are the larger of the stream's count and the polled record's (both only rise). The step total is shown only when the stream supplied one; otherwise just the finished count. Elapsed comes from the record's `started_at`. |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -494,7 +496,41 @@ the card buttons (C38). Replace
 
 **5.3 Detail panel.** `plan-board-detail-panel.tsx` as a right Panel inside the gutter.
 
-### Phase 6 — Runs and Run live (handoff §6.6, §6.7)
+### Phase 6 — Runs and Run live (handoff §6.6, §6.7) (done)
+
+**Runs.** `runs-panel.tsx` is now filter chips (`FilterChip`: All, Running, Completed, Failed, with counts) above one `Panel`
+table (Status, Run, Objective, Started, Duration, Cost; C40). A row opens on click, Enter or Space and expands to
+`run-row-detail.tsx` (metrics, objective, tasks, decisions, artifacts, and the Events/Output/Cost buttons, which now show which
+view is open; before, both branches of that ternary were `secondary`). An in-flight row shows a ticking duration, a Live link
+to the run page and a Cancel button; its Live link stays reachable because the row itself toggles. Counts are of the 50 rows
+the page loads, so a note says "Showing the latest 50 of 59 runs." when there are more (the 50-row limit is pre-existing).
+`run-detail-panel.tsx` is a floating, resizable `Panel` that appears only when a view is opened; before, an empty
+"Details" column was always there. `runs-tab.tsx` lays the page out as a document column plus that panel.
+
+**Run live.** `live-summary.tsx` replaces the header bar and `live-footer.tsx` (deleted): objective, short id, Elapsed, Cost,
+Steps, the Live or status pill, the two panel toggles and Cancel run (C21: no Tokens, a run has no token total; C41). The
+activity panel is a vertical timeline (planning, every event, the agents working now), the results panel one block per
+finished task. The back arrow is gone; the breadcrumb already links to Runs. `research-live-view.tsx` now lays its header
+and three columns out as panels. The four palette colours in `source-panel.tsx` and `sub-question-tree.tsx`, the amber box
+in `gate-approval.tsx` and two icons in `output-preview-panel.tsx` moved to tokens, because they render on these screens.
+
+**Deviations.** There is no pending-steps list in the timeline (the stream does not announce steps ahead of time, and the
+store would need a new field); the results panel lists finished tasks rather than one streaming document, because that is
+what the store holds.
+
+**Built with their first callers** (reuse, not new patterns): `hooks/use-now.ts` (the one ticking clock; `sidebar-footer` was
+switched to it, and `use-veto-countdown` keeps its own because it derives a deadline), `components/layout/document-page.tsx`
+(the §5.1 document column, for the other document screens), `components/ui/metric-tile.tsx` and
+`components/ui/detail-section.tsx` (extracted from the Plan detail panel, which now imports them). `event-utils.ts` keeps its
+exports; its icons are a `{icon, tone}` table, which also removes 26 palette classes from the Console, chat and activity icons.
+`statusLabel` moved to `lib/format.ts`.
+
+Browser-tested with 27 + 23 checks, every write intercepted (filters and counts, header, rows, keyboard, the three detail views,
+New run modal, a fabricated in-flight run with ticking duration, Live link and Cancel, then a faked stream with a failed step,
+panel toggles, Cancel run, a finished run, 1100 px). Not exercised: cancelling a real run.
+
+**Original plan text:**
+
 
 `runs-panel.tsx`, `run-detail-panel.tsx`, `run-live.tsx`, `components/live/*`. Apply C21. Fold
 `live-footer.tsx` stats into the summary Panel (its `formatElapsed` has already moved to
@@ -604,6 +640,9 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
 | Right drawer | Three panel types have no caller anywhere: `event-log`, `output-preview` and `cost-breakdown` (`components/drawer/*`). The Runs tab shows those views inline instead. They are restyled with the drawer but unreachable. |
 | Dependencies | `@hello-pangea/dnd` is listed in `package.json` and imported nowhere. |
+| Run live | A run opened after it finished, or joined late, shows no activity or results: the page is driven by the live stream and starts empty (the `TODO` in `run-live.tsx`). Cost and steps now fall back to the polled record (C41); the timeline and results do not. The empty texts now say so instead of "Waiting for events…". |
+| Run live | The store reads a `tasks` list from `plan.created`, but the event is typed with `step_count` and nothing in `modules/` emits it, so the step total may never be known. |
+| Runs / API | The backend serves decision reasoning with a stored metadata tail until it is restarted on the fix for supervisor decisions (the API here runs without `--reload`). |
 | Chat (fixed 2026-10-19) | Intermittently the thread stopped hundreds of pixels short of the bottom on load (830-884px measured). The auto-scroll effect in `chat-conversation.tsx` did not depend on `historicalEvents` (the separate narrative query), so events arriving after the first scroll left the thread short. Reproduced deterministically by delaying the narrative response, and confirmed at the original baseline. The effect now depends on the timeline; measured 0px from the bottom at every sample with the narrative delayed 1.5s, delayed 3s, and not delayed. |
 
 - ⌘K command palette and the sidebar search trigger (C31).
@@ -673,6 +712,12 @@ reach `useApproveTask`, `useRejectTask` and `useRetryTask` (POST `/approve`, `/r
 mode, pause and resume reach PATCH `/plan`; Run approved opens the confirm dialog and Cancel dispatches
 nothing; the refine and add-task forms open; the detail panel opens from a completed or failed card
 and closes. Drag-and-drop does not exist (C38). Real-data writes were not exercised.
+
+Phase 6 pass (2026-10-19, every write intercepted): the Runs filters, row expand and collapse by click and keyboard, the Events,
+Output and Cost views and New run reach the same hooks as before; Cancel on a running row and Cancel run on the live page
+POST `/executions/{id}/cancel`; the Live link opens the run page. The live page's data logic (starting a pending run once the stream connects, the hand-off to the
+research view, the gate approval prompt) was left as it was and not exercised: no run was pending, researching or gated. Cancelling
+a real run was not exercised.
 
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
 from card and panel hit the same mutations; chat threads, slash commands and

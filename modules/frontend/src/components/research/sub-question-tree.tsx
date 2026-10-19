@@ -9,9 +9,9 @@ const STATUS_ICON: Record<string, string> = {
 
 const STATUS_COLOR: Record<string, string> = {
   pending: 'text-muted-foreground',
-  searching: 'text-yellow-500 animate-pulse',
-  covered: 'text-green-500',
-  gap: 'text-red-400',
+  searching: 'text-warning animate-pulse motion-reduce:animate-none',
+  covered: 'text-success',
+  gap: 'text-danger',
 }
 
 export function SubQuestionTree() {

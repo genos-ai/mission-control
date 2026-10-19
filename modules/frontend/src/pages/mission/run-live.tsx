@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Radio, StopCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   useExecution,
@@ -10,14 +9,10 @@ import {
 import { useRunStream } from '@/hooks/use-sse'
 import { useLiveRunStore } from '@/stores/live-run'
 import { useResearchStore } from '@/stores/research'
-import { ROUTES } from '@/lib/constants'
-import { StatusPill } from '@/components/ui/status-pill'
-import { runTone, styleFor } from '@/lib/status-tone'
-import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { LiveActivityPanel } from '@/components/live/live-activity-panel'
 import { LiveResultsPanel } from '@/components/live/live-results-panel'
-import { LiveFooter } from '@/components/live/live-footer'
+import { LiveSummary } from '@/components/live/live-summary'
 import { ResearchLiveView } from '@/components/research/research-live-view'
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'timed_out'])
@@ -34,7 +29,6 @@ const PENDING_STATUSES = new Set(['pending', 'created'])
 //       display the final output for completed runs.
 export default function RunLivePage() {
   const { id: missionId, runId } = useParams<{ id: string; runId: string }>()
-  const navigate = useNavigate()
 
   // Fetch execution detail — poll while running
   const { data: execution, isLoading } = useExecution(runId)
@@ -128,86 +122,28 @@ export default function RunLivePage() {
   if (!execution || !missionId) return null
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => navigate(ROUTES.MISSION_RUNS(missionId))}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <span className="font-mono text-sm text-muted-foreground">
-            {execution.id.slice(0, 8)}
-          </span>
-          {execution.objective_statement && (
-            <span className="text-sm truncate max-w-md">
-              {execution.objective_statement}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {!isTerminal && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleCancel}
-              disabled={cancelMutation.isPending}
-              className="text-destructive hover:text-destructive"
-            >
-              <StopCircle className="mr-1.5 h-3.5 w-3.5" />
-              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
-            </Button>
-          )}
-          {connected && (
-            <StatusPill tone="success" pulse>
-              <Radio className="mr-1 h-3 w-3" />
-              Live
-            </StatusPill>
-          )}
-          {isTerminal && (
-            <StatusPill tone={styleFor(runTone, execution.status, 'run').tone}>
-              {execution.status}
-            </StatusPill>
-          )}
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-gutter px-2 pb-2">
+      <LiveSummary
+        execution={execution}
+        inFlight={!isTerminal}
+        connected={connected}
+        activityOpen={activityOpen}
+        resultsOpen={resultsOpen}
+        onToggleActivity={() => setActivityOpen((v) => !v)}
+        onToggleResults={() => setResultsOpen((v) => !v)}
+        onCancel={handleCancel}
+        cancelling={cancelMutation.isPending}
+      />
 
-      {/* Main content: research three-panel view or standard two-panel */}
+      {/* Research runs get their own three-panel view; everything else gets activity + results. */}
       {researchActive || researchComplete ? (
         <ResearchLiveView />
       ) : (
-        <div className="flex flex-1 overflow-hidden">
-          {activityOpen ? (
-            <LiveActivityPanel onCollapse={() => setActivityOpen(false)} />
-          ) : (
-            <button
-              onClick={() => setActivityOpen(true)}
-              className="flex w-5 shrink-0 items-center justify-center border-r text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-              title="Open activity panel"
-            >
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
-          {resultsOpen ? (
-            <LiveResultsPanel onCollapse={() => setResultsOpen(false)} />
-          ) : (
-            <button
-              onClick={() => setResultsOpen(true)}
-              className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-              title="Open results panel"
-            >
-              <ChevronLeft className="h-3 w-3" />
-            </button>
-          )}
+        <div className="flex min-h-0 flex-1 gap-gutter">
+          {activityOpen && <LiveActivityPanel />}
+          {resultsOpen && <LiveResultsPanel />}
         </div>
       )}
-
-      {/* Footer */}
-      <LiveFooter />
     </div>
   )
 }

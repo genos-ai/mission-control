@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { useSubmitApproval } from '@/hooks/use-executions'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/cn'
+import { TONE_BOX } from '@/lib/tone-class'
 
 interface GateApprovalProps {
   executionId: string
@@ -35,9 +37,9 @@ export function GateApproval({
   }
 
   return (
-    <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+    <div className={cn('space-y-2 rounded-card border p-3', TONE_BOX.warning)}>
       <div className="flex items-center gap-2">
-        <Pause className="h-4 w-4 text-amber-500" />
+        <Pause className="h-4 w-4 text-warning" />
         <span className="text-sm font-medium">Gate Approval Required</span>
       </div>
 

@@ -12,7 +12,7 @@ export function SourcePanel() {
           Sources ({totalSources})
         </h4>
         {verificationScore != null && (
-          <span className="rounded bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-500">
+          <span className="rounded bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
             {Math.round(verificationScore * 100)}% verified
           </span>
         )}

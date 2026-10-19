@@ -1,25 +1,16 @@
-import { useEffect, useRef } from 'react'
-import {
-  Brain,
-  Zap,
-  AlertTriangle,
-  Loader2,
-  Users,
-  Database,
-  ChevronLeft,
-} from 'lucide-react'
-import { StatusPill } from '@/components/ui/status-pill'
+/**
+ * LiveActivityPanel — a run's activity as a vertical timeline: the planning
+ * phase, every event so far, and the agents working right now at the live edge.
+ */
+
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Brain, Loader2 } from 'lucide-react'
+import { Panel } from '@/components/ui/panel'
+import { cn } from '@/lib/cn'
+import { eventDetail, eventLabel, getEventIcon } from '@/lib/event-utils'
 import { useLiveRunStore } from '@/stores/live-run'
-import { getEventIcon, eventLabel, eventDetail } from '@/lib/event-utils'
 
-const STEP_ICONS: Record<string, React.ReactNode> = {
-  roster: <Users className="h-3 w-3 text-blue-400" />,
-  context: <Database className="h-3 w-3 text-teal-400" />,
-  thinking: <Brain className="h-3 w-3 text-purple-400" />,
-  error: <AlertTriangle className="h-3 w-3 text-destructive" />,
-}
-
-export function LiveActivityPanel({ onCollapse }: { onCollapse?: () => void }) {
+export function LiveActivityPanel() {
   const phase = useLiveRunStore((s) => s.phase)
   const activeAgents = useLiveRunStore((s) => s.activeAgents)
   const thinkingBuffers = useLiveRunStore((s) => s.thinkingBuffers)
@@ -27,131 +18,118 @@ export function LiveActivityPanel({ onCollapse }: { onCollapse?: () => void }) {
   const eventLog = useLiveRunStore((s) => s.eventLog)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll event log to bottom
+  // Keep the live edge in view as events arrive.
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [eventLog.length])
+  }, [eventLog.length, activeAgents.size, planningSteps.length])
+
+  const agents = Array.from(activeAgents.entries())
+  const planning = phase === 'planning'
+  const empty = eventLog.length === 0 && agents.length === 0 && !planning
 
   return (
-    <div className="flex flex-1 h-full flex-col border-r">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <h3 className="text-sm font-semibold text-muted-foreground">
-          Live Activity
-        </h3>
-        {onCollapse && (
-          <button
-            onClick={onCollapse}
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Collapse activity panel"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
+    <Panel ref={scrollRef} className="flex w-[360px] shrink-0 flex-col overflow-y-auto p-5">
+      <p className="mb-4 text-xs text-subtle">Activity</p>
 
-      {/* Planning phase indicator */}
-      {phase === 'planning' && (
-        <div className="border-b bg-amber-500/5 px-4 py-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-            <span className="text-sm text-amber-600">Planning execution</span>
-          </div>
+      {empty && (
+        <p className="text-sm text-subtle">
+          {phase === 'done'
+            ? "This run has finished and its live events weren't kept. Its events, output and cost are in its row on the Runs tab."
+            : 'Waiting for events…'}
+        </p>
+      )}
 
-          {/* Planning phase steps */}
-          {planningSteps.length > 0 && (
-            <div className="space-y-1">
-              {planningSteps.map((ps, i) => (
-                <div key={i} className={`flex items-start gap-2 text-xs ${ps.step === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  <span className="mt-0.5 flex-shrink-0">
-                    {STEP_ICONS[ps.step] ?? <Zap className="h-3 w-3 text-gray-400" />}
+      {planning && (
+        <TimelineItem
+          running
+          icon={<Loader2 className="h-3 w-3 animate-spin text-warning motion-reduce:animate-none" />}
+          title="Planning execution"
+          sub={
+            planningSteps.length > 0 ? (
+              <span className="flex flex-col gap-0.5">
+                {planningSteps.map((ps, i) => (
+                  <span key={i} className={cn(ps.step === 'error' && 'text-danger')}>
+                    {ps.message}
                   </span>
-                  <span>{ps.message}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Planning agent thinking stream */}
-          {activeAgents.size > 0 && (
-            <div className="space-y-2">
-              {Array.from(activeAgents.entries()).map(([agentId, agentState]) => (
-                <div key={agentId}>
-                  <div className="flex items-center gap-2">
-                    <Brain className="h-3.5 w-3.5 text-purple-400 animate-pulse" />
-                    <span className="text-xs font-medium truncate">
-                      {agentId}
-                    </span>
-                    <StatusPill tone="neutral">
-                      {agentState}
-                    </StatusPill>
-                  </div>
-                  {thinkingBuffers.get(agentId) && (
-                    <p className="mt-1 ml-5 max-h-40 overflow-y-auto text-[11px] italic text-muted-foreground font-mono whitespace-pre-wrap">
-                      {(thinkingBuffers.get(agentId) ?? '').slice(-600)}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Active agents (executing phase) */}
-      {phase !== 'planning' && activeAgents.size > 0 && (
-        <div className="border-b px-4 py-2 space-y-1">
-          {Array.from(activeAgents.entries()).map(([agentId, agentState]) => (
-            <div key={agentId}>
-              <div className="flex items-center gap-2">
-                <Brain className="h-3.5 w-3.5 text-purple-400 animate-pulse" />
-                <span className="text-xs font-medium truncate">
-                  {agentId}
-                </span>
-                <StatusPill tone="neutral">
-                  {agentState}
-                </StatusPill>
-              </div>
-              {thinkingBuffers.get(agentId) && (
-                <p className="mt-1 ml-5 text-[11px] italic text-muted-foreground font-mono line-clamp-3 whitespace-pre-wrap">
-                  {(thinkingBuffers.get(agentId) ?? '').slice(-300)}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Event stream */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-2">
-        {eventLog.length === 0 && phase !== 'planning' && (
-          <p className="text-xs text-muted-foreground">
-            Waiting for events...
-          </p>
-        )}
-        <div className="space-y-1">
-          {eventLog.map((ev, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-2 text-xs text-muted-foreground"
-            >
-              <span className="mt-0.5 flex-shrink-0">
-                {getEventIcon(ev.event_type, ev.data as Record<string, unknown> ?? ev)}
+                ))}
               </span>
-              <div className="min-w-0">
-                <span className="font-medium text-foreground">
-                  {eventLabel(ev.event_type, ev.data as Record<string, unknown>)}
-                </span>
-                {eventDetail(ev.event_type, ev.data ?? ev) && (
-                  <span className="ml-1.5 text-muted-foreground truncate">
-                    {eventDetail(ev.event_type, ev.data ?? ev)}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+            ) : undefined
+          }
+          last={eventLog.length === 0 && agents.length === 0}
+        />
+      )}
+
+      {eventLog.map((ev, i) => {
+        // The store itself reads `event.data ?? event`, so events may carry their fields at the top level.
+        const data = (ev.data ?? ev) as Record<string, unknown>
+        const detail = eventDetail(ev.event_type, data)
+        return (
+          <TimelineItem
+            key={i}
+            icon={getEventIcon(ev.event_type, data)}
+            title={eventLabel(ev.event_type, data)}
+            sub={detail || undefined}
+            last={i === eventLog.length - 1 && agents.length === 0}
+          />
+        )
+      })}
+
+      {agents.map(([agentId, state], i) => {
+        const thinking = thinkingBuffers.get(agentId)
+        return (
+          <TimelineItem
+            key={agentId}
+            running
+            icon={<Brain className="h-3 w-3 animate-pulse-dot text-violet motion-reduce:animate-none" />}
+            title={agentId}
+            meta={state}
+            sub={
+              thinking ? (
+                <span className="line-clamp-3 whitespace-pre-wrap font-mono italic">{thinking.slice(-300)}</span>
+              ) : undefined
+            }
+            last={i === agents.length - 1}
+          />
+        )
+      })}
+    </Panel>
+  )
+}
+
+/** One step on the timeline: a ringed icon on a connector line, a title, an optional meta and sub-line. */
+function TimelineItem({
+  icon,
+  title,
+  meta,
+  sub,
+  running = false,
+  last = false,
+}: {
+  icon: ReactNode
+  title: string
+  meta?: string
+  sub?: ReactNode
+  running?: boolean
+  last?: boolean
+}) {
+  return (
+    <div className="relative flex gap-3 pb-4">
+      {!last && <span className="absolute bottom-0 left-[10.5px] top-6 w-px bg-line" />}
+      <span
+        className={cn(
+          'relative z-10 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border bg-panel',
+          running ? 'border-warning/45' : 'border-border-strong',
+        )}
+      >
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1 pt-px">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="truncate text-base">{title}</span>
+          {meta && <span className="shrink-0 font-mono text-2xs text-subtle">{meta}</span>}
         </div>
+        {sub && <div className="mt-0.5 text-xs text-subtle [overflow-wrap:anywhere]">{sub}</div>}
       </div>
     </div>
   )

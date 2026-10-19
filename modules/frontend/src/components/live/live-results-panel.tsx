@@ -1,65 +1,49 @@
-import { CheckCircle, XCircle, MinusCircle, ChevronRight } from 'lucide-react'
+/**
+ * LiveResultsPanel — a run's results as they arrive: one block per finished
+ * task, any errors, and the approval prompt when a gate is waiting.
+ */
+
+import { Panel } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { GateApproval } from '@/components/mission/gate-approval'
+import { StatusIcon } from '@/components/ui/status-icon'
+import { cn } from '@/lib/cn'
+import { agentShortName, fmtCost } from '@/lib/format'
+import { styleFor, taskTone } from '@/lib/status-tone'
+import { TONE_BOX } from '@/lib/tone-class'
 import { useLiveRunStore } from '@/stores/live-run'
 
-const STATUS_ICON: Record<string, React.ReactNode> = {
-  completed: <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />,
-  success: <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />,
-  failed: <XCircle className="h-3.5 w-3.5 text-destructive" />,
-  skipped: <MinusCircle className="h-3.5 w-3.5 text-amber-400" />,
-}
-
-function agentShortName(agent: string): string {
-  if (!agent) return ''
-  // "software.quality.agent" → "software.quality"
-  return agent.endsWith('.agent')
-    ? agent.slice(0, -6)
-    : agent
-}
-
-export function LiveResultsPanel({ onCollapse }: { onCollapse?: () => void }) {
+export function LiveResultsPanel() {
+  const phase = useLiveRunStore((s) => s.phase)
   const errors = useLiveRunStore((s) => s.errors)
   const taskResults = useLiveRunStore((s) => s.taskResults)
   const pendingApproval = useLiveRunStore((s) => s.pendingApproval)
-  const clearApproval = () =>
-    useLiveRunStore.setState({ pendingApproval: null })
+  const clearApproval = () => useLiveRunStore.setState({ pendingApproval: null })
+  const writing = phase !== 'done'
 
   return (
-    <div className="flex w-[300px] shrink-0 h-full flex-col border-l">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <h3 className="text-sm font-semibold text-muted-foreground">
-          Results
-        </h3>
-        {onCollapse && (
-          <button
-            onClick={onCollapse}
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Collapse results panel"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
+    <Panel className="min-w-0 flex-1 overflow-y-auto">
+      <div className="mx-auto flex max-w-[720px] flex-col gap-5 px-8 pb-12 pt-7">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-subtle">Results</p>
+          {writing && (
+            <span className="flex items-center gap-1.5 text-xs text-warning">
+              <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse-dot motion-reduce:animate-none" />
+              writing
+            </span>
+          )}
+        </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
-        {/* Errors section */}
         {errors.length > 0 && (
-          <div className="space-y-1">
+          <div className={cn('flex flex-col gap-1.5 rounded-card border p-3', TONE_BOX.danger)}>
             {errors.map((err, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-2 text-xs"
-              >
-                <XCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
-                <span className="font-medium text-destructive">{err}</span>
-              </div>
+              <p key={i} className="text-sm text-danger [overflow-wrap:anywhere]">
+                {err}
+              </p>
             ))}
           </div>
         )}
 
-        {/* Gate approval */}
         {pendingApproval && (
           <GateApproval
             executionId={pendingApproval.executionId}
@@ -68,52 +52,49 @@ export function LiveResultsPanel({ onCollapse }: { onCollapse?: () => void }) {
           />
         )}
 
-        {/* Task results */}
-        {taskResults.length > 0 ? (
-          <div className="space-y-2">
-            {taskResults.map((r, i) => {
-              const icon =
-                STATUS_ICON[r.status] ?? (
-                  <MinusCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                )
-
-              return (
-                <div key={i} className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    {icon}
-                    <span className="text-xs font-semibold">{r.stepId}</span>
-                    {r.agent && (
-                      <Badge>
-                        {agentShortName(r.agent)}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="ml-5 text-[11px] text-muted-foreground">
-                    {r.status === 'failed' && r.summary ? (
-                      <span className="text-destructive">{r.summary}</span>
-                    ) : (
-                      <>
-                        ${r.costUsd.toFixed(4)} &middot;{' '}
-                        {r.durationSeconds.toFixed(1)}s
-                        {r.summary && (
-                          <span className="ml-1.5">&middot; {r.summary}</span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          !pendingApproval &&
-          errors.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              No results yet...
-            </p>
+        {taskResults.map((r, i) => {
+          // The stream reports a finished step as completed, failed or skipped.
+          const style = styleFor(taskTone, r.status === 'success' ? 'completed' : r.status, 'task result')
+          return (
+            <div key={i} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <StatusIcon {...style} />
+                <span className="text-base font-medium">{r.stepId}</span>
+                {r.agent && <Badge>{agentShortName(r.agent)}</Badge>}
+                <span className="ml-auto font-mono text-2xs text-subtle">
+                  {fmtCost(r.costUsd)} · {r.durationSeconds.toFixed(1)}s
+                </span>
+              </div>
+              {r.summary && (
+                <p
+                  className={cn(
+                    'pl-5 text-sm leading-relaxed [overflow-wrap:anywhere]',
+                    r.status === 'failed' ? 'text-danger' : 'text-text-2',
+                  )}
+                >
+                  {r.summary}
+                </p>
+              )}
+            </div>
           )
+        })}
+
+        {taskResults.length === 0 && !pendingApproval && errors.length === 0 && (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-sm text-subtle">
+              {writing
+                ? 'Waiting for the first result…'
+                : "No results were streamed to this page. The run's output and cost are in its row on the Runs tab."}
+            </p>
+            {writing && (
+              <>
+                <div className="h-3 w-[58%] rounded bg-raised" />
+                <div className="h-3 w-[41%] rounded bg-raised" />
+              </>
+            )}
+          </div>
         )}
       </div>
-    </div>
+    </Panel>
   )
 }

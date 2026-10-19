@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { LogOut, Moon, Sun } from 'lucide-react'
 
@@ -6,6 +5,7 @@ import { NotificationDropdown } from './notification-dropdown'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useExecutions } from '@/hooks/use-executions'
+import { useNow } from '@/hooks/use-now'
 import { formatElapsed, parseUtc } from '@/lib/format-date'
 import { ROUTES } from '@/lib/constants'
 import { useAuthStore } from '@/stores/auth'
@@ -58,14 +58,8 @@ export function SidebarFooter() {
 /** Shown while runs are in progress; links to the longest-running one. */
 function RunIndicator() {
   const { data } = useExecutions({ status: 'running', limit: 5 })
-  const [now, setNow] = useState(() => Date.now())
   const runs = data?.executions ?? []
-
-  useEffect(() => {
-    if (runs.length === 0) return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [runs.length])
+  const now = useNow(runs.length > 0)
 
   if (runs.length === 0) return null
 

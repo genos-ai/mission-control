@@ -24,3 +24,8 @@ export function fmtCost(usd: number): string {
 export function fmtUsd(usd: number): string {
   return `$${usd.toFixed(2)}`
 }
+
+/** Display text for a status: "completed" -> "Completed", "timed_out" -> "Timed out". */
+export function statusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
+}

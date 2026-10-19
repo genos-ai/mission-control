@@ -8,8 +8,8 @@ import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 
 const SEVERITY_ICON: Record<string, React.ReactNode> = {
   error: <XCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0" />,
-  warning: <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />,
-  info: <Info className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />,
+  warning: <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0" />,
+  info: <Info className="h-3.5 w-3.5 text-info flex-shrink-0" />,
 }
 
 const STATUS_TONE: Record<string, Tone> = {

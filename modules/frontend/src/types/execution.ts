@@ -30,6 +30,8 @@ export interface ExecutionRecord {
   // Plan 46 Phase 2 #3: task count denormalised from the eager-
   // loaded task_executions relationship for Run History row rendering.
   task_count: number
+  // What the run was asked to do; the list endpoint returns it (roster_name is just "default").
+  objective_statement: string | null
   // Plan 56 Phase B: background task tracking
   task_type: string | null
   task_params: Record<string, unknown> | null
@@ -63,7 +65,6 @@ export interface ExecutionDecision {
 }
 
 export interface ExecutionRecordDetail extends ExecutionRecord {
-  objective_statement: string | null
   objective_category: string | null
   execution_outcome_json: Record<string, unknown> | null
   planning_thinking_trace: string | null
