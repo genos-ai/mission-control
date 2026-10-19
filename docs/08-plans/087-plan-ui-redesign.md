@@ -73,7 +73,7 @@ These apply to every phase. A phase is not done until all of them hold for the f
    1000 lines applies to everything.
 7. **Fail fast.** No silent fallbacks. A stored theme value that is not a known theme is
    removed and replaced by the system preference — never cast with `as Theme`.
-8. **Behaviour parity.** Every route, mutation, drag-and-drop, keyboard shortcut, drawer and
+8. **Behaviour parity.** Every route, mutation, keyboard shortcut, drawer and
    modal that works today still works after each commit.
 9. **Accessibility (doc 23).** Icon-only buttons have `aria-label` (not only `title`).
    Contrast: WCAG AA (4.5:1 body, 3:1 large). Pulse, shimmer and spin animations carry
@@ -115,6 +115,7 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C35 | §6.9 node shadow `shadow-[0_1px_2px_rgba(0,0,0,.4)]` in dark, `shadow-sm` in light | An `rgba()` literal in a component breaks Constraint 4 | Define `--shadow-node` per theme in `src/index.css` and `boxShadow: { node: 'var(--shadow-node)' }` in `tailwind.config.js`; nodes use `shadow-node`. Colour literals live only in `index.css`. |
 | C36 | §2.2 defines `violet` as a single token colour | Tailwind's built-in `violet` palette (`violet-400`, `violet-500/20` …) is replaced by a single colour, so existing `violet-*` classes stop matching and render nothing. 22 usages in 8 files, 6 of them inside string constants that `no-custom-classname` cannot see | Done in Phase 1.1: `violet-400` → `violet`, `violet-500/N` → `violet/N` across `src/`. The old/new CSS selector diff in §6.1.4 is the check that catches classes the lint rule cannot see. |
 | C37 | §2.2 `fontSize`, `borderRadius` overrides | Confirmed in Phase 1.1: no class from the old build is missing from the new one after C36 (selector diff, 666 old vs 673 new) | No further action. |
+| C38 | §6.5 "Drag-and-drop (`@hello-pangea/dnd`) unchanged", drop-target highlight `ring-2 ring-brand/30`; §10 parity "drag-and-drop still works" | There is no drag-and-drop anywhere: `@hello-pangea/dnd` is a dependency but no file imports it, and none did at the original baseline. Cards change status through their buttons | Nothing to preserve or restyle. Do not add drag-and-drop (out of scope). |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -434,7 +435,9 @@ the budget bar at line 166; replace the `<select>` with a four-segment
 **5.2 Columns and cards.** `plan-board.tsx`, `plan-board-task-card.tsx` per handoff §6.5 with
 C18 and C28. Inline Approve/Reject on proposed cards and Retry on failed cards call the same
 mutations the detail panel uses — find them in `hooks/use-mission-plan.ts` and reuse; add none.
-Veto countdown uses the existing `VetoState`. Drag-and-drop unchanged. Replace
+Veto countdown uses the existing `VetoState`. The board has no drag-and-drop: `@hello-pangea/dnd` is
+installed but imported nowhere, now or at the original baseline, so task status changes only through
+the card buttons (C38). Replace
 `getAgentDomainClass`, `getAgentBadgeClass` and the task-border function with
 `agent-tone` / `status-tone`, and `edgeColor`'s `rgb()` literals with
 `hsl(var(--token) / alpha)` strings; then delete the old functions and `AGENT_DOMAIN_COLORS`.
@@ -549,6 +552,8 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | `/missions/:id/context` | Size indicator reads `3.2KB / NaNKB`: `max_characters` is not in the response the page reads. |
 | Plan board | Agent tag pill clips its last letter (`RESEARCH.SYNTHESIZE`); the card is rebuilt in Phase 5.2. |
 | Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
+| Right drawer | Three panel types have no caller anywhere: `event-log`, `output-preview` and `cost-breakdown` (`components/drawer/*`). The Runs tab shows those views inline instead. They are restyled with the drawer but unreachable. |
+| Dependencies | `@hello-pangea/dnd` is listed in `package.json` and imported nowhere. |
 
 - ⌘K command palette and the sidebar search trigger (C31).
 - Tab-bar navigation option (C32).
@@ -605,8 +610,15 @@ history < 960, Runs table scrolls horizontally, plan pill shortens < 1100).
 
 ### 6.4 Behaviour parity (run at the end of Phases 3, 5, 7 and 12)
 
+Phase 3 pass (2026-10-19, read-only, no write requests sent): every route resolves; `missions/:id`
+redirects; RunModal, MissionSettingsDrawer, NotificationDropdown open; the three reachable drawer
+panels (`agent-detail` from Catalog and Team, `prompt-history` from Team, `run-events` from the active
+run card) open from their real entry points; the chat slash-command popover opens on `/`; the Plan board
+renders its four columns. Not exercised because they would write: approve/reject/retry, send message,
+run, save and schedule.
+
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
-from card and panel hit the same mutations; drag-and-drop works; chat threads, slash commands and
+from card and panel hit the same mutations; chat threads, slash commands and
 ⌘↵ work; RunModal, MissionSettingsDrawer, NotificationDropdown and every RightDrawer panel open;
 workflow editor drag, connect, select, save, run and schedule work.
 
