@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
+import { FilterChip } from '@/components/ui/filter-chip'
 import { Input } from '@/components/ui/input'
+import { Panel } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateSchedule, useUpdateSchedule } from '@/hooks/use-workflows'
 import {
@@ -21,9 +23,11 @@ import type {
   WorkflowScheduleUpdateRequest,
 } from '@/types'
 
-// Matches the shared Input styling so native <select>/<input> blend in.
-const FIELD_CLASS =
-  'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+const LABEL_CLASS = 'mb-1 block text-xs font-medium text-muted-foreground'
+
+// Matches the shared Input styling so the native <select> blends in.
+const SELECT_CLASS =
+  'flex h-[38px] w-full rounded-md border border-border-strong bg-field px-3 text-md outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
 
 interface ScheduleModalProps {
   missionId: string
@@ -118,15 +122,19 @@ export function ScheduleModal({
   }
 
   const pending = isEdit ? updateMutation.isPending : createMutation.isPending
+  const title = isEdit ? 'Edit Schedule' : 'Create Schedule'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+      <Panel
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-md p-5 shadow-lg"
+      >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">
-            {isEdit ? 'Edit Schedule' : 'Create Schedule'}
-          </h3>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <h3 className="text-base font-medium">{title}</h3>
+          <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -134,9 +142,9 @@ export function ScheduleModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Frequency */}
           <div>
-            <label className="mb-1 block text-sm font-medium">How often?</label>
+            <label className={LABEL_CLASS}>How often?</label>
             <select
-              className={FIELD_CLASS}
+              className={SELECT_CLASS}
               value={cronState.frequency}
               onChange={(e) =>
                 patch({ frequency: e.target.value as CronFrequency })
@@ -153,9 +161,7 @@ export function ScheduleModal({
           {/* Hourly: minute past the hour */}
           {cronState.frequency === 'hourly' && (
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Minute past the hour
-              </label>
+              <label className={LABEL_CLASS}>Minute past the hour</label>
               <Input
                 type="number"
                 min="0"
@@ -169,10 +175,9 @@ export function ScheduleModal({
           {/* Time of day (daily / weekdays / weekly / monthly) */}
           {['daily', 'weekdays', 'weekly', 'monthly'].includes(cronState.frequency) && (
             <div>
-              <label className="mb-1 block text-sm font-medium">Time of day</label>
-              <input
+              <label className={LABEL_CLASS}>Time of day</label>
+              <Input
                 type="time"
-                className={FIELD_CLASS}
                 value={cronState.time}
                 onChange={(e) => patch({ time: e.target.value })}
               />
@@ -182,25 +187,17 @@ export function ScheduleModal({
           {/* Weekly: day picker */}
           {cronState.frequency === 'weekly' && (
             <div>
-              <label className="mb-1 block text-sm font-medium">On which days?</label>
+              <label className={LABEL_CLASS}>On which days?</label>
               <div className="flex flex-wrap gap-1.5">
-                {WEEKDAY_LABELS.map((label, d) => {
-                  const active = cronState.weekdays.includes(d)
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => toggleWeekday(d)}
-                      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
-                        active
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-input text-muted-foreground hover:bg-accent'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  )
-                })}
+                {WEEKDAY_LABELS.map((label, d) => (
+                  <FilterChip
+                    key={d}
+                    active={cronState.weekdays.includes(d)}
+                    onClick={() => toggleWeekday(d)}
+                  >
+                    {label}
+                  </FilterChip>
+                ))}
               </div>
             </div>
           )}
@@ -208,7 +205,7 @@ export function ScheduleModal({
           {/* Monthly: day of month */}
           {cronState.frequency === 'monthly' && (
             <div>
-              <label className="mb-1 block text-sm font-medium">Day of month</label>
+              <label className={LABEL_CLASS}>Day of month</label>
               <Input
                 type="number"
                 min="1"
@@ -222,43 +219,39 @@ export function ScheduleModal({
           {/* Custom: raw cron */}
           {cronState.frequency === 'custom' && (
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Cron Expression
-              </label>
+              <label className={LABEL_CLASS}>Cron Expression</label>
               <Input
                 value={cronState.raw}
                 onChange={(e) => patch({ raw: e.target.value })}
                 placeholder="0 8 * * 1-5"
                 required
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                minute hour day month weekday
-              </p>
+              <p className="mt-1 text-xs text-subtle">minute hour day month weekday</p>
             </div>
           )}
 
           {/* Live preview */}
-          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-            <p className="text-[13px] font-medium">{summary}</p>
-            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+          <div className="rounded-card bg-raised px-3 py-2">
+            <p className="text-base font-medium">{summary}</p>
+            <p className="mt-0.5 font-mono text-2xs text-muted-foreground">
               {cron || '—'} · {timezone}
             </p>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Timezone</label>
+            <label className={LABEL_CLASS}>Timezone</label>
             <Input
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
               placeholder="UTC"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-subtle">
               Times above are interpreted in this timezone.
             </p>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Description</label>
+            <label className={LABEL_CLASS}>Description</label>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -269,9 +262,7 @@ export function ScheduleModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Budget per Run ($)
-              </label>
+              <label className={LABEL_CLASS}>Budget per Run ($)</label>
               <Input
                 type="number"
                 step="0.01"
@@ -282,9 +273,7 @@ export function ScheduleModal({
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Max Iterations
-              </label>
+              <label className={LABEL_CLASS}>Max Iterations</label>
               <Input
                 type="number"
                 min="1"
@@ -296,9 +285,7 @@ export function ScheduleModal({
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">
-              Cooldown (seconds)
-            </label>
+            <label className={LABEL_CLASS}>Cooldown (seconds)</label>
             <Input
               type="number"
               min="0"
@@ -308,7 +295,7 @@ export function ScheduleModal({
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" type="button" onClick={onClose}>
+            <Button variant="secondary" type="button" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !canSubmit}>
@@ -316,7 +303,7 @@ export function ScheduleModal({
             </Button>
           </div>
         </form>
-      </div>
+      </Panel>
     </div>
   )
 }

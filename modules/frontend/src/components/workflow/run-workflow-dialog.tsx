@@ -3,6 +3,8 @@ import { X, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Panel } from '@/components/ui/panel'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useRunWorkflow } from '@/hooks/use-workflows'
 import type { WorkflowParameter } from './workflow-editor-types'
@@ -75,11 +77,15 @@ export function RunWorkflowDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg max-h-[80vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+      <Panel
+        role="dialog"
+        aria-modal="true" aria-label="Run Workflow"
+        className="max-h-[80vh] w-full max-w-lg overflow-y-auto p-5 shadow-lg"
+      >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Run Workflow</h3>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <h3 className="text-base font-medium">Run Workflow</h3>
+          <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -95,27 +101,27 @@ export function RunWorkflowDialog({
           ))}
 
           {parameters.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              This workflow has no parameters. It will run with default context.
-            </p>
+            <p className="text-xs text-muted-foreground">This workflow has no parameters. It will run with default context.</p>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={runMutation.isPending}>
-              <Play className="mr-1.5 h-3.5 w-3.5" />
+              <Play className="h-3 w-3" />
               {runMutation.isPending ? 'Starting...' : 'Run'}
             </Button>
           </div>
         </form>
-      </div>
+      </Panel>
     </div>
   )
 }
 
 // ---- Parameter field renderer ----
+
+// Matches the shared Input styling so the native <select> blends in.
+const SELECT_CLASS =
+  'flex h-[38px] w-full rounded-md border border-border-strong bg-field px-3 text-md outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
 
 function ParameterField({
   param,
@@ -130,13 +136,13 @@ function ParameterField({
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {param.label}
-        {param.required && <span className="ml-0.5 text-destructive">*</span>}
+        {param.required && <span className="ml-0.5 text-danger">*</span>}
       </label>
 
       {param.description && (
-        <p className="text-xs text-muted-foreground">{param.description}</p>
+        <p className="text-xs text-subtle">{param.description}</p>
       )}
 
       {param.type === 'text' && (
@@ -172,15 +178,7 @@ function ParameterField({
       )}
 
       {param.type === 'boolean' && (
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          <span className="text-sm text-muted-foreground">Enabled</span>
-        </label>
+        <Switch checked={!!value} onChange={onChange} label={param.label} />
       )}
 
       {param.type === 'enum' && param.options && (
@@ -188,7 +186,7 @@ function ParameterField({
           id={id}
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          className={SELECT_CLASS}
         >
           {param.options.map((opt) => (
             <option key={opt} value={opt}>

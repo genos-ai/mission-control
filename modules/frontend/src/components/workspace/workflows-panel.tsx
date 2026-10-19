@@ -1,46 +1,23 @@
 /**
- * WorkflowsPanel — Workflows feed mode (placeholder for Plan 45).
+ * WorkflowsPanel — the mission's Workflows tab.
  *
- * Lists mission-scoped workflows and system templates. The visual
- * editor (Plan 45 §Phase 4) is not yet built — for now, clicking a
- * workflow shows a "Coming in Plan 45" placeholder and the [Use
- * template] button works (it clones a template into the mission via
- * the existing useImportTemplate hook).
- *
- * Shipping this as a thin feed mode now means:
- *   - Users see workflows in the expected place (consistent with the
- *     Plan / Runs / Context feed modes)
- *   - The mission-scoped vs template distinction is visible from day 1
- *   - Template cloning — the one operation that works today — gets
- *     a proper UI
- *   - Plan 45's Phase 4 (editor) has a natural slot to drill into
- *
- * The existing legacy route /missions/:id/workflows still exists for
- * anyone with a deep link, but the primary access point is now this
- * feed mode.
+ * Mission workflows and schedules, plus system templates that can be cloned
+ * into the mission. Each workflow is a card; the visual editor opens from its
+ * Edit action. The route /missions/:id/workflows is the primary access point.
  */
 
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import {
-  GitBranch,
-  Play,
-  Pencil,
-  Copy,
-  Plus,
-  CheckCircle2,
-  Circle,
-  Clock,
-  Power,
-  PowerOff,
-  Loader2,
-  Trash2,
-} from 'lucide-react'
+import { GitBranch, Play, Pencil, Copy, Plus, Clock, Loader2, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { IconTile } from '@/components/ui/icon-tile'
+import { Panel } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import {
   useMissionWorkflows,
   useWorkflowTemplates,
@@ -58,6 +35,33 @@ import { formatUtc } from '@/lib/format-date'
 import { useAuthStore } from '@/stores/auth'
 import { ROUTES } from '@/lib/constants'
 import type { MissionWorkflow, WorkflowListItem, WorkflowSchedule } from '@/types'
+
+const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-gutter'
+// Row actions stay visible: they are the card's main controls, and touch has no hover.
+const ACTIONS = 'flex shrink-0 items-center gap-0.5'
+
+const stepsLabel = (n: number) => `${n} step${n === 1 ? '' : 's'}`
+
+function SectionHeader({ title, count }: { title: string; count: number | undefined }) {
+  return (
+    <div className="mb-2 flex items-center gap-2 px-1">
+      <h2 className="text-base font-medium">{title}</h2>
+      {count !== undefined && <span className="text-xs text-subtle">{count}</span>}
+    </div>
+  )
+}
+
+function LoadingPanel() {
+  return (
+    <Panel className="flex justify-center py-6">
+      <Spinner />
+    </Panel>
+  )
+}
+
+function NoticePanel({ children }: { children: string }) {
+  return <Panel className="px-4 py-4 text-sm text-subtle">{children}</Panel>
+}
 
 // ── Root ────────────────────────────────────────────────────────────────
 
@@ -83,45 +87,36 @@ export function WorkflowsPanel({ missionId }: { missionId: string }) {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Status bar */}
-      <div className="flex h-7 shrink-0 items-center justify-between border-b px-4">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Workflows
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-5 gap-1 px-2 text-[11px]"
-          onClick={handleCreate}
-          disabled={createWorkflow.isPending}
-        >
-          {createWorkflow.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-2">
+        <h1 className="text-lg font-medium">Workflows</h1>
+        {missionWorkflows && <span className="text-xs text-subtle">{missionWorkflows.length}</span>}
+        <Button className="ml-auto" onClick={handleCreate} disabled={createWorkflow.isPending}>
+          {createWorkflow.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Plus className="h-3.5 w-3.5" />
+          )}
           New workflow
         </Button>
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-5 p-4">
-          <MissionWorkflowsSection
-            missionId={missionId}
-            workflows={missionWorkflows}
-            loading={loadingMission}
-          />
-          <SchedulesSection
-            missionId={missionId}
-            schedules={schedules}
-            workflows={missionWorkflows}
-            loading={loadingSchedules}
-          />
-          <TemplatesSection
-            missionId={missionId}
-            templates={templates}
-            loading={loadingTemplates}
-          />
-        </div>
-      </div>
+      <MissionWorkflowsSection
+        missionId={missionId}
+        workflows={missionWorkflows}
+        loading={loadingMission}
+      />
+      <SchedulesSection
+        missionId={missionId}
+        schedules={schedules}
+        workflows={missionWorkflows}
+        loading={loadingSchedules}
+      />
+      <TemplatesSection
+        missionId={missionId}
+        templates={templates}
+        loading={loadingTemplates}
+      />
     </div>
   )
 }
@@ -137,51 +132,28 @@ function MissionWorkflowsSection({
   workflows: MissionWorkflow[] | undefined
   loading: boolean
 }) {
+  if (loading) return <LoadingPanel />
+  if (!workflows || workflows.length === 0) {
+    return (
+      <Panel>
+        <EmptyState
+          icon={<GitBranch className="h-4 w-4" />}
+          title="No workflows yet"
+          description={'Clone a template below, or ask the Workflow Architect in chat: "Design a workflow that…"'}
+        />
+      </Panel>
+    )
+  }
   return (
-    <div>
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Mission Workflows
-        </span>
-        {workflows && (
-          <Badge>
-            {workflows.length}
-          </Badge>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-6">
-          <Spinner className="h-4 w-4" />
-        </div>
-      ) : !workflows || workflows.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center">
-          <GitBranch className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
-          <p className="text-xs text-muted-foreground/70">
-            No workflows yet.
-          </p>
-          <p className="mt-1 text-[11px] text-muted-foreground/50">
-            Clone a template below, or ask the Workflow Architect in chat:
-            <br />
-            <span className="font-mono">"Design a workflow that…"</span>
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {workflows.map((w) => (
-            <MissionWorkflowRow
-              key={w.id}
-              workflow={w}
-              missionId={missionId}
-            />
-          ))}
-        </div>
-      )}
+    <div className={CARD_GRID}>
+      {workflows.map((w) => (
+        <MissionWorkflowCard key={w.id} workflow={w} missionId={missionId} />
+      ))}
     </div>
   )
 }
 
-function MissionWorkflowRow({
+function MissionWorkflowCard({
   workflow,
   missionId,
 }: {
@@ -217,91 +189,93 @@ function MissionWorkflowRow({
     setConfirmDelete(false)
   }
 
+  const runTitle = 'Run workflow'
+  const editTitle = 'Edit workflow in visual editor'
+  const scheduleTitle = 'Schedule this workflow'
+  const deleteTitle = confirmDelete ? 'Click again to confirm delete' : 'Delete workflow'
+
   return (
     <>
-    <div
-      className="group flex items-center gap-3 rounded-md border bg-card px-3 py-2.5"
-      onMouseLeave={() => setConfirmDelete(false)}
-    >
-      {workflow.enabled ? (
-        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-      ) : (
-        <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-      )}
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-[13px] font-medium">{workflow.name}</p>
-          <Badge>
-            v{workflow.version}
-          </Badge>
-          <Badge variant="outline">
-            {workflow.step_count} step{workflow.step_count === 1 ? '' : 's'}
-          </Badge>
-          {workflow.locked_at && (
-            <StatusPill tone="neutral">
-              locked
-            </StatusPill>
-          )}
+      <Panel
+        className="flex flex-col gap-3 p-4"
+        onMouseLeave={() => setConfirmDelete(false)}
+      >
+        <div className="flex items-start gap-3">
+          <IconTile icon={GitBranch} size="lg" shape="square" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-md font-medium">{workflow.name}</p>
+            <p className="truncate text-xs text-subtle">
+              {workflow.trigger_type} · {stepsLabel(workflow.step_count)}
+            </p>
+          </div>
         </div>
-        {workflow.description && (
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">
-            {workflow.description}
-          </p>
-        )}
-        <p className="mt-0.5 text-[10px] text-muted-foreground/50">
-          designed by {workflow.designed_by || 'unknown'}
-        </p>
-      </div>
 
-      <div className="flex shrink-0 items-center gap-1">
-        <IconButton
-          icon={
-            runMutation.isPending
-              ? <Loader2 className="h-3 w-3 animate-spin" />
-              : <Play className="h-3 w-3" />
-          }
-          title="Run workflow"
-          onClick={handleRun}
-          disabled={runMutation.isPending || !workflow.enabled}
-          tone="emerald"
-        />
-        <IconButton
-          icon={<Pencil className="h-3 w-3" />}
-          title="Edit workflow in visual editor"
-          onClick={() => {
-            navigate(ROUTES.MISSION_WORKFLOW_EDIT(missionId, workflow.id))
-          }}
-          tone="muted"
-        />
-        <IconButton
-          icon={<Clock className="h-3 w-3" />}
-          title="Schedule this workflow"
-          onClick={() => setShowSchedule(true)}
-          tone="muted"
-        />
-        {isAdmin && (
-          <IconButton
-            icon={
-              deleteMutation.isPending
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <Trash2 className="h-3 w-3" />
-            }
-            title={confirmDelete ? 'Click again to confirm delete' : 'Delete workflow'}
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-            tone={confirmDelete ? 'red' : 'muted'}
-          />
+        {workflow.description && (
+          <p className="line-clamp-2 text-xs text-text-3">{workflow.description}</p>
         )}
-      </div>
-    </div>
-    {showSchedule && (
-      <ScheduleModal
-        missionId={missionId}
-        workflowDefinitionId={workflow.id}
-        onClose={() => setShowSchedule(false)}
-      />
-    )}
+
+        <div className="mt-auto flex items-center gap-1.5">
+          <StatusPill tone={workflow.enabled ? 'success' : 'neutral'}>
+            {workflow.enabled ? 'enabled' : 'disabled'}
+          </StatusPill>
+          <Badge>v{workflow.version}</Badge>
+          {workflow.locked_at && <StatusPill tone="neutral">locked</StatusPill>}
+          <span className="min-w-0 flex-1 truncate text-right text-2xs text-subtle">
+            designed by {workflow.designed_by || 'unknown'}
+          </span>
+          <div className={ACTIONS}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={runTitle}
+              aria-label={runTitle}
+              onClick={handleRun}
+              disabled={runMutation.isPending || !workflow.enabled}
+            >
+              {runMutation.isPending ? <Spinner className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={editTitle}
+              aria-label={editTitle}
+              onClick={() => {
+                navigate(ROUTES.MISSION_WORKFLOW_EDIT(missionId, workflow.id))
+              }}
+            >
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={scheduleTitle}
+              aria-label={scheduleTitle}
+              onClick={() => setShowSchedule(true)}
+            >
+              <Clock className="h-3 w-3" />
+            </Button>
+            {isAdmin && (
+              <Button
+                variant={confirmDelete ? 'destructive' : 'ghost'}
+                size="icon-sm"
+                title={deleteTitle}
+                aria-label={deleteTitle}
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? <Spinner className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Panel>
+      {showSchedule && (
+        <ScheduleModal
+          missionId={missionId}
+          workflowDefinitionId={workflow.id}
+          onClose={() => setShowSchedule(false)}
+        />
+      )}
     </>
   )
 }
@@ -323,30 +297,14 @@ function SchedulesSection({
 
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Schedules
-        </span>
-        {schedules && (
-          <Badge>
-            {schedules.length}
-          </Badge>
-        )}
-      </div>
+      <SectionHeader title="Schedules" count={schedules?.length} />
 
       {loading ? (
-        <div className="flex justify-center py-6">
-          <Spinner className="h-4 w-4" />
-        </div>
+        <LoadingPanel />
       ) : !schedules || schedules.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center">
-          <Clock className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
-          <p className="text-xs text-muted-foreground/70">
-            No schedules. Use the clock icon on a workflow to create one.
-          </p>
-        </div>
+        <NoticePanel>No schedules. Use the clock icon on a workflow to create one.</NoticePanel>
       ) : (
-        <div className="space-y-1.5">
+        <div className="flex flex-col gap-gutter">
           {schedules.map((s) => (
             <ScheduleRow
               key={s.id}
@@ -398,84 +356,71 @@ function ScheduleRow({
     setConfirmDelete(false)
   }
 
+  const displayName = workflowName ?? schedule.workflow_definition_id
+  const editTitle = 'Edit schedule'
+  const deleteTitle = confirmDelete ? 'Click again to confirm delete' : 'Delete schedule'
   const iterations = schedule.max_iterations
     ? `${schedule.iteration_count}/${schedule.max_iterations}`
     : `${schedule.iteration_count}`
 
   return (
     <>
-    <div
-      className="group flex items-center gap-3 rounded-md border bg-card px-3 py-2.5"
-      onMouseLeave={() => setConfirmDelete(false)}
-    >
-      {schedule.enabled ? (
-        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-      ) : (
-        <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-      )}
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-[13px] font-medium">
-            {workflowName ?? schedule.workflow_definition_id}
-          </p>
-          <Badge>
-            {describeCronExpression(schedule.cron_expression)}
-          </Badge>
-        </div>
-        {schedule.description && (
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">
-            {schedule.description}
-          </p>
-        )}
-        <p className="mt-0.5 text-[10px] text-muted-foreground/50">
-          next {formatUtc(schedule.next_fire_at)} · last {formatUtc(schedule.last_fired_at)}
-          {' · '}runs {iterations} · {schedule.timezone}
-          {' · '}<span className="font-mono">{schedule.cron_expression}</span>
-        </p>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1">
-        <IconButton
-          icon={
-            updateMutation.isPending
-              ? <Loader2 className="h-3 w-3 animate-spin" />
-              : schedule.enabled
-                ? <PowerOff className="h-3 w-3" />
-                : <Power className="h-3 w-3" />
-          }
-          title={schedule.enabled ? 'Disable schedule' : 'Enable schedule'}
-          onClick={handleToggle}
+      <Panel
+        className="group flex items-center gap-3 px-4 py-3"
+        onMouseLeave={() => setConfirmDelete(false)}
+      >
+        <Switch
+          checked={schedule.enabled}
+          onChange={handleToggle}
+          label={`Enable schedule for ${displayName}`}
           disabled={updateMutation.isPending}
-          tone={schedule.enabled ? 'muted' : 'emerald'}
         />
-        <IconButton
-          icon={<Pencil className="h-3 w-3" />}
-          title="Edit schedule"
-          onClick={() => setShowEdit(true)}
-          tone="muted"
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-md font-medium">{displayName}</p>
+            <Badge>{describeCronExpression(schedule.cron_expression)}</Badge>
+          </div>
+          {schedule.description && (
+            <p className="mt-0.5 truncate text-xs text-text-3">{schedule.description}</p>
+          )}
+          <p className="mt-0.5 text-2xs text-subtle">
+            next {formatUtc(schedule.next_fire_at)} · last {formatUtc(schedule.last_fired_at)}
+            {' · '}runs {iterations} · {schedule.timezone}
+            {' · '}<span className="font-mono">{schedule.cron_expression}</span>
+          </p>
+        </div>
+
+        <div className={ACTIONS}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title={editTitle}
+            aria-label={editTitle}
+            onClick={() => setShowEdit(true)}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+          <Button
+            variant={confirmDelete ? 'destructive' : 'ghost'}
+            size="icon-sm"
+            title={deleteTitle}
+            aria-label={deleteTitle}
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? <Spinner className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
+          </Button>
+        </div>
+      </Panel>
+      {showEdit && (
+        <ScheduleModal
+          missionId={missionId}
+          workflowDefinitionId={schedule.workflow_definition_id}
+          schedule={schedule}
+          onClose={() => setShowEdit(false)}
         />
-        <IconButton
-          icon={
-            deleteMutation.isPending
-              ? <Loader2 className="h-3 w-3 animate-spin" />
-              : <Trash2 className="h-3 w-3" />
-          }
-          title={confirmDelete ? 'Click again to confirm delete' : 'Delete schedule'}
-          onClick={handleDelete}
-          disabled={deleteMutation.isPending}
-          tone={confirmDelete ? 'red' : 'muted'}
-        />
-      </div>
-    </div>
-    {showEdit && (
-      <ScheduleModal
-        missionId={missionId}
-        workflowDefinitionId={schedule.workflow_definition_id}
-        schedule={schedule}
-        onClose={() => setShowEdit(false)}
-      />
-    )}
+      )}
     </>
   )
 }
@@ -493,29 +438,16 @@ function TemplatesSection({
 }) {
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Templates (clone to use)
-        </span>
-        {templates && (
-          <Badge>
-            {templates.length}
-          </Badge>
-        )}
-      </div>
+      <SectionHeader title="Templates (clone to use)" count={templates?.length} />
 
       {loading ? (
-        <div className="flex justify-center py-6">
-          <Spinner className="h-4 w-4" />
-        </div>
+        <LoadingPanel />
       ) : !templates || templates.length === 0 ? (
-        <p className="px-4 py-4 text-[11px] text-muted-foreground/50">
-          No system templates available.
-        </p>
+        <NoticePanel>No system templates available.</NoticePanel>
       ) : (
-        <div className="space-y-1.5">
+        <div className={CARD_GRID}>
           {templates.map((t) => (
-            <TemplateRow
+            <TemplateCard
               key={t.workflow_name}
               template={t}
               missionId={missionId}
@@ -527,7 +459,7 @@ function TemplatesSection({
   )
 }
 
-function TemplateRow({
+function TemplateCard({
   template,
   missionId,
 }: {
@@ -546,70 +478,31 @@ function TemplateRow({
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-md border border-dashed bg-muted/10 px-3 py-2">
-      <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-[13px] font-medium">
-            {template.workflow_name}
-          </p>
-          <Badge variant="outline">
-            {template.step_count} step{template.step_count === 1 ? '' : 's'}
-          </Badge>
+    <Panel className="flex flex-col gap-3 border-dashed p-4">
+      <div className="flex items-start gap-3">
+        <IconTile icon={Copy} size="lg" shape="square" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-md font-medium">{template.workflow_name}</p>
+          <p className="truncate text-xs text-subtle">{stepsLabel(template.step_count)}</p>
         </div>
-        {template.description && (
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground/60">
-            {template.description}
-          </p>
-        )}
       </div>
+      {template.description && (
+        <p className="line-clamp-2 text-xs text-text-3">{template.description}</p>
+      )}
       <Button
         size="sm"
-        variant="ghost"
-        className="h-6 gap-1 px-2 text-[11px]"
+        variant="secondary"
+        className="mt-auto self-start"
         onClick={handleClone}
         disabled={importMutation.isPending}
       >
         {importMutation.isPending ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <Spinner className="h-3 w-3" />
         ) : (
           <Copy className="h-3 w-3" />
         )}
         Use template
       </Button>
-    </div>
-  )
-}
-
-// ── Small helpers ──────────────────────────────────────────────────────
-
-function IconButton({
-  icon,
-  title,
-  onClick,
-  disabled,
-  tone,
-}: {
-  icon: React.ReactNode
-  title: string
-  onClick: () => void
-  disabled?: boolean
-  tone: 'emerald' | 'muted' | 'red'
-}) {
-  const toneClass =
-    tone === 'emerald'
-      ? 'text-emerald-400 hover:bg-emerald-500/10'
-      : tone === 'red'
-        ? 'text-red-500 bg-red-100/10 hover:bg-red-500/20'
-        : 'text-muted-foreground hover:bg-accent'
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`rounded-md p-1 transition-colors disabled:opacity-40 ${toneClass}`}
-    >
-      {icon}
-    </button>
+    </Panel>
   )
 }

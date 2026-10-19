@@ -1,5 +1,5 @@
 /**
- * WorkflowRunHistory — side panel listing past workflow runs.
+ * WorkflowRunHistory — panel listing past workflow runs.
  *
  * Shows status, cost, duration, and timestamp for each run.
  * Clicking a row triggers a replay overlay on the canvas.
@@ -8,20 +8,12 @@
 import { X } from 'lucide-react'
 import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
+import { PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
+import { fmtCost, statusLabel } from '@/lib/format'
 import { formatDuration, formatUtc } from '@/lib/format-date'
 import { runTone, styleFor } from '@/lib/status-tone'
 import type { RunStatus, WorkflowRunRecord } from '@/types'
-
-const STATUS_LABEL: Record<RunStatus, string> = {
-  pending: 'Pending',
-  running: 'Running',
-  awaiting_input: 'Awaiting',
-  completed: 'Completed',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-  timed_out: 'Timed out',
-}
 
 interface WorkflowRunHistoryProps {
   runs: WorkflowRunRecord[]
@@ -38,63 +30,51 @@ export function WorkflowRunHistory({
   onSelectRun,
   onClose,
 }: WorkflowRunHistoryProps) {
+  const selectedRun = selectedRunId ? runs.find((r) => r.id === selectedRunId) : undefined
+
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
-        <span className="text-xs font-medium">Run History</span>
-        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={onClose}>
-          <X className="h-3 w-3" />
-        </Button>
-      </div>
+      <PanelHeader
+        title="Run history"
+        actions={
+          <Button variant="ghost" size="icon-sm" aria-label="Close run history" onClick={onClose}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        }
+      />
 
-      {/* Column headers */}
-      <div className="grid grid-cols-[6rem_3.5rem_3.5rem_1fr] gap-1.5 border-b px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <span>Status</span>
-        <span className="text-right">Cost</span>
-        <span className="text-right">Dur</span>
-        <span className="text-right">When</span>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 space-y-1.5 overflow-y-auto px-4 pb-3">
         {isLoading ? (
           <div className="flex justify-center py-8">
-            <Spinner className="h-4 w-4" />
+            <Spinner />
           </div>
         ) : runs.length === 0 ? (
-          <p className="px-3 py-6 text-center text-[10px] text-muted-foreground/60">
-            No runs yet.
-          </p>
+          <p className="py-6 text-center text-xs text-subtle">No runs yet.</p>
         ) : (
           runs.map((run) => {
             const status = run.status.toLowerCase() as RunStatus
-            const { tone } = styleFor(runTone, status, 'run')
-            const isSelected = selectedRunId === run.id
+            const { tone } = styleFor(runTone, status, 'workflow run')
             return (
               <button
                 key={run.id}
                 onClick={() => onSelectRun(run.id)}
-                className={[
-                  'grid w-full grid-cols-[6rem_3.5rem_3.5rem_1fr] items-center gap-1.5 border-b px-3 py-2 text-left text-[11px] transition-colors last:border-b-0',
-                  isSelected
-                    ? 'bg-primary/10'
-                    : 'hover:bg-muted/50',
-                ].join(' ')}
+                className={
+                  selectedRunId === run.id
+                    ? 'flex w-full flex-col gap-1.5 rounded-card bg-brand/10 px-3 py-2 text-left text-xs transition-colors'
+                    : 'flex w-full flex-col gap-1.5 rounded-card bg-raised px-3 py-2 text-left text-xs transition-colors hover:bg-raised-2'
+                }
               >
-                <span>
+                <span className="flex items-center justify-between gap-2">
                   <StatusPill tone={tone} pulse={status === 'running'}>
-                    {STATUS_LABEL[status]}
+                    {statusLabel(status)}
                   </StatusPill>
+                  <span className="font-mono tabular-nums text-muted-foreground">
+                    {fmtCost(run.total_cost_usd)}
+                  </span>
                 </span>
-                <span className="text-right tabular-nums text-muted-foreground">
-                  ${run.total_cost_usd.toFixed(4)}
-                </span>
-                <span className="text-right tabular-nums text-muted-foreground">
-                  {formatDuration(run.started_at, run.completed_at)}
-                </span>
-                <span className="truncate text-right text-muted-foreground" title={run.started_at ?? undefined}>
-                  {formatUtc(run.started_at)}
+                <span className="flex items-center justify-between gap-2 text-subtle">
+                  <span title={run.started_at ?? undefined}>{formatUtc(run.started_at)}</span>
+                  <span className="tabular-nums">{formatDuration(run.started_at, run.completed_at)}</span>
                 </span>
               </button>
             )
@@ -102,30 +82,25 @@ export function WorkflowRunHistory({
         )}
       </div>
 
-      {/* Selected run detail */}
-      {selectedRunId && (() => {
-        const run = runs.find((r) => r.id === selectedRunId)
-        if (!run) return null
-        return (
-          <div className="shrink-0 border-t bg-muted/20 px-3 py-2 text-[10px]">
-            {run.result_summary && (
-              <p className="mb-1.5 text-muted-foreground leading-relaxed line-clamp-3">
-                {run.result_summary}
-              </p>
-            )}
-            {run.error_data && (
-              <p className="text-destructive leading-relaxed line-clamp-2">
-                {(run.error_data as Record<string, unknown>).message as string ?? 'Error'}
-              </p>
-            )}
-            <div className="flex items-center gap-2 text-muted-foreground/60">
-              <span>v{run.workflow_version}</span>
-              <span>{run.trigger_type}</span>
-              <span className="font-mono">{run.id.slice(0, 8)}</span>
-            </div>
+      {selectedRun && (
+        <div className="shrink-0 space-y-1.5 border-t border-line px-4 py-3 text-xs">
+          {selectedRun.result_summary && (
+            <p className="line-clamp-3 leading-relaxed text-muted-foreground">
+              {selectedRun.result_summary}
+            </p>
+          )}
+          {selectedRun.error_data && (
+            <p className="line-clamp-2 leading-relaxed text-danger">
+              {(selectedRun.error_data as Record<string, unknown>).message as string ?? 'Error'}
+            </p>
+          )}
+          <div className="flex items-center gap-2 text-subtle">
+            <span>v{selectedRun.workflow_version}</span>
+            <span>{selectedRun.trigger_type}</span>
+            <span className="font-mono">{selectedRun.id.slice(0, 8)}</span>
           </div>
-        )
-      })()}
+        </div>
+      )}
     </div>
   )
 }

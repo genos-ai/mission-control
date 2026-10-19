@@ -4,29 +4,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Signpost } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-
-interface NodePaletteEntry {
-  type: string
-  label: string
-  description: string
-  icon: LucideIcon
-  color: string
-}
-
-const ENTRIES: NodePaletteEntry[] = [
-  { type: 'agent_step', label: 'Agent Step', description: 'Invoke a registered agent', icon: Bot, color: 'text-blue-400' },
-  { type: 'condition', label: 'Condition', description: 'If/else branch on expression', icon: GitBranch, color: 'text-cyan-500' },
-  { type: 'notification', label: 'Notification', description: 'Send a message (Telegram, SSE)', icon: Bell, color: 'text-teal-500' },
-  { type: 'human_input', label: 'Human Input', description: 'Pause and wait for response', icon: UserRound, color: 'text-orange-500' },
-  { type: 'tool_call', label: 'Tool Call', description: 'Call a tool directly', icon: Wrench, color: 'text-slate-400' },
-  { type: 'llm_call', label: 'LLM Call', description: 'Raw LLM prompt, no agent', icon: Sparkles, color: 'text-amber-400' },
-  { type: 'branch', label: 'Fork', description: 'Split into parallel paths', icon: Split, color: 'text-zinc-400' },
-  { type: 'merge', label: 'Join', description: 'Sync barrier for parallel paths', icon: Merge, color: 'text-zinc-400' },
-  { type: 'sub_workflow', label: 'Sub-Workflow', description: 'Invoke another saved workflow', icon: Layers, color: 'text-indigo-400' },
-  { type: 'decision', label: 'Decision', description: 'Route to different paths (agent, human, or rule)', icon: Signpost, color: 'text-purple-400' },
-]
+import { cn } from '@/lib/cn'
+import { TONE_TEXT } from '@/lib/tone-class'
+import { STEP_TYPES, STEP_TYPE_ORDER } from './workflow-editor-types'
 
 interface NodePaletteProps {
   onSelect: (nodeType: string) => void
@@ -38,14 +18,17 @@ export function NodePalette({ onSelect, onClose }: NodePaletteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = query
-    ? ENTRIES.filter(
-        (e) =>
-          e.label.toLowerCase().includes(query.toLowerCase()) ||
-          e.type.includes(query.toLowerCase()) ||
-          e.description.toLowerCase().includes(query.toLowerCase()),
-      )
-    : ENTRIES
+  const needle = query.toLowerCase()
+  const filtered = needle
+    ? STEP_TYPE_ORDER.filter((type) => {
+        const { label, description } = STEP_TYPES[type]
+        return (
+          label.toLowerCase().includes(needle) ||
+          type.includes(needle) ||
+          description.toLowerCase().includes(needle)
+        )
+      })
+    : STEP_TYPE_ORDER
 
   // Focus on mount
   useEffect(() => {
@@ -70,17 +53,17 @@ export function NodePalette({ onSelect, onClose }: NodePaletteProps) {
     } else if (e.key === 'Enter') {
       e.preventDefault()
       if (filtered[selectedIndex]) {
-        onSelect(filtered[selectedIndex].type)
+        onSelect(filtered[selectedIndex])
       }
     }
   }
 
   return (
-    <div className="absolute left-1/2 top-24 z-50 -translate-x-1/2 w-[320px] rounded-lg border bg-card shadow-xl">
+    <div className="absolute left-1/2 top-24 z-50 w-[320px] -translate-x-1/2 rounded-card border border-panel-border bg-popover shadow-lg">
       <input
         ref={inputRef}
         type="text"
-        className="w-full rounded-t-lg border-b bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground/50"
+        className="w-full rounded-t-card bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-subtle"
         placeholder="Add node… (type to filter)"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -90,29 +73,27 @@ export function NodePalette({ onSelect, onClose }: NodePaletteProps) {
           setTimeout(onClose, 150)
         }}
       />
-      <div className="max-h-[280px] overflow-y-auto py-1">
-        {filtered.length === 0 && (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No matching node types</p>
-        )}
-        {filtered.map((entry, i) => {
-          const Icon = entry.icon
+      <div className="max-h-[280px] overflow-y-auto border-t border-line py-1">
+        {filtered.length === 0 && <p className="px-3 py-2 text-xs text-subtle">No matching node types</p>}
+        {filtered.map((type, i) => {
+          const { label, description, icon: Icon, tone } = STEP_TYPES[type]
           return (
             <button
-              key={entry.type}
-              className={[
-                'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors',
-                i === selectedIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50',
-              ].join(' ')}
+              key={type}
+              className={cn(
+                'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors duration-150',
+                i === selectedIndex ? 'bg-raised text-foreground' : 'hover:bg-hover',
+              )}
               onMouseEnter={() => setSelectedIndex(i)}
               onMouseDown={(e) => {
                 e.preventDefault() // prevent blur
-                onSelect(entry.type)
+                onSelect(type)
               }}
             >
-              <Icon className={`h-4 w-4 shrink-0 ${entry.color}`} />
+              <Icon className={cn('h-4 w-4 shrink-0', TONE_TEXT[tone])} />
               <div className="min-w-0">
-                <span className="font-medium">{entry.label}</span>
-                <span className="ml-1.5 text-[11px] text-muted-foreground">{entry.description}</span>
+                <span className="font-medium">{label}</span>
+                <span className="ml-1.5 text-2xs text-subtle">{description}</span>
               </div>
             </button>
           )

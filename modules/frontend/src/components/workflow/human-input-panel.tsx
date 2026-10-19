@@ -9,6 +9,8 @@ import type { PendingHumanInput } from '@/hooks/use-workflow-run-status'
 import { useRespondToHumanInput } from '@/hooks/use-workflows'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/cn'
+import { TONE_BOX } from '@/lib/tone-class'
 
 /**
  * Renders a response form for each pending human_input node.
@@ -29,7 +31,7 @@ export function HumanInputPanel({
   if (requests.length === 0) return null
 
   return (
-    <div className="shrink-0 space-y-2 border-b bg-orange-500/5 px-4 py-3">
+    <div className={cn('shrink-0 space-y-2 rounded-panel border p-3', TONE_BOX.warning)}>
       {requests.map((req) => (
         <HumanInputRequest
           key={req.requestId}
@@ -65,15 +67,15 @@ function HumanInputRequest({
   const hasChoices = req.choices.length > 0
 
   return (
-    <div className="rounded-lg border border-orange-400/30 bg-orange-500/5 p-3">
+    <div className="rounded-card bg-raised p-3">
       <div className="mb-2 flex items-start gap-2">
-        <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+        <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-orange-300">Input required</span>
-            <span className="text-[10px] text-muted-foreground/60">step: {req.stepId}</span>
+            <span className="text-sm font-medium text-warning">Input required</span>
+            <span className="text-2xs text-subtle">step: {req.stepId}</span>
             {req.timeoutAt && (
-              <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/60">
+              <span className="ml-auto flex items-center gap-1 text-2xs text-subtle">
                 <Clock className="h-3 w-3" />
                 expires {new Date(req.timeoutAt).toLocaleTimeString()}
               </span>
@@ -92,9 +94,8 @@ function HumanInputRequest({
               size="sm"
               disabled={isPending}
               onClick={() => onSubmit(choice)}
-              className="border-orange-400/30 text-sm hover:bg-orange-500/10"
             >
-              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : choice}
+              {isPending ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : choice}
             </Button>
           ))}
         </div>
@@ -119,10 +120,10 @@ function HumanInputRequest({
             variant="secondary"
             disabled={!freeText.trim() || isPending}
             onClick={() => onSubmit(freeText.trim())}
-            className="h-auto border-orange-400/30 hover:bg-orange-500/10"
+            className="h-auto"
           >
             {isPending
-              ? <Loader2 className="h-4 w-4 animate-spin" />
+              ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
               : <Send className="h-4 w-4" />}
           </Button>
         </div>

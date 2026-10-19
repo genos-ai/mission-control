@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5, 6 complete (2026-10-19)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5, 6, 7 complete (2026-10-19)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -119,6 +119,9 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C39 | §3 Phase 5.2 "call the same mutations the detail panel uses"; §6.4 "approve/reject from card and panel" | The detail panel never had Approve, Reject or Retry (it is read-only). The mutations are `useApproveTask`, `useRejectTask` and `useRetryTask` in `hooks/use-mission-plan.ts`, and the card was already their only caller | The card keeps calling them; the detail panel stays read-only. Nothing was added to it. |
 | C40 | §6.6 Runs table has a "Workflow" column (`daily-brief`) | A run record has no workflow name. `roster_name` is `default` on 457 of 459 local runs; `objective_statement` is set on 457 and is what a run was asked to do. `task_type` and `temporal_workflow_id` are almost always null | The column is "Objective" (truncated, full text on hover). `ExecutionRecord` gained `objective_statement` (the list endpoint already returned it). |
 | C41 | §6.7 Steps "2 / 7", Elapsed, Cost from the live store | The store starts at page open, so a run joined late or finished shows 0 cost and 0 steps. `plan.created` is typed with `step_count`, but the store reads a `tasks` list, and no emitter of that event exists in `modules/` | Cost and finished steps are the larger of the stream's count and the polled record's (both only rise). The step total is shown only when the stream supplied one; otherwise just the finished count. Elapsed comes from the record's `started_at`. |
+| C42 | §6.9 "Palette P (`node-palette.tsx`)" is the left list of step types, `cursor-grab` | In the repo `node-palette.tsx` is the Space-key command search that pops over the canvas. Nothing in the editor supports dragging a type onto the canvas; steps are added by click (`handleAddNode`) | The left list is a new `step-palette.tsx` (click to add, no drag, as C38). `node-palette.tsx` stays as the command search and is restyled. Both read `STEP_TYPES`. |
+| C43 | §6.8 workflow cards show a last-run `StatusPill`, cron in words and a workflow enable toggle (`workflows-panel.tsx:377`) | `MissionWorkflow` has no last-run field and no hook returns one; the list carries `trigger_type`, not a schedule; the "toggle at line 377" is the schedule on/off button, and a workflow has no enable switch | Cards show the enabled/disabled pill, version, step count and trigger. The `Switch` replaces the schedule toggle, whose rows already show `describeCronExpression`. No new query, no invented toggle. |
+| C44 | §6.8 card actions "on hover" | Hover-only actions are invisible at rest and unreachable by touch; the empty Schedules text tells the user to "use the clock icon on a workflow" | Card actions (run, edit, schedule, delete) stay visible, in the card footer so the name keeps the full row. |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -539,7 +542,43 @@ panel toggles, Cancel run, a finished run, 1100 px). Not exercised: cancelling a
 (`types/execution.ts`, added in Phase 2.1 from the two backend enums); the API returns plain
 strings, so use `styleFor(runTone, status, 'run')`, which throws on an unknown value.
 
-### Phase 7 — Workflows list and editor (handoff §6.8, §6.9)
+### Phase 7 — Workflows list and editor (handoff §6.8, §6.9) (done)
+
+Two commits: first `human-input-panel.tsx` was moved out of `workflow-editor.tsx` as a pure move (914 → 792 lines) to make
+room, then the restyle (editor 787, `step-detail.tsx` 812 → 800, `workflow-editor-node.tsx` 562 → 364, `workflows-panel.tsx`
+615 → 508; none grew).
+
+**One description of a step type.** The icon, label, description and tone of each step type were written four times (node
+palette, toolbar, node, inspector header) with 46 palette colours in `workflow-editor-types.ts` (C11). They are now
+`STEP_TYPES` in that file (`StepType` comes from `WorkflowStep.node_type`), read by the palette, the toolbar, the nodes and
+the inspector; the old domain colour maps are deleted and an agent step takes its tone from `agentStyle` (the same
+domain tones as the plan board). Tones: condition `info`, notification `success`, human input `warning`, LLM call `brand`,
+sub-workflow and decision `violet`, the rest `neutral`.
+
+**Editor.** Floating panels on the well: a toolbar panel (name, "N steps", unsaved dot, Architect, Auto-layout, History,
+Save, Run workflow), a left 220 px `StepPalette` (hidden below 1100 px, where a toolbar "Add step" button opens the command
+search instead), the canvas as a panel (dotted `canvas-dot` background; React Flow's own controls and minimap themed by one
+block of CSS variables in `index.css`), and a 300 px inspector or run-history panel on the right (inspector hidden below
+960 px, as in the handoff). Nodes are one `NodeFrame` (rounded row, `IconTile`, title, mono sub-line, `shadow-node`) with a
+thin body per type, replacing ten near-copies; run state uses the shared `StatusIcon`. Selected is `border-brand` plus a
+brand ring; running, completed, failed and awaiting input colour the border. The two copies of the edge-colour logic are
+one `edgeAppearance` helper on theme tokens. `NODE_HEIGHT` (dagre spacing) went from 80 to 56 because nodes are shorter,
+which only changes auto-layout. `Switch` (`components/ui/switch.tsx`) is used for the sub-workflow "pass parent context"
+option, schedule on/off and the run dialog's boolean parameters. The architect's collapsed side strip is gone; the toolbar
+button already opens and closes it. `variable-autocomplete.tsx` uses `use-click-outside`; the schedule and run dialogs
+match `ConfirmDialog`.
+
+**Deviations.** No drag from the palette (C42). No last-run pill, cron text or workflow switch on cards (C43). No "edited 2m
+ago" in the toolbar (the workflow detail has no `updated_at`). Cards keep their actions visible (C44). The two dialogs do not
+close on a backdrop click or Escape, because they are forms.
+
+Browser-tested with 31 + 10 + 17 + 12 + 4 checks, writes intercepted: toolbar, palette, node frame, widths, theme edges,
+adding steps, inspector, History, Architect, command search, a faked running run with a human-input request answered,
+narrow widths, the list, schedule switches, both dialogs, run history, drag, connect, undo, redo, delete. Not exercised:
+saving, scheduling and running for real.
+
+**Original plan text:**
+
 
 `workflows-panel.tsx`, `workflow-editor.tsx`, `workflow-editor-node.tsx`,
 `workflow-editor-toolbar.tsx`, `node-palette.tsx`, `step-detail.tsx`, `workflow-editor-types.ts`.
@@ -640,6 +679,10 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
 | Right drawer | Three panel types have no caller anywhere: `event-log`, `output-preview` and `cost-breakdown` (`components/drawer/*`). The Runs tab shows those views inline instead. They are restyled with the drawer but unreachable. |
 | Dependencies | `@hello-pangea/dnd` is listed in `package.json` and imported nowhere. |
+| Workflow editor | Clicking Run workflow shows a "Workflow started" toast straight away, before the run dialog is submitted: `handleRun` toasts after `await onRun()`, and `onRun` only opens the dialog (`workflow-edit.tsx:32`). The dialog's own success toast fires on submit, so a real start toasts twice. |
+| Workflow editor | A graph with saved positions that is wide (the 13- and 36-step workflows here) opens at about 0.2 zoom after fit-to-view, so nodes are unreadable until you zoom. The positions are saved data; `fitViewOptions` is `padding: 0.15` with no minimum zoom. |
+| Step inspector | The decision step's Model field shows `anthropic:claude-haiku-4-5` when the config has no model: a hard-coded fallback model string in `step-detail.tsx`. |
+| Workflows | `dag-graph.tsx` is imported nowhere and still uses the old `bg-card` / `bg-background` tokens. |
 | Run live | A run opened after it finished, or joined late, shows no activity or results: the page is driven by the live stream and starts empty (the `TODO` in `run-live.tsx`). Cost and steps now fall back to the polled record (C41); the timeline and results do not. The empty texts now say so instead of "Waiting for events…". |
 | Run live | The store reads a `tasks` list from `plan.created`, but the event is typed with `step_count` and nothing in `modules/` emits it, so the step total may never be known. |
 | Runs / API | The backend serves decision reasoning with a stored metadata tail until it is restarted on the fix for supervisor decisions (the API here runs without `--reload`). |
@@ -718,6 +761,12 @@ Output and Cost views and New run reach the same hooks as before; Cancel on a ru
 POST `/executions/{id}/cancel`; the Live link opens the run page. The live page's data logic (starting a pending run once the stream connects, the hand-off to the
 research view, the gate approval prompt) was left as it was and not exercised: no run was pending, researching or gated. Cancelling
 a real run was not exercised.
+
+Phase 7 pass (2026-10-19, every write intercepted; this is the mid-point pass of §6.4): in the editor, select, add (palette, command
+search, narrow-width button), drag (and its autosave `PUT .../graph`), connect, undo, redo, delete, History, Architect, the run
+dialog, the schedule dialog and answering a human-input request all work; schedule on/off reaches the same mutation; Edit opens
+the editor. Not exercised because they write: Save (Cmd+S), creating a schedule, starting a run for real, deleting a workflow.
+Earlier passes still hold: the Plan, Runs and Run live tests were re-run after this phase and pass unchanged.
 
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
 from card and panel hit the same mutations; chat threads, slash commands and

@@ -1,15 +1,19 @@
 /**
- * Custom React Flow nodes for the workflow editor.
- *
- * Nine node types: agent_step, condition, notification, human_input, tool_call, llm_call, branch, merge, sub_workflow.
+ * Custom React Flow nodes for the workflow editor: one NodeFrame, and a thin
+ * body per step type that says what its sub-line shows.
  */
 
-import { memo } from 'react'
+import { memo, type ReactNode } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Signpost, Loader2, CheckCircle2, XCircle, MinusCircle, Clock } from 'lucide-react'
-import type { WorkflowStep } from '@/types'
+import { IconTile } from '@/components/ui/icon-tile'
+import { StatusIcon } from '@/components/ui/status-icon'
 import type { NodeStatus, NodeMetrics } from '@/hooks/use-workflow-run-status'
-import { NODE_WIDTH, getDomainBorder, getDomainBg, NODE_TYPE_STYLES } from './workflow-editor-types'
+import { agentStyle } from '@/lib/agent-tone'
+import { cn } from '@/lib/cn'
+import { fmtCost } from '@/lib/format'
+import { runTone, taskTone, type StatusStyle, type Tone } from '@/lib/status-tone'
+import type { WorkflowStep } from '@/types'
+import { NODE_WIDTH, STEP_TYPES, type StepType } from './workflow-editor-types'
 
 export interface StepNodeData {
   step: WorkflowStep
@@ -18,497 +22,335 @@ export interface StepNodeData {
   [key: string]: unknown
 }
 
-// ── Shared handles ──────────────────────────────────────────────────────
+// ── Frame ───────────────────────────────────────────────────────────────
 
-const TargetHandle = () => (
-  <Handle
-    type="target"
-    id="input"
-    position={Position.Left}
-    className="!h-3 !w-3 !rounded-full !border-2 !border-background !bg-muted-foreground"
-  />
-)
-const SourceHandle = () => (
-  <Handle
-    type="source"
-    id="output"
-    position={Position.Right}
-    className="!h-3 !w-3 !rounded-full !border-2 !border-background !bg-muted-foreground"
-  />
-)
+const FORK_JOIN_WIDTH = 120
 
-const selectedRing = 'ring-2 ring-primary/60 ring-offset-1 ring-offset-background'
+const HANDLE = '!h-2 !w-2 !rounded-full !border-0 !bg-border-hover hover:!bg-brand'
 
-const STATUS_RING: Record<string, string> = {
-  idle: '',
-  running: 'ring-2 ring-amber-400/70 animate-pulse',
-  completed: 'ring-2 ring-emerald-500/60',
-  failed: 'ring-2 ring-red-500/70',
-  skipped: 'opacity-40',
-  awaiting_input: 'ring-2 ring-orange-400/70 animate-pulse',
+/** How a node shows the state of the run it belongs to; an idle node shows nothing. */
+const RUN_STATE: Record<Exclude<NodeStatus, 'idle'>, StatusStyle> = {
+  running: taskTone.running,
+  completed: taskTone.completed,
+  failed: taskTone.failed,
+  skipped: taskTone.skipped,
+  awaiting_input: runTone.awaiting_input,
 }
 
-function StatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case 'running':
-      return <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" />
-    case 'completed':
-      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-    case 'failed':
-      return <XCircle className="h-3.5 w-3.5 text-red-500" />
-    case 'skipped':
-      return <MinusCircle className="h-3.5 w-3.5 text-muted-foreground" />
-    case 'awaiting_input':
-      return <Clock className="h-3.5 w-3.5 text-orange-400" />
-    default:
-      return null
-  }
+// Whole class literals, so Tailwind and the lint rule can see them.
+const STATE_BORDER: Record<NodeStatus, string> = {
+  idle: 'border-panel-border',
+  running: 'border-warning/45',
+  completed: 'border-success/45',
+  failed: 'border-danger/50',
+  skipped: 'border-panel-border opacity-40',
+  awaiting_input: 'border-warning/45',
 }
 
-function MetricsBadge({ metrics }: { metrics?: NodeMetrics }) {
-  if (!metrics) return null
-  const parts: string[] = []
-  if (metrics.cost_usd != null) parts.push(`$${metrics.cost_usd.toFixed(4)}`)
-  if (metrics.duration_seconds != null) parts.push(`${metrics.duration_seconds.toFixed(1)}s`)
-  if (parts.length === 0) return null
+const SELECTED = 'border-brand ring-[3px] ring-brand/15'
+
+function nodeData(data: NodeProps['data']) {
+  const { step, status = 'idle', metrics } = data as StepNodeData
+  return { step, status, metrics }
+}
+
+function NodeFrame({
+  step,
+  status,
+  metrics,
+  selected,
+  type,
+  tone,
+  sub,
+  subTitle,
+  narrow = false,
+  dashed = false,
+  handles,
+  children,
+}: {
+  step: WorkflowStep
+  status: NodeStatus
+  metrics?: NodeMetrics
+  selected: boolean
+  type: StepType
+  tone: Tone
+  /** A mono line under the title: what this step is configured to do. */
+  sub?: ReactNode
+  subTitle?: string
+  /** Fork and Join are narrower: they only carry a name. */
+  narrow?: boolean
+  dashed?: boolean
+  /** Replaces the single output handle, for steps that branch. */
+  handles?: ReactNode
+  children?: ReactNode
+}) {
+  const { icon, label } = STEP_TYPES[type]
+  const showMetrics = status === 'completed' && metrics && (metrics.cost_usd != null || metrics.duration_seconds != null)
+
   return (
-    <div className="mt-1 text-[9px] tabular-nums text-muted-foreground/60">
-      {parts.join(' · ')}
+    <div
+      className={cn(
+        'relative flex items-center gap-2.5 rounded-[12px] border bg-raised px-3 py-2.5 shadow-node transition-colors duration-150',
+        selected ? SELECTED : STATE_BORDER[status],
+        dashed && 'border-dashed',
+        (status === 'running' || status === 'awaiting_input') && 'animate-pulse-dot motion-reduce:animate-none',
+      )}
+      style={{ width: narrow ? FORK_JOIN_WIDTH : NODE_WIDTH }}
+      title={label}
+    >
+      <Handle type="target" id="input" position={Position.Left} className={HANDLE} />
+      {status !== 'idle' && (
+        <span className="absolute -right-1.5 -top-1.5 rounded-full bg-panel">
+          <StatusIcon {...RUN_STATE[status]} className="h-3.5 w-3.5" />
+        </span>
+      )}
+
+      <IconTile icon={icon} tone={tone} shape="square" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{step.label || step.id}</p>
+        {sub && (
+          <p className="truncate font-mono text-2xs text-subtle" title={subTitle}>
+            {sub}
+          </p>
+        )}
+        {children}
+        {showMetrics && (
+          <p className="font-mono text-2xs text-subtle">
+            {[
+              metrics.cost_usd != null && fmtCost(metrics.cost_usd),
+              metrics.duration_seconds != null && `${metrics.duration_seconds.toFixed(1)}s`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        )}
+      </div>
+
+      {handles ?? <Handle type="source" id="output" position={Position.Right} className={HANDLE} />}
     </div>
   )
 }
 
-// ── Agent Step Node ─────────────────────────────────────────────────────
+function short(text: string | null | undefined, max: number): string {
+  const value = text ?? ''
+  return value.length > max ? `${value.slice(0, max - 3)}…` : value
+}
+
+// ── Step types ──────────────────────────────────────────────────────────
 
 function AgentStepNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
-  const metrics = (data as StepNodeData).metrics
-  const capShort = step.capability?.split('.').pop() ?? step.capability ?? '—'
+  const { step, status, metrics } = nodeData(data)
+  const capability = step.capability?.split('.').pop() ?? step.capability ?? '—'
+  const sub = [
+    capability,
+    step.environment,
+    step.complexity_tier === 'complex' && 'complex',
+    step.cost_ceiling_usd != null && `$${step.cost_ceiling_usd}`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
-    <div
-      className={[
-        'relative rounded-xl border-2 px-3 py-2 shadow-sm transition-all',
-        getDomainBorder(step.capability),
-        getDomainBg(step.capability),
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: NODE_WIDTH }}
-    >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
-        {step.cost_ceiling_usd != null && (
-          <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
-            ${step.cost_ceiling_usd}
-          </span>
-        )}
-      </div>
-
-      <div className="mt-1 flex items-center gap-1.5">
-        <span className="inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
-          {capShort}
-        </span>
-        <span className="text-[10px] text-muted-foreground/70">{step.environment}</span>
-        {step.complexity_tier === 'complex' && (
-          <span className="text-[10px] text-amber-400/80">complex</span>
-        )}
-      </div>
-
-      {status === 'completed' && <MetricsBadge metrics={metrics} />}
-
-      <SourceHandle />
-    </div>
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="agent_step"
+      tone={agentStyle(step.capability ?? '').tone}
+      sub={sub}
+      subTitle={step.capability ?? undefined}
+    />
   )
 }
-
-// ── Condition Node ──────────────────────────────────────────────────────
 
 function ConditionNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
+  const { step, status, metrics } = nodeData(data)
   const config = step.condition_config
-  const expr = config?.expression ?? ''
-  // Show a compact version of the expression
-  const exprShort = expr.length > 35 ? expr.slice(0, 32) + '…' : expr
+  const expression = config?.expression ?? ''
 
   return (
-    <div
-      className={[
-        'relative rounded-xl border-2 px-3 py-2 shadow-sm transition-all',
-        NODE_TYPE_STYLES.condition.border,
-        NODE_TYPE_STYLES.condition.bg,
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: NODE_WIDTH }}
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="condition"
+      tone={STEP_TYPES.condition.tone}
+      sub={short(expression, 35)}
+      subTitle={expression}
+      handles={
+        <>
+          {/* One output per outcome */}
+          <Handle type="source" id="yes" position={Position.Right} style={{ top: '30%' }} className="!h-2 !w-2 !rounded-full !border-0 !bg-success" />
+          <Handle type="source" id="no" position={Position.Right} style={{ top: '70%' }} className="!h-2 !w-2 !rounded-full !border-0 !bg-danger" />
+        </>
+      }
     >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <GitBranch className="h-3.5 w-3.5 shrink-0 text-cyan-500" />
-        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
-      </div>
-
-      <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground" title={expr}>
-        {exprShort}
+      <p className="flex items-center gap-1.5 text-2xs">
+        <span className="text-success">{config?.true_label ?? 'Yes'}</span>
+        <span className="text-faint">/</span>
+        <span className="text-danger">{config?.false_label ?? 'No'}</span>
       </p>
-
-      <div className="mt-1 flex items-center gap-2 text-[10px]">
-        <span className="text-emerald-500">{config?.true_label ?? 'Yes'}</span>
-        <span className="text-muted-foreground/40">/</span>
-        <span className="text-red-400">{config?.false_label ?? 'No'}</span>
-      </div>
-
-      {/* Dual source handles for true/false branches */}
-      <Handle
-        type="source"
-        id="yes"
-        position={Position.Right}
-        style={{ top: '30%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-emerald-500"
-      />
-      <Handle
-        type="source"
-        id="no"
-        position={Position.Right}
-        style={{ top: '70%' }}
-        className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-background !bg-red-400"
-      />
-    </div>
+    </NodeFrame>
   )
 }
-
-// ── Notification Node ───────────────────────────────────────────────────
 
 function NotificationNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
+  const { step, status, metrics } = nodeData(data)
   const config = step.notification_config
-  const msgShort = (config?.message_template ?? '').length > 40
-    ? (config?.message_template ?? '').slice(0, 37) + '…'
-    : config?.message_template ?? ''
 
   return (
-    <div
-      className={[
-        'relative rounded-xl border-2 px-3 py-2 shadow-sm transition-all',
-        NODE_TYPE_STYLES.notification.border,
-        NODE_TYPE_STYLES.notification.bg,
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: NODE_WIDTH }}
-    >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <Bell className="h-3.5 w-3.5 shrink-0 text-teal-500" />
-        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
-        <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
-          {config?.channel ?? 'sse'}
-        </span>
-      </div>
-
-      <p className="mt-1 truncate text-[10px] text-muted-foreground" title={config?.message_template}>
-        {msgShort}
-      </p>
-
-      <SourceHandle />
-    </div>
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="notification"
+      tone={STEP_TYPES.notification.tone}
+      sub={`${config?.channel ?? 'sse'} · ${short(config?.message_template, 40)}`}
+      subTitle={config?.message_template}
+    />
   )
 }
-
-// ── Human Input Node ────────────────────────────────────────────────────
 
 function HumanInputNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
+  const { step, status, metrics } = nodeData(data)
   const config = step.human_input_config
-  const promptShort = (config?.prompt_message ?? '').length > 40
-    ? (config?.prompt_message ?? '').slice(0, 37) + '…'
-    : config?.prompt_message ?? ''
+  const extras = [
+    config?.timeout_hours != null && `${config.timeout_hours}h timeout`,
+    config?.choices && config.choices.length > 0 && `${config.choices.length} choices`,
+  ].filter(Boolean)
 
   return (
-    <div
-      className={[
-        'relative rounded-xl border-2 border-dashed px-3 py-2 shadow-sm transition-all',
-        'border-orange-500/60',
-        'bg-orange-500/5',
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: NODE_WIDTH }}
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="human_input"
+      tone={STEP_TYPES.human_input.tone}
+      dashed
+      sub={`${config?.channel ?? 'telegram'} · ${short(config?.prompt_message, 40)}`}
+      subTitle={config?.prompt_message}
     >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <UserRound className="h-3.5 w-3.5 shrink-0 text-orange-500" />
-        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
-        <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
-          {config?.channel ?? 'telegram'}
-        </span>
-      </div>
-
-      <p className="mt-1 truncate text-[10px] text-muted-foreground" title={config?.prompt_message}>
-        {promptShort}
-      </p>
-
-      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-        {config?.timeout_hours != null && (
-          <span>{config.timeout_hours}h timeout</span>
-        )}
-        {config?.choices && config.choices.length > 0 && (
-          <span>{config.choices.length} choices</span>
-        )}
-      </div>
-
-      <SourceHandle />
-    </div>
+      {extras.length > 0 && <p className="text-2xs text-subtle">{extras.join(' · ')}</p>}
+    </NodeFrame>
   )
 }
-
-// ── Tool Call Node ──────────────────────────────────────────────────────
 
 function ToolCallNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
-  const metrics = (data as StepNodeData).metrics
+  const { step, status, metrics } = nodeData(data)
   const config = step.tool_call_config
-  const argsKeys = Object.keys(config?.tool_args ?? {})
-  const argsPreview = argsKeys.length > 0
-    ? argsKeys.slice(0, 3).join(', ') + (argsKeys.length > 3 ? '…' : '')
-    : '—'
+  const args = Object.keys(config?.tool_args ?? {})
+  const argsPreview = args.length > 0 ? args.slice(0, 3).join(', ') + (args.length > 3 ? '…' : '') : '—'
 
   return (
-    <div
-      className={[
-        'relative rounded-xl border-2 px-3 py-2 shadow-sm transition-all',
-        NODE_TYPE_STYLES.tool_call.border,
-        NODE_TYPE_STYLES.tool_call.bg,
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: NODE_WIDTH }}
-    >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <Wrench className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
-        <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
-          {config?.tool_name ?? '—'}
-        </span>
-      </div>
-
-      <p className="mt-1 truncate text-[10px] text-muted-foreground">
-        {argsPreview}
-      </p>
-
-      {status === 'completed' && <MetricsBadge metrics={metrics} />}
-
-      <SourceHandle />
-    </div>
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="tool_call"
+      tone={STEP_TYPES.tool_call.tone}
+      sub={`${config?.tool_name ?? '—'} · ${argsPreview}`}
+    />
   )
 }
-
-// ── LLM Call Node ───────────────────────────────────────────────────────
 
 function LlmCallNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
-  const metrics = (data as StepNodeData).metrics
+  const { step, status, metrics } = nodeData(data)
   const config = step.llm_call_config
-  const promptShort = (config?.prompt_template ?? '').length > 40
-    ? (config?.prompt_template ?? '').slice(0, 37) + '…'
-    : config?.prompt_template ?? ''
-  const modelShort = config?.model?.split(':').pop()?.split('-').slice(0, 2).join('-') ?? '—'
+  const model = config?.model?.split(':').pop()?.split('-').slice(0, 2).join('-') ?? '—'
 
   return (
-    <div
-      className={[
-        'relative rounded-xl border-2 px-3 py-2 shadow-sm transition-all',
-        NODE_TYPE_STYLES.llm_call.border,
-        NODE_TYPE_STYLES.llm_call.bg,
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: NODE_WIDTH }}
-    >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
-        <span className="ml-auto shrink-0 inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border/50">
-          {modelShort}
-        </span>
-      </div>
-
-      <p className="mt-1 truncate text-[10px] text-muted-foreground" title={config?.prompt_template}>
-        {promptShort}
-      </p>
-
-      {status === 'completed' && <MetricsBadge metrics={metrics} />}
-
-      <SourceHandle />
-    </div>
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="llm_call"
+      tone={STEP_TYPES.llm_call.tone}
+      sub={`${model} · ${short(config?.prompt_template, 40)}`}
+      subTitle={config?.prompt_template}
+    />
   )
 }
-
-// ── Branch Node (Fork) ─────────────────────────────────────────────────
-
-const BRANCH_WIDTH = 100
 
 function BranchNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
-
+  const { step, status, metrics } = nodeData(data)
   return (
-    <div
-      className={[
-        'relative flex flex-col items-center justify-center rounded-lg border-2 px-2 py-3 shadow-sm transition-all',
-        NODE_TYPE_STYLES.branch.border,
-        NODE_TYPE_STYLES.branch.bg,
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: BRANCH_WIDTH }}
-    >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <Split className="h-4 w-4 text-zinc-400" />
-      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.label || step.id}</span>
-
-      <SourceHandle />
-    </div>
+    <NodeFrame step={step} status={status} metrics={metrics} selected={selected} type="branch" tone={STEP_TYPES.branch.tone} narrow />
   )
 }
-
-// ── Merge Node (Join) ──────────────────────────────────────────────────
 
 function MergeNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
+  const { step, status, metrics } = nodeData(data)
   const strategy = step.merge_config?.strategy ?? 'wait_all'
-
   return (
-    <div
-      className={[
-        'relative flex flex-col items-center justify-center rounded-lg border-2 px-2 py-3 shadow-sm transition-all',
-        NODE_TYPE_STYLES.merge.border,
-        NODE_TYPE_STYLES.merge.bg,
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: BRANCH_WIDTH }}
-    >
-      <TargetHandle />
-
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <Merge className="h-4 w-4 text-zinc-400" />
-      <span className="mt-1 text-[10px] font-medium text-muted-foreground">{step.label || step.id}</span>
-      <span className="text-[9px] text-muted-foreground/60">{strategy === 'wait_any' ? 'any' : 'all'}</span>
-
-      <SourceHandle />
-    </div>
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="merge"
+      tone={STEP_TYPES.merge.tone}
+      narrow
+      sub={strategy === 'wait_any' ? 'any' : 'all'}
+    />
   )
 }
-
-// ── Sub-Workflow Node ───────────────────────────────────────────────────
 
 function SubWorkflowNodeRaw({ data, selected }: NodeProps) {
-  const step = (data as StepNodeData).step
-  const status = (data as StepNodeData).status ?? 'idle'
-  const metrics = (data as StepNodeData).metrics
+  const { step, status, metrics } = nodeData(data)
   const config = step.sub_workflow_config
-  const wfName = config?.workflow_name || config?.workflow_id || '—'
-  const nameShort = wfName.length > 28 ? wfName.slice(0, 25) + '…' : wfName
+  const name = config?.workflow_name || config?.workflow_id || '—'
 
   return (
-    <div
-      className={[
-        'relative rounded-xl border-[3px] border-double px-3 py-2 shadow-sm transition-all',
-        NODE_TYPE_STYLES.sub_workflow.border,
-        NODE_TYPE_STYLES.sub_workflow.bg,
-        selected ? selectedRing : '',
-        STATUS_RING[status],
-      ].join(' ')}
-      style={{ width: NODE_WIDTH }}
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="sub_workflow"
+      tone={STEP_TYPES.sub_workflow.tone}
+      sub={short(name, 28)}
+      subTitle={name}
     >
-      <TargetHandle />
-      {status !== 'idle' && (
-        <div className="absolute -right-1.5 -top-1.5 rounded-full bg-background">
-          <StatusIcon status={status} />
-        </div>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <Layers className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
-        <span className="truncate text-sm font-medium">{step.label || step.id}</span>
-      </div>
-
-      <p className="mt-1 truncate text-[10px] text-muted-foreground" title={wfName}>
-        {nameShort}
+      <p className="text-2xs text-subtle">
+        {config?.pass_context && 'ctx · '}depth ≤{config?.max_depth ?? 3}
       </p>
-
-      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-        {config?.pass_context && <span>ctx</span>}
-        <span>depth ≤{config?.max_depth ?? 3}</span>
-      </div>
-
-      {status === 'completed' && <MetricsBadge metrics={metrics} />}
-
-      <SourceHandle />
-    </div>
+    </NodeFrame>
   )
 }
 
-// ── Exports ─────────────────────────────────────────────────────────────
+function DecisionNodeRaw({ data, selected }: NodeProps) {
+  const { step, status, metrics } = nodeData(data)
+  const config = step.decision_config
+  const options = config?.options ?? []
+
+  return (
+    <NodeFrame
+      step={step}
+      status={status}
+      metrics={metrics}
+      selected={selected}
+      type="decision"
+      tone={STEP_TYPES.decision.tone}
+      sub={config ? `${config.resolver} · ${options.length} options` : undefined}
+      handles={options.map((opt, i) => (
+        <Handle
+          key={opt.key}
+          type="source"
+          id={opt.key}
+          position={Position.Right}
+          style={{ top: `${((i + 1) / (options.length + 1)) * 100}%` }}
+          className="!h-2 !w-2 !rounded-full !border-0 !bg-violet"
+        />
+      ))}
+    />
+  )
+}
 
 export const WorkflowEditorNode = memo(AgentStepNodeRaw)
 export const ConditionNode = memo(ConditionNodeRaw)
@@ -519,44 +361,4 @@ export const LlmCallNode = memo(LlmCallNodeRaw)
 export const BranchNode = memo(BranchNodeRaw)
 export const MergeNode = memo(MergeNodeRaw)
 export const SubWorkflowNode = memo(SubWorkflowNodeRaw)
-
-// ── Decision Node ────────────────────────────────────────────────────────
-
-function DecisionNodeRaw({ data, selected }: NodeProps) {
-  const { step, status, metrics } = data as StepNodeData
-  const config = step.decision_config
-  const style = NODE_TYPE_STYLES.decision
-  const ring = selected ? selectedRing : STATUS_RING[status ?? 'idle']
-
-  return (
-    <div
-      className={`relative rounded-lg border-2 px-3 py-2 shadow-sm ${style.border} ${style.bg} ${ring}`}
-      style={{ width: NODE_WIDTH }}
-    >
-      <TargetHandle />
-      {config?.options?.map((opt: { key: string; label: string }, i: number) => (
-        <Handle
-          key={opt.key}
-          type="source"
-          id={opt.key}
-          position={Position.Right}
-          style={{ top: `${((i + 1) / ((config?.options?.length ?? 1) + 1)) * 100}%` }}
-          className="!h-3 !w-3 !rounded-full !border-2 !border-background !bg-purple-400"
-        />
-      ))}
-      <div className="flex items-center gap-1.5">
-        <Signpost className="h-4 w-4 text-purple-400" />
-        <span className="truncate text-xs font-medium">{step.label || step.id}</span>
-        {status && status !== 'idle' && <StatusIcon status={status} />}
-      </div>
-      {config && (
-        <div className="mt-1 text-[10px] text-muted-foreground">
-          {config.resolver} · {config.options?.length ?? 0} options
-        </div>
-      )}
-      <MetricsBadge metrics={metrics} />
-    </div>
-  )
-}
-
 export const DecisionNode = memo(DecisionNodeRaw)

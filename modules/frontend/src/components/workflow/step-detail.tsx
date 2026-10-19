@@ -4,14 +4,18 @@
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, Bot, GitBranch, Bell, UserRound, Wrench, Sparkles, Split, Merge, Layers, Signpost, Trash2, ExternalLink } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { X, Trash2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { IconTile } from '@/components/ui/icon-tile'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useCatalog } from '@/hooks/use-catalog'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
+import { agentStyle } from '@/lib/agent-tone'
+import { cn } from '@/lib/cn'
 import { ROUTES } from '@/lib/constants'
+import { STEP_TYPES } from './workflow-editor-types'
 import { VariableAutocomplete } from './variable-autocomplete'
 import type { WorkflowStep } from '@/types'
 
@@ -43,35 +47,24 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
   }
 
   const nodeType = draft.node_type ?? 'agent_step'
-  const NodeIcon = nodeType === 'condition' ? GitBranch
-    : nodeType === 'notification' ? Bell
-    : nodeType === 'human_input' ? UserRound
-    : nodeType === 'tool_call' ? Wrench
-    : nodeType === 'llm_call' ? Sparkles
-    : nodeType === 'branch' ? Split
-    : nodeType === 'merge' ? Merge
-    : nodeType === 'sub_workflow' ? Layers
-    : nodeType === 'decision' ? Signpost
-    : Bot
+  const stepType = STEP_TYPES[nodeType]
+  const tone = nodeType === 'agent_step' ? agentStyle(draft.capability ?? '').tone : stepType.tone
 
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-md">
+    <div className="flex flex-col">
       {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <NodeIcon className="h-4 w-4 text-muted-foreground" />
-          <h4 className="font-semibold">{draft.id}</h4>
+      <div className="flex items-center gap-2.5 px-4 pb-1 pt-4">
+        <IconTile icon={stepType.icon} tone={tone} size="md" shape="square" />
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate text-base font-medium">{draft.id}</h4>
+          <p className="text-xs text-subtle">{stepType.label}</p>
         </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-          <X className="h-4 w-4" />
+        <Button variant="ghost" size="icon-sm" aria-label="Close step details" onClick={onClose}>
+          <X className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      <Badge variant="outline" className="mb-3">
-        {nodeType.replace('_', ' ')}
-      </Badge>
-
-      <div className="space-y-3 text-sm">
+      <div className="flex flex-col gap-4 px-4 pb-4 pt-3 text-sm">
         {/* Description — all node types */}
         <Field label="Description">
           <Textarea
@@ -89,7 +82,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
               <select
                 value={draft.capability ?? ''}
                 onChange={(e) => update({ capability: e.target.value || null })}
-                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className={cn(SELECT_CLASS, 'font-mono')}
               >
                 <option value="">Select an agent…</option>
                 {agents.map((a) => {
@@ -382,7 +375,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
             </Field>
             <Field label="System prompt">
               <Textarea
-                className="min-h-[40px] text-xs"
+                className="min-h-[40px] font-mono text-xs"
                 value={draft.llm_call_config.system_prompt ?? ''}
                 placeholder="Optional system instructions"
                 onChange={(e) =>
@@ -394,7 +387,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
             </Field>
             <Field label="Prompt template">
               <VariableAutocomplete
-                className="min-h-[80px] text-xs"
+                className="min-h-[80px] font-mono text-xs"
                 value={draft.llm_call_config.prompt_template}
                 placeholder="Use {{@node.step-id.field}} for variables"
                 onChange={(v) =>
@@ -502,7 +495,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                     },
                   })
                 }}
-                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className={SELECT_CLASS}
               >
                 <option value="">Select a workflow…</option>
                 {workflows
@@ -527,22 +520,18 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                 Open Sub-Workflow
               </Button>
             )}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="pass-context"
+            <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              Pass parent context to child
+              <Switch
                 checked={draft.sub_workflow_config.pass_context}
-                onChange={(e) =>
+                onChange={(next) =>
                   update({
-                    sub_workflow_config: { ...draft.sub_workflow_config!, pass_context: e.target.checked },
+                    sub_workflow_config: { ...draft.sub_workflow_config!, pass_context: next },
                   })
                 }
-                className="rounded border-input"
+                label="Pass parent context to child"
               />
-              <label htmlFor="pass-context" className="text-xs text-muted-foreground">
-                Pass parent context to child
-              </label>
-            </div>
+            </label>
             <Field label="Max depth">
               <Input
                 className="h-8 text-xs"
@@ -589,7 +578,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                     },
                   })
                 }}
-                className="w-full rounded border bg-background px-2 py-1.5 text-sm"
+                className={SELECT_CLASS}
               >
                 <option value="agent">Agent (LLM)</option>
                 <option value="human">Human</option>
@@ -609,7 +598,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         opts[i] = { ...opts[i], key: e.target.value }
                         update({ decision_config: { ...draft.decision_config!, options: opts } })
                       }}
-                      className="w-1/3 text-xs"
+                      className="h-8 w-1/3 text-xs"
                     />
                     <Input
                       placeholder="description"
@@ -619,7 +608,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         opts[i] = { ...opts[i], label: e.target.value }
                         update({ decision_config: { ...draft.decision_config!, options: opts } })
                       }}
-                      className="text-xs"
+                      className="h-8 text-xs"
                     />
                     <Button
                       variant="ghost"
@@ -658,11 +647,12 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         decision_config: { ...draft.decision_config!, model: e.target.value },
                       })
                     }
-                    className="text-xs"
+                    className="h-8 text-xs"
                   />
                 </Field>
                 <Field label="Prompt">
                   <VariableAutocomplete
+                    className="font-mono text-xs"
                     value={draft.decision_config.prompt ?? ''}
                     onChange={(v) =>
                       update({
@@ -698,7 +688,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         decision_config: { ...draft.decision_config!, channel: e.target.value },
                       })
                     }
-                    className="w-full rounded border bg-background px-2 py-1.5 text-sm"
+                    className={SELECT_CLASS}
                   >
                     <option value="chat">Chat</option>
                     <option value="telegram">Telegram</option>
@@ -717,7 +707,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         },
                       })
                     }
-                    className="text-xs"
+                    className="h-8 text-xs"
                   />
                 </Field>
                 <Field label="Default option (on timeout)">
@@ -731,7 +721,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         },
                       })
                     }
-                    className="w-full rounded border bg-background px-2 py-1.5 text-sm"
+                    className={SELECT_CLASS}
                   >
                     <option value="">None</option>
                     {(draft.decision_config.options ?? []).map((o) => (
@@ -760,28 +750,26 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
             )}
           </>
         )}
-      </div>
 
-      {/* Delete */}
-      <Button
-        variant="destructive"
-        size="sm"
-        className="mt-4 w-full gap-1.5 text-xs"
-        onClick={onDelete}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        Delete Node
-      </Button>
+        {/* Delete */}
+        <Button variant="destructive" size="sm" className="w-full" onClick={onDelete}>
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete Node
+        </Button>
+      </div>
     </div>
   )
 }
 
 // ── Tiny helpers ────────────────────────────────────────────────────────
 
+const SELECT_CLASS =
+  'flex h-8 w-full rounded-md border border-border-strong bg-field px-2 text-xs outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
+      <label className="mb-1.5 block text-xs text-muted-foreground">{label}</label>
       {children}
     </div>
   )
@@ -800,7 +788,7 @@ function Select({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className={SELECT_CLASS}
     >
       {options.map((o) => (
         <option key={o} value={o}>

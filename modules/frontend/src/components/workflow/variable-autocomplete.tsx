@@ -6,8 +6,9 @@
  * inserts the full reference at the cursor position.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Textarea } from '@/components/ui/textarea'
+import { useClickOutside } from '@/hooks/use-click-outside'
 
 interface VariableAutocompleteProps {
   value: string
@@ -76,7 +77,7 @@ export function VariableAutocomplete({
   rows,
 }: VariableAutocompleteProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [showMenu, setShowMenu] = useState(false)
   const [filter, setFilter] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -180,27 +181,14 @@ export function VariableAutocomplete({
     [showMenu, filtered, selectedIndex, insertSuggestion],
   )
 
-  // Close menu on blur (delayed to allow click)
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(e.target as Node) &&
-        textareaRef.current &&
-        !textareaRef.current.contains(e.target as Node)
-      ) {
-        setShowMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  // The container holds both the textarea and the menu, so a press on either stays open.
+  useClickOutside(containerRef, () => setShowMenu(false), showMenu)
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <Textarea
         ref={textareaRef}
-        className={`${className}`}
+        className={className}
         value={value}
         onChange={handleInput}
         onKeyDown={handleKeyDown}
@@ -208,27 +196,23 @@ export function VariableAutocomplete({
         rows={rows}
       />
       {showMenu && filtered.length > 0 && (
-        <div
-          ref={menuRef}
-          className="absolute left-0 top-full z-50 mt-1 max-h-[180px] w-full overflow-y-auto rounded-md border bg-popover shadow-md"
-        >
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-[180px] w-full overflow-y-auto rounded-card border border-panel-border bg-popover shadow-lg">
           {filtered.map((s, i) => (
             <button
               key={s.insert}
-              className={[
-                'flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs',
-                i === selectedIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50',
-              ].join(' ')}
+              className={
+                i === selectedIndex
+                  ? 'flex w-full items-center justify-between gap-2 bg-raised px-2.5 py-1.5 text-left text-xs'
+                  : 'flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs'
+              }
               onMouseEnter={() => setSelectedIndex(i)}
               onMouseDown={(e) => {
                 e.preventDefault()
                 insertSuggestion(s)
               }}
             >
-              <span className="font-mono">{s.label}</span>
-              {s.detail && (
-                <span className="text-[10px] text-muted-foreground">{s.detail}</span>
-              )}
+              <span className="font-mono text-foreground">{s.label}</span>
+              {s.detail && <span className="text-2xs text-subtle">{s.detail}</span>}
             </button>
           ))}
         </div>

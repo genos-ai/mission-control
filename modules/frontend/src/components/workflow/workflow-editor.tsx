@@ -7,6 +7,7 @@ import { useParams } from 'react-router-dom'
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   addEdge,
@@ -20,18 +21,19 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import toast from 'react-hot-toast'
-import { ChevronLeft } from 'lucide-react'
 import type { WorkflowStep } from '@/types'
 import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { useResizable } from '@/hooks/use-resizable'
 import { ArchitectChat } from '@/components/drawer/architect-chat-panel'
 import { useWorkflowRuns } from '@/hooks/use-workflows'
+import { Panel } from '@/components/ui/panel'
 import { HumanInputPanel } from './human-input-panel'
 import { StepDetail } from './step-detail'
 import { WorkflowRunHistory } from './workflow-run-history'
 import { WorkflowEditorNode, ConditionNode, NotificationNode, HumanInputNode, ToolCallNode, LlmCallNode, BranchNode, MergeNode, SubWorkflowNode, DecisionNode } from './workflow-editor-node'
 import { WorkflowEditorToolbar } from './workflow-editor-toolbar'
 import { NodePalette } from './node-palette'
+import { StepPalette } from './step-palette'
 import {
   dagreLayout,
   NODE_WIDTH,
@@ -67,18 +69,30 @@ function stepsToNodes(
   }))
 }
 
+/**
+ * How an edge looks: condition outcomes are green and red, decision options violet,
+ * everything else the neutral line.
+ */
+function edgeAppearance(label: string | undefined, isDecisionOption: boolean) {
+  const isYes = label === 'Yes'
+  const isNo = label === 'No'
+  const stroke = isYes
+    ? 'hsl(var(--success) / 0.6)'
+    : isNo
+      ? 'hsl(var(--danger) / 0.5)'
+      : isDecisionOption
+        ? 'hsl(var(--violet) / 0.6)'
+        : 'hsl(var(--border-hover))'
+  const emphasised = isYes || isNo || isDecisionOption
+  return {
+    labelStyle: emphasised ? { fontSize: 10, fontWeight: 600, fill: stroke } : undefined,
+    style: { stroke, strokeWidth: emphasised ? 2 : 1.5 },
+  }
+}
+
 function edgesToFlow(edges: WorkflowEdge[]): Edge[] {
   return edges.map((e) => {
     const label = e.label ?? undefined
-    // Color condition-branch edges
-    const isYes = label === 'Yes'
-    const isNo = label === 'No'
-    const stroke = isYes
-      ? 'hsl(142 71% 45% / 0.6)'  // emerald
-      : isNo
-        ? 'hsl(0 84% 60% / 0.5)'  // red
-        : 'hsl(var(--muted-foreground) / 0.4)'
-
     return {
       id: e.id,
       source: e.source,
@@ -86,8 +100,7 @@ function edgesToFlow(edges: WorkflowEdge[]): Edge[] {
       sourceHandle: e.source_handle ?? 'output',
       targetHandle: e.target_handle ?? 'input',
       label,
-      labelStyle: (isYes || isNo) ? { fontSize: 10, fontWeight: 600, fill: stroke } : undefined,
-      style: { stroke, strokeWidth: isYes || isNo ? 2 : 1.5 },
+      ...edgeAppearance(label, false),
       animated: false,
     }
   })
@@ -164,6 +177,9 @@ interface HistoryEntry {
 }
 
 const MAX_HISTORY = 50
+
+/** React Flow's zoom controls and minimap, on the panel surface. */
+const CANVAS_CHROME = '!rounded-card !border !border-panel-border !bg-panel !shadow-none'
 
 export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorProps) {
   const { id: missionId } = useParams<{ id: string }>()
@@ -380,16 +396,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         label = available?.key ?? connection.sourceHandle ?? undefined
       }
 
-      const isYes = label === 'Yes'
-      const isNo = label === 'No'
-      const stroke = isYes
-        ? 'hsl(142 71% 45% / 0.6)'
-        : isNo
-          ? 'hsl(0 84% 60% / 0.5)'
-          : isDecision && label
-            ? 'hsl(270 60% 60% / 0.6)'
-            : 'hsl(var(--muted-foreground) / 0.4)'
-      const hasLabel = isYes || isNo || (isDecision && !!label)
+      const appearance = edgeAppearance(label, isDecision && !!label)
 
       pushHistory()
       setEdges((eds) =>
@@ -398,8 +405,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
             ...connection,
             id: `${connection.source}->${connection.target}`,
             label,
-            labelStyle: hasLabel ? { fontSize: 10, fontWeight: 600, fill: stroke } : undefined,
-            style: { stroke, strokeWidth: hasLabel ? 2 : 1.5 },
+            ...appearance,
           },
           eds,
         ),
@@ -665,9 +671,10 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   }, [selectedStep, setNodes, setEdges, pushHistory])
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col gap-gutter px-2 pb-2">
       <WorkflowEditorToolbar
         workflowName={workflow.name}
+        stepCount={nodes.length}
         isDirty={isDirty}
         isSaving={isSaving}
         isRunning={isRunning}
@@ -679,7 +686,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         onSave={handleSave}
         onRun={handleRun}
         onToggleHistory={handleToggleHistory}
-        onAddNode={handleAddNode}
+        onOpenPalette={() => setShowPalette(true)}
         onOpenArchitect={handleOpenArchitect}
       />
 
@@ -689,9 +696,11 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         missionId={missionId!}
       />
 
-      <div className="relative flex flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 gap-gutter">
+        <StepPalette onAddStep={handleAddNode} />
+
         {/* Canvas */}
-        <div className="flex-1">
+        <Panel className="relative min-w-[360px] flex-1 overflow-hidden">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -713,17 +722,11 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
             deleteKeyCode={['Backspace', 'Delete']}
             minZoom={0.2}
             maxZoom={2}
-            defaultEdgeOptions={{
-              style: { stroke: 'hsl(var(--muted-foreground) / 0.4)', strokeWidth: 1.5 },
-            }}
+            defaultEdgeOptions={{ style: edgeAppearance(undefined, false).style }}
           >
-            <Background color="hsl(var(--muted-foreground) / 0.1)" gap={20} />
-            <Controls showInteractive={false} className="!bg-card !border-border !shadow-md" />
-            <MiniMap
-              nodeStrokeWidth={3}
-              className="!bg-card !border-border !shadow-md"
-              maskColor="hsl(var(--background) / 0.8)"
-            />
+            <Background variant={BackgroundVariant.Dots} color="hsl(var(--canvas-dot))" gap={20} size={1} />
+            <Controls showInteractive={false} className={CANVAS_CHROME} />
+            <MiniMap nodeStrokeWidth={3} className={CANVAS_CHROME} maskColor="hsl(var(--background) / 0.8)" />
           </ReactFlow>
 
           {/* Node palette (Space key) */}
@@ -733,11 +736,11 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
               onClose={() => setShowPalette(false)}
             />
           )}
-        </div>
+        </Panel>
 
         {/* Right panel — step detail or run history (mutually exclusive) */}
         {selectedStep && !showHistory && (
-          <div className="w-[320px] shrink-0 overflow-y-auto border-l bg-background p-3">
+          <Panel className="hidden w-[300px] shrink-0 flex-col overflow-y-auto min-[960px]:flex">
             <StepDetail
               step={selectedStep}
               onClose={() => setSelectedStep(null)}
@@ -749,10 +752,10 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
                 .filter((e) => e.target === selectedStep.id)
                 .map((e) => e.source)}
             />
-          </div>
+          </Panel>
         )}
         {showHistory && (
-          <div className="w-[320px] shrink-0 overflow-y-auto border-l bg-background">
+          <Panel className="w-[300px] shrink-0 overflow-y-auto">
             <WorkflowRunHistory
               runs={runs}
               isLoading={runsLoading}
@@ -760,15 +763,15 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
               onSelectRun={setSelectedRunId}
               onClose={() => { setShowHistory(false); setSelectedRunId(null) }}
             />
-          </div>
+          </Panel>
         )}
 
-        {/* Architect chat — inline collapsible panel */}
-        {architectOpen ? (
-          <div className="relative flex shrink-0 flex-col border-l bg-background" style={{ width: architectWidth }}>
+        {/* Architect chat — opened and closed from the toolbar */}
+        {architectOpen && (
+          <Panel className="relative flex shrink-0 flex-col overflow-hidden" style={{ width: architectWidth }}>
             <div
               onMouseDown={onArchitectResize}
-              className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20 transition-colors z-10"
+              className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-brand/30"
             />
             <ArchitectChat
               missionId={missionId!}
@@ -776,15 +779,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
               workflowName={workflow.name}
               onClose={() => setArchitectOpen(false)}
             />
-          </div>
-        ) : (
-          <button
-            onClick={() => setArchitectOpen(true)}
-            className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-            title="Open architect chat"
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </button>
+          </Panel>
         )}
       </div>
     </div>

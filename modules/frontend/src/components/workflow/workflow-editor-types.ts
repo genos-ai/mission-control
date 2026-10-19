@@ -4,6 +4,8 @@
 
 import { Graph, layout } from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
+import { Bell, Bot, GitBranch, Layers, Merge, Signpost, Sparkles, Split, UserRound, Wrench, type LucideIcon } from 'lucide-react'
+import type { Tone } from '@/lib/status-tone'
 import type { WorkflowStep } from '@/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -58,104 +60,38 @@ export interface WorkflowDetailFull {
 // ── Constants ─────────────────────────────────────────────────────────────
 
 export const NODE_WIDTH = 220
-export const NODE_HEIGHT = 80
+export const NODE_HEIGHT = 56
 
-/** Domain → border color class for node outlines. */
-export const DOMAIN_BORDER_COLORS: Record<string, string> = {
-  code: 'border-blue-500/50',
-  software: 'border-blue-500/50',
-  dev: 'border-blue-500/50',
-  engineer: 'border-blue-500/50',
-  research: 'border-violet/50',
-  analyst: 'border-violet/50',
-  analysis: 'border-violet/50',
-  security: 'border-rose-500/50',
-  audit: 'border-rose-500/50',
-  writer: 'border-emerald-500/50',
-  content: 'border-emerald-500/50',
-  data: 'border-cyan-500/50',
-  mission: 'border-orange-500/50',
-  director: 'border-orange-500/50',
-  planning: 'border-orange-500/50',
-  system: 'border-zinc-500/50',
-  ops: 'border-zinc-500/50',
+/** Every kind of step a workflow can hold. */
+export type StepType = NonNullable<WorkflowStep['node_type']>
+
+export interface StepTypeInfo {
+  label: string
+  description: string
+  icon: LucideIcon
+  /** An agent step is toned by its agent's domain instead (`agentStyle`). */
+  tone: Tone
 }
 
-/** Domain → subtle background tint. */
-export const DOMAIN_BG_COLORS: Record<string, string> = {
-  code: 'bg-blue-500/5',
-  software: 'bg-blue-500/5',
-  dev: 'bg-blue-500/5',
-  engineer: 'bg-blue-500/5',
-  research: 'bg-violet/5',
-  analyst: 'bg-violet/5',
-  analysis: 'bg-violet/5',
-  security: 'bg-rose-500/5',
-  audit: 'bg-rose-500/5',
-  writer: 'bg-emerald-500/5',
-  content: 'bg-emerald-500/5',
-  data: 'bg-cyan-500/5',
-  mission: 'bg-orange-500/5',
-  director: 'bg-orange-500/5',
-  planning: 'bg-orange-500/5',
-  system: 'bg-zinc-500/5',
-  ops: 'bg-zinc-500/5',
+/**
+ * The one description of each step type: its name, icon and tone. The palette,
+ * the toolbar, the nodes and the inspector all read it. Insertion order is the
+ * order the types are offered in.
+ */
+export const STEP_TYPES: Record<StepType, StepTypeInfo> = {
+  agent_step: { label: 'Agent step', description: 'Invoke a registered agent', icon: Bot, tone: 'neutral' },
+  condition: { label: 'Condition', description: 'If/else branch on an expression', icon: GitBranch, tone: 'info' },
+  notification: { label: 'Notification', description: 'Send a message (Telegram, SSE)', icon: Bell, tone: 'success' },
+  human_input: { label: 'Human input', description: 'Pause and wait for a response', icon: UserRound, tone: 'warning' },
+  tool_call: { label: 'Tool call', description: 'Call a tool directly', icon: Wrench, tone: 'neutral' },
+  llm_call: { label: 'LLM call', description: 'Raw LLM prompt, no agent', icon: Sparkles, tone: 'brand' },
+  branch: { label: 'Fork', description: 'Split into parallel paths', icon: Split, tone: 'neutral' },
+  merge: { label: 'Join', description: 'Sync barrier for parallel paths', icon: Merge, tone: 'neutral' },
+  sub_workflow: { label: 'Sub-workflow', description: 'Invoke another saved workflow', icon: Layers, tone: 'violet' },
+  decision: { label: 'Decision', description: 'Route to different paths (agent, human or rule)', icon: Signpost, tone: 'violet' },
 }
 
-export function getDomain(capability: string | null): string {
-  if (!capability) return 'system'
-  return capability.split('.')[0].toLowerCase()
-}
-
-export function getDomainBorder(capability: string | null): string {
-  const domain = getDomain(capability)
-  return DOMAIN_BORDER_COLORS[domain] ?? 'border-border'
-}
-
-export function getDomainBg(capability: string | null): string {
-  const domain = getDomain(capability)
-  return DOMAIN_BG_COLORS[domain] ?? 'bg-card'
-}
-
-/** Fixed colors for non-agent node types. */
-export const NODE_TYPE_STYLES = {
-  condition: {
-    border: 'border-cyan-500/60',
-    bg: 'bg-cyan-500/5',
-  },
-  notification: {
-    border: 'border-teal-500/60',
-    bg: 'bg-teal-500/5',
-  },
-  human_input: {
-    border: 'border-orange-500/60 border-dashed',
-    bg: 'bg-orange-500/5',
-  },
-  tool_call: {
-    border: 'border-slate-500/60',
-    bg: 'bg-slate-500/5',
-  },
-  llm_call: {
-    border: 'border-amber-400/60',
-    bg: 'bg-amber-400/5',
-  },
-  branch: {
-    border: 'border-zinc-500/60',
-    bg: 'bg-zinc-500/5',
-  },
-  merge: {
-    border: 'border-zinc-500/60',
-    bg: 'bg-zinc-500/5',
-  },
-  sub_workflow: {
-    border: 'border-indigo-500/60',
-    bg: 'bg-indigo-500/5',
-  },
-  decision: {
-    border: 'border-purple-500/60',
-    bg: 'bg-purple-500/5',
-  },
-} as const
+export const STEP_TYPE_ORDER = Object.keys(STEP_TYPES) as StepType[]
 
 // ── Layout ────────────────────────────────────────────────────────────────
 

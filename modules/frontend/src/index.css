@@ -142,6 +142,20 @@
   }
 }
 
+/* React Flow's own chrome (zoom controls, minimap, edge labels) on the theme tokens. */
+.react-flow {
+  --xy-controls-button-background-color: hsl(var(--panel));
+  --xy-controls-button-background-color-hover: hsl(var(--raised));
+  --xy-controls-button-color: hsl(var(--muted-foreground));
+  --xy-controls-button-color-hover: hsl(var(--foreground));
+  --xy-controls-button-border-color: hsl(var(--panel-border));
+  --xy-minimap-background-color: hsl(var(--panel));
+  --xy-minimap-node-background-color: hsl(var(--border-hover));
+  --xy-minimap-node-stroke-color: hsl(var(--border-hover));
+  --xy-edge-label-background-color: hsl(var(--panel));
+  --xy-edge-label-color: hsl(var(--muted-foreground));
+}
+
 @layer utilities {
   .tabular { font-variant-numeric: tabular-nums; }
 }
