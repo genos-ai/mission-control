@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1, 3.2 complete (2026-10-18)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3 complete (2026-10-19)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -99,7 +99,7 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C5 | §5.1 `AppShell` renders `<Sidebar/>` + `<main>` only | `components/layout/app-shell.tsx:15` mounts `<RightDrawer/>`, which hosts six panels (agent detail, prompt history, event log, output preview, cost breakdown, run events) | Keep `RightDrawer`. Restyle it as a Panel (Phase 3.1). |
 | C6 | §2.1 adds `@fontsource/geist` `@import` lines to `index.css` | Geist is already imported in `src/main.tsx:8-10`, but `src/index.css:75` overrides `body` to the system font stack, so Geist is loaded and unused | Keep font imports in `main.tsx` only. Add `@fontsource/geist-mono` 400/500 there. Remove the `font-family` override from `body`. |
 | C7 | §5.4 tab list lives in `layout.tsx` | It does (`pages/mission/layout.tsx:64-79`), and `lib/constants.ts` already holds `ROUTES` | Move the grouped nav definition to `lib/constants.ts`, referencing `ROUTES`. |
-| C8 | §5.4 brief moves to Overview, "reusing `InlineBrief`" | `InlineBrief` is a private function inside `layout.tsx:430-516` | Move it to `components/mission/inline-brief.tsx`, import it from Overview. |
+| C8 | §5.4 brief moves to Overview, "reusing `InlineBrief`" | `InlineBrief` was a private function in `layout.tsx`: a single-line `<input>` editor shown on every mission tab. Overview already shows the brief in full as markdown, and its Settings modal already edits the brief in a text area. A single-line input cannot hold line breaks, so saving a multi-line brief through it would flatten the text | Decided 2026-10-19 (D9): `InlineBrief` is deleted with the header, not moved. The brief stays visible on Overview and editable through Overview's Settings modal. |
 
 ### 2.2 Tokens and styling
 
@@ -374,7 +374,7 @@ Known effect, reviewed: inside a mission the sidebar is 236px (was a 48px rail),
 column in Chat is narrower; Phase 4 must wrap long unbroken strings (URLs) in message bubbles
 (`overflow-wrap: anywhere`), which the narrower width exposed.
 
-**3.3 Top bar and mission layout.** `components/layout/sidebar-mission-nav.tsx` (grouped sub-nav
+**3.3 Top bar and mission layout (done).** `components/layout/sidebar-mission-nav.tsx` (grouped sub-nav
 for the active mission, from `lib/constants.ts`) arrives in this commit, together with the removal
 of the tab bar, so there is never both or neither. `components/layout/top-bar.tsx` (new) per
 handoff §5.3.
@@ -394,12 +394,25 @@ unreachable between commits:
   and point `dashboard.tsx` at the shared copy.
 - Stop / Resume plan: delete the header copy (`layout.tsx:128-136`, `350-363`); the Plan
   toolbar's `handlePlanPauseToggle` already does this.
-- Brief: move `InlineBrief` (C8) and render it at the top of `pages/mission/overview.tsx` now;
-  Phase 9.4 restyles it.
+- Brief: `InlineBrief` is deleted (C8, D9). The brief stays on Overview and is edited through
+  Overview's Settings modal.
 - Background-task indicator: fold into the plan pill tooltip (handoff §5.3).
 
 Done when every mission route renders with the new shell and every former header action is
 reachable.
+
+Built: `TopBar` (generic, `sticky`), `MissionTopBar` (status and tier pills, plan/background-task pill,
+owner-only Pause/Resume, settings, Run), `SidebarMissionNav`, `MISSION_NAV_GROUPS` and three new
+`ROUTES` entries in `lib/constants.ts`, `lib/plan-progress.ts` (tasks completed out of tasks not
+cancelled), the shared `ConfirmDialog` (now token-styled and Escape-aware; its palette-coloured
+buttons became `Button` variants) and `ArchiveMissionButton`. `layout.tsx` went from 511 to 232 lines;
+the settings drawer did not grow (394 lines, was 395). Browser-tested with 25 checks; no write
+request was sent during the test.
+
+Found by the before/after review and fixed: the old header showed "Resume Plan" on every tab while a
+plan was paused, so a paused plan became invisible outside the Plan tab. The control stays on the Plan
+toolbar by design; `MissionTopBar` now shows a quiet "Plan paused" pill on every tab that links to the
+Plan tab, so the state is never hidden.
 
 ### Phase 4 — Chat (handoff §6.4)
 
@@ -492,7 +505,8 @@ is set. The greeting summary counts come from data already loaded (missions, run
 attention items) — counting is presentation; no other derivation. Archive and Delete move into a
 hover `⋯` menu, keeping the existing confirmation dialog.
 **9.3 New mission.** Handoff §6.2 with C27. Keep the existing validation and fields.
-**9.4 Overview.** Handoff §6.3. Brief via `InlineBrief` (C8). Active run card reuses
+**9.4 Overview.** Handoff §6.3. The brief is the existing markdown brief, restyled at the handoff's
+size (C8, D9). Active run card reuses
 `components/mission/active-run-card.tsx`. `overview.tsx` (678) must not grow.
 
 ### Phase 10 — Mission secondary screens (handoff §6.10–§6.16)
@@ -622,3 +636,4 @@ workflow editor drag, connect, select, save, run and schedule work.
 | D6 | Team enable/disable: read-only now, or add a backend `PATCH` and a `Switch` | Phase 10.1 | **Decided 2026-10-16:** build the switch (§3.3, Phases 8.4 and 10.1). |
 | D7 | Definition of "spent" against the mission budget: `llm_calls` total (what the Costs tab shows) or `execution_records` total (what the Platform Director's cost tool uses). Budget enforcement itself is per plan (`MissionPlan` budget ceiling seeded from the mission ceiling in `services/mission_plan.py:137`), so neither figure is the enforced one | Phase 8.1 | **Decided 2026-10-16:** `llm_calls`, so Dashboard, Overview and Costs show one number. |
 | D8 | Add `eslint-plugin-tailwindcss` with `no-custom-classname`, so undefined classes fail `npm run lint` instead of needing gate 6.1.4 by hand | Phase 1.1 | **Decided 2026-10-16:** add it (Phase 1.1). |
+| D9 | What happens to the header's inline brief editor (`InlineBrief`) when the header is removed | Phase 3.3 | **Decided 2026-10-19:** drop it; the brief stays on Overview and is edited in its Settings modal. |

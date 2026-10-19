@@ -13,53 +13,8 @@ import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
 import type { MissionListItem } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { missionKeys } from '@/hooks/use-missions'
-
-function ConfirmDialog({
-  title,
-  message,
-  confirmLabel,
-  variant,
-  onConfirm,
-  onCancel,
-}: {
-  title: string
-  message: string
-  confirmLabel: string
-  variant: 'danger' | 'warning'
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  const colors = variant === 'danger'
-    ? 'bg-red-600 hover:bg-red-700'
-    : 'bg-amber-600 hover:bg-amber-700'
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div
-        className="w-full max-w-sm rounded-lg border bg-background p-6 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold">{title}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">{message}</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-md px-3 py-1.5 text-sm border hover:bg-muted"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className={`rounded-md px-3 py-1.5 text-sm text-white ${colors}`}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function MissionCard({ mission, isAdmin }: { mission: MissionListItem; isAdmin: boolean }) {
   const navigate = useNavigate()

@@ -1,7 +1,9 @@
+import { Fragment } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { BookOpen, Home, Plus, Shield, type LucideIcon } from 'lucide-react'
 
 import { SidebarFooter } from './sidebar-footer'
+import { SidebarMissionNav } from './sidebar-mission-nav'
 import { cn } from '@/lib/cn'
 import { ROUTES } from '@/lib/constants'
 import { missionTone, type Tone } from '@/lib/status-tone'
@@ -72,15 +74,18 @@ export function Sidebar() {
         {missions?.map((mission) => {
           const active = pathname.startsWith(`/missions/${mission.id}`)
           return (
-            <Link key={mission.id} to={ROUTES.MISSION(mission.id)} className={itemClass(active)}>
-              <span
-                className={cn(
-                  'h-[7px] w-[7px] shrink-0 rounded-full',
-                  DOT_CLASS[missionTone[mission.status as MissionStatus].tone],
-                )}
-              />
-              <span className="truncate">{mission.name}</span>
-            </Link>
+            <Fragment key={mission.id}>
+              <Link to={ROUTES.MISSION(mission.id)} className={itemClass(active)}>
+                <span
+                  className={cn(
+                    'h-[7px] w-[7px] shrink-0 rounded-full',
+                    DOT_CLASS[missionTone[mission.status as MissionStatus].tone],
+                  )}
+                />
+                <span className="truncate">{mission.name}</span>
+              </Link>
+              {active && <SidebarMissionNav missionId={mission.id} />}
+            </Fragment>
           )
         })}
       </nav>

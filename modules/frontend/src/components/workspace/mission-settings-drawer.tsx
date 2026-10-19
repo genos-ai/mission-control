@@ -10,7 +10,6 @@ import {
   Trash2,
   History,
   Save,
-  FileText,
   Cpu,
   FolderOpen,
   Wrench,
@@ -27,6 +26,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { StatusPill } from '@/components/ui/status-pill'
+import { PanelHeader } from '@/components/ui/panel'
+import { ArchiveMissionButton } from '@/components/mission/archive-mission-button'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
@@ -53,62 +54,56 @@ export function MissionSettingsDrawer({
 }) {
   const { data: members, isLoading } = useTeam(missionId)
   const { data: mission } = useMission(missionId)
+  const user = useAuthStore((s) => s.user)
+  const isOwner = mission?.owner_id === user?.id
   const { open: openDrawer } = useDrawerStore()
   const seedMutation = useSeedTeam(missionId)
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex h-11 shrink-0 items-center justify-between border-b px-4">
-        <span className="text-sm font-semibold">Mission Settings</span>
-        <div className="flex items-center gap-2">
-          {members && members.length > 0 && (
-            <Button
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() =>
-                openDrawer('agent-detail', { missionId, mode: 'add-from-catalog' })
-              }
-            >
-              <Plus className="mr-1.5 h-3 w-3" />
-              Add Agent
+      <PanelHeader
+        title="Mission settings"
+        actions={
+          <>
+            {members && members.length > 0 && (
+              <Button
+                size="sm"
+                onClick={() =>
+                  openDrawer('agent-detail', { missionId, mode: 'add-from-catalog' })
+                }
+              >
+                <Plus className="h-3 w-3" />
+                Add Agent
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" aria-label="Close settings" onClick={onClose}>
+              <X className="h-4 w-4" />
             </Button>
-          )}
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
         {/* Mission brief */}
         {mission?.brief && (
-          <div className="flex items-start gap-2.5 rounded-lg border bg-muted/20 px-3 py-2.5 text-xs">
-            <FileText className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" />
-            <div>
-              <p className="font-medium text-muted-foreground mb-0.5">Mission Brief</p>
-              <p className="leading-relaxed">{mission.brief}</p>
-            </div>
+          <div className="rounded-card bg-raised px-3 py-2.5 text-xs">
+            <p className="mb-0.5 font-medium text-muted-foreground">Mission Brief</p>
+            <p className="leading-relaxed">{mission.brief}</p>
           </div>
         )}
 
         {/* Team section */}
         <div>
-          <div className="mb-2 flex items-center gap-2">
-            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Team
-            </h3>
+          <h3 className="mb-2 text-xs font-medium text-subtle">
+            Team
             {members && members.length > 0 && (
-              <span className="text-[10px] text-muted-foreground/60">
+              <span className="ml-2 font-normal">
                 {members.length} agent{members.length !== 1 ? 's' : ''}
               </span>
             )}
-          </div>
+          </h3>
 
           {isLoading ? (
             <div className="flex justify-center py-6">
@@ -144,6 +139,10 @@ export function MissionSettingsDrawer({
             </div>
           )}
         </div>
+
+        {isOwner && mission && mission.status !== 'archived' && (
+          <ArchiveMissionButton missionId={missionId} missionName={mission.name} onArchived={onClose} />
+        )}
       </div>
     </div>
   )

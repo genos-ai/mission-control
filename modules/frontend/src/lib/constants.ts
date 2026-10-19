@@ -1,3 +1,19 @@
+import {
+  Activity,
+  DollarSign,
+  FileText,
+  GitBranch,
+  Kanban,
+  Lightbulb,
+  ListChecks,
+  MessageSquare,
+  Package,
+  Radio,
+  Terminal,
+  Users,
+  type LucideIcon,
+} from 'lucide-react'
+
 export const ROUTES = {
   LOGIN: '/login',
   DASHBOARD: '/',
@@ -14,6 +30,9 @@ export const ROUTES = {
   MISSION_CONSOLE: (id: string) => `/missions/${id}/console`,
   MISSION_CONTEXT: (id: string) => `/missions/${id}/context`,
   MISSION_RUNS: (id: string) => `/missions/${id}/runs`,
+  MISSION_ARTIFACTS: (id: string) => `/missions/${id}/artifacts`,
+  MISSION_KNOWLEDGE: (id: string) => `/missions/${id}/knowledge`,
+  MISSION_COSTS: (id: string) => `/missions/${id}/costs`,
   MISSION_WORKFLOWS: (id: string) => `/missions/${id}/workflows`,
   MISSION_WORKFLOW_EDIT: (id: string, workflowId: string) =>
     `/missions/${id}/workflows/${workflowId}/edit`,
@@ -31,3 +50,31 @@ export const ROUTES = {
 } as const
 
 export const API_BASE = '/api/v1'
+
+export interface MissionNavItem {
+  label: string
+  icon: LucideIcon
+  to: (missionId: string) => string
+}
+
+/** The mission's sections, in the three groups the sidebar shows: Work, Setup, Observe. */
+export const MISSION_NAV_GROUPS: readonly (readonly MissionNavItem[])[] = [
+  [
+    { label: 'Overview', icon: Activity, to: ROUTES.MISSION_OVERVIEW },
+    { label: 'Chat', icon: MessageSquare, to: ROUTES.MISSION_CHAT },
+    { label: 'Plan', icon: Kanban, to: ROUTES.MISSION_PLAN },
+    { label: 'Runs', icon: ListChecks, to: ROUTES.MISSION_RUNS },
+    { label: 'Artifacts', icon: Package, to: ROUTES.MISSION_ARTIFACTS },
+  ],
+  [
+    { label: 'Team', icon: Users, to: ROUTES.MISSION_TEAM },
+    { label: 'Workflows', icon: GitBranch, to: ROUTES.MISSION_WORKFLOWS },
+    { label: 'Context', icon: FileText, to: ROUTES.MISSION_CONTEXT },
+    { label: 'Knowledge', icon: Lightbulb, to: ROUTES.MISSION_KNOWLEDGE },
+  ],
+  [
+    { label: 'Narrative', icon: Radio, to: ROUTES.MISSION_NARRATIVE },
+    { label: 'Costs', icon: DollarSign, to: ROUTES.MISSION_COSTS },
+    { label: 'Console', icon: Terminal, to: ROUTES.MISSION_CONSOLE },
+  ],
+]

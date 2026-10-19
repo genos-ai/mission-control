@@ -11,73 +11,19 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { NavLink, Outlet, useParams, Link, useNavigate, useLocation } from 'react-router-dom'
-import {
-  Activity,
-  Users,
-  MessageSquare,
-  GitBranch,
-  Play,
-  Terminal,
-  FileText,
-  Pause,
-  Archive,
-  RotateCcw,
-  Pencil,
-  Check,
-  X,
-  ChevronLeft,
-  Settings2,
-  Kanban,
-  Radio,
-  Lightbulb,
-  ListChecks,
-  Package,
-  Loader2,
-  DollarSign,
-} from 'lucide-react'
-import toast from 'react-hot-toast'
-import { cn } from '@/lib/cn'
-import { useMission, useUpdateMission } from '@/hooks/use-missions'
-import { useAuthStore } from '@/stores/auth'
+import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useMissionStream } from '@/hooks/use-sse'
 import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { planKeys, useMissionPlan, useUpdatePlan } from '@/hooks/use-mission-plan'
+import { planKeys } from '@/hooks/use-mission-plan'
 import { artifactKeys } from '@/hooks/use-mission-artifacts'
 import { queryClient } from '@/lib/query-client'
-import { StatusPill } from '@/components/ui/status-pill'
-import { missionTone } from '@/lib/status-tone'
-import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
-import { useBackgroundTasks } from '@/hooks/use-executions'
 import { RunModal } from '@/components/mission/run-modal'
+import { MissionTopBar } from '@/components/mission/mission-top-bar'
 import { MissionSettingsDrawer } from '@/components/workspace/mission-settings-drawer'
 import { MissionStreamContext } from '@/context/mission-stream'
 import { useNotificationStore } from '@/stores/notifications'
 import { ROUTES } from '@/lib/constants'
-import type { MissionStatus } from '@/types'
-
-// ---------------------------------------------------------------------------
-// Tab definition
-// ---------------------------------------------------------------------------
-
-const tabs = [
-  { label: 'Overview',  icon: Activity,      path: 'overview' },
-  { label: 'Team',      icon: Users,         path: 'team' },
-  { label: 'Chat',      icon: MessageSquare, path: 'chat' },
-  { label: 'Plan',      icon: Kanban,        path: 'plan' },
-  { label: 'Narrative', icon: Radio,         path: 'narrative' },
-  // TODO: Look at collapsing Context and Knowledge tabs together in a
-  //       meaningful, intuitive way.
-  { label: 'Context',   icon: FileText,      path: 'context' },
-  { label: 'Knowledge', icon: Lightbulb,     path: 'knowledge' },
-  { label: 'Artifacts', icon: Package,       path: 'artifacts' },
-  { label: 'Runs',      icon: ListChecks,    path: 'runs' },
-  { label: 'Workflows', icon: GitBranch,     path: 'workflows' },
-  { label: 'Costs',     icon: DollarSign,    path: 'costs' },
-  { label: 'Console',   icon: Terminal,      path: 'console' },
-]
 
 function categorize(eventType: string): ConsoleEvent['category'] {
   if (eventType.startsWith('knowledge.')) return 'system'
@@ -104,31 +50,9 @@ function categorize(eventType: string): ConsoleEvent['category'] {
 export default function MissionLayout() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { data: mission, isLoading } = useMission(id)
-  const updateMission = useUpdateMission(id!)
-  const user = useAuthStore((s) => s.user)
-  const isOwner = mission?.owner_id === user?.id
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showRunModal, setShowRunModal] = useState(false)
-  const { activeCount: bgTaskCount, activeTasks: bgTasks } = useBackgroundTasks(id)
-  const { data: plan } = useMissionPlan(id)
-  const updatePlan = useUpdatePlan(id!)
-
-  // Plan is autonomously dispatching if active + gate_mode allows it
-  const planIsAutonomous = plan?.status === 'active' &&
-    plan?.gate_mode === 'autonomous'
-  const planIsPaused = plan?.status === 'paused'
-
-  async function handlePlanPauseResume() {
-    const next = planIsPaused ? 'active' : 'paused'
-    try {
-      await updatePlan.mutateAsync({ status: next })
-      toast.success(next === 'paused' ? 'Plan paused — autonomous dispatch stopped' : 'Plan resumed')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update plan')
-    }
-  }
   const location = useLocation()
 
   // Persist last-visited tab per mission for the default-tab redirect
@@ -259,129 +183,17 @@ export default function MissionLayout() {
     }
   }, [totalAdded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function setStatus(status: MissionStatus) {
-    updateMission.mutate({ status })
-  }
-
   const streamValue = { events: sseEvents, connected }
 
   return (
     <MissionStreamContext.Provider value={streamValue}>
       <div className="relative flex h-full flex-col">
 
-        {/* ── Mission header ─────────────────────────────────────────── */}
-        <div className="flex items-start justify-between border-b px-6 py-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3">
-              <Link
-                to={ROUTES.DASHBOARD}
-                className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-                title="Back to dashboard"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Link>
-              {isLoading ? (
-                <Spinner className="h-5 w-5" />
-              ) : mission ? (
-                <>
-                  <h1 className="truncate text-lg font-bold">{mission.name}</h1>
-                  {mission.tier === 'platform' && (
-                    <StatusPill tone="warning" dot={false}>
-                      platform
-                    </StatusPill>
-                  )}
-                  <StatusPill tone={missionTone[mission.status as MissionStatus].tone}>
-                    {mission.status}
-                  </StatusPill>
-                </>
-              ) : (
-                <p className="text-muted-foreground">Mission not found</p>
-              )}
-            </div>
-            {mission && (
-              <InlineBrief brief={mission.brief} missionId={id!} editable={isOwner} />
-            )}
-          </div>
-
-          <div className="ml-4 flex shrink-0 items-center gap-2">
-            {isOwner && mission && (
-              <>
-                {mission.status === 'active' && (
-                  <Button variant="secondary" size="sm" onClick={() => setStatus('paused')}>
-                    <Pause className="mr-1.5 h-3.5 w-3.5" />Pause
-                  </Button>
-                )}
-                {mission.status === 'paused' && (
-                  <Button variant="secondary" size="sm" onClick={() => setStatus('active')}>
-                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />Resume
-                  </Button>
-                )}
-                {mission.status !== 'archived' && (
-                  <Button variant="secondary" size="sm" onClick={() => setStatus('archived')}>
-                    <Archive className="mr-1.5 h-3.5 w-3.5" />Archive
-                  </Button>
-                )}
-              </>
-            )}
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className={cn(
-                'rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground',
-                settingsOpen && 'bg-accent text-foreground',
-              )}
-              title="Mission settings"
-            >
-              <Settings2 className="h-4 w-4" />
-            </button>
-            {bgTaskCount > 0 && (
-              <div
-                className="flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1 text-[11px] text-primary"
-                title={bgTasks.map((t) => `${t.task_type}: ${t.status}`).join('\n')}
-              >
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span>{bgTaskCount} background {bgTaskCount === 1 ? 'task' : 'tasks'}</span>
-              </div>
-            )}
-            {(planIsAutonomous || planIsPaused) && (
-              <Button
-                size="sm"
-                variant={planIsPaused ? 'secondary' : 'destructive'}
-                onClick={handlePlanPauseResume}
-                disabled={updatePlan.isPending}
-              >
-                {planIsPaused ? (
-                  <><RotateCcw className="mr-1.5 h-3.5 w-3.5" />Resume Plan</>
-                ) : (
-                  <><Pause className="mr-1.5 h-3.5 w-3.5" />Stop Plan</>
-                )}
-              </Button>
-            )}
-            <Button size="sm" onClick={() => setShowRunModal(true)}>
-              <Play className="mr-1.5 h-3.5 w-3.5" />Run
-            </Button>
-          </div>
-        </div>
-
-        {/* ── Tab bar ────────────────────────────────────────────────── */}
-        <div className="flex border-b px-4">
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.path}
-              to={`/missions/${id}/${tab.path}`}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )
-              }
-            >
-              <tab.icon className="h-4 w-4" />
-              {tab.label}
-            </NavLink>
-          ))}
-        </div>
+        <MissionTopBar
+          missionId={id!}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onRun={() => setShowRunModal(true)}
+        />
 
         {/* ── Tab content ────────────────────────────────────────────── */}
         {/* min-h-0 + overflow-y-auto so full-page tabs scroll normally.    */}
@@ -397,7 +209,7 @@ export default function MissionLayout() {
               className="absolute inset-0 z-40 bg-background/60 backdrop-blur-sm"
               onClick={() => setSettingsOpen(false)}
             />
-            <div className="absolute inset-y-0 right-0 z-50 flex w-[480px] flex-col border-l bg-card shadow-2xl">
+            <div className="absolute inset-y-0 right-0 z-50 flex w-[480px] flex-col rounded-l-panel border-l border-panel-border bg-panel shadow-2xl">
               <MissionSettingsDrawer missionId={id!} onClose={() => setSettingsOpen(false)} />
             </div>
           </>
@@ -415,97 +227,5 @@ export default function MissionLayout() {
         )}
       </div>
     </MissionStreamContext.Provider>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Inline brief editor (shown below mission name in the header)
-// ---------------------------------------------------------------------------
-
-function InlineBrief({
-  brief,
-  missionId,
-  editable,
-}: {
-  brief: string | null
-  missionId: string
-  editable: boolean
-}) {
-  const updateMission = useUpdateMission(missionId)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(brief ?? '')
-
-  const save = () => {
-    const value = draft.trim()
-    updateMission.mutate(
-      { brief: value || undefined },
-      {
-        onSuccess: () => {
-          setEditing(false)
-          toast.success('Brief updated')
-        },
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  if (editing) {
-    return (
-      <div className="ml-7 mt-1 flex items-center gap-2">
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') save()
-            if (e.key === 'Escape') {
-              setEditing(false)
-              setDraft(brief ?? '')
-            }
-          }}
-          className="flex-1 rounded-md border bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          placeholder="Set mission objective / brief..."
-        />
-        <Button
-          variant="ghost" size="icon" className="h-7 w-7"
-          onClick={save} disabled={updateMission.isPending}
-        >
-          <Check className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost" size="icon" className="h-7 w-7"
-          onClick={() => { setEditing(false); setDraft(brief ?? '') }}
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    )
-  }
-
-  if (!brief && editable) {
-    return (
-      <button
-        onClick={() => setEditing(true)}
-        className="ml-7 mt-1 flex items-center gap-1.5 text-sm text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-      >
-        <Pencil className="h-3 w-3" />
-        <span className="italic">Set mission brief...</span>
-      </button>
-    )
-  }
-
-  return (
-    <button
-      onClick={() => editable && setEditing(true)}
-      className={cn(
-        'ml-7 mt-1 flex items-center gap-1.5 text-sm text-muted-foreground group',
-        editable && 'cursor-pointer hover:text-foreground',
-      )}
-    >
-      <span className="line-clamp-1">{brief}</span>
-      {editable && (
-        <Pencil className="h-3 w-3 flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-      )}
-    </button>
   )
 }
