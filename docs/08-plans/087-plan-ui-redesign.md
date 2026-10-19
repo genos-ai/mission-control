@@ -432,7 +432,9 @@ layout used by sent and streaming messages. `chat-conversation.tsx` went from 67
 `chat-tab.tsx` from 390 to 342. A new `lib/tone-class.ts` holds the tone → class maps (text, dot,
 tinted box) so the sidebar, `StatusIcon`, `IconTile` and the event rows share one copy.
 Long unbroken strings (URLs, tokens) wrap with `overflow-wrap: anywhere`, which fixes the exposed
-case from Phase 3.2; verified with a 200+ character URL, measured not eyeballed.
+case from Phase 3.2; verified with a 200+ character URL measured on the message scroller. (A first
+measurement selected the outer page wrapper, which always fits, and proved nothing; it was redone on the
+real scroller.)
 
 Two corrections to the plan's earlier text: `slash-command-popover.tsx` has no click-outside code (it
 only uses `onMouseDown` on its items), so there was nothing to migrate there; and `Conversation` is
@@ -574,7 +576,7 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
 | Right drawer | Three panel types have no caller anywhere: `event-log`, `output-preview` and `cost-breakdown` (`components/drawer/*`). The Runs tab shows those views inline instead. They are restyled with the drawer but unreachable. |
 | Dependencies | `@hello-pangea/dnd` is listed in `package.json` and imported nowhere. |
-| Chat | Intermittently the thread stops about 190px short of the bottom on load. The auto-scroll effect in `chat-conversation.tsx` depends on messages, streaming text and live events, but not on `historicalEvents` (the separate narrative query), so events that arrive after the scroll leave the thread short. Confirmed at the original baseline too (2 of 3 loads). Fix: add the timeline length to the effect's dependencies. |
+| Chat (fixed 2026-10-19) | Intermittently the thread stopped hundreds of pixels short of the bottom on load (830-884px measured). The auto-scroll effect in `chat-conversation.tsx` did not depend on `historicalEvents` (the separate narrative query), so events arriving after the first scroll left the thread short. Reproduced deterministically by delaying the narrative response, and confirmed at the original baseline. The effect now depends on the timeline; measured 0px from the bottom at every sample with the narrative delayed 1.5s, delayed 3s, and not delayed. |
 
 - ⌘K command palette and the sidebar search trigger (C31).
 - Tab-bar navigation option (C32).

@@ -84,10 +84,6 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
   useEffect(() => { if (history) setMessages(history) }, [history])
   useEffect(() => () => { abortRef.current?.abort() }, [])
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages, streamingContent, streamingThinking, liveEvents.length])
-
   const sendMessage = useCallback(async () => {
     const content = input.trim()
     if (!content || sending) return
@@ -234,6 +230,13 @@ export function Conversation({ sessionId, missionId, targetAgent }: { sessionId:
     entries.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
     return entries
   }, [messages, historicalEvents, liveEvents])
+
+  // Keep the newest entry in view. This depends on the timeline, not on its inputs one by one:
+  // historical events arrive from a separate query, and when they landed after the first scroll
+  // they used to leave the thread stuck short of the bottom.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [timeline, streamingContent, streamingThinking])
 
   if (isLoading) return (
     <div className="flex flex-1 items-center justify-center">
