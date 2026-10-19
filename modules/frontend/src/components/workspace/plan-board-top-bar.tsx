@@ -3,18 +3,13 @@
  */
 
 import { useState } from 'react'
-import {
-  Loader2,
-  X,
-  Play,
-  Pause,
-  Sparkles,
-  AlertTriangle,
-} from 'lucide-react'
+import { Loader2, X, Play, Square, Sparkles, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { cn } from '@/lib/cn'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Panel } from '@/components/ui/panel'
+import { Progress } from '@/components/ui/progress'
+import { Segmented } from '@/components/ui/segmented'
 import { Textarea } from '@/components/ui/textarea'
 import {
   useRefinePlan,
@@ -24,8 +19,18 @@ import {
   type MissionPlan,
   type GateMode,
 } from '@/hooks/use-mission-plan'
+import { fmtCost, fmtUsd } from '@/lib/format'
+import { planProgress } from '@/lib/plan-progress'
+import type { Tone } from '@/lib/status-tone'
 import type { JoinedTask } from './plan-board-types'
 import { PRE_RUN_GATE_KEY } from './plan-board-types'
+
+const GATE_OPTIONS: { value: GateMode; label: string; title: string }[] = [
+  { value: 'interactive', label: 'Interactive', title: 'Human in the loop: you approve every task' },
+  { value: 'manual', label: 'Manual', title: 'External approval' },
+  { value: 'ai_assisted', label: 'AI-assisted', title: 'AI approves, you can veto' },
+  { value: 'autonomous', label: 'Autonomous', title: 'Unattended: the supervisor drives the loop' },
+]
 
 // ── Top bar ──────────────────────────────────────────────────────────────
 
@@ -52,11 +57,11 @@ export function PlanTopBar({
   )
   const approvedCount = approvedTasks.length
 
-  const budgetPct =
-    plan.budget_usd_ceiling && plan.budget_usd_ceiling > 0
-      ? Math.min(100, (plan.total_spent_usd / plan.budget_usd_ceiling) * 100)
-      : 0
+  const hasBudget = plan.budget_usd_ceiling != null && plan.budget_usd_ceiling > 0
+  const budgetPct = hasBudget ? (plan.total_spent_usd / plan.budget_usd_ceiling!) * 100 : 0
+  const budgetTone: Tone = budgetPct > 80 ? 'danger' : budgetPct > 50 ? 'warning' : 'brand'
 
+  const { done, total } = planProgress(plan)
   const isPlanPaused = plan.status === 'paused'
 
   async function handleGateMode(mode: GateMode) {
@@ -83,9 +88,7 @@ export function PlanTopBar({
       if (result.outcome_status === 'dispatching') {
         toast.success('Dispatched — streaming progress via console')
       } else {
-        toast.success(
-          `Run ${result.outcome_status} — $${result.total_cost_usd.toFixed(4)}`,
-        )
+        toast.success(`Run ${result.outcome_status} — ${fmtCost(result.total_cost_usd)}`)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Dispatch failed')
@@ -103,139 +106,98 @@ export function PlanTopBar({
 
   return (
     <>
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        Plan
-      </span>
-      <Badge>v{plan.version}</Badge>
+      <Panel className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5">
+        <span className="text-base font-medium">Plan</span>
+        <Badge variant="outline" className="font-mono">v{plan.version}</Badge>
 
-      <div className="relative">
-        <select
+        <Segmented
+          label="Autonomy mode"
           value={plan.gate_mode ?? 'interactive'}
-          onChange={(e) => handleGateMode(e.target.value as GateMode)}
+          onChange={handleGateMode}
+          options={GATE_OPTIONS}
           disabled={updatePlan.isPending}
-          className="h-6 appearance-none rounded border bg-transparent pl-2 pr-6 text-[10px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          title="Autonomy mode (Plan 42 §10.4)"
-        >
-          <option value="interactive">interactive — human in loop</option>
-          <option value="manual">manual — external approval</option>
-          <option value="ai_assisted">ai_assisted — AI in loop</option>
-          <option value="autonomous">autonomous — unattended</option>
-        </select>
-      </div>
+        />
 
-      <Button
-        size="sm"
-        variant={isPlanPaused ? 'default' : 'ghost'}
-        className={cn(
-          'h-6 gap-1 px-2 text-[11px]',
-          isPlanPaused && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        {total > 0 && (
+          <div className="flex items-center gap-2">
+            <Progress label="Plan progress" value={(done / total) * 100} tone="success" className="w-16" />
+            <span className="font-mono text-xs text-muted-foreground">{done} of {total}</span>
+          </div>
         )}
-        onClick={handlePlanPauseToggle}
-        disabled={updatePlan.isPending}
-        title={isPlanPaused ? 'Resume autonomous dispatch' : 'Pause autonomous dispatch'}
-      >
-        {isPlanPaused ? (
-          <>
-            <Play className="h-3 w-3" />
-            Resume
-          </>
-        ) : (
-          <>
-            <Pause className="h-3 w-3" />
-            Pause
-          </>
-        )}
-      </Button>
 
-      {plan.budget_usd_ceiling != null && plan.budget_usd_ceiling > 0 && (
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] tabular-nums text-muted-foreground">
-            ${plan.total_spent_usd.toFixed(2)} / ${plan.budget_usd_ceiling.toFixed(2)}
-          </span>
-          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all',
-                budgetPct > 80
-                  ? 'bg-destructive'
-                  : budgetPct > 50
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500',
-              )}
-              style={{ width: `${budgetPct}%` }}
-            />
+        {hasBudget && (
+          <div className="flex items-center gap-2" title="Spent of the plan budget">
+            <span className="font-mono text-xs text-muted-foreground">
+              {fmtUsd(plan.total_spent_usd)} / {fmtUsd(plan.budget_usd_ceiling!)}
+            </span>
+            <Progress label="Budget used" value={budgetPct} tone={budgetTone} className="w-14" />
+          </div>
+        )}
+
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="secondary"
+            aria-pressed={refineOpen}
+            onClick={onToggleRefine}
+            title="Refine the plan with the Planning Agent"
+          >
+            <Sparkles className="h-[13px] w-[13px]" />
+            Refine plan
+          </Button>
+          <Button
+            variant={isPlanPaused ? 'default' : 'destructive'}
+            onClick={handlePlanPauseToggle}
+            disabled={updatePlan.isPending}
+            title={isPlanPaused ? 'Resume autonomous dispatch' : 'Stop autonomous dispatch'}
+          >
+            {isPlanPaused ? <Play className="h-[13px] w-[13px]" /> : <Square className="h-[13px] w-[13px]" />}
+            {isPlanPaused ? 'Resume plan' : 'Stop plan'}
+          </Button>
+          <Button
+            onClick={handleDispatch}
+            disabled={dispatch.isPending || approvedCount === 0 || isPlanPaused}
+            title={
+              isPlanPaused
+                ? 'Resume the plan before running'
+                : approvedCount === 0
+                  ? 'Approve tasks before running'
+                  : `Run ${approvedCount} approved task${approvedCount === 1 ? '' : 's'}`
+            }
+          >
+            {dispatch.isPending ? (
+              <Loader2 className="h-[13px] w-[13px] animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Play className="h-[13px] w-[13px]" />
+            )}
+            Run approved{approvedCount > 0 ? ` (${approvedCount})` : ''}
+          </Button>
+        </div>
+      </Panel>
+
+      {isPlanPaused && lastDecision?.action === 'escalate' && (
+        <div className="flex shrink-0 items-start gap-2.5 rounded-panel border border-danger/20 bg-danger/5 px-4 py-3">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
+          <div className="min-w-0">
+            <span className="text-sm font-medium text-danger">Supervisor escalated</span>
+            <p className="mt-0.5 text-xs text-danger/80 [overflow-wrap:anywhere]">{lastDecision.reason}</p>
           </div>
         </div>
       )}
 
-      <div className="ml-auto flex items-center gap-1">
-        <Button
-          size="sm"
-          variant="ghost"
-          className={cn(
-            'h-6 gap-1 px-2 text-[11px]',
-            refineOpen && 'bg-accent text-foreground',
-          )}
-          onClick={onToggleRefine}
-          title="Refine plan via Planning Agent"
-        >
-          <Sparkles className="h-3 w-3" />
-          Refine
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 gap-1 px-2 text-[11px]"
-          onClick={handleDispatch}
-          disabled={dispatch.isPending || approvedCount === 0 || isPlanPaused}
-          title={
-            isPlanPaused
-              ? 'Resume the plan before running'
-              : approvedCount === 0
-                ? 'Approve tasks before running'
-                : `Run ${approvedCount} approved task${approvedCount === 1 ? '' : 's'}`
-          }
-        >
-          {dispatch.isPending ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Play className="h-3 w-3" />
-          )}
-          Run {approvedCount > 0 ? approvedCount : ''}
-        </Button>
-      </div>
-    </div>
-
-    {isPlanPaused && lastDecision?.action === 'escalate' && (
-      <div className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-2">
-        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-        <div className="min-w-0">
-          <span className="text-[11px] font-medium text-destructive">
-            Supervisor escalated
-          </span>
-          <p className="text-[10px] leading-snug text-destructive/80">
-            {lastDecision.reason}
-          </p>
-        </div>
-      </div>
-    )}
-
-    {gateOpen && (
-      <PreRunGateModal
-        missionId={missionId}
-        approvedTasks={approvedTasks}
-        isPending={dispatch.isPending}
-        onConfirm={(skipNextTime) => {
-          setGateOpen(false)
-          if (skipNextTime) {
-            localStorage.setItem(PRE_RUN_GATE_KEY(missionId), '1')
-          }
-          void doDispatch()
-        }}
-        onCancel={() => setGateOpen(false)}
-      />
-    )}
+      {gateOpen && (
+        <PreRunGateModal
+          approvedTasks={approvedTasks}
+          isPending={dispatch.isPending}
+          onConfirm={(skipNextTime) => {
+            setGateOpen(false)
+            if (skipNextTime) {
+              localStorage.setItem(PRE_RUN_GATE_KEY(missionId), '1')
+            }
+            void doDispatch()
+          }}
+          onCancel={() => setGateOpen(false)}
+        />
+      )}
     </>
   )
 }
@@ -243,13 +205,11 @@ export function PlanTopBar({
 // ── Pre-run review gate (Plan 41 §3.5b) ──────────────────────────────────
 
 function PreRunGateModal({
-  missionId: _missionId,
   approvedTasks,
   isPending,
   onConfirm,
   onCancel,
 }: {
-  missionId: string
   approvedTasks: JoinedTask[]
   isPending: boolean
   onConfirm: (skipNextTime: boolean) => void
@@ -258,31 +218,30 @@ function PreRunGateModal({
   const [skipNextTime, setSkipNextTime] = useState(false)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-lg border bg-card p-5 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold">Ready to run?</h3>
-          <button
-            onClick={onCancel}
-            className="text-muted-foreground hover:text-foreground"
-          >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm" onClick={onCancel}>
+      <Panel
+        role="dialog"
+        aria-modal="true"
+        aria-label="Ready to run?"
+        className="w-full max-w-sm p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-base font-medium">Ready to run?</h3>
+          <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onCancel}>
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
 
         <p className="mb-3 text-xs text-muted-foreground">
-          {approvedTasks.length} task{approvedTasks.length !== 1 ? 's' : ''} will
-          be dispatched:
+          {approvedTasks.length} task{approvedTasks.length !== 1 ? 's' : ''} will be dispatched:
         </p>
 
         <div className="mb-4 max-h-48 space-y-1 overflow-y-auto">
           {approvedTasks.map((t) => (
-            <div
-              key={t.task.id}
-              className="rounded border px-2.5 py-1.5 text-xs"
-            >
+            <div key={t.task.id} className="rounded-card bg-raised px-2.5 py-1.5 text-xs">
               <span className="font-medium">{t.task.description || t.task.id}</span>
-              <span className="ml-2 text-muted-foreground">{t.task.agent}</span>
+              <span className="ml-2 text-subtle">{t.task.agent}</span>
             </div>
           ))}
         </div>
@@ -298,24 +257,19 @@ function PreRunGateModal({
         </label>
 
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onCancel} className="h-7 text-xs">
+          <Button variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={() => onConfirm(skipNextTime)}
-            disabled={isPending}
-            className="h-7 gap-1.5 text-xs"
-          >
+          <Button onClick={() => onConfirm(skipNextTime)} disabled={isPending}>
             {isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
             ) : (
               <Play className="h-3 w-3" />
             )}
             Run {approvedTasks.length}
           </Button>
         </div>
-      </div>
+      </Panel>
     </div>
   )
 }
@@ -345,47 +299,33 @@ export function RefinePanel({
   }
 
   return (
-    <div className="shrink-0 border-b bg-muted/30 p-3">
-      <div className="mx-auto max-w-3xl space-y-2">
-        <p className="text-[11px] text-muted-foreground">
-          Describe the plan you want. The Planning Agent will produce a
-          new TaskPlan based on the mission brief + your instructions.
-          task_ids are preserved for unchanged tasks so approvals and run
-          history survive.
-        </p>
-        <Textarea
-          value={instructions}
-          onChange={(e) => setInstructions(e.target.value)}
-          placeholder="e.g. Split the code-quality audit into two tasks: one for style, one for security. Add a final task that summarises findings."
-          rows={3}
-          className="resize-none text-[12px]"
-          disabled={refine.isPending}
-        />
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 px-2 text-[11px]"
-            onClick={onDone}
-            disabled={refine.isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            className="h-6 gap-1 px-3 text-[11px]"
-            onClick={handleSubmit}
-            disabled={refine.isPending || !instructions.trim()}
-          >
-            {refine.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3" />
-            )}
-            {refine.isPending ? 'Refining…' : 'Refine plan'}
-          </Button>
-        </div>
+    <Panel className="shrink-0 space-y-2 p-3.5">
+      <p className="text-xs text-muted-foreground">
+        Describe the plan you want. The Planning Agent will produce a new TaskPlan based on the mission
+        brief + your instructions. task_ids are preserved for unchanged tasks so approvals and run history
+        survive.
+      </p>
+      <Textarea
+        value={instructions}
+        onChange={(e) => setInstructions(e.target.value)}
+        placeholder="e.g. Split the code-quality audit into two tasks: one for style, one for security. Add a final task that summarises findings."
+        rows={3}
+        className="resize-none text-xs"
+        disabled={refine.isPending}
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="ghost" onClick={onDone} disabled={refine.isPending}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={refine.isPending || !instructions.trim()}>
+          {refine.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Sparkles className="h-3 w-3" />
+          )}
+          {refine.isPending ? 'Refining…' : 'Refine plan'}
+        </Button>
       </div>
-    </div>
+    </Panel>
   )
 }

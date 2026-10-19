@@ -19,6 +19,7 @@ const buttonVariants = cva(
         default: 'h-[30px] rounded-control px-3 text-sm',
         lg: 'h-[34px] rounded-control px-3.5 text-base',
         icon: 'h-[30px] w-[30px] rounded-control',
+        'icon-sm': 'h-6 w-6 rounded-chip',
       },
     },
     // The pill is fully round; it must come after `size`, which sets its own radius.

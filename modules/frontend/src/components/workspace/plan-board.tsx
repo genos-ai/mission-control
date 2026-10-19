@@ -15,15 +15,14 @@ import {
   type RefCallback,
 } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  AlertTriangle,
-  Brain,
-  FileText,
-  Zap,
-} from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { AlertTriangle, Brain, FileText, Zap } from 'lucide-react'
+import { cn } from '@/lib/cn'
+import { taskTone, type StatusStyle } from '@/lib/status-tone'
 import { Button } from '@/components/ui/button'
+import { IconTile } from '@/components/ui/icon-tile'
+import { Panel } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
+import { StatusIcon } from '@/components/ui/status-icon'
 import {
   useMissionPlan,
   useRefinePlan,
@@ -32,6 +31,7 @@ import {
 } from '@/hooks/use-mission-plan'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type {
+  ColumnDef,
   ColumnId,
   AnnotatedTask,
   JoinedTask,
@@ -45,9 +45,18 @@ import {
   bezierPath,
   computeEdges,
 } from './plan-board-types'
-import { TaskCard, AddTaskForm, ShimmerCard } from './plan-board-task-card'
+import { AddTask } from './plan-board-add-task'
+import { TaskCard, ShimmerCard } from './plan-board-task-card'
 import { TaskDetailPanel } from './plan-board-detail-panel'
 import { PlanTopBar, RefinePanel } from './plan-board-top-bar'
+
+// Each column is headed by the style of the status it stands for.
+const COLUMN_STYLE: Record<ColumnId, StatusStyle> = {
+  proposed: taskTone.proposed,
+  approved: taskTone.approved,
+  running: taskTone.running,
+  done: taskTone.completed,
+}
 
 // ── Board root ───────────────────────────────────────────────────────────
 
@@ -68,9 +77,9 @@ export function PlanBoard({ missionId }: { missionId: string }) {
   if (error) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
-        <AlertTriangle className="h-6 w-6 text-destructive/60" />
-        <p className="text-sm text-destructive/80">Failed to load plan</p>
-        <p className="text-xs text-muted-foreground/60">{String(error)}</p>
+        <AlertTriangle className="h-6 w-6 text-danger" />
+        <p className="text-sm text-danger">Failed to load plan</p>
+        <p className="text-xs text-subtle">{String(error)}</p>
       </div>
     )
   }
@@ -133,7 +142,7 @@ function PlanBoardInner({
   }, [annotated])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col gap-gutter px-2 pb-2">
       <PlanTopBar
         plan={plan}
         missionId={missionId}
@@ -144,7 +153,7 @@ function PlanBoardInner({
       {refineOpen && (
         <RefinePanel refine={refine} onDone={() => setRefineOpen(false)} />
       )}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-gutter">
         <BoardArea
           byColumn={byColumn}
           edges={edges}
@@ -224,18 +233,22 @@ function BoardArea({
   }, [])
 
   return (
-    <div className="relative flex-1 overflow-auto">
-      <div
-        ref={innerRef}
-        className="relative min-h-full min-w-[1040px] p-3"
-      >
-        {/* Dependency curves overlay */}
-        <svg
-          className="pointer-events-none absolute inset-0"
-          width="100%"
-          height="100%"
-          aria-hidden
-        >
+    <div className="relative min-w-0 flex-1 overflow-auto">
+      <div ref={innerRef} className="relative grid min-h-full min-w-[1040px] grid-cols-4 items-stretch gap-gutter">
+        {COLUMN_DEFS.map((def) => (
+          <Column
+            key={def.id}
+            def={def}
+            rows={byColumn[def.id]}
+            missionId={missionId}
+            registerRef={register}
+            showShimmer={def.id === 'proposed' && isRefining}
+            onSelectTask={onSelectTask}
+          />
+        ))}
+
+        {/* Dependency curves, drawn over the panels (which are opaque). */}
+        <svg className="pointer-events-none absolute inset-0 z-20" width="100%" height="100%" aria-hidden>
           {edges.map((e, i) => {
             const from = rects[e.from]
             const to = rects[e.to]
@@ -244,28 +257,13 @@ function BoardArea({
               <path
                 key={`${e.from}-${e.to}-${i}`}
                 d={bezierPath(from, to)}
-                stroke={edgeColor(e.state)}
+                style={{ stroke: edgeColor(e.state) }}
                 strokeWidth={1.5}
                 fill="none"
               />
             )
           })}
         </svg>
-
-        {/* Columns row */}
-        <div className="relative z-10 flex items-start gap-3">
-          {COLUMN_DEFS.map((def) => (
-            <Column
-              key={def.id}
-              def={def}
-              rows={byColumn[def.id]}
-              missionId={missionId}
-              registerRef={register}
-              showShimmer={def.id === 'proposed' && isRefining}
-              onSelectTask={onSelectTask}
-            />
-          ))}
-        </div>
       </div>
     </div>
   )
@@ -281,7 +279,7 @@ function Column({
   showShimmer,
   onSelectTask,
 }: {
-  def: import('./plan-board-types').ColumnDef
+  def: ColumnDef
   rows: AnnotatedTask[]
   missionId: string
   registerRef: (taskId: string) => RefCallback<HTMLDivElement>
@@ -289,66 +287,42 @@ function Column({
   onSelectTask: (taskId: string) => void
 }) {
   const parallelism = def.id === 'running' && rows.length > 1
-  const isProposed = def.id === 'proposed'
-  const [addingTask, setAddingTask] = useState(false)
-
-  const cards = rows.map((row) => (
-    <TaskCard
-      key={row.task.id}
-      row={row}
-      missionId={missionId}
-      cardRef={registerRef(row.task.id)}
-      onSelect={onSelectTask}
-    />
-  ))
 
   return (
-    <div className="flex min-w-[260px] max-w-[320px] flex-1 flex-col">
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {def.label}
-        </span>
-        <Badge>
-          {rows.length}
-        </Badge>
+    <Panel className="flex min-w-0 flex-col gap-2 px-2.5 py-3">
+      <div className="flex items-center gap-2 px-1 pb-1">
+        <StatusIcon
+          {...COLUMN_STYLE[def.id]}
+          className={cn('h-3.5 w-3.5', def.id === 'running' && rows.length === 0 && 'animate-none')}
+        />
+        <span className="text-sm font-medium">{def.label}</span>
+        <span className="font-mono text-xs text-subtle">{rows.length}</span>
         {parallelism && (
           <span
-            className="flex items-center gap-0.5 text-[9px] text-amber-400"
+            className="flex items-center gap-0.5 font-mono text-2xs text-warning"
             title={`${rows.length} agents running in parallel`}
           >
-            <Zap className="h-2.5 w-2.5 fill-amber-400" />
+            <Zap className="h-2.5 w-2.5 fill-warning" />
             {rows.length}
           </span>
         )}
       </div>
-      <div className="space-y-2 rounded-lg bg-muted/30 p-2 min-h-[60px]">
-        {showShimmer && <ShimmerCard />}
-        {cards}
-        {rows.length === 0 && !showShimmer && !addingTask && (
-          <div className="flex h-16 items-center justify-center rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/30">
-            empty
-          </div>
-        )}
-      </div>
-      {isProposed && (
-        <>
-          {addingTask ? (
-            <AddTaskForm
-              missionId={missionId}
-              onDone={() => setAddingTask(false)}
-            />
-          ) : (
-            <button
-              onClick={() => setAddingTask(true)}
-              className="mt-1.5 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] text-muted-foreground/50 hover:bg-muted/40 hover:text-muted-foreground transition-colors"
-            >
-              <span className="text-base leading-none">+</span>
-              Add task
-            </button>
-          )}
-        </>
+      {showShimmer && <ShimmerCard />}
+      {rows.map((row) => (
+        <TaskCard
+          key={row.task.id}
+          row={row}
+          missionId={missionId}
+          cardRef={registerRef(row.task.id)}
+          onSelect={onSelectTask}
+        />
+      ))}
+      {rows.length === 0 && !showShimmer && (
+        <div className="flex h-12 items-center justify-center text-xs text-faint">empty</div>
       )}
-    </div>
+      {/* New tasks always enter as proposed, so only that column offers adding one. */}
+      {def.id === 'proposed' && <AddTask missionId={missionId} />}
+    </Panel>
   )
 }
 
@@ -363,22 +337,20 @@ function EmptyState({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-        <FileText className="h-7 w-7 text-primary/60" />
-      </div>
+      <IconTile icon={FileText} tone="brand" size="lg" />
       <div className="space-y-1">
-        <p className="text-sm font-medium">No plan yet</p>
-        <p className="max-w-[360px] text-xs text-muted-foreground/70">
+        <p className="text-md">No plan yet</p>
+        <p className="max-w-[360px] text-sm text-subtle">
           Ask the Director what you want to work on — they'll propose a plan
           you can review and approve here.
         </p>
       </div>
-      <Button size="sm" onClick={onChat} className="gap-1.5">
+      <Button onClick={onChat}>
         <Brain className="h-3.5 w-3.5" />
         Talk to the Director
       </Button>
       {plan.gate_mode && (
-        <p className="text-[10px] text-muted-foreground/40">
+        <p className="font-mono text-2xs text-faint">
           Plan v{plan.version} · gate_mode: {plan.gate_mode}
         </p>
       )}

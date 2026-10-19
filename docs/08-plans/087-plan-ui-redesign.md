@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4 complete (2026-10-19)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5 complete (2026-10-19)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -116,6 +116,7 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C36 | §2.2 defines `violet` as a single token colour | Tailwind's built-in `violet` palette (`violet-400`, `violet-500/20` …) is replaced by a single colour, so existing `violet-*` classes stop matching and render nothing. 22 usages in 8 files, 6 of them inside string constants that `no-custom-classname` cannot see | Done in Phase 1.1: `violet-400` → `violet`, `violet-500/N` → `violet/N` across `src/`. The old/new CSS selector diff in §6.1.4 is the check that catches classes the lint rule cannot see. |
 | C37 | §2.2 `fontSize`, `borderRadius` overrides | Confirmed in Phase 1.1: no class from the old build is missing from the new one after C36 (selector diff, 666 old vs 673 new) | No further action. |
 | C38 | §6.5 "Drag-and-drop (`@hello-pangea/dnd`) unchanged", drop-target highlight `ring-2 ring-brand/30`; §10 parity "drag-and-drop still works" | There is no drag-and-drop anywhere: `@hello-pangea/dnd` is a dependency but no file imports it, and none did at the original baseline. Cards change status through their buttons | Nothing to preserve or restyle. Do not add drag-and-drop (out of scope). |
+| C39 | §3 Phase 5.2 "call the same mutations the detail panel uses"; §6.4 "approve/reject from card and panel" | The detail panel never had Approve, Reject or Retry (it is read-only). The mutations are `useApproveTask`, `useRejectTask` and `useRetryTask` in `hooks/use-mission-plan.ts`, and the card was already their only caller | The card keeps calling them; the detail panel stays read-only. Nothing was added to it. |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -447,7 +448,34 @@ a faked stream, outputs collapse and resize, breakpoints at 1100 and 900 px, eve
 state, overflow, Architect panel). Not exercised because it writes: creating a thread, sending to a real
 model.
 
-### Phase 5 — Plan board (handoff §6.5)
+### Phase 5 — Plan board (handoff §6.5) (done)
+
+Built as one commit: `progress.tsx`, `segmented.tsx` and the Button `icon-sm` size
+(first callers: the toolbar and the cards), the toolbar, the columns and cards, the detail panel, and
+`plan-board-add-task.tsx` (the add-task row, split out of the card file). `plan-board-task-card.tsx`
+went from 498 to 324 lines and `plan-board-top-bar.tsx` from 391 to 331; `AGENT_DOMAIN_COLORS`,
+`getBorderClass`, `getAgentDomainClass`, `getAgentBadgeClass` and the card's private `IconButton` are
+deleted, and `edgeColor` returns `hsl(var(--token) / alpha)` strings. The Plan tag pill that clipped its
+last letter (§5) is gone with the old card.
+
+Deviations from the handoff:
+
+- "+ Add task" appears only in the Proposed column. New tasks are always created as proposed, so a row
+  in the other columns would put the task somewhere else.
+- The button reads "Refine plan", not "Refine with Director": it calls the Planning Agent, not the
+  Director.
+- A card shows a status icon only for failed, skipped and cancelled. The column already says the rest.
+- Dependency curves are drawn above the column panels (they would be hidden by the opaque panels
+  otherwise) and below the cards (`z-30`; `z-40` on hover or focus so an open menu stays on top), so
+  they show in the gaps and never cross card text. The handoff draws no curves.
+- Card buttons stop propagation, so Retry no longer also opens the detail panel (it did before).
+- The toolbar fits one row at 1440 px; below that it wraps rather than clipping.
+
+Browser-tested with 32 checks, every write intercepted: toolbar, gate selector, progress and budget,
+four columns, 1,160 curve paths on theme tokens, pause/resume, refine, add task, retry, detail panel
+open and close, fabricated proposed, approved-with-veto and running cards (Approve, Reject, Veto, Stop),
+the Run approved dialog, no overflow at 1100 px. Not exercised because they write: approve, reject,
+retry, run and add against real data.
 
 **5.1 Toolbar.** `plan-board-top-bar.tsx`: create `components/ui/progress.tsx` and use it for
 the budget bar at line 166; replace the `<select>` with a four-segment
@@ -572,7 +600,7 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | `/admin/metrics` | Page crashes into the error boundary. `GET /admin/metrics/costs` returns `by_agent[].total_cost_usd` but `pages/admin/metrics.tsx:77` reads `entry.cost_usd`, so `.toFixed` runs on `undefined`. |
 | `/admin/users` | Page is blank. `GET /admin/users` answers `307` (redirect), and the page renders nothing. |
 | `/missions/:id/context` | Size indicator reads `3.2KB / NaNKB`: `max_characters` is not in the response the page reads. |
-| Plan board | Agent tag pill clips its last letter (`RESEARCH.SYNTHESIZE`); the card is rebuilt in Phase 5.2. |
+| Plan board (fixed in Phase 5) | Agent tag pill clipped its last letter (`RESEARCH.SYNTHESIZE`); the card was rebuilt. |
 | Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
 | Right drawer | Three panel types have no caller anywhere: `event-log`, `output-preview` and `cost-breakdown` (`components/drawer/*`). The Runs tab shows those views inline instead. They are restyled with the drawer but unreachable. |
 | Dependencies | `@hello-pangea/dnd` is listed in `package.json` and imported nowhere. |
@@ -639,6 +667,12 @@ panels (`agent-detail` from Catalog and Team, `prompt-history` from Team, `run-e
 run card) open from their real entry points; the chat slash-command popover opens on `/`; the Plan board
 renders its four columns. Not exercised because they would write: approve/reject/retry, send message,
 run, save and schedule.
+
+Phase 5 pass (2026-10-19, every write intercepted): approve, reject, veto, stop and retry on the cards
+reach `useApproveTask`, `useRejectTask` and `useRetryTask` (POST `/approve`, `/reject`, `/retry`); gate
+mode, pause and resume reach PATCH `/plan`; Run approved opens the confirm dialog and Cancel dispatches
+nothing; the refine and add-task forms open; the detail panel opens from a completed or failed card
+and closes. Drag-and-drop does not exist (C38). Real-data writes were not exercised.
 
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
 from card and panel hit the same mutations; chat threads, slash commands and
