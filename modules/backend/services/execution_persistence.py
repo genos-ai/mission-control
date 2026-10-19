@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config
+from modules.backend.core.decision_reasoning import decode_decision_reasoning
 from modules.backend.core.exceptions import WorkflowOutputMappingError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
@@ -506,18 +507,7 @@ class ExecutionPersistenceService(BaseService):
 
         decisions = []
         for row in rows:
-            reasoning = row.reasoning or ""
-            # Split human-readable prefix from JSON tail (marked with __META__ prefix)
-            meta: dict[str, Any] = {}
-            if "__META__" in reasoning:
-                human_text, raw_meta = reasoning.split("__META__", 1)
-                human_text = human_text.strip()
-                try:
-                    meta = json.loads(raw_meta)
-                except (json.JSONDecodeError, ValueError):
-                    logger.debug("Could not parse __META__ tail of decision reasoning")
-            else:
-                human_text = reasoning.strip()
+            human_text, meta = decode_decision_reasoning(row.reasoning or "")
 
             decisions.append(
                 {

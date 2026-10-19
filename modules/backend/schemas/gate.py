@@ -89,6 +89,7 @@ class GateDecision:
     model_metadata: dict | None = (
         None  # Plan 51: {confidence, tokens_used, cost_usd} when LLM decides
     )
+    rule: int | str | None = None  # Plan 51: the post-run branch that decided (audit only)
 
 
 class GateReviewer(Protocol):

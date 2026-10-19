@@ -29,12 +29,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from modules.backend.agents.mission_control.gate_models import (
     GateAction,
     GateContext,
     GateDecision,
+)
+from modules.backend.core.decision_reasoning import (
+    decode_decision_reasoning,
+    encode_decision_reasoning,
 )
 from modules.backend.core.logging import get_logger
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
@@ -237,21 +241,23 @@ class AutonomousPostRunReviewer:
         rule: int | str,
     ) -> GateDecision:
         """Build a GateDecision and write the audit row."""
-        # Build the structured JSON tail for the reasoning field
-        metadata_json = json.dumps(
+        # The decision carries the human reason only; the metadata goes to the
+        # audit row alone, so it never reaches events, notifications or prompts.
+        audit_reasoning = encode_decision_reasoning(
+            reason,
             {
                 "action": action.value,
                 "reviewer": "config:rule_engine",
                 "rule": rule,
                 "model_metadata": None,
-            }
+            },
         )
-        full_reason = f"{reason}\n__META__{metadata_json}"
 
         decision = GateDecision(
             action=action,
-            reason=full_reason,
+            reason=reason,
             reviewer="config:rule_engine",
+            rule=rule,
         )
 
         # Write audit row (best-effort — don't fail the decision if
@@ -261,7 +267,7 @@ class AutonomousPostRunReviewer:
                 self._write_audit_row(
                     execution_record_id,
                     action,
-                    full_reason,
+                    audit_reasoning,
                 )
             except Exception:
                 # best-effort — don't fail the decision if the audit write errors.
@@ -311,7 +317,7 @@ class AutonomousPostRunReviewer:
         """Check for an existing post_run_supervisor decision.
 
         If found, reconstruct the GateDecision from the audit row's
-        JSON tail in the reasoning field (see §4.5 encoding).
+        reasoning field (see ``decision_reasoning`` for the format).
         """
         row = await ExecutionPersistenceService(self._session).get_cached_decision_by_type(
             execution_record_id,
@@ -320,32 +326,18 @@ class AutonomousPostRunReviewer:
         if row is None:
             return None
 
-        # Parse the JSON tail from the reasoning field (marked with __META__ prefix).
-        reasoning = row.reasoning or ""
-        meta: dict[str, Any] = {}
-        if "__META__" in reasoning:
-            _, raw_meta = reasoning.split("__META__", 1)
-            try:
-                meta = json.loads(raw_meta)
-                action_str = meta.get("action", "escalate")
-                action = GateAction(action_str)
-            except (json.JSONDecodeError, ValueError, KeyError):
-                action = GateAction.ESCALATE
-        else:
-            # Legacy format (no marker) — fall back to last-line parse
-            try:
-                last_line = reasoning.strip().rsplit("\n", 1)[-1]
-                meta = json.loads(last_line)
-                action_str = meta.get("action", "escalate")
-                action = GateAction(action_str)
-            except (json.JSONDecodeError, ValueError, KeyError):
-                action = GateAction.ESCALATE
+        human_reason, meta = decode_decision_reasoning(row.reasoning or "")
+        try:
+            action = GateAction(meta.get("action", GateAction.ESCALATE.value))
+        except ValueError:
+            action = GateAction.ESCALATE
 
         return GateDecision(
             action=action,
-            reason=reasoning,
+            reason=human_reason,
             reviewer=meta.get("reviewer", "config:rule_engine"),
             model_metadata=meta.get("model_metadata"),
+            rule=meta.get("rule"),
         )
 
     async def _classify_with_haiku(
@@ -429,29 +421,27 @@ class AutonomousPostRunReviewer:
                 GateAction.ESCALATE,
             )
 
-            metadata_json = json.dumps(
+            model_metadata = {
+                "confidence": decision.confidence,
+                "tokens_used": tokens_used,
+                "cost_usd": cost_usd,
+            }
+            audit_reasoning = encode_decision_reasoning(
+                decision.reason,
                 {
                     "action": action.value,
                     "reviewer": "ai:copilot:claude-haiku-4.5",
                     "rule": 8,
-                    "model_metadata": {
-                        "confidence": decision.confidence,
-                        "tokens_used": tokens_used,
-                        "cost_usd": cost_usd,
-                    },
-                }
+                    "model_metadata": model_metadata,
+                },
             )
-            full_reason = f"{decision.reason}\n{metadata_json}"
 
             gate_decision = GateDecision(
                 action=action,
-                reason=full_reason,
+                reason=decision.reason,
                 reviewer="ai:copilot:claude-haiku-4.5",
-                model_metadata={
-                    "confidence": decision.confidence,
-                    "tokens_used": tokens_used,
-                    "cost_usd": cost_usd,
-                },
+                model_metadata=model_metadata,
+                rule=8,
             )
 
             # Write audit row
@@ -460,7 +450,7 @@ class AutonomousPostRunReviewer:
                     self._write_audit_row(
                         execution_record_id,
                         action,
-                        full_reason,
+                        audit_reasoning,
                     )
                 except Exception:
                     # best-effort — don't fail the decision if the audit write errors.

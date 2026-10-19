@@ -6,8 +6,12 @@ task results, decisions, and cost breakdowns.
 """
 
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from modules.backend.core.decision_reasoning import decode_decision_reasoning
+from modules.backend.models.execution_record import DecisionType
 
 
 class TaskAttemptResponse(BaseModel):
@@ -62,6 +66,14 @@ class ExecutionDecisionResponse(BaseModel):
     task_id: str | None
     reasoning: str
     created_at: datetime
+
+    @model_validator(mode="after")
+    def _drop_stored_metadata(self) -> Self:
+        # A post-run supervisor row stores its metadata after the reason in the
+        # same column; clients display `reasoning`, so they get the reason only.
+        if self.decision_type == DecisionType.POST_RUN_SUPERVISOR.value:
+            self.reasoning = decode_decision_reasoning(self.reasoning).human
+        return self
 
 
 class ExecutionRecordResponse(BaseModel):

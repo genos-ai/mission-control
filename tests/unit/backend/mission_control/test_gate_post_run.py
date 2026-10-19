@@ -60,15 +60,6 @@ def _context(
     )
 
 
-def _parse_rule(decision) -> str | int:
-    """Extract rule from decision reason's __META__ JSON tail."""
-    reason = decision.reason or ""
-    if "__META__" in reason:
-        _, raw = reason.split("__META__", 1)
-        return json.loads(raw).get("rule")
-    return "unknown"
-
-
 # ---------------------------------------------------------------------------
 # A.2.1 — Circuit breaker #1: Budget exhausted
 # ---------------------------------------------------------------------------
@@ -83,7 +74,7 @@ class TestBreakerBudgetExhausted:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == 1
+        assert decision.rule == 1
 
     @pytest.mark.asyncio
     async def test_budget_exceeded(self, db_session: AsyncSession):
@@ -93,7 +84,7 @@ class TestBreakerBudgetExhausted:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == 1
+        assert decision.rule == 1
 
     @pytest.mark.asyncio
     async def test_no_budget_ceiling_skips_breaker(self, db_session: AsyncSession):
@@ -104,7 +95,7 @@ class TestBreakerBudgetExhausted:
         decision = await reviewer.review(ctx)
 
         # Should reach rule #5 (auto-advance), not breaker #1
-        assert decision.action != GateAction.ESCALATE or _parse_rule(decision) != 1
+        assert decision.action != GateAction.ESCALATE or decision.rule != 1
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +112,7 @@ class TestBreakerMaxIterations:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == 2
+        assert decision.rule == 2
 
     @pytest.mark.asyncio
     async def test_below_max_iterations(self, db_session: AsyncSession):
@@ -134,7 +125,7 @@ class TestBreakerMaxIterations:
 
         decision = await reviewer.review(ctx)
 
-        assert _parse_rule(decision) != 2
+        assert decision.rule != 2
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +148,7 @@ class TestBreakerStall:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == 3
+        assert decision.rule == 3
 
     @pytest.mark.asyncio
     async def test_no_stall_when_some_completions(self, db_session: AsyncSession):
@@ -173,7 +164,7 @@ class TestBreakerStall:
 
         decision = await reviewer.review(ctx)
 
-        assert _parse_rule(decision) != 3
+        assert decision.rule != 3
 
     @pytest.mark.asyncio
     async def test_not_enough_outcomes_for_stall(self, db_session: AsyncSession):
@@ -188,7 +179,7 @@ class TestBreakerStall:
 
         decision = await reviewer.review(ctx)
 
-        assert _parse_rule(decision) != 3
+        assert decision.rule != 3
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +207,7 @@ class TestBreakerBudgetHeadroom:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == "4-headroom"
+        assert decision.rule == "4-headroom"
 
     @pytest.mark.asyncio
     async def test_headroom_sufficient(self, db_session: AsyncSession):
@@ -232,7 +223,7 @@ class TestBreakerBudgetHeadroom:
 
         # Plenty of headroom → should advance (rule 5)
         assert decision.action == GateAction.ADVANCE_APPROVED
-        assert _parse_rule(decision) == 5
+        assert decision.rule == 5
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +240,7 @@ class TestRuleApprovedTasks:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.WAIT
-        assert _parse_rule(decision) == 4
+        assert decision.rule == 4
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +257,7 @@ class TestRuleProposedTasks:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ADVANCE_APPROVED
-        assert _parse_rule(decision) == 5
+        assert decision.rule == 5
 
     @pytest.mark.asyncio
     async def test_ai_assisted_mode_advances(self, db_session: AsyncSession):
@@ -276,7 +267,7 @@ class TestRuleProposedTasks:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ADVANCE_APPROVED
-        assert _parse_rule(decision) == 6
+        assert decision.rule == 6
 
     @pytest.mark.asyncio
     async def test_interactive_mode_escalates(self, db_session: AsyncSession):
@@ -286,7 +277,7 @@ class TestRuleProposedTasks:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == 7
+        assert decision.rule == 7
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +307,7 @@ class TestRulePlanExhausted:
             decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == "fallthrough"
+        assert decision.rule == "fallthrough"
 
     @pytest.mark.asyncio
     async def test_no_outcomes_falls_through(self, db_session: AsyncSession):
@@ -327,7 +318,7 @@ class TestRulePlanExhausted:
         decision = await reviewer.review(ctx)
 
         assert decision.action == GateAction.ESCALATE
-        assert _parse_rule(decision) == "fallthrough"
+        assert decision.rule == "fallthrough"
 
 
 # ---------------------------------------------------------------------------
@@ -459,6 +450,9 @@ class TestCachedDecision:
         assert cached is not None
         assert cached.action == GateAction.ADVANCE_APPROVED
         assert cached.reviewer == "config:rule_engine"
+        # The stored tail is decoded into fields, never left in the reason.
+        assert cached.reason == "Auto-advancing 2 proposed tasks"
+        assert cached.rule == 5
 
     @pytest.mark.asyncio
     async def test_malformed_meta_falls_back_to_escalate(
@@ -509,6 +503,99 @@ class TestCachedDecision:
 
         assert cached is not None
         assert cached.action == GateAction.ESCALATE
+        assert cached.reason == "Some reason"
+
+
+# ---------------------------------------------------------------------------
+# The reason is human text: it is sent to events, notifications and prompts
+# ---------------------------------------------------------------------------
+
+
+class TestReasonIsHumanText:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("kwargs", "rule"),
+        [
+            ({"budget_usd": 1.0, "total_cost_usd": 1.0}, 1),
+            ({"supervisor_iteration_count": 20}, 2),
+            ({"approved": 0, "proposed": 0, "recent_run_outcomes": []}, "fallthrough"),
+        ],
+    )
+    async def test_reason_carries_no_metadata(
+        self,
+        db_session: AsyncSession,
+        kwargs: dict,
+        rule: str | int,
+    ):
+        reviewer = AutonomousPostRunReviewer(db_session)
+
+        decision = await reviewer.review(_context(**kwargs))
+
+        assert decision.rule == rule
+        assert decision.reason
+        assert "__META__" not in decision.reason
+        assert "{" not in decision.reason
+
+
+class TestDecisionIsPersistedAndReadBack:
+    @pytest.mark.asyncio
+    async def test_stored_row_cached_read_and_api_agree_on_the_human_reason(
+        self,
+        db_session: AsyncSession,
+    ):
+        from modules.backend.core.decision_reasoning import decode_decision_reasoning
+        from modules.backend.core.utils import utc_now
+        from modules.backend.models.execution_record import (
+            ExecutionRecord,
+            ExecutionRecordStatus,
+        )
+        from modules.backend.models.session import Session, SessionStatus
+        from modules.backend.schemas.execution_record import ExecutionDecisionResponse
+        from modules.backend.services.execution_persistence import ExecutionPersistenceService
+
+        session = Session(
+            status=SessionStatus.ACTIVE.value,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_cost_usd=0.0,
+            last_activity_at=utc_now(),
+            session_metadata={},
+        )
+        db_session.add(session)
+        await db_session.flush()
+        record_id = str(uuid.uuid4())
+        db_session.add(
+            ExecutionRecord(
+                id=record_id,
+                session_id=session.id,
+                status=ExecutionRecordStatus.COMPLETED.value,
+            )
+        )
+        await db_session.flush()
+
+        reviewer = AutonomousPostRunReviewer(db_session)
+        decision = await reviewer.review(
+            _context(budget_usd=1.0, total_cost_usd=1.0, execution_record_id=record_id)
+        )
+        await db_session.flush()
+
+        rows = await ExecutionPersistenceService(db_session).get_decisions(record_id)
+        assert len(rows) == 1
+        stored = decode_decision_reasoning(rows[0].reasoning)
+        assert stored.human == decision.reason
+        assert stored.meta["rule"] == decision.rule == 1
+        assert stored.meta["action"] == decision.action.value
+
+        cached = await reviewer.review(
+            _context(budget_usd=1.0, total_cost_usd=1.0, execution_record_id=record_id)
+        )
+        assert (cached.action, cached.reason, cached.rule) == (
+            decision.action,
+            decision.reason,
+            decision.rule,
+        )
+
+        assert ExecutionDecisionResponse.model_validate(rows[0]).reasoning == decision.reason
 
 
 # ---------------------------------------------------------------------------
