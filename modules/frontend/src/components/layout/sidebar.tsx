@@ -6,21 +6,11 @@ import { SidebarFooter } from './sidebar-footer'
 import { SidebarMissionNav } from './sidebar-mission-nav'
 import { cn } from '@/lib/cn'
 import { ROUTES } from '@/lib/constants'
-import { missionTone, type Tone } from '@/lib/status-tone'
+import { missionTone } from '@/lib/status-tone'
+import { TONE_DOT } from '@/lib/tone-class'
 import { useMissions } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import type { MissionStatus } from '@/types'
-
-// Whole class literals per tone (Tailwind cannot see assembled class names).
-const DOT_CLASS: Record<Tone, string> = {
-  success: 'bg-success',
-  warning: 'bg-warning',
-  danger: 'bg-danger',
-  info: 'bg-info',
-  brand: 'bg-brand',
-  violet: 'bg-violet',
-  neutral: 'bg-muted-foreground/35',
-}
 
 const ITEM_BASE =
   'flex h-[30px] shrink-0 items-center gap-2.5 rounded-control px-2.5 text-base transition-colors duration-150'
@@ -79,7 +69,7 @@ export function Sidebar() {
                 <span
                   className={cn(
                     'h-[7px] w-[7px] shrink-0 rounded-full',
-                    DOT_CLASS[missionTone[mission.status as MissionStatus].tone],
+                    TONE_DOT[missionTone[mission.status as MissionStatus].tone],
                   )}
                 />
                 <span className="truncate">{mission.name}</span>

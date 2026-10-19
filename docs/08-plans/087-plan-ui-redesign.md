@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3 complete (2026-10-19)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4 complete (2026-10-19)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -155,7 +155,7 @@ the shared location, update every caller, and delete the original.
 | `Segmented` control | Hand-rolled segment groups: console category tabs (`console.tsx:124` `FilterBar`), Costs timeframe buttons (`costs-tab.tsx:50`), plan gate `<select>` (`plan-board-top-bar.tsx:113`) | Create `components/ui/segmented.tsx` once and replace all three in their phases. |
 | Confirmation before Archive / Delete | `ConfirmDialog` in `pages/dashboard.tsx:23`, private; the only confirm dialog in the frontend | Promote to `components/ui/confirm-dialog.tsx` in Phase 3.3, where the settings-drawer Archive becomes its second caller. |
 | Hover `⋯` menus (dashboard cards, plan cards) | Inline menu with click-outside in `plan-board-task-card.tsx:154-167` | Promote to `components/ui/menu.tsx`. |
-| Click-outside handling | Duplicated in `notification-dropdown.tsx`, `plan-board-task-card.tsx`, `slash-command-popover.tsx`, `variable-autocomplete.tsx` | Extract `hooks/use-click-outside.ts` when `menu.tsx` is created (third+ use, P14). Migrate each file in the phase that touches it. |
+| Click-outside handling | Duplicated in `notification-dropdown.tsx`, `plan-board-task-card.tsx` and `variable-autocomplete.tsx` (`slash-command-popover.tsx` only matched on its `onMouseDown` prop; it has no click-outside code) | Extract `hooks/use-click-outside.ts` when `menu.tsx` is created (third+ use, P14). Migrate each file in the phase that touches it. |
 | Cost formatting | `toFixed(4)` inlined 40 times for per-call and per-task costs (`$0.0412`), `toFixed(2)` for totals and budgets (`$212.40`) | `fmtCost` (4 decimals) and `fmtUsd` (2 decimals) in `lib/format.ts` (added in 2.2); replace inline formatting in every file a phase restyles. |
 | Durations and elapsed time | `formatDuration` (`workflow-run-history.tsx`), `formatElapsed` (`live-footer.tsx`) | Moved to `lib/format-date.ts` in Phase 2.2. `runs-panel.tsx:204` still computes a duration inline; use `formatDuration` when Phase 6 restyles it. |
 | Relative time ("2h ago") | None; `date-fns` is already a dependency but unused | Add `formatRelative` to `lib/format-date.ts` using `date-fns`, in Phase 9.2 with its first caller. |
@@ -415,15 +415,35 @@ plan was paused, so a paused plan became invisible outside the Plan tab. The con
 toolbar by design; `MissionTopBar` now shows a quiet "Plan paused" pill on every tab that links to the
 Plan tab, so the state is never hidden.
 
-### Phase 4 — Chat (handoff §6.4)
+### Phase 4 — Chat (handoff §6.4) (done)
 
-Restyle `chat-tab.tsx`, `chat-conversation.tsx`, `chat-artifacts-panel.tsx`. Live agent state in
-the roster comes from `useWorkspaceStore` `agentStatuses` (C25). Keep sessions, `chat/:threadId`,
-slash commands and ⌘↵ send (`slash-command-popover.tsx` migrates to `use-click-outside`).
-Create `components/ui/icon-tile.tsx` and `components/ui/kbd.tsx` here (first callers: the
-roster and the composer hint). Agent icons and tones come from `agent-tone` via `IconTile`.
-`use-resizable` handles stay, invisible until hover.
-`chat-conversation.tsx` (667 lines) must not grow.
+Restyled `chat-tab.tsx`, `chat-conversation.tsx`, `chat-artifacts-panel.tsx` and the slash-command
+popover as three floating panels (roster, conversation, outputs). Live agent state in the roster comes
+from `useWorkspaceStore` `agentStatuses` (C25): the second line shows the current tool in mono
+(running), `thinking…`, `Done`, `Failed`, `Mission lead`, `Idle` or `Task agent`, and the tile gets a
+live dot while an agent is working. Sessions, `chat/:threadId`, slash commands and ⌘↵ send are
+unchanged. Built here with their first callers: `components/ui/icon-tile.tsx`,
+`components/ui/kbd.tsx` and the Button `pill` variant ("New thread").
+
+Refactor that made the file shrink instead of grow: the 17 near-identical event rows in
+`chat-conversation.tsx` became a table-driven `chat-events.tsx` (`EventLine`, `EventBox`,
+`InlineNarrativeRow`), and `MessageBubble` moved to `chat-message.tsx` with a shared `AgentMessage`
+layout used by sent and streaming messages. `chat-conversation.tsx` went from 674 to 324 lines;
+`chat-tab.tsx` from 390 to 342. A new `lib/tone-class.ts` holds the tone → class maps (text, dot,
+tinted box) so the sidebar, `StatusIcon`, `IconTile` and the event rows share one copy.
+Long unbroken strings (URLs, tokens) wrap with `overflow-wrap: anywhere`, which fixes the exposed
+case from Phase 3.2; verified with a 200+ character URL, measured not eyeballed.
+
+Two corrections to the plan's earlier text: `slash-command-popover.tsx` has no click-outside code (it
+only uses `onMouseDown` on its items), so there was nothing to migrate there; and `Conversation` is
+also rendered inside the workflow editor's Architect panel (380px), so it must keep working in a
+narrow container (verified; the Architect chat creates a session when opened, which the test answered
+with a fake so nothing was written).
+
+Browser-tested with 26 + 7 + 6 checks (header, roster, agent switching, slash popover, ⌘↵ send against
+a faked stream, outputs collapse and resize, breakpoints at 1100 and 900 px, every event type, live roster
+state, overflow, Architect panel). Not exercised because it writes: creating a thread, sending to a real
+model.
 
 ### Phase 5 — Plan board (handoff §6.5)
 
@@ -554,6 +574,7 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
 | Right drawer | Three panel types have no caller anywhere: `event-log`, `output-preview` and `cost-breakdown` (`components/drawer/*`). The Runs tab shows those views inline instead. They are restyled with the drawer but unreachable. |
 | Dependencies | `@hello-pangea/dnd` is listed in `package.json` and imported nowhere. |
+| Chat | Intermittently the thread stops about 190px short of the bottom on load. The auto-scroll effect in `chat-conversation.tsx` depends on messages, streaming text and live events, but not on `historicalEvents` (the separate narrative query), so events that arrive after the scroll leave the thread short. Confirmed at the original baseline too (2 of 3 loads). Fix: add the timeline length to the effect's dependencies. |
 
 - ⌘K command palette and the sidebar search trigger (C31).
 - Tab-bar navigation option (C32).

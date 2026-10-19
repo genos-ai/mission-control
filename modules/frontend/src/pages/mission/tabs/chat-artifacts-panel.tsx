@@ -1,6 +1,8 @@
-import { useMemo, useRef, useEffect } from 'react'
-import { ChevronRight, AlertTriangle, Zap, Inbox } from 'lucide-react'
-import { useConsoleStore } from '@/stores/console'
+import { useMemo, useRef, useEffect, useState } from 'react'
+import { PanelRightClose, AlertTriangle, Zap, Inbox } from 'lucide-react'
+
+import { Panel } from '@/components/ui/panel'
+import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useResizable } from '@/hooks/use-resizable'
 import { formatUtc } from '@/lib/format-date'
 import { cn } from '@/lib/cn'
@@ -16,7 +18,7 @@ export function ToolOutputPanel({
   activeSessionId: string | null
   onClose: () => void
 }) {
-  const { width, onMouseDown } = useResizable(300)
+  const { width, onMouseDown } = useResizable(288)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const events = useConsoleStore((s) => s.events)
@@ -48,92 +50,71 @@ export function ToolOutputPanel({
     }
   }, [toolResults.length])
 
-  const agentShort = activeAgent.endsWith('.agent')
-    ? activeAgent.slice(0, -6)
-    : activeAgent
-
   return (
-    <div className="relative flex shrink-0 flex-col border-l" style={{ width }}>
+    <Panel className="relative hidden shrink-0 flex-col min-[1200px]:flex" style={{ width }}>
+      {/* Resize handle: invisible until hovered. */}
       <div
         onMouseDown={onMouseDown}
-        className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20 transition-colors z-10"
+        className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-brand/30"
       />
 
-      {/* Header */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium">Outputs</span>
-          <span className="text-[10px] text-muted-foreground/50 truncate max-w-[100px]">
-            {agentShort}
-          </span>
-          {toolResults.length > 0 && (
-            <span className="text-[10px] text-muted-foreground/50">
-              · {toolResults.length}
-            </span>
-          )}
-        </div>
+      <div className="flex h-12 shrink-0 items-center gap-2 px-4 pt-1">
+        <span className="text-base font-medium">Outputs</span>
+        {toolResults.length > 0 && <span className="font-mono text-xs text-subtle">{toolResults.length}</span>}
         <button
           onClick={onClose}
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Collapse outputs"
+          className="ml-auto rounded-chip p-1 text-subtle transition-colors duration-150 hover:bg-raised hover:text-foreground"
         >
-          <ChevronRight className="h-3.5 w-3.5" />
+          <PanelRightClose className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      {/* Content */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-2.5 pb-3">
         {toolResults.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-5 py-8">
-            <Inbox className="h-5 w-5 text-muted-foreground/20" />
-            <p className="text-center text-[11px] text-muted-foreground/40">
-              Tool outputs will appear here during a run.
-            </p>
+            <Inbox className="h-5 w-5 text-faint" />
+            <p className="text-center text-xs text-subtle">Tool outputs will appear here during a run.</p>
           </div>
         ) : (
-          <div className="space-y-px p-2">
+          <div className="flex flex-col gap-1.5">
             {toolResults.map((e) => (
               <ToolResultCard key={e.event_id} event={e} />
             ))}
           </div>
         )}
       </div>
-    </div>
+    </Panel>
   )
 }
 
-function ToolResultCard({ event }: { event: ReturnType<typeof useConsoleStore.getState>['events'][number] }) {
+function ToolResultCard({ event }: { event: ConsoleEvent }) {
+  const [expanded, setExpanded] = useState(false)
   const d = event.data
   const tool = String(d.tool_name ?? '')
-  const status = String(d.status ?? '')
   const result = String(d.result ?? '')
-  const isError = status === 'error'
+  const isError = String(d.status ?? '') === 'error'
+  const Icon = isError ? AlertTriangle : Zap
 
   return (
-    <details className={cn(
-      'group rounded border p-2 text-xs',
-      isError
-        ? 'border-destructive/20 bg-destructive/5'
-        : 'border-border/50 bg-muted/20',
-    )}>
-      <summary className="flex cursor-pointer list-none items-start gap-1.5">
-        {isError
-          ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
-          : <Zap className="mt-0.5 h-3 w-3 shrink-0 text-amber-400/70" />
-        }
-        <div className="min-w-0 flex-1">
-          <p className={cn('font-medium font-mono leading-snug', isError ? 'text-destructive' : '')}>
-            {tool}
-          </p>
-          <p className="text-[10px] text-muted-foreground/50">
-            {formatUtc(event.timestamp)}
-          </p>
-        </div>
-      </summary>
-      <div className="mt-2 border-t border-border/30 pt-2">
-        <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] text-muted-foreground leading-relaxed">
-          {result}
-        </pre>
-      </div>
-    </details>
+    <div className="overflow-hidden rounded-card bg-raised">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+      >
+        <Icon className={cn('h-3 w-3 shrink-0', isError ? 'text-danger' : 'text-warning')} />
+        <span className={cn('min-w-0 flex-1 truncate font-mono text-xs', isError && 'text-danger')}>{tool}</span>
+        <span className="shrink-0 font-mono text-2xs text-subtle">{formatUtc(event.timestamp)}</span>
+      </button>
+      <pre
+        className={cn(
+          'whitespace-pre-wrap px-3 pb-2.5 font-mono text-2xs leading-[17px] text-muted-foreground [overflow-wrap:anywhere]',
+          expanded ? 'max-h-64 overflow-y-auto' : 'line-clamp-4',
+        )}
+      >
+        {result}
+      </pre>
+    </div>
   )
 }

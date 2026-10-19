@@ -12,6 +12,7 @@ const buttonVariants = cva(
         ghost: 'text-muted-foreground hover:bg-raised hover:text-foreground',
         destructive: 'border border-danger/30 bg-danger/10 text-danger hover:bg-danger/15',
         link: 'text-brand-text underline-offset-4 hover:underline',
+        pill: 'bg-raised text-text-3 hover:text-foreground',
       },
       size: {
         sm: 'h-[26px] rounded-chip px-2.5 text-xs',
@@ -20,6 +21,8 @@ const buttonVariants = cva(
         icon: 'h-[30px] w-[30px] rounded-control',
       },
     },
+    // The pill is fully round; it must come after `size`, which sets its own radius.
+    compoundVariants: [{ variant: 'pill', class: 'rounded-full' }],
     defaultVariants: {
       variant: 'default',
       size: 'default',

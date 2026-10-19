@@ -1,9 +1,9 @@
 /**
  * ChatTab — 3-panel mission chat experience.
  *
- * Left  (220px) — Director (pinned) + live team roster
- * Center (flex) — Agent conversation
- * Right (280px) — Artifact cards (expanded by default, human can collapse)
+ * Left   — Director (pinned) + live team roster
+ * Center — Agent conversation
+ * Right  — Tool outputs (collapsible)
  *
  * This is the only mission tab with the full 3-panel layout. All other tabs
  * render full-width content. The SSE connection and stores are owned by
@@ -12,27 +12,23 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import {
-  MessageSquare,
-  Plus,
-  Loader2,
-  Bot,
-  Brain,
-  ChevronDown,
-  ChevronLeft,
-  Zap,
-} from 'lucide-react'
-import { formatUtc } from '@/lib/format-date'
+import { Bot, ChevronDown, ChevronLeft, Loader2, PanelRightOpen, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/cn'
+import { agentStyle } from '@/lib/agent-tone'
+import { agentShortName } from '@/lib/format'
+import { formatUtc } from '@/lib/format-date'
+import type { Tone } from '@/lib/status-tone'
+import { TONE_TEXT } from '@/lib/tone-class'
 import { useTeam } from '@/hooks/use-team'
 import { useSessions, useCreateSession } from '@/hooks/use-sessions'
 import { useAuthStore } from '@/stores/auth'
-import { useWorkspaceStore } from '@/stores/workspace'
+import { useWorkspaceStore, type AgentStatusEntry } from '@/stores/workspace'
 import { Button } from '@/components/ui/button'
+import { IconTile } from '@/components/ui/icon-tile'
+import { Panel } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
-import { agentStyle } from '@/lib/agent-tone'
-import { DEFAULT_CHAT_AGENT } from './chat-constants'
+import { agentLabel, DEFAULT_CHAT_AGENT } from './chat-constants'
 import { Conversation } from './chat-conversation'
 import { ToolOutputPanel } from './chat-artifacts-panel'
 
@@ -83,34 +79,24 @@ export default function ChatTab() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left — agent roster */}
+    <div className="flex h-full gap-gutter overflow-hidden px-2 pb-2">
       <LeftPanel
         missionId={missionId!}
         activeAgent={activeAgent}
         onAgentClick={setActiveAgent}
       />
 
-      {/* Center — agent chat */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden border-l">
-        <ThreadSelector
-          sessions={sessions ?? []}
-          activeSessionId={activeSessionId}
-          onSelect={setActiveSessionId}
-          onNewThread={handleNewThread}
-          loading={loadingSessions || createSession.isPending}
-        />
-        <AgentChatPanel
-          missionId={missionId!}
-          agentName={activeAgent}
-          sessionId={activeSessionId}
-          onReturnToDirector={() => setActiveAgent(DEFAULT_CHAT_AGENT)}
-          onNewThread={handleNewThread}
-          loading={loadingSessions || createSession.isPending}
-        />
-      </div>
+      <AgentChatPanel
+        missionId={missionId!}
+        agentName={activeAgent}
+        sessionId={activeSessionId}
+        sessions={sessions ?? []}
+        onSelectSession={setActiveSessionId}
+        onReturnToDirector={() => setActiveAgent(DEFAULT_CHAT_AGENT)}
+        onNewThread={handleNewThread}
+        loading={loadingSessions || createSession.isPending}
+      />
 
-      {/* Right — tool output */}
       {rightOpen ? (
         <ToolOutputPanel
           activeAgent={activeAgent}
@@ -120,10 +106,11 @@ export default function ChatTab() {
       ) : (
         <button
           onClick={() => setRightOpen(true)}
-          className="flex w-5 shrink-0 items-center justify-center border-l text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          aria-label="Open outputs panel"
           title="Open outputs panel"
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-control text-subtle transition-colors duration-150 hover:bg-raised hover:text-foreground min-[1200px]:flex"
         >
-          <ChevronLeft className="h-3 w-3" />
+          <PanelRightOpen className="h-4 w-4" />
         </button>
       )}
     </div>
@@ -147,12 +134,8 @@ function LeftPanel({
   const agentStatuses = useWorkspaceStore((s) => s.agentStatuses)
 
   return (
-    <div className="flex w-[220px] shrink-0 flex-col border-r">
-      <div className="flex h-9 shrink-0 items-center border-b px-3">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Team
-        </span>
-      </div>
+    <Panel className="hidden w-[228px] shrink-0 flex-col gap-0.5 overflow-y-auto px-2 py-3 min-[960px]:flex">
+      <div className="px-2 pb-2 text-xs text-subtle">Talk to</div>
       <RosterRow
         agentName={DEFAULT_CHAT_AGENT}
         live={agentStatuses[DEFAULT_CHAT_AGENT]}
@@ -161,33 +144,52 @@ function LeftPanel({
         onClick={() => onAgentClick(DEFAULT_CHAT_AGENT)}
         pinned
       />
-      <div className="flex-1 overflow-y-auto py-1">
-        {isLoading && (
-          <div className="flex justify-center py-4">
-            <Spinner className="h-4 w-4" />
-          </div>
-        )}
-        {team
-          ?.filter((m) => (m.agent?.agent_name ?? m.agent_catalog_id) !== DEFAULT_CHAT_AGENT)
-          .map((member) => {
-            const agentName = member.agent?.agent_name ?? member.agent_catalog_id
-            return (
-              <RosterRow
-                key={member.agent_catalog_id}
-                agentName={agentName}
-                live={agentStatuses[agentName]}
-                active={activeAgent === agentName}
-                chatEnabled={member.agent?.chat_enabled ?? false}
-                onClick={() => onAgentClick(agentName)}
-              />
-            )
-          })}
-        {!isLoading && (!team || team.length === 0) && (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No other agents assigned</p>
-        )}
-      </div>
-    </div>
+      {isLoading && (
+        <div className="flex justify-center py-4">
+          <Spinner />
+        </div>
+      )}
+      {team
+        ?.filter((m) => (m.agent?.agent_name ?? m.agent_catalog_id) !== DEFAULT_CHAT_AGENT)
+        .map((member) => {
+          const agentName = member.agent?.agent_name ?? member.agent_catalog_id
+          return (
+            <RosterRow
+              key={member.agent_catalog_id}
+              agentName={agentName}
+              live={agentStatuses[agentName]}
+              active={activeAgent === agentName}
+              chatEnabled={member.agent?.chat_enabled ?? false}
+              onClick={() => onAgentClick(agentName)}
+            />
+          )
+        })}
+      {!isLoading && (!team || team.length === 0) && (
+        <p className="px-2 py-2 text-xs text-subtle">No other agents assigned</p>
+      )}
+    </Panel>
   )
+}
+
+/** The second line of a roster row: what the agent is doing right now, or its role. */
+function rosterNote(
+  live: AgentStatusEntry | undefined,
+  chatEnabled: boolean,
+  pinned: boolean,
+): { text: string; tone: Tone; mono: boolean } {
+  switch (live?.status) {
+    case 'running':
+      return { text: live.currentTool ?? 'running', tone: 'warning', mono: live.currentTool != null }
+    case 'thinking':
+      return { text: 'thinking…', tone: 'violet', mono: false }
+    case 'done':
+      return { text: 'Done', tone: 'success', mono: false }
+    case 'failed':
+      return { text: 'Failed', tone: 'danger', mono: false }
+    default:
+      if (pinned) return { text: 'Mission lead', tone: 'brand', mono: false }
+      return { text: chatEnabled ? 'Idle' : 'Task agent', tone: 'neutral', mono: false }
+  }
 }
 
 function RosterRow({
@@ -196,140 +198,88 @@ function RosterRow({
   active,
   chatEnabled,
   onClick,
-  pinned,
+  pinned = false,
 }: {
   agentName: string
-  live?: { status: string; currentTool: string | null }
+  live?: AgentStatusEntry
   active: boolean
   chatEnabled: boolean
   onClick: () => void
   pinned?: boolean
 }) {
-  const status = live?.status ?? 'idle'
-  const isBusy = status === 'thinking' || status === 'running'
-  const CapabilityIcon = agentStyle(agentName).icon
-
-  const capabilityIconClass =
-    status === 'running'  ? 'text-amber-400 animate-pulse' :
-    status === 'thinking' ? 'text-purple-400 animate-pulse' :
-    status === 'done'     ? 'text-emerald-400' :
-    status === 'failed'   ? 'text-destructive' :
-    chatEnabled           ? 'text-muted-foreground/60' :
-                            'text-muted-foreground/30'
-
-  let trailingIcon: React.ReactNode = null
-  if (chatEnabled) {
-    if (isBusy) {
-      trailingIcon = (
-        <Zap className={cn(
-          'ml-auto h-3 w-3 shrink-0 animate-pulse',
-          status === 'running' ? 'text-amber-400' : 'text-purple-400',
-        )} />
-      )
-    } else if (active) {
-      trailingIcon = <MessageSquare className="ml-auto h-3 w-3 shrink-0 text-primary" />
-    } else {
-      trailingIcon = (
-        <MessageSquare className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60" />
-      )
-    }
-  }
-
-  const sName = agentName.endsWith('.agent') ? agentName.slice(0, -6) : agentName
+  const style = agentStyle(agentName)
+  const note = rosterNote(live, chatEnabled, pinned)
+  const working = live?.status === 'thinking' || live?.status === 'running'
+  const name = agentShortName(agentName)
 
   return (
     <button
       onClick={onClick}
       disabled={!chatEnabled}
       className={cn(
-        'group flex w-full flex-col px-3 text-left transition-colors',
-        pinned ? 'h-9 shrink-0 justify-center border-b' : 'py-2',
-        active && 'bg-primary/10',
-        chatEnabled && !active && 'hover:bg-accent/50',
-        !chatEnabled && 'cursor-default',
+        'flex w-full items-start gap-2.5 rounded-card p-2 text-left transition-colors duration-150',
+        active && 'bg-sidebar-active',
+        chatEnabled && !active && 'hover:bg-raised',
+        !chatEnabled && 'cursor-default opacity-60',
       )}
-      title={chatEnabled ? `Chat with ${sName}` : `${sName} — task agent (not chat-enabled)`}
+      title={chatEnabled ? `Chat with ${name}` : `${name} — task agent (not chat-enabled)`}
     >
-      <div className="flex items-center gap-2">
-        <CapabilityIcon className={cn('h-3.5 w-3.5 shrink-0', capabilityIconClass)} />
-        <span
-          className={cn(
-            'truncate text-[13px]',
-            chatEnabled ? 'text-foreground' : 'text-muted-foreground/60',
-          )}
-          title={agentName}
-        >
-          {sName}
+      <IconTile icon={style.icon} tone={style.tone} size="sm" live={working} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm" title={agentName}>{name}</span>
+        <span className={cn('block truncate text-2xs', TONE_TEXT[note.tone], note.mono && 'font-mono')}>
+          {note.text}
         </span>
-        {trailingIcon}
-      </div>
-      {live?.currentTool ? (
-        <p className="ml-4 mt-0.5 truncate text-[11px] text-amber-400/80">
-          ↳ {live.currentTool}
-        </p>
-      ) : live?.status === 'thinking' ? (
-        <p className="ml-4 mt-0.5 truncate text-[11px] text-muted-foreground/50 animate-pulse">
-          ↳ thinking…
-        </p>
-      ) : null}
+      </span>
     </button>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Thread selector — shared session picker at top level
+// Agent chat panel — header (agent, thread picker, new thread) and the conversation
 // ---------------------------------------------------------------------------
 
-function ThreadSelector({
+interface SessionOption {
+  id: string
+  goal?: string | null
+  last_activity_at?: string | null
+}
+
+function ThreadPicker({
   sessions,
   activeSessionId,
   onSelect,
-  onNewThread,
-  loading,
 }: {
-  sessions: { id: string; goal?: string | null; last_activity_at?: string | null }[]
+  sessions: SessionOption[]
   activeSessionId: string | null
   onSelect: (id: string) => void
-  onNewThread: () => void
-  loading: boolean
 }) {
+  if (sessions.length === 0) return null
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 bg-muted/30">
-      <span className="text-[10px] font-medium text-muted-foreground">Thread:</span>
-      <div className="relative">
-        <select
-          value={activeSessionId ?? ''}
-          onChange={(e) => onSelect(e.target.value)}
-          className="h-6 appearance-none rounded border bg-transparent pl-2 pr-6 text-[10px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {sessions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.goal || s.id.slice(0, 12)} · {formatUtc(s.last_activity_at)}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-1.5 top-1 h-3 w-3 text-muted-foreground" />
-      </div>
-      <Button
-        variant="ghost" size="icon" className="h-6 w-6 shrink-0"
-        onClick={onNewThread} disabled={loading} title="New thread"
+    <div className="relative">
+      <select
+        aria-label="Thread"
+        value={activeSessionId ?? ''}
+        onChange={(e) => onSelect(e.target.value)}
+        className="h-6 max-w-[260px] appearance-none truncate rounded-full bg-raised pl-2.5 pr-6 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       >
-        {loading
-          ? <Loader2 className="h-3 w-3 animate-spin" />
-          : <Plus className="h-3 w-3" />}
-      </Button>
+        {sessions.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.goal || s.id.slice(0, 12)} · {formatUtc(s.last_activity_at)}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2 top-1.5 h-3 w-3 text-subtle" />
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Agent chat panel — receives shared session, routes by target agent
-// ---------------------------------------------------------------------------
 
 function AgentChatPanel({
   missionId,
   agentName,
   sessionId,
+  sessions,
+  onSelectSession,
   onReturnToDirector,
   onNewThread,
   loading,
@@ -337,55 +287,56 @@ function AgentChatPanel({
   missionId: string
   agentName: string
   sessionId: string | null
+  sessions: SessionOption[]
+  onSelectSession: (id: string) => void
   onReturnToDirector: () => void
   onNewThread: () => void
   loading: boolean
 }) {
-  const agentShort = agentName.endsWith('.agent') ? agentName.slice(0, -6) : agentName
+  const label = agentLabel(agentName)
   const isDirector = agentName === DEFAULT_CHAT_AGENT
 
   return (
-    <>
-      {/* Header */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+    <Panel className="flex min-w-[320px] flex-1 flex-col overflow-hidden">
+      <div className="flex h-12 shrink-0 items-center gap-2.5 px-5 pt-1">
         {!isDirector && (
           <button
             onClick={onReturnToDirector}
-            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Back to Director"
             title="Back to Director"
+            className="shrink-0 text-subtle transition-colors duration-150 hover:text-foreground"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
         )}
-        {isDirector
-          ? <Brain className="h-3.5 w-3.5 text-primary" />
-          : <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-        }
-        <span className="text-xs font-semibold">
-          {isDirector ? 'Director' : agentShort}
-        </span>
+        <span className="text-base font-medium">{label}</span>
+        <ThreadPicker sessions={sessions} activeSessionId={sessionId} onSelect={onSelectSession} />
+        <Button variant="pill" size="sm" className="ml-auto" onClick={onNewThread} disabled={loading}>
+          {loading ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : <Plus className="h-3 w-3" />}
+          New thread
+        </Button>
       </div>
 
-      {/* Conversation */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Spinner className="h-5 w-5" />
           </div>
         ) : sessionId ? (
           <Conversation sessionId={sessionId} missionId={missionId} targetAgent={agentName} />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-            <Bot className="h-8 w-8 text-muted-foreground/40" />
+            <Bot className="h-8 w-8 text-faint" />
             <p className="text-center text-sm text-muted-foreground">
-              Start a conversation with <span className="font-medium">{agentShort}</span>.
+              Start a conversation with <span className="font-medium">{label}</span>.
             </p>
-            <Button variant="secondary" size="sm" onClick={onNewThread}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />New Chat
+            <Button variant="secondary" onClick={onNewThread}>
+              <Plus className="h-3.5 w-3.5" />
+              New chat
             </Button>
           </div>
         )}
       </div>
-    </>
+    </Panel>
   )
 }

@@ -1,17 +1,8 @@
 import { Loader2 } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
-import type { StatusStyle, Tone } from '@/lib/status-tone'
-
-const TONE_TEXT: Record<Tone, string> = {
-  success: 'text-success',
-  warning: 'text-warning',
-  danger: 'text-danger',
-  info: 'text-info',
-  brand: 'text-brand-text',
-  violet: 'text-violet',
-  neutral: 'text-subtle',
-}
+import type { StatusStyle } from '@/lib/status-tone'
+import { TONE_TEXT } from '@/lib/tone-class'
 
 export interface StatusIconProps extends StatusStyle {
   className?: string

@@ -1,3 +1,4 @@
+import { agentShortName } from '@/lib/format'
 import type { SessionMessage } from '@/types'
 import type { ConsoleEvent } from '@/stores/console'
 
@@ -6,6 +7,12 @@ import type { ConsoleEvent } from '@/stores/console'
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_CHAT_AGENT = 'mission.director.agent'
+
+/** The name shown for an agent in chat: the Director by role, others by their short name. */
+export function agentLabel(agentId: string): string {
+  if (agentId === DEFAULT_CHAT_AGENT) return 'Director'
+  return agentId ? agentShortName(agentId) : 'agent'
+}
 
 // Event types to HIDE from inline chat (blacklist — new events show by default)
 export const CHAT_HIDDEN_EVENT_TYPES = new Set([
