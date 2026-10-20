@@ -218,13 +218,21 @@ class MissionContextManager(BaseService):
     async def get_context_size(self, mission_id: str) -> dict:
         """Get MCD size metrics."""
         ctx = await self._context_repo.get_by_mission_id(mission_id)
+        max_characters = _get_max_size()
         if ctx is None:
-            return {"size_characters": 0, "size_tokens": 0, "version": 0, "pct_of_max": 0.0}
+            return {
+                "size_characters": 0,
+                "size_tokens": 0,
+                "version": 0,
+                "pct_of_max": 0.0,
+                "max_characters": max_characters,
+            }
         return {
             "size_characters": ctx.size_characters,
             "size_tokens": ctx.size_tokens,
             "version": ctx.version,
-            "pct_of_max": (ctx.size_characters / _get_max_size()) * 100,
+            "pct_of_max": (ctx.size_characters / max_characters) * 100,
+            "max_characters": max_characters,
         }
 
     async def apply_updates(

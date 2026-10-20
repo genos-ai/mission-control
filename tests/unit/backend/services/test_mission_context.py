@@ -186,12 +186,18 @@ class TestGetContextSize:
         assert size["size_tokens"] > 0
         assert size["version"] == 1
         assert 0 < size["pct_of_max"] < 100
+        # The percentage is of this cap, which the UI shows next to the size.
+        assert size["max_characters"] > size["size_characters"]
+        assert size["pct_of_max"] == pytest.approx(
+            size["size_characters"] / size["max_characters"] * 100
+        )
 
     @pytest.mark.asyncio
     async def test_nonexistent_returns_zeros(self, manager):
         size = await manager.get_context_size(_MID("nonexistent"))
         assert size["size_characters"] == 0
         assert size["version"] == 0
+        assert size["max_characters"] > 0
 
 
 class TestApplyUpdates:
