@@ -229,26 +229,24 @@ function CollapsibleSection({
 
   return (
     <div className="border-b">
-      <button
-        className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-muted/30"
-        onClick={() => setOpen(!open)}
-      >
-        {open ? (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        )}
-        <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="text-sm font-semibold">{title}</span>
-        {badge && (
-          <Badge>{badge}</Badge>
-        )}
-        {headerRight && (
-          <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
-            {headerRight}
-          </div>
-        )}
-      </button>
+      {/* The toggle is the title area only: the header controls beside it are buttons too, and a button cannot contain one. */}
+      <div className="flex w-full items-center gap-2 px-4 py-2.5 hover:bg-muted/30">
+        <button
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          )}
+          <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="text-sm font-semibold">{title}</span>
+          {badge && <Badge>{badge}</Badge>}
+        </button>
+        {headerRight}
+      </div>
       {open && <div className="px-4 pb-3">{children}</div>}
     </div>
   )

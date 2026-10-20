@@ -4,9 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Panel, PanelHeader } from '@/components/ui/panel'
 import { AgentDetailPanel } from '@/components/drawer/agent-detail-panel'
 import { PromptHistoryPanel } from '@/components/drawer/prompt-history-panel'
-import { EventLogPanel } from '@/components/drawer/event-log-panel'
-import { OutputPreviewPanel } from '@/components/drawer/output-preview-panel'
-import { CostBreakdownPanel } from '@/components/drawer/cost-breakdown-panel'
 import { RunEventsPanel } from '@/components/drawer/run-events-panel'
 
 export function RightDrawer() {
@@ -39,12 +36,6 @@ function DrawerContent({ contentType }: { contentType: string | null }) {
       return <AgentDetailPanel />
     case 'prompt-history':
       return <PromptHistoryPanel />
-    case 'event-log':
-      return <EventLogPanel />
-    case 'output-preview':
-      return <OutputPreviewPanel />
-    case 'cost-breakdown':
-      return <CostBreakdownPanel />
     case 'run-events':
       return <RunEventsPanel />
     default:

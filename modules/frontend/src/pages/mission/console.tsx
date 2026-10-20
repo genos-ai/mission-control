@@ -230,7 +230,7 @@ function Timeline() {
   }, [filtered.length, autoScroll])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto bg-zinc-950/50 px-2 py-1">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto bg-well/50 px-2 py-1">
       {filtered.length === 0 && (
         <p className="py-12 text-center text-sm text-muted-foreground/60">
           No events yet

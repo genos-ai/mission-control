@@ -10,7 +10,7 @@ import { Panel } from '@/components/ui/panel'
 import { StatusPill } from '@/components/ui/status-pill'
 import { useNow } from '@/hooks/use-now'
 import { cn } from '@/lib/cn'
-import { fmtCost, statusLabel } from '@/lib/format'
+import { fmtCost, fmtTokens, statusLabel } from '@/lib/format'
 import { formatElapsed, parseUtc } from '@/lib/format-date'
 import { runTone, styleFor } from '@/lib/status-tone'
 import { TONE_DOT } from '@/lib/tone-class'
@@ -51,6 +51,7 @@ export function LiveSummary({
   // Cost and finished steps only ever go up, and each source can lag the other: the
   // stream misses what happened before this page opened, the polled record trails it.
   const cost = Math.max(liveCost, execution.total_cost_usd)
+  const tokens = recordedTokens(execution.execution_outcome_json)
   // A task execution is only recorded once it has finished.
   const finishedSteps = Math.max(liveCompleted, execution.task_executions.length)
 
@@ -72,6 +73,7 @@ export function LiveSummary({
 
       <Stat label="Elapsed" value={formatElapsed(Math.max(0, endMs - startedMs))} />
       <Stat label="Cost" value={fmtCost(cost)} />
+      {tokens && <Stat label="Tokens" value={`${fmtTokens(tokens.input)} in · ${fmtTokens(tokens.output)} out`} />}
       <Stat label="Steps" value={liveTotal > 0 ? `${finishedSteps} / ${liveTotal}` : String(finishedSteps)} />
 
       <div className="ml-auto flex items-center gap-2">
@@ -114,6 +116,17 @@ export function LiveSummary({
       </div>
     </Panel>
   )
+}
+
+/**
+ * Token counts from the run's recorded outcome. A run that has not finished, or finished
+ * without recording them, has none; they are never estimated.
+ */
+function recordedTokens(outcome: ExecutionRecordDetail['execution_outcome_json']): { input: number; output: number } | null {
+  const total = outcome?.total_tokens
+  if (typeof total !== 'object' || total === null) return null
+  const { input, output } = total as Record<string, unknown>
+  return typeof input === 'number' && typeof output === 'number' ? { input, output } : null
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

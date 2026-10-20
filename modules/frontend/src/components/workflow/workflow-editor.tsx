@@ -178,6 +178,9 @@ interface HistoryEntry {
 
 const MAX_HISTORY = 50
 
+/** Fit-to-view never zooms out past this, so a wide graph opens readable (pan, or zoom out, to see the rest). */
+const FIT_MIN_ZOOM = 0.5
+
 /** React Flow's zoom controls and minimap, on the panel surface. */
 const CANVAS_CHROME = '!rounded-card !border !border-panel-border !bg-panel !shadow-none'
 
@@ -186,7 +189,6 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [isRunning, setIsRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [showPalette, setShowPalette] = useState(false)
@@ -488,18 +490,11 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     }, 2000)
   }, [nodes, onSaveGraph])
 
-  // Run
-  const handleRun = useCallback(async () => {
+  // Run: clear the last run's overlay and open the run dialog. The dialog starts the run
+  // and reports its result, so nothing is announced here.
+  const handleRun = useCallback(() => {
     runOverlay.reset()
-    setIsRunning(true)
-    try {
-      await onRun()
-      toast.success('Workflow started')
-    } catch {
-      toast.error('Failed to start workflow')
-    } finally {
-      setIsRunning(false)
-    }
+    onRun()
   }, [onRun, runOverlay])
 
   // ── Keyboard shortcuts (Cmd+S, Cmd+Z, Cmd+Shift+Z) ─────────────────────
@@ -677,7 +672,6 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         stepCount={nodes.length}
         isDirty={isDirty}
         isSaving={isSaving}
-        isRunning={isRunning}
         isRunActive={runOverlay.isActive}
         runProgress={runOverlay.progress}
         showHistory={showHistory}
@@ -714,7 +708,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
             onNodesDelete={handleNodesDelete}
             nodeTypes={nodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.15 }}
+            fitViewOptions={{ padding: 0.15, minZoom: FIT_MIN_ZOOM }}
             proOptions={{ hideAttribution: true }}
             nodesDraggable
             nodesConnectable

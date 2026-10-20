@@ -15,7 +15,6 @@ interface WorkflowEditorToolbarProps {
   stepCount: number
   isDirty: boolean
   isSaving: boolean
-  isRunning: boolean
   isRunActive?: boolean
   runProgress?: [number, number]
   showHistory: boolean
@@ -33,7 +32,6 @@ export function WorkflowEditorToolbar({
   stepCount,
   isDirty,
   isSaving,
-  isRunning,
   isRunActive,
   runProgress,
   showHistory,
@@ -99,12 +97,8 @@ export function WorkflowEditorToolbar({
           )}
           Save
         </Button>
-        <Button onClick={onRun} disabled={isRunning || isRunActive}>
-          {isRunning ? (
-            <Loader2 className="h-[13px] w-[13px] animate-spin motion-reduce:animate-none" />
-          ) : (
-            <Play className="h-[13px] w-[13px]" />
-          )}
+        <Button onClick={onRun} disabled={isRunActive}>
+          <Play className="h-[13px] w-[13px]" />
           Run workflow
         </Button>
       </div>

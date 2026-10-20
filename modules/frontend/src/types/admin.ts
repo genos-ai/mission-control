@@ -4,25 +4,31 @@
 
 // Admin types
 export interface AdminMetricsOverview {
-  user_count: number
-  mission_count: number
-  workflow_count: number
-  execution_count: number
+  counts: {
+    missions: number
+    sessions: number
+    execution_records: number
+    workflow_runs: number
+    agents: number
+  }
   total_cost_usd: number
-  active_sessions: number
+  generated_at: string
 }
 
 export interface AdminCostBreakdown {
-  by_agent: { agent_name: string; cost_usd: number; run_count: number }[]
-  by_status: { status: string; cost_usd: number; count: number }[]
-  total_cost_usd: number
+  by_agent: { agent_name: string; runs: number; total_cost_usd: number }[]
+  by_status: { status: string; count: number; total_cost_usd: number }[]
+  since: string
+  generated_at: string
 }
 
 export interface AdminAgentStats {
   agent_name: string
-  run_count: number
+  total_runs: number
   total_cost_usd: number
-  avg_duration_seconds: number
+  avg_cost_usd: number
+  /** Null for an agent that has never finished a task. */
+  avg_duration_seconds: number | null
 }
 
 export interface HealthCheck {

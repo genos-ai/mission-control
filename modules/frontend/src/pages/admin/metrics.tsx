@@ -1,7 +1,8 @@
-import { Loader2, DollarSign, Users, Briefcase, Cpu } from 'lucide-react'
+import { Loader2, Bot, Briefcase, Cpu, DollarSign, GitBranch, MessageSquare } from 'lucide-react'
 import { useMetricsOverview, useMetricsCosts, useMetricsAgents } from '@/hooks/use-admin'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
+import { fmtCost, fmtUsd } from '@/lib/format'
 
 export default function AdminMetricsPage() {
   const { data: overview, isLoading: loadingOverview } = useMetricsOverview()
@@ -23,34 +24,12 @@ export default function AdminMetricsPage() {
       {/* Overview cards */}
       {overview && (
         <div className="grid grid-cols-3 gap-4">
-          <StatCard
-            icon={<Users className="h-4 w-4" />}
-            label="Users"
-            value={overview.user_count}
-          />
-          <StatCard
-            icon={<Briefcase className="h-4 w-4" />}
-            label="Missions"
-            value={overview.mission_count}
-          />
-          <StatCard
-            icon={<Cpu className="h-4 w-4" />}
-            label="Executions"
-            value={overview.execution_count}
-          />
-          <StatCard
-            icon={<DollarSign className="h-4 w-4" />}
-            label="Total Cost"
-            value={`$${overview.total_cost_usd.toFixed(2)}`}
-          />
-          <StatCard
-            label="Workflows"
-            value={overview.workflow_count}
-          />
-          <StatCard
-            label="Active Sessions"
-            value={overview.active_sessions}
-          />
+          <StatCard icon={<Briefcase className="h-4 w-4" />} label="Missions" value={overview.counts.missions} />
+          <StatCard icon={<MessageSquare className="h-4 w-4" />} label="Sessions" value={overview.counts.sessions} />
+          <StatCard icon={<Cpu className="h-4 w-4" />} label="Executions" value={overview.counts.execution_records} />
+          <StatCard icon={<GitBranch className="h-4 w-4" />} label="Workflow runs" value={overview.counts.workflow_runs} />
+          <StatCard icon={<Bot className="h-4 w-4" />} label="Agents" value={overview.counts.agents} />
+          <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={fmtUsd(overview.total_cost_usd)} />
         </div>
       )}
 
@@ -68,11 +47,11 @@ export default function AdminMetricsPage() {
                   <div className="flex items-center gap-2">
                     <span>{entry.agent_name}</span>
                     <Badge>
-                      {entry.run_count} runs
+                      {entry.runs} runs
                     </Badge>
                   </div>
                   <span className="font-mono">
-                    ${entry.cost_usd.toFixed(4)}
+                    {fmtCost(entry.total_cost_usd)}
                   </span>
                 </div>
               ))}
@@ -97,12 +76,12 @@ export default function AdminMetricsPage() {
                 >
                   <span>{agent.agent_name}</span>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{agent.run_count} runs</span>
+                    <span>{agent.total_runs} runs</span>
                     <span>
-                      {agent.avg_duration_seconds.toFixed(1)}s avg
+                      {agent.avg_duration_seconds === null ? '—' : `${agent.avg_duration_seconds.toFixed(1)}s`} avg
                     </span>
                     <span className="font-mono">
-                      ${agent.total_cost_usd.toFixed(4)}
+                      {fmtCost(agent.total_cost_usd)}
                     </span>
                   </div>
                 </div>

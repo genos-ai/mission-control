@@ -511,7 +511,7 @@ the page loads, so a note says "Showing the latest 50 of 59 runs." when there ar
 "Details" column was always there. `runs-tab.tsx` lays the page out as a document column plus that panel.
 
 **Run live.** `live-summary.tsx` replaces the header bar and `live-footer.tsx` (deleted): objective, short id, Elapsed, Cost,
-Steps, the Live or status pill, the two panel toggles and Cancel run (C21: no Tokens, a run has no token total; C41). The
+Steps, tokens when the run's recorded outcome has them (C21; input and output as recorded, never estimated), the Live or status pill, the two panel toggles and Cancel run (C41). The
 activity panel is a vertical timeline (planning, every event, the agents working now), the results panel one block per
 finished task. The back arrow is gone; the breadcrumb already links to Runs. `research-live-view.tsx` now lays its header
 and three columns out as panels. The four palette colours in `source-panel.tsx` and `sub-question-tree.tsx`, the amber box
@@ -672,19 +672,22 @@ baseline screenshots; not fixed here — each needs its own decision):**
 
 | Where | Defect |
 |---|---|
-| `/admin/metrics` | Page crashes into the error boundary. `GET /admin/metrics/costs` returns `by_agent[].total_cost_usd` but `pages/admin/metrics.tsx:77` reads `entry.cost_usd`, so `.toFixed` runs on `undefined`. |
-| `/admin/users` | Page is blank. `GET /admin/users` answers `307` (redirect), and the page renders nothing. |
-| `/missions/:id/context` | Size indicator reads `3.2KB / NaNKB`: `max_characters` is not in the response the page reads. |
+| `/admin/metrics` (fixed 2026-10-20) | The page crashed: its types did not match the API. Overview counts are nested (`counts.missions`, `sessions`, `execution_records`, `workflow_runs`, `agents`), costs per agent are `runs` and `total_cost_usd`, agent stats use `total_runs` and a nullable `avg_duration_seconds`. Types and page now read the real fields. The "Users" card is gone: the API sends no user count. |
+| `/admin/users` (fixed 2026-10-20) | Blank page: the router's collection routes are `/`, so `GET /admin/users` answered `307` with an absolute redirect to port 8100. The list and create calls now use `/admin/users/`. |
+| `/missions/:id/context` (fixed 2026-10-20, needs an API restart) | Size read `3.2KB / NaNKB`: the page expects `max_characters` and the response never carried it. `get_context_size` now returns it from the same config as `pct_of_max`. |
 | Plan board (fixed in Phase 5) | Agent tag pill clipped its last letter (`RESEARCH.SYNTHESIZE`); the card was rebuilt. |
-| Console (warm-white) | The log pane is a fixed dark scrim in the light theme; rebuilt in Phase 10.6. |
-| Right drawer | Three panel types have no caller anywhere: `event-log`, `output-preview` and `cost-breakdown` (`components/drawer/*`). The Runs tab shows those views inline instead. They are restyled with the drawer but unreachable. |
-| Dependencies | `@hello-pangea/dnd` is listed in `package.json` and imported nowhere. |
-| Workflow editor | Clicking Run workflow shows a "Workflow started" toast straight away, before the run dialog is submitted: `handleRun` toasts after `await onRun()`, and `onRun` only opens the dialog (`workflow-edit.tsx:32`). The dialog's own success toast fires on submit, so a real start toasts twice. |
-| Workflow editor | A graph with saved positions that is wide (the 13- and 36-step workflows here) opens at about 0.2 zoom after fit-to-view, so nodes are unreadable until you zoom. The positions are saved data; `fitViewOptions` is `padding: 0.15` with no minimum zoom. |
-| Step inspector | The decision step's Model field shows `anthropic:claude-haiku-4-5` when the config has no model: a hard-coded fallback model string in `step-detail.tsx`. |
-| Workflows | `dag-graph.tsx` is imported nowhere and still uses the old `bg-card` / `bg-background` tokens. |
-| Run live | A run opened after it finished, or joined late, shows no activity or results: the page is driven by the live stream and starts empty (the `TODO` in `run-live.tsx`). Cost and steps now fall back to the polled record (C41); the timeline and results do not. The empty texts now say so instead of "Waiting for events…". |
+| Console (warm-white) (scrim fixed 2026-10-20) | The log pane was a fixed `bg-zinc-950/50` scrim, dark in the light theme; it is `bg-well/50` now. The rest of the console is restyled in Phase 10.6. |
+| Right drawer (fixed 2026-10-20) | `event-log`, `output-preview` and `cost-breakdown` had no caller. The panels, their drawer cases and the unused `agent-events` and `architect-chat` type entries are deleted; `OutputPreviewContent` stays (the Runs detail panel uses it). |
+| Dependencies (fixed 2026-10-20) | `@hello-pangea/dnd` was imported nowhere; removed from `package.json` and the lockfile. |
+| Workflow editor (fixed 2026-10-20) | Clicking Run workflow toasted "Workflow started" before anything started. `handleRun` now clears the overlay and opens the dialog, which reports the result; the always-false `isRunning` state is removed. |
+| Workflow editor (fixed 2026-10-20) | A wide graph opened at about 0.2 zoom. Fit-to-view now stops at 0.5 (`FIT_MIN_ZOOM`); pan or zoom out to see the rest. |
+| Step inspector (partly fixed 2026-10-20) | The decision Model field showed an invented `anthropic:claude-haiku-4-5` when the step had none, while the backend raises if a decision has no model. It now shows the step's own value. Still open: the editor creates new LLM-call and decision steps with a hard-coded `copilot:claude-haiku-4.5` (`workflow-editor.tsx`, `handleAddNode`); a config-driven default needs an API to read it from. |
+| Workflows (fixed 2026-10-20) | `dag-graph.tsx` was imported nowhere; deleted. |
+| Run live (fixed 2026-10-20) | A run opened after it finished showed no activity or results. It now renders from its record: the timeline lists the recorded task executions and the results panel the recorded outcome (`OutputPreviewContent`); the summary shows recorded tokens (input and output) when the outcome has them. Live events are still not kept, and the page says so. |
 | Run live | The store reads a `tasks` list from `plan.created`, but the event is typed with `step_count` and nothing in `modules/` emits it, so the step total may never be known. |
+| Admin health (fixed 2026-10-20) | The page called `GET /admin/system/health`, which answers 405: the endpoint is `POST`. |
+| Knowledge | `CollapsibleSection` put its header filter chips (buttons) inside its toggle button, which React flags as nested buttons and which breaks keyboard and screen-reader use. The toggle is now the title area only (fixed 2026-10-20). |
+| Chat history | Old Director prompts stored in session messages still quote the `__META__` tail from before the supervisor fix (visible in the ai-deep-research chat thread). It is recorded conversation, so it was left as it is. |
 | Runs / API | The backend serves decision reasoning with a stored metadata tail until it is restarted on the fix for supervisor decisions (the API here runs without `--reload`). |
 | Chat (fixed 2026-10-19) | Intermittently the thread stopped hundreds of pixels short of the bottom on load (830-884px measured). The auto-scroll effect in `chat-conversation.tsx` did not depend on `historicalEvents` (the separate narrative query), so events arriving after the first scroll left the thread short. Reproduced deterministically by delaying the narrative response, and confirmed at the original baseline. The effect now depends on the timeline; measured 0px from the bottom at every sample with the narrative delayed 1.5s, delayed 3s, and not delayed. |
 

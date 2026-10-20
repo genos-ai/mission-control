@@ -160,7 +160,8 @@ export function useMetricsAgents() {
 export function useHealthCheck() {
   return useQuery({
     queryKey: adminKeys.health,
-    queryFn: () => api.get<HealthCheck>('/admin/system/health'),
+    // The backend runs the checks on POST (GET answers 405).
+    queryFn: () => api.post<HealthCheck>('/admin/system/health'),
     refetchInterval: 30_000,
   })
 }
@@ -258,7 +259,7 @@ export function useOutputEfficiency(timeframe = '7d') {
 export function useAdminUsers() {
   return useQuery({
     queryKey: adminKeys.users,
-    queryFn: () => api.get<UserResponse[]>('/admin/users'),
+    queryFn: () => api.get<UserResponse[]>('/admin/users/'),
   })
 }
 
@@ -270,7 +271,7 @@ export function useCreateUser() {
       password: string
       display_name: string
       system_role?: string
-    }) => api.post<UserResponse>('/admin/users', data),
+    }) => api.post<UserResponse>('/admin/users/', data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminKeys.users })
     },

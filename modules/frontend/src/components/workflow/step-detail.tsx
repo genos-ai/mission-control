@@ -641,7 +641,8 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
               <>
                 <Field label="Model">
                   <Input
-                    value={draft.decision_config.model ?? 'anthropic:claude-haiku-4-5'}
+                    value={draft.decision_config.model ?? ''}
+                    placeholder="e.g. copilot:claude-haiku-4.5"
                     onChange={(e) =>
                       update({
                         decision_config: { ...draft.decision_config!, model: e.target.value },

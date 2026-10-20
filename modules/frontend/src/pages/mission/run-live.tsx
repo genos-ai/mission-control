@@ -140,8 +140,8 @@ export default function RunLivePage() {
         <ResearchLiveView />
       ) : (
         <div className="flex min-h-0 flex-1 gap-gutter">
-          {activityOpen && <LiveActivityPanel />}
-          {resultsOpen && <LiveResultsPanel />}
+          {activityOpen && <LiveActivityPanel recorded={execution.task_executions} />}
+          {resultsOpen && <LiveResultsPanel outcome={execution.execution_outcome_json} />}
         </div>
       )}
     </div>

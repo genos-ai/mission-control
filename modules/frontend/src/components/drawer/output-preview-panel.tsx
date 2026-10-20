@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, AlertTriangle, XCircle, Info } from 'lucide-react'
-import { useDrawerStore } from '@/stores/drawer'
 import { StatusPill } from '@/components/ui/status-pill'
 import type { Tone } from '@/lib/status-tone'
 import { cn } from '@/lib/cn'
@@ -19,17 +18,6 @@ const STATUS_TONE: Record<string, Tone> = {
   failed: 'danger',
   degraded: 'warning',
   error: 'danger',
-}
-
-export function OutputPreviewPanel() {
-  const { context } = useDrawerStore()
-  const content = context.content as Record<string, unknown> | undefined
-
-  if (!content) {
-    return <p className="text-sm text-muted-foreground">No output available.</p>
-  }
-
-  return <OutputPreviewContent content={content} />
 }
 
 export function OutputPreviewContent({ content }: { content: Record<string, unknown> }) {

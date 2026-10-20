@@ -3,6 +3,7 @@
  * task, any errors, and the approval prompt when a gate is waiting.
  */
 
+import { OutputPreviewContent } from '@/components/drawer/output-preview-panel'
 import { Panel } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { GateApproval } from '@/components/mission/gate-approval'
@@ -13,7 +14,11 @@ import { styleFor, taskTone } from '@/lib/status-tone'
 import { TONE_BOX } from '@/lib/tone-class'
 import { useLiveRunStore } from '@/stores/live-run'
 
-export function LiveResultsPanel() {
+/**
+ * `outcome` is the run's recorded outcome. Results only arrive on the stream while a run is
+ * live, so a run opened after it finished shows this instead.
+ */
+export function LiveResultsPanel({ outcome }: { outcome?: Record<string, unknown> | null }) {
   const phase = useLiveRunStore((s) => s.phase)
   const errors = useLiveRunStore((s) => s.errors)
   const taskResults = useLiveRunStore((s) => s.taskResults)
@@ -80,19 +85,23 @@ export function LiveResultsPanel() {
         })}
 
         {taskResults.length === 0 && !pendingApproval && errors.length === 0 && (
-          <div className="flex flex-col gap-2.5">
-            <p className="text-sm text-subtle">
-              {writing
-                ? 'Waiting for the first result…'
-                : "No results were streamed to this page. The run's output and cost are in its row on the Runs tab."}
-            </p>
-            {writing && (
-              <>
-                <div className="h-3 w-[58%] rounded bg-raised" />
-                <div className="h-3 w-[41%] rounded bg-raised" />
-              </>
-            )}
-          </div>
+          !writing && outcome && Object.keys(outcome).length > 0 ? (
+            <OutputPreviewContent content={outcome} />
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              <p className="text-sm text-subtle">
+                {writing
+                  ? 'Waiting for the first result…'
+                  : "This run recorded no output. Its cost and tasks are in its row on the Runs tab."}
+              </p>
+              {writing && (
+                <>
+                  <div className="h-3 w-[58%] rounded bg-raised" />
+                  <div className="h-3 w-[41%] rounded bg-raised" />
+                </>
+              )}
+            </div>
+          )
         )}
       </div>
     </Panel>

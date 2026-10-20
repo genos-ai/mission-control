@@ -6,11 +6,19 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Brain, Loader2 } from 'lucide-react'
 import { Panel } from '@/components/ui/panel'
+import { StatusIcon } from '@/components/ui/status-icon'
 import { cn } from '@/lib/cn'
 import { eventDetail, eventLabel, getEventIcon } from '@/lib/event-utils'
+import { agentShortName, fmtCost } from '@/lib/format'
+import { styleFor, taskTone } from '@/lib/status-tone'
 import { useLiveRunStore } from '@/stores/live-run'
+import type { TaskExecution } from '@/types'
 
-export function LiveActivityPanel() {
+/**
+ * `recorded` is the run's task executions from its record. The stream is the only source of
+ * live events and starts empty, so a run opened after it finished shows these instead.
+ */
+export function LiveActivityPanel({ recorded = [] }: { recorded?: TaskExecution[] }) {
   const phase = useLiveRunStore((s) => s.phase)
   const activeAgents = useLiveRunStore((s) => s.activeAgents)
   const thinkingBuffers = useLiveRunStore((s) => s.thinkingBuffers)
@@ -26,7 +34,8 @@ export function LiveActivityPanel() {
 
   const agents = Array.from(activeAgents.entries())
   const planning = phase === 'planning'
-  const empty = eventLog.length === 0 && agents.length === 0 && !planning
+  const showRecorded = eventLog.length === 0 && agents.length === 0 && !planning && recorded.length > 0
+  const empty = eventLog.length === 0 && agents.length === 0 && !planning && !showRecorded
 
   return (
     <Panel ref={scrollRef} className="flex w-[360px] shrink-0 flex-col overflow-y-auto p-5">
@@ -35,9 +44,25 @@ export function LiveActivityPanel() {
       {empty && (
         <p className="text-sm text-subtle">
           {phase === 'done'
-            ? "This run has finished and its live events weren't kept. Its events, output and cost are in its row on the Runs tab."
+            ? "This run has finished and recorded no tasks. Its events, output and cost are in its row on the Runs tab."
             : 'Waiting for events…'}
         </p>
+      )}
+
+      {showRecorded && (
+        <>
+          <p className="mb-3 text-xs text-subtle">Live events aren&apos;t kept; these are the tasks the run recorded.</p>
+          {recorded.map((task, i) => (
+            <TimelineItem
+              key={task.id}
+              icon={<StatusIcon {...styleFor(taskTone, task.status, 'task execution')} />}
+              title={agentShortName(task.agent_name)}
+              meta={task.duration_seconds ? `${task.duration_seconds.toFixed(1)}s` : undefined}
+              sub={fmtCost(task.cost_usd)}
+              last={i === recorded.length - 1}
+            />
+          ))}
+        </>
       )}
 
       {planning && (

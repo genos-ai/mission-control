@@ -3,15 +3,7 @@
  */
 
 // Drawer types
-export type DrawerContentType =
-  | 'run-events'
-  | 'agent-events'
-  | 'prompt-history'
-  | 'architect-chat'
-  | 'event-log'
-  | 'output-preview'
-  | 'cost-breakdown'
-  | 'agent-detail'
+export type DrawerContentType = 'run-events' | 'prompt-history' | 'agent-detail'
 
 // Notification types
 export interface Notification {
