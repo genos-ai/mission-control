@@ -257,6 +257,19 @@ class MissionTeamService(BaseService):
             raise NotFoundError(f"Team member '{member_id}' not found")
         return member
 
+    async def get_member_in_mission(self, mission_id: str, member_id: str) -> MissionTeamMember:
+        """Get a team member only if it belongs to ``mission_id``.
+
+        A member of another mission raises the same NotFoundError as an unknown id, so
+        the response does not reveal that the id exists. Endpoints that act on a member
+        by id must call this after checking access to the mission in their path: the
+        access check covers the path's mission, not the member.
+        """
+        member = await self.get_member(member_id)
+        if str(member.mission_id) != str(mission_id):
+            raise NotFoundError(f"Team member '{member_id}' not found")
+        return member
+
     async def update_member_constraints(
         self,
         member_id: str,

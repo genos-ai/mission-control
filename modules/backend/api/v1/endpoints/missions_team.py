@@ -195,6 +195,7 @@ async def remove_agent_from_team(
     """Remove an agent from a mission's team."""
     await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
+    await service.get_member_in_mission(mission_id, member_id)
     await service.remove_agent(member_id)
     return ApiResponse(
         success=True,
@@ -219,6 +220,7 @@ async def update_team_member_prompt(
     """Update a team member's user prompt with version tracking."""
     await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
+    await service.get_member_in_mission(mission_id, member_id)
     member = await service.update_user_prompt(
         member_id=member_id,
         content=data.content,
@@ -254,6 +256,7 @@ async def update_team_member_constraints(
     """
     await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
+    await service.get_member_in_mission(mission_id, member_id)
     member = await service.update_member_constraints(member_id, data)
     response = MissionTeamMemberResponse.model_validate(member)
     await db.commit()
@@ -280,6 +283,7 @@ async def get_team_member_prompt_history(
     """Get the user prompt version history for a team member."""
     await require_mission_access(db, mission_id, current_user)
     service = MissionTeamService(db)
+    await service.get_member_in_mission(mission_id, member_id)
     versions = await service.get_prompt_history(member_id)
     items = [
         {
