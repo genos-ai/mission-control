@@ -33,11 +33,18 @@ def _since(timeframe: str) -> datetime:
     return utc_now() - delta
 
 
-def _scope_filters(*, timeframe: str | None = None, mission_id: str | None = None) -> list:
-    """Return WHERE clauses for scoping. Supports both together."""
+def _scope_filters(
+    *,
+    timeframe: str | None = None,
+    mission_id: str | None = None,
+    mission_ids: list[str] | None = None,
+) -> list:
+    """Return WHERE clauses for scoping. Supports all together."""
     conditions = []
     if mission_id:
         conditions.append(LlmCall.mission_id == mission_id)
+    if mission_ids is not None:
+        conditions.append(LlmCall.mission_id.in_(mission_ids))
     if timeframe:
         conditions.append(LlmCall.created_at >= _since(timeframe))
     if not conditions:
@@ -108,6 +115,24 @@ class TokenEconomicsService(BaseService):
         )
         self._session.add(call)
         return call
+
+    async def get_cost_by_mission(self, mission_ids: list[str]) -> dict[str, float]:
+        """All-time spend per mission: the sum of its recorded LLM calls, in one query.
+
+        This is the figure the Costs tab shows, so every screen that shows a mission's
+        spend agrees with it. A mission with no recorded calls is 0.0, never missing.
+        """
+        spent = {mission_id: 0.0 for mission_id in mission_ids}
+        if not mission_ids:
+            return spent
+        stmt = (
+            select(LlmCall.mission_id, func.sum(LlmCall.cost_usd))
+            .where(*_scope_filters(mission_ids=mission_ids))
+            .group_by(LlmCall.mission_id)
+        )
+        for mission_id, total in (await self._session.execute(stmt)).all():
+            spent[str(mission_id)] = float(total or 0)
+        return spent
 
     async def get_token_breakdown(
         self,

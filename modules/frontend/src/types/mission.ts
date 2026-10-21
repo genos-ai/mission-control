@@ -17,6 +17,8 @@ export interface MissionListItem {
   tier: MissionTier
   owner_id: string
   budget_ceiling_usd: number | null
+  /** All-time LLM spend, the same figure as the Costs tab; 0 when no calls are recorded. */
+  spent_usd: number
   execution_environment: string | null
   created_at: string
   updated_at: string

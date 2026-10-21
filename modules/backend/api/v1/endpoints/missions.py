@@ -20,7 +20,7 @@ from modules.backend.api.v1.endpoints import (
 from modules.backend.core.dependencies import CurrentUser, DbSession, Idempotency, RequestId
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.schemas.mission import MissionCreate, MissionResponse, MissionUpdate
+from modules.backend.schemas.mission import MissionCreate, MissionUpdate
 from modules.backend.services.mission import MissionService
 
 router = APIRouter()
@@ -74,7 +74,7 @@ async def create_mission(
         repo_root=data.repo_root,
         tier=data.tier,
     )
-    response = MissionResponse.model_validate(mission)
+    response = (await service.to_responses([mission]))[0]
     result = ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -109,7 +109,7 @@ async def list_missions(
         )
         # Filter out platform missions for non-admin users
         missions = [m for m in missions if getattr(m, "tier", "user") != "platform"]
-    items = [MissionResponse.model_validate(m).model_dump() for m in missions]
+    items = [r.model_dump() for r in await service.to_responses(missions)]
     return ApiResponse(
         success=True,
         data={"missions": items, "total": len(items)},
@@ -133,7 +133,7 @@ async def get_mission(
         is_member = any(m.user_id == current_user.id for m in mission.members)
         if not is_member:
             raise AuthorizationError("You don't have access to this mission")
-    response = MissionResponse.model_validate(mission)
+    response = (await service.to_responses([mission]))[0]
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -203,7 +203,7 @@ async def update_mission(
         raise AuthorizationError("Cannot update missions you don't own")
     updates = data.model_dump(exclude_none=True)
     mission = await service.update_mission(mission_id, **updates)
-    response = MissionResponse.model_validate(mission)
+    response = (await service.to_responses([mission]))[0]
     return ApiResponse(
         success=True,
         data=response.model_dump(),

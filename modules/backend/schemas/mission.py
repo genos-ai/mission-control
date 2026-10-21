@@ -112,8 +112,16 @@ class MissionResponse(BaseModel):
     repo_root: str | None
     tier: str
     execution_environment: str | None
+    # All-time LLM spend (the Costs tab figure); 0.0 means no calls recorded, never null.
+    spent_usd: float
     created_at: datetime
     updated_at: datetime
+
+    @classmethod
+    def from_mission(cls, mission: object, spent_usd: float) -> "MissionResponse":
+        """Build the response from a Mission and its spend, which is not a column on it."""
+        fields = {name: getattr(mission, name) for name in cls.model_fields if name != "spent_usd"}
+        return cls(**fields, spent_usd=spent_usd)
 
 
 class MissionMemberResponse(BaseModel):

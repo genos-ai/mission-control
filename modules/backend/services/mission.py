@@ -19,7 +19,9 @@ from modules.backend.models.mission import Mission, MissionMember, MissionMember
 from modules.backend.models.mission_event import MissionEvent
 from modules.backend.models.mission_plan import VALID_GATE_MODES
 from modules.backend.repositories.mission import MissionMemberRepository, MissionRepository
+from modules.backend.schemas.mission import MissionResponse
 from modules.backend.services.base import BaseService
+from modules.backend.services.token_economics import TokenEconomicsService
 
 logger = get_logger(__name__)
 
@@ -31,6 +33,17 @@ class MissionService(BaseService):
         super().__init__(session)
         self._mission_repo = MissionRepository(session)
         self._member_repo = MissionMemberRepository(session)
+
+    async def to_responses(self, missions: list[Mission]) -> list[MissionResponse]:
+        """API responses for missions, each with its spend, from one aggregate query.
+
+        Every endpoint that returns a mission goes through this, so none returns one
+        without `spent_usd`.
+        """
+        spent = await TokenEconomicsService(self._session).get_cost_by_mission(
+            [str(m.id) for m in missions]
+        )
+        return [MissionResponse.from_mission(m, spent[str(m.id)]) for m in missions]
 
     @staticmethod
     @asynccontextmanager
