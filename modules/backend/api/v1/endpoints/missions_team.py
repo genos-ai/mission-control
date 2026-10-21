@@ -24,6 +24,7 @@ from modules.backend.schemas.mission_team import (
     AgentConfigSummary,
     MissionTeamAddRequest,
     MissionTeamMemberResponse,
+    TeamMemberEnabledUpdate,
     UserPromptUpdateRequest,
 )
 from modules.backend.services.mission import MissionService
@@ -258,6 +259,38 @@ async def update_team_member_constraints(
     service = MissionTeamService(db)
     await service.get_member_in_mission(mission_id, member_id)
     member = await service.update_member_constraints(member_id, data)
+    response = MissionTeamMemberResponse.model_validate(member)
+    await db.commit()
+
+    return ApiResponse(
+        success=True,
+        data=response.model_dump(),
+        metadata={"request_id": request_id},
+    )
+
+
+@router.patch(
+    "/{mission_id}/team/{member_id}/enabled",
+    response_model=ApiResponse,
+    summary="Enable or disable a team member",
+)
+async def set_team_member_enabled(
+    mission_id: str,
+    member_id: str,
+    data: TeamMemberEnabledUpdate,
+    db: DbSession,
+    current_user: CurrentUser,
+    request_id: RequestId,
+) -> ApiResponse:
+    """Turn a team member on or off.
+
+    A disabled member stays on the team but is left out of the roster that dispatch
+    uses, and out of the default team listing.
+    """
+    await require_mission_access(db, mission_id, current_user)
+    service = MissionTeamService(db)
+    await service.get_member_in_mission(mission_id, member_id)
+    member = await service.toggle_enabled(member_id, data.enabled)
     response = MissionTeamMemberResponse.model_validate(member)
     await db.commit()
 

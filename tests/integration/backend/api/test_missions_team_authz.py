@@ -6,61 +6,23 @@ read, change or remove a member of mission B by putting B's member id under A's 
 """
 
 import pytest
-from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.dependencies import get_current_user
-from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
-from modules.backend.services.agent_catalog import AgentCatalogService
 from modules.backend.services.mission_team import MissionTeamService
 from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
+from tests.integration.backend.api.helpers import add_team_member, create_mission
 
-
-async def _mission(db: AsyncSession, name: str, owner_id: str) -> Mission:
-    mission = Mission(
-        name=name, description=name, owner_id=owner_id, status="active", default_roster="default"
-    )
-    db.add(mission)
-    await db.flush()
-    db.add(MissionMember(mission_id=mission.id, user_id=owner_id, role=MissionMemberRole.OWNER))
-    await db.flush()
-    await db.refresh(
-        mission, ["members"]
-    )  # the access check reads it; the real query loads it eagerly
-    return mission
-
-
-async def _member(db: AsyncSession, mission: Mission, agent_name: str):
-    entry = await AgentCatalogService(db).create_entry(
-        agent_name=agent_name,
-        agent_type="vertical",
-        description="Test agent",
-        model_config_json={
-            "name": "anthropic:claude-haiku-4-5-20251001",
-            "temperature": 0.0,
-            "max_tokens": 4096,
-        },
-    )
-    return await MissionTeamService(db).add_agent(
-        mission.id, str(entry.id), user_prompt="original prompt"
-    )
+pytestmark = pytest.mark.usefixtures("signed_in")
 
 
 @pytest.fixture
 async def world(db_session: AsyncSession, test_user, test_user_2):
     """The caller (test_user) owns mission A; someone else owns mission B."""
-    mission_a = await _mission(db_session, "mission-a", TEST_USER_ID)
-    mission_b = await _mission(db_session, "mission-b", TEST_USER_ID_2)
-    member_a = await _member(db_session, mission_a, "vertical.authz.agent_a")
-    member_b = await _member(db_session, mission_b, "vertical.authz.agent_b")
+    mission_a = await create_mission(db_session, "mission-a", TEST_USER_ID)
+    mission_b = await create_mission(db_session, "mission-b", TEST_USER_ID_2)
+    member_a = await add_team_member(db_session, mission_a, "vertical.authz.agent_a")
+    member_b = await add_team_member(db_session, mission_b, "vertical.authz.agent_b")
     return mission_a, mission_b, member_a, member_b
-
-
-@pytest.fixture(autouse=True)
-def _acting_as_test_user(client: AsyncClient, test_user):
-    client.app.dependency_overrides[get_current_user] = lambda: test_user
-    yield
-    client.app.dependency_overrides.pop(get_current_user, None)
 
 
 def _url(mission_id: str, member_id: str, suffix: str = "") -> str:

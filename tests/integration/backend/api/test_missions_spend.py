@@ -5,67 +5,22 @@ are listed. A mission with no recorded calls reports 0.0, never null.
 """
 
 import pytest
-from httpx import AsyncClient
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.dependencies import get_current_user
-from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
-from modules.backend.services.token_economics import TokenEconomicsService
 from tests.conftest import TEST_USER_ID
+from tests.integration.backend.api.helpers import create_mission, record_spend
 
-
-async def _mission(db: AsyncSession, name: str) -> Mission:
-    mission = Mission(
-        name=name,
-        description=name,
-        owner_id=TEST_USER_ID,
-        status="active",
-        default_roster="default",
-    )
-    db.add(mission)
-    await db.flush()
-    db.add(MissionMember(mission_id=mission.id, user_id=TEST_USER_ID, role=MissionMemberRole.OWNER))
-    await db.flush()
-    await db.refresh(mission, ["members"])
-    return mission
-
-
-async def _spend(db: AsyncSession, mission: Mission, *costs: float) -> None:
-    economics = TokenEconomicsService(db)
-    for cost in costs:
-        await economics.record_call(
-            session_id=None,
-            mission_id=str(mission.id),
-            agent_name="research.analyst.agent",
-            agent_role="task",
-            model="copilot:claude-haiku-4.5",
-            provider="copilot",
-            input_tokens=100,
-            output_tokens=10,
-            cache_read_tokens=0,
-            cache_write_5m_tokens=0,
-            cache_write_1h_tokens=0,
-            thinking_tokens=0,
-            cost_usd=cost,
-        )
-    await db.flush()
-
-
-@pytest.fixture(autouse=True)
-def _acting_as_test_user(client: AsyncClient, test_user):
-    client.app.dependency_overrides[get_current_user] = lambda: test_user
-    yield
-    client.app.dependency_overrides.pop(get_current_user, None)
+pytestmark = pytest.mark.usefixtures("signed_in")
 
 
 @pytest.fixture
 async def missions(db_session: AsyncSession, test_user):
-    spent = await _mission(db_session, "spent")
-    idle = await _mission(db_session, "idle")
-    other = await _mission(db_session, "other")
-    await _spend(db_session, spent, 0.25, 0.5, 0.125)
-    await _spend(db_session, other, 4.0)
+    spent = await create_mission(db_session, "spent", TEST_USER_ID)
+    idle = await create_mission(db_session, "idle", TEST_USER_ID)
+    other = await create_mission(db_session, "other", TEST_USER_ID)
+    await record_spend(db_session, spent, 0.25, 0.5, 0.125)
+    await record_spend(db_session, other, 4.0)
     return spent, idle, other
 
 

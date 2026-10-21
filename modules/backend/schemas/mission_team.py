@@ -71,3 +71,11 @@ class UserPromptUpdateRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=10000)
     changed_by: str = Field(..., min_length=1, max_length=200)
     change_reason: str | None = Field(None, max_length=1000)
+
+
+class TeamMemberEnabledUpdate(BaseModel):
+    """Request to enable or disable a team member."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
