@@ -4,10 +4,12 @@ import { BookOpen, Home, Plus, Shield, type LucideIcon } from 'lucide-react'
 
 import { SidebarFooter } from './sidebar-footer'
 import { SidebarMissionNav } from './sidebar-mission-nav'
+import { CountBadge } from '@/components/ui/count-badge'
 import { cn } from '@/lib/cn'
 import { ROUTES } from '@/lib/constants'
 import { missionTone } from '@/lib/status-tone'
 import { TONE_DOT } from '@/lib/tone-class'
+import { useAttention } from '@/hooks/use-attention'
 import { useMissions } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import type { MissionStatus } from '@/types'
@@ -32,6 +34,7 @@ export function Sidebar() {
   const { pathname } = useLocation()
   const isAdmin = useAuthStore((s) => s.isAdmin)
   const { data: missions } = useMissions()
+  const { data: attention } = useAttention()
 
   return (
     <aside className="flex h-full w-[236px] shrink-0 flex-col border-r border-border bg-sidebar">
@@ -63,6 +66,12 @@ export function Sidebar() {
 
         {missions?.map((mission) => {
           const active = pathname.startsWith(`/missions/${mission.id}`)
+          const pending = attention?.pending_counts[mission.id] ?? 0
+          // The Plan item counts the pending items that open on the Plan page.
+          const planCount =
+            attention?.items.filter(
+              (item) => item.mission_id === mission.id && item.href === ROUTES.MISSION_PLAN(mission.id),
+            ).length ?? 0
           return (
             <Fragment key={mission.id}>
               <Link to={ROUTES.MISSION(mission.id)} className={itemClass(active)}>
@@ -72,9 +81,10 @@ export function Sidebar() {
                     TONE_DOT[missionTone[mission.status as MissionStatus].tone],
                   )}
                 />
-                <span className="truncate">{mission.name}</span>
+                <span className="flex-1 truncate">{mission.name}</span>
+                {pending > 0 && <CountBadge count={pending} label={`${pending} waiting on ${mission.name}`} />}
               </Link>
-              {active && <SidebarMissionNav missionId={mission.id} />}
+              {active && <SidebarMissionNav missionId={mission.id} planCount={planCount} />}
             </Fragment>
           )
         })}

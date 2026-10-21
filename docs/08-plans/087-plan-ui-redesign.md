@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5, 6, 7 complete (2026-10-19)
+**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5, 6, 7, 8 complete (2026-10-21)
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -589,7 +589,48 @@ already uses one). Trigger summaries use `describeCronExpression`; `variable-aut
 migrates to `use-click-outside`. `workflow-editor.tsx` (914) and `step-detail.tsx` (812) must not grow; if the
 restyle cannot fit, split by responsibility before restyling, in its own commit.
 
-### Phase 8 — Backend data (§3) and client hooks
+### Phase 8 — Backend data (§3) and client hooks (done)
+
+Built in this order, one commit each: the team authorisation fix (D10), the configured default model (D11), then 8.1,
+8.4 and 8.2 with 8.3.
+
+**8.1 Mission spend.** `MissionResponse.spent_usd` (never null) from `TokenEconomicsService.get_cost_by_mission`, one
+grouped query on the shared scope filter (which now also takes a list of missions); `MissionService.to_responses` is the
+only way an endpoint returns missions, so create, list, get and update all carry it; `MissionResponse.from_mission` builds
+it because spend is not a column. Verified against a real database session: the sum, `0.0`, other missions' calls ignored,
+the four endpoints, and exactly one `llm_calls` statement for a list.
+
+**8.4 Team member enable.** `PATCH /missions/{id}/team/{member_id}/enabled` with `TeamMemberEnabledUpdate`, calling the
+existing `toggle_enabled`, behind the scoped member lookup. The Team page's switch, and the `enabled_only=false` its list
+needs (C26), are Phase 10.1.
+
+**8.2 Attention.** `GET /attention` returns `{ items, pending_counts }` (`AttentionService`, `schemas/attention.py`).
+Deviations from §3.2:
+
+- Tasks are aggregated (D12): `TaskRepository.summarise_for_missions` is one grouped query joined to ACTIVE or PAUSED plans,
+  replacing the planned `list_by_status_for_missions`; proposed tasks only count where the plan's gate mode needs a person
+  (`AUTO_APPROVE_GATE_MODES`, now in `models/mission_plan.py`; a plan with no gate mode counts, as it defaults to
+  interactive). Each item carries `count`.
+- Agent code may not import models (rule 011.1), so the Director's approve tool asks `gate_mode_auto_approves` in
+  `services/mission_plan.py` instead of importing the constant as §3.2 said.
+- Visible missions are the ones the user owns or belongs to (what `require_mission_access` allows), never platform ones
+  unless admin, never archived: `MissionRepository.list_open_for_user`.
+- `list_pending_gate_requests` and `list_pending_human_input` take lists of missions; their one caller each passes
+  `[mission_id]`.
+- Links built by the backend: tasks to the Plan board, a gate to the mission's Overview (the active run card answers it),
+  human input to its workflows page. Items are ordered gates, human input, approvals, then failures.
+- `hooks/use-attention.ts` (24 lines) is a query with `refetchInterval: ATTENTION_POLL_MS` (`lib/constants.ts`); the
+  mission layout also invalidates it on `mission_plan.*`, `gate.*` and `workflow.human_input.*` events and on reconnect.
+
+**8.3 Sidebar badge.** A `CountBadge` on each mission row (items for the mission) and a count on the Plan item (items whose
+link is the Plan page), from the same query as the Dashboard will use: one request.
+
+Verified: 2208 backend tests (unit and integration) pass; with the service's user scope, or its auto-approve exclusion,
+removed, the attention tests fail. The sidebar was browser-tested with the endpoint answered by the test, because the
+running dev API predates it.
+
+**Original plan text:**
+
 
 Decided (D3): build both additions.
 
@@ -686,6 +727,7 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | Run live (fixed 2026-10-20) | A run opened after it finished showed no activity or results. It now renders from its record: the timeline lists the recorded task executions and the results panel the recorded outcome (`OutputPreviewContent`); the summary shows recorded tokens (input and output) when the outcome has them. Live events are still not kept, and the page says so. |
 | Run live | The store reads a `tasks` list from `plan.created`, but the event is typed with `step_count` and nothing in `modules/` emits it, so the step total may never be known. |
 | Admin health (fixed 2026-10-20) | The page called `GET /admin/system/health`, which answers 405: the endpoint is `POST`. |
+| Missions API | `GET /missions` returns only the missions a non-admin owns, while access (and the attention list) also covers missions they belong to; a member sees a mission's page by link but not in the sidebar or dashboard list. |
 | Knowledge | `CollapsibleSection` put its header filter chips (buttons) inside its toggle button, which React flags as nested buttons and which breaks keyboard and screen-reader use. The toggle is now the title area only (fixed 2026-10-20). |
 | Chat history | Old Director prompts stored in session messages still quote the `__META__` tail from before the supervisor fix (visible in the ai-deep-research chat thread). It is recorded conversation, so it was left as it is. |
 | Runs / API | The backend serves decision reasoning with a stored metadata tail until it is restarted on the fix for supervisor decisions (the API here runs without `--reload`). |
@@ -803,3 +845,6 @@ workflow editor drag, connect, select, save, run and schedule work.
 | D7 | Definition of "spent" against the mission budget: `llm_calls` total (what the Costs tab shows) or `execution_records` total (what the Platform Director's cost tool uses). Budget enforcement itself is per plan (`MissionPlan` budget ceiling seeded from the mission ceiling in `services/mission_plan.py:137`), so neither figure is the enforced one | Phase 8.1 | **Decided 2026-10-16:** `llm_calls`, so Dashboard, Overview and Costs show one number. |
 | D8 | Add `eslint-plugin-tailwindcss` with `no-custom-classname`, so undefined classes fail `npm run lint` instead of needing gate 6.1.4 by hand | Phase 1.1 | **Decided 2026-10-16:** add it (Phase 1.1). |
 | D9 | What happens to the header's inline brief editor (`InlineBrief`) when the header is removed | Phase 3.3 | **Decided 2026-10-19:** drop it; the brief stays on Overview and is edited in its Settings modal. |
+| D10 | Team member endpoints that take a member id (remove, prompt, constraints, prompt history) checked access to the mission in the URL, not that the member is on it | Before 8.4 | **Decided 2026-10-20:** fix first, in its own commit (`get_member_in_mission`, 404 for another mission's member, integration tests per endpoint). The new enable endpoint uses it too. |
+| D11 | What new LLM-call and decision steps start with (a model string was hard-coded in the editor) | Before 8.2 | **Decided 2026-10-20:** a configured default: `workflows.yaml` `default_step_model`, a `models.yaml` alias, no code default, read through `GET /workflows/editor-defaults`. |
+| D12 | The attention list as specified returns every failed and proposed task (586 failed tasks on the dev data, 177 in one mission) | Phase 8.2 | **Decided 2026-10-20:** one item per mission per kind with a count for tasks; a gate request and a human-input request stay one item each; the sidebar badge counts items. |
