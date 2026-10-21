@@ -122,6 +122,10 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C42 | §6.9 "Palette P (`node-palette.tsx`)" is the left list of step types, `cursor-grab` | In the repo `node-palette.tsx` is the Space-key command search that pops over the canvas. Nothing in the editor supports dragging a type onto the canvas; steps are added by click (`handleAddNode`) | The left list is a new `step-palette.tsx` (click to add, no drag, as C38). `node-palette.tsx` stays as the command search and is restyled. Both read `STEP_TYPES`. |
 | C43 | §6.8 workflow cards show a last-run `StatusPill`, cron in words and a workflow enable toggle (`workflows-panel.tsx:377`) | `MissionWorkflow` has no last-run field and no hook returns one; the list carries `trigger_type`, not a schedule; the "toggle at line 377" is the schedule on/off button, and a workflow has no enable switch | Cards show the enabled/disabled pill, version, step count and trigger. The `Switch` replaces the schedule toggle, whose rows already show `describeCronExpression`. No new query, no invented toggle. |
 | C44 | §6.8 card actions "on hover" | Hover-only actions are invisible at rest and unreachable by touch; the empty Schedules text tells the user to "use the clock icon on a workflow" | Card actions (run, edit, schedule, delete) stay visible, in the card footer so the name keeps the full row. |
+| C45 | §6.1 mission card shows a last-activity time | `MissionResponse` has no last-activity field; `updated_at` moves on any edit, not on work | The card shows `created {relative}`. A last-activity time needs a backend field (an aggregate over runs or events) and is not added here. |
+| C46 | §6.3 Recent runs row shows the workflow name | Same as C40: a run record has no workflow name. | The row shows the run's objective, truncated, with the id, cost and relative time. |
+| C47 | §6.3 Overview "environment" and setup cards unchanged | `environment-status-card.tsx` fell back to the literal image `code-workspace:latest` when the mission named none, and `setup-checklist.tsx` told the user to "click the brief area in the header", which D9 removed | The image fallback is gone (the card shows nothing for an unset image, per no hard-coded fallbacks); the hint reads "Open Edit and write a brief" and opens the Edit modal. |
+| C48 | §6.0 dev quick login is shown with the sign-in form | The three buttons carry the seeded sysadmin, admin and user passwords, and a production bundle would ship them | See D13: the list is built only when `import.meta.env.DEV` is true. The production bundle was grepped for the passwords and the seeded emails: absent. |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -164,7 +168,7 @@ the shared location, update every caller, and delete the original.
 | Click-outside handling | Duplicated in `notification-dropdown.tsx`, `plan-board-task-card.tsx` and `variable-autocomplete.tsx` (`slash-command-popover.tsx` only matched on its `onMouseDown` prop; it has no click-outside code) | Extract `hooks/use-click-outside.ts` when `menu.tsx` is created (third+ use, P14). Migrate each file in the phase that touches it. |
 | Cost formatting | `toFixed(4)` inlined 40 times for per-call and per-task costs (`$0.0412`), `toFixed(2)` for totals and budgets (`$212.40`) | `fmtCost` (4 decimals) and `fmtUsd` (2 decimals) in `lib/format.ts` (added in 2.2); replace inline formatting in every file a phase restyles. |
 | Durations and elapsed time | `formatDuration` (`workflow-run-history.tsx`), `formatElapsed` (`live-footer.tsx`) | Moved to `lib/format-date.ts` in Phase 2.2. `runs-panel.tsx:204` still computes a duration inline; use `formatDuration` when Phase 6 restyles it. |
-| Relative time ("2h ago") | None; `date-fns` is already a dependency but unused | Add `formatRelative` to `lib/format-date.ts` using `date-fns`, in Phase 9.2 with its first caller. |
+| Relative time ("2h ago") | None; `date-fns` is already a dependency but unused | Added `formatRelative` to `lib/format-date.ts` in Phase 9 with its first callers. It does not use `date-fns`: `formatDistanceToNow` returns "about 4 months ago", and the handoff's rows are `4mo ago`. `date-fns` is still unused. |
 | Cron in words (§6.8) | `describeCronExpression` in `lib/cron.ts:150` | Use it. |
 | User avatar initials (sidebar footer) | `components/ui/avatar.tsx` | Restyle and use it. |
 | Plan Stop/Resume (§5.3, §6.5) | `handlePlanPauseToggle` in `plan-board-top-bar.tsx:70`; a duplicate in `layout.tsx:128-136` | Keep the toolbar one, restyle it, delete the `layout.tsx` copy (Phase 3.3). |
@@ -661,22 +665,36 @@ mission access is refused.
 Gates for this phase include `pytest tests/unit tests/integration` and
 `python scripts/code_rules_fast.py --all`.
 
-### Phase 9 — Login, Dashboard, New mission, Overview (handoff §6.0–§6.3)
+### Phase 9 — Login, Dashboard, New mission, Overview (handoff §6.0–§6.3) (done)
 
-**9.1 Login.** Handoff §6.0 plus the theme toggle.
-**9.2 Dashboard.** Handoff §6.1. "Needs your attention" from `use-attention`, hidden when empty;
-the icon and tone per `kind` come from an `attentionTone` map in `lib/status-tone.ts`
-(`task_approval` and `gate` → brand `Check`; `human_input` → warning `User`; `retry` → danger
-`RotateCcw`). Ages use `formatRelative`, added to `lib/format-date.ts` in this phase. The card
-`⋯` menu uses `components/ui/menu.tsx`.
-Mission cards show `spent_usd` of `budget_ceiling_usd` and the progress bar only when a ceiling
-is set. The greeting summary counts come from data already loaded (missions, running executions,
-attention items) — counting is presentation; no other derivation. Archive and Delete move into a
-hover `⋯` menu, keeping the existing confirmation dialog.
-**9.3 New mission.** Handoff §6.2 with C27. Keep the existing validation and fields.
-**9.4 Overview.** Handoff §6.3. The brief is the existing markdown brief, restyled at the handoff's
-size (C8, D9). Active run card reuses
-`components/mission/active-run-card.tsx`. `overview.tsx` (678) must not grow.
+**Shared pieces added:** `ui/field.tsx` (label, hint, error), `ui/input-group.tsx` (prefix and suffix adornments),
+`ui/theme-toggle.tsx` (extracted from the sidebar footer, which now uses it), `Button` size `xl`, `formatRelative`
+(C45, §2.4) and `attentionTone` in `lib/status-tone.ts`.
+
+**9.1 Login.** Centred 360px column, heading, labelled fields, one `signIn(email, password)` for the form and for the
+quick-login buttons (the old `setTimeout` plus `requestSubmit` is gone), theme toggle top right. Quick login is a
+development-build feature (D13, C48).
+**9.2 Dashboard.** Greeting and summary counts, "Needs your attention" (hidden when empty), a Segmented status filter, mission
+cards, a dashed New mission tile and the empty state. `AttentionPanel` and `MissionCard` are their own files. Cards are
+`role="link"` and open on Enter; the admin-only `⋯` menu (Archive, Delete) keeps the existing confirmation dialogs and its
+clicks do not open the card. Spend and the progress bar show only when a ceiling is set. Age is `created {relative}` (C45).
+**9.3 New mission.** Single step (C27), breadcrumb, `Field`s, `missions/` prefix and `$`/`USD` adornments; validation, payload
+and the redirect to Team are unchanged.
+**9.4 Overview.** `overview.tsx` went from 659 to 280 lines by splitting out `mission-edit-modal.tsx`, `setup-checklist.tsx`,
+`environment-status-card.tsx`, `recent-errors.tsx` and `team-panel.tsx`. The brief row carries Edit and Delete (D9); the facts
+strip is one `Panel` with clipped inner cell dividers (the one `border-l` the layout gate reports is a cell divider inside an
+`overflow-hidden` panel, not a panel side stripe); Recent runs per C46; the Team panel shows live agent state from the workspace
+store. The active-run card keeps its gate approval, event link, Live pill and click-through, and shows no step count (C41).
+The Edit modal now closes on Escape, like `ConfirmDialog`.
+
+Verified (2026-10-21): `tsc`, lint and build; colour, template-class and layout gates; production bundle free of the dev
+credentials. Browser tests in both themes: login (error path, single POST per submit, quick login, theme toggle, real sign-in),
+dashboard (attention against real data, filter, keyboard open, menu does not navigate, Archive sends one PATCH, Cancel sends
+none), new mission (validation, exact POST body, redirect, Cancel), overview (setup checklist with a faked empty mission,
+Edit modal and Escape, Delete confirm, faked running run with its clock and click-through). Earlier sidebar-badge, fixes,
+editor, runs, live, plan, workflows and modals tests pass unchanged; the route sweep reports no failed request, console error
+or page error. Before/after screenshot review of all 26 routes against Phase 7 found no regression: the five flags the reviewers
+raised were each refuted against the code.
 
 ### Phase 10 — Mission secondary screens (handoff §6.10–§6.16)
 
@@ -814,6 +832,11 @@ dialog, the schedule dialog and answering a human-input request all work; schedu
 the editor. Not exercised because they write: Save (Cmd+S), creating a schedule, starting a run for real, deleting a workflow.
 Earlier passes still hold: the Plan, Runs and Run live tests were re-run after this phase and pass unchanged.
 
+Phase 9 pass (2026-10-21, every write intercepted): sign-in posts the typed credentials once and a failure shows the error; the
+Dashboard menu, Archive and Delete confirmations send nothing on Cancel and one PATCH on Archive; New mission posts the same
+body and lands on Team; Overview Edit, Delete, the setup checklist actions and the running-run click-through work. Not exercised
+because they write: saving the Edit modal and deleting a real mission. Earlier passes still hold (tests re-run, all pass).
+
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
 from card and panel hit the same mutations; chat threads, slash commands and
 ⌘↵ work; RunModal, MissionSettingsDrawer, NotificationDropdown and every RightDrawer panel open;
@@ -849,3 +872,4 @@ workflow editor drag, connect, select, save, run and schedule work.
 | D10 | Team member endpoints that take a member id (remove, prompt, constraints, prompt history) checked access to the mission in the URL, not that the member is on it | Before 8.4 | **Decided 2026-10-20:** fix first, in its own commit (`get_member_in_mission`, 404 for another mission's member, integration tests per endpoint). The new enable endpoint uses it too. |
 | D11 | What new LLM-call and decision steps start with (a model string was hard-coded in the editor) | Before 8.2 | **Decided 2026-10-20:** a configured default: `workflows.yaml` `default_step_model`, a `models.yaml` alias, no code default, read through `GET /workflows/editor-defaults`. |
 | D12 | The attention list as specified returns every failed and proposed task (586 failed tasks on the dev data, 177 in one mission) | Phase 8.2 | **Decided 2026-10-20:** one item per mission per kind with a count for tasks; a gate request and a human-input request stay one item each; the sidebar badge counts items. |
+| D13 | The Login quick-login buttons hold seeded passwords | Phase 9.1 | **Decided 2026-10-21:** dev build only (`import.meta.env.DEV`); a production bundle contains no credentials. |

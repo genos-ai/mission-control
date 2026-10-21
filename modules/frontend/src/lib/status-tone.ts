@@ -10,6 +10,7 @@
 
 import {
   Archive,
+  Check,
   CheckCircle2,
   Circle,
   CircleDashed,
@@ -20,6 +21,7 @@ import {
   MessageSquare,
   MinusCircle,
   PauseCircle,
+  RotateCcw,
   Settings2,
   User,
   XCircle,
@@ -29,7 +31,7 @@ import {
 
 import type { PlanTaskStatus } from '@/hooks/use-mission-plan'
 import type { ConsoleEvent } from '@/stores/console'
-import type { MissionStatus, RunStatus } from '@/types'
+import type { AttentionKind, MissionStatus, RunStatus } from '@/types'
 
 export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'violet' | 'neutral'
 
@@ -63,6 +65,14 @@ export const runTone: Record<RunStatus, StatusStyle> = {
   failed: { tone: 'danger', icon: XCircle },
   cancelled: { tone: 'neutral', icon: CircleSlash },
   timed_out: { tone: 'danger', icon: Clock },
+}
+
+/** What each kind of attention item looks like: a decision to make, a question to answer, a failure to retry. */
+export const attentionTone: Record<AttentionKind, StatusStyle> = {
+  task_approval: { tone: 'brand', icon: Check },
+  gate: { tone: 'brand', icon: Check },
+  human_input: { tone: 'warning', icon: User },
+  retry: { tone: 'danger', icon: RotateCcw },
 }
 
 export const consoleCategoryTone: Record<ConsoleEvent['category'], StatusStyle> = {

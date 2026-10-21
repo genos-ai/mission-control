@@ -4,10 +4,13 @@ import { useCreateMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
 import { ROUTES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
+import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { InputGroup } from '@/components/ui/input-group'
 import { Textarea } from '@/components/ui/textarea'
-import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
+import { TopBar } from '@/components/layout/top-bar'
+import { DocumentPage } from '@/components/layout/document-page'
 
 const MISSION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
 
@@ -72,14 +75,29 @@ export default function NewMissionPage() {
   }
 
   return (
-    <div className="flex justify-center p-8">
-      <Panel className="w-full max-w-lg">
-        <PanelHeader title="Create Mission" />
-        <PanelContent className="pt-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Name</label>
-              <Input
+    <>
+      <TopBar segments={[{ label: 'Missions', to: ROUTES.DASHBOARD }, { label: 'New mission' }]} />
+      <DocumentPage className="max-w-[600px]">
+        <div className="flex flex-col gap-1 pb-3">
+          <h1 className="text-2xl font-semibold tracking-[-0.02em]">New mission</h1>
+          <p className="text-md text-muted-foreground">
+            Give agents a purpose and a budget. You&apos;ll pick the team next.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1.5">
+            <Field
+              label="Name"
+              htmlFor="mission-name"
+              describedById="mission-name-help"
+              error={showNameError ? nameError : undefined}
+              hint="Lowercase slug — must start with a letter, then letters, numbers, hyphens, or underscores. No spaces or other characters."
+            >
+              <InputGroup
+                id="mission-name"
+                prefixLabel="missions/"
+                mono
                 placeholder="daily-cti-brief"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -89,98 +107,80 @@ export default function NewMissionPage() {
                 required
                 autoFocus
               />
-              {showNameError ? (
-                <div className="space-y-1">
-                  <p className="text-xs text-destructive" id="mission-name-help">
-                    {nameError}
-                  </p>
-                  {canSuggest && (
-                    <button
-                      type="button"
-                      className="text-xs underline text-muted-foreground hover:text-foreground"
-                      onClick={() => setName(suggestion)}
-                    >
-                      Use “{suggestion}” instead
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <p
-                  className="text-xs text-muted-foreground"
-                  id="mission-name-help"
-                >
-                  Lowercase slug — must start with a letter, then letters,
-                  numbers, hyphens, or underscores. No spaces or other
-                  characters.
-                </p>
-              )}
-            </div>
+            </Field>
+            {showNameError && canSuggest && (
+              <button
+                type="button"
+                className="self-start text-xs text-muted-foreground underline hover:text-foreground"
+                onClick={() => setName(suggestion)}
+              >
+                Use “{suggestion}” instead
+              </button>
+            )}
+          </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Description</label>
-              <Input
-                placeholder="What this mission does"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                required
-              />
-            </div>
+          <Field label="Description" htmlFor="mission-description">
+            <Input
+              id="mission-description"
+              placeholder="What this mission does"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
+            />
+          </Field>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Brief</label>
-              <Textarea
-                placeholder="Strategic directive for agents (optional)"
-                value={brief}
-                onChange={(e) => setBrief(e.target.value)}
-                rows={4}
-              />
-              <p className="text-xs text-muted-foreground">
-                The directive agents read to understand their purpose
-              </p>
-            </div>
+          <Field
+            label="Brief"
+            htmlFor="mission-brief"
+            note="optional"
+            hint="The directive agents read to understand their purpose"
+          >
+            <Textarea
+              id="mission-brief"
+              placeholder="Strategic directive for agents"
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={5}
+            />
+          </Field>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Budget Ceiling (USD)</label>
-              <Input
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Budget ceiling" htmlFor="mission-budget">
+              <InputGroup
+                id="mission-budget"
                 type="number"
-                placeholder="Optional"
+                prefixLabel="$"
+                suffixLabel="USD"
+                placeholder="No limit"
                 value={budgetCeiling}
                 onChange={(e) => setBudgetCeiling(e.target.value)}
                 min="0.01"
                 step="0.01"
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Repository URL</label>
+            </Field>
+            <Field label="Repository" htmlFor="mission-repo" note="optional">
               <Input
-                placeholder="https://github.com/org/repo (optional)"
+                id="mission-repo"
+                placeholder="https://github.com/org/repo"
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
               />
-            </div>
+            </Field>
+          </div>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => navigate(-1)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createMission.isPending || nameError !== null}
-              >
-                {createMission.isPending ? <Spinner className="mr-2" /> : null}
-                Create & Assemble Team
-              </Button>
-            </div>
-          </form>
-        </PanelContent>
-      </Panel>
-    </div>
+          <div className="flex justify-end gap-2 border-t border-line pt-5">
+            <Button type="button" variant="secondary" size="lg" onClick={() => navigate(-1)}>
+              Cancel
+            </Button>
+            <Button type="submit" size="lg" disabled={createMission.isPending || nameError !== null}>
+              {createMission.isPending ? <Spinner /> : null}
+              Create mission
+            </Button>
+          </div>
+        </form>
+      </DocumentPage>
+    </>
   )
 }

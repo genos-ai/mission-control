@@ -76,3 +76,22 @@ export function formatElapsed(ms: number): string {
   const sec = totalSec % 60
   return `${min}:${sec.toString().padStart(2, '0')}`
 }
+
+/**
+ * How long ago, compactly: "just now", "5m ago", "3h ago", "2d ago", "4mo ago", "1y ago".
+ * Timestamps are UTC, as everywhere else here; `now` is a parameter so a caller that
+ * ticks (or a test) controls the clock.
+ */
+export function formatRelative(value: string | Date, now: number = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - parseUtc(value).getTime()) / 1000))
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(days / 365)}y ago`
+}

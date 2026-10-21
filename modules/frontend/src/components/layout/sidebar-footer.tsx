@@ -1,22 +1,19 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { LogOut, Moon, Sun } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 
 import { NotificationDropdown } from './notification-dropdown'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { useExecutions } from '@/hooks/use-executions'
 import { useNow } from '@/hooks/use-now'
 import { formatElapsed, parseUtc } from '@/lib/format-date'
 import { ROUTES } from '@/lib/constants'
 import { useAuthStore } from '@/stores/auth'
-import { useTheme } from '@/stores/theme'
 
 export function SidebarFooter() {
   const navigate = useNavigate()
   const { user, isAdmin } = useAuthStore()
-  const theme = useTheme((s) => s.theme)
-  const toggleTheme = useTheme((s) => s.toggle)
-  const nextThemeLabel = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
 
   return (
     <div className="flex flex-col gap-1.5 border-t border-border p-2.5">
@@ -33,9 +30,7 @@ export function SidebarFooter() {
             </span>
           </Link>
           <NotificationDropdown />
-          <Button variant="ghost" size="icon" aria-label={nextThemeLabel} title={nextThemeLabel} onClick={toggleTheme}>
-            {theme === 'dark' ? <Sun className="h-[15px] w-[15px]" /> : <Moon className="h-[15px] w-[15px]" />}
-          </Button>
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="icon"

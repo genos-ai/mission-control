@@ -1,187 +1,122 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Archive, Plus, Rocket, Trash2 } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { useMissions, useDeleteMission } from '@/hooks/use-missions'
+import { Rocket } from 'lucide-react'
+import { useMissions } from '@/hooks/use-missions'
+import { useExecutions } from '@/hooks/use-executions'
+import { useAttention } from '@/hooks/use-attention'
 import { useAuthStore } from '@/stores/auth'
-import { api } from '@/lib/api'
-import { ROUTES } from '@/lib/constants'
-import { StatusPill } from '@/components/ui/status-pill'
-import { missionTone } from '@/lib/status-tone'
+import { AttentionPanel } from '@/components/dashboard/attention-panel'
+import { MissionCard, NewMissionTile } from '@/components/dashboard/mission-card'
+import { DocumentPage } from '@/components/layout/document-page'
+import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
-import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Segmented } from '@/components/ui/segmented'
 import { Spinner } from '@/components/ui/spinner'
-import type { MissionListItem } from '@/types'
-import { useQueryClient } from '@tanstack/react-query'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { missionKeys } from '@/hooks/use-missions'
+import type { MissionStatus } from '@/types'
 
-function MissionCard({ mission, isAdmin }: { mission: MissionListItem; isAdmin: boolean }) {
-  const navigate = useNavigate()
-  const deleteMission = useDeleteMission()
-  const queryClient = useQueryClient()
-  const [dialog, setDialog] = useState<'delete' | 'archive' | null>(null)
+const NEW_MISSION_PATH = '/missions/new'
 
-  async function handleArchive() {
-    try {
-      await api.patch(`/missions/${mission.id}`, { status: 'archived' })
-      toast.success(`${mission.name} archived`)
-      queryClient.invalidateQueries({ queryKey: missionKeys.all })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Archive failed')
-    }
-    setDialog(null)
-  }
+type Filter = 'all' | MissionStatus
 
-  async function handleDelete() {
-    try {
-      await deleteMission.mutateAsync(mission.id)
-      toast.success(`${mission.name} deleted`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Delete failed')
-    }
-    setDialog(null)
-  }
+const FILTER_OPTIONS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'paused', label: 'Paused' },
+  { value: 'archived', label: 'Archived' },
+]
 
-  return (
-    <>
-      {dialog === 'delete' && (
-        <ConfirmDialog
-          title="Delete mission"
-          message={`Permanently delete "${mission.name}" and all related data? This cannot be undone.`}
-          confirmLabel="Delete"
-          variant="danger"
-          onConfirm={handleDelete}
-          onCancel={() => setDialog(null)}
-        />
-      )}
-      {dialog === 'archive' && (
-        <ConfirmDialog
-          title="Archive mission"
-          message={`Archive "${mission.name}"? You can restore it later.`}
-          confirmLabel="Archive"
-          variant="warning"
-          onConfirm={handleArchive}
-          onCancel={() => setDialog(null)}
-        />
-      )}
-      <Panel
-        className="cursor-pointer transition-colors hover:border-primary/40"
-        onClick={() => navigate(ROUTES.MISSION_OVERVIEW(mission.id))}
-      >
-        <PanelHeader
-          title={mission.name}
-          actions={
-            <>
-              {mission.tier === 'platform' && (
-                <StatusPill tone="warning" dot={false}>platform</StatusPill>
-              )}
-              <StatusPill tone={missionTone[mission.status].tone}>{mission.status}</StatusPill>
-            </>
-          }
-        />
-        <PanelContent>
-          <p className="line-clamp-2 text-sm text-muted-foreground">
-            {mission.description}
-          </p>
-          <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-            <div className="flex items-center gap-4">
-              {mission.budget_ceiling_usd != null && (
-                <span>Budget: ${mission.budget_ceiling_usd.toLocaleString()}</span>
-              )}
-              <span>Created {new Date(mission.created_at).toLocaleDateString()}</span>
-            </div>
-            {isAdmin && (
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                {mission.status !== 'archived' && (
-                  <button
-                    onClick={() => setDialog('archive')}
-                    className="rounded p-1 text-muted-foreground/50 transition-colors hover:text-amber-600"
-                    title="Archive mission"
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <button
-                  onClick={() => setDialog('delete')}
-                  className="rounded p-1 text-muted-foreground/50 transition-colors hover:text-red-600"
-                  title="Delete mission"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        </PanelContent>
-      </Panel>
-    </>
-  )
+function greeting(hour: number): string {
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
 }
 
-function EmptyDashboard() {
-  const navigate = useNavigate()
-
-  return (
-    <div className="flex flex-col items-center justify-center gap-6 py-24">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-        <Rocket className="h-8 w-8 text-primary" />
-      </div>
-      <div className="text-center">
-        <h2 className="text-xl font-semibold">Welcome to Mission Control</h2>
-        <p className="mt-2 text-muted-foreground">
-          Create your first mission to get started.
-        </p>
-      </div>
-      <Button onClick={() => navigate('/missions/new')}>
-        <Plus className="mr-2 h-4 w-4" />
-        Create Mission
-      </Button>
-    </div>
-  )
-}
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 export default function DashboardPage() {
   const { data: missions, isLoading } = useMissions()
+  const { data: running } = useExecutions({ status: 'running', limit: 5 })
+  const { data: attention } = useAttention()
   const user = useAuthStore((s) => s.user)
   const isAdmin = useAuthStore((s) => s.isAdmin)
   const navigate = useNavigate()
+  const [filter, setFilter] = useState<Filter>('all')
+
+  const topBar = (
+    <TopBar
+      segments={[{ label: 'Home' }]}
+      actions={<Button onClick={() => navigate(NEW_MISSION_PATH)}>New mission</Button>}
+    />
+  )
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="h-8 w-8" />
-      </div>
+      <>
+        {topBar}
+        <div className="flex items-center justify-center py-24">
+          <Spinner className="h-8 w-8" />
+        </div>
+      </>
     )
   }
 
   if (!missions || missions.length === 0) {
     return (
-      <div className="p-8">
-        <EmptyDashboard />
-      </div>
+      <>
+        {topBar}
+        <EmptyState
+          icon={<Rocket className="h-4 w-4" />}
+          title="Welcome to Mission Control"
+          description="Create your first mission to get started."
+          action={{ label: 'Create mission', onClick: () => navigate(NEW_MISSION_PATH) }}
+        />
+      </>
     )
   }
 
-  return (
-    <div className="p-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {user?.display_name ? `Welcome back, ${user.display_name}` : 'Mission overview'}
-          </p>
-        </div>
-        <Button onClick={() => navigate('/missions/new')}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Mission
-        </Button>
-      </div>
+  const countOf = (f: Filter) => (f === 'all' ? missions.length : missions.filter((m) => m.status === f).length)
+  const visible = filter === 'all' ? missions : missions.filter((m) => m.status === filter)
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {missions.map((mission) => (
-          <MissionCard key={mission.id} mission={mission} isAdmin={isAdmin} />
-        ))}
-      </div>
-    </div>
+  const firstName = user ? (user.display_name || user.email.split('@')[0]).split(/\s+/)[0] : null
+  const summary = [
+    countOf('active') > 0 && `${plural(countOf('active'), 'mission', 'missions')} active`,
+    running && running.total > 0 && `${plural(running.total, 'run', 'runs')} in progress`,
+    attention && attention.items.length > 0 && `${plural(attention.items.length, 'item', 'items')} waiting on you`,
+  ].filter(Boolean)
+
+  return (
+    <>
+      {topBar}
+      <DocumentPage className="gap-6">
+        <div className="flex flex-col gap-1.5 pt-4">
+          <h1 className="text-3xl font-semibold tracking-[-0.025em]">
+            {greeting(new Date().getHours())}
+            {firstName && `, ${firstName}`}
+          </h1>
+          {summary.length > 0 && <p className="text-md text-muted-foreground">{summary.join(' · ')}</p>}
+        </div>
+
+        <AttentionPanel />
+
+        <section className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs font-medium text-subtle">Missions</h2>
+            <Segmented
+              label="Filter missions"
+              value={filter}
+              onChange={setFilter}
+              options={FILTER_OPTIONS.map((o) => ({ ...o, count: countOf(o.value) }))}
+            />
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
+            {visible.map((mission) => (
+              <MissionCard key={mission.id} mission={mission} isAdmin={isAdmin} />
+            ))}
+            <NewMissionTile />
+          </div>
+        </section>
+      </DocumentPage>
+    </>
   )
 }
