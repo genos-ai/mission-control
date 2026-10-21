@@ -23,6 +23,7 @@ export const workflowKeys = {
     ['missions', missionId, 'workflows'] as const,
   schedules: (missionId: string) =>
     ['missions', missionId, 'schedules'] as const,
+  editorDefaults: ['workflow-editor-defaults'] as const,
 }
 
 // ---- Global workflow templates ----
@@ -125,6 +126,15 @@ export function useImportTemplate(missionId: string) {
 export const workflowRunKeys = {
   list: (missionId: string, workflowName?: string) =>
     ['missions', missionId, 'workflow-runs', workflowName ?? ''] as const,
+}
+
+/** What the editor gives new steps; set in the backend config, so it rarely changes. */
+export function useWorkflowEditorDefaults() {
+  return useQuery({
+    queryKey: workflowKeys.editorDefaults,
+    queryFn: () => api.get<{ step_model: string }>('/workflows/editor-defaults'),
+    staleTime: Infinity,
+  })
 }
 
 export function useWorkflowRuns(missionId: string | undefined, workflowName?: string) {

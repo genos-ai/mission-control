@@ -12,6 +12,7 @@
 #   enable_workflow_matching   - Enable Mission Control workflow matching fast-path (boolean)
 #   max_scheduled_runs_per_day - Platform-wide safety cap on scheduled runs per day (integer)
 #   schedule_evaluation_interval_seconds - How often the scheduler checks for due schedules (integer)
+#   default_step_model         - models.yaml alias that new LLM-call and decision steps start with (string, required)
 # =============================================================================
 
 workflows_dir: "config/workflow_templates"
@@ -24,6 +25,7 @@ max_concurrent_missions: 10
 enable_workflow_matching: true
 max_scheduled_runs_per_day: 50
 schedule_evaluation_interval_seconds: 60
+default_step_model: quick
 
 # Workshop (single-agent sandbox) settings
 workshop:

@@ -16,7 +16,7 @@ from tests.conftest import TEST_USER_ID
 def _mock_app_config(**overrides) -> MagicMock:
     """Create a mock AppConfig with a real WorkflowsSchema."""
     config = MagicMock()
-    config.workflows = WorkflowsSchema(**overrides)
+    config.workflows = WorkflowsSchema(**{"default_step_model": "quick", **overrides})
     return config
 
 

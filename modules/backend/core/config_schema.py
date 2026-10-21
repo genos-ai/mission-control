@@ -376,6 +376,12 @@ class WorkflowsSchema(_StrictBase):
     enable_workflow_matching: bool = True
     max_scheduled_runs_per_day: int = 50
     schedule_evaluation_interval_seconds: int = 60
+    # No default: the model new LLM-call and decision steps start with is a deployment choice.
+    default_step_model: str = Field(
+        ...,
+        min_length=1,
+        description="A models.yaml alias that new LLM-call and decision steps start with.",
+    )
     workshop: WorkshopSchema = Field(default_factory=WorkshopSchema)
 
 

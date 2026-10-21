@@ -157,6 +157,12 @@ class AppConfig:
             SecurityAssessmentSchema,
             "security_assessment.yaml",
         )
+        if self._workflows.default_step_model not in self._models.aliases:
+            raise ValueError(
+                f"Invalid configuration in workflows.yaml: default_step_model "
+                f"'{self._workflows.default_step_model}' is not a models.yaml alias "
+                f"(known: {sorted(self._models.aliases)})"
+            )
 
     @property
     def application(self) -> ApplicationSchema:

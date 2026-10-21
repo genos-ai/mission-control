@@ -25,7 +25,7 @@ import type { WorkflowStep } from '@/types'
 import { useWorkflowRunStatus } from '@/hooks/use-workflow-run-status'
 import { useResizable } from '@/hooks/use-resizable'
 import { ArchitectChat } from '@/components/drawer/architect-chat-panel'
-import { useWorkflowRuns } from '@/hooks/use-workflows'
+import { useWorkflowEditorDefaults, useWorkflowRuns } from '@/hooks/use-workflows'
 import { Panel } from '@/components/ui/panel'
 import { HumanInputPanel } from './human-input-panel'
 import { StepDetail } from './step-detail'
@@ -192,6 +192,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const [showHistory, setShowHistory] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [showPalette, setShowPalette] = useState(false)
+  const { data: editorDefaults } = useWorkflowEditorDefaults()
   const [architectOpen, setArchitectOpen] = useState(false)
   const { width: architectWidth, onMouseDown: onArchitectResize } = useResizable(380)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -539,6 +540,11 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const handleAddNode = useCallback(
     (nodeType: string) => {
       pushHistory()
+      // New LLM-call and decision steps start with the model alias set in the backend config.
+      const stepModel = editorDefaults?.step_model ?? ''
+      if ((nodeType === 'llm_call' || nodeType === 'decision') && !stepModel) {
+        toast.error("The default model couldn't be loaded; set this step's model yourself.")
+      }
       const prefix = nodeType === 'agent_step' ? 'step'
         : nodeType === 'condition' ? 'check'
         : nodeType === 'notification' ? 'notify'
@@ -580,7 +586,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
           tool_call_config: { tool_name: 'search_web', tool_args: {} },
         } : {}),
         ...(nodeType === 'llm_call' ? {
-          llm_call_config: { model: 'copilot:claude-haiku-4.5', system_prompt: null, prompt_template: 'Summarize the following:\n{{@node.step-id.output}}', temperature: 0.0, max_tokens: null, structured_output: null },
+          llm_call_config: { model: stepModel, system_prompt: null, prompt_template: 'Summarize the following:\n{{@node.step-id.output}}', temperature: 0.0, max_tokens: null, structured_output: null },
         } : {}),
         ...(nodeType === 'merge' ? {
           merge_config: { strategy: 'wait_all' },
@@ -591,7 +597,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         ...(nodeType === 'decision' ? {
           decision_config: {
             resolver: 'agent' as const,
-            model: 'copilot:claude-haiku-4.5',
+            model: stepModel,
             prompt: 'Based on the upstream results, decide which path to take.',
             temperature: 0,
             prompt_message: null,
@@ -620,7 +626,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       setShowHistory(false)
       setIsDirty(true)
     },
-    [nodes, setNodes, pushHistory],
+    [nodes, setNodes, pushHistory, editorDefaults],
   )
 
   const handleOpenArchitect = useCallback(() => {

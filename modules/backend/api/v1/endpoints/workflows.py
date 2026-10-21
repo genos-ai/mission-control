@@ -7,7 +7,8 @@ and monitoring mission status.
 
 from fastapi import APIRouter
 
-from modules.backend.core.dependencies import DbSession, RequestId
+from modules.backend.core.config import get_app_config
+from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
 from modules.backend.core.exceptions import NotFoundError
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.services.workflow import WorkflowService
@@ -37,6 +38,24 @@ async def list_workflows(
         success=True,
         data={"workflows": items},
         metadata={"request_id": request_id, "count": len(items)},
+    )
+
+
+# Declared before "/{workflow_name}", which would otherwise take this path as a workflow name.
+@router.get(
+    "/editor-defaults",
+    response_model=ApiResponse,
+    summary="Defaults the workflow editor gives new steps",
+)
+async def get_editor_defaults(
+    current_user: CurrentUser,
+    request_id: RequestId,
+) -> ApiResponse:
+    """The model alias new LLM-call and decision steps start with (workflows.yaml)."""
+    return ApiResponse(
+        success=True,
+        data={"step_model": get_app_config().workflows.default_step_model},
+        metadata={"request_id": request_id},
     )
 
 
