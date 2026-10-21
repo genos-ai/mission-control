@@ -24,7 +24,12 @@ from modules.backend.events.types import (
     MissionPlanTaskStatusChangedEvent,
 )
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
-from modules.backend.models.mission_plan import VALID_GATE_MODES, MissionPlan, MissionPlanStatus
+from modules.backend.models.mission_plan import (
+    AUTO_APPROVE_GATE_MODES,
+    VALID_GATE_MODES,
+    MissionPlan,
+    MissionPlanStatus,
+)
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
@@ -43,6 +48,14 @@ _REJECTABLE_FROM = frozenset(
         TaskStatus.RUNNING,
     }
 )
+
+
+def gate_mode_auto_approves(gate_mode: str | None) -> bool:
+    """Whether proposed tasks are approved without a person in this gate mode.
+
+    For callers outside the service layer, such as agent tools, which may not import models.
+    """
+    return gate_mode in AUTO_APPROVE_GATE_MODES
 
 
 class MissionPlanService(BaseService):
@@ -234,12 +247,12 @@ class MissionPlanService(BaseService):
 
     # ── Manual gate requests (Plan 80g) ─────────────────────────────────
 
-    async def list_pending_gate_requests(self, mission_id: str) -> list[GateRequest]:
-        """Return the mission's PENDING gate requests, oldest first."""
+    async def list_pending_gate_requests(self, mission_ids: list[str]) -> list[GateRequest]:
+        """Return the PENDING gate requests of the given missions, oldest first."""
         result = await self._session.execute(
             select(GateRequest)
             .where(
-                GateRequest.mission_id == mission_id,
+                GateRequest.mission_id.in_(mission_ids),
                 GateRequest.status == GateRequestStatus.PENDING,
             )
             .order_by(GateRequest.created_at.asc()),

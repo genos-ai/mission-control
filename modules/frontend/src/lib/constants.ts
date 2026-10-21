@@ -78,3 +78,6 @@ export const MISSION_NAV_GROUPS: readonly (readonly MissionNavItem[])[] = [
     { label: 'Console', icon: Terminal, to: ROUTES.MISSION_CONSOLE },
   ],
 ]
+
+/** How often the attention list is re-read where no live stream tells us it changed (the dashboard). */
+export const ATTENTION_POLL_MS = 30_000

@@ -23,7 +23,6 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 _MAX_REASON_CHARS = 500
-_AUTO_APPROVE_GATE_MODES = ("ai_assisted", "autonomous")
 
 
 # Guarded so the agent layer does not import sqlalchemy at runtime (rule 011.1).
@@ -53,7 +52,10 @@ def _check_gate_mode(gate_mode: str | None) -> None:
             "their behalf.",
             {"gate_mode": gate_mode},
         )
-    if gate_mode not in _AUTO_APPROVE_GATE_MODES:
+    # Imported here, like the service below, so the agent layer does not load sqlalchemy at import.
+    from modules.backend.services.mission_plan import gate_mode_auto_approves
+
+    if not gate_mode_auto_approves(gate_mode):
         raise ToolRefusal(f"Unsupported gate_mode for auto-approval: {gate_mode}")
 
 

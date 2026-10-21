@@ -17,6 +17,7 @@ import { useConsoleStore, type ConsoleEvent } from '@/stores/console'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { planKeys } from '@/hooks/use-mission-plan'
 import { artifactKeys } from '@/hooks/use-mission-artifacts'
+import { attentionKeys } from '@/hooks/use-attention'
 import { queryClient } from '@/lib/query-client'
 import { RunModal } from '@/components/mission/run-modal'
 import { MissionTopBar } from '@/components/mission/mission-top-bar'
@@ -104,6 +105,7 @@ export default function MissionLayout() {
     lastConnectedMission.current = id
     if (wasReconnect) {
       queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
+      queryClient.invalidateQueries({ queryKey: attentionKeys.all })
       queryClient.invalidateQueries({ queryKey: artifactKeys.list(id) })
       queryClient.invalidateQueries({ queryKey: ['executions'] })
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
@@ -121,6 +123,7 @@ export default function MissionLayout() {
     const newEvents = sseEvents.slice(-delta)
     processedTotal.current = totalAdded
     let planInvalidated = false
+    let attentionInvalidated = false
     let artifactsInvalidated = false
     newEvents.forEach((ev) => {
       const top = ev.data as Record<string, unknown>
@@ -136,6 +139,15 @@ export default function MissionLayout() {
       })
       if (ev.event_type.startsWith('mission_plan.') && id) {
         planInvalidated = true
+      }
+      // Tasks to approve or retry, gates and workflow questions all change what needs a person.
+      if (
+        id &&
+        (ev.event_type.startsWith('mission_plan.') ||
+          ev.event_type.startsWith('gate.') ||
+          ev.event_type.startsWith('workflow.human_input.'))
+      ) {
+        attentionInvalidated = true
       }
       // Plan 43: mission.artifact.found means a new artifact has
       // (or will shortly) land in mission_artifacts. Coalesce to a
@@ -164,6 +176,9 @@ export default function MissionLayout() {
     })
     if (planInvalidated && id) {
       queryClient.invalidateQueries({ queryKey: planKeys.plan(id) })
+    }
+    if (attentionInvalidated) {
+      queryClient.invalidateQueries({ queryKey: attentionKeys.all })
     }
     if (artifactsInvalidated && id) {
       queryClient.invalidateQueries({ queryKey: artifactKeys.list(id) })

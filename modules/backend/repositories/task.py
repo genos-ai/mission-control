@@ -9,16 +9,28 @@ Business logic (dependency closure on approval, state machine enforcement)
 lives in the service layer — this is raw data access.
 """
 
+from datetime import datetime
+from typing import NamedTuple
 from uuid import uuid7
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from modules.backend.core.logging import get_logger
+from modules.backend.models.mission_plan import MissionPlan, MissionPlanStatus
 from modules.backend.models.task import TERMINAL_TASK_STATUSES, Task, TaskDependency, TaskStatus
 from modules.backend.repositories.base import BaseRepository
 
 logger = get_logger(__name__)
+
+
+class TaskGroup(NamedTuple):
+    """The tasks of one mission that share a status: how many, and when."""
+
+    mission_id: str
+    count: int
+    oldest_created_at: datetime
+    latest_updated_at: datetime
 
 
 class TaskRepository(BaseRepository[Task]):
@@ -74,6 +86,48 @@ class TaskRepository(BaseRepository[Task]):
             query = query.where(Task.status == status)
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def summarise_for_missions(
+        self,
+        mission_ids: list[str],
+        status: TaskStatus,
+        *,
+        exclude_gate_modes: frozenset[str] = frozenset(),
+    ) -> list[TaskGroup]:
+        """Count each mission's tasks in `status`, for plans that are still open.
+
+        Only plans that are ACTIVE or PAUSED count: a failed task in a completed or
+        archived plan is history, not something to act on. One grouped query for all the
+        missions, however many tasks there are. `exclude_gate_modes` leaves out plans in
+        those gate modes (a plan with no gate mode is never left out: it defaults to
+        interactive).
+        """
+        if not mission_ids:
+            return []
+        query = (
+            select(
+                Task.mission_id,
+                func.count(Task.id),
+                func.min(Task.created_at),
+                func.max(Task.updated_at),
+            )
+            .join(MissionPlan, MissionPlan.id == Task.plan_id)
+            .where(
+                Task.mission_id.in_(mission_ids),
+                Task.status == status,
+                MissionPlan.status.in_([MissionPlanStatus.ACTIVE, MissionPlanStatus.PAUSED]),
+            )
+            .group_by(Task.mission_id)
+        )
+        if exclude_gate_modes:
+            query = query.where(
+                or_(
+                    MissionPlan.gate_mode.is_(None),
+                    MissionPlan.gate_mode.notin_(exclude_gate_modes),
+                )
+            )
+        result = await self.session.execute(query)
+        return [TaskGroup(str(mid), n, oldest, latest) for mid, n, oldest, latest in result.all()]
 
     async def list_in_flight(
         self,

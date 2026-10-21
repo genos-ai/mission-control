@@ -867,7 +867,7 @@ async def list_pending_human_input(
     await require_mission_access(db, mission_id, current_user)
     from modules.backend.services.workflow_run import WorkflowRunService
 
-    requests = await WorkflowRunService(db).list_pending_human_input(mission_id)
+    requests = await WorkflowRunService(db).list_pending_human_input([mission_id])
     items = [
         {
             "id": r.id,

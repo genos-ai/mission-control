@@ -119,7 +119,7 @@ async def list_pending_gates(
 ) -> ApiResponse:
     """Return all gate requests in PENDING status, oldest first."""
     await require_mission_access(db, mission_id, current_user)
-    rows = await MissionPlanService(db).list_pending_gate_requests(mission_id)
+    rows = await MissionPlanService(db).list_pending_gate_requests([mission_id])
     items = [
         GateRequestSummary(
             id=str(r.id),

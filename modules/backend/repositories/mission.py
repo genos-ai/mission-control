@@ -4,9 +4,9 @@ Mission Repository.
 Data access for missions and mission membership.
 """
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
-from modules.backend.models.mission import Mission, MissionMember, MissionStatus
+from modules.backend.models.mission import Mission, MissionMember, MissionStatus, MissionTier
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -33,6 +33,22 @@ class MissionRepository(BaseRepository[Mission]):
             query = query.where(Mission.status == status)
         query = query.order_by(Mission.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def list_open_for_user(self, user_id: str | None) -> list[Mission]:
+        """Missions that are not archived and that a user may see.
+
+        A user sees the missions they own or are a member of, never platform missions.
+        `None` means an admin: every non-archived mission, platform ones included.
+        """
+        query = select(Mission).where(Mission.status != MissionStatus.ARCHIVED)
+        if user_id is not None:
+            member_of = select(MissionMember.mission_id).where(MissionMember.user_id == user_id)
+            query = query.where(
+                or_(Mission.owner_id == user_id, Mission.id.in_(member_of)),
+                Mission.tier != MissionTier.platform,
+            )
+        result = await self.session.execute(query.order_by(Mission.name))
         return list(result.scalars().all())
 
     async def list_all(

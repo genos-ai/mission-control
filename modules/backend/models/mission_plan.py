@@ -54,6 +54,10 @@ VALID_GATE_MODES: frozenset[str] = frozenset(
     }
 )
 
+# Gate modes in which proposed tasks are approved without a person: the supervisor or
+# the Director does it. In every other mode a human has to approve them.
+AUTO_APPROVE_GATE_MODES: frozenset[str] = frozenset({"ai_assisted", "autonomous"})
+
 
 class MissionPlan(UUIDMixin, TimestampMixin, Base):
     """A persistent, long-lived plan for a single mission.

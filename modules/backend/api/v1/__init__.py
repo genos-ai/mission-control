@@ -10,6 +10,7 @@ from modules.backend.api.v1.endpoints import (
     admin,
     admin_users,
     agents,
+    attention,
     auth,
     catalog,
     client_errors,
@@ -37,6 +38,9 @@ router.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 
 # Execution record endpoints (audit, history, cost)
 router.include_router(executions.router, prefix="/executions", tags=["executions"])
+
+# What needs a person across the caller's missions (dashboard, sidebar)
+router.include_router(attention.router, prefix="/attention", tags=["attention"])
 
 # Mission management endpoints (CRUD, team, workflows)
 router.include_router(missions.router, prefix="/missions", tags=["missions"])

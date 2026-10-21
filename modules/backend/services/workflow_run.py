@@ -718,12 +718,12 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
 
     # ── Human input requests (Plan 45) ──────────────────────────────────
 
-    async def list_pending_human_input(self, mission_id: str) -> list[HumanInputRequest]:
-        """List a mission's PENDING human input requests, newest first."""
+    async def list_pending_human_input(self, mission_ids: list[str]) -> list[HumanInputRequest]:
+        """List the PENDING human input requests of the given missions, newest first."""
         result = await self._session.execute(
             select(HumanInputRequest)
             .where(
-                HumanInputRequest.mission_id == mission_id,
+                HumanInputRequest.mission_id.in_(mission_ids),
                 HumanInputRequest.status == HumanInputRequestStatus.PENDING,
             )
             .order_by(HumanInputRequest.created_at.desc())
