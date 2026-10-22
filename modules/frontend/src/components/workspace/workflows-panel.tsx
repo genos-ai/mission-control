@@ -30,6 +30,7 @@ import {
   useDeleteSchedule,
 } from '@/hooks/use-workflows'
 import { ScheduleModal } from '@/components/workflow/schedule-modal'
+import { cn } from '@/lib/cn'
 import { describeCronExpression } from '@/lib/cron'
 import { formatUtc } from '@/lib/format-date'
 import { useAuthStore } from '@/stores/auth'
@@ -214,16 +215,16 @@ function MissionWorkflowCard({
           <p className="line-clamp-2 text-xs text-text-3">{workflow.description}</p>
         )}
 
-        <div className="mt-auto flex items-center gap-1.5">
+        <p className="mt-auto truncate text-2xs text-subtle" title={`designed by ${workflow.designed_by || 'unknown'}`}>
+          designed by {workflow.designed_by || 'unknown'}
+        </p>
+        <div className="flex items-center gap-1.5">
           <StatusPill tone={workflow.enabled ? 'success' : 'neutral'}>
             {workflow.enabled ? 'enabled' : 'disabled'}
           </StatusPill>
           <Badge>v{workflow.version}</Badge>
           {workflow.locked_at && <StatusPill tone="neutral">locked</StatusPill>}
-          <span className="min-w-0 flex-1 truncate text-right text-2xs text-subtle">
-            designed by {workflow.designed_by || 'unknown'}
-          </span>
-          <div className={ACTIONS}>
+          <div className={cn(ACTIONS, 'ml-auto')}>
             <Button
               variant="ghost"
               size="icon-sm"

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   useExecution,
@@ -9,7 +9,9 @@ import {
 import { useRunStream } from '@/hooks/use-sse'
 import { useLiveRunStore } from '@/stores/live-run'
 import { useResearchStore } from '@/stores/research'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Spinner } from '@/components/ui/spinner'
+import { ROUTES } from '@/lib/constants'
 import { LiveActivityPanel } from '@/components/live/live-activity-panel'
 import { LiveResultsPanel } from '@/components/live/live-results-panel'
 import { LiveSummary } from '@/components/live/live-summary'
@@ -29,9 +31,10 @@ const PENDING_STATUSES = new Set(['pending', 'created'])
 //       display the final output for completed runs.
 export default function RunLivePage() {
   const { id: missionId, runId } = useParams<{ id: string; runId: string }>()
+  const navigate = useNavigate()
 
   // Fetch execution detail — poll while running
-  const { data: execution, isLoading } = useExecution(runId)
+  const { data: execution, isLoading, isError, error } = useExecution(runId)
   const isTerminal = execution
     ? TERMINAL_STATUSES.has(execution.status)
     : false
@@ -119,7 +122,15 @@ export default function RunLivePage() {
     })
   }
 
-  if (!execution || !missionId) return null
+  if (isError || !execution || !missionId) {
+    return (
+      <EmptyState
+        title="Run not found"
+        description={error?.message ?? 'This run does not exist or you cannot see it.'}
+        action={missionId ? { label: 'Back to runs', onClick: () => navigate(ROUTES.MISSION_RUNS(missionId)) } : undefined}
+      />
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-gutter px-2 pb-2">
