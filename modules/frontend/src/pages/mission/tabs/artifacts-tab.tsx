@@ -11,7 +11,7 @@ export default function ArtifactsTab() {
   const selected = artifacts.find((a) => a.id === selectedId) ?? null
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full min-h-0 gap-gutter px-2 pb-2">
       <ArtifactListPanel
         artifacts={artifacts}
         isLoading={isLoading}

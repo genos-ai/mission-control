@@ -1,16 +1,16 @@
 /**
- * ArtifactViewerPanel — center panel for rendering artifact content.
+ * ArtifactViewerPanel — right panel for rendering artifact content.
  *
  * Handles all content types: markdown (direct render), code (fenced
  * block with language), json (formatted code block), text (plain).
- * Shows metadata header with title, type badge, agent, and timestamp.
+ * The header carries the type, title, agent, timestamp and Copy/Download.
  */
 
 import { Package } from 'lucide-react'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
-import { Badge } from '@/components/ui/badge'
-import { formatUtc } from '@/lib/format-date'
-import { agentShortName } from '@/lib/format'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Panel } from '@/components/ui/panel'
+import { ArtifactViewerHeader } from '@/components/workspace/artifact-viewer-header'
 import type { MissionArtifact } from '@/hooks/use-mission-artifacts'
 
 function formatContent(artifact: MissionArtifact): string {
@@ -34,42 +34,25 @@ function formatContent(artifact: MissionArtifact): string {
 export function ArtifactViewerPanel({ artifact }: { artifact: MissionArtifact | null }) {
   if (!artifact) {
     return (
-      <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 px-5 py-8">
-        <Package className="h-8 w-8 text-muted-foreground/20" />
-        <p className="text-center text-sm text-muted-foreground/60">
-          Select an artifact to view
-        </p>
-      </div>
+      <Panel className="flex min-w-0 flex-1 items-center justify-center">
+        <EmptyState
+          icon={<Package className="h-4 w-4" />}
+          title="Select an artifact to view"
+          description="Its content appears here."
+        />
+      </Panel>
     )
   }
 
-  const agentShort = agentShortName(artifact.agent_id)
-
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
-      {/* Header */}
-      <div className="shrink-0 border-b px-5 py-3">
-        <h2 className="text-sm font-semibold leading-snug">{artifact.title}</h2>
-        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/70">
-          <Badge>
-            {artifact.artifact_type}
-          </Badge>
-          <span>{agentShort}</span>
-          <span>·</span>
-          <span>{formatUtc(artifact.created_at)}</span>
-          {artifact.language && (
-            <>
-              <span>·</span>
-              <span>{artifact.language}</span>
-            </>
-          )}
+    <Panel className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <ArtifactViewerHeader artifact={artifact} />
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[700px] px-8 pb-10 pt-4">
+          <MarkdownRenderer content={formatContent(artifact)} className="text-md text-text-2" />
         </div>
       </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        <MarkdownRenderer content={formatContent(artifact)} className="text-sm" />
-      </div>
-    </div>
+    </Panel>
   )
 }
