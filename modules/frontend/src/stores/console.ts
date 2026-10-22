@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isErrorEvent } from '@/lib/console-event'
 
 export interface ConsoleEvent {
   event_id: string
@@ -34,17 +35,6 @@ interface ConsoleState {
 }
 
 const MAX_EVENTS = 1000
-
-function isErrorEvent(event: ConsoleEvent): boolean {
-  return (
-    event.data.error === true ||
-    event.data.level === 'error' ||
-    event.data.phase === 'error' ||
-    event.data.status === 'failed' ||
-    event.event_type.includes('failed') ||
-    event.event_type.includes('error')
-  )
-}
 
 const INITIAL_STATE = {
   events: [] as ConsoleEvent[],

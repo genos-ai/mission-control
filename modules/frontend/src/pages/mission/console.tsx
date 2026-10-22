@@ -1,42 +1,21 @@
 import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import {
-  Pause,
-  Play,
-  Trash2,
-  Radio,
-  AlertCircle,
-  User,
-  Bot,
-  DollarSign,
-  Brain,
-  Package,
-  ChevronDown,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { StatusPill } from '@/components/ui/status-pill'
+import { Terminal } from 'lucide-react'
+import { ConsoleRow } from '@/components/console/console-row'
+import { ConsoleToolbar } from '@/components/console/console-toolbar'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Panel } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
 import { useConsoleHistory } from '@/hooks/use-console'
 import { useMissionStream } from '@/hooks/use-sse'
 import { useMissionStreamContext } from '@/context/mission-stream'
 import { useTeam } from '@/hooks/use-team'
+import { categorize } from '@/lib/console-event'
 import {
   useConsoleStore,
   selectFilteredEvents,
   type ConsoleEvent,
 } from '@/stores/console'
-import { getEventIcon, eventLabel, eventDetail } from '@/lib/event-utils'
-import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
-
-type CategoryTab = 'all' | 'execution' | 'chat' | 'system'
-
-const CATEGORY_TABS: { value: CategoryTab; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'execution', label: 'Execution' },
-  { value: 'chat', label: 'Chat' },
-  { value: 'system', label: 'System' },
-]
 
 export default function ConsolePage() {
   const { id: missionId } = useParams<{ id: string }>()
@@ -110,107 +89,14 @@ export default function ConsolePage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <FilterBar teamMembers={teamMembers} />
-      <Timeline />
-      <StatusFooter />
+    <div className="flex h-full min-h-0 flex-col px-2 pb-2">
+      <Panel className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ConsoleToolbar teamMembers={teamMembers} />
+        <Timeline />
+      </Panel>
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Filter bar with category tabs
-// ---------------------------------------------------------------------------
-
-function FilterBar({
-  teamMembers,
-}: {
-  teamMembers?: { agent_catalog_id: string; agent?: { agent_name: string } | null }[]
-}) {
-  const categoryTab = useConsoleStore((s) => s.categoryTab)
-  const agentFilter = useConsoleStore((s) => s.agentFilter)
-  const errorsOnly = useConsoleStore((s) => s.errorsOnly)
-  const autoScroll = useConsoleStore((s) => s.autoScroll)
-  const setCategoryTab = useConsoleStore((s) => s.setCategoryTab)
-  const setAgentFilter = useConsoleStore((s) => s.setAgentFilter)
-  const setErrorsOnly = useConsoleStore((s) => s.setErrorsOnly)
-  const toggleAutoScroll = useConsoleStore((s) => s.toggleAutoScroll)
-  const clear = useConsoleStore((s) => s.clear)
-
-  return (
-    <div className="flex items-center gap-2 border-b px-4 py-2">
-      {/* Category tabs */}
-      <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
-        {CATEGORY_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setCategoryTab(tab.value)}
-            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-              categoryTab === tab.value
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="mx-1 h-4 w-px bg-border" />
-
-      {/* Agent filter */}
-      <select
-        value={agentFilter ?? ''}
-        onChange={(e) => setAgentFilter(e.target.value || null)}
-        className="h-7 rounded-md border bg-background px-2 text-xs"
-      >
-        <option value="">All Agents</option>
-        {teamMembers?.map((m) => (
-          <option key={m.agent_catalog_id} value={m.agent?.agent_name ?? m.agent_catalog_id}>
-            {m.agent?.agent_name ?? m.agent_catalog_id}
-          </option>
-        ))}
-      </select>
-
-      {/* Errors only */}
-      <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-        <input
-          type="checkbox"
-          checked={errorsOnly}
-          onChange={(e) => setErrorsOnly(e.target.checked)}
-          className="h-3.5 w-3.5 rounded border"
-        />
-        <AlertCircle className="h-3 w-3" />
-        Errors
-      </label>
-
-      <div className="flex-1" />
-
-      <Button variant="ghost" size="sm" onClick={clear} className="h-7 text-xs">
-        <Trash2 className="mr-1 h-3 w-3" />
-        Clear
-      </Button>
-
-      <Button
-        variant={autoScroll ? 'secondary' : 'ghost'}
-        size="sm"
-        onClick={toggleAutoScroll}
-        className="h-7 text-xs"
-      >
-        {autoScroll ? (
-          <Pause className="mr-1 h-3 w-3" />
-        ) : (
-          <Play className="mr-1 h-3 w-3" />
-        )}
-        Auto
-      </Button>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Unified timeline
-// ---------------------------------------------------------------------------
 
 function Timeline() {
   const categoryTab = useConsoleStore((s) => s.categoryTab)
@@ -220,6 +106,7 @@ function Timeline() {
       ? selectFilteredEvents(s, null)
       : selectFilteredEvents(s, categoryTab),
   )
+  const eventCount = useConsoleStore((s) => s.events.length)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -230,443 +117,21 @@ function Timeline() {
   }, [filtered.length, autoScroll])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto bg-well/50 px-2 py-1">
+    <div ref={scrollRef} className="mx-2 mb-2 min-h-0 flex-1 overflow-y-auto rounded-card bg-well/50 p-1">
       {filtered.length === 0 && (
-        <p className="py-12 text-center text-sm text-muted-foreground/60">
-          No events yet
-        </p>
-      )}
-      <div className="space-y-px">
-        {filtered.map((ev) => (
-          <EventRow key={ev.event_id} event={ev} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Event row — renders differently based on category/type
-// ---------------------------------------------------------------------------
-
-function EventRow({ event }: { event: ConsoleEvent }) {
-  const d = event.data as Record<string, unknown>
-  const isError =
-    d.error === true ||
-    d.level === 'error' ||
-    d.phase === 'error' ||
-    d.step === 'error' ||
-    d.status === 'failed' ||
-    event.event_type.includes('failed') ||
-    event.event_type.includes('error')
-
-  // Narrative feed events
-  if (event.event_type === 'mission.narrative') {
-    return <NarrativeRow event={event} />
-  }
-
-  // Artifact events
-  if (event.event_type === 'mission.artifact.found') {
-    return <ArtifactRow event={event} />
-  }
-
-  // Chat messages get a richer layout
-  if (event.category === 'chat' || event.event_type.startsWith('user.message') || event.event_type.startsWith('assistant.message')) {
-    return <ChatEventRow event={event} isError={isError} />
-  }
-
-  // Execution records get a summary layout
-  if (event.event_type === 'execution.record') {
-    return <ExecutionRecordRow event={event} />
-  }
-
-  // Task results show output data
-  if (event.event_type.startsWith('task.') && !event.event_type.includes('attempt')) {
-    return <TaskResultRow event={event} isError={isError} />
-  }
-
-  // Default: compact log row
-  return <LogRow event={event} isError={isError} />
-}
-
-function ChatEventRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
-  const d = event.data
-  // Handle both session message shape (role/content) and SSE event shape (agent_id/full_content)
-  const role = String(d.role ?? (event.event_type === 'user.message.sent' ? 'user' : 'assistant'))
-  const content = String(d.content ?? d.full_content ?? '')
-  const isUser = role === 'user' || event.event_type === 'user.message.sent'
-  const model = d.model ? String(d.model) : null
-  const cost = d.cost_usd != null ? Number(d.cost_usd) : null
-  const ts = formatTime(event.timestamp)
-  const preview = content.slice(0, 120).replace(/\n/g, ' ')
-  const agentName = String(d.agent_id ?? d.sender_id ?? event.source ?? 'assistant')
-  const shortAgent = agentName.endsWith('.agent') ? agentName.slice(0, -6) : agentName
-
-  return (
-    <details className={`group rounded px-2 py-1.5 ${
-      isError ? 'bg-destructive/10' : 'hover:bg-muted/20'
-    }`}>
-      <summary className="flex cursor-pointer list-none items-center gap-2">
-        <span className="shrink-0">
-          {isUser ? (
-            <User className="h-3.5 w-3.5 text-blue-400" />
-          ) : (
-            <Bot className="h-3.5 w-3.5 text-emerald-400" />
-          )}
-        </span>
-        <span className="text-xs font-medium text-foreground shrink-0">
-          {isUser ? 'Human' : shortAgent}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {preview || '(empty)'}
-        </span>
-        {model && (
-          <Badge variant="outline" className="shrink-0">{model.split(':').pop()?.split('-').slice(0, 2).join('-')}</Badge>
-        )}
-        {cost != null && cost > 0 && (
-          <span className="flex items-center text-[10px] text-muted-foreground shrink-0">
-            <DollarSign className="h-2.5 w-2.5" />
-            {cost.toFixed(4)}
-          </span>
-        )}
-        <span className="text-[10px] tabular-nums text-muted-foreground/60 shrink-0">{ts}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/40 transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="mt-1.5 ml-5 border-l-2 border-muted pl-3">
-        {typeof d.thinking === 'string' && d.thinking && (
-          <details className="mb-2 rounded border border-purple-500/20 bg-purple-500/5 px-2.5 py-1.5">
-            <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-purple-400">
-              <Brain className="h-3 w-3" />
-              Thinking
-            </summary>
-            <p className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
-              {d.thinking}
-            </p>
-          </details>
-        )}
-        <MarkdownRenderer
-          content={content.length > 2000 ? content.slice(0, 2000) + '…' : content}
-          className="text-xs"
+        <EmptyState
+          icon={<Terminal className="h-4 w-4" />}
+          title={eventCount === 0 ? 'No events yet' : 'No events match these filters'}
+          description={
+            eventCount === 0
+              ? 'Events appear here as the mission runs.'
+              : 'Change the category, agent or Errors filter to see more.'
+          }
         />
-      </div>
-    </details>
-  )
-}
-
-function ExecutionRecordRow({ event }: { event: ConsoleEvent }) {
-  const d = event.data
-  const status = String(d.status ?? '')
-  const objective = String(d.objective_statement ?? '').slice(0, 120)
-  const cost = d.total_cost_usd != null ? Number(d.total_cost_usd) : null
-  const ts = formatTime(event.timestamp)
-  const isFailed = status === 'failed' || status === 'cancelled' || status === 'timed_out'
-
-  return (
-    <div className={`flex items-start gap-2 rounded px-2 py-1.5 ${
-      isFailed ? 'bg-destructive/10' : 'hover:bg-muted/20'
-    }`}>
-      <span className="mt-0.5 shrink-0">
-        {getEventIcon(event.event_type, event.data as Record<string, unknown>)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-foreground">Run</span>
-          <StatusPill tone={isFailed ? 'danger' : 'success'}>
-            {status}
-          </StatusPill>
-          {cost != null && (
-            <span className="flex items-center text-[10px] text-muted-foreground">
-              <DollarSign className="h-2.5 w-2.5" />
-              {cost.toFixed(4)}
-            </span>
-          )}
-          <span className="text-[10px] tabular-nums text-muted-foreground/60">{ts}</span>
-        </div>
-        {objective && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{objective}</p>
-        )}
-      </div>
+      )}
+      {filtered.map((ev) => (
+        <ConsoleRow key={ev.event_id} event={ev} />
+      ))}
     </div>
   )
-}
-
-function TaskResultRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
-  const d = event.data
-  const agent = String(d.agent_name ?? '')
-  const taskId = String(d.task_id ?? '')
-  const status = String(d.status ?? '')
-  const cost = d.cost_usd != null ? Number(d.cost_usd) : null
-  const duration = d.duration_seconds != null ? Number(d.duration_seconds) : null
-  const attempts = d.attempt_count ? Number(d.attempt_count) : null
-  const output = d.output_data as Record<string, unknown> | null
-  const verification = d.verification_outcome as Record<string, unknown> | null
-  const ts = formatTime(event.timestamp)
-
-  // Extract meaningful content from output_data
-  const outputSummary = output ? formatOutput(output) : null
-
-  return (
-    <div className={`rounded px-2 py-1.5 ${
-      isError ? 'bg-destructive/10' : 'hover:bg-muted/20'
-    }`}>
-      <div className="flex items-center gap-2">
-        <span className="shrink-0">
-          {getEventIcon(event.event_type, event.data as Record<string, unknown>)}
-        </span>
-        <span className="text-xs font-medium text-foreground">{agent}</span>
-        <Badge variant="outline">{taskId}</Badge>
-        <StatusPill tone={isError ? 'danger' : 'success'}>
-          {status}
-        </StatusPill>
-        {cost != null && (
-          <span className="flex items-center text-[10px] text-muted-foreground">
-            <DollarSign className="h-2.5 w-2.5" />{cost.toFixed(4)}
-          </span>
-        )}
-        {duration != null && (
-          <span className="text-[10px] text-muted-foreground">{duration.toFixed(1)}s</span>
-        )}
-        {attempts != null && attempts > 1 && (
-          <span className="text-[10px] text-muted-foreground">{attempts} attempts</span>
-        )}
-        <span className="text-[10px] tabular-nums text-muted-foreground/60">{ts}</span>
-      </div>
-
-      {/* Verification errors */}
-      {verification && (verification as { errors?: string[] }).errors?.length ? (
-        <div className="mt-1 ml-5 space-y-0.5">
-          {((verification as { errors?: string[] }).errors ?? []).map((err, i) => (
-            <p key={i} className="text-xs text-destructive">{err}</p>
-          ))}
-        </div>
-      ) : null}
-
-      {/* Output data summary */}
-      {outputSummary && (
-        <div className="mt-1 ml-5">
-          <MarkdownRenderer content={outputSummary} className="text-xs text-muted-foreground" />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** Format output_data into a readable summary */
-function formatOutput(output: Record<string, unknown>): string | null {
-  // Skip _meta field
-  const keys = Object.keys(output).filter((k) => k !== '_meta')
-  if (keys.length === 0) return null
-
-  // If there's a 'result' string, show it directly
-  if (typeof output.result === 'string') {
-    const text = output.result
-    return text.length > 500 ? text.slice(0, 500) + '…' : text
-  }
-
-  // If there's a 'summary' string, show it
-  if (typeof output.summary === 'string') {
-    const text = output.summary
-    return text.length > 500 ? text.slice(0, 500) + '…' : text
-  }
-
-  // Otherwise show a compact JSON preview of the interesting keys
-  const preview: Record<string, unknown> = {}
-  for (const k of keys.slice(0, 5)) {
-    const v = output[k]
-    if (typeof v === 'string' && v.length > 200) {
-      preview[k] = v.slice(0, 200) + '…'
-    } else {
-      preview[k] = v
-    }
-  }
-  try {
-    return JSON.stringify(preview, null, 2)
-  } catch {
-    return null
-  }
-}
-
-function NarrativeRow({ event }: { event: ConsoleEvent }) {
-  const d = event.data
-  const narrative = String(d.narrative ?? '')
-  const level = String(d.level ?? 'info')
-  const ts = formatTime(event.timestamp)
-
-  const phase = String(d.phase ?? '')
-  const isNarrativeError = level === 'warning' && phase === 'error'
-
-  const accent = isNarrativeError
-    ? 'border-l-red-500/60 bg-red-500/10'
-    : level === 'success'
-      ? 'border-l-emerald-500/60 bg-emerald-500/5'
-      : level === 'warning'
-        ? 'border-l-amber-500/60 bg-amber-500/5'
-        : 'border-l-sky-500/40 bg-sky-500/5'
-
-  return (
-    <div className={`flex items-start gap-2 rounded border-l-2 px-2 py-1.5 ${accent}`}>
-      <Radio className="mt-0.5 h-3 w-3 shrink-0 text-sky-400" />
-      <div className="min-w-0 flex-1">
-        <MarkdownRenderer content={narrative} className="text-xs" />
-      </div>
-      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
-    </div>
-  )
-}
-
-function ArtifactRow({ event }: { event: ConsoleEvent }) {
-  const d = event.data
-  const title = String(d.title ?? 'Artifact')
-  const content = String(d.content ?? '')
-  const artifactType = String(d.artifact_type ?? 'report')
-  const ts = formatTime(event.timestamp)
-
-  return (
-    <details className="group rounded border border-violet/20 bg-violet/5 px-2 py-1.5">
-      <summary className="flex cursor-pointer list-none items-center gap-2">
-        <Package className="h-3 w-3 shrink-0 text-violet" />
-        <span className="flex-1 text-xs font-medium text-foreground">{title}</span>
-        <Badge variant="outline">{artifactType}</Badge>
-        <span className="text-[10px] tabular-nums text-muted-foreground/50">{ts}</span>
-        <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="mt-2 border-t border-violet/20 pt-2">
-        <MarkdownRenderer content={content} />
-      </div>
-    </details>
-  )
-}
-
-function LogRow({ event, isError }: { event: ConsoleEvent; isError: boolean }) {
-  const ts = formatTime(event.timestamp)
-  const detail = eventDetail(event.event_type, event.data)
-  const d = event.data as Record<string, unknown>
-  const errorMessage = isError ? String(d.message ?? d.error_detail ?? d.reason ?? detail ?? '') : ''
-  const categoryColor = event.category === 'execution'
-    ? 'text-blue-400'
-    : event.category === 'system'
-      ? 'text-amber-400'
-      : 'text-muted-foreground'
-
-  return (
-    <div className={`flex items-start gap-2 rounded px-2 font-mono text-xs ${
-      isError
-        ? 'py-0.5 text-red-400'
-        : 'py-0.5 text-muted-foreground hover:bg-muted/20'
-    }`}>
-      <span className="shrink-0 text-[10px] tabular-nums opacity-60 mt-0.5">
-        {ts}
-      </span>
-      <span className="mt-0.5 shrink-0">
-        {getEventIcon(event.event_type, d)}
-      </span>
-      <span className={`shrink-0 font-medium ${isError ? 'text-red-400' : categoryColor}`}>
-        {eventLabel(event.event_type, d)}
-      </span>
-      {event.source && (
-        <span className={`shrink-0 ${isError ? 'text-red-400/70' : 'text-foreground/60'}`}>{event.source}</span>
-      )}
-      {isError && errorMessage && (
-        <span className="min-w-0 break-words text-red-300">{errorMessage}</span>
-      )}
-      {!isError && detail && (
-        <span className="min-w-0 break-words opacity-70">{detail}</span>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Status footer
-// ---------------------------------------------------------------------------
-
-function StatusFooter() {
-  const connected = useConsoleStore((s) => s.connected)
-  const eventCount = useConsoleStore((s) => s.events.length)
-  const categoryTab = useConsoleStore((s) => s.categoryTab)
-  const filteredCount = useConsoleStore((s) =>
-    categoryTab === 'all'
-      ? selectFilteredEvents(s, null).length
-      : selectFilteredEvents(s, categoryTab).length,
-  )
-  const errorCount = useConsoleStore((s) =>
-    s.events.filter((e) =>
-      e.data.error === true ||
-      e.data.level === 'error' ||
-      e.data.phase === 'error' ||
-      e.data.status === 'failed' ||
-      e.event_type.includes('failed') ||
-      e.event_type.includes('error')
-    ).length,
-  )
-
-  return (
-    <div className="flex items-center gap-4 border-t bg-muted/20 px-4 py-1.5 text-xs text-muted-foreground">
-      <span className="flex items-center gap-1.5">
-        {connected ? (
-          <>
-            <Radio className="h-3 w-3 animate-pulse text-emerald-500" />
-            Connected
-          </>
-        ) : (
-          <>
-            <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-            Disconnected
-          </>
-        )}
-      </span>
-      <span>
-        {filteredCount === eventCount
-          ? `${eventCount} events`
-          : `${filteredCount} / ${eventCount} events`}
-      </span>
-      {errorCount > 0 && (
-        <span className="flex items-center gap-1 rounded-full bg-red-500/20 px-2 py-0.5 text-red-400 font-medium">
-          <AlertCircle className="h-3 w-3" />
-          {errorCount} {errorCount === 1 ? 'error' : 'errors'}
-        </span>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function categorize(eventType: string): 'execution' | 'chat' | 'system' {
-  // Chat events first (more specific match before agent.* catches them)
-  if (
-    eventType.startsWith('user.message') ||
-    eventType.startsWith('assistant.message') ||
-    eventType === 'agent.response.complete'
-  ) {
-    return 'chat'
-  }
-  if (
-    eventType.startsWith('plan.') ||
-    eventType.startsWith('agent.') ||
-    eventType.startsWith('task.') ||
-    eventType.startsWith('execution.') ||
-    eventType.startsWith('decision.') ||
-    eventType.startsWith('session.cost') ||
-    eventType.startsWith('mission.')
-  ) {
-    return 'execution'
-  }
-  return 'system'
-}
-
-function formatTime(ts: string): string {
-  try {
-    const d = new Date(ts)
-    return d.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-  } catch {
-    return ts
-  }
 }
