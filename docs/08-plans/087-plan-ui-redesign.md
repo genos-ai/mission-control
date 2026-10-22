@@ -126,6 +126,12 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C46 | §6.3 Recent runs row shows the workflow name | Same as C40: a run record has no workflow name. | The row shows the run's objective, truncated, with the id, cost and relative time. |
 | C47 | §6.3 Overview "environment" and setup cards unchanged | `environment-status-card.tsx` fell back to the literal image `code-workspace:latest` when the mission named none, and `setup-checklist.tsx` told the user to "click the brief area in the header", which D9 removed | The image fallback is gone (the card shows nothing for an unset image, per no hard-coded fallbacks); the hint reads "Open Edit and write a brief" and opens the Edit modal. |
 | C48 | §6.0 dev quick login is shown with the sign-in form | The three buttons carry the seeded sysadmin, admin and user passwords, and a production bundle would ship them | See D13: the list is built only when `import.meta.env.DEV` is true. The production bundle was grepped for the passwords and the seeded emails: absent. |
+| C49 | §6.13 "existing knowledge search (`use-knowledge-search`) → search input at the top of Learnings" | The Knowledge tab has no search input; `useKnowledgeSearch` has no caller on that screen. The tab has no promote control either; it only displays `platform_promoted`. | No input or control is added (a new feature, Constraint 3). The kind chips and the promoted icon are restyled. |
+| C50 | §6.13 learning item shows recommendation as headline; recent-failure rows show task title and time | A recent-failure item carries `task_id`, `agent_name`, `failure_tier`, `failure_reason`, `feedback_provided`, `domain_tags`: no title or time. A learning's recommendation and evidence run to many lines. | A failure row shows agent, reason and task id; a learning shows its title with a two-line preview and the full Recommendation and Evidence when opened. |
+| C51 | §6.12 section header "by {agent} · {time}"; history row "+1.2 KB" and agent icon | The context document has no per-section author or time and a change record has no size delta. | Section headers show an item count only; the document-level "Updated by" stays in the description line; history rows show the change type's icon and tone, the path, the reason and `v{n} · time`. The bar value is the backend's `pct_of_max` (the same number as `size_characters / max_characters`, C22), with the handoff's 50 and 85 thresholds. |
+| C52 | §6.14 artifact rows show a size; Copy and Download "unchanged" | The artifact record has no size field. The old viewer had neither Copy nor Download. | No size is shown. Copy and Download are built because the handoff specifies them and `content_text` supports both. The filter input is also new, from the handoff, and filters the loaded list in the client by title or agent. |
+| C53 | §6.15 Console event detail as a right-hand panel (`event-log-panel.tsx`) | That panel was dead code and was deleted (defects table). Detail was always inline under a row. | A click opens the same inline detail under the row; the rich per-type rows are folded into it and every row is one mono grid row. The Live indicator and event count moved from the bottom footer into the toolbar. Accepted trade-offs of that grid: a row shows the raw event type (an error the emitter sends as `system.info` reads "system.info" in red, with its message beside it) and model and cost appear when a row is opened. |
+| C54 | §6.16 Costs shows the budget "of $500 budget" for every range | The ceiling is measured against all-time spend. | The budget line shows only on All time and only when the mission has a ceiling. The old "Output Ratio" card is dropped for the four cards the handoff lists; each flagged agent keeps its ratio in the efficiency callout; Most expensive calls is kept. |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -696,18 +702,35 @@ editor, runs, live, plan, workflows and modals tests pass unchanged; the route s
 or page error. Before/after screenshot review of all 26 routes against Phase 7 found no regression: the five flags the reviewers
 raised were each refuted against the code.
 
-### Phase 10 — Mission secondary screens (handoff §6.10–§6.16)
+### Phase 10 — Mission secondary screens (handoff §6.10–§6.16) (done)
 
-One commit each: **10.1** Team (C26): use `components/ui/switch.tsx` (built in Phase 7); add
-`useToggleTeamMember` to `hooks/use-team.ts`, calling
-the §3.3 endpoint and invalidating `teamKeys.all`; the Team page fetches with
-`enabled_only=false` through a new optional argument on `useTeam` (part of the query key, so
-enabled-only callers such as the chat roster keep their cached list unchanged); disabled cards
-render at `opacity-60`. **10.2** Narrative (C33), **10.3** Context (C22; the size bar uses `Progress`),
-**10.4** Knowledge (C24, `FilterChip`), **10.5** Artifacts (C23), **10.6** Console
-(`consoleCategoryTone`, `Segmented` replacing `FilterBar`'s category tabs), **10.7** Costs
-(C19, C20, `Segmented` replacing the timeframe buttons). `team.tsx` (535), `console.tsx` (677), `narrative-tab.tsx` (494) and
-`knowledge-tab.tsx` (350) must not grow.
+Seven writers worked on separate files in parallel, each with its own browser test; an independent reviewer then read each
+diff, re-ran the gates and the test and compared the screenshots, and a fixer applied what held up. One commit per screen.
+
+**10.1 Team (C26).** `useTeam(missionId, enabledOnly = true)` sends `?enabled_only=` and puts the flag in the query key, so the
+default key (chat roster, Overview, console, plan board, settings drawer) is unchanged; the Team page asks for
+`enabledOnly=false`. `useToggleTeamMember` PATCHes `.../enabled` and invalidates `teamKeys.all`. Cards carry the `Switch` and
+dim at `opacity-60` when off. `team.tsx` 532 → 102 lines, with the card, configuration block, constraints editor and model
+label in `components/team/`. The empty state is `EmptyState`, which gained an optional `secondaryAction`. The mission-brief
+callout, the Configuration expander and the constraints editor stay (they are existing features the handoff omits).
+**10.2 Narrative (C33).** The hidden-types filter keeps its storage key and becomes `FilterChip`s with counts. Events are now
+grouped into one `Panel` per session, with the header read from event payloads only (objective, status, cost, duration);
+the dispatcher's `run_status` `success` and `partial` are mapped, and any other status shows as a neutral pill. 492 → 164 lines.
+**10.3 Context (C22, C51).** `context-panel.tsx` 338 → 115 lines; sections, dynamic values, a 300px history panel, and a
+collapsed "Recent changes" section below 960px so the change list stays reachable. The change-type colours now apply: the old
+map was keyed by uppercase and the API returns lowercase.
+**10.4 Knowledge (C49, C50).** `knowledge-tab.tsx` 322 → 46 lines; intent, learnings and recent-failures panels; kind chips.
+`IntentStrip` (also on Overview) was moved off the amber palette and its source labels now live in one place.
+**10.5 Artifacts (C23, C52).** Six groups, viewer header and actions in their own files, streaming card with the shimmer bar.
+**10.6 Console (C53).** `console.tsx` 672 → 137 lines; a `Segmented` category control with counts replaces the tabs;
+`isErrorEvent` is one function in `lib/console-event.ts`, used by the rows, the toolbar pill and the store's Errors filter (the
+Errors filter now also catches `step === 'error'`, which the row tint already did). `consoleCategoryTone` already existed.
+**10.7 Costs (C19, C20, C54).** `costs-tab.tsx` 205 → 72 lines. `StatCard` gained an optional `hint` line.
+
+Verified (2026-10-22): `tsc`, lint, build; colour, template-class and layout gates over all 44 touched files; every touched
+screen has a browser test (Team 43, Narrative 64, Context 44, Knowledge 43, Artifacts 51, Console 56, Costs 42 checks) in both
+themes at 1440 and 1000px with every write intercepted; the Phase 9, sidebar, editor, runs, live, plan, workflows and modals
+tests pass unchanged and the route sweep is clean.
 
 ### Phase 11 — Catalog, Admin, Profile, Not found (handoff §6.17–§6.20)
 
@@ -838,6 +861,12 @@ Phase 9 pass (2026-10-21, every write intercepted): sign-in posts the typed cred
 Dashboard menu, Archive and Delete confirmations send nothing on Cancel and one PATCH on Archive; New mission posts the same
 body and lands on Team; Overview Edit, Delete, the setup checklist actions and the running-run click-through work. Not exercised
 because they write: saving the Edit modal and deleting a real mission. Earlier passes still hold (tests re-run, all pass).
+
+Phase 10 pass (2026-10-22, every write intercepted): the Team switch sends PATCH `.../enabled` with the new value and a disabled
+member stays listed; the chat roster and Overview still ask for enabled members only; prompt edit, history, remove, configuration
+and constraints still reach their hooks; Narrative filter chips keep their storage key; Context sections collapse and the change
+list opens; the Knowledge kind filter, Artifacts selection, Console filters, Clear and Auto, and the Costs range work. Not
+exercised because they write or need a live stream: removing a real member, saving constraints, live Console appends.
 
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
 from card and panel hit the same mutations; chat threads, slash commands and
