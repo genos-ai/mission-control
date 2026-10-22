@@ -1,205 +1,72 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Loader2, DollarSign, Zap, TrendingUp, AlertTriangle } from 'lucide-react'
-import { useMissionCosts } from '@/hooks/use-missions'
-import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
-import { Badge } from '@/components/ui/badge'
-import { StatusPill } from '@/components/ui/status-pill'
-import { StatCard } from '@/components/ui/stat-card'
-import { fmtTokens } from '@/lib/format'
+import { DollarSign } from 'lucide-react'
+import { useMission, useMissionCosts } from '@/hooks/use-missions'
+import { DocumentPage } from '@/components/layout/document-page'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Segmented } from '@/components/ui/segmented'
+import { Spinner } from '@/components/ui/spinner'
+import { CostSummary } from '@/components/mission/cost-summary'
+import { CostCallsPanel } from '@/components/mission/cost-calls-panel'
+import {
+  CachePerformancePanel,
+  CostByAgentPanel,
+  OutputEfficiencyCallout,
+} from '@/components/mission/cost-agent-panels'
 
-const FILTERS = [
-  { label: 'All Time', value: undefined },
+// The API takes 24h, 7d and 30d, and no timeframe at all for all-time.
+const RANGES = [
   { label: 'Today', value: '24h' },
-  { label: '7 Days', value: '7d' },
-  { label: '30 Days', value: '30d' },
+  { label: '7 days', value: '7d' },
+  { label: '30 days', value: '30d' },
+  { label: 'All time', value: 'all' },
 ] as const
 
-type FilterValue = (typeof FILTERS)[number]['value']
+type Range = (typeof RANGES)[number]['value']
 
 export default function CostsTab() {
   const { id } = useParams<{ id: string }>()
-  const [timeframe, setTimeframe] = useState<FilterValue>(undefined)
-  const { data, isLoading } = useMissionCosts(id, timeframe)
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center p-12">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (!data || data.summary.total_calls === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
-        <DollarSign className="h-8 w-8 mb-2 opacity-40" />
-        <p className="text-sm">No cost data yet for this mission.</p>
-        <p className="text-xs mt-1">Cost tracking begins when agents are dispatched.</p>
-      </div>
-    )
-  }
-
-  const { summary, by_agent, cache_performance, output_efficiency, expensive_calls } = data
+  const [range, setRange] = useState<Range>('all')
+  const { data, isLoading } = useMissionCosts(id, range === 'all' ? undefined : range)
+  const { data: mission } = useMission(id)
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Timeframe filter */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">Mission Costs</h3>
-        <div className="flex gap-1 rounded-md border p-1">
-          {FILTERS.map((f) => (
-            <button
-              key={f.label}
-              onClick={() => setTimeframe(f.value)}
-              className={`px-3 py-1 text-xs font-medium rounded ${
-                timeframe === f.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+    <DocumentPage className="gap-4">
+      <div className="flex items-center justify-between gap-3 pt-2">
+        <h2 className="text-base font-medium">Mission costs</h2>
+        <Segmented
+          label="Time range"
+          value={range}
+          onChange={setRange}
+          options={RANGES.map(({ label, value }) => ({ label, value }))}
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center p-12">
+          <Spinner className="h-5 w-5" />
         </div>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
+      ) : !data || data.summary.total_calls === 0 ? (
+        <EmptyState
           icon={<DollarSign className="h-4 w-4" />}
-          label="Total Cost"
-          value={`$${summary.total_cost_usd.toFixed(2)}`}
+          title={range === 'all' ? 'No cost data yet for this mission.' : 'No calls in this time range.'}
+          description="Cost tracking begins when agents are dispatched."
         />
-        <StatCard
-          icon={<Zap className="h-4 w-4" />}
-          label="Cache Hit Rate"
-          value={`${(summary.cache_hit_rate * 100).toFixed(0)}%`}
-        />
-        <StatCard
-          label="LLM Calls"
-          value={summary.total_calls}
-        />
-        <StatCard
-          icon={<TrendingUp className="h-4 w-4" />}
-          label="Output Ratio"
-          value={`${summary.output_ratio.toFixed(1)}x`}
-        />
-      </div>
+      ) : (
+        <>
+          <CostSummary data={data} ceiling={mission?.budget_ceiling_usd} allTime={range === 'all'} />
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* Agent Breakdown */}
-        <Panel>
-          <PanelHeader title="Cost by Agent" />
-          <PanelContent>
-            <div className="space-y-2">
-              {by_agent.map((a) => (
-                <div key={a.agent_name} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate max-w-[180px]">{a.agent_name}</span>
-                    <Badge>
-                      {a.call_count}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{fmtTokens(a.input_tokens)} in</span>
-                    <span>{fmtTokens(a.output_tokens)} out</span>
-                    <span className="font-mono">${a.total_cost_usd.toFixed(4)}</span>
-                  </div>
-                </div>
-              ))}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-4">
+            <CostByAgentPanel agents={data.by_agent} />
+            <div className="flex flex-col gap-4">
+              <CachePerformancePanel rows={data.cache_performance} />
+              <OutputEfficiencyCallout rows={data.output_efficiency} />
             </div>
-          </PanelContent>
-        </Panel>
+          </div>
 
-        {/* Cache Performance */}
-        <Panel>
-          <PanelHeader title="Cache Performance" />
-          <PanelContent>
-            <div className="space-y-2">
-              {cache_performance.map((c) => (
-                <div key={c.agent_name} className="flex items-center justify-between text-sm">
-                  <span className="truncate max-w-[180px]">{c.agent_name}</span>
-                  <StatusPill
-                    tone={c.cache_hit_rate >= 0.6 ? 'success' : c.cache_hit_rate >= 0.3 ? 'warning' : 'danger'}
-                  >
-                    {(c.cache_hit_rate * 100).toFixed(0)}% hit
-                  </StatusPill>
-                </div>
-              ))}
-              {!cache_performance.length && (
-                <p className="text-xs text-muted-foreground">No cache data.</p>
-              )}
-            </div>
-          </PanelContent>
-        </Panel>
-      </div>
-
-      {/* Output Efficiency */}
-      {output_efficiency.some((e) => e.flag !== 'ok') && (
-        <Panel>
-          <PanelHeader title="Output Efficiency Warnings" />
-          <PanelContent>
-            <div className="space-y-2">
-              {output_efficiency
-                .filter((e) => e.flag !== 'ok')
-                .map((e) => (
-                  <div key={e.agent_name} className="flex items-center justify-between text-sm">
-                    <span>{e.agent_name}</span>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-muted-foreground">{e.output_input_ratio}x</span>
-                      {e.flag === 'critical' ? (
-                        <StatusPill tone="danger" dot={false}>
-                          <AlertTriangle className="h-3 w-3" />critical
-                        </StatusPill>
-                      ) : (
-                        <StatusPill tone="warning" dot={false}>high</StatusPill>
-                      )}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </PanelContent>
-        </Panel>
+          <CostCallsPanel calls={data.expensive_calls} />
+        </>
       )}
-
-      {/* Expensive Calls */}
-      <Panel>
-        <PanelHeader title="Most Expensive Calls" />
-        <PanelContent>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground border-b">
-                <th className="text-left py-2 font-medium">Time</th>
-                <th className="text-left py-2 font-medium">Agent</th>
-                <th className="text-left py-2 font-medium">Model</th>
-                <th className="text-right py-2 font-medium">Input</th>
-                <th className="text-right py-2 font-medium">Output</th>
-                <th className="text-right py-2 font-medium">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expensive_calls.map((call) => (
-                <tr key={call.id} className="border-b border-border/50">
-                  <td className="py-2 text-xs text-muted-foreground">
-                    {call.created_at ? new Date(call.created_at).toLocaleTimeString() : '-'}
-                  </td>
-                  <td className="py-2 truncate max-w-[150px]">{call.agent_name}</td>
-                  <td className="py-2 text-xs text-muted-foreground">
-                    {call.model.replace('anthropic:', '')}
-                  </td>
-                  <td className="py-2 text-right font-mono">{fmtTokens(call.input_tokens)}</td>
-                  <td className="py-2 text-right font-mono">{fmtTokens(call.output_tokens)}</td>
-                  <td className="py-2 text-right font-mono">${call.cost_usd.toFixed(4)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!expensive_calls.length && (
-            <p className="text-xs text-muted-foreground py-4 text-center">No calls yet.</p>
-          )}
-        </PanelContent>
-      </Panel>
-    </div>
+    </DocumentPage>
   )
 }
