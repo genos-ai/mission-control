@@ -7,16 +7,12 @@
 
 import { useState } from 'react'
 import { Target, ChevronDown, ChevronRight } from 'lucide-react'
+import { intentSourceLabel } from '@/components/knowledge/intent-source'
 import { Badge } from '@/components/ui/badge'
 import { useCurrentIntent } from '@/hooks/use-mission-intent'
+import { cn } from '@/lib/cn'
 import { formatUtc } from '@/lib/format-date'
-
-const SOURCE_LABELS: Record<string, string> = {
-  user_chat: 'User',
-  user_cli: 'CLI',
-  director_inferred: 'Director',
-  system: 'System',
-}
+import { TONE_BOX } from '@/lib/tone-class'
 
 export function IntentStrip({ missionId }: { missionId: string }) {
   const { data: intent, isLoading } = useCurrentIntent(missionId)
@@ -26,25 +22,25 @@ export function IntentStrip({ missionId }: { missionId: string }) {
     return null
   }
 
-  const sourceLabel = SOURCE_LABELS[intent.source] ?? intent.source
+  const sourceLabel = intentSourceLabel(intent.source)
   const scopeIn = intent.scope?.in ?? []
   const scopeOut = intent.scope?.out ?? []
 
   return (
-    <div
-      className="rounded-md border border-amber-200/50 bg-amber-50/30 px-3 py-2 text-sm dark:border-amber-800/30 dark:bg-amber-950/20"
-    >
+    <div className={cn('rounded-card border px-3 py-2 text-sm', TONE_BOX.brand)}>
       <button
+        type="button"
+        aria-expanded={expanded}
         className="flex w-full items-center gap-2 text-left"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+          <ChevronDown className="h-3.5 w-3.5 text-brand-text shrink-0" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+          <ChevronRight className="h-3.5 w-3.5 text-brand-text shrink-0" />
         )}
-        <Target className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-        <span className="font-medium text-amber-800 dark:text-amber-300 truncate">
+        <Target className="h-3.5 w-3.5 text-brand-text shrink-0" />
+        <span className="font-medium truncate">
           {intent.intent_summary}
         </span>
         <Badge className="ml-auto shrink-0">
@@ -57,17 +53,17 @@ export function IntentStrip({ missionId }: { missionId: string }) {
           <p className="whitespace-pre-wrap">{intent.intent}</p>
           {scopeIn.length > 0 && (
             <p>
-              <span className="font-medium text-green-700 dark:text-green-400">In scope:</span>{' '}
+              <span className="font-medium text-success">In scope:</span>{' '}
               {scopeIn.join(', ')}
             </p>
           )}
           {scopeOut.length > 0 && (
             <p>
-              <span className="font-medium text-red-700 dark:text-red-400">Out of scope:</span>{' '}
+              <span className="font-medium text-danger">Out of scope:</span>{' '}
               {scopeOut.join(', ')}
             </p>
           )}
-          <p className="text-muted-foreground/60">
+          <p className="text-subtle">
             {intent.reason} &middot; {formatUtc(intent.created_at)}
           </p>
         </div>
