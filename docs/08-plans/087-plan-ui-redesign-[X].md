@@ -6,7 +6,7 @@ inventory §2.4, phase-order fixes so no action is unreachable between commits, 
 v1.2 after second `/prompt-check-plan-quality`: no aliases (P3), no wrappers, active-plan scoping;
 v1.3 after third pass: opacity and shadow tokens (C34, C35), shared ConfirmDialog, stale decision markers
 **Author:** Herman + Opus 5.5 (`/prompt-get-context` → study of research 035 → repo grounding)
-**Status:** In progress — Phases 0, 1.1, 1.2, 2.1–2.4, 3.1–3.3, 4, 5, 6, 7, 8 complete (2026-10-21)
+**Status:** Complete (2026-11-01) — Phases 0 to 12 delivered. Defects found by the Phase 12 sweep that were not fixed are listed in §5.
 **Depends on:** None
 **Unlocks:** One consistent visual system (dark + warm-white) across every web screen
 **Workflow:** Commit directly to `main`, one commit per sub-phase, working code only (no PRs)
@@ -761,11 +761,48 @@ tests were lost; their routes are covered by the sweep and the screenshot review
 `/auth/` path through, so the display name of `admin@missioncontrol.dev` became "AdminAdmin Two" and an API key "my-key" was
 created. The template now lets only login, refresh and logout through. Restored the same day with the owner's agreement: the display name is "Admin" again and the key is revoked (the API revokes; the revoked record stays listed).
 
-### Phase 12 — QA sweep
+### Phase 12 — QA sweep (done)
 
 Run every gate in §6 across the whole of `src/`, not just touched files. Fix every finding.
 Walk the behaviour-parity list in §6.4 in both themes. Update `docs/01-overview/` only where a
 screen description is now wrong. Rename this file with the `-[X]` suffix and set Status.
+
+**12.1 (`ed39d2d6`).** The theme default follows `prefers-color-scheme` when nothing valid is stored (D1, C12); it is read once at
+boot, not tracked. The whole-`src/` colour gate found two files no phase had restyled. `MarkdownRenderer` imported the dark-only
+`github-dark` highlight stylesheet, which painted dark code blocks in warm-white; `index.css` now colours highlight.js output from the
+theme tokens, and the blockquote side stripe became a tinted surface. The Architect panel lost its emerald palette classes and its
+`border-b` strip.
+**12.2 (`eba2d7b9`).** Fixes from the screenshot review: inactive filter chips use `border-border-strong` (`panel-border` is invisible in dark
+by design, so they read as bare text); the Overview facts strip fits five cells at 1024px (`minmax(130px, 1fr)`, was 150); the Runs row hides
+the task and artifact counts below `xl` so the objective keeps its width; Task Results cards truncate the task id instead of wrapping it
+over four lines; the Architect close button has an accessible name. `runs-panel.tsx` is one line longer (the comment).
+
+**Whole-`src/` gates (2026-11-01).** Lint (`--max-warnings 0`) and build pass. The colour gate is empty outside `index.css`. The layout
+gate reports four hits, all specified by the handoff: the sidebar edge, the sidebar sub-nav guide line, the settings drawer's left edge and
+the Overview facts-strip cell divider, plus the Admin underline row sanctioned in 11.2.
+
+**Responsive sweep.** 26 routes, both themes, at 1024, 1280, 1440 and 1920px (208 screenshots): no horizontal page overflow, failed
+request or console error. Five readers reviewed the images; every finding they raised was checked by two skeptics. Eight were confirmed;
+four were fixed in 12.2 (chips, facts strip, Runs objective, Task Results ids). Four were left: see §5 (two on the Plan board, the Team
+grid, the Admin catalog at 1024). Three more were refuted as design or capture artefacts. The Architect label came from the parity suites.
+
+**Behaviour parity (§6.4, both themes).** Four areas, each with a rebuilt suite and every write answered locally: shell and modals
+(258 checks), chat and plan board (137, 0 failed), runs and workflows (198), dashboard and mission tabs (237). Of the 42 failures
+across them, none is a redesign regression. The causes: suite faults (selectors, a title compared before CSS capitalisation, fixed delays
+that were too short, an assertion that counted the health check, which is a POST, as a write), a harness that answers the read-only health POST
+with `{}` and so crashes the Admin health page, saving the Overview Edit modal with the harness's `{}` reply (the page then renders
+a mission with no fields), and real data that is older than 30 days (Costs "30 days" has nothing to show). Each suspect was re-run on
+its own: "Run not found" 12 of 12, the Knowledge kind filter 8 of 8, Artifacts select, Download (correct file name) and group collapse,
+the Copy handler (it hands the stored content, 3306 characters, to the clipboard API; headless Chrome refuses the clipboard itself, so the
+real clipboard was not exercised) and the Costs empty range ("No calls in this time range", no page error). The remaining failures are
+pre-existing behaviour, recorded in §5.
+
+Not exercised, because they write, need a live stream or a state the data lacks: any real write; the streamed reply to a sent message;
+live roster, Console and Narrative appends; Run approved, Resume and the escalation banner on real state (the real plan is paused and
+all 230 cards are finished, so card states came from a faked plan); the human-input answer in the editor; Delete workflow and the
+post-create redirects; the notification list (empty); the Admin health page against a real reply (the harness stub breaks it).
+
+`docs/01-overview/` describes API actions, not screens, and no description in it is wrong, so it is unchanged.
 
 ---
 
@@ -798,6 +835,13 @@ baseline screenshots; not fixed here — each needs its own decision):**
 | Dev stack | `temporal server start-dev` runs without `--db-filename`, so its state is in memory, and it had been failing since 17 October (`ListNamespaces ... interrupted (9)`, about 5 million log lines, the log file at 1.2 GB), so no worker could validate its namespace. A restart brought it back (a new, empty store; nothing was running). Open: the start command in `services.py` and `dev_runner.py` has no persistent store and nothing bounds the log. `services.py stop` also kills every process connected to the backend port, which took the Vite dev server down with the API. |
 | Runs / API (closed 2026-10-21) | The API had run since 16 October without `--reload`, so it served stored supervisor reasoning with its metadata tail, no `max_characters` and none of the Phase 8 endpoints. Restarted with `services.py`; the decisions, the Context page and `/attention` now return the new data. |
 | Chat (fixed 2026-10-19) | Intermittently the thread stopped hundreds of pixels short of the bottom on load (830-884px measured). The auto-scroll effect in `chat-conversation.tsx` did not depend on `historicalEvents` (the separate narrative query), so events arriving after the first scroll left the thread short. Reproduced deterministically by delaying the narrative response, and confirmed at the original baseline. The effect now depends on the timeline; measured 0px from the bottom at every sample with the narrative delayed 1.5s, delayed 3s, and not delayed. |
+| Dev stack / API (open) | A browser session that opens many pages can wedge the API. Measured 2026-11-01: each full-page navigation to a mission route left 2 sockets to `:8100` (the mission and run SSE streams) until the browser closed, and the pool is 30 (`database.yaml` `pool_size` 10 + `max_overflow` 20, `pool_timeout` 30). When parallel suites crossed it, `POST /auth/login` returned 500 after 30 s and `/health/ready` timed out until the stack was restarted. Whether the cause is `streams.py` holding its `DbSession` for the life of the stream, the Vite proxy not closing the upstream request when the browser goes away, or both was not settled: two reviewers disagreed. It needs its own investigation before anything is changed. |
+| Workflow editor (open, read from source, not reproduced) | `handleNodeDragStop` autosaves node positions only, then clears the unsaved flag. A step or edge added before the drag exists only in memory; the flag goes out, Save is disabled, and a reload loses the change. The line dates from the original editor commit. |
+| Login (open, pre-existing, same code before and after Plan 87) | After a sign-in that followed a redirect from a deep link, the user lands on the Dashboard, not the link: the `isAuthenticated` redirect renders before `navigate(from)` runs. A full load of `/login` while signed in stays on the login page until a protected route runs the refresh. The form reports "Invalid email or password" for every failure, including a 429 or a 500. |
+| Log out (open, pre-existing) | `logout()` clears client state only. `auth.py` has no logout or revoke endpoint, so a refresh token copied before sign-out stays valid until it expires. |
+| Escape key (open, pre-existing) | `RunModal`, `MissionSettingsDrawer` and the right drawer do not close on Escape. The Overview Edit modal and `ConfirmDialog` do. |
+| Plan board (open, needs a decision) | The board is `min-w-[1040px]` as the handoff specifies, so below about 1290px it scrolls sideways and the Done column, often the only populated one, sits out of sight with no cue. Dependency curves run from a card's right edge to the next card's left edge even inside one column, so a long Done column draws arcs and slivers in the gutters. |
+| Team grid, Admin catalog (left as is) | Team cards use `items-start`, so rows have ragged heights (a card grows when its prompt is edited). At 1024px the Admin catalog truncates agent names with an ellipsis. Reviewers split on both. |
 
 - ⌘K command palette and the sidebar search trigger (C31).
 - Tab-bar navigation option (C32).
@@ -895,6 +939,10 @@ Admin tabs, the enable Switch, catalog create, edit and prompt save, user create
 display name, password, theme and API key flows, Team remove (now with confirmation) and the Not found link work. Not exercised
 because they write: saving a real agent, creating a real user, the password reset prompt.
 
+Phase 12 pass (2026-11-01, every write intercepted, both themes): see Phase 12 in §4 for the results, the failures that were not
+regressions and what was not exercised. Earlier passes hold: the rebuilt shell, chat and plan, runs and workflows, and dashboard and tabs
+suites cover the Phase 3, 5, 6, 7, 9 and 10 lists; the six Phase 11 suites were re-run after 12.2 and pass with the same counts (10, 32, 77, 101, 45, 39), and the theme-default suite is new (31 checks).
+
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
 from card and panel hit the same mutations; chat threads, slash commands and
 ⌘↵ work; RunModal, MissionSettingsDrawer, NotificationDropdown and every RightDrawer panel open;
@@ -918,7 +966,7 @@ workflow editor drag, connect, select, save, run and schedule work.
 
 | # | Decision | Needed before | Recommendation |
 |---|---|---|---|
-| D1 | Theme default when nothing is stored: system preference (doc 23) or always dark (handoff) | Phase 1.2 | **Decided 2026-10-16:** system preference. **Re-timed 2026-10-18:** the default stays `dark` until every screen is migrated, because several screens still use dark-designed colour classes that are unreadable in warm-white (confirmed by the Phase 1.1 visual review); Phase 12 switches it to system preference. The stored choice, validation and toggle work from the start. |
+| D1 | Theme default when nothing is stored: system preference (doc 23) or always dark (handoff) | Phase 1.2 | **Decided 2026-10-16:** system preference. **Re-timed 2026-10-18:** the default stays `dark` until every screen is migrated, because several screens still use dark-designed colour classes that are unreadable in warm-white (confirmed by the Phase 1.1 visual review); Phase 12 switches it to system preference. The stored choice, validation and toggle work from the start. **Done in 12.1 (2026-11-01).** |
 | D2 | Add a frontend CI job (`npm ci`, `npm run build`, `npm run lint`) and a Playwright screenshot pass per screen in both themes (doc 22 names Playwright) | Phase 1 | **Decided 2026-10-16:** no CI change. Build and lint run locally before every commit (§6.1); nothing server-side checks the frontend. |
 | D3 | Build the two backend endpoints (§3) or drop the attention panel and spend bars | Phase 8 | **Decided 2026-10-16:** build both. |
 | D4 | Omit the ⌘K search trigger until a palette exists | Phase 3.2 | **Decided 2026-10-16:** omit. |
