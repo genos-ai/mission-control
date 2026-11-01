@@ -156,6 +156,23 @@
   --xy-edge-label-color: hsl(var(--muted-foreground));
 }
 
+/*
+ * Syntax highlighting (rehype-highlight in MarkdownRenderer) on the theme tokens, so code reads
+ * in both themes. A fixed highlight.js stylesheet is dark-only and painted dark blocks in warm-white.
+ * The block surface comes from the <pre>; .hljs itself stays transparent.
+ */
+.hljs { color: inherit; background: transparent; }
+.hljs-comment, .hljs-quote, .hljs-meta { color: hsl(var(--subtle)); }
+.hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-meta .hljs-keyword { color: hsl(var(--violet)); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-meta .hljs-string { color: hsl(var(--success)); }
+.hljs-number, .hljs-literal, .hljs-attr, .hljs-attribute, .hljs-variable,
+.hljs-template-variable, .hljs-selector-attr, .hljs-selector-pseudo { color: hsl(var(--info)); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { color: hsl(var(--brand-text)); }
+.hljs-built_in, .hljs-type, .hljs-symbol, .hljs-bullet { color: hsl(var(--warning)); }
+.hljs-deletion { color: hsl(var(--danger)); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+
 @layer utilities {
   .tabular { font-variant-numeric: tabular-nums; }
 }

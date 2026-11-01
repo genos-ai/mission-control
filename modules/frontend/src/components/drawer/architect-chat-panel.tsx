@@ -78,12 +78,12 @@ export function ArchitectChat({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
+      <div className="flex h-9 shrink-0 items-center justify-between px-3">
         <div className="flex items-center gap-1.5">
           <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs font-medium">Architect</span>
           {workflowName && (
-            <span className="max-w-[120px] truncate text-[10px] text-muted-foreground/50">
+            <span className="max-w-[120px] truncate text-2xs text-subtle">
               {workflowName}
             </span>
           )}
@@ -91,7 +91,7 @@ export function ArchitectChat({
         {onClose && (
           <button
             onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="rounded-chip p-1 text-muted-foreground hover:bg-raised hover:text-foreground"
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </button>
@@ -100,12 +100,12 @@ export function ArchitectChat({
 
       {/* Graph updated banner */}
       {graphUpdated && (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+        <div className="mx-3 mb-2 flex shrink-0 items-center justify-between gap-2 rounded-chip bg-success/10 px-3 py-2 text-xs text-success">
           <span>Workflow updated by architect</span>
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 gap-1 text-xs text-emerald-300 hover:text-emerald-200"
+            className="h-6 gap-1 text-xs text-success hover:text-success"
             onClick={handleReload}
           >
             <RefreshCw className="h-3 w-3" />

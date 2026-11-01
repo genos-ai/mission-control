@@ -2,7 +2,6 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { cn } from '@/lib/cn'
-import 'highlight.js/styles/github-dark.css'
 
 interface MarkdownRendererProps {
   content: string
@@ -50,7 +49,7 @@ export function MarkdownRenderer({
             <li>{children}</li>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="my-1.5 border-l-2 border-muted-foreground/30 pl-3 text-muted-foreground">
+            <blockquote className="my-1.5 rounded-chip bg-raised px-3 py-1.5 text-muted-foreground">
               {children}
             </blockquote>
           ),
@@ -69,7 +68,7 @@ export function MarkdownRenderer({
             )
           },
           pre: ({ children }) => (
-            <pre className="my-2 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-[0.9em]">
+            <pre className="my-2 overflow-x-auto rounded-chip border border-border bg-raised p-3 font-mono text-[0.9em]">
               {children}
             </pre>
           ),

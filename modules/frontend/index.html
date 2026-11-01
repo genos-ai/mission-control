@@ -9,13 +9,12 @@
       // Resolves and applies the theme before first paint so there is no flash.
       // THEMES and the storage key must match src/stores/theme.ts, which reads
       // the class set here. A stored value that is not a known theme is removed.
-      // Plan 87 phase 12: replace DEFAULT with the prefers-color-scheme result
-      // (dark OS -> 'dark', otherwise 'warm-white').
+      // With nothing valid stored, the operating system preference decides
+      // (dark -> 'dark', anything else -> 'warm-white'); it is read once, not tracked.
       (function () {
         var THEMES = ['dark', 'warm-white'];
         var KEY = 'mc.theme';
-        var DEFAULT = 'dark';
-        var theme = DEFAULT;
+        var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'warm-white';
         try {
           var stored = localStorage.getItem(KEY);
           if (stored !== null) {
