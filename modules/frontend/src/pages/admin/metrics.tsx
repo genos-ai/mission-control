@@ -1,8 +1,10 @@
-import { Loader2, Bot, Briefcase, Cpu, DollarSign, GitBranch, MessageSquare } from 'lucide-react'
 import { useMetricsOverview, useMetricsCosts, useMetricsAgents } from '@/hooks/use-admin'
-import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
-import { Badge } from '@/components/ui/badge'
-import { fmtCost, fmtUsd } from '@/lib/format'
+import { AdminCostByAgentPanel } from '@/components/admin/admin-cost-panel'
+import { AgentUtilisationPanel } from '@/components/admin/agent-utilisation-panel'
+import { Panel } from '@/components/ui/panel'
+import { Spinner } from '@/components/ui/spinner'
+import { StatCard } from '@/components/ui/stat-card'
+import { fmtUsd } from '@/lib/format'
 
 export default function AdminMetricsPage() {
   const { data: overview, isLoading: loadingOverview } = useMetricsOverview()
@@ -12,113 +14,42 @@ export default function AdminMetricsPage() {
   if (loadingOverview) {
     return (
       <div className="flex justify-center p-12">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Spinner className="h-5 w-5" />
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <h2 className="text-lg font-semibold">Platform Metrics</h2>
+    <>
+      <h2 className="text-base font-medium">Platform metrics</h2>
 
-      {/* Overview cards */}
       {overview && (
-        <div className="grid grid-cols-3 gap-4">
-          <StatCard icon={<Briefcase className="h-4 w-4" />} label="Missions" value={overview.counts.missions} />
-          <StatCard icon={<MessageSquare className="h-4 w-4" />} label="Sessions" value={overview.counts.sessions} />
-          <StatCard icon={<Cpu className="h-4 w-4" />} label="Executions" value={overview.counts.execution_records} />
-          <StatCard icon={<GitBranch className="h-4 w-4" />} label="Workflow runs" value={overview.counts.workflow_runs} />
-          <StatCard icon={<Bot className="h-4 w-4" />} label="Agents" value={overview.counts.agents} />
-          <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={fmtUsd(overview.total_cost_usd)} />
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+          <StatCard label="Missions" value={overview.counts.missions.toLocaleString()} />
+          <StatCard label="Executions" value={overview.counts.execution_records.toLocaleString()} />
+          <StatCard label="Total cost" value={fmtUsd(overview.total_cost_usd)} />
+          <StatCard label="Workflow runs" value={overview.counts.workflow_runs.toLocaleString()} />
+          <StatCard label="Sessions" value={overview.counts.sessions.toLocaleString()} />
+          <StatCard label="Agents" value={overview.counts.agents.toLocaleString()} />
         </div>
       )}
 
-      {/* Cost breakdown */}
-      {!loadingCosts && costs && (
-        <Panel>
-          <PanelHeader title="Cost by Agent" />
-          <PanelContent>
-            <div className="space-y-2">
-              {costs.by_agent.map((entry) => (
-                <div
-                  key={entry.agent_name}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <div className="flex items-center gap-2">
-                    <span>{entry.agent_name}</span>
-                    <Badge>
-                      {entry.runs} runs
-                    </Badge>
-                  </div>
-                  <span className="font-mono">
-                    {fmtCost(entry.total_cost_usd)}
-                  </span>
-                </div>
-              ))}
-              {!costs.by_agent.length && (
-                <p className="text-xs text-muted-foreground">No cost data yet.</p>
-              )}
-            </div>
-          </PanelContent>
-        </Panel>
-      )}
-
-      {/* Agent utilisation */}
-      {!loadingAgents && agents && (
-        <Panel>
-          <PanelHeader title="Agent Utilisation" />
-          <PanelContent>
-            <div className="space-y-2">
-              {agents.map((agent) => (
-                <div
-                  key={agent.agent_name}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span>{agent.agent_name}</span>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{agent.total_runs} runs</span>
-                    <span>
-                      {agent.avg_duration_seconds === null ? '—' : `${agent.avg_duration_seconds.toFixed(1)}s`} avg
-                    </span>
-                    <span className="font-mono">
-                      {fmtCost(agent.total_cost_usd)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {!agents.length && (
-                <p className="text-xs text-muted-foreground">No agent data yet.</p>
-              )}
-            </div>
-          </PanelContent>
-        </Panel>
-      )}
-    </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-4">
+        {loadingCosts ? (
+          <LoadingPanel />
+        ) : (
+          costs && <AdminCostByAgentPanel agents={costs.by_agent} />
+        )}
+        {loadingAgents ? <LoadingPanel /> : agents && <AgentUtilisationPanel agents={agents} />}
+      </div>
+    </>
   )
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-}: {
-  icon?: React.ReactNode
-  label: string
-  value: string | number
-}) {
+function LoadingPanel() {
   return (
-    <Panel>
-      <PanelContent className="flex items-center gap-3 py-4 px-4">
-        {icon && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
-            {icon}
-          </div>
-        )}
-        <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-lg font-semibold">{value}</p>
-        </div>
-      </PanelContent>
+    <Panel className="flex justify-center py-12">
+      <Spinner />
     </Panel>
   )
 }

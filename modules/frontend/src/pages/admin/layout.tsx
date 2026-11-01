@@ -1,40 +1,18 @@
-import { NavLink, Outlet } from 'react-router-dom'
-import { cn } from '@/lib/cn'
-import { ROUTES } from '@/lib/constants'
-
-const tabs = [
-  { label: 'Catalog', path: ROUTES.ADMIN_CATALOG },
-  { label: 'Metrics', path: ROUTES.ADMIN_METRICS },
-  { label: 'Token Economics', path: ROUTES.ADMIN_TOKEN_ECONOMICS },
-  { label: 'Config', path: ROUTES.ADMIN_CONFIG },
-  { label: 'Health', path: ROUTES.ADMIN_HEALTH },
-  { label: 'Users', path: ROUTES.ADMIN_USERS },
-]
+import { Outlet } from 'react-router-dom'
+import { AdminTabs } from '@/components/admin/admin-tabs'
+import { DocumentPage } from '@/components/layout/document-page'
+import { TopBar } from '@/components/layout/top-bar'
 
 export default function AdminLayout() {
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex border-b px-4">
-        {tabs.map((tab) => (
-          <NavLink
-            key={tab.path}
-            to={tab.path}
-            className={({ isActive }) =>
-              cn(
-                'border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                isActive
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )
-            }
-          >
-            {tab.label}
-          </NavLink>
-        ))}
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <Outlet />
-      </div>
-    </div>
+    <>
+      <TopBar segments={[{ label: 'Admin' }]} />
+      <DocumentPage className="gap-4 pt-4">
+        <AdminTabs />
+        <div className="flex flex-col gap-4">
+          <Outlet />
+        </div>
+      </DocumentPage>
+    </>
   )
 }
