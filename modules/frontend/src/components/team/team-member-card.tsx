@@ -5,6 +5,7 @@ import { useRemoveFromTeam, useToggleTeamMember, useUpdatePrompt } from '@/hooks
 import { useAuthStore } from '@/stores/auth'
 import { useDrawerStore } from '@/stores/drawer'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { IconTile } from '@/components/ui/icon-tile'
 import { Panel } from '@/components/ui/panel'
 import { Switch } from '@/components/ui/switch'
@@ -74,6 +75,7 @@ export function TeamMemberCard({ member, missionId }: { member: MissionTeamMembe
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(member.user_prompt ?? '')
   const [expanded, setExpanded] = useState(false)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
 
   const agent = member.agent
   const agentName = agent?.agent_name ?? member.agent_catalog_id
@@ -105,6 +107,7 @@ export function TeamMemberCard({ member, missionId }: { member: MissionTeamMembe
   }
 
   const handleRemove = () => {
+    setConfirmingRemove(false)
     removeMutation.mutate(member.id, {
       onSuccess: () => toast.success('Agent removed'),
       onError: (err) => toast.error(err.message),
@@ -112,102 +115,115 @@ export function TeamMemberCard({ member, missionId }: { member: MissionTeamMembe
   }
 
   return (
-    <Panel className={cn('flex flex-col gap-3 p-4', !member.enabled && 'opacity-60')}>
-      <div className="flex items-center gap-3">
-        <IconTile icon={style.icon} tone={style.tone} size="lg" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-md font-medium" title={agentName}>
-            {agentShortName(agentName)}
-          </p>
-          {role && <p className="truncate text-xs text-subtle">{role}</p>}
-        </div>
-        <Switch
-          checked={member.enabled}
-          onChange={handleToggle}
-          label={`${member.enabled ? 'Disable' : 'Enable'} ${agentName}`}
-          disabled={toggleMutation.isPending}
-        />
-      </div>
-
-      {agent?.description && <p className="text-xs text-muted-foreground">{agent.description}</p>}
-
-      {editing ? (
-        <div className="flex flex-col gap-2">
-          <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={4}
-            placeholder="Enter mission-specific instructions for this agent..."
-          />
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handleSave} disabled={updatePromptMutation.isPending || !draft.trim()}>
-              <Save className="h-3 w-3" />
-              Save
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setEditing(false)
-                setDraft(member.user_prompt ?? '')
-              }}
-            >
-              Cancel
-            </Button>
+    <>
+      <Panel className={cn('flex flex-col gap-3 p-4', !member.enabled && 'opacity-60')}>
+        <div className="flex items-center gap-3">
+          <IconTile icon={style.icon} tone={style.tone} size="lg" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-md font-medium" title={agentName}>
+              {agentShortName(agentName)}
+            </p>
+            {role && <p className="truncate text-xs text-subtle">{role}</p>}
           </div>
+          <Switch
+            checked={member.enabled}
+            onChange={handleToggle}
+            label={`${member.enabled ? 'Disable' : 'Enable'} ${agentName}`}
+            disabled={toggleMutation.isPending}
+          />
         </div>
-      ) : (
-        <button
-          className={cn(
-            'min-h-[58px] w-full rounded-card bg-raised px-3 py-2.5 text-left text-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
-            member.user_prompt ? 'line-clamp-5 whitespace-pre-wrap text-text-3' : 'text-subtle',
-          )}
-          onClick={() => setEditing(true)}
-        >
-          {member.user_prompt || 'Click to add mission-specific prompt...'}
-        </button>
-      )}
 
-      {agent && (
-        <div className="flex flex-col gap-2">
+        {agent?.description && <p className="text-xs text-muted-foreground">{agent.description}</p>}
+
+        {editing ? (
+          <div className="flex flex-col gap-2">
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={4}
+              placeholder="Enter mission-specific instructions for this agent..."
+            />
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={handleSave} disabled={updatePromptMutation.isPending || !draft.trim()}>
+                <Save className="h-3 w-3" />
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false)
+                  setDraft(member.user_prompt ?? '')
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
           <button
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
-            className="flex w-fit items-center gap-1 text-xs font-medium text-subtle transition-colors hover:text-foreground"
+            className={cn(
+              'min-h-[58px] w-full rounded-card bg-raised px-3 py-2.5 text-left text-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+              member.user_prompt ? 'line-clamp-5 whitespace-pre-wrap text-text-3' : 'text-subtle',
+            )}
+            onClick={() => setEditing(true)}
           >
-            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            Configuration
+            {member.user_prompt || 'Click to add mission-specific prompt...'}
           </button>
-          {expanded && <MemberConfig agent={agent} member={member} missionId={missionId} />}
-        </div>
-      )}
+        )}
 
-      <div className="mt-auto flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-          <CapabilityPills member={member} />
+        {agent && (
+          <div className="flex flex-col gap-2">
+            <button
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+              className="flex w-fit items-center gap-1 text-xs font-medium text-subtle transition-colors hover:text-foreground"
+            >
+              {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              Configuration
+            </button>
+            {expanded && <MemberConfig agent={agent} member={member} missionId={missionId} />}
+          </div>
+        )}
+
+        <div className="mt-auto flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            <CapabilityPills member={member} />
+          </div>
+          <span className="whitespace-nowrap font-mono text-2xs leading-6 text-subtle">prompt v{member.user_prompt_version}</span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Prompt history for ${agentName}`}
+            title="Prompt history"
+            onClick={() => openDrawer('prompt-history', { missionId, memberId: member.id })}
+          >
+            <History className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="hover:text-danger"
+            aria-label={`Remove ${agentName} from team`}
+            title="Remove from team"
+            onClick={() => setConfirmingRemove(true)}
+            disabled={removeMutation.isPending}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <span className="whitespace-nowrap font-mono text-2xs leading-6 text-subtle">prompt v{member.user_prompt_version}</span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Prompt history for ${agentName}`}
-          title="Prompt history"
-          onClick={() => openDrawer('prompt-history', { missionId, memberId: member.id })}
-        >
-          <History className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="hover:text-danger"
-          aria-label={`Remove ${agentName} from team`}
-          title="Remove from team"
-          onClick={handleRemove}
-          disabled={removeMutation.isPending}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </Panel>
+      </Panel>
+      {confirmingRemove && (
+        // Outside the Panel: a disabled card is dimmed, and the dialog must not be.
+        <ConfirmDialog
+          title="Remove agent"
+          message={`Remove ${agentName} from this mission's team? Its mission prompt and settings are deleted with it.`}
+          confirmLabel="Remove"
+          variant="danger"
+          onConfirm={handleRemove}
+          onCancel={() => setConfirmingRemove(false)}
+        />
+      )}
+    </>
   )
 }
