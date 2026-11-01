@@ -759,7 +759,7 @@ tests were lost; their routes are covered by the sweep and the screenshot review
 
 **Incident (2026-11-01).** A Profile test copied from the shared test template reached the real API: the template let every
 `/auth/` path through, so the display name of `admin@missioncontrol.dev` became "AdminAdmin Two" and an API key "my-key" was
-created. The template now lets only login, refresh and logout through. The data has not been restored.
+created. The template now lets only login, refresh and logout through. Restored the same day with the owner's agreement: the display name is "Admin" again and the key is revoked (the API revokes; the revoked record stays listed).
 
 ### Phase 12 — QA sweep
 
