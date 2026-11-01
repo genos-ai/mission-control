@@ -132,6 +132,10 @@ Each row is a verified fact about the current tree. The implementing agent appli
 | C52 | §6.14 artifact rows show a size; Copy and Download "unchanged" | The artifact record has no size field. The old viewer had neither Copy nor Download. | No size is shown. Copy and Download are built because the handoff specifies them and `content_text` supports both. The filter input is also new, from the handoff, and filters the loaded list in the client by title or agent. |
 | C53 | §6.15 Console event detail as a right-hand panel (`event-log-panel.tsx`) | That panel was dead code and was deleted (defects table). Detail was always inline under a row. | A click opens the same inline detail under the row; the rich per-type rows are folded into it and every row is one mono grid row. The Live indicator and event count moved from the bottom footer into the toolbar. Accepted trade-offs of that grid: a row shows the raw event type (an error the emitter sends as `system.info` reads "system.info" in red, with its message beside it) and model and cost appear when a row is opened. |
 | C54 | §6.16 Costs shows the budget "of $500 budget" for every range | The ceiling is measured against all-time spend. | The budget line shows only on All time and only when the mission has a ceiling. The old "Output Ratio" card is dropped for the four cards the handoff lists; each flagged agent keeps its ratio in the efficiency callout; Most expensive calls is kept. |
+| C55 | §6.17 Catalog cards carry "Add to mission" or "On team"; type segments All / Director / Specialist / System | `/catalog` has no mission context and no add action (its one action is Details, which opens the agent-detail drawer); the API's types are `vertical`, `horizontal` and `supervisor`. | No add action is built (a new feature). The segments are the types the data has, with counts. Keywords stay searchable but are not shown; tool pills show four tools and "+N". |
+| C56 | §6.19 Profile has a "Notifications" section | The page has no notification settings; the only notification UI is the bell in the sidebar footer. | No Notifications panel (it would be dead). Profile has Account (display name and password), Appearance (the theme `Segmented`, bound to the theme store) and API keys. |
+| C57 | §6.18 Metrics shows a Users card and an Agent utilisation chart; Health statuses | The overview returns counts for missions, sessions, execution records, workflow runs and agents, and `total_cost_usd`, but no user count and no utilisation percentage. The health service reports `healthy`, `unhealthy` and `not_configured` per component and `healthy` or `degraded` overall. | No Users card. Utilisation bars are run counts against the busiest agent. Health statuses map to success, danger, neutral and warning; an unknown status throws through `styleFor`. |
+| C58 | §6.18 Admin catalog has no layout in the handoff | It says only that tables follow the Runs table pattern. | A Panel table with the Switch (the enable toggle), type, version and model columns, with edit and prompt editors as before. Delete still has no confirmation (it had none). |
 | C33 | §6.11 Narrative `Segmented` All / Agents / Runs / Decisions | `narrative-tab.tsx:38-49` filters by a persisted set of hidden event types (`mc:narrative-hidden-types`); there is no Agents/Runs/Decisions categorisation | Keep the existing hidden-types filter and its storage key. Restyle its controls with `FilterChip` (§2.4). The four-way segment would be a new feature; it is out of scope. |
 
 ### 2.3 Data contracts
@@ -732,12 +736,30 @@ screen has a browser test (Team 43, Narrative 64, Context 44, Knowledge 43, Arti
 themes at 1440 and 1000px with every write intercepted; the Phase 9, sidebar, editor, runs, live, plan, workflows and modals
 tests pass unchanged and the route sweep is clean.
 
-### Phase 11 — Catalog, Admin, Profile, Not found (handoff §6.17–§6.20)
+### Phase 11 — Catalog, Admin, Profile, Not found (handoff §6.17–§6.20) (done)
 
-**11.1** Catalog. **11.2** Admin layout and pages (`pages/admin/*`; the catalog agent toggle at
-`pages/admin/catalog.tsx:76` uses `Switch`; `pages/admin/catalog.tsx` is
-685 lines and must not grow). **11.3** Profile, including the theme `Segmented` bound to the
-theme store. **11.4** Not found.
+Run like Phase 10: parallel writers on separate files, each with a browser test, an independent reviewer and a fixer.
+The Team card also gained the remove confirmation agreed after Phase 10 (a `ConfirmDialog`, outside the dimmed card).
+
+**11.1 Catalog (C55).** `catalog.tsx` 197 → 110 lines; `components/catalog/agent-card.tsx`. The page-local `modelLabel`, which hard-coded
+versions, is gone: the card uses the shared team helper.
+**11.2 Admin (C57, C58).** One layout with the sanctioned underline tab row (`components/admin/admin-tabs.tsx`, the only
+`border-b`) inside a `DocumentPage`; the pages render bare content. Metrics, Config, Health, Token economics (the `Segmented` range
+control and the Costs-page panels), Users (role and status pills, a create form and API-key rows as components; a failed load now
+says so rather than "No users yet") and the catalog (677 → 230 lines, `Switch` for the enable toggle).
+**11.3 Profile (C56).** 296 → 30 lines; `components/profile/`; the theme `Segmented` follows `useTheme`.
+**11.4 Not found.** `EmptyState` with the `Compass` icon; its action is the secondary button, not the primary one the
+handoff shows.
+
+Verified (2026-11-01): `tsc`, lint, build and the colour, template-class and layout gates over 39 files; browser tests per screen
+(Catalog 32, Admin shell 77, Admin data 101, Admin catalog 45, Profile 39, Team confirmation and Not found 10 checks), both themes,
+1440 and 1000px, writes intercepted; the route sweep reports nothing. The before/after review of 26 routes found one regression
+(Profile had no top bar), fixed. Earlier browser suites were not re-run: the machine restarted between phases and the scratch
+tests were lost; their routes are covered by the sweep and the screenshot review.
+
+**Incident (2026-11-01).** A Profile test copied from the shared test template reached the real API: the template let every
+`/auth/` path through, so the display name of `admin@missioncontrol.dev` became "AdminAdmin Two" and an API key "my-key" was
+created. The template now lets only login, refresh and logout through. The data has not been restored.
 
 ### Phase 12 — QA sweep
 
@@ -867,6 +889,11 @@ member stays listed; the chat roster and Overview still ask for enabled members 
 and constraints still reach their hooks; Narrative filter chips keep their storage key; Context sections collapse and the change
 list opens; the Knowledge kind filter, Artifacts selection, Console filters, Clear and Auto, and the Costs range work. Not
 exercised because they write or need a live stream: removing a real member, saving constraints, live Console appends.
+
+Phase 11 pass (2026-11-01, every write intercepted): Catalog search, type filter and Details reach the same hooks and drawer; the
+Admin tabs, the enable Switch, catalog create, edit and prompt save, user create, role change and key revoke, token range, Profile
+display name, password, theme and API key flows, Team remove (now with confirmation) and the Not found link work. Not exercised
+because they write: saving a real agent, creating a real user, the password reset prompt.
 
 All routes in `App.tsx` resolve; `missions/:id` redirects to the last tab; plan approve/reject
 from card and panel hit the same mutations; chat threads, slash commands and
