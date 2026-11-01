@@ -202,17 +202,17 @@ function TaskResultCard({ task }: { task: TaskResult }) {
     )}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between text-left"
+        className="flex w-full items-center justify-between gap-2 text-left"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <StatusPill tone={statusTone}>{task.status}</StatusPill>
-          <span className="text-xs font-medium">{task.agent_name}</span>
-          <span className="text-[10px] text-muted-foreground">{task.task_id}</span>
+          <span className="shrink-0 text-xs font-medium">{task.agent_name}</span>
+          <span className="truncate text-[10px] text-muted-foreground" title={task.task_id}>{task.task_id}</span>
         </div>
         {expanded ? (
-          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
         )}
       </button>
       {expanded && (

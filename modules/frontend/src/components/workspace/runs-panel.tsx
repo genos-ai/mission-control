@@ -275,7 +275,8 @@ function RunCounts({ taskCount, artifactCount }: { taskCount: number; artifactCo
   if (taskCount > 0) parts.push(`${taskCount} task${taskCount === 1 ? '' : 's'}`)
   if (artifactCount > 0) parts.push(`${artifactCount} artifact${artifactCount === 1 ? '' : 's'}`)
   if (parts.length === 0) return null
-  return <span className="shrink-0 text-2xs text-subtle">{parts.join(' · ')}</span>
+  // Hidden below xl: the objective is the row's content and the counts are listed when the row expands.
+  return <span className="shrink-0 text-2xs text-subtle max-xl:hidden">{parts.join(' · ')}</span>
 }
 
 function CancelRunButton({ executionId }: { executionId: string }) {

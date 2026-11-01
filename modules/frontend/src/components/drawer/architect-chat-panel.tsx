@@ -91,6 +91,7 @@ export function ArchitectChat({
         {onClose && (
           <button
             onClick={onClose}
+            aria-label="Close architect"
             className="rounded-chip p-1 text-muted-foreground hover:bg-raised hover:text-foreground"
           >
             <ChevronRight className="h-3.5 w-3.5" />

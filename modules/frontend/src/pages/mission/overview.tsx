@@ -140,7 +140,7 @@ export default function OverviewPage() {
 
       <Panel className="overflow-hidden">
         {/* Each cell has a left and top border and the grid is shifted by 1px, so the panel clips the outer ones: only inner dividers show, however the cells wrap. */}
-        <div className="-ml-px -mt-px grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
+        <div className="-ml-px -mt-px grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))]">
           <Fact label="Status" value={mission.status} capitalize />
           <Fact label="Environment" value={mission.execution_environment ?? 'local'} capitalize />
           <Fact

@@ -20,7 +20,7 @@ export function FilterChip({ active, onClick, count, children }: FilterChipProps
         'inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-xs transition-colors duration-150',
         active
           ? 'border-border-hover bg-raised text-foreground'
-          : 'border-panel-border text-muted-foreground hover:text-foreground',
+          : 'border-border-strong text-muted-foreground hover:text-foreground',
       )}
     >
       {children}
