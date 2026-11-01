@@ -1,24 +1,17 @@
 import { useState, useMemo } from 'react'
-import { Search, BookOpen, Cpu, FolderOpen } from 'lucide-react'
+import { Search, BookOpen } from 'lucide-react'
 import { useCatalog } from '@/hooks/use-catalog'
 import { useDrawerStore } from '@/stores/drawer'
-import { Panel, PanelHeader, PanelContent } from '@/components/ui/panel'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { AgentCard } from '@/components/catalog/agent-card'
+import { DocumentPage } from '@/components/layout/document-page'
+import { TopBar } from '@/components/layout/top-bar'
 import { Input } from '@/components/ui/input'
+import { Segmented } from '@/components/ui/segmented'
 import { Spinner } from '@/components/ui/spinner'
 import { EmptyState } from '@/components/ui/empty-state'
-import type { AgentCatalogItem } from '@/types'
 
-function modelLabel(name: string | undefined): string {
-  if (!name) return 'Unknown'
-  const bare = name.includes(':') ? name.split(':')[1] : name
-  if (bare.includes('opus')) return 'Opus 4'
-  if (bare.includes('sonnet-4-6')) return 'Sonnet 4.6'
-  if (bare.includes('sonnet-4')) return 'Sonnet 4'
-  if (bare.includes('haiku')) return 'Haiku 4.5'
-  return bare
-}
+/** The "no type chosen" segment; agent types are the catalogue's own values, so it must not be one of them. */
+const ALL_TYPES = '*'
 
 export default function CatalogPage() {
   const { data: agents, isLoading } = useCatalog()
@@ -44,154 +37,74 @@ export default function CatalogPage() {
     return list
   }, [agents, search, typeFilter])
 
-  const types = useMemo(() => {
+  const typeOptions = useMemo(() => {
     if (!agents) return []
-    return [...new Set(agents.map((a) => a.agent_type))]
+    const types = [...new Set(agents.map((a) => a.agent_type))]
+    return [
+      { value: ALL_TYPES, label: 'All', count: agents.length },
+      ...types.map((t) => ({ value: t, label: t, count: agents.filter((a) => a.agent_type === t).length })),
+    ]
   }, [agents])
+
+  const topBar = <TopBar segments={[{ label: 'Catalog' }]} />
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Spinner />
-      </div>
+      <>
+        {topBar}
+        <div className="flex items-center justify-center py-24">
+          <Spinner />
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Agent Catalog</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Browse available agents to add to your missions.
-        </p>
-      </div>
+    <>
+      {topBar}
+      <DocumentPage className="gap-4">
+        <div className="flex flex-col gap-1.5 pt-4">
+          <h1 className="text-2xl font-semibold tracking-[-0.02em]">Agent catalog</h1>
+          <p className="text-sm text-muted-foreground">Browse available agents to add to your missions.</p>
+        </div>
 
-      {/* Filters */}
-      <div className="mb-6 flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search agents..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full max-w-sm flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+            <Input
+              aria-label="Search agents"
+              placeholder="Search agents..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-[34px] rounded-card pl-9 text-base"
+            />
+          </div>
+          <Segmented
+            label="Filter by agent type"
+            value={typeFilter ?? ALL_TYPES}
+            onChange={(t) => setTypeFilter(t === ALL_TYPES ? null : t)}
+            options={typeOptions}
           />
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant={typeFilter === null ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setTypeFilter(null)}
-          >
-            All
-          </Button>
-          {types.map((t) => (
-            <Button
-              key={t}
-              variant={typeFilter === t ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setTypeFilter(t)}
-            >
-              {t}
-            </Button>
-          ))}
-        </div>
-      </div>
 
-      {/* Grid */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<BookOpen className="h-6 w-6 text-muted-foreground" />}
-          title="No agents found"
-          description={
-            search || typeFilter
-              ? 'Try adjusting your search or filters.'
-              : 'The catalog is empty.'
-          }
-        />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((agent) => (
-            <CatalogCard
-              key={agent.id}
-              agent={agent}
-              onViewDetails={() =>
-                openDrawer('agent-detail', { agentName: agent.agent_name })
-              }
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function CatalogCard({
-  agent,
-  onViewDetails,
-}: {
-  agent: AgentCatalogItem
-  onViewDetails: () => void
-}) {
-  return (
-    <Panel className="flex flex-col">
-      <PanelHeader
-        title={agent.agent_name}
-        actions={
-          <Badge>
-            {agent.agent_type}
-          </Badge>
-        }
-      />
-      <PanelContent className="flex flex-1 flex-col">
-        <p className="flex-1 text-sm text-muted-foreground line-clamp-2">
-          {agent.description}
-        </p>
-
-        {/* Model & scope */}
-        <div className="mt-3 space-y-1.5">
-          {agent.model_config_json?.name && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Cpu className="h-3 w-3 flex-shrink-0" />
-              <span>{modelLabel(agent.model_config_json.name)}</span>
-            </div>
-          )}
-          {agent.scope?.read && agent.scope.read.length > 0 && (
-            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-              <FolderOpen className="h-3 w-3 flex-shrink-0 mt-0.5" />
-              <div className="flex flex-wrap gap-1">
-                {agent.scope.read.map((p) => (
-                  <span key={p} className="font-mono text-[10px] rounded bg-muted px-1 py-0.5">
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {agent.keywords.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1">
-            {agent.keywords.slice(0, 4).map((kw) => (
-              <Badge key={kw} variant="outline">
-                {kw}
-              </Badge>
+        {filtered.length === 0 ? (
+          <EmptyState
+            icon={<BookOpen className="h-4 w-4" />}
+            title="No agents found"
+            description={search || typeFilter ? 'Try adjusting your search or filters.' : 'The catalog is empty.'}
+          />
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-gutter">
+            {filtered.map((agent) => (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                onViewDetails={() => openDrawer('agent-detail', { agentName: agent.agent_name })}
+              />
             ))}
-            {agent.keywords.length > 4 && (
-              <span className="text-[10px] text-muted-foreground">
-                +{agent.keywords.length - 4}
-              </span>
-            )}
           </div>
         )}
-
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">v{agent.version}</span>
-          <Button variant="secondary" size="sm" onClick={onViewDetails}>
-            Details
-          </Button>
-        </div>
-      </PanelContent>
-    </Panel>
+      </DocumentPage>
+    </>
   )
 }
