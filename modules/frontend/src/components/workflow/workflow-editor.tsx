@@ -187,7 +187,11 @@ const CANVAS_CHROME = '!rounded-card !border !border-panel-border !bg-panel !sha
 export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorProps) {
   const { id: missionId } = useParams<{ id: string }>()
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
-  const [isDirty, setIsDirty] = useState(false)
+  // Positions and structure are tracked apart because the drag autosave persists positions only:
+  // it may clear the first flag, never the second.
+  const [hasUnsavedPositions, setHasUnsavedPositions] = useState(false)
+  const [hasUnsavedStructure, setHasUnsavedStructure] = useState(false)
+  const isDirty = hasUnsavedPositions || hasUnsavedStructure
   const [isSaving, setIsSaving] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
@@ -292,7 +296,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     redoRef.current.push({ nodes: [...nodes], edges: [...edges] })
     setNodes(entry.nodes)
     setEdges(entry.edges)
-    setIsDirty(true)
+    setHasUnsavedStructure(true)
   }, [nodes, edges, setNodes, setEdges])
 
   const handleRedo = useCallback(() => {
@@ -301,7 +305,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
     historyRef.current.push({ nodes: [...nodes], edges: [...edges] })
     setNodes(entry.nodes)
     setEdges(entry.edges)
-    setIsDirty(true)
+    setHasUnsavedStructure(true)
   }, [nodes, edges, setNodes, setEdges])
 
   // Track dirty state on node drag
@@ -310,7 +314,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       onNodesChange(changes)
       const hasDrag = changes.some((c) => c.type === 'position' && c.dragging)
       if (hasDrag) {
-        setIsDirty(true)
+        setHasUnsavedPositions(true)
       }
     },
     [onNodesChange],
@@ -324,7 +328,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       }
       onEdgesChange(changes)
       if (changes.some((c) => c.type === 'remove')) {
-        setIsDirty(true)
+        setHasUnsavedStructure(true)
       }
     },
     [onEdgesChange, pushHistory],
@@ -413,7 +417,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
           eds,
         ),
       )
-      setIsDirty(true)
+      setHasUnsavedStructure(true)
     },
     [edges, nodes, setEdges, pushHistory],
   )
@@ -438,14 +442,14 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
   const handleNodesDelete = useCallback(() => {
     pushHistory()
     setSelectedStep(null)
-    setIsDirty(true)
+    setHasUnsavedStructure(true)
   }, [pushHistory])
 
   // Auto-layout
   const handleAutoLayout = useCallback(() => {
     pushHistory()
     setNodes((prev) => dagreLayout(prev, edges))
-    setIsDirty(true)
+    setHasUnsavedPositions(true)
   }, [edges, setNodes, pushHistory])
 
   // Save — send steps + edges + canvas atomically
@@ -459,7 +463,8 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       let steps = nodesToSteps(nodes)
       steps = syncDependsOn(steps, edgesData)
       const warnings = await onSaveGraph(canvasState, steps, edgesData)
-      setIsDirty(false)
+      setHasUnsavedPositions(false)
+      setHasUnsavedStructure(false)
       if (warnings.length > 0) {
         toast.success(`Saved with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}`)
         for (const w of warnings) {
@@ -484,7 +489,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       }
       try {
         await onSaveGraph(canvasState)
-        setIsDirty(false)
+        setHasUnsavedPositions(false)
       } catch {
         // silent — user can still save manually
       }
@@ -624,7 +629,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       setNodes((prev) => [...prev, newNode])
       setSelectedStep(step)
       setShowHistory(false)
-      setIsDirty(true)
+      setHasUnsavedStructure(true)
     },
     [nodes, setNodes, pushHistory, editorDefaults],
   )
@@ -654,7 +659,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
         ),
       )
       setSelectedStep(updated)
-      setIsDirty(true)
+      setHasUnsavedStructure(true)
     },
     [setNodes, pushHistory],
   )
@@ -668,7 +673,7 @@ export function WorkflowEditor({ workflow, onSaveGraph, onRun }: WorkflowEditorP
       prev.filter((e) => e.source !== selectedStep.id && e.target !== selectedStep.id),
     )
     setSelectedStep(null)
-    setIsDirty(true)
+    setHasUnsavedStructure(true)
   }, [selectedStep, setNodes, setEdges, pushHistory])
 
   return (
