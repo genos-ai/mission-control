@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation, type Location, type To } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
-import { api } from '@/lib/api'
+import { useSessionRestore } from '@/hooks/use-session-restore'
+import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { ROUTES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Spinner } from '@/components/ui/spinner'
+import { FullPageSpinner, Spinner } from '@/components/ui/spinner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import type { LoginResponse } from '@/types'
 
@@ -20,20 +21,39 @@ const DEV_ACCOUNTS = import.meta.env.DEV
     ]
   : []
 
+/** Where to go once signed in: the route AuthGuard recorded, else the Dashboard. */
+function returnTarget(state: unknown): To {
+  const from = (state as { from?: Location } | null)?.from
+  if (!from || from.pathname === ROUTES.LOGIN) return ROUTES.DASHBOARD
+  return { pathname: from.pathname, search: from.search, hash: from.hash }
+}
+
+/** 401 is the only status that means the credentials were wrong; anything else is not the user's doing. */
+function signInErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401) return 'Invalid email or password'
+    return err.status >= 500 ? `${err.message}. Try again shortly.` : err.message
+  }
+  if (err instanceof TypeError) return 'Cannot reach the server. Check your connection and try again.'
+  return err instanceof Error ? err.message : 'Sign-in failed'
+}
+
 export default function LoginPage() {
-  const navigate = useNavigate()
   const location = useLocation()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const login = useAuthStore((s) => s.login)
+  const restoring = useSessionRestore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || ROUTES.DASHBOARD
+  // A stored refresh token means this may be a signed-in user opening /login on a fresh load.
+  if (restoring) return <FullPageSpinner />
 
-  // Already authenticated — skip login
-  if (isAuthenticated) return <Navigate to={ROUTES.DASHBOARD} replace />
+  // Signed in, either just now or before: leave. This is the only exit, so a successful
+  // sign-in cannot race a second navigation to the Dashboard.
+  if (isAuthenticated) return <Navigate to={returnTarget(location.state)} replace />
 
   async function signIn(accountEmail: string, accountPassword: string) {
     setError('')
@@ -46,9 +66,8 @@ export default function LoginPage() {
         { skipAuth: true },
       )
       login(data.access_token, data.refresh_token, data.user)
-      navigate(from, { replace: true })
-    } catch {
-      setError('Invalid email or password')
+    } catch (err) {
+      setError(signInErrorMessage(err))
     } finally {
       setLoading(false)
     }

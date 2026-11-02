@@ -1,5 +1,13 @@
 import { useAuthStore } from '@/stores/auth'
-import { API_BASE, ROUTES } from './constants'
+import { API_BASE } from './constants'
+
+/** An API response that was not 2xx. `status` lets callers tell "wrong credentials" from "server down". */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
 
 export class ApiClient {
   private refreshPromise: Promise<boolean> | null = null
@@ -19,9 +27,9 @@ export class ApiClient {
         if (!retry.ok) throw await this.toError(retry)
         return this.unwrap<T>(retry)
       }
-      // Refresh failed — redirect to login
+      // Refresh failed. Clearing the session is enough: AuthGuard redirects to /login and
+      // records the current route, so signing in returns here. A full page load would lose it.
       useAuthStore.getState().logout()
-      window.location.href = ROUTES.LOGIN
       throw new Error('Session expired')
     }
 
@@ -97,13 +105,13 @@ export class ApiClient {
     return json.data as T
   }
 
-  private async toError(response: Response): Promise<Error> {
+  private async toError(response: Response): Promise<ApiError> {
     try {
       const json = await response.json()
       const msg = json.error?.message || json.detail || response.statusText
-      return new Error(msg)
+      return new ApiError(msg, response.status)
     } catch {
-      return new Error(response.statusText)
+      return new ApiError(response.statusText, response.status)
     }
   }
 
