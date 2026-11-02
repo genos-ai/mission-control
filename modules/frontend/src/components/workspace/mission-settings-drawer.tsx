@@ -20,6 +20,7 @@ import {
   Users,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useEscapeKey } from '@/hooks/use-escape-key'
 import { useTeam, useRemoveFromTeam, useUpdatePrompt, useSeedTeam } from '@/hooks/use-team'
 import { useMission } from '@/hooks/use-missions'
 import { useAuthStore } from '@/stores/auth'
@@ -58,6 +59,7 @@ export function MissionSettingsDrawer({
   const isOwner = mission?.owner_id === user?.id
   const { open: openDrawer } = useDrawerStore()
   const seedMutation = useSeedTeam(missionId)
+  useEscapeKey(onClose)
 
   return (
     <div className="flex h-full flex-col">

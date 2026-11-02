@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useEscapeKey } from '@/hooks/use-escape-key'
 import { useDrawerStore } from '@/stores/drawer'
 import { Button } from '@/components/ui/button'
 import { Panel, PanelHeader } from '@/components/ui/panel'
@@ -8,6 +9,7 @@ import { RunEventsPanel } from '@/components/drawer/run-events-panel'
 
 export function RightDrawer() {
   const { isOpen, contentType, close } = useDrawerStore()
+  useEscapeKey(close, isOpen)
 
   if (!isOpen) return null
 

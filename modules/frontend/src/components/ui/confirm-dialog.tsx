@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-
+import { useEscapeKey } from '@/hooks/use-escape-key'
 import { Button } from '@/components/ui/button'
 import { Panel } from '@/components/ui/panel'
 
@@ -21,13 +20,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  useEscapeKey(onCancel)
 
   return (
     <div

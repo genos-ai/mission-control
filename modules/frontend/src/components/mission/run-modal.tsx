@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useEscapeKey } from '@/hooks/use-escape-key'
 import { useRunObjective } from '@/hooks/use-executions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ export function RunModal({
   onStarted,
 }: RunModalProps) {
   const runObjective = useRunObjective(missionId)
+  useEscapeKey(onClose)
 
   const [objective, setObjective] = useState(
     workflowName ? `Execute workflow: ${workflowName}` : '',

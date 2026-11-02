@@ -1,7 +1,8 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+import { useEscapeKey } from '@/hooks/use-escape-key'
 import { useUpdateMission } from '@/hooks/use-missions'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
@@ -35,13 +36,7 @@ export function MissionEditModal({ mission, missionId, onClose }: MissionEditMod
   const [execEnv, setExecEnv] = useState(mission.execution_environment ?? 'local')
 
   // aria-modal promises the keyboard a way out, as ConfirmDialog gives.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeKey(onClose)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
