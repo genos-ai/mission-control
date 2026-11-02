@@ -1,5 +1,6 @@
 """Tests for user-based auth dependencies (get_current_user, require_admin)."""
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -148,6 +149,21 @@ class TestGetCurrentUser:
                 )
 
 
+class _SessionScope:
+    """Stand-in for get_async_session that records whether the scope is still open."""
+
+    def __init__(self) -> None:
+        self.open = False
+
+    @asynccontextmanager
+    async def __call__(self):
+        self.open = True
+        try:
+            yield MagicMock()
+        finally:
+            self.open = False
+
+
 class TestGetCurrentUserSse:
     """Tests for get_current_user_sse, in particular the fail-closed
     behaviour when the Redis-backed SSE token lookup itself errors out
@@ -167,9 +183,10 @@ class TestGetCurrentUserSse:
         with (
             patch("redis.asyncio.Redis.from_url", return_value=mock_redis),
             patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service),
+            patch("modules.backend.core.dependencies.get_async_session", new=_SessionScope()),
         ):
             with pytest.raises(AuthenticationError):
-                await get_current_user_sse(db=MagicMock(), token="some-token", authorization=None)
+                await get_current_user_sse(token="some-token", authorization=None)
         mock_auth_service.resolve_jwt.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -183,13 +200,26 @@ class TestGetCurrentUserSse:
         user = _make_user("admin")
         mock_auth_service = MagicMock()
         mock_auth_service.resolve_jwt = AsyncMock(return_value=user)
+        scope = _SessionScope()
 
         with (
             patch("redis.asyncio.Redis.from_url", return_value=mock_redis),
             patch("modules.backend.services.auth.AuthService", return_value=mock_auth_service),
+            patch("modules.backend.core.dependencies.get_async_session", new=scope),
         ):
-            result = await get_current_user_sse(db=MagicMock(), token="raw-jwt", authorization=None)
+            result = await get_current_user_sse(token="raw-jwt", authorization=None)
         assert result == user
+        # A stream can stay open for hours: the connection must be back in the pool by now.
+        assert scope.open is False
+
+    @pytest.mark.asyncio
+    async def test_session_released_when_authentication_fails(self):
+        """The connection is also returned when no credentials are supplied."""
+        scope = _SessionScope()
+        with patch("modules.backend.core.dependencies.get_async_session", new=scope):
+            with pytest.raises(AuthenticationError):
+                await get_current_user_sse(token=None, authorization=None)
+        assert scope.open is False
 
 
 class TestRequireAdmin:

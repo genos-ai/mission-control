@@ -26,8 +26,8 @@ port: 5432
 name: "mission_control"
 user: "mission_control"
 
-# Defaults sized for concurrent HTTP + several long-lived SSE streams (each stream
-# that uses Depends(get_db_session) holds one connection until disconnect).
+# Sized for concurrent HTTP requests. SSE streams must not hold a connection while
+# open (they use a short-lived session for their access check, then release it).
 pool_size: 10
 max_overflow: 20
 pool_timeout: 30

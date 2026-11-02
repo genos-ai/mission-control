@@ -39,6 +39,20 @@ export default defineConfig({
         // so the dev log stays readable. Real backend errors still surface
         // as a 502 to the browser.
         configure: (proxy) => {
+          // http-proxy aborts the upstream request only on the request's 'aborted'
+          // event, which Node no longer emits once a GET has been read in full, and
+          // Vite destroys the upstream response only after the API's headers arrive.
+          // A client that leaves before then (a fast navigation) would otherwise
+          // leave its stream open on the API for good.
+          proxy.on('proxyReq', (proxyReq, _req, res) => {
+            const abort = () => proxyReq.destroy()
+            if (res.destroyed) {
+              abort()
+              return
+            }
+            res.once('close', abort)
+            proxyReq.once('response', () => res.off('close', abort))
+          })
           proxy.on('error', (err, _req, res) => {
             const code = (err as NodeJS.ErrnoException).code
             if (code === 'ECONNRESET' || code === 'EPIPE') return

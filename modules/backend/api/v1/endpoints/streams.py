@@ -19,7 +19,8 @@ from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis as AsyncRedis
 
 from modules.backend.core.config import get_redis_url
-from modules.backend.core.dependencies import DbSession, SseUser
+from modules.backend.core.database import get_async_session
+from modules.backend.core.dependencies import SseUser
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
@@ -92,18 +93,20 @@ async def _require_session_access(
 async def stream_run_events(
     session_id: str,
     user: SseUser,
-    db: DbSession,
 ) -> StreamingResponse:
     """Stream execution events for a session as SSE.
 
     Subscribes to the mission channel and filters by session_id.
     All events go through one channel per mission.
     """
-    await _require_session_access(db, session_id, user)
+    # The connection is returned to the pool before streaming starts: a stream
+    # stays open for as long as the client does and must not hold one.
+    async with get_async_session() as db:
+        await _require_session_access(db, session_id, user)
 
-    # Look up mission_id from the session
-    session = await SessionService(db).get_session(session_id)
-    mission_id = session.mission_id
+        # Look up mission_id from the session
+        session = await SessionService(db).get_session(session_id)
+        mission_id = session.mission_id
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
@@ -231,14 +234,15 @@ async def stream_notifications(
 async def stream_mission_events(
     mission_id: str,
     user: SseUser,
-    db: DbSession,
 ) -> StreamingResponse:
     """Stream all events for a mission as SSE.
 
     Single channel subscription — no multi-session aggregation needed.
     All events publish to mission_events:{mission_id}.
     """
-    await _require_mission_access(db, mission_id, user)
+    # Connection released before streaming starts (see stream_run_events).
+    async with get_async_session() as db:
+        await _require_mission_access(db, mission_id, user)
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())

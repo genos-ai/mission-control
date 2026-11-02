@@ -11,7 +11,7 @@ from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.database import get_db_session
+from modules.backend.core.database import get_async_session, get_db_session
 from modules.backend.core.exceptions import AuthenticationError, AuthorizationError
 from modules.backend.core.idempotency import IdempotencyGuard
 from modules.backend.core.logging import get_logger
@@ -148,7 +148,6 @@ async def _resolve_sse_token(token: str) -> str | None:
 
 
 async def get_current_user_sse(
-    db: DbSession,
     token: str | None = None,
     authorization: str | None = Header(None),
 ) -> User:
@@ -162,31 +161,36 @@ async def get_current_user_sse(
 
     API keys are not accepted on streaming endpoints — a stolen JWT is
     scoped by the short-lived access token expiry, while API keys are not.
+
+    Uses its own short-lived session, not the request-scoped ``DbSession``:
+    that one stays open until the response ends, and a stream can run for
+    hours, so every open stream would hold a connection from the pool.
     """
     from modules.backend.services.auth import AuthService
 
-    auth_service = AuthService(db)
+    async with get_async_session() as db:
+        auth_service = AuthService(db)
 
-    # 1. Try short-lived SSE token (Redis)
-    if token:
-        user_id = await _resolve_sse_token(token)
-        if user_id:
-            from sqlalchemy import select
+        # 1. Try short-lived SSE token (Redis)
+        if token:
+            user_id = await _resolve_sse_token(token)
+            if user_id:
+                from sqlalchemy import select
 
-            from modules.backend.models.user import User as UserModel
+                from modules.backend.models.user import User as UserModel
 
-            result = await db.execute(select(UserModel).where(UserModel.id == user_id))
-            user = result.scalar_one_or_none()
-            if user:
-                return user
+                result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+                user = result.scalar_one_or_none()
+                if user:
+                    return user
 
-        # 2. Fall back to treating the token as a raw JWT
-        return await auth_service.resolve_jwt(token)
+            # 2. Fall back to treating the token as a raw JWT
+            return await auth_service.resolve_jwt(token)
 
-    # 3. Authorization header
-    if authorization and authorization.lower().startswith("bearer "):
-        jwt_token = authorization[7:]
-        return await auth_service.resolve_jwt(jwt_token)
+        # 3. Authorization header
+        if authorization and authorization.lower().startswith("bearer "):
+            jwt_token = authorization[7:]
+            return await auth_service.resolve_jwt(jwt_token)
 
     raise AuthenticationError("Authentication required")
 
