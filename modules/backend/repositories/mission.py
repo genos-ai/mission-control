@@ -4,8 +4,12 @@ Mission Repository.
 Data access for missions and mission membership.
 """
 
-from sqlalchemy import or_, select
+from uuid import UUID
 
+from sqlalchemy import or_, select
+from sqlalchemy.orm import selectinload
+
+from modules.backend.core.exceptions import NotFoundError
 from modules.backend.models.mission import Mission, MissionMember, MissionStatus, MissionTier
 from modules.backend.repositories.base import BaseRepository
 
@@ -14,6 +18,20 @@ class MissionRepository(BaseRepository[Mission]):
     """Repository for Mission CRUD and queries."""
 
     model = Mission
+
+    async def get_by_id(self, id: str | UUID) -> Mission:
+        """Get a mission with its members loaded.
+
+        Access checks read `mission.members`, and a lazy load on an async session
+        raises MissingGreenlet, so a member who is not the owner would get a 500.
+        """
+        result = await self.session.execute(
+            select(Mission).options(selectinload(Mission.members)).where(Mission.id == str(id))
+        )
+        mission = result.scalar_one_or_none()
+        if mission is None:
+            raise NotFoundError("Mission not found")
+        return mission
 
     async def get_by_name(self, name: str) -> Mission | None:
         """Get a mission by unique name."""
