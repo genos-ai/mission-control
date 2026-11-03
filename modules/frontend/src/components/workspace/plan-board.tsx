@@ -58,6 +58,16 @@ const COLUMN_STYLE: Record<ColumnId, StatusStyle> = {
   done: taskTone.completed,
 }
 
+// A column narrower than this would clip its cards. With all four populated the board needs
+// 4 x 250px plus the gutters, the width it always had; empty columns give theirs back.
+const COLUMN_MIN_WIDTH = '250px'
+const RAIL_WIDTH = '44px'
+
+/** Proposed always stays open: it holds the add-task row, and new tasks enter there. */
+function isCollapsed(id: ColumnId, rows: AnnotatedTask[]): boolean {
+  return id !== 'proposed' && rows.length === 0
+}
+
 // ── Board root ───────────────────────────────────────────────────────────
 
 export function PlanBoard({ missionId }: { missionId: string }) {
@@ -234,12 +244,21 @@ function BoardArea({
 
   return (
     <div className="relative min-w-0 flex-1 overflow-auto">
-      <div ref={innerRef} className="relative grid min-h-full min-w-[1040px] grid-cols-4 items-stretch gap-gutter">
+      <div
+        ref={innerRef}
+        className="relative grid min-h-full items-stretch gap-gutter"
+        style={{
+          gridTemplateColumns: COLUMN_DEFS.map((def) =>
+            isCollapsed(def.id, byColumn[def.id]) ? RAIL_WIDTH : `minmax(${COLUMN_MIN_WIDTH}, 1fr)`,
+          ).join(' '),
+        }}
+      >
         {COLUMN_DEFS.map((def) => (
           <Column
             key={def.id}
             def={def}
             rows={byColumn[def.id]}
+            collapsed={isCollapsed(def.id, byColumn[def.id])}
             missionId={missionId}
             registerRef={register}
             showShimmer={def.id === 'proposed' && isRefining}
@@ -274,6 +293,7 @@ function BoardArea({
 function Column({
   def,
   rows,
+  collapsed,
   missionId,
   registerRef,
   showShimmer,
@@ -281,12 +301,27 @@ function Column({
 }: {
   def: ColumnDef
   rows: AnnotatedTask[]
+  collapsed: boolean
   missionId: string
   registerRef: (taskId: string) => RefCallback<HTMLDivElement>
   showShimmer: boolean
   onSelectTask: (taskId: string) => void
 }) {
   const parallelism = def.id === 'running' && rows.length > 1
+
+  if (collapsed) {
+    return (
+      <Panel
+        className="flex min-w-0 flex-col items-center gap-2 px-1 py-3"
+        role="group"
+        aria-label={`${def.label}, no tasks`}
+      >
+        <StatusIcon {...COLUMN_STYLE[def.id]} className="h-3.5 w-3.5 animate-none" />
+        <span className="font-mono text-xs text-subtle">0</span>
+        <span className="text-sm font-medium text-subtle [writing-mode:vertical-rl]">{def.label}</span>
+      </Panel>
+    )
+  }
 
   return (
     <Panel className="flex min-w-0 flex-col gap-2 px-2.5 py-3">
