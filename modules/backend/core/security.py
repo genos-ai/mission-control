@@ -48,12 +48,15 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
     jwt_config = get_app_config().security.jwt
     to_encode = data.copy()
 
+    issued_at = utc_now()
     if expires_delta:
-        expire = utc_now() + expires_delta
+        expire = issued_at + expires_delta
     else:
-        expire = utc_now() + timedelta(minutes=jwt_config.access_token_expire_minutes)
+        expire = issued_at + timedelta(minutes=jwt_config.access_token_expire_minutes)
 
-    to_encode.update({"exp": expire, "type": "access", "aud": jwt_config.audience})
+    to_encode.update(
+        {"iat": issued_at, "exp": expire, "type": "access", "aud": jwt_config.audience}
+    )
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=jwt_config.algorithm)
     return encoded_jwt
 
@@ -71,8 +74,11 @@ def create_refresh_token(data: dict[str, Any]) -> str:
     settings = get_settings()
     jwt_config = get_app_config().security.jwt
     to_encode = data.copy()
-    expire = utc_now() + timedelta(days=jwt_config.refresh_token_expire_days)
-    to_encode.update({"exp": expire, "type": "refresh", "aud": jwt_config.audience})
+    issued_at = utc_now()
+    expire = issued_at + timedelta(days=jwt_config.refresh_token_expire_days)
+    to_encode.update(
+        {"iat": issued_at, "exp": expire, "type": "refresh", "aud": jwt_config.audience}
+    )
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=jwt_config.algorithm)
     return encoded_jwt
 

@@ -98,6 +98,15 @@ class AuthService(BaseService):
         if not session_id:
             raise AuthenticationError("Invalid token")
 
+        # A revocation row is kept one configured refresh lifetime from logout, which outlives
+        # every token of the session only if none lives longer. Refusing a refresh token minted
+        # under a longer setting keeps that true after the setting is lowered.
+        if token_type == TOKEN_TYPE_REFRESH:
+            max_lifetime = timedelta(days=get_app_config().security.jwt.refresh_token_expire_days)
+            issued_at = payload.get("iat")
+            if issued_at is None or payload["exp"] - issued_at > max_lifetime.total_seconds():
+                raise AuthenticationError("Invalid token")
+
         await self.ensure_session_active(session_id)
 
         return payload
@@ -115,8 +124,9 @@ class AuthService(BaseService):
         """End the session of an access token, with every refresh token minted from it."""
         payload = await self._verified_claims(access_token, TOKEN_TYPE_ACCESS)
 
-        # Every token of the session expires within one refresh lifetime of now, because a
-        # revoked session can no longer be refreshed.
+        # Every token of the session expires within one refresh lifetime of now: a refresh token
+        # is refused if it outlives that lifetime (see _verified_claims), and a revoked session
+        # can no longer be refreshed.
         refresh_days = get_app_config().security.jwt.refresh_token_expire_days
         expires_at = utc_now() + timedelta(days=refresh_days)
         await self.revoked_session_repo.revoke(payload["sid"], payload["sub"], expires_at)

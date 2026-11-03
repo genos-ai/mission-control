@@ -3,9 +3,12 @@
 from datetime import timedelta
 
 import pytest
+from jose import jwt
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core import security
+from modules.backend.core.config import get_app_config, get_settings
 from modules.backend.core.exceptions import AuthenticationError
 from modules.backend.core.utils import utc_now
 from modules.backend.models.user import User
@@ -85,6 +88,26 @@ class TestTokenRefresh:
         service = AuthService(db_session)
         with pytest.raises(AuthenticationError):
             await service.refresh_token("not-a-real-token")
+
+
+class TestRefreshLifetime:
+    async def test_refresh_token_minted_under_a_longer_setting_is_refused(
+        self, db_session: AsyncSession, regular_user: User
+    ):
+        """After the setting is lowered, an older token that outlives it must not work: logout
+        keeps its revocation row only one configured lifetime."""
+        service = AuthService(db_session)
+        tokens = await service.login("user@test.dev", "user-password-123")
+        claims = security.decode_token(tokens["refresh_token"])
+        claims["exp"] += 24 * 60 * 60
+        jwt_config = get_app_config().security.jwt
+        longer_lived = jwt.encode(claims, get_settings().jwt_secret, algorithm=jwt_config.algorithm)
+
+        with pytest.raises(AuthenticationError, match="Invalid token"):
+            await service.refresh_token(longer_lived)
+
+        refreshed = await service.refresh_token(tokens["refresh_token"])
+        assert refreshed["refresh_token"]
 
 
 class TestLogout:

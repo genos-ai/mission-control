@@ -18,6 +18,22 @@ from tests.conftest import TEST_USER_ID
 SESSION_ID = "0192f3a4-0000-7000-8000-000000000001"
 
 
+def _refresh_claims(lifetime: timedelta | None = None, with_iat: bool = True) -> dict:
+    """Claims of a refresh token minted now, living `lifetime` (the configured one by default)."""
+    if lifetime is None:
+        lifetime = timedelta(days=get_app_config().security.jwt.refresh_token_expire_days)
+    issued_at = int(utc_now().timestamp())
+    claims = {
+        "type": "refresh",
+        "sub": TEST_USER_ID,
+        "sid": SESSION_ID,
+        "exp": issued_at + int(lifetime.total_seconds()),
+    }
+    if with_iat:
+        claims["iat"] = issued_at
+    return claims
+
+
 def _make_user(
     user_id: str = TEST_USER_ID,
     role: str = "user",
@@ -155,6 +171,31 @@ class TestLogin:
 
 class TestRefreshToken:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("longer_by", [timedelta(days=1), timedelta(seconds=1)])
+    async def test_refresh_token_living_longer_than_the_setting_is_refused(
+        self, service, longer_by
+    ):
+        """Lowering refresh_token_expire_days must not leave older, longer-lived tokens usable:
+        a revocation row is only kept one configured lifetime."""
+        configured = timedelta(days=get_app_config().security.jwt.refresh_token_expire_days)
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value=_refresh_claims(lifetime=configured + longer_by),
+        ):
+            with pytest.raises(AuthenticationError, match="Invalid token"):
+                await service.refresh_token("refresh-jwt")
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_without_iat_is_refused(self, service):
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value=_refresh_claims(with_iat=False),
+        ):
+            with pytest.raises(AuthenticationError, match="Invalid token"):
+                await service.refresh_token("refresh-jwt")
+
+    @pytest.mark.asyncio
     async def test_successful_refresh(self, service):
         user = _make_user()
         service.user_repo.get_active = AsyncMock(return_value=user)
@@ -162,7 +203,7 @@ class TestRefreshToken:
         with (
             patch(
                 "modules.backend.services.auth.security.decode_token",
-                return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+                return_value=_refresh_claims(),
             ),
             patch(
                 "modules.backend.services.auth.security.create_access_token",
@@ -185,7 +226,7 @@ class TestRefreshToken:
         with (
             patch(
                 "modules.backend.services.auth.security.decode_token",
-                return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+                return_value=_refresh_claims(),
             ),
             patch(
                 "modules.backend.services.auth.security.create_access_token", return_value="a"
@@ -205,7 +246,7 @@ class TestRefreshToken:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_refresh_claims(),
         ):
             with pytest.raises(AuthenticationError, match="Session ended"):
                 await service.refresh_token("token")
@@ -245,7 +286,7 @@ class TestRefreshToken:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_refresh_claims(),
         ):
             with pytest.raises(AuthenticationError, match="User not found or inactive"):
                 await service.refresh_token("token")
@@ -335,7 +376,7 @@ class TestResolveJwt:
     async def test_refresh_token_rejected(self, service):
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_refresh_claims(),
         ):
             with pytest.raises(AuthenticationError, match="Invalid token type"):
                 await service.resolve_jwt("refresh-not-access")
@@ -376,7 +417,7 @@ class TestLogout:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_refresh_claims(),
         ):
             with pytest.raises(AuthenticationError, match="Invalid token type"):
                 await service.logout("refresh-jwt")

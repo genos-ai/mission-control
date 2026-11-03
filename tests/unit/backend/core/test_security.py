@@ -158,6 +158,15 @@ class TestCreateRefreshToken:
         payload = decode_token(token)
         assert payload["type"] == "refresh"
 
+    def test_refresh_token_records_when_it_was_issued(self, jwt_config):
+        """Verification compares exp with iat to refuse tokens minted under a longer lifetime."""
+        payload = decode_token(create_refresh_token({"sub": TEST_USER_ID}))
+        assert payload["exp"] - payload["iat"] == jwt_config.refresh_token_expire_days * 86400
+
+    def test_access_token_records_when_it_was_issued(self):
+        payload = decode_token(create_access_token({"sub": TEST_USER_ID}))
+        assert payload["iat"] <= payload["exp"]
+
     def test_refresh_expires_later_than_access(self):
         access = create_access_token({"sub": "u"})
         refresh = create_refresh_token({"sub": "u"})
