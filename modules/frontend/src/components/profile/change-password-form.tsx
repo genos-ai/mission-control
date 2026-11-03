@@ -24,7 +24,7 @@ export function ChangePasswordForm() {
     setSaving(true)
     try {
       await api.post('/auth/change-password', {
-        current_password: current,
+        old_password: current,
         new_password: newPw,
       } satisfies ChangePasswordRequest)
       setCurrent('')
