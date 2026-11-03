@@ -18,6 +18,10 @@ from tests.conftest import TEST_USER_ID
 SESSION_ID = "0192f3a4-0000-7000-8000-000000000001"
 
 
+def _access_claims(**overrides) -> dict:
+    return {"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID, "tv": 0, **overrides}
+
+
 def _refresh_claims(lifetime: timedelta | None = None, with_iat: bool = True) -> dict:
     """Claims of a refresh token minted now, living `lifetime` (the configured one by default)."""
     if lifetime is None:
@@ -27,6 +31,7 @@ def _refresh_claims(lifetime: timedelta | None = None, with_iat: bool = True) ->
         "type": "refresh",
         "sub": TEST_USER_ID,
         "sid": SESSION_ID,
+        "tv": 0,
         "exp": issued_at + int(lifetime.total_seconds()),
     }
     if with_iat:
@@ -47,6 +52,7 @@ def _make_user(
     user.system_role = role
     user.is_active = is_active
     user.hashed_password = hashed_password
+    user.token_version = 0
     user.has_role = MagicMock(
         side_effect=lambda minimum: {
             "viewer": 1,
@@ -267,7 +273,7 @@ class TestRefreshToken:
     async def test_refresh_with_access_token_type_fails(self, service):
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_access_claims(),
         ):
             with pytest.raises(AuthenticationError, match="Invalid token type"):
                 await service.refresh_token("access-token-not-refresh")
@@ -338,6 +344,66 @@ class TestResolveApiKey:
                 await service.resolve_api_key("app_test1234rest_of_key")
 
 
+class TestTokenVersion:
+    """A password change, an admin reset or a deactivation raises the user's token version."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("current_version", [1, 7])
+    async def test_access_token_of_an_older_version_is_ended(self, service, current_version):
+        user = _make_user()
+        user.token_version = current_version
+        service.user_repo.get_active = AsyncMock(return_value=user)
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token", return_value=_access_claims()
+        ):
+            with pytest.raises(AuthenticationError, match="Session ended"):
+                await service.resolve_jwt("access-jwt")
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_of_an_older_version_is_ended(self, service):
+        user = _make_user()
+        user.token_version = 1
+        service.user_repo.get_active = AsyncMock(return_value=user)
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token", return_value=_refresh_claims()
+        ):
+            with pytest.raises(AuthenticationError, match="Session ended"):
+                await service.refresh_token("refresh-jwt")
+
+    @pytest.mark.asyncio
+    async def test_token_without_a_version_is_refused(self, service):
+        service.user_repo.get_active = AsyncMock(return_value=_make_user())
+        claims = _access_claims()
+        del claims["tv"]
+
+        with patch("modules.backend.services.auth.security.decode_token", return_value=claims):
+            with pytest.raises(AuthenticationError, match="Invalid token"):
+                await service.resolve_jwt("access-jwt")
+
+    @pytest.mark.asyncio
+    async def test_login_stamps_both_tokens_with_the_current_version(self, service):
+        user = _make_user()
+        user.token_version = 3
+        service.user_repo.get_by_email = AsyncMock(return_value=user)
+        service.user_repo.update_last_login = AsyncMock()
+
+        with (
+            patch("modules.backend.services.auth.security.verify_password", return_value=True),
+            patch(
+                "modules.backend.services.auth.security.create_access_token", return_value="a"
+            ) as access,
+            patch(
+                "modules.backend.services.auth.security.create_refresh_token", return_value="r"
+            ) as refresh,
+        ):
+            await service.login("test@example.com", "pw")
+
+        assert access.call_args.args[0]["tv"] == 3
+        assert refresh.call_args.args[0]["tv"] == 3
+
+
 class TestResolveJwt:
     @pytest.mark.asyncio
     async def test_valid_access_token(self, service):
@@ -346,7 +412,7 @@ class TestResolveJwt:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_access_claims(),
         ):
             result = await service.resolve_jwt("valid-jwt")
 
@@ -358,7 +424,7 @@ class TestResolveJwt:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_access_claims(),
         ):
             with pytest.raises(AuthenticationError, match="Session ended"):
                 await service.resolve_jwt("token")
@@ -387,7 +453,7 @@ class TestResolveJwt:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_access_claims(),
         ):
             with pytest.raises(AuthenticationError, match="User not found or inactive"):
                 await service.resolve_jwt("token")
@@ -400,7 +466,7 @@ class TestLogout:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_access_claims(),
         ):
             await service.logout("access-jwt")
 
@@ -431,7 +497,7 @@ class TestLogout:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            return_value=_access_claims(),
         ):
             with pytest.raises(AuthenticationError, match="Session ended"):
                 await service.logout("access-jwt")

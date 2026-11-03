@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -13,6 +14,7 @@ export function ChangePasswordForm() {
   const [newPw, setNewPw] = useState('')
   const [confirm, setConfirm] = useState('')
   const [saving, setSaving] = useState(false)
+  const logout = useAuthStore((s) => s.logout)
 
   const handleChange = async () => {
     if (newPw !== confirm) {
@@ -25,10 +27,14 @@ export function ChangePasswordForm() {
         current_password: current,
         new_password: newPw,
       } satisfies ChangePasswordRequest)
-      toast.success('Password changed')
       setCurrent('')
       setNewPw('')
       setConfirm('')
+      toast.success('Password changed. Sign in again with the new password.')
+      // The server has ended every session of this user, this one included, so there is nothing
+      // to revoke with POST /auth/logout. Clearing it here sends AuthGuard to /login, which
+      // returns to this page after sign-in.
+      logout()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Change failed')
     } finally {

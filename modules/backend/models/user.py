@@ -8,7 +8,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,6 +65,15 @@ class User(UUIDMixin, TimestampMixin, Base):
     is_service_account: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
+        nullable=False,
+    )
+    # Carried by every token as `tv`. Raising it ends every existing session of the user at once:
+    # password change, admin reset and deactivation do. Sessions cannot be listed, so this is
+    # the only way to end them all.
+    token_version: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
         nullable=False,
     )
     last_login_at: Mapped[datetime | None] = mapped_column(

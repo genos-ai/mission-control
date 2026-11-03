@@ -4,7 +4,7 @@ User Repository.
 Data access layer for User model.
 """
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from modules.backend.core.utils import utc_now
 from modules.backend.models.user import User
@@ -48,3 +48,9 @@ class UserRepository(BaseRepository[User]):
         user.last_login_at = utc_now()
         await self.session.flush()
         await self.session.refresh(user)
+
+    async def increment_token_version(self, user_id: str) -> None:
+        """Invalidate every token issued to the user so far."""
+        await self.session.execute(
+            update(User).where(User.id == user_id).values(token_version=User.token_version + 1)
+        )

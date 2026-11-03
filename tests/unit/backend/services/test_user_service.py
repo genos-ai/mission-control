@@ -51,6 +51,7 @@ def service(mock_session):
     ):
         svc = UserService(mock_session)
         svc.user_repo = MockUserRepo.return_value
+        svc.user_repo.increment_token_version = AsyncMock()
         svc.api_key_repo = MockApiKeyRepo.return_value
         yield svc
 
@@ -246,6 +247,7 @@ class TestDeactivateUser:
 
         assert result == deactivated
         service.user_repo.update.assert_called_once_with("target", is_active=False)
+        service.user_repo.increment_token_version.assert_awaited_once_with("target")
         service.api_key_repo.revoke_all_by_user.assert_called_once_with("target")
 
     @pytest.mark.asyncio
@@ -280,6 +282,7 @@ class TestChangePassword:
             await service.change_password("me", "oldpw", "newpw", user)
 
         service.user_repo.update.assert_called_once_with("me", hashed_password="$2b$12$newhash")
+        service.user_repo.increment_token_version.assert_awaited_once_with("me")
 
     @pytest.mark.asyncio
     async def test_wrong_old_password(self, service):
@@ -321,6 +324,7 @@ class TestAdminResetPassword:
             "target",
             hashed_password="$2b$12$reset",
         )
+        service.user_repo.increment_token_version.assert_awaited_once_with("target")
 
     @pytest.mark.asyncio
     async def test_non_admin_denied(self, service):

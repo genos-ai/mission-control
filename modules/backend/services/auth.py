@@ -72,6 +72,7 @@ class AuthService(BaseService):
                     "role": user.system_role,
                     "jti": str(uuid4()),
                     "sid": session_id,
+                    "tv": user.token_version,
                 }
             ),
             "refresh_token": security.create_refresh_token(
@@ -79,6 +80,7 @@ class AuthService(BaseService):
                     "sub": user.id,
                     "jti": str(uuid4()),
                     "sid": session_id,
+                    "tv": user.token_version,
                 }
             ),
         }
@@ -110,6 +112,15 @@ class AuthService(BaseService):
         await self.ensure_session_active(session_id)
 
         return payload
+
+    @staticmethod
+    def _ensure_current_version(user: User, payload: dict) -> None:
+        """Refuse a token issued before the user's sessions were last ended in bulk."""
+        token_version = payload.get("tv")
+        if token_version is None:
+            raise AuthenticationError("Invalid token")
+        if token_version != user.token_version:
+            raise AuthenticationError("Session ended")
 
     async def ensure_session_active(self, session_id: str) -> None:
         """Raise unless logout has left the session alone."""
@@ -149,6 +160,7 @@ class AuthService(BaseService):
         user = await self.user_repo.get_active(payload["sub"])
         if not user:
             raise AuthenticationError("User not found or inactive")
+        self._ensure_current_version(user, payload)
 
         tokens = self._issue_token_pair(user, session_id=payload["sid"])
 
@@ -195,6 +207,7 @@ class AuthService(BaseService):
         user = await self.user_repo.get_active(payload["sub"])
         if not user:
             raise AuthenticationError("User not found or inactive")
+        self._ensure_current_version(user, payload)
 
         return user
 

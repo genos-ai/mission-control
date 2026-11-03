@@ -60,6 +60,8 @@ Token content:
 - Roles/permissions
 - Expiration timestamp
 - Token ID (`jti`)
+- Token version (`tv`): the user's `token_version` at login. A token whose `tv` differs from the user's current value is refused ("Session ended"), and one without a `tv` is refused ("Invalid token")
+- Issued-at (`iat`): used to refuse a refresh token that outlives the configured lifetime
 - Session ID (`sid`): minted at login and carried by every token refreshed from it. A token without a `sid` is refused ("Invalid token"), so tokens issued before this claim existed cannot be used or refreshed; users sign in once. A token whose session has been logged out is refused ("Session ended")
 
 Token storage (web clients):
@@ -80,6 +82,12 @@ Logout (`POST /auth/logout`):
 4. Rows are deleted by the daily cleanup one `refresh_token_expire_days` after logout. That outlives every token of the session because a refresh token whose lifetime (`exp` minus `iat`) exceeds the configured value is refused, so lowering the setting ends older, longer-lived refresh tokens at once
 5. If the call fails or gets no answer within 5 seconds, the client still signs out locally and tells the user the session stays valid until it expires
 6. An SSE token (`POST /auth/sse-token`) records the `sid` it was minted from and is refused at connect once that session has ended. A stream that is already open is not closed by logout
+
+Ending every session of a user (no list of sessions exists, so this raises `users.token_version`):
+1. A password change, an admin password reset and a deactivation each increment `token_version` in the same transaction as the change
+2. Every access and refresh token issued earlier carries the old `tv` and stops working, on every device, including the one that made the change
+3. A reactivated user does not get old sessions back, because deactivation raised the version
+4. After a password change the client clears its own session without calling `POST /auth/logout` and returns to sign-in
 
 ### Session Cookies
 

@@ -147,6 +147,8 @@ class UserService(BaseService):
             return await self.user_repo.get_by_id(user_id)
 
         user = await self.user_repo.update(user_id, **kwargs)
+        if is_active is False:
+            await self.user_repo.increment_token_version(user_id)
 
         self._log_operation(
             "user_updated",
@@ -170,6 +172,8 @@ class UserService(BaseService):
             raise ValidationError("Cannot deactivate own account")
 
         user = await self.user_repo.update(user_id, is_active=False)
+        # Reactivating the account must not bring its old sessions back.
+        await self.user_repo.increment_token_version(user_id)
         revoked_count = await self.api_key_repo.revoke_all_by_user(user_id)
 
         self._log_operation(
@@ -207,6 +211,7 @@ class UserService(BaseService):
 
         new_hash = await asyncio.to_thread(security.hash_password, new_password)
         await self.user_repo.update(user_id, hashed_password=new_hash)
+        await self.user_repo.increment_token_version(user_id)
 
         self._log_operation("password_changed", user_id=user_id)
 
@@ -222,6 +227,7 @@ class UserService(BaseService):
 
         new_hash = await asyncio.to_thread(security.hash_password, new_password)
         await self.user_repo.update(user_id, hashed_password=new_hash)
+        await self.user_repo.increment_token_version(user_id)
 
         self._log_operation(
             "password_reset_by_admin",
