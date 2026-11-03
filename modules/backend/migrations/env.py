@@ -41,6 +41,7 @@ from modules.backend.models.mission_plan import MissionPlan  # noqa: F401
 from modules.backend.models.mission_team import MissionTeamMember  # noqa: F401
 from modules.backend.models.model_pricing import ModelPricing  # noqa: F401
 from modules.backend.models.prompt_version import PromptVersion  # noqa: F401
+from modules.backend.models.revoked_session import RevokedSession  # noqa: F401
 from modules.backend.models.session import Session, SessionChannel, SessionMessage  # noqa: F401
 from modules.backend.models.session_followup import SessionFollowup  # noqa: F401
 from modules.backend.models.task import Task, TaskDependency  # noqa: F401

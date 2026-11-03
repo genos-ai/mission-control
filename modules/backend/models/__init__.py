@@ -28,6 +28,7 @@ from modules.backend.models.mission_plan import VALID_GATE_MODES, MissionPlan, M
 from modules.backend.models.mission_team import MissionTeamMember
 from modules.backend.models.model_pricing import ModelPricing
 from modules.backend.models.prompt_version import PromptVersion
+from modules.backend.models.revoked_session import RevokedSession
 from modules.backend.models.session import Session, SessionChannel, SessionMessage
 from modules.backend.models.task import (
     TERMINAL_TASK_STATUSES,
@@ -73,6 +74,7 @@ __all__ = [
     "MissionTeamMember",
     "ModelPricing",
     "PromptVersion",
+    "RevokedSession",
     "Session",
     "SessionChannel",
     "SessionMessage",

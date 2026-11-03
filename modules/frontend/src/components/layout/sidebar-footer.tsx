@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 
 import { NotificationDropdown } from './notification-dropdown'
@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { useExecutions } from '@/hooks/use-executions'
 import { useNow } from '@/hooks/use-now'
+import { useSignOut } from '@/hooks/use-sign-out'
 import { formatElapsed, parseUtc } from '@/lib/format-date'
 import { ROUTES } from '@/lib/constants'
 import { useAuthStore } from '@/stores/auth'
 
 export function SidebarFooter() {
-  const navigate = useNavigate()
   const { user, isAdmin } = useAuthStore()
+  const { signOut, signingOut } = useSignOut()
 
   return (
     <div className="flex flex-col gap-1.5 border-t border-border p-2.5">
@@ -37,10 +38,8 @@ export function SidebarFooter() {
             aria-label="Log out"
             title="Log out"
             className="hover:text-danger"
-            onClick={() => {
-              useAuthStore.getState().logout()
-              navigate(ROUTES.LOGIN)
-            }}
+            disabled={signingOut}
+            onClick={() => void signOut()}
           >
             <LogOut className="h-[15px] w-[15px]" />
           </Button>

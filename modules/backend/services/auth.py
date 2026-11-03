@@ -12,12 +12,14 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core import security
+from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import AuthenticationError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.api_key import ApiKey
 from modules.backend.models.user import User
 from modules.backend.repositories.api_key import ApiKeyRepository
+from modules.backend.repositories.revoked_session import RevokedSessionRepository
 from modules.backend.repositories.user import UserRepository
 from modules.backend.services.base import BaseService
 
@@ -34,6 +36,7 @@ class AuthService(BaseService):
         super().__init__(session)
         self.user_repo = UserRepository(session)
         self.api_key_repo = ApiKeyRepository(session)
+        self.revoked_session_repo = RevokedSessionRepository(session)
 
     async def login(self, email: str, password: str) -> dict:
         """Authenticate with email/password, return JWT pair + user."""
@@ -53,64 +56,95 @@ class AuthService(BaseService):
         if not valid:
             raise AuthenticationError("Invalid credentials")
 
-        access_token = security.create_access_token(
-            {
-                "sub": user.id,
-                "role": user.system_role,
-                "jti": str(uuid4()),
-            }
-        )
-        refresh_token = security.create_refresh_token(
-            {
-                "sub": user.id,
-                "jti": str(uuid4()),
-            }
-        )
+        tokens = self._issue_token_pair(user, session_id=str(uuid4()))
 
         await self.user_repo.update_last_login(user.id)
         self._log_operation("user_login", user_id=user.id, email=user.email)
 
+        return {**tokens, "user": user}
+
+    def _issue_token_pair(self, user: User, session_id: str) -> dict:
+        """Mint an access and refresh token that belong to one login session."""
         return {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "user": user,
+            "access_token": security.create_access_token(
+                {
+                    "sub": user.id,
+                    "role": user.system_role,
+                    "jti": str(uuid4()),
+                    "sid": session_id,
+                }
+            ),
+            "refresh_token": security.create_refresh_token(
+                {
+                    "sub": user.id,
+                    "jti": str(uuid4()),
+                    "sid": session_id,
+                }
+            ),
         }
 
-    async def refresh_token(self, refresh_token_str: str) -> dict:
-        """Exchange a refresh token for a new token pair."""
-        payload = security.decode_token(refresh_token_str)
+    async def _verified_claims(self, token: str, token_type: str) -> dict:
+        """Decode a JWT, requiring its type, a subject and a session that logout has not ended."""
+        payload = security.decode_token(token)
 
-        if payload.get("type") != TOKEN_TYPE_REFRESH:
+        if payload.get("type") != token_type:
             raise AuthenticationError("Invalid token type")
 
-        user_id = payload.get("sub")
-        if not user_id:
+        if not payload.get("sub"):
             raise AuthenticationError("Invalid token")
 
-        user = await self.user_repo.get_active(user_id)
+        # Tokens minted before sessions existed have no sid; they cannot be revoked, so refuse them.
+        session_id = payload.get("sid")
+        if not session_id:
+            raise AuthenticationError("Invalid token")
+
+        await self.ensure_session_active(session_id)
+
+        return payload
+
+    async def ensure_session_active(self, session_id: str) -> None:
+        """Raise unless logout has left the session alone."""
+        if await self.revoked_session_repo.is_revoked(session_id):
+            raise AuthenticationError("Session ended")
+
+    async def session_id_of(self, access_token: str) -> str:
+        """The session a valid, unrevoked access token belongs to."""
+        return (await self._verified_claims(access_token, TOKEN_TYPE_ACCESS))["sid"]
+
+    async def logout(self, access_token: str) -> None:
+        """End the session of an access token, with every refresh token minted from it."""
+        payload = await self._verified_claims(access_token, TOKEN_TYPE_ACCESS)
+
+        # Every token of the session expires within one refresh lifetime of now, because a
+        # revoked session can no longer be refreshed.
+        refresh_days = get_app_config().security.jwt.refresh_token_expire_days
+        expires_at = utc_now() + timedelta(days=refresh_days)
+        await self.revoked_session_repo.revoke(payload["sid"], payload["sub"], expires_at)
+        # Commit before answering: a 200 must mean the session is ended, not that it will be
+        # once the request-scoped session closes.
+        await self.session.commit()
+
+        self._log_operation("user_logout", user_id=payload["sub"], session_id=payload["sid"])
+
+    async def purge_expired_revocations(self) -> int:
+        """Delete revocation rows whose tokens have all expired. Returns the number deleted."""
+        deleted = await self.revoked_session_repo.delete_expired()
+        await self.session.commit()
+        return deleted
+
+    async def refresh_token(self, refresh_token_str: str) -> dict:
+        """Exchange a refresh token for a new token pair in the same session."""
+        payload = await self._verified_claims(refresh_token_str, TOKEN_TYPE_REFRESH)
+
+        user = await self.user_repo.get_active(payload["sub"])
         if not user:
             raise AuthenticationError("User not found or inactive")
 
-        access_token = security.create_access_token(
-            {
-                "sub": user.id,
-                "role": user.system_role,
-                "jti": str(uuid4()),
-            }
-        )
-        new_refresh = security.create_refresh_token(
-            {
-                "sub": user.id,
-                "jti": str(uuid4()),
-            }
-        )
+        tokens = self._issue_token_pair(user, session_id=payload["sid"])
 
         self._log_operation("token_refresh", user_id=user.id)
 
-        return {
-            "access_token": access_token,
-            "refresh_token": new_refresh,
-        }
+        return tokens
 
     async def resolve_api_key(self, raw_key: str) -> User:
         """Resolve a raw API key to a User via prefix narrowing + bcrypt.
@@ -146,16 +180,9 @@ class AuthService(BaseService):
 
     async def resolve_jwt(self, token: str) -> User:
         """Resolve a JWT access token to a User."""
-        payload = security.decode_token(token)
+        payload = await self._verified_claims(token, TOKEN_TYPE_ACCESS)
 
-        if payload.get("type") != TOKEN_TYPE_ACCESS:
-            raise AuthenticationError("Invalid token type")
-
-        user_id = payload.get("sub")
-        if not user_id:
-            raise AuthenticationError("Invalid token")
-
-        user = await self.user_repo.get_active(user_id)
+        user = await self.user_repo.get_active(payload["sub"])
         if not user:
             raise AuthenticationError("User not found or inactive")
 

@@ -5,9 +5,10 @@ Public endpoints for login, token refresh, and authenticated endpoints
 for API key management and password changes.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 
 from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
+from modules.backend.core.exceptions import AuthenticationError
 from modules.backend.schemas.auth import (
     ApiKeyCreateRequest,
     ApiKeyResponse,
@@ -74,20 +75,55 @@ async def refresh_token(
     )
 
 
+def _bearer_token(authorization: str | None) -> str | None:
+    """The token of an ``Authorization: Bearer`` header, or None for any other scheme."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    return authorization[7:]
+
+
+@router.post("/logout", response_model=ApiResponse, summary="End the current session")
+async def logout(
+    _: CurrentUser,  # authenticates the request; the session comes from the bearer token itself
+    db: DbSession,
+    request_id: RequestId,
+    authorization: str | None = Header(None),
+) -> ApiResponse:
+    """Revoke the session behind the bearer token, so its refresh tokens stop working too."""
+    from modules.backend.services.auth import AuthService
+
+    # An API key has no session to end; only a login JWT does.
+    access_token = _bearer_token(authorization)
+    if access_token is None:
+        raise AuthenticationError("A bearer token is required to log out")
+
+    await AuthService(db).logout(access_token)
+
+    return ApiResponse(
+        success=True,
+        data={"message": "Logged out"},
+        metadata={"request_id": request_id},
+    )
+
+
 @router.post(
     "/sse-token", response_model=ApiResponse, summary="Exchange JWT for short-lived SSE token"
 )
 async def create_sse_token(
     current_user: CurrentUser,
+    db: DbSession,
     request_id: RequestId,
+    authorization: str | None = Header(None),
 ) -> ApiResponse:
     """Exchange a valid JWT for a short-lived, single-use SSE token.
 
     EventSource cannot set custom headers, so SSE endpoints accept a
     ``?token=`` query parameter. Rather than passing the long-lived JWT
     directly, callers exchange it here for a 30-second, single-use token
-    stored in Redis.
+    stored in Redis. The token is bound to the login session it was minted
+    from, so logging out also ends it. An API key has no session to bind to.
     """
+    import json
     import uuid
 
     from redis.asyncio import Redis as AsyncRedis
@@ -97,8 +133,12 @@ async def create_sse_token(
     from modules.backend.core.logging import get_logger
 
     logger = get_logger(__name__)
+    from modules.backend.services.auth import AuthService
+
     sse_token = str(uuid.uuid4())
     ttl = 30
+    access_token = _bearer_token(authorization)
+    session_id = await AuthService(db).session_id_of(access_token) if access_token else None
 
     # The opaque UUID is meaningless without the Redis side of the handshake
     # — _resolve_sse_token() reads it back to authenticate the SSE stream.
@@ -107,7 +147,11 @@ async def create_sse_token(
     try:
         redis = AsyncRedis.from_url(get_redis_url())
         try:
-            await redis.set(f"sse_token:{sse_token}", str(current_user.id), ex=ttl)
+            await redis.set(
+                f"sse_token:{sse_token}",
+                json.dumps({"user_id": str(current_user.id), "session_id": session_id}),
+                ex=ttl,
+            )
         finally:
             await redis.aclose()
     except Exception as exc:

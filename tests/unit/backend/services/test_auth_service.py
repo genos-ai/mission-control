@@ -4,13 +4,18 @@ Tests login, JWT/API-key resolution, token refresh, key management,
 and legacy key fallback.
 """
 
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import AuthenticationError, AuthorizationError
+from modules.backend.core.utils import utc_now
 from modules.backend.services.auth import AuthService
 from tests.conftest import TEST_USER_ID
+
+SESSION_ID = "0192f3a4-0000-7000-8000-000000000001"
 
 
 def _make_user(
@@ -61,10 +66,13 @@ def service(mock_session):
     with (
         patch("modules.backend.services.auth.UserRepository") as MockUserRepo,
         patch("modules.backend.services.auth.ApiKeyRepository") as MockApiKeyRepo,
+        patch("modules.backend.services.auth.RevokedSessionRepository") as MockRevokedRepo,
     ):
         svc = AuthService(mock_session)
         svc.user_repo = MockUserRepo.return_value
         svc.api_key_repo = MockApiKeyRepo.return_value
+        svc.revoked_session_repo = MockRevokedRepo.return_value
+        svc.revoked_session_repo.is_revoked = AsyncMock(return_value=False)
         yield svc
 
 
@@ -92,6 +100,25 @@ class TestLogin:
         assert result["refresh_token"] == "refresh-jwt"
         assert result["user"] == user
         service.user_repo.update_last_login.assert_called_once_with(user.id)
+
+    @pytest.mark.asyncio
+    async def test_login_puts_one_session_id_in_both_tokens(self, service):
+        service.user_repo.get_by_email = AsyncMock(return_value=_make_user())
+        service.user_repo.update_last_login = AsyncMock()
+
+        with (
+            patch("modules.backend.services.auth.security.verify_password", return_value=True),
+            patch(
+                "modules.backend.services.auth.security.create_access_token", return_value="a"
+            ) as access,
+            patch(
+                "modules.backend.services.auth.security.create_refresh_token", return_value="r"
+            ) as refresh,
+        ):
+            await service.login("test@example.com", "password123")
+
+        access_sid = access.call_args.args[0]["sid"]
+        assert access_sid and access_sid == refresh.call_args.args[0]["sid"]
 
     @pytest.mark.asyncio
     async def test_login_nonexistent_user(self, service):
@@ -135,7 +162,7 @@ class TestRefreshToken:
         with (
             patch(
                 "modules.backend.services.auth.security.decode_token",
-                return_value={"type": "refresh", "sub": TEST_USER_ID},
+                return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
             ),
             patch(
                 "modules.backend.services.auth.security.create_access_token",
@@ -152,10 +179,54 @@ class TestRefreshToken:
         assert result["refresh_token"] == "new-refresh"
 
     @pytest.mark.asyncio
+    async def test_refresh_keeps_the_session_id(self, service):
+        service.user_repo.get_active = AsyncMock(return_value=_make_user())
+
+        with (
+            patch(
+                "modules.backend.services.auth.security.decode_token",
+                return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+            ),
+            patch(
+                "modules.backend.services.auth.security.create_access_token", return_value="a"
+            ) as access,
+            patch(
+                "modules.backend.services.auth.security.create_refresh_token", return_value="r"
+            ) as refresh,
+        ):
+            await service.refresh_token("old-refresh-token")
+
+        assert access.call_args.args[0]["sid"] == SESSION_ID
+        assert refresh.call_args.args[0]["sid"] == SESSION_ID
+
+    @pytest.mark.asyncio
+    async def test_refresh_of_a_revoked_session_fails(self, service):
+        service.revoked_session_repo.is_revoked = AsyncMock(return_value=True)
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+        ):
+            with pytest.raises(AuthenticationError, match="Session ended"):
+                await service.refresh_token("token")
+
+        service.revoked_session_repo.is_revoked.assert_awaited_once_with(SESSION_ID)
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_without_session_id_fails(self, service):
+        """Tokens minted before sessions existed cannot be revoked, so they are refused."""
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value={"type": "refresh", "sub": TEST_USER_ID},
+        ):
+            with pytest.raises(AuthenticationError, match="Invalid token"):
+                await service.refresh_token("token")
+
+    @pytest.mark.asyncio
     async def test_refresh_with_access_token_type_fails(self, service):
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID},
+            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
         ):
             with pytest.raises(AuthenticationError, match="Invalid token type"):
                 await service.refresh_token("access-token-not-refresh")
@@ -174,7 +245,7 @@ class TestRefreshToken:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "refresh", "sub": TEST_USER_ID},
+            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
         ):
             with pytest.raises(AuthenticationError, match="User not found or inactive"):
                 await service.refresh_token("token")
@@ -234,17 +305,37 @@ class TestResolveJwt:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID},
+            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
         ):
             result = await service.resolve_jwt("valid-jwt")
 
         assert result == user
 
     @pytest.mark.asyncio
+    async def test_revoked_session_rejected(self, service):
+        service.revoked_session_repo.is_revoked = AsyncMock(return_value=True)
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+        ):
+            with pytest.raises(AuthenticationError, match="Session ended"):
+                await service.resolve_jwt("token")
+
+    @pytest.mark.asyncio
+    async def test_token_without_session_id_rejected(self, service):
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value={"type": "access", "sub": TEST_USER_ID},
+        ):
+            with pytest.raises(AuthenticationError, match="Invalid token"):
+                await service.resolve_jwt("token")
+
+    @pytest.mark.asyncio
     async def test_refresh_token_rejected(self, service):
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "refresh", "sub": TEST_USER_ID},
+            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
         ):
             with pytest.raises(AuthenticationError, match="Invalid token type"):
                 await service.resolve_jwt("refresh-not-access")
@@ -255,10 +346,54 @@ class TestResolveJwt:
 
         with patch(
             "modules.backend.services.auth.security.decode_token",
-            return_value={"type": "access", "sub": TEST_USER_ID},
+            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
         ):
             with pytest.raises(AuthenticationError, match="User not found or inactive"):
                 await service.resolve_jwt("token")
+
+
+class TestLogout:
+    @pytest.mark.asyncio
+    async def test_logout_revokes_the_session_and_commits(self, service, mock_session):
+        service.revoked_session_repo.revoke = AsyncMock()
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+        ):
+            await service.logout("access-jwt")
+
+        session_id, user_id, expires_at = service.revoked_session_repo.revoke.call_args.args
+        assert (session_id, user_id) == (SESSION_ID, TEST_USER_ID)
+        refresh_days = get_app_config().security.jwt.refresh_token_expire_days
+        expected = utc_now() + timedelta(days=refresh_days)
+        assert abs(expires_at - expected) < timedelta(seconds=5)
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_logout_with_a_refresh_token_fails(self, service, mock_session):
+        service.revoked_session_repo.revoke = AsyncMock()
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value={"type": "refresh", "sub": TEST_USER_ID, "sid": SESSION_ID},
+        ):
+            with pytest.raises(AuthenticationError, match="Invalid token type"):
+                await service.logout("refresh-jwt")
+
+        service.revoked_session_repo.revoke.assert_not_awaited()
+        mock_session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_logout_of_an_ended_session_fails(self, service):
+        service.revoked_session_repo.is_revoked = AsyncMock(return_value=True)
+
+        with patch(
+            "modules.backend.services.auth.security.decode_token",
+            return_value={"type": "access", "sub": TEST_USER_ID, "sid": SESSION_ID},
+        ):
+            with pytest.raises(AuthenticationError, match="Session ended"):
+                await service.logout("access-jwt")
 
 
 class TestCreateApiKey:

@@ -29,10 +29,18 @@ async def daily_cleanup(older_than_days: int = 30) -> dict[str, Any]:
     """
     logger.info("Starting daily cleanup", extra={"older_than_days": older_than_days})
 
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.auth import AuthService
+
+    # Not governed by older_than_days: a revocation row is deletable once its own tokens expire.
+    async with get_async_session() as session:
+        revoked_sessions_deleted = await AuthService(session).purge_expired_revocations()
+
     result = {
         "status": "completed",
         "older_than_days": older_than_days,
-        "tables_cleaned": [],
+        "tables_cleaned": ["revoked_sessions"],
+        "revoked_sessions_deleted": revoked_sessions_deleted,
         "completed_at": utc_now().isoformat(),
     }
 

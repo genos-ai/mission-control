@@ -4,6 +4,7 @@ FastAPI Dependencies.
 Shared dependencies for request handling.
 """
 
+import json
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -121,8 +122,10 @@ async def get_optional_user(
         return None
 
 
-async def _resolve_sse_token(token: str) -> str | None:
-    """Look up a short-lived SSE token in Redis and return the user_id.
+async def _resolve_sse_token(token: str) -> tuple[str, str | None] | None:
+    """Look up a short-lived SSE token in Redis and return its user_id and session id.
+
+    The session id is None for a token minted from an API key, which has no session.
 
     The token is deleted after retrieval (single-use). Returns ``None``
     when the token is simply not found (caller falls back to treating it
@@ -137,9 +140,10 @@ async def _resolve_sse_token(token: str) -> str | None:
     redis_key = f"sse_token:{token}"
     redis = AsyncRedis.from_url(get_redis_url())
     try:
-        user_id: bytes | None = await redis.getdel(redis_key)
-        if user_id:
-            return user_id.decode()
+        stored: bytes | None = await redis.getdel(redis_key)
+        if stored:
+            binding = json.loads(stored)
+            return binding["user_id"], binding["session_id"]
     except Exception as exc:
         raise AuthenticationError("Unable to verify SSE token") from exc
     finally:
@@ -173,8 +177,13 @@ async def get_current_user_sse(
 
         # 1. Try short-lived SSE token (Redis)
         if token:
-            user_id = await _resolve_sse_token(token)
-            if user_id:
+            binding = await _resolve_sse_token(token)
+            if binding:
+                user_id, session_id = binding
+                # Logout between minting and connecting must still refuse the stream.
+                if session_id:
+                    await auth_service.ensure_session_active(session_id)
+
                 from sqlalchemy import select
 
                 from modules.backend.models.user import User as UserModel

@@ -59,7 +59,8 @@ Token content:
 - User ID
 - Roles/permissions
 - Expiration timestamp
-- Token ID (for revocation)
+- Token ID (`jti`)
+- Session ID (`sid`): minted at login and carried by every token refreshed from it. A token without a `sid` is refused ("Invalid token"), so tokens issued before this claim existed cannot be used or refreshed; users sign in once. A token whose session has been logged out is refused ("Session ended")
 
 Token storage (web clients):
 - Access token: Memory only (never localStorage)
@@ -71,6 +72,14 @@ Token refresh flow:
 3. Server validates refresh token
 4. Server issues new access/refresh pair
 5. Old refresh token invalidated
+
+Logout (`POST /auth/logout`):
+1. Client calls it with the access token, before clearing its own state
+2. Server stores the `sid` in `revoked_sessions` and commits before answering
+3. Access and refresh verification reject any token whose `sid` is stored, so every token minted from that login stops working, including earlier refresh tokens
+4. Rows are deleted by the daily cleanup once a refresh lifetime has passed
+5. If the call fails or gets no answer within 5 seconds, the client still signs out locally and tells the user the session stays valid until it expires
+6. An SSE token (`POST /auth/sse-token`) records the `sid` it was minted from and is refused at connect once that session has ended. A stream that is already open is not closed by logout
 
 ### Session Cookies
 

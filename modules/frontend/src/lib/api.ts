@@ -9,6 +9,22 @@ export class ApiError extends Error {
   }
 }
 
+/** The access token expired and the refresh token was refused, so the session is over. */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired')
+    this.name = 'SessionExpiredError'
+  }
+}
+
+interface RequestOptions {
+  skipAuth?: boolean
+  /** Cancels the request itself; a refresh it triggers is shared with other callers and is not cancelled. */
+  signal?: AbortSignal
+  /** For a caller that signs out itself: on SessionExpiredError the store is left for it to clear. */
+  keepSessionOnExpiry?: boolean
+}
+
 export class ApiClient {
   private refreshPromise: Promise<boolean> | null = null
 
@@ -16,21 +32,21 @@ export class ApiClient {
     method: string,
     path: string,
     body?: unknown,
-    options?: { skipAuth?: boolean },
+    options?: RequestOptions,
   ): Promise<T> {
-    const response = await this.fetch(method, path, body)
+    const response = await this.fetch(method, path, body, options?.signal)
 
     if (response.status === 401 && !options?.skipAuth) {
       const refreshed = await this.tryRefresh()
       if (refreshed) {
-        const retry = await this.fetch(method, path, body)
+        const retry = await this.fetch(method, path, body, options?.signal)
         if (!retry.ok) throw await this.toError(retry)
         return this.unwrap<T>(retry)
       }
       // Refresh failed. Clearing the session is enough: AuthGuard redirects to /login and
       // records the current route, so signing in returns here. A full page load would lose it.
-      useAuthStore.getState().logout()
-      throw new Error('Session expired')
+      if (!options?.keepSessionOnExpiry) useAuthStore.getState().logout()
+      throw new SessionExpiredError()
     }
 
     if (!response.ok) throw await this.toError(response)
@@ -41,6 +57,7 @@ export class ApiClient {
     method: string,
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<Response> {
     const token = useAuthStore.getState().accessToken
     const headers: Record<string, string> = {
@@ -54,6 +71,7 @@ export class ApiClient {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
     })
   }
 
@@ -90,6 +108,8 @@ export class ApiClient {
 
       const json = await response.json()
       const data = json.data
+      // The user signed out while this request was in flight: writing the tokens would sign them back in.
+      if (!useAuthStore.getState().refreshToken) return false
       useAuthStore.getState().setTokens(
         data.access_token,
         data.refresh_token,
@@ -118,7 +138,7 @@ export class ApiClient {
   get<T>(path: string) {
     return this.request<T>('GET', path)
   }
-  post<T>(path: string, body?: unknown, options?: { skipAuth?: boolean }) {
+  post<T>(path: string, body?: unknown, options?: RequestOptions) {
     return this.request<T>('POST', path, body, options)
   }
   put<T>(path: string, body: unknown) {

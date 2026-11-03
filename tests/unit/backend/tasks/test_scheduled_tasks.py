@@ -6,6 +6,9 @@ Task functions are imported directly from the scheduled module,
 bypassing the broker registration which requires Redis.
 """
 
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from modules.backend.tasks.scheduled import (
@@ -16,6 +19,24 @@ from modules.backend.tasks.scheduled import (
 )
 
 
+@pytest.fixture
+def purge():
+    """daily_cleanup opens a database session to purge revocations; the purge itself is
+    covered against the real database in tests/integration/backend/services/test_auth.py."""
+
+    @asynccontextmanager
+    async def fake_session():
+        yield MagicMock()
+
+    purge = AsyncMock(return_value=3)
+    with (
+        patch("modules.backend.core.database.get_async_session", new=fake_session),
+        patch("modules.backend.services.auth.AuthService.purge_expired_revocations", new=purge),
+    ):
+        yield purge
+
+
+@pytest.mark.usefixtures("purge")
 class TestDailyCleanup:
     """Tests for daily_cleanup task."""
 
@@ -28,6 +49,15 @@ class TestDailyCleanup:
         assert result["older_than_days"] == 30
         assert "tables_cleaned" in result
         assert "completed_at" in result
+
+    @pytest.mark.asyncio
+    async def test_daily_cleanup_purges_expired_revocations(self, purge):
+        """Expired logout revocations are deleted and the count is reported."""
+        result = await daily_cleanup()
+
+        purge.assert_awaited_once()
+        assert result["revoked_sessions_deleted"] == 3
+        assert "revoked_sessions" in result["tables_cleaned"]
 
     @pytest.mark.asyncio
     async def test_daily_cleanup_default_retention(self):
