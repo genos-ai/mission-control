@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 
 import { useCreateApiKey, useRevokeApiKey, useUserApiKeys } from '@/hooks/use-admin'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { StatusPill } from '@/components/ui/status-pill'
@@ -20,6 +21,7 @@ export function UserApiKeys({ userId }: { userId: string }) {
   const [newKeyName, setNewKeyName] = useState('')
   const [createdKey, setCreatedKey] = useState<ApiKeyCreateResponse | null>(null)
   const [copied, setCopied] = useState(false)
+  const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null)
 
   const handleCreate = async () => {
     if (!newKeyName.trim()) return
@@ -33,6 +35,7 @@ export function UserApiKeys({ userId }: { userId: string }) {
   }
 
   const handleRevoke = async (keyId: string) => {
+    setRevoking(null)
     try {
       await revokeKey.mutateAsync(keyId)
       toast.success('API key revoked')
@@ -106,7 +109,7 @@ export function UserApiKeys({ userId }: { userId: string }) {
                   size="icon-sm"
                   className="text-danger hover:text-danger"
                   aria-label={`Revoke key ${k.name}`}
-                  onClick={() => handleRevoke(k.id)}
+                  onClick={() => setRevoking({ id: k.id, name: k.name })}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -115,6 +118,17 @@ export function UserApiKeys({ userId }: { userId: string }) {
           ))}
           {!keys?.length && <li className="text-xs text-subtle">No API keys.</li>}
         </ul>
+      )}
+
+      {revoking && (
+        <ConfirmDialog
+          title="Revoke API key"
+          message={`Revoke ${revoking.name}? Anything using it stops working at once. This cannot be undone.`}
+          confirmLabel="Revoke"
+          variant="danger"
+          onConfirm={() => handleRevoke(revoking.id)}
+          onCancel={() => setRevoking(null)}
+        />
       )}
     </div>
   )

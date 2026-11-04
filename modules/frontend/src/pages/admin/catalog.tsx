@@ -11,6 +11,7 @@ import {
   useSeedCatalog,
 } from '@/hooks/use-admin'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
@@ -39,6 +40,7 @@ export default function AdminCatalogPage() {
   } | null>(null)
   const [editingAgent, setEditingAgent] = useState<AgentCatalogItem | null>(null)
   const [creating, setCreating] = useState(false)
+  const [deletingAgent, setDeletingAgent] = useState<string | null>(null)
   const [newAgent, setNewAgent] = useState(EMPTY_NEW_AGENT)
 
   const filtered = agents?.filter(
@@ -71,6 +73,7 @@ export default function AdminCatalogPage() {
   }
 
   const handleDelete = async (agentName: string) => {
+    setDeletingAgent(null)
     try {
       await deleteAgent.mutateAsync(agentName)
       toast.success(`${agentName} deleted`)
@@ -218,12 +221,22 @@ export default function AdminCatalogPage() {
                   onToggle={() => handleToggle(agent)}
                   onEditPrompt={() => setPromptEditor({ agentName: agent.agent_name, content: '' })}
                   onEdit={() => setEditingAgent(agent)}
-                  onDelete={() => handleDelete(agent.agent_name)}
+                  onDelete={() => setDeletingAgent(agent.agent_name)}
                 />
               ))
             )}
           </div>
         </Panel>
+      )}
+      {deletingAgent && (
+        <ConfirmDialog
+          title="Delete agent"
+          message={`Delete ${deletingAgent} from the agent catalog? This cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={() => handleDelete(deletingAgent)}
+          onCancel={() => setDeletingAgent(null)}
+        />
       )}
     </>
   )

@@ -84,3 +84,6 @@ export const ATTENTION_POLL_MS = 30_000
 
 /** How long Log out waits for the server to end the session before signing out locally regardless. */
 export const LOGOUT_TIMEOUT_MS = 5_000
+
+/** The shortest password the API accepts (`min_length` of the password fields in schemas/auth.py). */
+export const PASSWORD_MIN_LENGTH = 12

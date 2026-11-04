@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 
 import { useOwnApiKeys, useCreateOwnApiKey, useRevokeOwnApiKey } from '@/hooks/use-profile'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
@@ -18,6 +19,7 @@ export function ApiKeysPanel() {
   const [newKeyName, setNewKeyName] = useState('')
   const [createdKey, setCreatedKey] = useState<ApiKeyCreateResponse | null>(null)
   const [copied, setCopied] = useState(false)
+  const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null)
 
   const handleCreate = async () => {
     if (!newKeyName.trim()) return
@@ -31,6 +33,7 @@ export function ApiKeysPanel() {
   }
 
   const handleRevoke = async (keyId: string) => {
+    setRevoking(null)
     try {
       await revokeKey.mutateAsync(keyId)
       toast.success('Key revoked')
@@ -110,7 +113,7 @@ export function ApiKeysPanel() {
                     size="icon-sm"
                     className="text-danger hover:text-danger"
                     aria-label={`Revoke ${k.name}`}
-                    onClick={() => handleRevoke(k.id)}
+                    onClick={() => setRevoking({ id: k.id, name: k.name })}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -121,6 +124,16 @@ export function ApiKeysPanel() {
           </div>
         )}
       </PanelContent>
+      {revoking && (
+        <ConfirmDialog
+          title="Revoke API key"
+          message={`Revoke ${revoking.name}? Anything using it stops working at once. This cannot be undone.`}
+          confirmLabel="Revoke"
+          variant="danger"
+          onConfirm={() => handleRevoke(revoking.id)}
+          onCancel={() => setRevoking(null)}
+        />
+      )}
     </Panel>
   )
 }

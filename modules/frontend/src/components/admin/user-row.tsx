@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import { ChevronDown, ChevronRight, RotateCcw, UserX } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { useDeactivateUser, useResetPassword, useUpdateUser } from '@/hooks/use-admin'
+import { ResetPasswordDialog } from '@/components/admin/reset-password-dialog'
 import { UserApiKeys } from '@/components/admin/user-api-keys'
 import { UserRolePill, UserRoleSelect } from '@/components/admin/user-role'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { StatusPill } from '@/components/ui/status-pill'
 import { cn } from '@/lib/cn'
 import type { UserResponse } from '@/types'
@@ -26,6 +29,8 @@ export function UserRow({
   const updateUser = useUpdateUser()
   const deactivateUser = useDeactivateUser()
   const resetPassword = useResetPassword()
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false)
+  const [resettingPassword, setResettingPassword] = useState(false)
 
   const handleRoleChange = async (role: string) => {
     try {
@@ -37,6 +42,7 @@ export function UserRow({
   }
 
   const handleDeactivate = async () => {
+    setConfirmingDeactivate(false)
     try {
       await deactivateUser.mutateAsync(user.id)
       toast.success('User deactivated')
@@ -45,15 +51,11 @@ export function UserRow({
     }
   }
 
-  const handleResetPassword = async () => {
-    const pw = prompt('Enter new password:')
-    if (!pw) return
-    try {
-      await resetPassword.mutateAsync({ userId: user.id, newPassword: pw })
-      toast.success('Password reset')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Reset failed')
-    }
+  // Throws on failure so the dialog can show the server's reason and stay open.
+  const handleResetPassword = async (newPassword: string) => {
+    await resetPassword.mutateAsync({ userId: user.id, newPassword })
+    setResettingPassword(false)
+    toast.success('Password reset')
   }
 
   const Chevron = expanded ? ChevronDown : ChevronRight
@@ -95,7 +97,7 @@ export function UserRow({
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={handleResetPassword}
+            onClick={() => setResettingPassword(true)}
             title="Reset password"
             aria-label={`Reset password for ${user.display_name}`}
           >
@@ -105,7 +107,7 @@ export function UserRow({
             variant="ghost"
             size="icon-sm"
             className="text-danger hover:text-danger"
-            onClick={handleDeactivate}
+            onClick={() => setConfirmingDeactivate(true)}
             title="Deactivate user"
             aria-label={`Deactivate ${user.display_name}`}
             disabled={!user.is_active}
@@ -119,6 +121,23 @@ export function UserRow({
         <div className="px-4 pb-3">
           <UserApiKeys userId={user.id} />
         </div>
+      )}
+      {confirmingDeactivate && (
+        <ConfirmDialog
+          title="Deactivate user"
+          message={`Deactivate ${user.display_name}? They are signed out on every device, their API keys are revoked, and they cannot sign in until the account is reactivated.`}
+          confirmLabel="Deactivate"
+          variant="danger"
+          onConfirm={handleDeactivate}
+          onCancel={() => setConfirmingDeactivate(false)}
+        />
+      )}
+      {resettingPassword && (
+        <ResetPasswordDialog
+          userName={user.display_name}
+          onSubmit={handleResetPassword}
+          onCancel={() => setResettingPassword(false)}
+        />
       )}
     </div>
   )
