@@ -39,7 +39,7 @@ async def test_mission_stream_releases_session_before_returning_response():
 
     with (
         patch(f"{ENDPOINTS}.get_async_session", new=scope),
-        patch(f"{ENDPOINTS}._require_mission_access", new=check),
+        patch(f"{ENDPOINTS}.require_mission_access", new=check),
     ):
         response = await streams.stream_mission_events("mission-1", MagicMock())
 
@@ -55,7 +55,7 @@ async def test_run_stream_releases_session_before_returning_response():
 
     with (
         patch(f"{ENDPOINTS}.get_async_session", new=scope),
-        patch(f"{ENDPOINTS}._require_session_access", new=AsyncMock()),
+        patch(f"{ENDPOINTS}.require_session_access", new=AsyncMock()),
         patch(f"{ENDPOINTS}.SessionService", return_value=session_service),
     ):
         response = await streams.stream_run_events(
@@ -72,7 +72,7 @@ async def test_access_denied_still_releases_session():
     with (
         patch(f"{ENDPOINTS}.get_async_session", new=scope),
         patch(
-            f"{ENDPOINTS}._require_mission_access",
+            f"{ENDPOINTS}.require_mission_access",
             new=AsyncMock(side_effect=streams.AuthorizationError("no")),
         ),
     ):

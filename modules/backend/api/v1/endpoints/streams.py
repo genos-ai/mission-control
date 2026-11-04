@@ -23,14 +23,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config, get_redis_url
 from modules.backend.core.database import get_async_session
-from modules.backend.core.dependencies import SseAuth
+from modules.backend.core.dependencies import (
+    SseAuth,
+    require_mission_access,
+    require_session_access,
+)
 from modules.backend.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.sse_guard import StreamEnd, close_when_invalid
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.services.auth import AuthService, SessionIdentity
 from modules.backend.services.console import format_event_for_sse
-from modules.backend.services.mission import MissionService
 from modules.backend.services.session import SessionService
 
 logger = get_logger(__name__)
@@ -39,48 +42,6 @@ router = APIRouter()
 
 
 # ---- Access helpers ----
-
-
-async def _require_mission_access(
-    db,
-    mission_id: str,
-    user,
-) -> None:
-    """Admin, owner, or mission member. Raises AuthorizationError otherwise."""
-    if user.has_role("admin"):
-        return
-    mission = await MissionService(db).get_mission(mission_id)
-    if mission.owner_id == user.id:
-        return
-    if any(m.user_id == user.id for m in mission.members):
-        return
-    raise AuthorizationError("You don't have access to this mission")
-
-
-async def _require_session_access(
-    db,
-    session_id: str,
-    user,
-) -> None:
-    """Admin, session owner, or mission member of the session's mission."""
-    if user.has_role("admin"):
-        return
-    try:
-        session = await SessionService(db).get_session(session_id)
-    except NotFoundError:
-        raise AuthorizationError("Session not found or access denied")
-    if session.user_id == user.id:
-        return
-    if session.mission_id:
-        try:
-            await _require_mission_access(db, session.mission_id, user)
-            return
-        except AuthorizationError:
-            logger.debug(
-                "Session owner check failed and mission-access check also denied",
-                extra={"session_id": session_id},
-            )
-    raise AuthorizationError("You don't have access to this session")
 
 
 def _require_notification_access(user, user_id: str) -> None:
@@ -146,7 +107,7 @@ async def stream_run_events(
     # The connection is returned to the pool before streaming starts: a stream
     # stays open for as long as the client does and must not hold one.
     async with get_async_session() as db:
-        await _require_session_access(db, session_id, user)
+        await require_session_access(db, session_id, user)
 
         # Look up mission_id from the session
         session = await SessionService(db).get_session(session_id)
@@ -175,7 +136,7 @@ async def stream_run_events(
             await redis.close()
 
     async def require_access(db: AsyncSession, current_user) -> None:
-        await _require_session_access(db, session_id, current_user)
+        await require_session_access(db, session_id, current_user)
 
     return StreamingResponse(
         _guarded(generate(), auth.identity, require_access),
@@ -290,7 +251,7 @@ async def stream_mission_events(
     user = auth.user
     # Connection released before streaming starts (see stream_run_events).
     async with get_async_session() as db:
-        await _require_mission_access(db, mission_id, user)
+        await require_mission_access(db, mission_id, user)
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
@@ -307,10 +268,9 @@ async def stream_mission_events(
             )
         finally:
             await redis.close()
-            await redis.close()
 
     async def require_access(db: AsyncSession, current_user) -> None:
-        await _require_mission_access(db, mission_id, current_user)
+        await require_mission_access(db, mission_id, current_user)
 
     return StreamingResponse(
         _guarded(generate(), auth.identity, require_access),

@@ -199,7 +199,7 @@ async def shared_mission(sse_db: AsyncSession, test_user: User, test_user_2: Use
 
 def _mission_access(mission_id: str):
     async def require_access(db: AsyncSession, user: User) -> None:
-        await streams._require_mission_access(db, mission_id, user)
+        await streams.require_mission_access(db, mission_id, user)
 
     return require_access
 

@@ -6,7 +6,6 @@ when the check runs. The test expires the mission to match that.
 
 import pytest
 
-from modules.backend.api.v1.endpoints import streams
 from modules.backend.core.dependencies import require_mission_access
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.models.mission import MissionMember, MissionMemberRole
@@ -15,9 +14,6 @@ from tests.integration.backend.api.helpers import create_mission
 
 CHECKS = {
     "require_mission_access": lambda db, mission_id, user: require_mission_access(
-        db, mission_id, user
-    ),
-    "stream _require_mission_access": lambda db, mission_id, user: streams._require_mission_access(
         db, mission_id, user
     ),
 }
