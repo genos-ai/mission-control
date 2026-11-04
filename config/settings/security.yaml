@@ -7,6 +7,10 @@
 #     access_token_expire_minutes  - Access token lifetime in minutes (integer)
 #     refresh_token_expire_days    - Refresh token lifetime in days (integer)
 #     audience          - Expected audience claim for token validation (string)
+#   sse                 - Server-Sent Event stream settings (object)
+#     session_recheck_seconds  - How often an open stream re-validates its session; a stream whose
+#                                session ended (logout, password change, deactivation) closes within
+#                                one interval (integer)
 #   rate_limiting       - Rate limit settings per interface (object)
 #     api               - REST API limits (object)
 #       requests_per_minute  - Max requests per minute per client (integer)
@@ -50,6 +54,12 @@ jwt:
   access_token_expire_minutes: 30
   refresh_token_expire_days: 7
   audience: "mission-control-api"
+
+# -----------------------------------------------------------------------------
+# Server-Sent Event Streams
+# -----------------------------------------------------------------------------
+sse:
+  session_recheck_seconds: 30
 
 # -----------------------------------------------------------------------------
 # Rate Limiting (per user/client, enforced at middleware level)

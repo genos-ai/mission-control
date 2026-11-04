@@ -121,7 +121,8 @@ async def create_sse_token(
     ``?token=`` query parameter. Rather than passing the long-lived JWT
     directly, callers exchange it here for a 30-second, single-use token
     stored in Redis. The token is bound to the login session it was minted
-    from, so logging out also ends it. An API key has no session to bind to.
+    from, so ending that session also ends it. An API key has no session to
+    bind to; its token is bound to the user's token version only.
     """
     import json
     import uuid
@@ -133,12 +134,15 @@ async def create_sse_token(
     from modules.backend.core.logging import get_logger
 
     logger = get_logger(__name__)
-    from modules.backend.services.auth import AuthService
+    from modules.backend.services.auth import AuthService, SessionIdentity
 
     sse_token = str(uuid.uuid4())
     ttl = 30
     access_token = _bearer_token(authorization)
-    session_id = await AuthService(db).session_id_of(access_token) if access_token else None
+    if access_token:
+        identity = await AuthService(db).session_identity_of(access_token)
+    else:
+        identity = SessionIdentity(current_user.id, None, current_user.token_version)
 
     # The opaque UUID is meaningless without the Redis side of the handshake
     # — _resolve_sse_token() reads it back to authenticate the SSE stream.
@@ -149,7 +153,13 @@ async def create_sse_token(
         try:
             await redis.set(
                 f"sse_token:{sse_token}",
-                json.dumps({"user_id": str(current_user.id), "session_id": session_id}),
+                json.dumps(
+                    {
+                        "user_id": identity.user_id,
+                        "session_id": identity.session_id,
+                        "token_version": identity.token_version,
+                    }
+                ),
                 ex=ttl,
             )
         finally:

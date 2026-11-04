@@ -5,7 +5,7 @@ Server-Sent Event streams for real-time notifications and run monitoring.
 
 Auth note: browser `EventSource` cannot send custom headers, so these
 endpoints accept the JWT as a `?token=...` query parameter via the shared
-`SseUser` dependency. Ownership/membership checks live in this module so
+`SseAuth` dependency. Ownership/membership checks live in this module so
 that an authenticated caller can only stream data for resources they can
 actually see via the REST API.
 """
@@ -13,17 +13,20 @@ actually see via the REST API.
 import asyncio
 import json
 import uuid
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis as AsyncRedis
 
-from modules.backend.core.config import get_redis_url
+from modules.backend.core.config import get_app_config, get_redis_url
 from modules.backend.core.database import get_async_session
-from modules.backend.core.dependencies import SseUser
-from modules.backend.core.exceptions import AuthorizationError, NotFoundError
+from modules.backend.core.dependencies import SseAuth
+from modules.backend.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
+from modules.backend.core.sse_guard import close_when_invalid
 from modules.backend.events.bus import SessionEventBus
+from modules.backend.services.auth import AuthService, SessionIdentity
 from modules.backend.services.console import format_event_for_sse
 from modules.backend.services.mission import MissionService
 from modules.backend.services.session import SessionService
@@ -78,6 +81,29 @@ async def _require_session_access(
     raise AuthorizationError("You don't have access to this session")
 
 
+# ---- Session guard ----
+
+
+def _guarded(frames: AsyncIterator[str], identity: SessionIdentity) -> AsyncIterator[str]:
+    """Close the stream once the credential it was opened with stops being valid.
+
+    Each check takes a database session and gives it back at once, so an open stream still
+    holds no connection between checks.
+    """
+
+    async def still_valid() -> bool:
+        async with get_async_session() as db:
+            try:
+                await AuthService(db).ensure_identity_current(identity)
+            except AuthenticationError:
+                return False
+        return True
+
+    return close_when_invalid(
+        frames, still_valid, get_app_config().security.sse.session_recheck_seconds
+    )
+
+
 # ---- Run event stream ----
 
 
@@ -92,13 +118,14 @@ async def _require_session_access(
 )
 async def stream_run_events(
     session_id: str,
-    user: SseUser,
+    auth: SseAuth,
 ) -> StreamingResponse:
     """Stream execution events for a session as SSE.
 
     Subscribes to the mission channel and filters by session_id.
     All events go through one channel per mission.
     """
+    user = auth.user
     # The connection is returned to the pool before streaming starts: a stream
     # stays open for as long as the client does and must not hold one.
     async with get_async_session() as db:
@@ -131,7 +158,7 @@ async def stream_run_events(
             await redis.close()
 
     return StreamingResponse(
-        generate(),
+        _guarded(generate(), auth.identity),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -156,10 +183,11 @@ NOTIFY_CHANNEL_PREFIX = "notify"
     ),
 )
 async def stream_notifications(
-    user: SseUser,
+    auth: SseAuth,
     user_id: str = Query(..., description="User ID to receive notifications for"),
 ) -> StreamingResponse:
     """Stream notifications for a user as SSE."""
+    user = auth.user
     # Admins can subscribe to any user's notifications; everyone else may
     # only subscribe to their own.
     if user_id != user.id and not user.has_role("admin"):
@@ -210,7 +238,7 @@ async def stream_notifications(
             await redis.close()
 
     return StreamingResponse(
-        generate(),
+        _guarded(generate(), auth.identity),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -233,13 +261,14 @@ async def stream_notifications(
 )
 async def stream_mission_events(
     mission_id: str,
-    user: SseUser,
+    auth: SseAuth,
 ) -> StreamingResponse:
     """Stream all events for a mission as SSE.
 
     Single channel subscription — no multi-session aggregation needed.
     All events publish to mission_events:{mission_id}.
     """
+    user = auth.user
     # Connection released before streaming starts (see stream_run_events).
     async with get_async_session() as db:
         await _require_mission_access(db, mission_id, user)
@@ -262,7 +291,7 @@ async def stream_mission_events(
             await redis.close()
 
     return StreamingResponse(
-        generate(),
+        _guarded(generate(), auth.identity),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

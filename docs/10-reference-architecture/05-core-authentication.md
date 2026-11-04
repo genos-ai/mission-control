@@ -81,7 +81,8 @@ Logout (`POST /auth/logout`):
 3. Access and refresh verification reject any token whose `sid` is stored, so every token minted from that login stops working, including earlier refresh tokens
 4. Rows are deleted by the daily cleanup one `refresh_token_expire_days` after logout. That outlives every token of the session because a refresh token whose lifetime (`exp` minus `iat`) exceeds the configured value is refused, so lowering the setting ends older, longer-lived refresh tokens at once
 5. If the call fails or gets no answer within 5 seconds, the client still signs out locally and tells the user the session stays valid until it expires
-6. An SSE token (`POST /auth/sse-token`) records the `sid` it was minted from and is refused at connect once that session has ended. A stream that is already open is not closed by logout
+6. An SSE token (`POST /auth/sse-token`) records the identity it was minted from (`sid`, `tv`) and is refused at connect once that session has ended
+7. An open SSE stream re-validates its credential every `security.sse.session_recheck_seconds` (30), using a database session that is released straight away. When the session has ended, whether by logout, a password change, a reset or a deactivation, it sends `event: session_ended` and closes, so a revoked stream lives at most one interval
 
 Ending every session of a user (no list of sessions exists, so this raises `users.token_version`):
 1. A password change, an admin password reset and a deactivation each increment `token_version` in the same transaction as the change

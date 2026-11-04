@@ -110,6 +110,9 @@ function useFetchSse(
               setConnected(true)
               continue
             }
+            // The server closes the stream when its session ends. It is not an event for the
+            // caller; the reconnect below fails with 401 and stops once the refresh is refused.
+            if (frame.event === 'session_ended') continue
             try {
               const parsed = JSON.parse(frame.data) as SseEvent
               setEvents((prev) => [...prev, parsed].slice(-maxEvents))

@@ -185,6 +185,10 @@ class JwtSchema(_StrictBase):
     audience: str
 
 
+class SseSchema(_StrictBase):
+    session_recheck_seconds: int = Field(gt=0)
+
+
 class ApiRateLimitSchema(_StrictBase):
     requests_per_minute: int
     requests_per_hour: int
@@ -233,6 +237,7 @@ class RoleSchema(_StrictBase):
 
 class SecuritySchema(_StrictBase):
     jwt: JwtSchema
+    sse: SseSchema
     rate_limiting: RateLimitingSchema
     request_limits: RequestLimitsSchema
     headers: SecurityHeadersSchema

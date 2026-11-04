@@ -205,6 +205,7 @@ def _create_mock_app_config() -> Any:
                     "refresh_token_expire_days": 7,
                     "audience": "bff-api",
                 },
+                sse={"session_recheck_seconds": 30},
                 rate_limiting={
                     "api": {"requests_per_minute": 60, "requests_per_hour": 1000},
                     "telegram": {"messages_per_minute": 30, "messages_per_hour": 500},

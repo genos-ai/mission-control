@@ -6,7 +6,8 @@ Shared dependencies for request handling.
 
 import json
 from collections.abc import AsyncIterator
-from typing import Annotated
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyHeader
@@ -17,6 +18,9 @@ from modules.backend.core.exceptions import AuthenticationError, AuthorizationEr
 from modules.backend.core.idempotency import IdempotencyGuard
 from modules.backend.core.logging import get_logger
 from modules.backend.models.user import User
+
+if TYPE_CHECKING:
+    from modules.backend.services.auth import SessionIdentity
 
 logger = get_logger(__name__)
 
@@ -122,10 +126,8 @@ async def get_optional_user(
         return None
 
 
-async def _resolve_sse_token(token: str) -> tuple[str, str | None] | None:
-    """Look up a short-lived SSE token in Redis and return its user_id and session id.
-
-    The session id is None for a token minted from an API key, which has no session.
+async def _resolve_sse_token(token: str) -> "SessionIdentity | None":
+    """Look up a short-lived SSE token in Redis and return the identity it was minted for.
 
     The token is deleted after retrieval (single-use). Returns ``None``
     when the token is simply not found (caller falls back to treating it
@@ -136,6 +138,7 @@ async def _resolve_sse_token(token: str) -> tuple[str, str | None] | None:
     from redis.asyncio import Redis as AsyncRedis
 
     from modules.backend.core.config import get_redis_url
+    from modules.backend.services.auth import SessionIdentity
 
     redis_key = f"sse_token:{token}"
     redis = AsyncRedis.from_url(get_redis_url())
@@ -143,7 +146,11 @@ async def _resolve_sse_token(token: str) -> tuple[str, str | None] | None:
         stored: bytes | None = await redis.getdel(redis_key)
         if stored:
             binding = json.loads(stored)
-            return binding["user_id"], binding["session_id"]
+            return SessionIdentity(
+                user_id=binding["user_id"],
+                session_id=binding["session_id"],
+                token_version=binding["token_version"],
+            )
     except Exception as exc:
         raise AuthenticationError("Unable to verify SSE token") from exc
     finally:
@@ -151,11 +158,19 @@ async def _resolve_sse_token(token: str) -> tuple[str, str | None] | None:
     return None
 
 
-async def get_current_user_sse(
+@dataclass(frozen=True)
+class SseSession:
+    """The user a stream was opened for, and what to re-check while it stays open."""
+
+    user: User
+    identity: "SessionIdentity"
+
+
+async def get_sse_session(
     token: str | None = None,
     authorization: str | None = Header(None),
-) -> User:
-    """Resolve the current user for SSE endpoints.
+) -> SseSession:
+    """Resolve the user, and the identity to re-check, for SSE endpoints.
 
     Resolution order:
       1. ``?token`` query param resolved as a short-lived SSE token
@@ -177,36 +192,28 @@ async def get_current_user_sse(
 
         # 1. Try short-lived SSE token (Redis)
         if token:
-            binding = await _resolve_sse_token(token)
-            if binding:
-                user_id, session_id = binding
-                # Logout between minting and connecting must still refuse the stream.
-                if session_id:
-                    await auth_service.ensure_session_active(session_id)
-
-                from sqlalchemy import select
-
-                from modules.backend.models.user import User as UserModel
-
-                result = await db.execute(select(UserModel).where(UserModel.id == user_id))
-                user = result.scalar_one_or_none()
-                if user:
-                    return user
+            identity = await _resolve_sse_token(token)
+            if identity:
+                # Logout, a password change or a deactivation between minting and connecting
+                # must still refuse the stream.
+                user = await auth_service.ensure_identity_current(identity)
+                return SseSession(user, identity)
 
             # 2. Fall back to treating the token as a raw JWT
-            return await auth_service.resolve_jwt(token)
+            user, identity = await auth_service.resolve_jwt_session(token)
+            return SseSession(user, identity)
 
         # 3. Authorization header
         if authorization and authorization.lower().startswith("bearer "):
-            jwt_token = authorization[7:]
-            return await auth_service.resolve_jwt(jwt_token)
+            user, identity = await auth_service.resolve_jwt_session(authorization[7:])
+            return SseSession(user, identity)
 
     raise AuthenticationError("Authentication required")
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
-SseUser = Annotated[User, Depends(get_current_user_sse)]
+SseAuth = Annotated[SseSession, Depends(get_sse_session)]
 
 
 async def require_admin(user: CurrentUser) -> User:

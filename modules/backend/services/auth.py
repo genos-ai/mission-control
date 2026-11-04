@@ -6,6 +6,7 @@ Handles authentication: login, JWT/API key resolution, key management.
 
 import asyncio
 import hmac
+from dataclasses import dataclass
 from datetime import timedelta
 from uuid import uuid4
 
@@ -27,6 +28,16 @@ logger = get_logger(__name__)
 
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
+
+
+@dataclass(frozen=True)
+class SessionIdentity:
+    """What a credential was issued for: enough to check later that it is still good."""
+
+    user_id: str
+    # None for a credential minted from an API key, which has no login session.
+    session_id: str | None
+    token_version: int
 
 
 class AuthService(BaseService):
@@ -109,7 +120,7 @@ class AuthService(BaseService):
             if issued_at is None or payload["exp"] - issued_at > max_lifetime.total_seconds():
                 raise AuthenticationError("Invalid token")
 
-        await self.ensure_session_active(session_id)
+        await self._ensure_session_active(session_id)
 
         return payload
 
@@ -122,14 +133,29 @@ class AuthService(BaseService):
         if token_version != user.token_version:
             raise AuthenticationError("Session ended")
 
-    async def ensure_session_active(self, session_id: str) -> None:
+    async def _ensure_session_active(self, session_id: str) -> None:
         """Raise unless logout has left the session alone."""
         if await self.revoked_session_repo.is_revoked(session_id):
             raise AuthenticationError("Session ended")
 
-    async def session_id_of(self, access_token: str) -> str:
-        """The session a valid, unrevoked access token belongs to."""
-        return (await self._verified_claims(access_token, TOKEN_TYPE_ACCESS))["sid"]
+    async def session_identity_of(self, access_token: str) -> SessionIdentity:
+        """The identity of a valid access token, as bound to a credential derived from it."""
+        return (await self.resolve_jwt_session(access_token))[1]
+
+    async def ensure_identity_current(self, identity: SessionIdentity) -> User:
+        """The user, if the credential issued for this identity is still good.
+
+        Raises AuthenticationError once the user is deactivated, the session is logged out, or the
+        user's sessions were ended in bulk (password change, admin reset, deactivation).
+        """
+        user = await self.user_repo.get_active(identity.user_id)
+        if not user:
+            raise AuthenticationError("User not found or inactive")
+        if identity.token_version != user.token_version:
+            raise AuthenticationError("Session ended")
+        if identity.session_id:
+            await self._ensure_session_active(identity.session_id)
+        return user
 
     async def logout(self, access_token: str) -> None:
         """End the session of an access token, with every refresh token minted from it."""
@@ -202,6 +228,10 @@ class AuthService(BaseService):
 
     async def resolve_jwt(self, token: str) -> User:
         """Resolve a JWT access token to a User."""
+        return (await self.resolve_jwt_session(token))[0]
+
+    async def resolve_jwt_session(self, token: str) -> tuple[User, SessionIdentity]:
+        """Resolve a JWT access token to its User and the identity it was issued for."""
         payload = await self._verified_claims(token, TOKEN_TYPE_ACCESS)
 
         user = await self.user_repo.get_active(payload["sub"])
@@ -209,7 +239,7 @@ class AuthService(BaseService):
             raise AuthenticationError("User not found or inactive")
         self._ensure_current_version(user, payload)
 
-        return user
+        return user, SessionIdentity(user.id, payload["sid"], payload["tv"])
 
     async def create_api_key(
         self,
