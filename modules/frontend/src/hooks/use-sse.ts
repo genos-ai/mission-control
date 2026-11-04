@@ -1,7 +1,10 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
+import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth'
 import { API_BASE } from '@/lib/constants'
 import type { SseEvent } from '@/types'
+
+const ACCESS_LOST_MESSAGE = 'You no longer have access to these live updates.'
 
 /**
  * Parse an SSE text stream from a fetch Response.
@@ -101,6 +104,7 @@ function useFetchSse(
             if (response.status === 403) {
               // Not allowed to read this stream: retrying cannot change that.
               setConnected(false)
+              toast.error(ACCESS_LOST_MESSAGE)
               return
             }
             throw new Error(`SSE ${response.status}`)
@@ -135,7 +139,11 @@ function useFetchSse(
           }
 
           setConnected(false)
-          if (accessRevoked) return
+          if (accessRevoked) {
+            // The feed stops here for good; without this the page just goes quiet.
+            if (!cancelled) toast.error(ACCESS_LOST_MESSAGE)
+            return
+          }
 
           // Stream ended cleanly (server closed) — reconnect
         } catch (err) {
