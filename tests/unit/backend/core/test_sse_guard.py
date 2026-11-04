@@ -5,7 +5,12 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from modules.backend.core.sse_guard import SESSION_ENDED_FRAME, close_when_invalid
+from modules.backend.core.sse_guard import (
+    ACCESS_REVOKED_FRAME,
+    SESSION_ENDED_FRAME,
+    StreamEnd,
+    close_when_invalid,
+)
 
 INTERVAL = 0.05
 
@@ -28,15 +33,15 @@ class _Source:
             self.closed = True
 
 
-def _valid_for(checks: int):
-    """A still_valid that answers True `checks` times, then False; records every call."""
+def _ok_for(checks: int, then: StreamEnd = StreamEnd.SESSION_ENDED):
+    """A check that answers None `checks` times, then `then`; records every call."""
     calls: list[float] = []
 
-    async def still_valid() -> bool:
+    async def check() -> StreamEnd | None:
         calls.append(asyncio.get_running_loop().time())
-        return len(calls) <= checks
+        return None if len(calls) <= checks else then
 
-    return still_valid, calls
+    return check, calls
 
 
 async def _collect(stream: AsyncIterator[str]) -> list[str]:
@@ -45,7 +50,7 @@ async def _collect(stream: AsyncIterator[str]) -> list[str]:
 
 async def test_relays_frames_and_ends_when_the_source_ends():
     source = _Source(["a", "b"], then_wait=False)
-    still_valid, _ = _valid_for(checks=100)
+    still_valid, _ = _ok_for(checks=100)
 
     frames = await _collect(close_when_invalid(source.__aiter__(), still_valid, INTERVAL))
 
@@ -55,7 +60,7 @@ async def test_relays_frames_and_ends_when_the_source_ends():
 
 async def test_a_silent_stream_is_closed_when_the_session_ends():
     source = _Source(["connected"])
-    still_valid, calls = _valid_for(checks=1)
+    still_valid, calls = _ok_for(checks=1)
 
     frames = await asyncio.wait_for(
         _collect(close_when_invalid(source.__aiter__(), still_valid, INTERVAL)), timeout=5
@@ -81,7 +86,7 @@ async def test_a_busy_stream_is_still_checked():
             finally:
                 Busy.closed = True
 
-    still_valid, calls = _valid_for(checks=0)
+    still_valid, calls = _ok_for(checks=0)
 
     frames = await asyncio.wait_for(
         _collect(close_when_invalid(Busy().__aiter__(), still_valid, INTERVAL)), timeout=5
@@ -94,7 +99,7 @@ async def test_a_busy_stream_is_still_checked():
 
 async def test_checks_are_spaced_by_the_interval():
     source = _Source(["connected"])
-    still_valid, calls = _valid_for(checks=2)
+    still_valid, calls = _ok_for(checks=2)
 
     await asyncio.wait_for(
         _collect(close_when_invalid(source.__aiter__(), still_valid, INTERVAL)), timeout=5
@@ -107,7 +112,7 @@ async def test_checks_are_spaced_by_the_interval():
 async def test_an_error_while_checking_closes_the_stream_and_propagates():
     source = _Source(["connected"])
 
-    async def broken() -> bool:
+    async def broken() -> StreamEnd | None:
         raise ConnectionError("database unreachable")
 
     with pytest.raises(ConnectionError):
@@ -120,10 +125,25 @@ async def test_an_error_while_checking_closes_the_stream_and_propagates():
 
 async def test_a_client_that_leaves_closes_the_source():
     source = _Source(["connected"])
-    still_valid, _ = _valid_for(checks=100)
+    still_valid, _ = _ok_for(checks=100)
     stream = close_when_invalid(source.__aiter__(), still_valid, INTERVAL)
 
     assert await stream.__anext__() == "connected"
     await stream.aclose()
 
+    assert source.closed
+
+
+async def test_losing_access_ends_the_stream_with_its_own_event():
+    """A user who kept their session but lost access to what they stream is told why."""
+    source = _Source(["connected"])
+    check, _ = _ok_for(checks=1, then=StreamEnd.ACCESS_REVOKED)
+
+    frames = await asyncio.wait_for(
+        _collect(close_when_invalid(source.__aiter__(), check, INTERVAL)), timeout=5
+    )
+
+    assert frames == ["connected", ACCESS_REVOKED_FRAME]
+    assert ACCESS_REVOKED_FRAME != SESSION_ENDED_FRAME
+    assert "event: access_revoked" in ACCESS_REVOKED_FRAME
     assert source.closed

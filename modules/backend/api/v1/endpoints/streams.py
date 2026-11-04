@@ -13,18 +13,20 @@ actually see via the REST API.
 import asyncio
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis as AsyncRedis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config, get_redis_url
 from modules.backend.core.database import get_async_session
 from modules.backend.core.dependencies import SseAuth
 from modules.backend.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
-from modules.backend.core.sse_guard import close_when_invalid
+from modules.backend.core.sse_guard import StreamEnd, close_when_invalid
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.services.auth import AuthService, SessionIdentity
 from modules.backend.services.console import format_event_for_sse
@@ -81,27 +83,42 @@ async def _require_session_access(
     raise AuthorizationError("You don't have access to this session")
 
 
+def _require_notification_access(user, user_id: str) -> None:
+    """Admins can subscribe to any user's notifications; everyone else only to their own."""
+    if user_id != user.id and not user.has_role("admin"):
+        raise AuthorizationError("Cannot subscribe to another user's notifications")
+
+
 # ---- Session guard ----
 
 
-def _guarded(frames: AsyncIterator[str], identity: SessionIdentity) -> AsyncIterator[str]:
-    """Close the stream once the credential it was opened with stops being valid.
+def _guarded(
+    frames: AsyncIterator[str],
+    identity: SessionIdentity,
+    # The user is untyped like the access helpers below: an API module does not import models.
+    require_access: Callable[[AsyncSession, Any], Awaitable[None]],
+) -> AsyncIterator[str]:
+    """Close the stream once its credential stops being valid or its user loses access.
 
-    Each check takes a database session and gives it back at once, so an open stream still
-    holds no connection between checks.
+    ``require_access`` is the check the stream passed when it opened, run again against the
+    freshly loaded user, so a removed member or a demoted admin is caught. Each check takes a
+    database session and gives it back at once, so an open stream still holds no connection
+    between checks.
     """
 
-    async def still_valid() -> bool:
+    async def check() -> StreamEnd | None:
         async with get_async_session() as db:
             try:
-                await AuthService(db).ensure_identity_current(identity)
+                user = await AuthService(db).ensure_identity_current(identity)
             except AuthenticationError:
-                return False
-        return True
+                return StreamEnd.SESSION_ENDED
+            try:
+                await require_access(db, user)
+            except (AuthorizationError, NotFoundError):
+                return StreamEnd.ACCESS_REVOKED
+        return None
 
-    return close_when_invalid(
-        frames, still_valid, get_app_config().security.sse.session_recheck_seconds
-    )
+    return close_when_invalid(frames, check, get_app_config().security.sse.session_recheck_seconds)
 
 
 # ---- Run event stream ----
@@ -157,8 +174,11 @@ async def stream_run_events(
         finally:
             await redis.close()
 
+    async def require_access(db: AsyncSession, current_user) -> None:
+        await _require_session_access(db, session_id, current_user)
+
     return StreamingResponse(
-        _guarded(generate(), auth.identity),
+        _guarded(generate(), auth.identity, require_access),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -187,11 +207,7 @@ async def stream_notifications(
     user_id: str = Query(..., description="User ID to receive notifications for"),
 ) -> StreamingResponse:
     """Stream notifications for a user as SSE."""
-    user = auth.user
-    # Admins can subscribe to any user's notifications; everyone else may
-    # only subscribe to their own.
-    if user_id != user.id and not user.has_role("admin"):
-        raise AuthorizationError("Cannot subscribe to another user's notifications")
+    _require_notification_access(auth.user, user_id)
 
     async def generate():
         redis = AsyncRedis.from_url(get_redis_url())
@@ -237,8 +253,11 @@ async def stream_notifications(
             await pubsub.close()
             await redis.close()
 
+    async def require_access(db: AsyncSession, current_user) -> None:
+        _require_notification_access(current_user, user_id)
+
     return StreamingResponse(
-        _guarded(generate(), auth.identity),
+        _guarded(generate(), auth.identity, require_access),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -290,8 +309,11 @@ async def stream_mission_events(
             await redis.close()
             await redis.close()
 
+    async def require_access(db: AsyncSession, current_user) -> None:
+        await _require_mission_access(db, mission_id, current_user)
+
     return StreamingResponse(
-        _guarded(generate(), auth.identity),
+        _guarded(generate(), auth.identity, require_access),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

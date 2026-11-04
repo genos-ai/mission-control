@@ -98,11 +98,17 @@ function useFetchSse(
                 return
               }
             }
+            if (response.status === 403) {
+              // Not allowed to read this stream: retrying cannot change that.
+              setConnected(false)
+              return
+            }
             throw new Error(`SSE ${response.status}`)
           }
 
           // Connected successfully — reset backoff
           backoff = 1000
+          let accessRevoked = false
 
           for await (const frame of parseSseStream(response, controller.signal)) {
             if (cancelled) break
@@ -113,6 +119,12 @@ function useFetchSse(
             // The server closes the stream when its session ends. It is not an event for the
             // caller; the reconnect below fails with 401 and stops once the refresh is refused.
             if (frame.event === 'session_ended') continue
+            // The user lost access to what this stream shows. The server closes it, and a
+            // reconnect would be refused with 403, so stop here.
+            if (frame.event === 'access_revoked') {
+              accessRevoked = true
+              break
+            }
             try {
               const parsed = JSON.parse(frame.data) as SseEvent
               setEvents((prev) => [...prev, parsed].slice(-maxEvents))
@@ -122,8 +134,10 @@ function useFetchSse(
             }
           }
 
-          // Stream ended cleanly (server closed) — reconnect
           setConnected(false)
+          if (accessRevoked) return
+
+          // Stream ended cleanly (server closed) — reconnect
         } catch (err) {
           if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) {
             return

@@ -1,12 +1,14 @@
 """
 SSE session guard.
 
-A stream authenticates once, when it opens, and can then stay open for hours. The guard
-re-validates the credential on a timer so a stream whose session has ended (logout, password
-change, deactivation) closes instead of delivering events indefinitely.
+A stream authenticates and is authorised once, when it opens, and can then stay open for hours.
+The guard re-checks on a timer, so a stream whose session has ended (logout, password change,
+deactivation) or whose user has lost access to what it streams closes instead of delivering events
+indefinitely.
 """
 
 import asyncio
+import enum
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 
@@ -14,20 +16,33 @@ from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-SESSION_ENDED_FRAME = f"event: session_ended\ndata: {json.dumps({'reason': 'session_ended'})}\n\n"
+
+class StreamEnd(str, enum.Enum):
+    """Why an open stream is closed. The value is the SSE event the client receives."""
+
+    SESSION_ENDED = "session_ended"
+    ACCESS_REVOKED = "access_revoked"
+
+
+def _frame(end: StreamEnd) -> str:
+    return f"event: {end.value}\ndata: {json.dumps({'reason': end.value})}\n\n"
+
+
+SESSION_ENDED_FRAME = _frame(StreamEnd.SESSION_ENDED)
+ACCESS_REVOKED_FRAME = _frame(StreamEnd.ACCESS_REVOKED)
 
 
 async def close_when_invalid(
     source: AsyncIterator[str],
-    still_valid: Callable[[], Awaitable[bool]],
+    check: Callable[[], Awaitable[StreamEnd | None]],
     interval_seconds: float,
 ) -> AsyncIterator[str]:
-    """Relay the frames of ``source``; every ``interval_seconds`` call ``still_valid``.
+    """Relay the frames of ``source``; every ``interval_seconds`` call ``check``.
 
-    When it answers False, emit one ``session_ended`` frame and stop. ``source`` is always closed
-    on the way out, so its own cleanup (Redis connections, subscriptions) runs. An error in
-    ``still_valid`` propagates and closes the stream: a credential that cannot be checked is not
-    treated as good.
+    ``check`` answers None while the stream may continue, or the reason it must end; the matching
+    frame is emitted once and the stream stops. ``source`` is always closed on the way out, so its
+    own cleanup (Redis connections, subscriptions) runs. An error in ``check`` propagates and
+    closes the stream: a stream that cannot be checked is not treated as allowed.
     """
     loop = asyncio.get_running_loop()
     next_check = loop.time() + interval_seconds
@@ -39,9 +54,10 @@ async def close_when_invalid(
             # Checked on the clock, not only on silence: a busy stream never times out.
             if loop.time() >= next_check:
                 next_check = loop.time() + interval_seconds
-                if not await still_valid():
-                    logger.info("Closing SSE stream: its session has ended")
-                    yield SESSION_ENDED_FRAME
+                ended = await check()
+                if ended is not None:
+                    logger.info("Closing SSE stream", extra={"reason": ended.value})
+                    yield _frame(ended)
                     return
 
             if pending in done:
