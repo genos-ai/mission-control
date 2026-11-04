@@ -57,23 +57,25 @@ Token types:
 
 Token content:
 - User ID
-- Roles/permissions
+- Role (access token only; authorisation reads the role from the user record, not from the token)
 - Expiration timestamp
 - Token ID (`jti`)
 - Token version (`tv`): the user's `token_version` at login. A token whose `tv` differs from the user's current value is refused ("Session ended"), and one without a `tv` is refused ("Invalid token")
 - Issued-at (`iat`): used to refuse a refresh token that outlives the configured lifetime
 - Session ID (`sid`): minted at login and carried by every token refreshed from it. A token without a `sid` is refused ("Invalid token"), so tokens issued before this claim existed cannot be used or refreshed; users sign in once. A token whose session has been logged out is refused ("Session ended")
 
-Token storage (web clients):
-- Access token: Memory only (never localStorage)
-- Refresh token: HttpOnly secure cookie
+Token storage (web clients), as implemented:
+- Access token: memory only, never persisted
+- Refresh token: `localStorage` (key `mc_refresh_token`). Any script running on the page can read it, so a cross-site scripting flaw exposes a 7-day credential. This is a known risk
+- Target design, not implemented: the refresh token in an HttpOnly, Secure, SameSite cookie, which needs CSRF protection and per-environment cookie settings
 
-Token refresh flow:
-1. Access token expires
-2. Client sends refresh token
-3. Server validates refresh token
-4. Server issues new access/refresh pair
-5. Old refresh token invalidated
+Token refresh flow, as implemented:
+1. Access token expires and a request returns 401
+2. Client sends the refresh token to `POST /auth/refresh`
+3. Server validates it: type, subject, session, token version and lifetime
+4. Server issues a new access/refresh pair in the same session (same `sid`)
+5. The old refresh token is not invalidated. It works until it expires, or until logout, a password change, an admin reset or a deactivation ends the session
+- Target design, not implemented: single-use refresh tokens (rotation), which need a grace window so that two browser tabs refreshing at once do not sign each other out
 
 Logout (`POST /auth/logout`):
 1. Client calls it with the access token, before clearing its own state
