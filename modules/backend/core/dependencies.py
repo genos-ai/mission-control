@@ -265,22 +265,43 @@ def require_scope(scope: str):
 # FastAPI dependencies, because they need the path's resource id.
 
 
-async def require_mission_access(db, mission_id: str, user) -> None:
-    """Allow admin, the mission owner, or any mission member.
-
-    Raises AuthorizationError otherwise. NotFoundError from the service
-    propagates as-is (handled by the global exception handlers).
-    """
-    from modules.backend.services.mission import MissionService
-
-    if user.has_role("admin"):
-        return
-    mission = await MissionService(db).get_mission(mission_id)
+def _require_owner_or_member(mission, user) -> None:
+    """The one rule: the mission's owner or a member. Raises AuthorizationError otherwise."""
     if mission.owner_id == user.id:
         return
     if any(m.user_id == user.id for m in mission.members):
         return
     raise AuthorizationError("You don't have access to this mission")
+
+
+async def require_mission_access(db, mission_id: str, user) -> None:
+    """Allow admin, the mission owner, or any mission member.
+
+    Raises AuthorizationError otherwise. NotFoundError from the service
+    propagates as-is (handled by the global exception handlers). An admin is
+    let through without the mission being looked up; use
+    require_existing_mission_access where an unknown mission must be a 404 for
+    everyone.
+    """
+    from modules.backend.services.mission import MissionService
+
+    if user.has_role("admin"):
+        return
+    _require_owner_or_member(await MissionService(db).get_mission(mission_id), user)
+
+
+async def require_existing_mission_access(db, mission_id: str, user) -> None:
+    """The same rule as require_mission_access, but an unknown mission is a 404 for everyone.
+
+    For endpoints that would otherwise show an admin an empty or all-zero answer for a mission
+    that does not exist (costs, plan, artifacts).
+    """
+    from modules.backend.services.mission import MissionService
+
+    mission = await MissionService(db).get_mission(mission_id)
+    if user.has_role("admin"):
+        return
+    _require_owner_or_member(mission, user)
 
 
 async def require_mission_owner(db, mission_id: str, user) -> None:

@@ -18,8 +18,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from modules.backend.core.config import get_app_config, get_default_budget_usd
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId, get_event_bus
-from modules.backend.core.exceptions import AuthorizationError
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    get_event_bus,
+    require_existing_mission_access,
+)
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.schemas.base import ApiResponse
@@ -34,7 +39,6 @@ from modules.backend.schemas.mission_plan import (
     TaskStatus,
     TaskTransitionResponse,
 )
-from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
 
 # Plan 42 §3.5: every mutating endpoint gets an event bus so
@@ -44,30 +48,6 @@ EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 logger = get_logger(__name__)
 
 router = APIRouter()
-
-
-# ── Access control helper ────────────────────────────────────────────────
-
-
-async def _require_mission_access(
-    db,
-    mission_id: str,
-    current_user,
-) -> None:
-    """Admin, mission owner, or any mission member can access the plan.
-
-    Mirrors the access-check pattern used in missions.py. Extracted here
-    because every endpoint in this file needs it.
-    """
-    mission_service = MissionService(db)
-    mission = await mission_service.get_mission(mission_id)
-    if current_user.has_role("admin"):
-        return
-    if mission.owner_id == current_user.id:
-        return
-    if await mission_service.is_member(mission_id, current_user.id):
-        return
-    raise AuthorizationError("You don't have access to this mission")
 
 
 # ── Plan-level endpoints ─────────────────────────────────────────────────
@@ -89,7 +69,7 @@ async def get_plan(
     The plan is created lazily on first access — every mission has a
     plan slot even if it has never been refined.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     # Read-only — no event bus needed
     service = MissionPlanService(db)
@@ -122,7 +102,7 @@ async def update_plan(
     optional. Gate mode is validated against the existing gate system's
     supported values.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
@@ -185,7 +165,7 @@ async def refine_plan(
     from modules.backend.temporal.plan_refine_models import PlanRefineInput
     from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
 
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
@@ -249,7 +229,7 @@ async def run_objective(
     from modules.backend.temporal.run_objective_models import RunObjectiveInput
     from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
 
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     # Validate plan exists and check for in-flight tasks before
     # starting the workflow (fast DB check — fails early on 409).
@@ -307,7 +287,7 @@ async def dispatch_approved(
     the full supervisor loop — execute, evaluate, advance/refine/
     escalate — repeating until done or a circuit breaker trips.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
@@ -349,7 +329,7 @@ async def add_plan_task(
     in proposed state and follows the same approve → dispatch flow as
     Planning-Agent-generated tasks.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     updated = await service.add_task(
@@ -389,7 +369,7 @@ async def approve_task(
     task_id that actually changed so the UI can visually highlight the
     closure (e.g. "approving this task also approved 2 dependencies").
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
@@ -434,7 +414,7 @@ async def reject_task(
     Running tasks are not affected by rejection — cancel an in-flight
     run through the execution endpoints instead.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
@@ -471,7 +451,7 @@ async def retry_task(
     last run. If the failure was caused by a dep, reject the dep first
     and the cascade will cancel this task too.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)

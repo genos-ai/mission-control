@@ -10,10 +10,9 @@ from modules.backend.core.dependencies import (
     CurrentUser,
     DbSession,
     RequestId,
-    require_mission_access,
+    require_existing_mission_access,
 )
 from modules.backend.schemas.base import ApiResponse
-from modules.backend.services.mission import MissionService
 
 router = APIRouter()
 
@@ -34,10 +33,7 @@ async def mission_costs(
 
     Optional timeframe filter: 24h, 7d, 30d. Omit for all-time.
     """
-    # An unknown mission is a 404 for everyone: the shared check lets an admin through without
-    # looking, and they would be shown an all-zero breakdown for a mission that does not exist.
-    await MissionService(db).get_mission(mission_id)
-    await require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     from modules.backend.services.token_economics import TokenEconomicsService
 

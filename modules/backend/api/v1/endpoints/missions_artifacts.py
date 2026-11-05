@@ -16,35 +16,17 @@ Plan 43 §3.7.
 
 from fastapi import APIRouter, Query
 
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
-from modules.backend.core.exceptions import AuthorizationError
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    require_existing_mission_access,
+)
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_artifact import MissionArtifactResponse
-from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_artifact import MissionArtifactService
 
 router = APIRouter()
-
-
-async def _require_mission_access(
-    db,
-    mission_id: str,
-    current_user,
-) -> None:
-    """Admin, mission owner, or any mission member can read artifacts.
-
-    Mirrors the access-check pattern used in missions_plan.py and
-    missions.py — mission-scoped resources all gate the same way.
-    """
-    mission_service = MissionService(db)
-    mission = await mission_service.get_mission(mission_id)
-    if current_user.has_role("admin"):
-        return
-    if mission.owner_id == current_user.id:
-        return
-    if any(m.user_id == current_user.id for m in mission.members):
-        return
-    raise AuthorizationError("You don't have access to this mission")
 
 
 @router.get(
@@ -81,7 +63,7 @@ async def list_mission_artifacts(
     The ``storage_url`` field is always null in v1 (text artifacts
     only); it's reserved for a future file-artifact extension point.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    await require_existing_mission_access(db, mission_id, current_user)
 
     service = MissionArtifactService(db)
     artifacts = await service.list_for_mission(
