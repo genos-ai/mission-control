@@ -133,6 +133,7 @@ def _create_mock_app_config() -> Any:
     """
     from modules.backend.core.config_schema import (
         ApplicationSchema,
+        CostSchema,
         DatabaseSchema,
         FeaturesSchema,
         GatewaySchema,
@@ -243,6 +244,7 @@ def _create_mock_app_config() -> Any:
                 channels={"telegram": {"allowlist": []}},
             )
             self.sessions = SessionsSchema()
+            self.cost = CostSchema()
 
     return TestAppConfig()
 

@@ -6,29 +6,16 @@ Per-mission token economics — reuses TokenEconomicsService with mission_id sco
 
 from fastapi import APIRouter
 
-from modules.backend.core.dependencies import CurrentUser, DbSession, RequestId
-from modules.backend.core.exceptions import AuthorizationError
+from modules.backend.core.dependencies import (
+    CurrentUser,
+    DbSession,
+    RequestId,
+    require_mission_access,
+)
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.services.mission import MissionService
 
 router = APIRouter()
-
-
-async def _require_mission_access(db, mission_id: str, current_user) -> None:
-    """Admin, mission owner, or member can read costs.
-
-    NOTE: This access check is duplicated across mission sub-routers
-    (artifacts, plan, costs, streams). A shared utility would be better
-    but is outside the scope of Plan 60.
-    """
-    mission = await MissionService(db).get_mission(mission_id)
-    if current_user.has_role("admin"):
-        return
-    if mission.owner_id == current_user.id:
-        return
-    if any(m.user_id == current_user.id for m in mission.members):
-        return
-    raise AuthorizationError("You don't have access to this mission")
 
 
 @router.get(
@@ -47,7 +34,10 @@ async def mission_costs(
 
     Optional timeframe filter: 24h, 7d, 30d. Omit for all-time.
     """
-    await _require_mission_access(db, mission_id, current_user)
+    # An unknown mission is a 404 for everyone: the shared check lets an admin through without
+    # looking, and they would be shown an all-zero breakdown for a mission that does not exist.
+    await MissionService(db).get_mission(mission_id)
+    await require_mission_access(db, mission_id, current_user)
 
     from modules.backend.services.token_economics import TokenEconomicsService
 
