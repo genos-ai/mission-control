@@ -31,7 +31,8 @@ export function CatalogAgentRow({
 }) {
   const style = agentStyle(agent.agent_name)
   const modelName = agent.model_config_json?.name
-  const engine = agent.engine && agent.engine !== 'pydantic_ai' ? agent.engine.replace('_', ' ') : null
+  // Shown for every agent, the default included: an admin comparing agents needs to see which engine runs each.
+  const engine = agent.engine ? agent.engine.replace('_', ' ') : null
 
   return (
     <div className={cn(CATALOG_ROW_GRID, 'border-t border-line py-2.5 text-sm transition-colors duration-150 hover:bg-hover')}>
@@ -63,7 +64,11 @@ export function CatalogAgentRow({
         )}
         {(engine || agent.thinking_budget_json) && (
           <span className="flex items-center gap-2 text-2xs text-subtle">
-            {engine && <span className="truncate">{engine}</span>}
+            {engine && (
+              <span className="truncate" title={`Engine: ${engine}`}>
+                {engine}
+              </span>
+            )}
             {agent.thinking_budget_json && (
               <span className="flex items-center gap-1">
                 <Brain className="h-2.5 w-2.5" />
