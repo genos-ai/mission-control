@@ -1,9 +1,24 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+// The dev users' passwords live once, in config/.env (DEV_*_PASSWORD). The dev server hands them to
+// the quick-login buttons; a production build gets none, so they never reach a bundle.
+function devPasswords(command: 'build' | 'serve'): Record<string, string> {
+  if (command !== 'serve') return {}
+  const env = loadEnv('development', path.resolve(__dirname, '../../config'), 'DEV_')
+  return {
+    sysadmin: env.DEV_SYSADMIN_PASSWORD ?? '',
+    admin: env.DEV_ADMIN_PASSWORD ?? '',
+    user: env.DEV_USER_PASSWORD ?? '',
+  }
+}
+
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  define: {
+    __DEV_PASSWORDS__: JSON.stringify(devPasswords(command)),
+  },
   plugins: [react()],
   build: {
     rollupOptions: {
@@ -71,4 +86,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

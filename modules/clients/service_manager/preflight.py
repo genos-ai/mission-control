@@ -338,9 +338,13 @@ def run_migrations() -> bool:
 
 def dev_login_line() -> str:
     """The startup banner's login line, from the credentials the dev user seed creates."""
+    from modules.backend.core.exceptions import ValidationError
     from modules.backend.services.bootstrap import BootstrapService
 
-    email, password = BootstrapService.dev_credentials("admin")
+    try:
+        email, password = BootstrapService.dev_credentials("admin")
+    except ValidationError as e:
+        return f"  Login:          not available ({e})"
     return f"  Login:          {email} / {password}"
 
 

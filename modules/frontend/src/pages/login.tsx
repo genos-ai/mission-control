@@ -13,12 +13,13 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import type { LoginResponse } from '@/types'
 
 // Development builds only: a production build folds `import.meta.env.DEV` to false and drops this list.
+// The passwords come from config/.env through vite.config.ts; an account without one gets no button.
 const DEV_ACCOUNTS = import.meta.env.DEV
   ? [
-      { label: 'Sysadmin', email: 'sysadmin@missioncontrol.dev', password: 'sysadmin123', dot: 'bg-danger' },
-      { label: 'Admin', email: 'admin@missioncontrol.dev', password: 'admin123', dot: 'bg-warning' },
-      { label: 'User', email: 'user@missioncontrol.dev', password: 'user123', dot: 'bg-subtle' },
-    ]
+      { label: 'Sysadmin', email: 'sysadmin@missioncontrol.dev', password: __DEV_PASSWORDS__.sysadmin, dot: 'bg-danger' },
+      { label: 'Admin', email: 'admin@missioncontrol.dev', password: __DEV_PASSWORDS__.admin, dot: 'bg-warning' },
+      { label: 'User', email: 'user@missioncontrol.dev', password: __DEV_PASSWORDS__.user, dot: 'bg-subtle' },
+    ].filter((account): account is typeof account & { password: string } => !!account.password)
   : []
 
 /** Where to go once signed in: the route AuthGuard recorded, else the Dashboard. */

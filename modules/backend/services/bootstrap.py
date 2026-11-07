@@ -12,8 +12,13 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core import security
-from modules.backend.core.config import get_app_config
-from modules.backend.core.exceptions import AuthorizationError, ConflictError, NotFoundError
+from modules.backend.core.config import get_app_config, get_settings
+from modules.backend.core.exceptions import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from modules.backend.core.logging import get_logger
 from modules.backend.models.base import SYSTEM_ACCOUNTS
 from modules.backend.models.user import User
@@ -120,32 +125,43 @@ class BootstrapService:
         logger.info("Admin user bootstrapped", extra={"email": email, "user_id": str(user.id)})
         return user, full_key
 
-    # Well-known dev/test users seeded by ensure_dev_users().
-    # Credentials are in config/.env for reference.
+    # Dev/test users seeded by ensure_dev_users(). Each password is read from the setting named
+    # here (DEV_*_PASSWORD in config/.env), never held in code.
     DEV_USERS = [
         {
             "email": "sysadmin@missioncontrol.dev",
             "display_name": "Sysadmin",
             "system_role": "sysadmin",
-            "password": "sysadmin123",
+            "password_setting": "dev_sysadmin_password",
         },
         {
             "email": "admin@missioncontrol.dev",
             "display_name": "Admin",
             "system_role": "admin",
-            "password": "admin123",
+            "password_setting": "dev_admin_password",
         },
         {
             "email": "user@missioncontrol.dev",
             "display_name": "Test User",
             "system_role": "user",
-            "password": "user123",
+            "password_setting": "dev_user_password",
         },
     ]
 
     # The only environments where accounts with well-known passwords may be created. Anything else,
     # including a misspelt name, is refused: this fails closed.
     DEV_USER_ENVIRONMENTS = frozenset({"development", "test"})
+
+    @staticmethod
+    def _dev_password(acct: dict) -> str:
+        """The configured password of a dev user. Raises ValidationError when it is not set."""
+        password = getattr(get_settings(), acct["password_setting"])
+        if not password:
+            raise ValidationError(
+                f"{acct['password_setting'].upper()} is not set in config/.env, so the dev user "
+                f"{acct['email']} cannot be created."
+            )
+        return password
 
     @classmethod
     def dev_credentials(cls, system_role: str) -> tuple[str, str]:
@@ -156,7 +172,7 @@ class BootstrapService:
         """
         for acct in cls.DEV_USERS:
             if acct["system_role"] == system_role:
-                return acct["email"], acct["password"]
+                return acct["email"], cls._dev_password(acct)
         raise ValueError(f"No dev user is seeded with the role {system_role!r}")
 
     async def ensure_dev_users(self) -> list[User]:
@@ -168,7 +184,8 @@ class BootstrapService:
 
         Raises AuthorizationError unless the configured environment is one of
         DEV_USER_ENVIRONMENTS: these accounts have well-known passwords and
-        must never exist in staging or production.
+        must never exist in staging or production. Raises ValidationError when
+        a DEV_*_PASSWORD is not set in config/.env.
 
         Returns:
             List of newly created users (empty if all already existed).
@@ -183,6 +200,9 @@ class BootstrapService:
                 f"{' and '.join(sorted(self.DEV_USER_ENVIRONMENTS))}."
             )
 
+        # Every password is checked before any account is created: all three or none.
+        passwords = {acct["email"]: self._dev_password(acct) for acct in self.DEV_USERS}
+
         created = []
         for acct in self.DEV_USERS:
             existing = await self._user_repo.get_by_email(acct["email"])
@@ -191,7 +211,7 @@ class BootstrapService:
 
             hashed_password = await asyncio.to_thread(
                 security.hash_password,
-                acct["password"],
+                passwords[acct["email"]],
             )
             user = await self._user_repo.create(
                 email=acct["email"],

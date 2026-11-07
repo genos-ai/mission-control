@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     brave_api_key: str = ""
 
+    # Passwords of the dev users seeded in development and test (DEV_*_PASSWORD in config/.env).
+    # Empty means not configured: seeding refuses to run rather than create a known password.
+    dev_sysadmin_password: str = ""
+    dev_admin_password: str = ""
+    dev_user_password: str = ""
+
     # Runtime toggles (set via environment, e.g. by services.py --trace).
     # MC_AGENT_TRACE=1 emits agent trace events to the mission event bus.
     mc_agent_trace: bool = False
