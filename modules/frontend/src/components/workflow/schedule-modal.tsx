@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { FilterChip } from '@/components/ui/filter-chip'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
@@ -24,10 +25,6 @@ import type {
 } from '@/types'
 
 const LABEL_CLASS = 'mb-1 block text-xs font-medium text-muted-foreground'
-
-// Matches the shared Input styling so the native <select> blends in.
-const SELECT_CLASS =
-  'flex h-[38px] w-full rounded-md border border-border-strong bg-field px-3 text-md outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
 
 interface ScheduleModalProps {
   missionId: string
@@ -143,8 +140,7 @@ export function ScheduleModal({
           {/* Frequency */}
           <div>
             <label className={LABEL_CLASS}>How often?</label>
-            <select
-              className={SELECT_CLASS}
+            <Select
               value={cronState.frequency}
               onChange={(e) =>
                 patch({ frequency: e.target.value as CronFrequency })
@@ -155,7 +151,7 @@ export function ScheduleModal({
                   {o.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Hourly: minute past the hour */}

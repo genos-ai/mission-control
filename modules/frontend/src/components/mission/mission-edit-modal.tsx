@@ -5,13 +5,11 @@ import toast from 'react-hot-toast'
 import { useEscapeKey } from '@/hooks/use-escape-key'
 import { useUpdateMission } from '@/hooks/use-missions'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
-
-const SELECT_CLASS =
-  'flex h-[38px] w-full rounded-md border border-border-strong bg-field px-3 text-md outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
 
 interface MissionEditModalProps {
   mission: {
@@ -109,15 +107,14 @@ export function MissionEditModal({ mission, missionId, onClose }: MissionEditMod
             htmlFor={`${ids}-env`}
             hint="Container mode runs agent tasks inside Docker for full isolation. The container persists across runs within this mission."
           >
-            <select
+            <Select
               id={`${ids}-env`}
               value={execEnv}
               onChange={(e) => setExecEnv(e.target.value)}
-              className={SELECT_CLASS}
             >
               <option value="local">Local (in-process)</option>
               <option value="container">Container (Docker isolation)</option>
-            </select>
+            </Select>
           </Field>
 
           <div className="flex justify-end gap-2 pt-1">

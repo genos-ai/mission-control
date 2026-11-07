@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { FilterChip } from '@/components/ui/filter-chip'
 import { Segmented } from '@/components/ui/segmented'
 import { StatusPill } from '@/components/ui/status-pill'
+import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/cn'
 import { TONE_DOT } from '@/lib/tone-class'
 import { selectFilteredEvents, useConsoleStore, type ConsoleEvent } from '@/stores/console'
@@ -59,11 +60,11 @@ export function ConsoleToolbar({ teamMembers }: { teamMembers?: TeamMemberOption
         options={CATEGORY_OPTIONS.map((o) => ({ ...o, count: counts[o.value] }))}
       />
 
-      <select
+      <Select
         aria-label="Agent"
         value={agentFilter ?? ''}
         onChange={(e) => setAgentFilter(e.target.value || null)}
-        className="h-7 max-w-[200px] rounded-control border border-panel-border bg-raised px-2 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus:border-brand/60"
+        variant="toolbar"
       >
         <option value="">All agents</option>
         {teamMembers?.map((m) => (
@@ -71,7 +72,7 @@ export function ConsoleToolbar({ teamMembers }: { teamMembers?: TeamMemberOption
             {m.agent?.agent_name ?? m.agent_catalog_id}
           </option>
         ))}
-      </select>
+      </Select>
 
       <FilterChip active={errorsOnly} onClick={() => setErrorsOnly(!errorsOnly)}>
         <AlertCircle className="h-3 w-3" />

@@ -5,11 +5,8 @@ import { useUpdateConstraints } from '@/hooks/use-team'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import type { MissionTeamMember } from '@/types'
-
-// Matches the shared Input styling so the native <select> blends in.
-const SELECT_CLASS =
-  'h-7 min-w-0 flex-1 rounded-chip border border-border-strong bg-field px-2 text-xs outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
 
 /** A labelled row inside an agent's configuration block. */
 export function ConfigRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
@@ -66,17 +63,17 @@ export function ConstraintsEditor({ member, missionId }: { member: MissionTeamMe
                 <label htmlFor={`${ids}-depth`} className="w-16 shrink-0 text-subtle">
                   Depth
                 </label>
-                <select
+                <Select
                   id={`${ids}-depth`}
                   value={depth}
                   onChange={(e) => setDepth(e.target.value)}
-                  className={SELECT_CLASS}
+                  size="xs" className="min-w-0 flex-1"
                 >
                   <option value="">Default</option>
                   <option value="quick">Quick (1 iteration, ~2 min)</option>
                   <option value="moderate">Moderate (3 iterations, ~10 min)</option>
                   <option value="comprehensive">Comprehensive (5 iterations, ~20 min)</option>
-                </select>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <label htmlFor={`${ids}-domains`} className="w-16 shrink-0 text-subtle">

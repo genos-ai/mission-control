@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { X, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Switch } from '@/components/ui/switch'
@@ -119,10 +120,6 @@ export function RunWorkflowDialog({
 
 // ---- Parameter field renderer ----
 
-// Matches the shared Input styling so the native <select> blends in.
-const SELECT_CLASS =
-  'flex h-[38px] w-full rounded-md border border-border-strong bg-field px-3 text-md outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
-
 function ParameterField({
   param,
   value,
@@ -182,18 +179,17 @@ function ParameterField({
       )}
 
       {param.type === 'enum' && param.options && (
-        <select
+        <Select
           id={id}
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
-          className={SELECT_CLASS}
         >
           {param.options.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>
           ))}
-        </select>
+        </Select>
       )}
     </div>
   )

@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button'
 import { IconTile } from '@/components/ui/icon-tile'
 import { Panel } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
+import { Select } from '@/components/ui/select'
 import { agentLabel, DEFAULT_CHAT_AGENT } from './chat-constants'
 import { Conversation } from './chat-conversation'
 import { ToolOutputPanel } from './chat-artifacts-panel'
@@ -257,18 +258,18 @@ function ThreadPicker({
   if (sessions.length === 0) return null
   return (
     <div className="relative">
-      <select
+      <Select
         aria-label="Thread"
         value={activeSessionId ?? ''}
         onChange={(e) => onSelect(e.target.value)}
-        className="h-6 max-w-[260px] appearance-none truncate rounded-full bg-raised pl-2.5 pr-6 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        variant="pill"
       >
         {sessions.map((s) => (
           <option key={s.id} value={s.id}>
             {s.goal || s.id.slice(0, 12)} · {formatUtc(s.last_activity_at)}
           </option>
         ))}
-      </select>
+      </Select>
       <ChevronDown className="pointer-events-none absolute right-2 top-1.5 h-3 w-3 text-subtle" />
     </div>
   )

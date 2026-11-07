@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 import { type NewAgentDraft } from '@/components/admin/catalog-new-agent'
-import { CATALOG_SELECT_CLASS } from '@/components/admin/catalog-select-class'
+import { Select } from '@/components/ui/select'
 
 /** The "new agent" form above the catalogue list. The draft lives in the page so it survives Cancel. */
 export function CatalogCreateForm({
@@ -37,16 +37,15 @@ export function CatalogCreateForm({
             />
           </Field>
           <Field label="Type" htmlFor={`${id}-type`}>
-            <select
+            <Select
               id={`${id}-type`}
               value={draft.agent_type}
               onChange={(e) => onChange({ ...draft, agent_type: e.target.value as NewAgentDraft['agent_type'] })}
-              className={CATALOG_SELECT_CLASS}
             >
               <option value="vertical">Vertical</option>
               <option value="horizontal">Horizontal</option>
               <option value="system">System</option>
-            </select>
+            </Select>
           </Field>
         </div>
         <Field label="Description" htmlFor={`${id}-description`}>

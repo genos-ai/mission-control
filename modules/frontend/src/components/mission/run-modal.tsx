@@ -6,6 +6,7 @@ import { useRunObjective } from '@/hooks/use-executions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Select } from '@/components/ui/select'
 
 interface RunModalProps {
   missionId: string
@@ -124,17 +125,16 @@ export function RunModal({
 
           <div>
             <label className="mb-1 block text-sm font-medium">Gate Mode</label>
-            <select
+            <Select
               value={gateMode}
               onChange={(e) => setGateMode(e.target.value)}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {GATE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
 

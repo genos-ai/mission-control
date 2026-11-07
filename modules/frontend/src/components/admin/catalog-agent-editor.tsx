@@ -9,7 +9,7 @@ import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { CATALOG_SELECT_CLASS } from '@/components/admin/catalog-select-class'
+import { Select } from '@/components/ui/select'
 import type { AgentCatalogItem } from '@/types'
 
 /** Models that support extended thinking (all Claude 4.5+ models). */
@@ -126,12 +126,11 @@ export function CatalogAgentEditor({
       <PanelContent className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Provider" htmlFor={`${id}-provider`}>
-            <select
+            <Select
               id={`${id}-provider`}
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
               disabled={!isSysadmin}
-              className={CATALOG_SELECT_CLASS}
             >
               <option value="">— select provider —</option>
               {providerList.map((p) => (
@@ -140,15 +139,14 @@ export function CatalogAgentEditor({
               {provider && !providerList.includes(provider) && (
                 <option value={provider}>{provider} (unregistered)</option>
               )}
-            </select>
+            </Select>
           </Field>
           <Field label="Model" htmlFor={`${id}-model`}>
-            <select
+            <Select
               id={`${id}-model`}
               value={model_name}
               onChange={(e) => setModelName(e.target.value)}
               disabled={!isSysadmin || !provider}
-              className={CATALOG_SELECT_CLASS}
             >
               <option value="">— select model —</option>
               {modelList.map((m) => (
@@ -157,7 +155,7 @@ export function CatalogAgentEditor({
               {model_name && !modelList.includes(model_name) && (
                 <option value={model_name}>{model_name} (unregistered)</option>
               )}
-            </select>
+            </Select>
           </Field>
         </div>
         {!isSysadmin && (
@@ -195,17 +193,16 @@ export function CatalogAgentEditor({
             htmlFor={`${id}-thinking`}
             hint={!modelSupportsThinking && model ? 'Not supported by this model' : undefined}
           >
-            <select
+            <Select
               id={`${id}-thinking`}
               value={modelSupportsThinking ? thinkingMode : 'off'}
               onChange={(e) => setThinkingMode(e.target.value as ThinkingMode)}
               disabled={!modelSupportsThinking}
-              className={CATALOG_SELECT_CLASS}
             >
               <option value="off">Off</option>
               <option value="adaptive">Adaptive</option>
               <option value="fixed">Fixed Budget</option>
-            </select>
+            </Select>
           </Field>
         </div>
         {thinkingMode === 'fixed' && modelSupportsThinking && (
@@ -234,31 +231,29 @@ export function CatalogAgentEditor({
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Engine" htmlFor={`${id}-engine`}>
-            <select
+            <Select
               id={`${id}-engine`}
               value={engine}
               onChange={(e) => setEngine(e.target.value as typeof engine)}
-              className={CATALOG_SELECT_CLASS}
             >
               <option value="pydantic_ai">PydanticAI (API Key)</option>
               <option value="claude_code">Claude Code (Subscription)</option>
               <option value="codex">OpenAI Codex (Subscription)</option>
               <option value="copilot">GitHub Copilot (Subscription)</option>
-            </select>
+            </Select>
           </Field>
           <Field label="Effort" htmlFor={`${id}-effort`}>
-            <select
+            <Select
               id={`${id}-effort`}
               value={effort}
               onChange={(e) => setEffort(e.target.value)}
               disabled={engine !== 'claude_code'}
-              className={CATALOG_SELECT_CLASS}
             >
               <option value="">— default —</option>
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="flex items-start gap-3 rounded-card bg-raised px-3.5 py-3">

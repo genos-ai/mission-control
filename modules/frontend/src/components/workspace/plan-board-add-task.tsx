@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Select } from '@/components/ui/select'
 import { useAddPlanTask } from '@/hooks/use-mission-plan'
 import { useTeam } from '@/hooks/use-team'
 
@@ -75,18 +76,19 @@ function AddTaskForm({ missionId, onDone }: AddTaskProps & { onDone: () => void 
         disabled={addTask.isPending}
       />
       {agentNames.length > 0 ? (
-        <select
+        <Select
           aria-label="Agent"
           value={agentInput}
           onChange={(e) => setAgentInput(e.target.value)}
           disabled={addTask.isPending}
-          className={FIELD}
+          size="sm"
+          className="h-auto px-2.5 py-1.5"
         >
           <option value="">Select agent…</option>
           {agentNames.map((name) => (
             <option key={name} value={name}>{name}</option>
           ))}
-        </select>
+        </Select>
       ) : (
         <input
           aria-label="Agent name"

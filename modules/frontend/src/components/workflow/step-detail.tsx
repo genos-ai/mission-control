@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, Trash2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select as BaseSelect } from '@/components/ui/select'
 import { IconTile } from '@/components/ui/icon-tile'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -13,7 +14,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCatalog } from '@/hooks/use-catalog'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { agentStyle } from '@/lib/agent-tone'
-import { cn } from '@/lib/cn'
 import { ROUTES } from '@/lib/constants'
 import { STEP_TYPES } from './workflow-editor-types'
 import { VariableAutocomplete } from './variable-autocomplete'
@@ -79,10 +79,10 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
         {nodeType === 'agent_step' && (
           <>
             <Field label="Agent">
-              <select
+              <BaseSelect
                 value={draft.capability ?? ''}
                 onChange={(e) => update({ capability: e.target.value || null })}
-                className={cn(SELECT_CLASS, 'font-mono')}
+                size="sm" className="font-mono"
               >
                 <option value="">Select an agent…</option>
                 {agents.map((a) => {
@@ -93,7 +93,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                     </option>
                   )
                 })}
-              </select>
+              </BaseSelect>
             </Field>
             <Field label="Environment">
               <Select
@@ -483,7 +483,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
         {nodeType === 'sub_workflow' && draft.sub_workflow_config && (
           <>
             <Field label="Target workflow">
-              <select
+              <BaseSelect
                 value={draft.sub_workflow_config.workflow_id}
                 onChange={(e) => {
                   const wf = workflows.find((w) => w.id === e.target.value)
@@ -495,7 +495,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                     },
                   })
                 }}
-                className={SELECT_CLASS}
+                size="sm"
               >
                 <option value="">Select a workflow…</option>
                 {workflows
@@ -505,7 +505,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                       {w.name}
                     </option>
                   ))}
-              </select>
+              </BaseSelect>
             </Field>
             {draft.sub_workflow_config.workflow_id && missionId && (
               <Button
@@ -555,7 +555,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
         {nodeType === 'decision' && draft.decision_config && (
           <>
             <Field label="Resolver">
-              <select
+              <BaseSelect
                 value={draft.decision_config.resolver}
                 onChange={(e) => {
                   const newResolver = e.target.value as 'agent' | 'human' | 'rule'
@@ -578,12 +578,12 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                     },
                   })
                 }}
-                className={SELECT_CLASS}
+                size="sm"
               >
                 <option value="agent">Agent (LLM)</option>
                 <option value="human">Human</option>
                 <option value="rule">Rule</option>
-              </select>
+              </BaseSelect>
             </Field>
 
             <Field label="Options">
@@ -682,19 +682,19 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                   />
                 </Field>
                 <Field label="Channel">
-                  <select
+                  <BaseSelect
                     value={draft.decision_config.channel ?? 'chat'}
                     onChange={(e) =>
                       update({
                         decision_config: { ...draft.decision_config!, channel: e.target.value },
                       })
                     }
-                    className={SELECT_CLASS}
+                    size="sm"
                   >
                     <option value="chat">Chat</option>
                     <option value="telegram">Telegram</option>
                     <option value="sse">SSE</option>
-                  </select>
+                  </BaseSelect>
                 </Field>
                 <Field label="Timeout (hours)">
                   <Input
@@ -712,7 +712,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                   />
                 </Field>
                 <Field label="Default option (on timeout)">
-                  <select
+                  <BaseSelect
                     value={draft.decision_config.default_option ?? ''}
                     onChange={(e) =>
                       update({
@@ -722,7 +722,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         },
                       })
                     }
-                    className={SELECT_CLASS}
+                    size="sm"
                   >
                     <option value="">None</option>
                     {(draft.decision_config.options ?? []).map((o) => (
@@ -730,7 +730,7 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
                         {o.key}
                       </option>
                     ))}
-                  </select>
+                  </BaseSelect>
                 </Field>
               </>
             )}
@@ -764,9 +764,6 @@ export function StepDetail({ step, onClose, onUpdate, onDelete, missionId, curre
 
 // ── Tiny helpers ────────────────────────────────────────────────────────
 
-const SELECT_CLASS =
-  'flex h-8 w-full rounded-md border border-border-strong bg-field px-2 text-xs outline-none transition-colors focus:border-brand/60 focus:ring-2 focus:ring-brand/15'
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -786,16 +783,16 @@ function Select({
   options: string[]
 }) {
   return (
-    <select
+    <BaseSelect
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={SELECT_CLASS}
+      size="sm"
     >
       {options.map((o) => (
         <option key={o} value={o}>
           {o}
         </option>
       ))}
-    </select>
+    </BaseSelect>
   )
 }
