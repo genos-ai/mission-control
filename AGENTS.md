@@ -1,6 +1,9 @@
 # AGENTS.md — AI Assistant Instructions
 
-#NO HACKS, NO WORKAROUNDS
+# Decisions and questions
+Ask me questions or decisions one by one, with a short description and a reccomendation
+
+# NO HACKS, NO WORKAROUNDS
 
 Read `.codemap/map.md` for a structural overview of the codebase ranked by importance. Machine-readable version in `.codemap/map.json`.
 
@@ -169,7 +172,7 @@ PATCH /admin/catalog/{agent_name}
 Body: { "tools": ["tool_a", "tool_b"], "description": "..." }
 ```
 
-Also update the corresponding `config/agents/**/agent.yaml` to keep version control in sync.
+Then run `python admin.py catalog sync-yaml` to write the change back into the matching `config/agents/**/agent.yaml` (`--dry-run` to preview, `--check` exits 1 on drift). Do not hand-edit the YAML to match.
 
 **`seed-catalog --force` is a blunt reset** — it wipes the DB and repopulates from YAML, destroying any changes made via the admin API. Only use it for:
 - Initial bootstrap of a new environment
