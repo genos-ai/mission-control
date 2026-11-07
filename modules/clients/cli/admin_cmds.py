@@ -395,12 +395,17 @@ async def _action_ensure_system_accounts(cli_logger, **_):
 
 async def _action_seed_dev_users(cli_logger, **_):
     """Create dev/test users (sysadmin, admin, user) with known passwords."""
+    from modules.backend.core.exceptions import AuthorizationError
     from modules.backend.services.bootstrap import BootstrapService
 
     console = get_console()
 
-    async with BootstrapService.factory() as svc:
-        created = await svc.ensure_dev_users()
+    try:
+        async with BootstrapService.factory() as svc:
+            created = await svc.ensure_dev_users()
+    except AuthorizationError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(1)
 
     if created:
         for user in created:

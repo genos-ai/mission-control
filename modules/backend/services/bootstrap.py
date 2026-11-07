@@ -12,7 +12,8 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core import security
-from modules.backend.core.exceptions import ConflictError, NotFoundError
+from modules.backend.core.config import get_app_config
+from modules.backend.core.exceptions import AuthorizationError, ConflictError, NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.models.base import SYSTEM_ACCOUNTS
 from modules.backend.models.user import User
@@ -142,6 +143,10 @@ class BootstrapService:
         },
     ]
 
+    # The only environments where accounts with well-known passwords may be created. Anything else,
+    # including a misspelt name, is refused: this fails closed.
+    DEV_USER_ENVIRONMENTS = frozenset({"development", "test"})
+
     @classmethod
     def dev_credentials(cls, system_role: str) -> tuple[str, str]:
         """Email and password of the seeded dev user with this role.
@@ -161,10 +166,22 @@ class BootstrapService:
         exist (matched by email). Does NOT update passwords for existing
         users. Also ensures system service accounts exist.
 
+        Raises AuthorizationError unless the configured environment is one of
+        DEV_USER_ENVIRONMENTS: these accounts have well-known passwords and
+        must never exist in staging or production.
+
         Returns:
             List of newly created users (empty if all already existed).
         """
         await self.ensure_system_accounts()
+
+        environment = get_app_config().application.environment
+        if environment not in self.DEV_USER_ENVIRONMENTS:
+            raise AuthorizationError(
+                f"Refusing to create dev users in the environment {environment!r}: "
+                "they have well-known passwords and are only for "
+                f"{' and '.join(sorted(self.DEV_USER_ENVIRONMENTS))}."
+            )
 
         created = []
         for acct in self.DEV_USERS:

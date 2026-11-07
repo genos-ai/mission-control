@@ -101,7 +101,9 @@ python services.py stop     # stop services
 ### First mission (prove the install works)
 
 ```bash
-# Log in with a seeded dev user (dev credentials: admin@missioncontrol.dev / admin123)
+# Log in with a seeded dev user (dev credentials: admin@missioncontrol.dev / admin123).
+# Dev users have well-known passwords, so they are only created when the environment
+# (config/settings/application.yaml) is development or test; elsewhere seeding is refused.
 python mc.py login --email admin@missioncontrol.dev
 
 # Create a mission (becomes the active mission)
