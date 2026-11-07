@@ -24,7 +24,7 @@ export function StreamingReport() {
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Report {isSynthesizing && !isComplete ? '(writing...)' : ''}
       </h4>
-      <div className="max-h-[500px] overflow-y-auto rounded border border-border bg-card p-4">
+      <div className="max-h-[500px] overflow-y-auto rounded border border-border bg-panel p-4">
         <MarkdownRenderer content={content} className="text-sm" />
         {isSynthesizing && !isComplete && (
           <span className="inline-block h-4 w-1 animate-pulse bg-primary" />

@@ -230,7 +230,7 @@ function AddFromCatalog({ missionId }: { missionId: string }) {
       )}
 
       {selected.size > 0 && (
-        <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-2 border-t bg-card px-3 py-2 shadow-md">
+        <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-2 border-t bg-panel px-3 py-2 shadow-md">
           <span className="text-xs text-muted-foreground">
             {selected.size} selected
           </span>
@@ -307,7 +307,7 @@ function CatalogPickCard({
     ? 'flex items-stretch rounded-lg border bg-muted/30 opacity-50'
     : selected
       ? 'flex items-stretch rounded-lg border border-primary/60 bg-primary/5 transition-colors'
-      : 'flex items-stretch rounded-lg border bg-card transition-colors hover:bg-accent'
+      : 'flex items-stretch rounded-lg border bg-panel transition-colors hover:bg-accent'
 
   return (
     <div className={wrapperClass}>

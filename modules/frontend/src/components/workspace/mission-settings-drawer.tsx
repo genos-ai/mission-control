@@ -177,7 +177,7 @@ function MemberCard({
   }
 
   return (
-    <div className="rounded-lg border bg-card text-xs">
+    <div className="rounded-lg border bg-panel text-xs">
       {/* Agent header */}
       <div className="flex items-center justify-between px-3 py-2.5">
         <div className="flex items-center gap-2.5 min-w-0">

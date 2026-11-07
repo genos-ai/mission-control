@@ -39,7 +39,7 @@ function SourceCardRow({ source }: { source: SourceCard }) {
       href={source.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="block rounded border border-border bg-card p-2 text-sm hover:border-primary/50 hover:bg-card/80"
+      className="block rounded border border-border bg-panel p-2 text-sm hover:border-primary/50 hover:bg-panel/80"
     >
       <div className="flex items-center justify-between">
         <span className="truncate font-medium text-foreground">{source.title || domain}</span>
