@@ -4,7 +4,7 @@ description: "Phase 0 (Plan 81): web-searches each sub-question, returns a flat 
 enabled: true
 chat_enabled: false
 model:
-  name: "copilot:claude-sonnet-4.6"
+  name: "foundry:claude-sonnet-5-5"
   temperature: 0.2
   max_tokens: 8192
 max_budget_usd: 4.00

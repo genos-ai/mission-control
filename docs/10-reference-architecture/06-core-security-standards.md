@@ -1,11 +1,12 @@
 # 06 - Security Standards
 
-*Version: 1.0.0*
+*Version: 1.1.0*
 *Author: Architecture Team*
 *Created: 2026-02-11*
 
 ## Changelog
 
+- 1.1.0 (2026-11-07): Added Outbound TLS Trust, with its scope and limits
 - 1.0.0 (2026-02-11): Initial security standards based on OWASP ASVS 5.0 and Top 10:2025
 
 ---
@@ -403,6 +404,20 @@ def verify_webhook_signature(
     ).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", signature)
 ```
+
+---
+
+## Outbound TLS Trust
+
+Calls to LLM providers and other external services verify the server certificate. Certificate verification is never disabled, and no process sets `verify=False`.
+
+On a network with a TLS-inspecting proxy, the proxy's CA is in the operating system's trust store but not in Python's bundled one. Python 3.13+ also rejects such a CA when it lacks an Authority Key Identifier, so extending a bundle does not help. The platform verifies against the OS trust store through `truststore`, switched by `security.tls.use_os_trust_store` in `config/settings/security.yaml` (default `true`).
+
+`configure_tls_trust()` in `modules/backend/core/tls.py` is called once per process, straight after logging is set up, in the API server, the Temporal worker, `admin.py`, `mc.py` and the TUI. A process that creates an HTTPS client before that call keeps Python's bundle. Set the option to `false` only where there is no system CA store, such as a minimal container image.
+
+While the option is on, a custom CA bundle (`SSL_CERT_FILE`, `SSL_CERT_DIR`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`) has no effect, and a startup warning names any that are set. Add the CA to the OS trust store instead.
+
+Scope: the setting covers HTTPS made through Python's `ssl` module in the process that calls it. It does not cover Temporal's gRPC client (`modules/backend/temporal/client.py` connects without TLS), nor the Copilot and Claude Code CLI child processes, which have their own runtime and trust handling. A standalone script under `scripts/` that makes outbound HTTPS calls must call `configure_tls_trust()` after setting up logging; scripts that only call the local API or shell out do not need it.
 
 ---
 

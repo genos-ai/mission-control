@@ -4,7 +4,7 @@ description: "Systems Mapper debater for the Think Tank. Reasons in systems, fee
 enabled: true
 chat_enabled: false
 model:
-  name: "copilot:claude-opus-4.6"
+  name: "foundry:claude-opus-5-5"
   temperature: 0.7
   max_tokens: 4096
 max_budget_usd: 3.00

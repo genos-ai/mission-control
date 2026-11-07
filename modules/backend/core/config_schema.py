@@ -48,6 +48,7 @@ class TimeoutsSchema(_StrictBase):
     database: int
     external_api: int
     background: int
+    agent_task: int  # wall-clock seconds for one agent task when the agent sets none
     tool_bridge: int = 300
     sse_keepalive: int = 15
 
@@ -235,6 +236,10 @@ class RoleSchema(_StrictBase):
     description: str
 
 
+class TlsSchema(_StrictBase):
+    use_os_trust_store: bool
+
+
 class SecuritySchema(_StrictBase):
     jwt: JwtSchema
     sse: SseSchema
@@ -245,6 +250,7 @@ class SecuritySchema(_StrictBase):
     roles: dict[str, RoleSchema] = Field(default_factory=dict)
     user_roles: dict[str, str] = Field(default_factory=dict)
     cors: CorsEnforcementSchema
+    tls: TlsSchema
 
 
 # =============================================================================
@@ -548,6 +554,16 @@ class ProviderAuthSchema(_StrictBase):
     env_var: str | None = None
     base_url: str | None = None
     scope: str | None = None  # foundry-only: Entra ID token scope
+    # foundry-only, used by model discovery to list deployments through Azure Resource Manager
+    subscription_id: str | None = None
+    resource_group: str | None = None
+    account_name: str | None = None
+    # Path appended to base_url for each wire protocol the provider serves, e.g.
+    # foundry: {openai_chat: /openai/v1/, anthropic_messages: /anthropic}.
+    endpoint_paths: dict[str, str] = Field(default_factory=dict)
+    # Model format the provider reports for a deployment -> the protocol it answers,
+    # used by `catalog discover` to catch a model registered under the wrong protocol.
+    deployment_protocols: dict[str, str] = Field(default_factory=dict)
 
 
 class ProvidersSchema(_StrictBase):
@@ -582,6 +598,38 @@ class ProvidersSchema(_StrictBase):
         ),
     )
 
+    @model_validator(mode="after")
+    def _protocols_match_backends(self) -> "ProvidersSchema":
+        """Protocols named in endpoint_paths and deployment_protocols must exist."""
+        from modules.backend.core.model_backends import BACKENDS
+
+        for name in type(self).model_fields:
+            if name not in BACKENDS:
+                continue
+            block: ProviderAuthSchema = getattr(self, name)
+            named = [*block.endpoint_paths, *block.deployment_protocols.values()]
+            for protocol in named:
+                if protocol not in BACKENDS[name]:
+                    raise ValueError(
+                        f"providers.{name}: unknown protocol '{protocol}'. "
+                        f"Supported: {sorted(BACKENDS[name])}."
+                    )
+        return self
+
+
+class ModelSpec(_StrictBase):
+    """One registered model: how it is called and the behaviour that varies by model."""
+
+    protocol: str
+    thinking: Literal["budget", "adaptive"] = Field(
+        default="budget",
+        description=(
+            "Extended-thinking style for models called over the Anthropic Messages "
+            "protocol: 'budget' takes an explicit token budget, 'adaptive' is required "
+            "by models that reject one."
+        ),
+    )
+
 
 class ModelsSchema(_StrictBase):
     """Model alias configuration (models.yaml).
@@ -590,9 +638,10 @@ class ModelsSchema(_StrictBase):
     fully-qualified provider:model strings. Workflow steps reference
     aliases so changing provider in one place propagates everywhere.
 
-    Registry enumerates which model names are valid per provider —
-    used by admin catalog writes to reject `provider:model` strings
-    that don't correspond to a deployed model.
+    Registry lists every valid model of each provider with its ModelSpec. It is
+    the source of truth for how a model is built (see model_backends.py) and is
+    used by admin catalog writes to reject `provider:model` strings that don't
+    correspond to a deployed model.
     """
 
     aliases: dict[str, str] = Field(
@@ -602,10 +651,48 @@ class ModelsSchema(_StrictBase):
             "comprehensive": "copilot:claude-opus-4.6",
         },
     )
-    registry: dict[str, list[str]] = Field(
+    registry: dict[str, dict[str, ModelSpec]] = Field(
         default_factory=dict,
-        description="Valid {provider: [model, ...]} combinations.",
+        description="Valid models as {provider: {model: ModelSpec}}.",
     )
+
+    @model_validator(mode="after")
+    def _registry_matches_backends(self) -> "ModelsSchema":
+        """Every provider and protocol must exist, and thinking applies to Anthropic only."""
+        from modules.backend.core.model_backends import ANTHROPIC_SETTINGS_PROTOCOLS, BACKENDS
+
+        for provider, models in self.registry.items():
+            if provider not in BACKENDS:
+                raise ValueError(
+                    f"models.registry: unknown provider '{provider}'. Known: {sorted(BACKENDS)}."
+                )
+            for model, spec in models.items():
+                if spec.protocol not in BACKENDS[provider]:
+                    raise ValueError(
+                        f"models.registry.{provider}.{model}: unknown protocol "
+                        f"'{spec.protocol}'. Supported: {sorted(BACKENDS[provider])}."
+                    )
+                if (
+                    "thinking" in spec.model_fields_set
+                    and spec.protocol not in ANTHROPIC_SETTINGS_PROTOCOLS
+                ):
+                    raise ValueError(
+                        f"models.registry.{provider}.{model}: 'thinking' applies only to "
+                        f"{sorted(ANTHROPIC_SETTINGS_PROTOCOLS)}, not '{spec.protocol}'."
+                    )
+        return self
+
+    def models_of(self, provider: str) -> list[str]:
+        """Every registered model of ``provider``."""
+        return list(self.registry.get(provider, {}))
+
+    def spec_of(self, provider: str, model: str) -> ModelSpec | None:
+        """The registered spec of ``model``, or None when it is not registered."""
+        return self.registry.get(provider, {}).get(model)
+
+    def models_by_provider(self) -> dict[str, list[str]]:
+        """``{provider: [model, ...]}`` without the specs."""
+        return {provider: self.models_of(provider) for provider in self.registry}
 
 
 class GateManualSchema(_StrictBase):

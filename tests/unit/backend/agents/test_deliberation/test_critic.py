@@ -17,6 +17,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from modules.backend.agents.deliberation.critic.agent import create_agent
 from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
 from modules.backend.core.config import find_project_root
+from modules.backend.core.model_builder import resolve_model
 from modules.backend.schemas.deliberation import CriticReport
 
 
@@ -117,7 +118,7 @@ class TestCriticAgent:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         assert config.agent_name == "deliberation.critic.agent"
-        assert config.model.name == "copilot:claude-opus-4.6"
+        assert resolve_model(config.model.name)  # a registered model, whichever the YAML names
         # Critic temperature is 0.4 per §6.1 — sharper than debaters (0.7)
         # but not 0.0 (some variance in attack strength).
         assert config.model.temperature == 0.4

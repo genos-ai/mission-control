@@ -21,6 +21,7 @@
 #     database      - Database query timeout (integer)
 #     external_api  - External API call timeout (integer)
 #     background    - Background task timeout (integer)
+#     agent_task    - Wall-clock timeout for one agent task when the agent sets none (integer)
 #   telegram        - Telegram bot settings (object)
 #     webhook_path       - Webhook URL path (string)
 #     authorized_users   - Authorized user IDs (list of integers, empty = deny all)
@@ -59,12 +60,14 @@ pagination:
 #   database      - DB query timeout
 #   external_api  - external HTTP calls
 #   background    - background tasks
+#   agent_task    - one agent task, for agents whose YAML sets no timeout_seconds
 #   tool_bridge   - copilot tool execution (planning needs multiple LLM round-trips)
 #   sse_keepalive - SSE comment interval to prevent idle connection drops
 timeouts:
   database: 10
   external_api: 30
   background: 120
+  agent_task: 120
   tool_bridge: 300
   sse_keepalive: 15
 

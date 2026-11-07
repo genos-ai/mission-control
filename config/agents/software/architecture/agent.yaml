@@ -33,7 +33,7 @@ description: "Deep architectural review: evaluates code against six engineering 
 enabled: true
 chat_enabled: true
 model:
-  name: "copilot:claude-opus-4.6"
+  name: "foundry:claude-opus-5-5"
   temperature: 0.0
   max_tokens: 16384
 max_input_length: 64000

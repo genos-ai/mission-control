@@ -13,7 +13,7 @@ enabled: true
 version: "1.0.0"
 
 model:
-  name: "anthropic:claude-haiku-4-5"
+  name: "foundry:claude-sonnet-5-5"
   temperature: 0.0
   max_tokens: 4096
 

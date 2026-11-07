@@ -23,7 +23,7 @@ agent_name: system.verification.agent
 agent_type: horizontal
 description: "Evaluates other agents' work quality against criteria from the TaskPlan"
 enabled: true
-model: copilot:claude-haiku-4.5
+model: foundry:claude-haiku-5-5
 max_input_length: 64000
 max_budget_usd: 2.00
 

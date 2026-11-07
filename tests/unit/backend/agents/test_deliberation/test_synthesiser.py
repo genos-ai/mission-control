@@ -19,6 +19,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from modules.backend.agents.deliberation.synthesiser.agent import create_agent
 from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
 from modules.backend.core.config import find_project_root
+from modules.backend.core.model_builder import resolve_model
 from modules.backend.schemas.deliberation import FinalDeliverable
 
 
@@ -153,7 +154,7 @@ class TestSynthesiserAgent:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         assert config.agent_name == "deliberation.synthesiser.agent"
-        assert config.model.name == "copilot:claude-opus-4.6"
+        assert resolve_model(config.model.name)  # a registered model, whichever the YAML names
         # The synthesiser receives the full transcript — needs the
         # 1M max_input_length per §6.1.
         assert config.max_input_length == 1_000_000

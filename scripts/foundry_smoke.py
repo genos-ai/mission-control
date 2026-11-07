@@ -41,6 +41,7 @@ from pydantic_ai.profiles import ModelProfile  # noqa: E402
 from modules.backend.agents.mission_control.cost import compute_cost_usd  # noqa: E402
 from modules.backend.core.logging import get_logger  # noqa: E402
 from modules.backend.core.model_providers import get_foundry_provider  # noqa: E402
+from modules.backend.core.tls import configure_tls_trust  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -216,6 +217,7 @@ def main(deployment: str, verbose: bool, debug: bool) -> None:
     """Foundry provider smoke test. Exits 0 if Tests 1-4 pass; Test 5 is advisory."""
     level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
     logging.basicConfig(level=level, format="%(levelname)s %(name)s — %(message)s")
+    configure_tls_trust()
     sys.exit(asyncio.run(_run(deployment)))
 
 

@@ -4,7 +4,7 @@ description: "Synthesiser for the Think Tank. Reads the full transcript and prod
 enabled: true
 chat_enabled: false
 model:
-  name: "copilot:claude-opus-4.6"
+  name: "foundry:claude-opus-5-5"
   temperature: 0.3
   max_tokens: 16384
 max_budget_usd: 8.00

@@ -4,7 +4,7 @@ description: "Searches for and extracts content for a single research sub-questi
 enabled: true
 chat_enabled: false
 model:
-  name: "copilot:claude-sonnet-4.6"
+  name: "foundry:claude-haiku-5-5"
   temperature: 0.0
   max_tokens: 8192
 max_budget_usd: 2.00

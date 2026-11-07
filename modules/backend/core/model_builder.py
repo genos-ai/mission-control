@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pydantic_ai.models import Model, ModelSettings
-from pydantic_ai.models.anthropic import AnthropicModel
 
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
+from modules.backend.core.model_backends import (
+    ANTHROPIC_SETTINGS_PROTOCOLS,
+    BACKENDS,
+    NATIVE_OUTPUT_PROTOCOLS,
+)
 from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 
 logger = get_logger(__name__)
@@ -17,8 +23,9 @@ def build_model_settings(
 ) -> "ModelSettings | None":
     """Build provider-specific model settings from agent config.
 
-    Returns AnthropicModelSettings for ALL Anthropic agents (cache + thinking).
-    Returns None for non-Anthropic providers (cache control is Anthropic-specific).
+    Returns AnthropicModelSettings for every model called over the Anthropic
+    Messages protocol, whichever provider hosts it (cache, thinking, effort).
+    Returns None for other protocols (cache control is Anthropic-specific).
     """
     from pydantic_ai.models.anthropic import AnthropicModelSettings
 
@@ -27,10 +34,9 @@ def build_model_settings(
         if isinstance(agent_config.model, AgentModelSchema)
         else agent_config.model
     )
-    model_name = _resolve_model_alias(raw_name)
-    provider = model_name.split(":")[0] if ":" in model_name else ""
+    resolved = resolve_model(_resolve_model_alias(raw_name))
 
-    if provider != "anthropic":
+    if resolved.protocol not in ANTHROPIC_SETTINGS_PROTOCOLS:
         return None
 
     # ── Cache control (Plan 60) ──────────────────────────────
@@ -55,10 +61,7 @@ def build_model_settings(
     thinking_config = None
     if agent_config.thinking_budget:
         budget = agent_config.thinking_budget.get("max_thinking_tokens", 10000)
-        _adaptive_models = ("claude-opus-4", "claude-sonnet-4", "opus-4", "sonnet-4")
-        _use_adaptive = any(m in model_name for m in _adaptive_models)
-
-        if _use_adaptive:
+        if resolved.thinking == "adaptive":
             thinking_config = {"type": "adaptive"}
         else:
             if max_tokens <= budget:
@@ -78,6 +81,8 @@ def build_model_settings(
         settings_kwargs["anthropic_thinking"] = thinking_config
     if betas:
         settings_kwargs["anthropic_betas"] = betas
+    if agent_config.effort:
+        settings_kwargs["anthropic_effort"] = agent_config.effort
 
     return AnthropicModelSettings(**settings_kwargs)
 
@@ -87,43 +92,6 @@ def _get_default_cache_ttl() -> str:
     from modules.backend.core.config import get_app_config
 
     return get_app_config().cost.default_cache_ttl
-
-
-def _build_profile(config_model: str | AgentModelSchema):
-    """Return a ModelProfile that pins structured-output mode, or None for defaults.
-
-    Used by the foundry: branch of `_build_model` to opt in to native JSON-schema
-    output per agent. Phase 0 Test 6/7 proved Azure gpt-4.1 accepts response_format
-    json_schema strict=true at the wire level and that a profile override unlocks
-    the path through PydanticAI.
-
-    Built on top of PydanticAI's own factory (`openai_model_profile(model_name)`)
-    rather than instantiating OpenAIModelProfile directly — the factory populates
-    crucial openai-specific defaults that the dataclass leaves None:
-      - supports_json_schema_output=True (the actual unlock)
-      - json_schema_transformer=OpenAIJsonSchemaTransformer (rewrites Pydantic
-        schemas to OpenAI strict-mode shape: additionalProperties=false, all
-        fields required, no $ref — without it, complex Pydantic output_types
-        fail at request submission)
-      - openai_supports_strict_tool_definition, supported_builtin_tools, etc.
-    We then patch only `default_structured_output_mode` via dataclasses.replace.
-
-    Returns None when config_model is a bare string (no opt-in possible) or when
-    output_mode is "tool" (let PydanticAI's per-model defaults apply unchanged).
-    """
-    if not isinstance(config_model, AgentModelSchema):
-        return None
-    if config_model.output_mode == "tool":
-        return None
-    import dataclasses
-
-    from pydantic_ai.profiles.openai import openai_model_profile
-
-    bare_name = (
-        config_model.name.split(":", 1)[1] if ":" in config_model.name else config_model.name
-    )
-    base = openai_model_profile(bare_name)
-    return dataclasses.replace(base, default_structured_output_mode=config_model.output_mode)
 
 
 def _resolve_model_alias(model_name: str) -> str:
@@ -149,6 +117,45 @@ def _resolve_model_alias(model_name: str) -> str:
     )
 
 
+@dataclass(frozen=True)
+class ResolvedModel:
+    """A qualified model name split into provider, bare name and its registry spec."""
+
+    provider: str
+    name: str
+    protocol: str
+    thinking: str
+
+
+def resolve_model(qualified_name: str) -> ResolvedModel:
+    """Split ``provider:model`` and look the model up in the registry.
+
+    The registry decides how a model is called, so an unregistered model fails
+    here rather than being guessed at.
+    """
+    from modules.backend.core.config import get_app_config
+
+    provider, sep, name = qualified_name.partition(":")
+    if not (sep and provider and name):
+        raise ValidationError(f"'{qualified_name}' is not a 'provider:model' string.")
+    if provider not in BACKENDS:
+        raise ValidationError(
+            f"Unsupported model provider in '{qualified_name}'. Known: {sorted(BACKENDS)}."
+        )
+
+    models = get_app_config().models
+    spec = models.spec_of(provider, name)
+    if spec is None:
+        raise ValidationError(
+            f"Model '{qualified_name}' is not in the model registry "
+            f"(config/settings/models.yaml). Registered {provider} models: "
+            f"{models.models_of(provider)}."
+        )
+    return ResolvedModel(
+        provider=provider, name=name, protocol=spec.protocol, thinking=spec.thinking
+    )
+
+
 def _build_model(config_model: str | AgentModelSchema) -> Model:
     """Construct a PydanticAI Model from config string, alias, or AgentModelSchema."""
     if isinstance(config_model, AgentModelSchema):
@@ -156,47 +163,23 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
     else:
         model_name = config_model
 
-    model_name = _resolve_model_alias(model_name)
+    resolved = resolve_model(_resolve_model_alias(model_name))
 
-    if model_name.startswith("anthropic:"):
-        bare_name = model_name.split(":", 1)[1]
-        from modules.backend.core.model_providers import get_anthropic_provider
+    # Tool mode is the default (P17 portable structured output). Agents opt in to
+    # native JSON-schema mode per agent via `output_mode: native` in the
+    # AgentModelSchema dict form; only some protocols can honour it.
+    if (
+        isinstance(config_model, AgentModelSchema)
+        and config_model.output_mode == "native"
+        and resolved.protocol not in NATIVE_OUTPUT_PROTOCOLS
+    ):
+        raise ValidationError(
+            f"'{resolved.provider}:{resolved.name}' is called over {resolved.protocol}, "
+            f"which does not support output_mode='native'. Supported: "
+            f"{sorted(NATIVE_OUTPUT_PROTOCOLS)}."
+        )
 
-        provider = get_anthropic_provider()
-        return AnthropicModel(bare_name, provider=provider)
-
-    if model_name.startswith("openai:"):
-        bare_name = model_name.split(":", 1)[1]
-        from pydantic_ai.models.openai import OpenAIModel
-
-        from modules.backend.core.model_providers import get_openai_provider
-
-        provider = get_openai_provider()
-        return OpenAIModel(bare_name, provider=provider)
-
-    if model_name.startswith("copilot:"):
-        bare_name = model_name.split(":", 1)[1]
-        from modules.backend.core.copilot_model import CopilotModel
-
-        return CopilotModel(model_id=bare_name)
-
-    if model_name.startswith("foundry:"):
-        # Tool mode is the default (P17 portable structured output). Agents can
-        # opt in to native JSON-schema mode per-agent via `output_mode: native`
-        # in the AgentModelSchema dict form — see _build_profile for details.
-        bare_name = model_name.split(":", 1)[1]
-        from pydantic_ai.models.openai import OpenAIModel
-
-        from modules.backend.core.model_providers import get_foundry_provider
-
-        provider = get_foundry_provider()
-        profile = _build_profile(config_model)
-        return OpenAIModel(bare_name, provider=provider, profile=profile)
-
-    raise ValidationError(
-        f"Unsupported model provider in '{model_name}'. "
-        "Expected 'anthropic:...', 'openai:...', 'copilot:...', or 'foundry:...'."
-    )
+    return BACKENDS[resolved.provider][resolved.protocol](resolved.name, config_model)
 
 
 def _get_model_name(config_model: str | AgentModelSchema) -> str:

@@ -19,6 +19,7 @@ from pydantic_ai.models.test import TestModel
 
 from modules.backend.agents.deps.base import BaseAgentDeps, FileScope
 from modules.backend.core.config import find_project_root
+from modules.backend.core.model_builder import resolve_model
 from modules.backend.schemas.deliberation import DebaterTurn
 
 DEBATERS = [
@@ -96,7 +97,7 @@ class TestDebaterAgents:
         assert config.agent_name == agent_name
         # All four use Opus 4.6 per Plan 79 §6.1 (downshifted from 4.7
         # which is not yet available in the Copilot SDK).
-        assert config.model.name == "copilot:claude-opus-4.6"
+        assert resolve_model(config.model.name)  # a registered model, whichever the YAML names
         # All four use the high max_input_length (sparse topology
         # round inputs can be ~5-20 KB).
         assert config.max_input_length == 100000

@@ -25,7 +25,7 @@ agent_type: vertical
 description: "Read-only platform health audit: logs, config, dependencies, file structure (P13)"
 enabled: true
 chat_enabled: true
-model: copilot:claude-haiku-4.5
+model: foundry:claude-haiku-5-5
 max_input_length: 1000
 max_budget_usd: 0.10
 

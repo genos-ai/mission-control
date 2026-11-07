@@ -25,6 +25,7 @@ import click
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from modules.backend.core.tls import configure_tls_trust  # noqa: E402
 from modules.clients.cli.api_client import (  # noqa: E402 — after sys.path bootstrap
     api_client,
     require_mission,
@@ -92,6 +93,7 @@ def mc(ctx, verbose, debug, quiet):
     ctx.ensure_object(dict)
     ctx.obj = McContext(verbose=verbose, debug=debug, quiet=quiet)
     setup_cli_logging(verbose, debug)
+    configure_tls_trust()
     if ctx.invoked_subcommand is None:
         _show_quickstart()
 

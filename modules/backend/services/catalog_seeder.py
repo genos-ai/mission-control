@@ -15,7 +15,8 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from modules.backend.core.config import find_project_root
+from modules.backend.core.agent_files import agents_dir, find_agent_files
+from modules.backend.core.config import find_project_root, get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 from modules.backend.services.agent_catalog import AgentCatalogService
@@ -64,14 +65,13 @@ def _resolve_system_prompt(agent_name: str, project_root: Path) -> str:
 
 
 def _extract_model_config(model_field: str | AgentModelSchema) -> dict:
-    """Normalise the agent YAML model field to a dict."""
-    if isinstance(model_field, AgentModelSchema):
-        return {
-            "name": model_field.name,
-            "temperature": model_field.temperature,
-            "max_tokens": model_field.max_tokens,
-        }
-    return {"name": model_field, "temperature": 0.0, "max_tokens": 4096}
+    """Normalise the agent YAML model field to a dict, with the schema's defaults."""
+    model = (
+        model_field
+        if isinstance(model_field, AgentModelSchema)
+        else AgentModelSchema(name=model_field)
+    )
+    return {"name": model.name, "temperature": model.temperature, "max_tokens": model.max_tokens}
 
 
 def _infer_visibility(agent_type: str, agent_name: str) -> str:
@@ -101,10 +101,10 @@ async def seed_catalog(
         Dict with counts: {"seeded": N, "skipped": M, "errors": E}
     """
     project_root = find_project_root()
-    agents_dir = project_root / "config" / "agents"
+    agent_directory = agents_dir(project_root)
 
-    if not agents_dir.exists():
-        logger.warning("Agents config directory not found", extra={"path": str(agents_dir)})
+    if not agent_directory.exists():
+        logger.warning("Agents config directory not found", extra={"path": str(agent_directory)})
         return {"seeded": 0, "skipped": 0, "errors": 0}
 
     # TODO(catalog-db-authoritative): Promote the DB to the sole source of
@@ -136,7 +136,7 @@ async def seed_catalog(
 
     counts = {"seeded": 0, "skipped": 0, "errors": 0}
 
-    for yaml_path in sorted(agents_dir.rglob("agent.yaml")):
+    for yaml_path in find_agent_files(project_root):
         try:
             with open(yaml_path) as f:
                 raw = yaml.safe_load(f)
@@ -167,7 +167,8 @@ async def seed_catalog(
                     else None
                 ),
                 constraints={
-                    "timeout_seconds": getattr(config, "timeout_seconds", None) or 120,
+                    "timeout_seconds": getattr(config, "timeout_seconds", None)
+                    or get_app_config().application.timeouts.agent_task,
                     "cost_ceiling_usd": config.max_budget_usd,
                     "retry_budget": 2,
                 },

@@ -8,14 +8,12 @@ Protected by admin role (X-API-Key header). Provides:
 - User/role management
 """
 
-from functools import lru_cache
 from typing import Any
 
-import yaml
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from modules.backend.core.config import find_project_root
+from modules.backend.core.config import get_app_config
 from modules.backend.core.dependencies import AdminRole, DbSession, RequestId
 from modules.backend.core.exceptions import AuthorizationError, ValidationError
 from modules.backend.schemas.base import ApiResponse
@@ -23,15 +21,9 @@ from modules.backend.schemas.base import ApiResponse
 router = APIRouter()
 
 
-@lru_cache(maxsize=1)
 def _load_models_registry() -> dict[str, list[str]]:
-    """Load valid {provider: [models]} from config/settings/models.yaml."""
-    path = find_project_root() / "config" / "settings" / "models.yaml"
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    registry = data.get("registry", {})
-    if not isinstance(registry, dict):
-        return {}
-    return registry
+    """Valid {provider: [models]} from the model registry (config/settings/models.yaml)."""
+    return get_app_config().models.models_by_provider()
 
 
 def _model_is_valid(name: str, registry: dict[str, list[str]]) -> bool:
@@ -743,7 +735,7 @@ async def admin_daemon_status(
 
     from redis.asyncio import Redis as AsyncRedis
 
-    from modules.backend.core.config import get_app_config, get_redis_url
+    from modules.backend.core.config import get_redis_url
     from modules.backend.core.utils import utc_now
     from modules.backend.services.mission_plan_daemon import get_heartbeat
 

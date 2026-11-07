@@ -112,7 +112,7 @@ To roll back **just the Tier-1 wave** (research stays on Foundry), run only the 
 
 Verify:
 ```bash
-python admin.py catalog models | grep -E "research\.|mission\.|system\."
+python admin.py --output json catalog providers | grep -E "research\.|mission\.|system\."
 python mc.py team list
 ```
 

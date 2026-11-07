@@ -93,6 +93,30 @@ model_pricing:
     input: 0.05
     output: 0.40
     cache_read: 0.005
+  # Claude 5.5 on Foundry — rates from platform.claude.com/docs/en/about-claude/pricing
+  # (checked 2026-11-07). Foundry bills Claude at Anthropic's standard per-model rates
+  # (invoiced in CCUs); these deployments are GlobalStandard, so no 1.1x data-zone
+  # multiplier. Haiku 5.5 is tiered: the rates below are for prompts up to 100,000
+  # tokens, and prompts above that cost 5x. ModelPricingRateSchema has no tier field,
+  # so cost is understated for those requests.
+  "foundry:claude-haiku-5-5":
+    input: 0.10
+    output: 0.50
+    cache_read: 0.01
+    cache_write_5m: 0.125
+    cache_write_1h: 0.20
+  "foundry:claude-sonnet-5-5":
+    input: 2.00
+    output: 10.00
+    cache_read: 0.10
+    cache_write_5m: 2.50
+    cache_write_1h: 4.00
+  "foundry:claude-opus-5-5":
+    input: 4.00
+    output: 20.00
+    cache_read: 0.20
+    cache_write_5m: 5.00
+    cache_write_1h: 8.00
   default:
     input: 3.00
     output: 15.00
@@ -102,7 +126,7 @@ model_pricing:
 
 routing:
   strategy: hybrid
-  llm_model: copilot:claude-haiku-4.5
+  llm_model: foundry:claude-haiku-5-5
   complex_request_agent: horizontal.pm.agent
   fallback_agent: platform.health.agent
   chat_agent: mission.director.agent

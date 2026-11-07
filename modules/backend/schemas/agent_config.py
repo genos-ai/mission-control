@@ -119,11 +119,12 @@ class AgentModelSchema(_StrictBase):
         default="tool",
         description=(
             "How PydanticAI enforces structured output. 'tool' (default) uses the "
-            "hidden final_result tool call — portable across all four providers and "
+            "hidden final_result tool call — portable across every provider and "
             "the safe choice for P17-style incremental tool building. 'native' uses "
             "response_format with json_schema strict mode (constrained decoding at "
-            "the model layer, one fewer round-trip). Requires provider in {openai, "
-            "foundry}; rejected at YAML load time otherwise. Only takes effect when "
+            "the model layer, one fewer round-trip). Requires a model called over "
+            "OpenAI chat completions (openai_chat in the model registry); rejected "
+            "otherwise. Only takes effect when "
             "the agent's model is in dict form (model: { name: ..., output_mode: "
             "native }); bare-string model declarations cannot set this field and "
             "silently default to 'tool'."
@@ -181,8 +182,9 @@ class AgentConfigSchema(_StrictBase):
     # "copilot": subprocess via copilot -p CLI
     engine: str = "pydantic_ai"
 
-    # Effort level for CLI engines that support it (claude_code).
-    # Ignored for pydantic_ai engine.
+    # Effort level: for CLI engines that support it (claude_code), and for
+    # pydantic_ai agents whose model is called over the Anthropic Messages
+    # protocol (sent as the API's effort setting). Ignored for other models.
     effort: str | None = None
 
     # Cache TTL for Anthropic prompt caching (Plan 60).
@@ -240,23 +242,25 @@ class AgentConfigSchema(_StrictBase):
             raise ValueError(f"Agent '{self.agent_name}' has an empty model name")
 
         # Known provider check
+        from modules.backend.core.model_backends import BACKENDS, NATIVE_OUTPUT_PROTOCOLS
+
         provider = model_name.split(":")[0] if ":" in model_name else ""
-        known_providers = {"anthropic", "openai", "google", "bedrock", "copilot", "foundry"}
-        if provider and provider not in known_providers:
+        if provider and provider not in BACKENDS:
             raise ValueError(
                 f"Unknown model provider '{provider}' for agent '{self.agent_name}'. "
-                f"Known: {', '.join(sorted(known_providers))}"
+                f"Known: {', '.join(sorted(BACKENDS))}"
             )
 
-        # Native JSON-schema mode requires response_format support — only the
-        # OpenAI-wire providers (openai, foundry) pass that through to the model.
+        # Native JSON-schema mode requires response_format support. Which models
+        # can honour it depends on the protocol the registry files them under, so
+        # the exact check is in _build_model; this only rejects a provider that
+        # has no such protocol at all.
         if isinstance(self.model, AgentModelSchema) and self.model.output_mode == "native":
-            if provider not in {"openai", "foundry"}:
+            if not NATIVE_OUTPUT_PROTOCOLS & set(BACKENDS.get(provider, ())):
                 raise ValueError(
-                    f"Agent '{self.agent_name}': output_mode='native' requires an "
-                    f"openai or foundry provider (got '{provider}'). Native "
-                    f"JSON-schema strict mode only works on providers that pass "
-                    f"response_format through to the model."
+                    f"Agent '{self.agent_name}': output_mode='native' requires a provider "
+                    f"with a protocol that passes response_format through to the model "
+                    f"({', '.join(sorted(NATIVE_OUTPUT_PROTOCOLS))}); '{provider}' has none."
                 )
 
         return self

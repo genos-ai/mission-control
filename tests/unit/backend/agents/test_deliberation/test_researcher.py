@@ -14,6 +14,7 @@ from pydantic_ai.models.test import TestModel
 from modules.backend.agents.deliberation.researcher.agent import create_agent
 from modules.backend.agents.research.deps import ResearchAgentDeps
 from modules.backend.core.config import find_project_root
+from modules.backend.core.model_builder import resolve_model
 from modules.backend.schemas.deliberation import ResearchPacket
 
 
@@ -76,7 +77,7 @@ class TestResearcherAgent:
             raw = yaml.safe_load(f)
         config = AgentConfigSchema(**raw)
         assert config.agent_name == "deliberation.researcher.agent"
-        assert config.model.name == "copilot:claude-opus-4.6"
+        assert resolve_model(config.model.name)  # a registered model, whichever the YAML names
         assert config.max_input_length == 20000
         # The researcher MUST declare its tools so the agent_executor
         # injects them. Empty tools = no search = bad packet = halted run.

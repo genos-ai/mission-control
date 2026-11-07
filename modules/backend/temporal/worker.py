@@ -172,8 +172,10 @@ def main() -> None:
     # errors, activity logs, and workflow events all appear in
     # var/logs/system.jsonl alongside the API server's logs.
     from modules.backend.core.logging import setup_logging
+    from modules.backend.core.tls import configure_tls_trust
 
     setup_logging(enable_mission_events=True)
+    configure_tls_trust()
 
     asyncio.run(start_worker())
 

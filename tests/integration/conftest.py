@@ -157,7 +157,7 @@ def _create_mock_app_config() -> Any:
                 server={"host": "127.0.0.1", "port": 8000},
                 cors={"origins": ["http://localhost:3000"]},
                 pagination={"default_limit": 50, "max_limit": 100},
-                timeouts={"database": 10, "external_api": 30, "background": 120},
+                timeouts={"database": 10, "external_api": 30, "background": 120, "agent_task": 120},
                 telegram={"webhook_path": "/webhook/telegram", "authorized_users": []},
             )
             self.database = DatabaseSchema(**get_test_database_config())
@@ -225,6 +225,7 @@ def _create_mock_app_config() -> Any:
                     "api_key_salt_min_length": 16,
                     "webhook_secret_min_length": 16,
                 },
+                tls={"use_os_trust_store": False},
                 cors={
                     "enforce_in_production": False,
                     "allow_methods": ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],

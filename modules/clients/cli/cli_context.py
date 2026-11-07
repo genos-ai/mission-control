@@ -4,6 +4,7 @@ import click
 
 from modules.backend.core.config import validate_project_root
 from modules.backend.core.logging import bind_context, get_logger, setup_logging
+from modules.backend.core.tls import configure_tls_trust
 
 
 class ShowHelpOnMissingArgs(click.Group):
@@ -34,6 +35,7 @@ class CliContext:
         level = "DEBUG" if debug else "INFO" if verbose else "WARNING"
         validate_project_root()
         setup_logging(level=level, format_type="console")
+        configure_tls_trust()
         bind_context(source=source)
         self.logger = get_logger(source)
         self.output_format = output_format

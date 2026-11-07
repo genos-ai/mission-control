@@ -396,6 +396,7 @@ def main(
 ) -> None:
     """Test the Planning Agent flow without a full server run."""
     from modules.backend.core.logging import setup_logging
+    from modules.backend.core.tls import configure_tls_trust
 
     if debug:
         setup_logging(level="DEBUG", format_type="console")
@@ -403,6 +404,7 @@ def main(
         setup_logging(level="INFO", format_type="console")
     else:
         setup_logging(level="WARNING", format_type="console")
+    configure_tls_trust()
 
     agent_names = [a.strip() for a in agents.split(",")] if agents else None
 

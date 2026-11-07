@@ -56,6 +56,10 @@ import-linter>=2.0
 
 # Azure Entra ID auth for Foundry provider (Plan 82)
 azure-identity>=1.17.1
+azure-mgmt-cognitiveservices>=13.5.0
+
+# Trust the OS certificate store for outbound TLS (corporate inspection proxies)
+truststore>=0.10.0
 
 # Durable Execution
 temporalio>=1.20.0
@@ -67,6 +71,7 @@ readability-lxml>=0.8.1
 
 # Configuration
 pyyaml>=6.0.1
+ruamel.yaml>=0.18
 python-dotenv>=1.0.0
 
 # CLI

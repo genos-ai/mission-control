@@ -4,7 +4,7 @@ description: "Position-free critic for the Think Tank. Invoked every round; atta
 enabled: true
 chat_enabled: false
 model:
-  name: "copilot:claude-opus-4.6"
+  name: "foundry:claude-opus-5-5"
   temperature: 0.4
   max_tokens: 4096
 max_budget_usd: 3.00

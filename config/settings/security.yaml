@@ -44,6 +44,9 @@
 #     enforce_in_production       - Reject localhost origins in production (boolean)
 #     allow_methods               - Allowed HTTP methods (list of strings)
 #     allow_headers               - Allowed HTTP headers (list of strings)
+#   tls                 - Outbound TLS trust (object)
+#     use_os_trust_store  - Verify server certificates against the operating system's trust
+#                           store instead of Python's bundled one (boolean)
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -140,3 +143,15 @@ cors:
     - "X-Request-ID"
     - "X-Frontend-ID"
     - "X-API-Key"
+
+# -----------------------------------------------------------------------------
+# Outbound TLS Trust
+# -----------------------------------------------------------------------------
+# On a network with a TLS-inspecting proxy the proxy's CA is installed in the
+# operating system's trust store but not in Python's bundled one, so calls to
+# the LLM providers fail certificate verification. Python 3.13+ also rejects
+# such a CA when it has no Authority Key Identifier, so adding it to a bundle
+# is not enough. Set to false only where there is no system CA store (for
+# example a minimal container image) and Python's bundle is the right one.
+tls:
+  use_os_trust_store: true

@@ -31,6 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from modules.backend.core.config import find_project_root, get_app_config  # noqa: E402
 from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
+from modules.backend.core.tls import configure_tls_trust  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -272,6 +273,7 @@ def main(verbose: bool, debug: bool, provider: str | None) -> None:
         setup_logging(level="INFO", format_type="console")
     else:
         setup_logging(level="WARNING", format_type="console")
+    configure_tls_trust()
 
     api_keys = load_api_keys()
 

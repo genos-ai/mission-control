@@ -17,33 +17,54 @@
 # =============================================================================
 
 aliases:
-  quick: "copilot:claude-haiku-4.5"
-  moderate: "copilot:claude-sonnet-4.6"
-  comprehensive: "copilot:claude-opus-4.6"
+  quick: "foundry:claude-haiku-5-5"
+  moderate: "foundry:claude-sonnet-5-5"
+  comprehensive: "foundry:claude-opus-5-5"
 
 # =============================================================================
-# Provider → Models Registry
+# Provider → Model Registry
 # =============================================================================
-# Authoritative list of valid {provider: [models]} combinations.
-# Source of truth for the model picker in /admin/catalog and for backend
-# validation on PATCH /admin/catalog/{agent_name}.
+# Authoritative list of valid models: {provider: {model: {protocol, ...}}}.
+# The entry decides how a model is built, so a model that is not listed here
+# cannot be used.
 #
-# To add a model: list it under its provider here.
+# A provider is where a model is hosted and how we authenticate (providers.yaml);
+# a protocol is how we talk to it. One provider can serve several protocols:
+# Foundry serves GPT, DeepSeek and similar over openai_chat, and Claude only over
+# anthropic_messages. The supported pairs are defined in
+# modules/backend/core/model_backends.py and checked when this file loads.
+#
+# Keys per model:
+#   protocol   required, one of:
+#                openai_chat         OpenAI chat completions
+#                anthropic_messages  Anthropic Messages API
+#                copilot_sdk         GitHub Copilot SDK
+#   thinking   anthropic_messages only. "budget" (default) takes an explicit
+#              thinking-token budget; "adaptive" is for models that reject one
+#              (the API answers 400 'thinking.type.enabled is not supported').
+#
+# To add a model: list it under its provider, then add its rates to model_pricing
+# in config/agents/mission_control.yaml.
+#   `python admin.py catalog discover --provider foundry` shows what is deployed
+#   and fails if a model is filed under a protocol its deployment cannot speak.
 # To remove a model: ensure no agent_catalog row references it first.
-# Validation only runs when model_config_json.name is being CHANGED, so
-# removed-but-still-referenced models won't break running agents.
+# Admin catalog writes are validated against this list when model_config_json.name
+# is being CHANGED; building a model validates it every time.
 
 registry:
   anthropic:
-    - claude-opus-4-6
-    - claude-sonnet-4-6
-    - claude-haiku-4-5
+    claude-opus-4-6: {protocol: anthropic_messages, thinking: adaptive}
+    claude-sonnet-4-6: {protocol: anthropic_messages, thinking: adaptive}
+    claude-haiku-4-5: {protocol: anthropic_messages}
   copilot:
-    - claude-opus-4.6
-    - claude-sonnet-4.6
-    - claude-haiku-4.5
+    claude-opus-4.6: {protocol: copilot_sdk}
+    claude-sonnet-4.6: {protocol: copilot_sdk}
+    claude-haiku-4.5: {protocol: copilot_sdk}
   foundry:
-    - gpt-4.1
-    - gpt-5.4
-    - gpt-5-mini
-    - gpt-5-nano
+    gpt-4.1: {protocol: openai_chat}
+    gpt-5.4: {protocol: openai_chat}
+    gpt-5-mini: {protocol: openai_chat}
+    gpt-5-nano: {protocol: openai_chat}
+    claude-haiku-5-5: {protocol: anthropic_messages, thinking: adaptive}
+    claude-sonnet-5-5: {protocol: anthropic_messages, thinking: adaptive}
+    claude-opus-5-5: {protocol: anthropic_messages, thinking: adaptive}

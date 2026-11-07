@@ -102,7 +102,7 @@ def _make_fake_agent_config(engine: str = "pydantic_ai", effort: str | None = No
     config = MagicMock()
     config.engine = engine
     config.effort = effort
-    config.model = "anthropic:claude-haiku-4-5-20251001"
+    config.model = "anthropic:claude-haiku-4-5"
     config.invocation.tier = "user"
     config.scope.read = ["src/"]
     config.scope.write = ["src/"]

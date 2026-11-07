@@ -16,6 +16,7 @@ from modules.backend.core.config import get_app_config
 from modules.backend.core.exception_handlers import register_exception_handlers
 from modules.backend.core.logging import get_logger, setup_logging
 from modules.backend.core.middleware import RateLimitMiddleware, RequestContextMiddleware
+from modules.backend.core.tls import configure_tls_trust
 
 logger = get_logger(__name__)
 
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     app_config = get_app_config()
     setup_logging(level=app_config.logging.level, enable_mission_events=True)
+    configure_tls_trust()
 
     from modules.backend.core.logging import start_mission_event_drain
 

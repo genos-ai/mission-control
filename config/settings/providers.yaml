@@ -10,6 +10,19 @@
 #   entra         — Azure Entra ID via DefaultAzureCredential (foundry-only)
 #   bearer_token  — pre-fetched Azure bearer from env (foundry-only)
 #
+# Keys per provider block (anthropic, openai, foundry, foundry_project):
+#   auth_mode        — one of the modes above
+#   env_var          — environment variable holding the key or token
+#   base_url         — endpoint override
+#   scope            — Entra token scope (foundry-only)
+#   subscription_id  — Azure subscription (foundry-only, discovery)
+#   resource_group   — Azure resource group (foundry-only, discovery)
+#   account_name     — Azure resource name (foundry-only, discovery)
+#   endpoint_paths   — path appended to base_url per wire protocol (foundry-only)
+#   deployment_protocols — deployment format the provider reports -> the protocol it
+#                      answers, used by `catalog discover` to catch a model registered
+#                      under the wrong protocol
+#
 # Both Anthropic and OpenAI reject subscription OAuth tokens for
 # programmatic API access. Subscription auth only works through
 # their official CLI tools (Claude Code, Codex CLI).
@@ -20,6 +33,8 @@
 anthropic:
   auth_mode: api_key
   env_var: ANTHROPIC_API_KEY
+  deployment_protocols:
+    Anthropic: anthropic_messages
 
 openai:
   auth_mode: api_key
@@ -36,10 +51,30 @@ openai:
 #
 # base_url is the resource endpoint WITHOUT the /openai/v1/ suffix —
 # get_foundry_provider() appends it.
+#
+# subscription_id, resource_group and account_name locate the resource in Azure
+# Resource Manager. They are used only by `admin.py catalog discover` to list the
+# model deployments; calling models does not need them. account_name is the Azure
+# resource name, which can differ from the base_url hostname.
 foundry:
   auth_mode: entra
   base_url: https://gis-mission-control-resource.openai.azure.com
   scope: https://ai.azure.com/.default
+  subscription_id: e9ae84d8-7fa3-49c1-838e-81ce8a57a576
+  resource_group: rg-secrch-mission-control-dev-001
+  account_name: gis-mission-control-resource
+  # Claude is served only over the Anthropic Messages API; every other model format
+  # answers OpenAI chat completions. A format missing from deployment_protocols is
+  # reported by `catalog discover` so it can be added here.
+  endpoint_paths:
+    openai_chat: /openai/v1/
+    anthropic_messages: /anthropic
+  deployment_protocols:
+    Anthropic: anthropic_messages
+    OpenAI: openai_chat
+    DeepSeek: openai_chat
+    MoonshotAI: openai_chat
+    Microsoft: openai_chat
 
 # Foundry Project — project-scoped Foundry endpoint, used by Agent Service
 # features that need project-level connections (e.g. Bing Grounding for the

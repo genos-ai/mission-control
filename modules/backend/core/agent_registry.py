@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from modules.backend.core.agent_files import agents_dir, find_agent_files
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.agent_config import (
@@ -149,11 +150,11 @@ class AgentRegistry:
 
     def _load_from_yaml(self) -> None:
         """Fallback: load from YAML files (bootstrap/tests)."""
-        agents_dir = find_project_root() / "config" / "agents"
-        if not agents_dir.exists():
+        root = find_project_root()
+        if not agents_dir(root).exists():
             return
 
-        for path in sorted(agents_dir.rglob("agent.yaml")):
+        for path in find_agent_files(root):
             try:
                 with open(path) as f:
                     raw = yaml.safe_load(f)

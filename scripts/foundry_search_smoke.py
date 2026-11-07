@@ -47,6 +47,7 @@ from modules.backend.core.model_providers import (  # noqa: E402
     close_foundry_credentials,
     get_foundry_project_provider,
 )
+from modules.backend.core.tls import configure_tls_trust  # noqa: E402
 from modules.backend.schemas.research import SearchResult  # noqa: E402
 from modules.backend.services.search.bing_grounding_search import _parse_response  # noqa: E402
 from modules.backend.services.search.web_search import WebSearchService  # noqa: E402
@@ -228,6 +229,7 @@ def main(model: str, query: str, verbose: bool, debug: bool) -> None:
     """Foundry Bing Grounding smoke test. Exits 0 on success."""
     level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
     logging.basicConfig(level=level, format="%(levelname)s %(name)s — %(message)s")
+    configure_tls_trust()
     sys.exit(asyncio.run(_main_async(model, query)))
 
 

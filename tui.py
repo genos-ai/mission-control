@@ -24,6 +24,7 @@ import click  # noqa: E402
 
 from modules.backend.core.config import validate_project_root  # noqa: E402
 from modules.backend.core.logging import bind_context, get_logger, setup_logging  # noqa: E402
+from modules.backend.core.tls import configure_tls_trust  # noqa: E402
 
 
 @click.group(invoke_without_command=True)
@@ -46,6 +47,7 @@ def main(ctx: click.Context, verbose: bool, debug: bool) -> None:
     else:
         setup_logging(level="WARNING", enable_console=False)
 
+    configure_tls_trust()
     bind_context(source="tui")
 
     logger = get_logger(__name__)

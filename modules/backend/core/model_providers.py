@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 
 from modules.backend.core.logging import get_logger
+from modules.backend.core.model_backends import ANTHROPIC_MESSAGES, OPENAI_CHAT
 
 logger = get_logger(__name__)
 
@@ -34,15 +35,16 @@ logger = get_logger(__name__)
 # process exit (a real problem for CLI smoke tests, harmless for the API
 # server which holds the credential for process lifetime).
 #
-# A single module-level instance is created on first use and reused by both
-# get_foundry_provider() and get_foundry_project_provider() — they both use
-# the same auth chain and the credential is scope-agnostic (scope is passed
-# per-call to get_bearer_token_provider()). Short-lived contexts call
+# A single module-level instance is created on first use and reused by
+# every Foundry provider (get_foundry_provider(), get_foundry_anthropic_provider()
+# and get_foundry_project_provider()) — they all use the same auth chain and the
+# credential is scope-agnostic (scope is passed per-call to
+# get_bearer_token_provider()). Short-lived contexts call
 # close_foundry_credentials() before exit to clean up the aiohttp session.
 _foundry_credential = None
 
 
-def _get_foundry_credential():
+def get_foundry_credential():
     """Return the shared DefaultAzureCredential, creating it on first use."""
     global _foundry_credential
     if _foundry_credential is None:
@@ -82,6 +84,47 @@ def _read_credential(config) -> str | None:
     return None
 
 
+def _resolve_anthropic_credential(config) -> str | None:
+    """Anthropic credential: the configured env var, else the Settings .env secret."""
+    credential = _read_credential(config)
+
+    if not credential:
+        try:
+            from modules.backend.core.config import get_settings
+
+            credential = get_settings().anthropic_api_key
+        except Exception:
+            logger.debug(
+                "settings API key lookup failed, continuing without credential", exc_info=True
+            )
+
+    return credential or None
+
+
+# Auth modes whose credential is acquired at call time (a login or a token exchange),
+# so its presence cannot be read without making a network call.
+_LIVE_AUTH_MODES = frozenset({"entra", "codex_oauth"})
+
+
+def credential_status(provider: str) -> str:
+    """Whether the credential for ``provider`` is configured, without exposing it.
+
+    Returns ``"present"`` or ``"missing"`` for static credentials (API key or
+    bearer token). Returns ``"not_checked"`` when the provider has no entry in
+    providers.yaml (Copilot signs in through its own SDK) or authenticates live
+    (Entra, Codex OAuth): only a real call proves those, so use a ping.
+    """
+    config = getattr(_get_provider_config(), provider, None)
+    if config is None or config.auth_mode in _LIVE_AUTH_MODES:
+        return "not_checked"
+
+    if provider == "anthropic":
+        credential = _resolve_anthropic_credential(config)
+    else:
+        credential = _read_credential(config)
+    return "present" if credential else "missing"
+
+
 def get_anthropic_provider():
     """Create a PydanticAI AnthropicProvider with configured auth.
 
@@ -93,18 +136,7 @@ def get_anthropic_provider():
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
     config = _get_provider_config().anthropic
-    credential = _read_credential(config)
-
-    # Fallback: try the Settings .env secret if no env var found
-    if not credential:
-        try:
-            from modules.backend.core.config import get_settings
-
-            credential = get_settings().anthropic_api_key
-        except Exception:
-            logger.debug(
-                "settings API key lookup failed, continuing without credential", exc_info=True
-            )
+    credential = _resolve_anthropic_credential(config)
 
     if not credential:
         raise ValueError(
@@ -175,6 +207,22 @@ def get_openai_provider():
     return OpenAIProvider(openai_client=client)
 
 
+def _foundry_endpoint(config, protocol: str) -> str:
+    """The Foundry URL for ``protocol``: base_url plus its path from providers.yaml."""
+    if not config.base_url:
+        raise ValueError(
+            "Foundry provider requires base_url in providers.yaml "
+            "(e.g. https://<resource>.openai.azure.com)."
+        )
+    path = config.endpoint_paths.get(protocol)
+    if not path:
+        raise ValueError(
+            f"Foundry provider requires endpoint_paths.{protocol} in providers.yaml "
+            "(the path appended to base_url for that protocol)."
+        )
+    return f"{config.base_url.rstrip('/')}/{path.strip('/')}/"
+
+
 def get_foundry_provider():
     """Create a PydanticAI OpenAIProvider pointed at Azure AI Foundry.
 
@@ -192,21 +240,14 @@ def get_foundry_provider():
     from pydantic_ai.providers.openai import OpenAIProvider
 
     config = _get_provider_config().foundry
-
-    if not config.base_url:
-        raise ValueError(
-            "Foundry provider requires base_url in providers.yaml "
-            "(e.g. https://<resource>.openai.azure.com)."
-        )
-
-    sdk_base_url = f"{config.base_url.rstrip('/')}/openai/v1/"
+    sdk_base_url = _foundry_endpoint(config, OPENAI_CHAT)
 
     if config.auth_mode == "entra":
         # openai 2.x AsyncOpenAI expects api_key as Callable[[], Awaitable[str]] —
         # use azure.identity.aio (NOT the sync azure.identity) so the returned
         # bearer-token provider is awaitable. Token is fetched and cached on
         # each request; refresh is handled by the credential. The credential
-        # itself is a module-level singleton (see _get_foundry_credential)
+        # itself is a module-level singleton (see get_foundry_credential)
         # to avoid leaking aiohttp sessions on repeated factory calls.
         from azure.identity.aio import get_bearer_token_provider
 
@@ -215,7 +256,7 @@ def get_foundry_provider():
                 "Foundry entra auth requires scope in providers.yaml "
                 "(e.g. https://ai.azure.com/.default)."
             )
-        token_provider = get_bearer_token_provider(_get_foundry_credential(), config.scope)
+        token_provider = get_bearer_token_provider(get_foundry_credential(), config.scope)
         client = AsyncOpenAI(base_url=sdk_base_url, api_key=token_provider)
         logger.info("Foundry provider: entra mode (scope=%s)", config.scope)
         return OpenAIProvider(openai_client=client)
@@ -229,6 +270,66 @@ def get_foundry_provider():
         client = AsyncOpenAI(base_url=sdk_base_url, api_key=credential)
         logger.info("Foundry provider: %s mode", config.auth_mode)
         return OpenAIProvider(openai_client=client)
+
+    raise ValueError(
+        f"Foundry auth_mode '{config.auth_mode}' not supported. "
+        "Expected one of: entra, api_key, bearer_token."
+    )
+
+
+def get_foundry_anthropic_provider():
+    """Create a PydanticAI AnthropicProvider for Claude models deployed on Foundry.
+
+    Same resource, credential and firewall rule as get_foundry_provider(); only
+    the wire protocol differs. Claude on Foundry answers the Anthropic Messages
+    API (its path is endpoint_paths.anthropic_messages in providers.yaml) and
+    rejects OpenAI chat completions (``api_not_supported``).
+
+    AsyncAnthropicFoundry takes a token *provider* rather than a token, so Entra
+    tokens (about an hour) refresh per request; a static ``auth_token`` would
+    expire mid-way through a long mission.
+
+    Auth modes: entra, api_key, bearer_token, as for get_foundry_provider().
+    """
+    from anthropic import AsyncAnthropicFoundry
+    from pydantic_ai.providers.anthropic import AnthropicProvider
+
+    config = _get_provider_config().foundry
+    sdk_base_url = _foundry_endpoint(config, ANTHROPIC_MESSAGES)
+
+    if config.auth_mode == "entra":
+        from azure.identity.aio import get_bearer_token_provider
+
+        if not config.scope:
+            raise ValueError(
+                "Foundry entra auth requires scope in providers.yaml "
+                "(e.g. https://ai.azure.com/.default)."
+            )
+        token_provider = get_bearer_token_provider(get_foundry_credential(), config.scope)
+        client = AsyncAnthropicFoundry(
+            base_url=sdk_base_url, azure_ad_token_provider=token_provider
+        )
+        logger.info("Foundry Anthropic provider: entra mode (scope=%s)", config.scope)
+        return AnthropicProvider(anthropic_client=client)
+
+    if config.auth_mode in ("api_key", "bearer_token"):
+        credential = _read_credential(config)
+        if not credential:
+            raise ValueError(
+                f"Foundry {config.auth_mode} mode requires {config.env_var} env var to be set."
+            )
+        if config.auth_mode == "api_key":
+            client = AsyncAnthropicFoundry(base_url=sdk_base_url, api_key=credential)
+        else:
+
+            async def static_token() -> str:
+                return credential
+
+            client = AsyncAnthropicFoundry(
+                base_url=sdk_base_url, azure_ad_token_provider=static_token
+            )
+        logger.info("Foundry Anthropic provider: %s mode", config.auth_mode)
+        return AnthropicProvider(anthropic_client=client)
 
     raise ValueError(
         f"Foundry auth_mode '{config.auth_mode}' not supported. "
@@ -268,7 +369,7 @@ def get_foundry_project_provider():
 
     if config.auth_mode == "entra":
         # Shares the module-level credential singleton with get_foundry_provider()
-        # — see _get_foundry_credential() for the lifecycle rationale.
+        # — see get_foundry_credential() for the lifecycle rationale.
         from azure.identity.aio import get_bearer_token_provider
 
         if not config.scope:
@@ -276,7 +377,7 @@ def get_foundry_project_provider():
                 "foundry_project entra auth requires scope in providers.yaml "
                 "(e.g. https://ai.azure.com/.default).",
             )
-        token_provider = get_bearer_token_provider(_get_foundry_credential(), config.scope)
+        token_provider = get_bearer_token_provider(get_foundry_credential(), config.scope)
         client = AsyncOpenAI(base_url=sdk_base_url, api_key=token_provider)
         logger.info("foundry_project provider: entra mode (scope=%s)", config.scope)
         return client

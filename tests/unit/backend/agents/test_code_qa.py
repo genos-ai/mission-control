@@ -13,6 +13,7 @@ import pytest
 import yaml
 
 from modules.backend.agents.schemas import QaAuditResult, Violation
+from modules.backend.core.model_builder import resolve_model
 from modules.backend.services.compliance import ComplianceScannerService
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -177,7 +178,7 @@ class TestConfigLoading:
         assert "compliance" in qa_config["keywords"]
 
     def test_config_has_model(self, qa_config):
-        assert "copilot:" in qa_config["model"]
+        assert resolve_model(qa_config["model"])  # a registered model, whichever the YAML names
 
     def test_config_has_scope(self, qa_config):
         assert len(qa_config["scope"]["read"]) > 0

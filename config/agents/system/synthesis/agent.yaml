@@ -13,7 +13,7 @@ agent_name: system.synthesis.agent
 agent_type: horizontal
 description: "Generates human-readable narrative summaries from structured mission and workflow outcome data"
 enabled: true
-model: copilot:claude-haiku-4.5
+model: foundry:claude-haiku-5-5
 max_input_length: 32000
 max_budget_usd: 0.05
 

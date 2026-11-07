@@ -45,53 +45,75 @@ def catalog_detail(ctx, agent_name):
     run_catalog(ctx.logger, "detail", agent_name=agent_name, output_format=ctx.output_format)
 
 
-@catalog.command("models")
+@catalog.command("providers")
 @click.pass_obj
-def catalog_models(ctx):
-    """List all agents with their current model provider and name.
+def catalog_providers(ctx):
+    """List every LLM provider: auth state, models, and which agents use them.
 
     \b
     Examples:
-        python admin.py catalog models
+        python admin.py catalog providers
+        python admin.py --output json catalog providers
     """
-    import asyncio
+    from modules.clients.cli.catalog_cmds import run_providers
 
-    from modules.clients.common.display import build_table, get_console
+    run_providers(ctx.logger, output_format=ctx.output_format)
 
-    async def _run():
-        from sqlalchemy import text
 
-        from modules.backend.core.database import get_async_session
+@catalog.command("ping")
+@click.option("--model", "models", multiple=True, help="provider:model or alias. Repeatable.")
+@click.option("--provider", "providers", multiple=True, help="Every model of a provider.")
+@click.option("--all", "all_models", is_flag=True, help="Every model in the registry.")
+@click.pass_obj
+def catalog_ping(ctx, models, providers, all_models):
+    """Make one live call per model to prove provider, auth and model work.
 
-        async with get_async_session() as db:
-            result = await db.execute(text("""
-                SELECT agent_name, model_config_json->>'name' as model, enabled
-                FROM agent_catalog
-                ORDER BY agent_name
-            """))
-            rows = list(result)
+    Select with --model, --provider or --all. Models must be in the registry.
+    Exits 1 if any call fails.
 
-        console = get_console()
-        table = build_table(
-            "Agent Models",
-            columns=[
-                ("Agent", {"style": "cyan"}),
-                ("Model", {"style": "green"}),
-                ("Provider", {"style": "yellow"}),
-                ("Enabled", {"style": "dim"}),
-            ],
-        )
+    \b
+    Examples:
+        python admin.py catalog ping --model quick
+        python admin.py catalog ping --provider foundry
+        python admin.py catalog ping --all
+    """
+    from modules.clients.cli.catalog_cmds import run_ping
 
-        for row in rows:
-            model = row[1] or "N/A"
-            provider = model.split(":")[0] if ":" in model else "unknown"
-            enabled = "yes" if row[2] else "no"
-            style = None if row[2] else "dim"
-            table.add_row(row[0], model, provider, enabled, style=style)
+    run_ping(
+        ctx.logger,
+        models=models,
+        providers=providers,
+        all_models=all_models,
+        output_format=ctx.output_format,
+    )
 
-        console.print(table)
 
-    asyncio.run(_run())
+@catalog.command("discover")
+@click.option(
+    "--provider",
+    required=True,
+    help="Provider to query; an unsupported one lists the supported providers.",
+)
+@click.pass_obj
+def catalog_discover(ctx, provider):
+    """List the models a provider offers now, against the model registry.
+
+    Shows each deployment, whether it is in the registry, and how many agents
+    use it. Exits 1 if the registry names a model the provider does not offer, or
+    files one under a protocol its deployment cannot speak.
+    Foundry needs 'az login' and Reader access to the Azure resource; Anthropic
+    needs its API key. Anthropic lists dated snapshot ids; a registry name matches
+    the id or its undated alias.
+
+    \b
+    Examples:
+        python admin.py catalog discover --provider foundry
+        python admin.py catalog discover --provider anthropic
+        python admin.py --output json catalog discover --provider foundry
+    """
+    from modules.clients.cli.catalog_cmds import run_discover
+
+    run_discover(ctx.logger, provider=provider, output_format=ctx.output_format)
 
 
 @catalog.command("set-model")
@@ -126,96 +148,102 @@ def catalog_set_model(ctx, agent_name, model):
     asyncio.run(_run())
 
 
+@catalog.command("sync-yaml")
+@click.option("--agent", "agent_name", default=None, help="Only this agent (default: all).")
+@click.option("--dry-run", is_flag=True, help="Show the changes without writing any file.")
+@click.option(
+    "--check",
+    is_flag=True,
+    help="Write nothing; exit 1 if any agent YAML differs from the catalog (for CI).",
+)
+@click.pass_obj
+def catalog_sync_yaml(ctx, agent_name, dry_run, check):
+    """Write the catalog's values back into the agent YAML files.
+
+    The database is the source of truth; config/agents/**/agent.yaml seeds it.
+    After a runtime change (the admin API, set-provider, set-model) the YAML is
+    stale, and 'seed-catalog --force' would revert the change. This edits the
+    existing files in place, keeping comments and formatting.
+
+    Synced: description, enabled, chat_enabled, version, keywords, tools, model
+    (name, temperature, max_tokens), scope, interface, engine, effort,
+    thinking_budget, max_budget_usd, max_input_length, timeout_seconds. Not
+    synced: system prompts (config/prompts), agent_type, invocation, execution.
+    It never creates or deletes a file, and it refuses a file whose result would
+    fail validation, listing the reason.
+
+    \b
+    Examples:
+        python admin.py catalog sync-yaml --dry-run
+        python admin.py catalog sync-yaml
+        python admin.py catalog sync-yaml --agent platform.health.agent
+        python admin.py catalog sync-yaml --check
+    """
+    from modules.clients.cli.catalog_cmds import run_sync_yaml
+
+    run_sync_yaml(
+        ctx.logger,
+        agent_name=agent_name,
+        dry_run=dry_run,
+        check=check,
+        output_format=ctx.output_format,
+    )
+
+
 @catalog.command("set-provider")
-@click.argument("provider", type=click.Choice(["copilot", "anthropic"]))
+@click.argument("provider")
 @click.option(
     "--model-map",
     type=str,
     default=None,
-    help="Comma-separated old=new model mappings, e.g. 'haiku-4-5=claude-haiku-4.5,sonnet-4-6=claude-sonnet-4.6'",  # noqa: E501
+    help="Comma-separated old=new bare model names, e.g. 'claude-haiku-4-5=gpt-5-nano'.",
 )
 @click.option("--dry-run", is_flag=True, help="Show changes without applying them")
 @click.pass_obj
 def catalog_set_provider(ctx, provider, model_map, dry_run):
-    """Switch all agents to a provider (copilot or anthropic).
+    """Switch every agent to a provider from the model registry.
 
-    Rewrites the provider prefix on every agent's model name. Model names
-    are mapped between provider naming conventions automatically:
-
-    \b
-      anthropic:claude-haiku-4-5       <-> copilot:claude-haiku-4.5
-      anthropic:claude-sonnet-4-6      <-> copilot:claude-sonnet-4.6
-      anthropic:claude-opus-4-6        <-> copilot:claude-opus-4.6
+    Each model keeps its name if the provider has it, otherwise it maps by
+    --model-map, otherwise by a name that matches ignoring punctuation
+    (claude-opus-4-6 and claude-opus-4.6). If any agent has no match, nothing
+    is changed and every gap is listed. Run 'catalog providers' for the
+    providers and models available.
 
     \b
     Examples:
-        python admin.py catalog set-provider copilot
-        python admin.py catalog set-provider anthropic
         python admin.py catalog set-provider copilot --dry-run
-    """
+        python admin.py catalog set-provider anthropic
+        python admin.py catalog set-provider foundry --model-map claude-opus-4-6=gpt-5.4,claude-sonnet-4-6=gpt-5-mini,claude-haiku-4-5=gpt-5-nano
+    """  # noqa: E501
     import asyncio
-
-    # Default model name mappings between providers
-    TO_COPILOT = {
-        "claude-haiku-4-5": "claude-haiku-4.5",
-        "claude-haiku-4-5-20251001": "claude-haiku-4.5",
-        "claude-sonnet-4-6": "claude-sonnet-4.6",
-        "claude-sonnet-4-5-20241022": "claude-sonnet-4.6",
-        "claude-opus-4-6": "claude-opus-4.6",
-    }
-    TO_ANTHROPIC = {
-        v: k for k, v in TO_COPILOT.items() if "20251001" not in k and "20241022" not in k
-    }
-
-    mapping = TO_COPILOT if provider == "copilot" else TO_ANTHROPIC
-
-    # Parse user overrides
-    if model_map:
-        for pair in model_map.split(","):
-            old, new = pair.strip().split("=")
-            mapping[old.strip()] = new.strip()
+    import sys
 
     async def _run():
+        from modules.backend.core.exceptions import ValidationError
+        from modules.backend.services.model_provider import ModelProviderService
         from modules.clients.cli.api_client import api_client
 
-        async with api_client() as api:
-            listing = await api.get("/admin/catalog", params={"enabled_only": False})
-            entries = listing.get("agents", [])
+        try:
+            async with ModelProviderService.factory() as svc:
+                changes = await svc.plan_switch(
+                    provider=provider, model_map=svc.parse_model_map(model_map)
+                )
+        except ValidationError as e:
+            click.echo(str(e), err=True)
+            sys.exit(1)
 
-            changed = 0
-            for entry in entries:
-                config = entry.get("model_config_json") or {}
-                current = config.get("name", "")
-                if not current:
-                    continue
-
-                # Already on this provider
-                if current.startswith(f"{provider}:"):
-                    continue
-
-                # Extract model name from current provider
-                parts = current.split(":", 1)
-                old_model = parts[1] if len(parts) > 1 else current
-
-                # Map model name
-                new_model = mapping.get(old_model, old_model)
-                new_full = f"{provider}:{new_model}"
-
-                if dry_run:
-                    click.echo(f"  {entry['agent_name']}: {current} -> {new_full}")
-                else:
-                    new_config = dict(config)
-                    new_config["name"] = new_full
+        if not dry_run and changes:
+            async with api_client() as api:
+                for change in changes:
                     await api.patch(
-                        f"/admin/catalog/{entry['agent_name']}",
-                        body={"model_config_json": new_config},
+                        f"/admin/catalog/{change.agent_name}",
+                        body={"model_config_json": change.new_config},
                     )
-                    click.echo(f"  {entry['agent_name']}: {current} -> {new_full}")
 
-                changed += 1
-
-            label = "Would change" if dry_run else "Changed"
-            click.echo(f"\n{label} {changed} agent(s)")
+        for change in changes:
+            click.echo(f"  {change.agent_name}: {change.current_model} -> {change.new_model}")
+        label = "Would change" if dry_run else "Changed"
+        click.echo(f"\n{label} {len(changes)} agent(s)")
 
     asyncio.run(_run())
 

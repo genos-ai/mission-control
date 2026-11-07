@@ -42,6 +42,7 @@ from modules.backend.agents.deps.base import FileScope  # noqa: E402
 from modules.backend.agents.research.deps import ResearchAgentDeps  # noqa: E402
 from modules.backend.core.copilot_model import CopilotModel  # noqa: E402
 from modules.backend.core.logging import get_logger, setup_logging  # noqa: E402
+from modules.backend.core.tls import configure_tls_trust  # noqa: E402
 from modules.backend.schemas.deliberation import FinalDeliverable, ResearchPacket  # noqa: E402
 
 logger = get_logger(__name__)
@@ -220,6 +221,7 @@ def main(
     request_limit: int,
 ) -> None:
     setup_logging()
+    configure_tls_trust()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     packet: ResearchPacket | None = None
