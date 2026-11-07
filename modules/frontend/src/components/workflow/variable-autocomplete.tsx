@@ -175,6 +175,8 @@ export function VariableAutocomplete({
           insertSuggestion(filtered[selectedIndex])
         }
       } else if (e.key === 'Escape') {
+        // Handled here, so an overlay behind the editor stays open until the next Escape.
+        e.preventDefault()
         setShowMenu(false)
       }
     },

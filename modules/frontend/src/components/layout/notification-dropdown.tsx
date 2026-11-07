@@ -21,7 +21,11 @@ export function NotificationDropdown() {
       ref={ref}
       className="relative"
       onKeyDown={(e) => {
-        if (e.key === 'Escape') setOpen(false)
+        // Handled here, so an overlay behind the dropdown stays open until the next Escape.
+        if (e.key === 'Escape' && open) {
+          e.preventDefault()
+          setOpen(false)
+        }
       }}
     >
       <Button

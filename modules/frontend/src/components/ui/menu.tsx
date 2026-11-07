@@ -34,7 +34,11 @@ export function Menu({ label, trigger, items, className, triggerClassName }: Men
       ref={rootRef}
       className={cn('relative', className)}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') setOpen(false)
+        // Handled here, so an overlay behind the menu stays open until the next Escape.
+        if (e.key === 'Escape' && open) {
+          e.preventDefault()
+          setOpen(false)
+        }
       }}
     >
       <button
