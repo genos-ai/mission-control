@@ -51,6 +51,7 @@ from modules.clients.service_manager.constants import (  # noqa: E402
 )
 from modules.clients.service_manager.dev_runner import DevRunner, _backend_command  # noqa: E402
 from modules.clients.service_manager.preflight import (  # noqa: E402
+    dev_login_line,
     ensure_dev_user,
     preflight,
     run_migrations,
@@ -182,7 +183,7 @@ def cmd_start_daemon(args):
     print(f"  Temporal UI:    http://localhost:{TEMPORAL_UI_PORT}")
     if not args.backend_only:
         print(f"  Frontend:       http://localhost:{FRONTEND_PORT}")
-    print("  Login:          admin@missioncontrol.dev / admin")
+    print(dev_login_line())
     print("  Stop:           python services.py stop")
     print("-" * 50)
     print("Daemon processes are running; this terminal is free.\n")
@@ -238,7 +239,7 @@ def cmd_start(args):
     print(f"  Temporal UI:    http://localhost:{TEMPORAL_UI_PORT}")
     if not args.backend_only:
         print(f"  Frontend:       http://localhost:{FRONTEND_PORT}")
-    print("  Login:          admin@missioncontrol.dev / admin")
+    print(dev_login_line())
     print("-" * 50)
     print("Press Ctrl+C to stop all services\n")
 

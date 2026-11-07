@@ -336,6 +336,14 @@ def run_migrations() -> bool:
         return False
 
 
+def dev_login_line() -> str:
+    """The startup banner's login line, from the credentials the dev user seed creates."""
+    from modules.backend.services.bootstrap import BootstrapService
+
+    email, password = BootstrapService.dev_credentials("admin")
+    return f"  Login:          {email} / {password}"
+
+
 def ensure_dev_user() -> None:
     """Create dev/test users (sysadmin, admin, user) if they don't exist.
 

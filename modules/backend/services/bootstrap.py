@@ -142,6 +142,18 @@ class BootstrapService:
         },
     ]
 
+    @classmethod
+    def dev_credentials(cls, system_role: str) -> tuple[str, str]:
+        """Email and password of the seeded dev user with this role.
+
+        The one place the seeded credentials are read from, so anything that shows them (the
+        startup banner) cannot disagree with what ensure_dev_users() creates.
+        """
+        for acct in cls.DEV_USERS:
+            if acct["system_role"] == system_role:
+                return acct["email"], acct["password"]
+        raise ValueError(f"No dev user is seeded with the role {system_role!r}")
+
     async def ensure_dev_users(self) -> list[User]:
         """Create well-known dev/test users if they don't exist.
 
