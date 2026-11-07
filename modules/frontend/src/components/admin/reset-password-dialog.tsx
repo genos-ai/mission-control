@@ -37,7 +37,8 @@ export function ResetPasswordDialog({
   }
 
   return (
-    <DialogFrame title={`Reset password for ${userName}`} onCancel={onCancel}>
+    // The backdrop does not close it: a stray click would throw away a typed password.
+    <DialogFrame title={`Reset password for ${userName}`} onCancel={onCancel} closeOnBackdrop={false}>
       <h3 className="text-base font-medium">Reset password</h3>
       <p className="mt-2 text-sm text-muted-foreground">
         Set a new password for {userName}. They are signed out on every device.
