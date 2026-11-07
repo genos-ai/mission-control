@@ -40,7 +40,6 @@ export default {
         muted:       { DEFAULT: c('muted'),       foreground: c('muted-foreground') },
         accent:      { DEFAULT: c('accent'),      foreground: c('accent-foreground') },
         popover:     { DEFAULT: c('popover'),     foreground: c('popover-foreground') },
-        card:        { DEFAULT: c('card'),        foreground: c('card-foreground') },
 
         well: c('well'),
         panel: { DEFAULT: c('panel'), border: c('panel-border') },

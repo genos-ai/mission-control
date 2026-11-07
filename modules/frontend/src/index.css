@@ -15,8 +15,6 @@
     /* shadcn-compatible names */
     --background: 36 35.7% 94.5%;          /* #f6f2ec  app root */
     --foreground: 32.7 19.3% 11.2%;        /* #221d17 */
-    --card: 37.5 50% 96.9%;                /* #fbf8f3  = panel */
-    --card-foreground: 32.7 19.3% 11.2%;
     --popover: 37.5 50% 96.9%;
     --popover-foreground: 32.7 19.3% 11.2%;
     --primary: 32.7 19.3% 11.2%;           /* #221d17  primary button bg */
@@ -74,8 +72,6 @@
   .dark {
     --background: 240 4.8% 4.1%;           /* #0a0a0b */
     --foreground: 240 5.9% 93.3%;          /* #ededef */
-    --card: 240 6.3% 6.3%;                 /* #0f0f11 */
-    --card-foreground: 240 5.9% 93.3%;
     --popover: 240 6.7% 5.9%;              /* #0e0e10 */
     --popover-foreground: 240 5.9% 93.3%;
     --primary: 240 5.9% 93.3%;             /* #ededef */
