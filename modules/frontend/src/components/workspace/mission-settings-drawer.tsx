@@ -28,21 +28,12 @@ import { useDrawerStore } from '@/stores/drawer'
 import { Badge } from '@/components/ui/badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { PanelHeader } from '@/components/ui/panel'
+import { modelLabel } from '@/components/team/model-label'
 import { ArchiveMissionButton } from '@/components/mission/archive-mission-button'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import type { MissionTeamMember } from '@/types'
-
-function modelLabel(name: string | undefined): string {
-  if (!name) return 'Unknown'
-  const bare = name.includes(':') ? name.split(':')[1] : name
-  if (bare.includes('opus')) return 'Opus 4'
-  if (bare.includes('sonnet-4-6')) return 'Sonnet 4.6'
-  if (bare.includes('sonnet-4')) return 'Sonnet 4'
-  if (bare.includes('haiku')) return 'Haiku 4.5'
-  return bare
-}
 
 // ---------------------------------------------------------------------------
 
