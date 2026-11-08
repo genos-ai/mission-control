@@ -33,6 +33,7 @@ from modules.backend.agents.mission_control.roster import (
 from modules.backend.core.config_schema import (
     GateAiSchema,
     GateAutoRulesSchema,
+    GateManualSchema,
     GatePointSchema,
     GatePointsSchema,
     GateSchema,
@@ -94,11 +95,13 @@ def _plan(mission_id: str = "test", tasks: list[dict] | None = None) -> TaskPlan
 
 
 AI = GateAiSchema(model="fixture:gate-reviewer")
+MANUAL = GateManualSchema(timeout_seconds=1800, poll_interval_seconds=5)
 
 
 def _gate_config(mode: str = "autonomous", **overrides) -> GateSchema:
     """Build a GateSchema for testing."""
     overrides.setdefault("ai", AI)
+    overrides.setdefault("manual", MANUAL)
     return GateSchema(mode=mode, **overrides)
 
 
@@ -305,7 +308,7 @@ class TestLlmGateReviewer:
 
 class TestGateSchema:
     def test_defaults(self):
-        schema = GateSchema(ai=AI)
+        schema = GateSchema(ai=AI, manual=MANUAL)
         assert schema.mode == "autonomous"
         assert schema.ai.model == AI.model
         assert schema.ai.temperature == 0.0
@@ -314,14 +317,14 @@ class TestGateSchema:
         assert schema.auto_rules.cost_threshold_pct == 80
 
     def test_mode_override(self):
-        schema = GateSchema(mode="autonomous", ai=AI)
+        schema = GateSchema(mode="autonomous", ai=AI, manual=MANUAL)
         assert schema.mode == "autonomous"
 
     def test_per_point_mode(self):
         points = GatePointsSchema(
             verification_failed=GatePointSchema(enabled=True, mode="ai_assisted"),
         )
-        schema = GateSchema(mode="autonomous", points=points, ai=AI)
+        schema = GateSchema(mode="autonomous", points=points, ai=AI, manual=MANUAL)
         assert schema.points.verification_failed.mode == "ai_assisted"
         assert schema.points.pre_dispatch.mode is None
 
@@ -329,7 +332,7 @@ class TestGateSchema:
         points = GatePointsSchema(
             post_task=GatePointSchema(enabled=False),
         )
-        schema = GateSchema(mode="interactive", points=points, ai=AI)
+        schema = GateSchema(mode="interactive", points=points, ai=AI, manual=MANUAL)
         assert schema.points.post_task.enabled is False
 
     def test_the_reviewer_model_is_required_not_assumed(self):
@@ -342,7 +345,7 @@ class TestGateSchema:
 
     def test_custom_ai_model(self):
         ai = GateAiSchema(model="anthropic:claude-sonnet-4-20250514", max_tokens=2048)
-        schema = GateSchema(ai=ai)
+        schema = GateSchema(ai=ai, manual=MANUAL)
         assert schema.ai.model == "anthropic:claude-sonnet-4-20250514"
         assert schema.ai.max_tokens == 2048
 

@@ -31,6 +31,7 @@ ai:
 # ---------------------------------------------------------------------------
 manual:
   timeout_seconds: 1800                              # 30 min — auto-ABORT if no decision arrives
+  poll_interval_seconds: 5                           # Plan 88.0.13: cross-process manual-gate wake interval
 
 # ---------------------------------------------------------------------------
 # Per-gate-point configuration

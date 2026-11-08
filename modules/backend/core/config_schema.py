@@ -323,6 +323,78 @@ class ExecutionsSchema(_StrictBase):
 # =============================================================================
 
 
+class RetrySchema(_StrictBase):
+    initial_interval_seconds: int = Field(..., ge=1)
+    backoff_coefficient: float = Field(..., ge=1.0)
+    maximum_interval_seconds: int = Field(..., ge=1)
+    maximum_attempts: int = Field(..., ge=1)
+
+
+class ActivityPolicySchema(_StrictBase):
+    start_to_close_seconds: int = Field(..., ge=1)
+    heartbeat_timeout_seconds: int | None = Field(...)
+    retry: RetrySchema
+
+
+class MissionRunActivitiesSchema(_StrictBase):
+    claim: ActivityPolicySchema
+    persistence: ActivityPolicySchema
+    plan_run: ActivityPolicySchema
+    execute_task: ActivityPolicySchema
+    evaluate_gate: ActivityPolicySchema
+    evaluate_post_run: ActivityPolicySchema
+    director_turn: ActivityPolicySchema
+    write_digest: ActivityPolicySchema
+    notify: ActivityPolicySchema
+
+
+class MissionRunSchema(_StrictBase):
+    continue_as_new_after_iterations: int = Field(..., ge=1)
+    max_parallel_tasks: int = Field(..., ge=1)
+    refine_wait_seconds: int = Field(..., ge=1)
+    tick_execution_timeout_seconds: int = Field(..., ge=10)
+    task_heartbeat_interval_seconds: int = Field(..., ge=1)
+    activities: MissionRunActivitiesSchema
+
+    @model_validator(mode="after")
+    def _heartbeat_fits_timeout(self) -> "MissionRunSchema":
+        timeout = self.activities.execute_task.heartbeat_timeout_seconds
+        if timeout is None:
+            raise ValueError(
+                "temporal.mission_run.activities.execute_task.heartbeat_timeout_seconds is required"
+            )
+        if self.task_heartbeat_interval_seconds * 2 > timeout:
+            raise ValueError(
+                "temporal.mission_run.task_heartbeat_interval_seconds must be at most half of "
+                "activities.execute_task.heartbeat_timeout_seconds"
+            )
+        return self
+
+
+class ReconcilerSchema(_StrictBase):
+    orphan_grace_seconds: int = Field(..., ge=60)
+    activity: ActivityPolicySchema
+
+
+class SystemScheduleSchema(_StrictBase):
+    cron: str = Field(..., min_length=9)
+
+
+ALLOWED_SYSTEM_SCHEDULE_KEYS: frozenset[str] = frozenset(
+    {
+        "reconciler",
+        "retention",
+        "hourly_health_check",
+        "weekly_report",
+        "metrics_aggregation",
+        "cleanup_environments",
+        "knowledge_extraction",
+        "knowledge_officer",
+        "embedding_backfill",
+    }
+)
+
+
 class TemporalSchema(_StrictBase):
     """Temporal integration configuration (Tier 4 durable execution)."""
 
@@ -350,6 +422,9 @@ class TemporalSchema(_StrictBase):
     refine_poll_interval_seconds: int = 1
     refine_poll_max_seconds: int = 60
     max_supervisor_iterations: int = 25
+    mission_run: MissionRunSchema = Field(...)
+    reconciler: ReconcilerSchema = Field(...)
+    system_schedules: dict[str, SystemScheduleSchema] = Field(...)
 
     @model_validator(mode="after")
     def _require_server_url_when_enabled(self) -> "TemporalSchema":
@@ -357,6 +432,16 @@ class TemporalSchema(_StrictBase):
             raise ValueError(
                 "temporal.server_url must be explicitly configured when " "temporal.enabled is true"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _system_schedule_keys(self) -> "TemporalSchema":
+        keys = set(self.system_schedules)
+        unknown = keys - ALLOWED_SYSTEM_SCHEDULE_KEYS
+        if unknown:
+            raise ValueError(f"unknown temporal.system_schedules keys: {sorted(unknown)}")
+        if "reconciler" not in keys:
+            raise ValueError("temporal.system_schedules.reconciler is required")
         return self
 
 
@@ -700,6 +785,7 @@ class GateManualSchema(_StrictBase):
             "increase for long unattended sessions."
         ),
     )
+    poll_interval_seconds: int = Field(..., ge=1)
 
 
 class GateSchema(_StrictBase):
@@ -707,7 +793,7 @@ class GateSchema(_StrictBase):
 
     mode: _GateMode = "autonomous"
     ai: GateAiSchema
-    manual: GateManualSchema = Field(default_factory=GateManualSchema)
+    manual: GateManualSchema
     points: GatePointsSchema = Field(default_factory=GatePointsSchema)
     auto_rules: GateAutoRulesSchema = Field(default_factory=GateAutoRulesSchema)
 

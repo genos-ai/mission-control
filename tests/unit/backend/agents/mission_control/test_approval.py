@@ -8,7 +8,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from modules.backend.core.config import get_app_config
 from modules.backend.core.config_schema import TemporalSchema
+
+
+def _plan88_blocks() -> dict:
+    """Plan 88 required TemporalSchema blocks, taken from the repo temporal.yaml."""
+    return get_app_config().temporal.model_dump(
+        include={"mission_run", "reconciler", "system_schedules"}
+    )
 
 
 def _mock_app_config(temporal_enabled: bool) -> MagicMock:
@@ -16,7 +24,7 @@ def _mock_app_config(temporal_enabled: bool) -> MagicMock:
     kwargs = {}
     if temporal_enabled:
         kwargs["server_url"] = "temporal.test:7233"
-    config.temporal = TemporalSchema(enabled=temporal_enabled, **kwargs)
+    config.temporal = TemporalSchema(enabled=temporal_enabled, **_plan88_blocks(), **kwargs)
     return config
 
 

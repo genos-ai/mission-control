@@ -25,3 +25,27 @@ wait_action_sleep_seconds: 1                 # MissionRunWorkflow WAIT action sl
 refine_poll_interval_seconds: 1              # advance_refine: poll interval for new tasks
 refine_poll_max_seconds: 60                  # advance_refine: max wait for Director to produce tasks
 max_supervisor_iterations: 25                # MissionRunWorkflow hard cap on loop iterations
+
+mission_run:
+  continue_as_new_after_iterations: 10
+  max_parallel_tasks: 4
+  refine_wait_seconds: 600
+  tick_execution_timeout_seconds: 300
+  task_heartbeat_interval_seconds: 20
+  activities:
+    claim:             {start_to_close_seconds: 60,   heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 2, backoff_coefficient: 2.0, maximum_interval_seconds: 30,  maximum_attempts: 5}}
+    persistence:       {start_to_close_seconds: 30,   heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 1, backoff_coefficient: 2.0, maximum_interval_seconds: 30,  maximum_attempts: 5}}
+    plan_run:          {start_to_close_seconds: 1800, heartbeat_timeout_seconds: 60,   retry: {initial_interval_seconds: 10, backoff_coefficient: 2.0, maximum_interval_seconds: 120, maximum_attempts: 2}}
+    execute_task:      {start_to_close_seconds: 3600, heartbeat_timeout_seconds: 60,   retry: {initial_interval_seconds: 10, backoff_coefficient: 2.0, maximum_interval_seconds: 300, maximum_attempts: 3}}
+    evaluate_gate:     {start_to_close_seconds: 120,  heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 5, backoff_coefficient: 2.0, maximum_interval_seconds: 60,  maximum_attempts: 3}}
+    evaluate_post_run: {start_to_close_seconds: 120,  heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 5, backoff_coefficient: 2.0, maximum_interval_seconds: 60,  maximum_attempts: 3}}
+    director_turn:     {start_to_close_seconds: 60,   heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 5, backoff_coefficient: 2.0, maximum_interval_seconds: 30,  maximum_attempts: 2}}
+    write_digest:      {start_to_close_seconds: 300,  heartbeat_timeout_seconds: 60,   retry: {initial_interval_seconds: 10, backoff_coefficient: 2.0, maximum_interval_seconds: 120, maximum_attempts: 3}}
+    notify:            {start_to_close_seconds: 30,   heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 5, backoff_coefficient: 2.0, maximum_interval_seconds: 300, maximum_attempts: 6}}
+
+reconciler:
+  orphan_grace_seconds: 600
+  activity: {start_to_close_seconds: 300, heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 10, backoff_coefficient: 2.0, maximum_interval_seconds: 60, maximum_attempts: 3}}
+
+system_schedules:            # sole source of system crons; registered by the worker, create-or-update
+  reconciler: {cron: "*/5 * * * *"}
